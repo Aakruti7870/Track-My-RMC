@@ -39,11 +39,8 @@ pub fn build_app_router(state: AppState) -> Router {
         .route("/api/auth/totp/verify-setup", post(auth_routes::verify_totp_setup))
         .route("/api/auth/totp/login", post(auth_routes::totp_login))
 
-        // --- FIDO2 / WebAuthn Passkeys ---
-        .route("/api/auth/passkey/register/options", post(auth_routes::passkey_register_options))
-        .route("/api/auth/passkey/register/verify", post(auth_routes::passkey_register_verify))
-        .route("/api/auth/passkey/login/options", post(auth_routes::passkey_login_options))
-        .route("/api/auth/passkey/login/verify", post(auth_routes::passkey_login_verify))
+        // WebAuthn passkey endpoints are intentionally not exposed until full
+        // challenge, origin, RP-ID, signature, and counter verification is implemented.
 
         // --- Customer Domain ---
         .route("/api/customer/plants", get(customer_routes::list_plants))
