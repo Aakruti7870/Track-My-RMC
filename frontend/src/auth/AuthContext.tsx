@@ -77,7 +77,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const verifyTotpLogin = async (usernameOrPhone: string, codeOrRecovery: string): Promise<User> => {
     const res = await apiClient.post('/api/auth/totp/login', {
       username_or_phone: usernameOrPhone,
-      code_or_recovery: codeOrRecovery,
+      totp_code: codeOrRecovery,
     });
     const { token: jwtToken, user: userData } = res.data;
     await persistAuth(jwtToken, userData);
