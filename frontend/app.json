@@ -2,26 +2,16 @@
   "expo": {
     "name": "TrackMyRMC",
     "slug": "trackmyrmc",
-    "version": "1.0.0",
+    "version": "2.0.30",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
     "scheme": "trackmyrmc",
     "userInterfaceStyle": "automatic",
-    "splash": {
-      "image": "./assets/images/splash-image.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#0F172A"
-    },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.trackmyrmc.app"
+      "bundleIdentifier": "com.trackmyrmc.concreteking"
     },
     "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#0F172A"
-      },
-      "package": "com.trackmyrmc.app",
+      "package": "com.trackmyrmc.concreteking",
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
