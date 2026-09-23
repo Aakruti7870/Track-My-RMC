@@ -13,13 +13,14 @@ mod utils;
 
 use config::AppConfig;
 use state::AppState;
-use std::net::SocketAddr;
+use std::{net::SocketAddr, str::FromStr};
 use tokio::signal;
 use tower_http::{
     cors::{Any, CorsLayer},
     trace::TraceLayer,
 };
 use tracing::info;
+use http;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -50,10 +51,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let state = AppState::new(pool, config.clone());
 
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+    let cors = if config.cors_allowed_origins.iter().any(|origin| origin == "*") {
+        CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(Any)
+            .allow_headers(Any)
+    } else {
+        let origins = config
+            .cors_allowed_origins
+            .iter()
+            .filter_map(|origin| http::HeaderValue::from_str(origin).ok())
+            .collect::<Vec<_>>();
+        CorsLayer::new()
+            .allow_origin(origins)
+            .allow_methods(Any)
+            .allow_headers(Any)
+    };
 
     let app = routes::build_app_router(state)
         .layer(cors)
