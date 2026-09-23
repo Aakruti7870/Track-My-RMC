@@ -30,7 +30,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 dotenvy = "0.15"
 thiserror = "1.0"
 validator = { version = "0.18", features = ["derive"] }
-bigdecimal = { version = "0.4", features = ["serde"] }
+bigdecimal = { version = "0.3.1", features = ["serde"] }
 rand = "0.8"
 reqwest = { version = "0.12", features = ["json"] }
 sha2 = "0.10"

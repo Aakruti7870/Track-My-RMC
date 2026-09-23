@@ -82,7 +82,7 @@ pub async fn get_user_profile(pool: &PgPool, user_id: Uuid) -> Result<Option<Use
         r#"
         SELECT id, user_id, business_name, gst_number, kyc_status, verified_name, address_line, city, state, pincode, created_at, updated_at
         FROM user_profiles
-        WHERE user_id = $6$1
+        WHERE user_id = $6
         "#,
     )
     .bind(user_id)
@@ -105,7 +105,7 @@ pub async fn update_user_profile(
     let mut tx = pool.begin().await?;
 
     if let Some(name) = full_name {
-        sqlx::query("UPDATE users SET full_name = $1, updated_at = NOW() WHERE id = $2$1")
+        sqlx::query("UPDATE users SET full_name = $1, updated_at = NOW() WHERE id = $2")
             .bind(name)
             .bind(user_id)
             .execute(&mut *tx)
@@ -121,7 +121,7 @@ pub async fn update_user_profile(
             state = COALESCE($4, state),
             pincode = COALESCE($5, pincode),
             updated_at = NOW()
-        WHERE user_id = $6$1
+        WHERE user_id = $6
         "#,
     )
     .bind(business_name)

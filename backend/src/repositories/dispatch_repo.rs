@@ -1,3 +1,4 @@
+use bigdecimal::FromPrimitive;
 use crate::{
     error::AppError,
     models::{
@@ -53,7 +54,7 @@ pub async fn assign_order_load(
     .fetch_one(&mut *tx)
     .await?;
 
-    sqlx::query("UPDATE transit_mixers SET status = 'in_transit', driver_id = $1 WHERE id = $1$2")
+    sqlx::query("UPDATE transit_mixers SET status = 'in_transit', driver_id = $1 WHERE id = $2")
         .bind(driver_id)
         .bind(mixer_id)
         .execute(&mut *tx)

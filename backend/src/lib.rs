@@ -2,7 +2,7 @@ pub mod auth;
 pub mod config;
 pub mod db;
 pub mod error;
-pub pub mod middleware;
+pub mod middleware;
 pub mod models;
 pub mod repositories;
 pub mod routes;

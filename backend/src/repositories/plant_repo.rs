@@ -1,3 +1,4 @@
+use bigdecimal::FromPrimitive;
 use crate::{
     error::AppError,
     models::plant::{CustomerSite, RmcPlant},

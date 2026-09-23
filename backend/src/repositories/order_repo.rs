@@ -1,3 +1,4 @@
+use bigdecimal::FromPrimitive;
 use crate::{
     error::AppError,
     models::order::{Order, OrderLoad},
@@ -111,7 +112,7 @@ pub async fn list_plant_orders(pool: &PgPool, plant_id: Uuid) -> Result<Vec<Orde
 }
 
 pub async fn update_order_status(pool: &PgPool, order_id: Uuid, status: &str) -> Result<(), AppError> {
-    sqlx::query("UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2$1")
+    sqlx::query("UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2")
         .bind(status)
         .bind(order_id)
         .execute(pool)
