@@ -30,8 +30,15 @@ impl AppConfig {
         let database_url = env::var("DATABASE_URL")
             .map_err(|_| "DATABASE_URL environment variable is required".to_string())?;
 
-        let jwt_secret = env::var("JWT_SECRET")
-            .unwrap_or_else(|_| "trackmyrmc_production_jwt_secret_super_secure_key".to_string());
+        let environment = env::var("APP_ENV").unwrap_or_else(|_| "production".to_string());
+
+        let jwt_secret = match env::var("JWT_SECRET") {
+            Ok(secret) if secret.len() >= 32 => secret,
+            Ok(_) if environment != "production" => "trackmyrmc_local_development_secret_change_me".to_string(),
+            Ok(_) => return Err("JWT_SECRET must be at least 32 characters in production".to_string()),
+            Err(_) if environment != "production" => "trackmyrmc_local_development_secret_change_me".to_string(),
+            Err(_) => return Err("JWT_SECRET environment variable is required in production".to_string()),
+        };
 
         let jwt_expiration_hours = env::var("JWT_EXPIRATION_HOURS")
             .ok()
@@ -50,8 +57,6 @@ impl AppConfig {
             .split(',')
             .map(|s| s.trim().to_string())
             .collect();
-
-        let environment = env::var("APP_ENV").unwrap_or_else(|_| "production".to_string());
 
         let meta_whatsapp_token = env::var("META_WHATSAPP_TOKEN").ok();
         let meta_whatsapp_phone_number_id = env::var("META_PHONE_NUMBER_ID").ok();
