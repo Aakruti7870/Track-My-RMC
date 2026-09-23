@@ -257,6 +257,28 @@ pub async fn send_email_otp(
     let destination = req.email.trim().to_lowercase();
     let purpose = "staff_login".to_string();
 
+    let user = user_repo::find_by_phone_or_email(&state.db, &destination)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Staff/Admin account not found".to_string()))?;
+
+    const STAFF_ROLES: &[&str] = &[
+        "dispatcher",
+        "operator",
+        "supervisor",
+        "quality_engineer",
+        "store_manager",
+        "accountant",
+        "fleet_manager",
+        "owner",
+        "admin",
+    ];
+    if !STAFF_ROLES.contains(&user.role.as_str()) {
+        return Err(AppError::Forbidden(
+            "Email OTP is restricted to staff, owner, and administrator accounts.".to_string(),
+        ));
+    }
+
+    let _ = req.plant_code.as_deref();
     OtpEngine::check_rate_limit(&state.db, &destination, state.config.otp_cooldown_seconds).await?;
 
     let (plain_otp, salt, hashed_otp) = OtpEngine::generate_secure_otp();
