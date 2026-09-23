@@ -1,5 +1,6 @@
 use crate::error::AppError;
-use hmac::{Hmac, Mac};\nuse sha2::{Digest, Sha256};
+use hmac::{Hmac, Mac};
+use sha2::{Digest, Sha256};
 use rand::{distributions::Alphanumeric, Rng};
 use sha1::Sha1;
 use sqlx::{FromRow, PgPool};
@@ -150,7 +151,11 @@ pub async fn setup_totp_for_user(
 ) -> Result<(String, String, Vec<String>), AppError> {
     let secret = TotpEngine::generate_secret();
     let qr_uri = TotpEngine::get_otpauth_uri(&secret, user_email);
-    let backup_codes = TotpEngine::generate_backup_codes();\n    let hashed_backup_codes: Vec<String> = backup_codes\n        .iter()\n        .map(|code| hash_backup_code(code, &secret))\n        .collect();
+    let backup_codes = TotpEngine::generate_backup_codes();
+    let hashed_backup_codes: Vec<String> = backup_codes
+        .iter()
+        .map(|code| hash_backup_code(code, &secret))
+        .collect();
 
     sqlx::query(
         r#"
