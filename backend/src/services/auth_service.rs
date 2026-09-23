@@ -58,7 +58,8 @@ pub async fn register(state: &AppState, req: RegisterRequest) -> Result<AuthResp
     }
 
     let hashed = hash_password(&req.password)?;
-    // Public registration may only create customer accounts. Privileged roles are provisioned by authorized staff/admin flows.\n    let role = "customer";
+    // Public registration may only create customer accounts. Privileged roles are provisioned by authorized staff/admin flows.
+    let role = "customer";
 
     let user = user_repo::create_user(
         &state.db,
