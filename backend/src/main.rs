@@ -20,7 +20,6 @@ use tower_http::{
     trace::TraceLayer,
 };
 use tracing::info;
-use http;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -60,7 +59,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let origins = config
             .cors_allowed_origins
             .iter()
-            .filter_map(|origin| http::HeaderValue::from_str(origin).ok())
+            .filter_map(|origin| HeaderValue::from_str(origin).ok())
             .collect::<Vec<_>>();
         CorsLayer::new()
             .allow_origin(origins)
