@@ -1,5 +1,5 @@
 use crate::{
-    auth::AuthUser,
+    auth::{middleware::check_role, AuthUser},
     error::AppError,
     models::workforce::MarkAttendanceRequest,
     services::payroll_service,
