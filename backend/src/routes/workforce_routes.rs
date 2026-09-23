@@ -36,6 +36,11 @@ pub async fn mark_attendance(
     auth_user: AuthUser,
     Json(payload): Json<MarkAttendanceRequest>,
 ) -> Result<impl IntoResponse, AppError> {
+    if let Some(target_user_id) = payload.user_id {
+        if target_user_id != auth_user.user_id {
+            check_role(&auth_user, &["supervisor", "owner", "admin"])?;
+        }
+    }
     payroll_service::handle_attendance_check(&state, auth_user.user_id, payload).await?;
     Ok(Json(json!({ "success": true, "message": "Attendance recorded successfully" })))
 }
