@@ -59,7 +59,7 @@ pub async fn register(state: &AppState, req: RegisterRequest) -> Result<AuthResp
     }
 
     let hashed = hash_password(&req.password)?;
-    let role = req.role.as_deref().unwrap_or("customer");
+    // Public registration may only create customer accounts. Privileged roles are provisioned by authorized staff/admin flows.\n    let role = "customer";
 
     let user = user_repo::create_user(
         &state.db,
@@ -340,7 +340,7 @@ pub async fn verify_totp_login(
         .await?
         .ok_or_else(|| AppError::Unauthorized("Invalid credentials".to_string()))?;
 
-    crate::auth::totp::verify_and_enable_totp(&state.db, user.id, &req.totp_code).await?;
+    crate::auth::totp::verify_totp_login(&state.db, user.id, &req.totp_code).await?;
 
     let profile = user_repo::get_user_profile(&state.db, user.id).await?;
     let kyc_status = profile.as_ref().map(|p| p.kyc_status.clone()).unwrap_or_else(|| "unverified".to_string());
