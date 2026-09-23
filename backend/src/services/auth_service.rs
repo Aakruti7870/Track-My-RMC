@@ -2,9 +2,8 @@ use crate::{
     auth::{
         jwt::generate_token,
         otp::OtpEngine,
-        passkey::{PasskeyEngine, PasskeyLoginVerifyRequest, PasskeyRegisterVerifyRequest},
+        passkey::{PasskeyEngine, PasskeyLoginVerifyRequest},
         password::{hash_password, verify_password},
-        totp::TotpEngine,
     },
     error::AppError,
     models::user::{AuthResponse, LoginRequest, RegisterRequest, UserProfile, UserResponse},
@@ -12,7 +11,7 @@ use crate::{
     services::{email_service::EmailService, whatsapp_service::WhatsAppService},
     state::AppState,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use uuid::Uuid;
 
 #[derive(Debug, Deserialize)]
