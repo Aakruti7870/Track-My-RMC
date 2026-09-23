@@ -3,27 +3,27 @@ import { UserRole } from '../types';
 export const getRoleHomeRoute = (role: UserRole): string => {
   switch (role) {
     case 'customer':
-      return '/customer';
+      return '/role-home';
     case 'driver':
-      return '/driver';
+      return '/role-home';
     case 'dispatcher':
-      return '/dispatcher';
+      return '/role-home';
     case 'operator':
-      return '/operator';
+      return '/role-home';
     case 'supervisor':
-      return '/supervisor';
+      return '/role-home';
     case 'quality_engineer':
-      return '/quality_engineer';
+      return '/role-home';
     case 'store_manager':
-      return '/store_manager';
+      return '/role-home';
     case 'accountant':
-      return '/accountant';
+      return '/role-home';
     case 'fleet_manager':
-      return '/fleet_manager';
+      return '/role-home';
     case 'owner':
-      return '/owner';
+      return '/role-home';
     case 'admin':
-      return '/admin';
+      return '/role-home';
     default:
       return '/login';
   }
