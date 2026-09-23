@@ -23,9 +23,36 @@ pub struct RosterQuery {
 
 pub async fn get_roster(
     State(state): State<AppState>,
-    _auth_user: AuthUser,
+    auth_user: AuthUser,
     Query(query): Query<RosterQuery>,
 ) -> Result<impl IntoResponse, AppError> {
+    check_role(
+        &auth_user,
+        &["supervisor", "owner", "admin", "accountant", "store_manager", "fleet_manager", "dispatcher", "operator", "quality_engineer"],
+    )?;
+
+    if !matches!(auth_user.role.as_str(), "owner" | "admin") {
+        let has_access: bool = sqlx::query_scalar(
+            r#"
+            SELECT EXISTS(
+                SELECT 1
+                FROM plant_staff
+                WHERE plant_id = $1
+                  AND user_id = $2
+                  AND is_active = TRUE
+            )
+            "#,
+        )
+        .bind(query.plant_id)
+        .bind(auth_user.user_id)
+        .fetch_one(&state.db)
+        .await?;
+
+        if !has_access {
+            return Err(AppError::Forbidden("You are not assigned to this plant".to_string()));
+        }
+    }
+
     let date = query.date.unwrap_or_else(|| chrono::Utc::now().date_naive());
     let roster = payroll_service::fetch_daily_roster(&state, query.plant_id, date).await?;
     Ok(Json(json!({ "success": true, "date": date, "roster": roster })))
