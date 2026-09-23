@@ -1,0 +1,18 @@
+{
+  "_comment": "TEMPLATE ONLY - Replace with your actual Firebase google-services.json for production push notifications",
+  "project_info": {
+    "project_number": "000000000000",
+    "project_id": "trackmyrmc-placeholder",
+    "storage_bucket": "trackmyrmc-placeholder.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:000000000000:android:0000000000000000",
+        "android_client_info": {
+          "package_name": "com.trackmyrmc.app"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'backend/**'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check-and-test:
+    name: Rust Check, Clippy & Test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: trackmyrmc_user
+          POSTGRES_PASSWORD: securepassword
+          POSTGRES_DB: trackmyrmc_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+
+      - name: Format Check
+        run: |
+          cd backend
+          cargo fmt --check
+
+      - name: Cargo Check
+        run: |
+          cd backend
+          cargo check --all-targets
+
+      - name: Clippy Linter
+        run: |
+          cd backend
+          cargo clippy --all-targets -- -D warnings
+
+      - name: Run Tests
+        env:
+          DATABASE_URL: postgres://trackmyrmc_user:securepassword@localhost:5432/trackmyrmc_test
+          JWT_SECRET: test_jwt_secret_key_at_least_32_characters_long
+        run: |
+          cd backend
+          cargo test --verbose

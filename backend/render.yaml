@@ -1,0 +1,50 @@
+services:
+  - type: web
+    name: trackmyrmc-backend
+    runtime: docker
+    dockerfilePath: Dockerfile
+    dockerContext: .
+    region: singapore # Low latency region for India/Maharashtra
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: trackmyrmc-postgres
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRATION_HOURS
+        value: "72"
+      - key: CORS_ORIGIN
+        value: "*"
+      - key: APP_ENV
+        value: "production"
+      - key: RUST_LOG
+        value: "info,trackmyrmc_backend=debug"
+      # Meta WhatsApp Cloud API credentials
+      - key: META_WHATSAPP_TOKEN
+        sync: false
+      - key: META_PHONE_NUMBER_ID
+        sync: false
+      - key: META_WABA_ID
+        sync: false
+      # Email OTP credentials
+      - key: EMAIL_API_KEY
+        sync: false
+      - key: EMAIL_FROM_ADDRESS
+        value: "noreply@trackmyrmc.com"
+      # OTP Security Controls
+      - key: OTP_EXPIRATION_MINUTES
+        value: "5"
+      - key: OTP_COOLDOWN_SECONDS
+        value: "60"
+      - key: OTP_MAX_ATTEMPTS
+        value: "3"
+
+databases:
+  - name: trackmyrmc-postgres
+    databaseName: trackmyrmc
+    user: trackmyrmc_user
+    region: singapore
+    plan: starter

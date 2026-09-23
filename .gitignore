@@ -1,0 +1,38 @@
+# Rust build artifacts
+target/
+**/*.rs.bk
+Cargo.lock.backup
+
+# Node & Frontend dependencies
+node_modules/
+.expo/
+.expo-shared/
+dist/
+build/
+web-build/
+*.apk
+*.aab
+*.ipa
+
+# Environment files & secrets
+.env
+.env.local
+.env.production
+*.pem
+*.key
+*.p12
+*.keystore
+google-services.json
+GoogleService-Info.plist
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
+*.swp
+*.bak
+
+# Cargo.lock is intentionally tracked for this deployable application.
+# Do not add Cargo.lock to this ignore file.
