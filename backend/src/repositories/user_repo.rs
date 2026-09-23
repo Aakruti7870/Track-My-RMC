@@ -82,7 +82,7 @@ pub async fn get_user_profile(pool: &PgPool, user_id: Uuid) -> Result<Option<Use
         r#"
         SELECT id, user_id, business_name, gst_number, kyc_status, verified_name, address_line, city, state, pincode, created_at, updated_at
         FROM user_profiles
-        WHERE user_id = $6
+        WHERE user_id = $1
         "#,
     )
     .bind(user_id)
