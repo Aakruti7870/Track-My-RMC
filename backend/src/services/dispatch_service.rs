@@ -9,11 +9,27 @@ use crate::{
 };
 use uuid::Uuid;
 
+async fn ensure_driver_owns_load(state: &AppState, load_id: Uuid, driver_id: Uuid) -> Result<(), AppError> {
+    let owns: (bool,) = sqlx::query_as(
+        "SELECT EXISTS(SELECT 1 FROM order_loads WHERE id = $1 AND driver_id = $2)",
+    )
+    .bind(load_id)
+    .bind(driver_id)
+    .fetch_one(&state.db)
+    .await?;
+    if !owns.0 {
+        return Err(AppError::Forbidden("This load is not assigned to the authenticated driver".to_string()));
+    }
+    Ok(())
+}
+
 pub async fn complete_delivery_pod(
     state: &AppState,
     load_id: Uuid,
+    driver_id: Uuid,
     req: SubmitPodRequest,
 ) -> Result<ProofOfDelivery, AppError> {
+    ensure_driver_owns_load(state, load_id, driver_id).await?;
     let pod = dispatch_repo::record_pod(
         &state.db,
         load_id,
@@ -31,8 +47,10 @@ pub async fn complete_delivery_pod(
 pub async fn sign_digital_challan(
     state: &AppState,
     load_id: Uuid,
+    driver_id: Uuid,
     req: SignChallanRequest,
 ) -> Result<(), AppError> {
+    ensure_driver_owns_load(state, load_id, driver_id).await?;
     let challan = dispatch_repo::get_challan_by_load(&state.db, load_id)
         .await?
         .ok_or_else(|| AppError::NotFound("Challan not found for this load".to_string()))?;
