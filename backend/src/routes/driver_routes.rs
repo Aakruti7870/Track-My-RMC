@@ -39,17 +39,21 @@ pub async fn update_location(
 pub async fn sign_challan(
     State(state): State<AppState>,
     Path(load_id): Path<Uuid>,
+    auth_user: AuthUser,
     Json(payload): Json<SignChallanRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    dispatch_service::sign_digital_challan(&state, load_id, payload).await?;
+    check_role(&auth_user, &["driver"])?;
+    dispatch_service::sign_digital_challan(&state, load_id, auth_user.user_id, payload).await?;
     Ok(Json(json!({ "success": true, "message": "Challan signed" })))
 }
 
 pub async fn submit_pod(
     State(state): State<AppState>,
     Path(load_id): Path<Uuid>,
+    auth_user: AuthUser,
     Json(payload): Json<SubmitPodRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    let pod = dispatch_service::complete_delivery_pod(&state, load_id, payload).await?;
+    check_role(&auth_user, &["driver"])?;
+    let pod = dispatch_service::complete_delivery_pod(&state, load_id, auth_user.user_id, payload).await?;
     Ok(Json(json!({ "success": true, "pod": pod })))
 }
