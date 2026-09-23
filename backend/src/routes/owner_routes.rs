@@ -60,9 +60,9 @@ pub async fn get_billing_overview(
         .await?
     };
 
-    let monthly_volume_m3: bigdecimal::BigDecimal = if auth_user.role == "admin" {
+    let monthly_volume_m3: f64 = if auth_user.role == "admin" {
         sqlx::query_scalar(
-            "SELECT COALESCE(SUM(total_quantity_m3), 0)
+            "SELECT COALESCE(SUM(total_quantity_m3), 0)::double precision
              FROM orders
              WHERE created_at >= date_trunc('month', CURRENT_DATE)",
         )
@@ -70,7 +70,7 @@ pub async fn get_billing_overview(
         .await?
     } else {
         sqlx::query_scalar(
-            "SELECT COALESCE(SUM(o.total_quantity_m3), 0)
+            "SELECT COALESCE(SUM(o.total_quantity_m3), 0)::double precision
              FROM orders o
              JOIN rmc_plants p ON p.id = o.plant_id
              WHERE p.owner_id = $1
