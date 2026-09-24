@@ -55,6 +55,21 @@ MYAPP_UPLOAD_STORE_PASSWORD=$KEYSTORE_PASSWORD
 MYAPP_UPLOAD_KEY_PASSWORD=$KEY_PASSWORD
 EOF
 
+      - name: Apply release signing configuration
+        working-directory: frontend
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/build.gradle')
+          s = p.read_text()
+          if 'signingConfigs.release' not in s:
+              marker = '    buildTypes {\n'
+              block = '''    signingConfigs {\n        release {\n            storeFile file(project.findProperty("MYAPP_UPLOAD_STORE_FILE"))\n            storePassword project.findProperty("MYAPP_UPLOAD_STORE_PASSWORD")\n            keyAlias project.findProperty("MYAPP_UPLOAD_KEY_ALIAS")\n            keyPassword project.findProperty("MYAPP_UPLOAD_KEY_PASSWORD")\n        }\n    }\n\n'''
+              s = s.replace(marker, block + marker, 1)
+          s = s.replace('        release {\n', '        release {\n            signingConfig signingConfigs.release\n', 1)
+          p.write_text(s)
+          PY
+
       - name: Build signed release AAB
         working-directory: frontend/android
         run: ./gradlew bundleRelease --no-daemon
