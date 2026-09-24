@@ -104,44 +104,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const verify = async (identifier: string, code: string): Promise<Me> => {
     const res = await verifyOtp(identifier, code);
-    return acceptSession(res.access_token);
+    return acceptSession(res.access_token ?? res.token);
   };
 
   const verifyStaff = async (identifier: string, code: string): Promise<Me> => {
     const res = await verifyStaffOtp(identifier, code);
-    return acceptSession(res.access_token);
+    return acceptSession(res.access_token ?? res.token);
   };
 
   const verifyStaffAuthenticator = async (identifier: string, code: string): Promise<Me> => {
     const res = await verifyStaffTotp(identifier, code);
-    return acceptSession(res.access_token);
+    return acceptSession(res.access_token ?? res.token);
   };
 
   const verifyStaffRecoveryCode = async (identifier: string, code: string): Promise<Me> => {
     const res = await verifyStaffRecovery(identifier, code);
-    return acceptSession(res.access_token);
+    return acceptSession(res.access_token ?? res.token);
   };
 
   const completeStaffPasskey = useCallback(async (handoffCode: string): Promise<Me> => {
     const res = await exchangeStaffPasskeyHandoff(handoffCode);
-    return acceptSession(res.access_token);
+    return acceptSession(res.access_token ?? res.token);
   }, [acceptSession]);
 
   // Kept for backward compatibility and rollback safety. The normal Plant Staff
   // login UI no longer exposes Google OAuth.
   const verifyGoogle = async (code: string): Promise<Me> => {
     const res = await exchangeGoogleStaffCode(code);
-    return acceptSession(res.access_token);
+    return acceptSession(res.access_token ?? res.token);
   };
 
   const demoLogin = async (role: string): Promise<Me> => {
     const res = await apiDemoLogin(role);
-    return acceptSession(res.access_token);
+    return acceptSession(res.access_token ?? res.token);
   };
 
   const verifyPlayReview = async (role: PlayReviewRole, accessCode: string): Promise<Me> => {
     const res = await playReviewLogin(role, accessCode);
-    return acceptSession(res.access_token);
+    return acceptSession(res.access_token ?? res.token);
   };
 
   const refreshMe = async () => {
