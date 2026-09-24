@@ -1,12 +1,11 @@
 import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
-// Resolve backend API URL dynamically based on environment and platform
 const getBaseUrl = (): string => {
-  if (process.env.EXPO_PUBLIC_API_URL) {
-    return process.env.EXPO_PUBLIC_API_URL;
-  }
-  // Android emulator loopback vs iOS simulator / web
+  const configured = process.env.EXPO_PUBLIC_API_URL?.trim();
+  if (configured) return configured.replace(/\/$/, '');
+
   return Platform.select({
     android: 'http://10.0.2.2:8000',
     ios: 'http://localhost:8000',
@@ -25,23 +24,26 @@ export const apiClient = axios.create({
   },
 });
 
-// Request interceptor to attach JWT token if available
-apiClient.interceptors.request.use(
-  async (config) => {
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
+const TOKEN_KEY = 'trackmyrmc_jwt_token';
 
-// Response interceptor to handle standard API errors
+apiClient.interceptors.request.use(async (config) => {
+  const token = await AsyncStorage.getItem(TOKEN_KEY);
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    const errorResponse = error.response?.data || {
-      success: false,
-      message: 'Server temporarily unavailable',
-    };
-    return Promise.reject(errorResponse);
+    const data = error.response?.data;
+    const message =
+      data?.message ||
+      data?.error ||
+      (error.response ? `Request failed with status ${error.response.status}` : 'Server temporarily unavailable');
+
+    return Promise.reject(new Error(message));
   }
 );
 
