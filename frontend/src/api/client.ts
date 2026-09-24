@@ -72,7 +72,8 @@ function validatedApiPath(path: string): string {
 }
 
 export type AuthSessionResponse = {
-  access_token: string;
+  access_token?: string;
+  token: string;
   token_type: string;
   expires_at: string;
   role: string;
@@ -261,7 +262,7 @@ export async function requestOtp(identifier: string) {
 }
 
 export async function verifyOtp(identifier: string, code: string) {
-  return apiPublicPost<AuthSessionResponse>("/auth/otp/whatsapp/verify", { phone: identifier, code });
+  return apiPublicPost<AuthSessionResponse>("/auth/otp/whatsapp/verify", { phone: identifier, otp: code });
 }
 
 export async function requestStaffOtp(identifier: string) {
@@ -269,7 +270,7 @@ export async function requestStaffOtp(identifier: string) {
 }
 
 export async function verifyStaffOtp(identifier: string, code: string) {
-  return apiPublicPost<AuthSessionResponse>("/auth/otp/email/verify", { email: identifier, code });
+  return apiPublicPost<AuthSessionResponse>("/auth/otp/email/verify", { email: identifier, otp: code });
 }
 
 export async function staffAuthMethod(identifier: string) {
