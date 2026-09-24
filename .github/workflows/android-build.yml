@@ -1,32 +1,167 @@
 name: Android Build Validation
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
       - "frontend/**"
       - ".github/workflows/android-build.yml"
-  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CI: "1"
+  EXPO_PUBLIC_BACKEND_URL: https://trackmyrmc-backend.onrender.com
+  EXPECTED_PLAY_UPLOAD_SHA1: "3D:5F:80:59:1C:BA:69:1B:03:28:4D:A1:74:91:38:1D:8F:A1:32:DC"
+  PACKAGE_NAME: com.trackmyrmc.concreteking
+  VERSION_CODE: "88"
+  VERSION_NAME: "2.0.30"
 
 jobs:
   android-build:
+    name: Build and verify signed release AAB
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - name: Install
+    timeout-minutes: 75
+    defaults:
+      run:
         working-directory: frontend
-        run: npm install
-      - name: Check signing secret availability
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.19.4"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Verify production backend
+        shell: bash
         run: |
-          test -n "$ANDROID_KEYSTORE_BASE64"
-          test -n "$KEYSTORE_PASSWORD"
-          test -n "$KEY_ALIAS"
-          test -n "$KEY_PASSWORD"
+          set -euo pipefail
+          curl --retry 5 --retry-all-errors --retry-delay 2 -fsS "$EXPO_PUBLIC_BACKEND_URL/health" >/tmp/health.json
+          grep -F 'healthy' /tmp/health.json >/dev/null
+
+      - name: Verify required signing secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ] || missing+=(ANDROID_KEYSTORE_BASE64)
+          [ -n "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" ] || missing+=(ANDROID_KEYSTORE_PASSWORD)
+          [ -n "${{ secrets.ANDROID_STORE_PASSWORD }}" ] || missing+=(ANDROID_STORE_PASSWORD)
+          [ -n "${{ secrets.ANDROID_KEY_ALIAS }}" ] || missing+=(ANDROID_KEY_ALIAS)
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "Missing required signing secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Android project
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Verify release version
+        run: grep -q 'versionCode 88' android/app/build.gradle
+
+      - name: Restore upload keystore
+        working-directory: frontend/android/app
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$KEYSTORE_B64" | base64 -d > upload-keystore.jks
+          test -s upload-keystore.jks
+
+      - name: Verify upload certificate
+        working-directory: frontend/android/app
+        env:
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          info="$(keytool -list -v -keystore upload-keystore.jks -alias "$KEY_ALIAS" -storepass "$STORE_PASSWORD" 2>/dev/null)"
+          sha1="$(printf '%s\n' "$info" | awk -F'SHA1: ' '/SHA1:/{print $2; exit}' | tr -d '\r')"
+          test "$sha1" = "$EXPECTED_PLAY_UPLOAD_SHA1"
+          echo "Upload certificate SHA1 verified: $sha1"
+
+      - name: Detect private-key password
+        working-directory: frontend/android/app
+        env:
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/keycheck && mkdir -p /tmp/keycheck
+          printf 'probe\n' >/tmp/keycheck/probe.txt
+          (cd /tmp/keycheck && jar --create --file probe.jar probe.txt)
+          if jarsigner -keystore upload-keystore.jks -storepass "$STORE_PASSWORD" -keypass "$KEY_PASSWORD" /tmp/keycheck/probe.jar "$KEY_ALIAS" >/dev/null 2>&1; then
+            echo KEY_PASSWORD_MODE=primary >> "$GITHUB_ENV"
+          else
+            rm -f /tmp/keycheck/probe.jar
+            (cd /tmp/keycheck && jar --create --file probe.jar probe.txt)
+            jarsigner -keystore upload-keystore.jks -storepass "$STORE_PASSWORD" -keypass "$STORE_PASSWORD" /tmp/keycheck/probe.jar "$KEY_ALIAS" >/dev/null 2>&1
+            echo KEY_PASSWORD_MODE=store >> "$GITHUB_ENV"
+          fi
+
+      - name: Build unsigned release AAB
+        working-directory: frontend/android
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/build.gradle')
+          s=p.read_text()
+          start=s.find('release {')
+          marker='signingConfig signingConfigs.debug'
+          pos=s.find(marker,start)
+          if start < 0 or pos < 0:
+              raise SystemExit('release debug signingConfig not found')
+          p.write_text(s[:pos]+s[pos+len(marker):])
+          PY
+          ./gradlew :app:bundleRelease --no-daemon
+          test -s app/build/outputs/bundle/release/app-release.aab
+
+      - name: Sign AAB with verified upload key
+        working-directory: frontend/android
+        env:
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          aab=app/build/outputs/bundle/release/app-release.aab
+          if [ "$KEY_PASSWORD_MODE" = primary ]; then keypass="$KEY_PASSWORD"; else keypass="$STORE_PASSWORD"; fi
+          jarsigner -keystore app/upload-keystore.jks -storetype JKS -storepass "$STORE_PASSWORD" -keypass "$keypass" "$aab" "$KEY_ALIAS"
+          jarsigner -verify -verbose -certs "$aab"
+
+      - name: Validate final AAB
+        working-directory: frontend/android
+        run: |
+          set -euo pipefail
+          aab=app/build/outputs/bundle/release/app-release.aab
+          signer="$(keytool -printcert -jarfile "$aab" 2>/dev/null)"
+          sha1="$(printf '%s\n' "$signer" | awk -F'SHA1: ' '/SHA1:/{print $2; exit}' | tr -d '\r')"
+          test "$sha1" = "$EXPECTED_PLAY_UPLOAD_SHA1"
+          echo "Final AAB signer SHA1 verified: $sha1"
+          echo "AAB_SHA256=$(sha256sum "$aab" | awk '{print $1}')"
+
+      - name: Upload signed AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: trackmyrmc-v2.0.30-vc88-signed-aab
+          path: frontend/android/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 14
