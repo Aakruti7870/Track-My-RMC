@@ -17,7 +17,8 @@
         "ACCESS_FINE_LOCATION",
         "ACCESS_BACKGROUND_LOCATION",
         "INTERNET"
-      ]
+      ],
+      "versionCode": 88
     },
     "plugins": [
       "expo-router",
