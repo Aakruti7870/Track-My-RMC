@@ -11,6 +11,23 @@ pub async fn record_driver_location(
     driver_id: Uuid,
     req: LocationUpdateRequest,
 ) -> Result<(), AppError> {
+    if !req.latitude.is_finite() || !(-90.0..=90.0).contains(&req.latitude) {
+        return Err(AppError::BadRequest("Invalid latitude".to_string()));
+    }
+    if !req.longitude.is_finite() || !(-180.0..=180.0).contains(&req.longitude) {
+        return Err(AppError::BadRequest("Invalid longitude".to_string()));
+    }
+    if let Some(speed) = req.speed {
+        if !speed.is_finite() || speed < 0.0 {
+            return Err(AppError::BadRequest("Invalid speed".to_string()));
+        }
+    }
+    if let Some(heading) = req.heading {
+        if !heading.is_finite() || !(0.0..360.0).contains(&heading) {
+            return Err(AppError::BadRequest("Invalid heading".to_string()));
+        }
+    }
+
     let owns_mixer: bool = sqlx::query_scalar(
         r#"
         SELECT EXISTS(
