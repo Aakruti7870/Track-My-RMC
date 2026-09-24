@@ -112,6 +112,38 @@ pub async fn list_plant_orders(pool: &PgPool, plant_id: Uuid) -> Result<Vec<Orde
 }
 
 pub async fn update_order_status(pool: &PgPool, order_id: Uuid, status: &str) -> Result<(), AppError> {
+    let allowed = ["pending", "confirmed", "scheduled", "dispatched", "in_transit", "delivered", "completed", "cancelled"];
+    if !allowed.contains(&status) {
+        return Err(AppError::BadRequest("Unsupported order status".to_string()));
+    }
+
+    let current: Option<String> = sqlx::query_scalar("SELECT status FROM orders WHERE id = $1")
+        .bind(order_id)
+        .fetch_optional(pool)
+        .await?;
+    let current = current.ok_or_else(|| AppError::NotFound("Order not found".to_string()))?;
+
+    if current == status {
+        return Ok(());
+    }
+
+    let valid_transition = match (current.as_str(), status) {
+        ("pending", "confirmed" | "cancelled") => true,
+        ("confirmed", "scheduled" | "cancelled") => true,
+        ("scheduled", "dispatched" | "cancelled") => true,
+        ("dispatched", "in_transit" | "cancelled") => true,
+        ("in_transit", "delivered") => true,
+        ("delivered", "completed") => true,
+        _ => false,
+    };
+
+    if !valid_transition {
+        return Err(AppError::BadRequest(format!(
+            "Invalid order status transition: {} -> {}",
+            current, status
+        )));
+    }
+
     sqlx::query("UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2")
         .bind(status)
         .bind(order_id)
