@@ -48,14 +48,16 @@ impl WhatsAppService {
             phone_number_id
         );
 
-        // Standard Meta authentication / verification template payload
+        // Approved Meta authentication template: login_code.
+        // The template shown in WhatsApp Manager uses the OTP body variable
+        // and the Copy code authentication button.
         let payload = json!({
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
             "to": recipient,
             "type": "template",
             "template": {
-                "name": "trackmyrmc_otp_verification",
+                "name": "login_code",
                 "language": {
                     "code": "en_US"
                 },
