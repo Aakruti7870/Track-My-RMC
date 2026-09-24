@@ -1,5 +1,5 @@
 # Multi-stage production build for TrackMyRMC Rust Backend
-FROM rust:1.80-slim-bookworm AS builder
+FROM rust:1.98-slim-bookworm AS builder
 
 WORKDIR /usr/src/app
 
@@ -27,7 +27,7 @@ FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
-    libssl3 \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
