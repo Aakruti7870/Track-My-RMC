@@ -47,7 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           curl --retry 5 --retry-all-errors --retry-delay 2 -fsS "$EXPO_PUBLIC_BACKEND_URL/health" >/tmp/health.json
-          grep -F 'healthy' /tmp/health.json >/dev/null
+          grep -F '"status":"ok"' /tmp/health.json >/dev/null
 
       - name: Verify required signing secrets
         shell: bash
