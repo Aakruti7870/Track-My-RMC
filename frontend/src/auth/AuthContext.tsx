@@ -1,120 +1,220 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import apiClient from '../api/client';
-import { User, UserRole } from '../types';
+import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 
-interface AuthContextType {
-  user: User | null;
+import { storage } from "@/src/utils/storage";
+import {
+  apiGet,
+  apiPost,
+  demoLogin as apiDemoLogin,
+  exchangeGoogleStaffCode,
+  exchangeStaffPasskeyHandoff,
+  isApiError,
+  playReviewLogin,
+  PlayReviewRole,
+  requestOtp,
+  requestStaffOtp,
+  staffAuthMethod,
+  verifyOtp,
+  verifyStaffOtp,
+  verifyStaffRecovery,
+  verifyStaffTotp,
+} from "@/src/api/client";
+import { stopTripLocationTracking } from "@/src/location/tripTracking";
+import { unregisterPushDevice } from "@/src/notifications/pushClient";
+
+const TOKEN_KEY = "tmrmc_token";
+
+export type Me = {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  mobile?: string | null;
+  role: string;
+  role_label: string;
+  roles: string[];
+  plant_id: string | null;
+  status: string;
+  kyc_status: string;
+  mfa_enabled?: boolean;
+  mfa_configured?: boolean;
+  passkey_enabled?: boolean;
+  passkey_count?: number;
+};
+
+type AuthContextValue = {
+  hydrating: boolean;
   token: string | null;
-  isLoading: boolean;
-  sendWhatsAppOtp: (phone: string) => Promise<void>;
-  verifyWhatsAppOtp: (phone: string, otp: string) => Promise<User>;
-  sendEmailOtp: (email: string, plantCode?: string) => Promise<void>;
-  verifyEmailOtp: (email: string, otp: string, plantCode?: string) => Promise<User>;
-  verifyTotpLogin: (usernameOrPhone: string, codeOrRecovery: string) => Promise<User>;
-  logout: () => Promise<void>;
-}
+  user: Me | null;
+  requestOtp: typeof requestOtp;
+  requestStaffOtp: typeof requestStaffOtp;
+  staffAuthMethod: typeof staffAuthMethod;
+  verify: (identifier: string, code: string) => Promise<Me>;
+  verifyStaff: (identifier: string, code: string) => Promise<Me>;
+  verifyStaffAuthenticator: (identifier: string, code: string) => Promise<Me>;
+  verifyStaffRecovery: (identifier: string, code: string) => Promise<Me>;
+  completeStaffPasskey: (handoffCode: string) => Promise<Me>;
+  verifyGoogle: (code: string) => Promise<Me>;
+  demoLogin: (role: string) => Promise<Me>;
+  verifyPlayReview: (role: PlayReviewRole, accessCode: string) => Promise<Me>;
+  refreshMe: () => Promise<void>;
+  signOut: () => Promise<void>;
+};
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-const TOKEN_KEY = 'trackmyrmc_jwt_token';
-const USER_KEY = 'trackmyrmc_user_data';
-
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [hydrating, setHydrating] = useState(true);
   const [token, setToken] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [user, setUser] = useState<Me | null>(null);
 
   useEffect(() => {
-    const loadSession = async () => {
-      try {
-        const storedToken = await AsyncStorage.getItem(TOKEN_KEY);
-        const storedUser = await AsyncStorage.getItem(USER_KEY);
-        if (storedToken && storedUser) {
-          setToken(storedToken);
-          setUser(JSON.parse(storedUser));
-          apiClient.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
+    (async () => {
+      const saved = await storage.secureGet<string>(TOKEN_KEY, "");
+      if (saved) {
+        try {
+          const me = await apiGet<Me>("/me", saved);
+          setToken(saved);
+          setUser(me);
+        } catch {
+          await stopTripLocationTracking();
+          await storage.secureRemove(TOKEN_KEY);
+          setToken(null);
+          setUser(null);
         }
-      } catch (e) {
-        console.warn('Failed to restore session:', e);
-      } finally {
-        setIsLoading(false);
       }
-    };
-    loadSession();
+      setHydrating(false);
+    })();
   }, []);
 
-  const persistAuth = async (newToken: string, newUser: User) => {
-    setToken(newToken);
-    setUser(newUser);
-    apiClient.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
-    await AsyncStorage.setItem(TOKEN_KEY, newToken);
-    await AsyncStorage.setItem(USER_KEY, JSON.stringify(newUser));
+  const acceptSession = useCallback(async (accessToken: string): Promise<Me> => {
+    const stored = await storage.secureSet(TOKEN_KEY, accessToken);
+    if (!stored) throw new Error("Unable to securely store login session");
+    try {
+      const me = await apiGet<Me>("/me", accessToken);
+      setToken(accessToken);
+      setUser(me);
+      return me;
+    } catch (error) {
+      await storage.secureRemove(TOKEN_KEY);
+      setToken(null);
+      setUser(null);
+      throw error;
+    }
+  }, []);
+
+  const verify = async (identifier: string, code: string): Promise<Me> => {
+    const res = await verifyOtp(identifier, code);
+    return acceptSession(res.access_token);
   };
 
-  const sendWhatsAppOtp = async (phone: string) => {
-    await apiClient.post('/api/auth/otp/whatsapp/send', { phone, purpose: 'login' });
+  const verifyStaff = async (identifier: string, code: string): Promise<Me> => {
+    const res = await verifyStaffOtp(identifier, code);
+    return acceptSession(res.access_token);
   };
 
-  const verifyWhatsAppOtp = async (phone: string, otp: string): Promise<User> => {
-    const res = await apiClient.post('/api/auth/otp/whatsapp/verify', { phone, otp, purpose: 'login' });
-    const { token: jwtToken, user: userData } = res.data;
-    await persistAuth(jwtToken, userData);
-    return userData;
+  const verifyStaffAuthenticator = async (identifier: string, code: string): Promise<Me> => {
+    const res = await verifyStaffTotp(identifier, code);
+    return acceptSession(res.access_token);
   };
 
-  const sendEmailOtp = async (email: string, plantCode?: string) => {
-    await apiClient.post('/api/auth/otp/email/send', { email, plant_code: plantCode });
+  const verifyStaffRecoveryCode = async (identifier: string, code: string): Promise<Me> => {
+    const res = await verifyStaffRecovery(identifier, code);
+    return acceptSession(res.access_token);
   };
 
-  const verifyEmailOtp = async (email: string, otp: string, plantCode?: string): Promise<User> => {
-    const res = await apiClient.post('/api/auth/otp/email/verify', { email, otp, plant_code: plantCode });
-    const { token: jwtToken, user: userData } = res.data;
-    await persistAuth(jwtToken, userData);
-    return userData;
+  const completeStaffPasskey = useCallback(async (handoffCode: string): Promise<Me> => {
+    const res = await exchangeStaffPasskeyHandoff(handoffCode);
+    return acceptSession(res.access_token);
+  }, [acceptSession]);
+
+  // Kept for backward compatibility and rollback safety. The normal Plant Staff
+  // login UI no longer exposes Google OAuth.
+  const verifyGoogle = async (code: string): Promise<Me> => {
+    const res = await exchangeGoogleStaffCode(code);
+    return acceptSession(res.access_token);
   };
 
-  const verifyTotpLogin = async (usernameOrPhone: string, codeOrRecovery: string): Promise<User> => {
-    const res = await apiClient.post('/api/auth/totp/login', {
-      username_or_phone: usernameOrPhone,
-      totp_code: codeOrRecovery,
-    });
-    const { token: jwtToken, user: userData } = res.data;
-    await persistAuth(jwtToken, userData);
-    return userData;
+  const demoLogin = async (role: string): Promise<Me> => {
+    const res = await apiDemoLogin(role);
+    return acceptSession(res.access_token);
   };
 
-  const logout = async () => {
+  const verifyPlayReview = async (role: PlayReviewRole, accessCode: string): Promise<Me> => {
+    const res = await playReviewLogin(role, accessCode);
+    return acceptSession(res.access_token);
+  };
+
+  const refreshMe = async () => {
+    if (!token) return;
+    try {
+      const me = await apiGet<Me>("/me", token);
+      setUser(me);
+    } catch (error) {
+      // A revoked, expired, suspended, or no-longer-authorized session must not
+      // leave stale privileged UI state resident in memory.
+      if (isApiError(error) && (error.status === 401 || error.status === 403)) {
+        await stopTripLocationTracking();
+        await storage.secureRemove(TOKEN_KEY);
+        setToken(null);
+        setUser(null);
+      }
+      // Transient network failures keep the current session so offline/poor
+      // connectivity does not unnecessarily force the user through OTP again.
+    }
+  };
+
+  const signOut = async () => {
+    const sessionToken = token;
+
+    // Fail closed locally first. Remote cleanup is best effort and must never
+    // keep a sensitive session alive on-device while the network is slow/down.
+    await stopTripLocationTracking();
+    await storage.secureRemove(TOKEN_KEY);
     setToken(null);
     setUser(null);
-    delete apiClient.defaults.headers.common['Authorization'];
-    await AsyncStorage.removeItem(TOKEN_KEY);
-    await AsyncStorage.removeItem(USER_KEY);
+
+    if (!sessionToken) return;
+
+    try {
+      await unregisterPushDevice(sessionToken);
+    } catch {
+      /* push cleanup is best effort; server/session logout must still run */
+    }
+    try {
+      await apiPost("/auth/logout", sessionToken);
+    } catch {
+      /* local logout has already succeeded when the network is unavailable */
+    }
   };
 
   return (
     <AuthContext.Provider
       value={{
-        user,
+        hydrating,
         token,
-        isLoading,
-        sendWhatsAppOtp,
-        verifyWhatsAppOtp,
-        sendEmailOtp,
-        verifyEmailOtp,
-        verifyTotpLogin,
-        logout,
+        user,
+        requestOtp,
+        requestStaffOtp,
+        staffAuthMethod,
+        verify,
+        verifyStaff,
+        verifyStaffAuthenticator,
+        verifyStaffRecovery: verifyStaffRecoveryCode,
+        completeStaffPasskey,
+        verifyGoogle,
+        demoLogin,
+        verifyPlayReview,
+        refreshMe,
+        signOut,
       }}
     >
       {children}
     </AuthContext.Provider>
   );
-};
+}
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-};
+export function useAuth(): AuthContextValue {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
+  return ctx;
+}

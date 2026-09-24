@@ -1,35 +1,33 @@
-import React, { useEffect } from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import { useRouter } from 'expo-router';
-import { useAuth } from '../src/auth/AuthContext';
-import { getRoleHomeRoute } from '../src/auth/roleRoutes';
+import { Redirect } from "expo-router";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
 
-export default function IndexScreen() {
-  const { user, isLoading } = useAuth();
-  const router = useRouter();
+import { useAuth } from "@/src/auth/AuthContext";
+import { roleRouteFor } from "@/src/auth/roleRoutes";
+import { useTheme } from "@/src/theme/ThemeProvider";
 
-  useEffect(() => {
-    if (!isLoading) {
-      if (user) {
-        router.replace(getRoleHomeRoute(user.role) as any);
-      } else {
-        router.replace('/login');
-      }
-    }
-  }, [user, isLoading]);
+export default function Index() {
+  const { hydrating, token, user } = useAuth();
+  const { colors } = useTheme();
 
-  return (
-    <View style={styles.container}>
-      <ActivityIndicator size="large" color="#38BDF8" />
-    </View>
-  );
+  if (hydrating) {
+    return (
+      <View testID="boot-loader" style={[styles.center, { backgroundColor: colors.surface }]}>
+        <ActivityIndicator color={colors.brand} size="large" />
+      </View>
+    );
+  }
+
+  if (!token || !user) {
+    return <Redirect href="/login" />;
+  }
+
+  if (user.mfa_configured && !user.mfa_enabled && user.role !== "customer" && user.role !== "driver") {
+    return <Redirect href="/mfa-setup" />;
+  }
+
+  return <Redirect href={roleRouteFor(user.role) as any} />;
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0F172A',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  center: { flex: 1, alignItems: "center", justifyContent: "center" },
 });

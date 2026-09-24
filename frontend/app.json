@@ -4,30 +4,85 @@
     "slug": "trackmyrmc",
     "version": "2.0.30",
     "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
     "scheme": "trackmyrmc",
     "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.trackmyrmc.concreteking"
+      "bundleIdentifier": "com.trackmyrmc.concreteking",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Capture site photos for proof of delivery",
+        "NSPhotoLibraryUsageDescription": "Attach site photos to proof of delivery",
+        "NSLocationWhenInUseUsageDescription": "Share mixer location for live delivery tracking and ETA",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Share mixer location in the background so live delivery tracking continues while driving"
+      }
     },
     "android": {
+      "icon": "./assets/images/icon.png",
+      "edgeToEdgeEnabled": true,
       "package": "com.trackmyrmc.concreteking",
+      "versionCode": 88,
+      "googleServicesFile": "./google-services.json",
       "permissions": [
+        "CAMERA",
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
         "ACCESS_BACKGROUND_LOCATION",
-        "INTERNET"
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
       ],
-      "versionCode": 88
+      "blockedPermissions": [
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "trackmyrmc.com",
+              "pathPrefix": "/kyc/return"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
       "expo-router",
+      "expo-notifications",
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow TrackMyRMC to use your location to track concrete mixer dispatches in real time."
+          "locationWhenInUsePermission": "TrackMyRMC uses your location for live delivery tracking and ETA while a trip is active.",
+          "locationAlwaysAndWhenInUsePermission": "TrackMyRMC keeps sharing mixer location in the background — even when the app is closed — so live delivery tracking continues while driving.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
-      ]
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-image.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#101112"
+        }
+      ],
+      "./plugins/with-play-store-compatibility"
     ],
     "experiments": {
       "typedRoutes": true

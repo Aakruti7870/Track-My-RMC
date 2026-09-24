@@ -1,30 +1,18 @@
-import { UserRole } from '../types';
+export const ROLE_ROUTES = {
+  customer: "/customer",
+  plant_owner: "/owner",
+  driver: "/driver",
+  admin: "/admin",
+  dispatcher: "/dispatcher",
+  operator: "/operator",
+  supervisor: "/supervisor",
+  accountant: "/accountant",
+  quality_engineer: "/quality_engineer",
+  fleet_manager: "/fleet_manager",
+  store_manager: "/store_manager",
+} as const;
 
-export const getRoleHomeRoute = (role: UserRole): string => {
-  switch (role) {
-    case 'customer':
-      return '/role-home';
-    case 'driver':
-      return '/role-home';
-    case 'dispatcher':
-      return '/role-home';
-    case 'operator':
-      return '/role-home';
-    case 'supervisor':
-      return '/role-home';
-    case 'quality_engineer':
-      return '/role-home';
-    case 'store_manager':
-      return '/role-home';
-    case 'accountant':
-      return '/role-home';
-    case 'fleet_manager':
-      return '/role-home';
-    case 'owner':
-      return '/role-home';
-    case 'admin':
-      return '/role-home';
-    default:
-      return '/login';
-  }
-};
+export function roleRouteFor(role?: string | null): string {
+  if (!role) return "/role-home";
+  return ROLE_ROUTES[role as keyof typeof ROLE_ROUTES] ?? "/role-home";
+}
