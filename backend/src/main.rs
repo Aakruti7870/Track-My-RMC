@@ -13,7 +13,8 @@ mod utils;
 
 use config::AppConfig;
 use state::AppState;
-use std::{net::SocketAddr, str::FromStr};
+use std::net::SocketAddr;
+use axum::http::HeaderValue;
 use tokio::signal;
 use tower_http::{
     cors::{Any, CorsLayer},
