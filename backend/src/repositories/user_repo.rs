@@ -10,7 +10,7 @@ pub async fn find_by_phone_or_email(pool: &PgPool, identifier: &str) -> Result<O
         r#"
         SELECT id, phone, email, hashed_password, full_name, role, is_active, is_verified, created_at, updated_at
         FROM users
-        WHERE phone = $1 OR email = $2
+        WHERE phone = $1 OR email = $1
         LIMIT 1
         "#,
     )
