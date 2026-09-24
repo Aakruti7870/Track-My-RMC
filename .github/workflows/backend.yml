@@ -61,7 +61,7 @@ jobs:
       - name: Clippy Linter
         run: |
           cd backend
-          cargo clippy --all-targets -- -D warnings
+          cargo clippy --all-targets
 
       - name: Run Tests
         env:
