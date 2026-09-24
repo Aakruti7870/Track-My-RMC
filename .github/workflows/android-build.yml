@@ -17,33 +17,81 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
-
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
-
       - name: Install dependencies
         run: npm install
-
       - name: Prebuild Android
         env:
           EXPO_PUBLIC_API_URL: https://trackmyrmc-backend.onrender.com
         run: npx expo prebuild --platform android --non-interactive
+      - name: Verify release version
+        run: grep -q 'versionCode 88' android/app/build.gradle
+      - name: Restore release keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$ANDROID_KEYSTORE_BASE64"
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/release.keystore
+          test -s android/app/release.keystore
+      - name: Configure signing
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE_PASSWORD"
+          test -n "$KEY_ALIAS"
+          test -n "$KEY_PASSWORD"
+          cat >> android/gradle.properties <<EOF
+MYAPP_UPLOAD_STORE_FILE=release.keystore
+MYAPP_UPLOAD_KEY_ALIAS=$KEY_ALIAS
+MYAPP_UPLOAD_STORE_PASSWORD=$KEYSTORE_PASSWORD
+MYAPP_UPLOAD_KEY_PASSWORD=$KEY_PASSWORD
+EOF
+      - name: Apply release signing configuration
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/build.gradle")
+          s = p.read_text()
+          if "signingConfigs {" not in s:
+              marker = "    buildTypes {"
+              block = """    signingConfigs {
+                  release {
+                      storeFile file(project.findProperty("MYAPP_UPLOAD_STORE_FILE"))
+                      storePassword project.findProperty("MYAPP_UPLOAD_STORE_PASSWORD")
+                      keyAlias project.findProperty("MYAPP_UPLOAD_KEY_ALIAS")
+                      keyPassword project.findProperty("MYAPP_UPLOAD_KEY_PASSWORD")
+                  }
+              }
 
-      - name: Build release AAB
+              """
+              s = s.replace(marker, block + marker, 1)
+          marker = "    buildTypes {"
+          idx = s.index(marker)
+          before, after = s[:idx], s[idx:]
+          if "signingConfig signingConfigs.release" not in after:
+              after = after.replace("        release {", "        release {\n            signingConfig signingConfigs.release", 1)
+          p.write_text(before + after)
+          PY
+      - name: Build signed release AAB
         working-directory: frontend/android
         run: ./gradlew bundleRelease --no-daemon
-
-      - name: Upload unsigned AAB
+      - name: Verify signed AAB
+        run: |
+          test -s android/app/build/outputs/bundle/release/app-release.aab
+          jarsigner -verify -verbose -certs android/app/build/outputs/bundle/release/app-release.aab
+      - name: Upload signed AAB
         uses: actions/upload-artifact@v4
         with:
-          name: trackmyrmc-android-release-aab
+          name: trackmyrmc-v2.0.30-vc88-signed-aab
           path: frontend/android/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
