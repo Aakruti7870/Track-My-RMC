@@ -86,7 +86,7 @@ impl TotpEngine {
         for offset in [-30i64, 0, 30] {
             let eval_time = ((current_time as i64) + offset).max(0) as u64;
             if let Ok(code) = Self::compute_code(secret, eval_time) {
-                if code == submitted {
+                if constant_time_eq(code.as_bytes(), submitted.as_bytes()) {
                     return Ok(true);
                 }
             }
@@ -243,7 +243,7 @@ pub async fn verify_totp_login(
         .to_uppercase();
     let attempted_hash = hash_backup_code(&normalized, &rec.secret_key);
 
-    if let Some(index) = rec.backup_codes.iter().position(|stored| stored == &attempted_hash) {
+    if rec.backup_codes.iter().any(|stored| constant_time_eq(stored.as_bytes(), attempted_hash.as_bytes())) {
         sqlx::query(
             "UPDATE user_totp_credentials SET backup_codes = array_remove(backup_codes, $1), updated_at = NOW() WHERE user_id = $2",
         )
@@ -251,7 +251,6 @@ pub async fn verify_totp_login(
         .bind(user_id)
         .execute(pool)
         .await?;
-        let _ = index;
         return Ok(());
     }
 
@@ -259,8 +258,24 @@ pub async fn verify_totp_login(
 }
 
 fn hash_backup_code(code: &str, secret: &str) -> String {
+    let normalized = code
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect::<String>()
+        .to_uppercase();
     let mut hasher = Sha256::new();
     hasher.update(secret.as_bytes());
-    hasher.update(code.trim().as_bytes());
+    hasher.update(normalized.as_bytes());
     format!("{:x}", hasher.finalize())
+}
+
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
 }
