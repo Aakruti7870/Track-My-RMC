@@ -8,6 +8,7 @@ use axum::{
     extract::{FromRef, FromRequestParts},
     http::{header::AUTHORIZATION, request::Parts},
 };
+use sqlx::Row;
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -28,21 +29,32 @@ where
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let app_state = AppState::from_ref(state);
-        let auth_header = parts
-            .headers
-            .get(AUTHORIZATION)
+        let auth_header = parts.headers.get(AUTHORIZATION)
             .and_then(|h| h.to_str().ok())
             .ok_or_else(|| AppError::Unauthorized("Missing Authorization header".to_string()))?;
 
-        let token = if auth_header.starts_with("Bearer ") {
-            &auth_header[7..]
-        } else {
-            return Err(AppError::Unauthorized(
-                "Invalid Authorization format. Must be Bearer <token>".to_string(),
-            ));
-        };
+        let token = auth_header.strip_prefix("Bearer ")
+            .ok_or_else(|| AppError::Unauthorized("Invalid Authorization format. Must be Bearer <token>".to_string()))?;
 
         let claims: Claims = verify_token(token, &app_state.config.jwt_secret)?;
+
+        let row = sqlx::query(
+            "SELECT is_active, auth_revoked_at FROM users WHERE id=$1"
+        )
+        .bind(claims.sub)
+        .fetch_optional(&app_state.db)
+        .await?
+        .ok_or_else(|| AppError::Unauthorized("Account not found".to_string()))?;
+
+        let is_active: bool = row.get("is_active");
+        if !is_active {
+            return Err(AppError::Forbidden("Account is inactive".to_string()));
+        }
+
+        let revoked_at: Option<chrono::DateTime<chrono::Utc>> = row.get("auth_revoked_at");
+        if revoked_at.is_some_and(|ts| claims.iat as i64 <= ts.timestamp()) {
+            return Err(AppError::Unauthorized("Session revoked".to_string()));
+        }
 
         Ok(AuthUser {
             user_id: claims.sub,
