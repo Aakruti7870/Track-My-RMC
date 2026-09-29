@@ -22,6 +22,7 @@ pub fn build_app_router(state: AppState) -> Router {
         .route("/api/auth/register", post(auth_routes::register))
         .route("/api/auth/login", post(auth_routes::login))
         .route("/api/me", get(auth_routes::get_me))
+        .route("/api/auth/logout", post(auth_routes::logout))
 
         // --- User & Driver Authentication: Meta WhatsApp Cloud API ---
         .route("/api/auth/otp/whatsapp/send", post(auth_routes::send_whatsapp_otp))

@@ -10,16 +10,14 @@ pub struct AppConfig {
     pub cors_allowed_origins: Vec<String>,
     pub environment: String,
 
-    // Meta WhatsApp Cloud API credentials (server-side only)
     pub meta_whatsapp_token: Option<String>,
     pub meta_whatsapp_phone_number_id: Option<String>,
     pub meta_whatsapp_waba_id: Option<String>,
 
-    // Email provider credentials (server-side only)
     pub email_api_key: Option<String>,
     pub email_from_address: String,
 
-    // OTP Security Controls
+    pub otp_pepper: String,
     pub otp_expiration_minutes: i64,
     pub otp_cooldown_seconds: i64,
     pub otp_max_verification_attempts: i32,
@@ -29,33 +27,34 @@ impl AppConfig {
     pub fn from_env() -> Result<Self, String> {
         let database_url = env::var("DATABASE_URL")
             .map_err(|_| "DATABASE_URL environment variable is required".to_string())?;
-
         let environment = env::var("APP_ENV").unwrap_or_else(|_| "production".to_string());
 
         let jwt_secret = match env::var("JWT_SECRET") {
-            Ok(secret) if secret.len() >= 32 => secret,
-            Ok(_) if environment != "production" => "trackmyrmc_local_development_secret_change_me".to_string(),
-            Ok(_) => return Err("JWT_SECRET must be at least 32 characters in production".to_string()),
-            Err(_) if environment != "production" => "trackmyrmc_local_development_secret_change_me".to_string(),
+            Ok(secret) if secret.as_bytes().len() >= 64 => secret,
+            Ok(_) if environment != "production" => "trackmyrmc_local_development_secret_change_me_please_64_chars_minimum_xxxxxxxxx".to_string(),
+            Ok(_) => return Err("JWT_SECRET must be at least 64 bytes in production".to_string()),
+            Err(_) if environment != "production" => "trackmyrmc_local_development_secret_change_me_please_64_chars_minimum_xxxxxxxxx".to_string(),
             Err(_) => return Err("JWT_SECRET environment variable is required in production".to_string()),
         };
 
+        let otp_pepper = match env::var("OTP_PEPPER") {
+            Ok(value) if value.as_bytes().len() >= 32 => value,
+            Ok(_) if environment != "production" => "trackmyrmc_local_otp_pepper_change_me_32_chars_xxxxxxxxx".to_string(),
+            Ok(_) => return Err("OTP_PEPPER must be at least 32 bytes in production".to_string()),
+            Err(_) if environment != "production" => "trackmyrmc_local_otp_pepper_change_me_32_chars_xxxxxxxxx".to_string(),
+            Err(_) => return Err("OTP_PEPPER environment variable is required in production".to_string()),
+        };
+
         let jwt_expiration_hours = env::var("JWT_EXPIRATION_HOURS")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(72);
-
-        let port = env::var("PORT")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(8000);
-
+            .ok().and_then(|v| v.parse().ok()).unwrap_or(24);
+        let port = env::var("PORT").ok().and_then(|v| v.parse().ok()).unwrap_or(8000);
         let host = env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
 
         let cors_allowed_origins = env::var("CORS_ORIGIN")
-            .unwrap_or_else(|_| "*".to_string())
+            .unwrap_or_else(|_| "https://trackmyrmc.com".to_string())
             .split(',')
             .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
             .collect();
 
         let meta_whatsapp_token = env::var("META_WHATSAPP_TOKEN").ok();
@@ -67,35 +66,28 @@ impl AppConfig {
             .unwrap_or_else(|_| "noreply@trackmyrmc.com".to_string());
 
         let otp_expiration_minutes = env::var("OTP_EXPIRATION_MINUTES")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(5);
-
+            .ok().and_then(|v| v.parse().ok()).unwrap_or(5);
         let otp_cooldown_seconds = env::var("OTP_COOLDOWN_SECONDS")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(60);
-
+            .ok().and_then(|v| v.parse().ok()).unwrap_or(60);
         let otp_max_verification_attempts = env::var("OTP_MAX_ATTEMPTS")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(3);
+            .ok().and_then(|v| v.parse().ok()).unwrap_or(3);
+
+        if !(1..=15).contains(&otp_expiration_minutes) {
+            return Err("OTP_EXPIRATION_MINUTES must be between 1 and 15".to_string());
+        }
+        if otp_cooldown_seconds < 30 {
+            return Err("OTP_COOLDOWN_SECONDS must be at least 30".to_string());
+        }
+        if !(3..=10).contains(&otp_max_verification_attempts) {
+            return Err("OTP_MAX_ATTEMPTS must be between 3 and 10".to_string());
+        }
 
         Ok(Self {
-            database_url,
-            jwt_secret,
-            jwt_expiration_hours,
-            port,
-            host,
-            cors_allowed_origins,
-            environment,
-            meta_whatsapp_token,
-            meta_whatsapp_phone_number_id,
-            meta_whatsapp_waba_id,
-            email_api_key,
-            email_from_address,
-            otp_expiration_minutes,
-            otp_cooldown_seconds,
+            database_url, jwt_secret, jwt_expiration_hours, port, host,
+            cors_allowed_origins, environment,
+            meta_whatsapp_token, meta_whatsapp_phone_number_id, meta_whatsapp_waba_id,
+            email_api_key, email_from_address,
+            otp_pepper, otp_expiration_minutes, otp_cooldown_seconds,
             otp_max_verification_attempts,
         })
     }
