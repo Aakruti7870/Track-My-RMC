@@ -160,7 +160,7 @@ pub async fn send_whatsapp_otp(
     // Rate limiting check
     OtpEngine::check_rate_limit(&state.db, &destination, state.config.otp_cooldown_seconds).await?;
 
-    let (plain_otp, salt, hashed_otp) = OtpEngine::generate_secure_otp();
+    let (plain_otp, salt, hashed_otp) = OtpEngine::generate_secure_otp(&state.config.otp_pepper);
 
     OtpEngine::create_session(
         &state.db,
@@ -193,7 +193,7 @@ pub async fn verify_whatsapp_otp(
     let purpose = req.purpose.unwrap_or_else(|| "login".to_string());
 
     OtpEngine::verify_otp(
-        &state.db,
+        state,
         &destination,
         "whatsapp",
         &purpose,
@@ -281,7 +281,7 @@ pub async fn send_email_otp(
     let _ = req.plant_code.as_deref();
     OtpEngine::check_rate_limit(&state.db, &destination, state.config.otp_cooldown_seconds).await?;
 
-    let (plain_otp, salt, hashed_otp) = OtpEngine::generate_secure_otp();
+    let (plain_otp, salt, hashed_otp) = OtpEngine::generate_secure_otp(&state.config.otp_pepper);
 
     OtpEngine::create_session(
         &state.db,
@@ -312,7 +312,7 @@ pub async fn verify_email_otp(
     let destination = req.email.trim().to_lowercase();
 
     OtpEngine::verify_otp(
-        &state.db,
+        state,
         &destination,
         "email",
         "staff_login",
