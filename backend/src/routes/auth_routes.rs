@@ -198,3 +198,19 @@ pub async fn passkey_login_verify(
     let auth_res = auth_service::verify_passkey_login(&state, payload).await?;
     Ok(Json(auth_res))
 }
+
+pub async fn logout(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+) -> Result<impl IntoResponse, AppError> {
+    sqlx::query("UPDATE users SET auth_revoked_at=NOW(), updated_at=NOW() WHERE id=$1")
+        .bind(auth_user.user_id)
+        .execute(&state.db)
+        .await?;
+
+    Ok(Json(json!({
+        "success": true,
+        "message": "Session revoked"
+    })))
+}
+
