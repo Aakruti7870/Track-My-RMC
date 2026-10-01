@@ -231,3 +231,12 @@ These routes require a valid Bearer token. They record and manage a request; the
 - `POST /api/account-deletion/cancel`: Cancels the authenticated user's pending request; returns `409 Conflict` when no pending request exists.
 
 Completion requires an authorized operational review and a separate data-retention/deletion procedure. Unauthenticated deletion requests are not exposed through the API yet; the app directs signed-out users to support for identity verification. Never request passwords or OTPs over email.
+
+
+## 9. Mobile authentication response contract
+
+- `POST /api/auth/otp/whatsapp/send` returns `success` and `message` after dispatching a WhatsApp OTP. The client must not assume SMS delivery.
+- `POST /api/auth/otp/email/send` returns `status: "OTP_SENT"` and `channel: "email"` for accounts using email OTP. For active accounts with an enabled TOTP factor, it returns `status: "AUTHENTICATOR_REQUIRED"` and does not send a downgrade email OTP.
+- `POST /api/auth/totp/login` accepts `{"username_or_phone":"...","totp_code":"..." }`. The same field accepts a one-time recovery code; consumed recovery codes are removed from the stored set.
+- `GET /api/me` currently returns `{"success":true,"user":{...},"profile":...}`. Mobile clients should normalize the nested `user` object and map backend role `owner` to the mobile route role `plant_owner`.
+- Passkey registration and authentication remain disabled in the mobile UI and router until a complete, security-reviewed WebAuthn implementation is available.
