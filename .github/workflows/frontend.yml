@@ -5,14 +5,17 @@ on:
     branches: [main]
     paths:
       - "frontend/**"
+      - "admin-web/**"
       - ".github/workflows/frontend.yml"
   pull_request:
     paths:
       - "frontend/**"
+      - "admin-web/**"
       - ".github/workflows/frontend.yml"
 
 jobs:
-  typecheck:
+  mobile-frontend:
+    name: Expo Typecheck and Readiness Checks
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -28,3 +31,29 @@ jobs:
         run: npm install
       - name: Type Check
         run: npm run typecheck
+      - name: Auth Routing Check
+        run: npm run check:auth-routing
+      - name: Play Policy Readiness Check
+        run: npm run check:play-policy
+      - name: Android Layout Check
+        run: npm run check:android-layout
+      - name: Web Export Build
+        run: npm run build:preview
+
+  admin-web:
+    name: Admin Dashboard Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: admin-web
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install Dependencies
+        run: npm install
+      - name: Build
+        run: npm run build
