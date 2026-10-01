@@ -6,7 +6,7 @@ This document specifies the complete REST API contract for the TrackMyRMC Rust b
 
 ## 1. Global Conventions
 
-- **Base URL**: `http://localhost:8000` (Local) / `https://trackmyrmc-backend.onrender.com` (Production)
+- **Base URL**: `http://localhost:8000` (Local). Production base URL must come from the active deployment configuration; the historical Render URL below is not proof of a current production deployment.
 - **Content-Type**: `application/json`
 - **Authentication**: `Authorization: Bearer <JWT>`
 - **Error Response Standard**:
@@ -174,12 +174,9 @@ This document specifies the complete REST API contract for the TrackMyRMC Rust b
 
 ---
 
-### 2.5 WebAuthn / FIDO2 Passkeys
+### 2.5 WebAuthn / FIDO2 Passkeys — NOT AVAILABLE
 
-- `POST /api/auth/passkey/register/options`: Initiates registration ceremony
-- `POST /api/auth/passkey/register/verify`: Cryptographically verifies attestation
-- `POST /api/auth/passkey/login/options`: Initiates authentication assertion
-- `POST /api/auth/passkey/login/verify`: Verifies cryptographic signature & issues JWT
+The passkey handler functions exist in source, but the router intentionally does not register these endpoints until challenge persistence, origin/RP-ID validation, attestation/assertion signature verification, and authenticator counter checks are complete. Do not call these endpoints or advertise passkeys as a supported login method. The routes must remain disabled until a security-reviewed implementation and end-to-end tests are merged.
 
 ---
 
@@ -216,6 +213,10 @@ This document specifies the complete REST API contract for the TrackMyRMC Rust b
 
 - `GET /api/workforce/roster`: Daily attendance roster for plant by date
 - `POST /api/workforce/attendance/mark`: Geofenced clock-in/out
-- `GET /api/payroll/closure`: Monthly payroll closure review and lock status
 - `POST /api/owner/plants`: Plant profile creation
-- `GET /api/owner/billing`: Subscription tier and usage ledger
+- `GET /api/owner/billing`: Returns current mixer count and monthly volume. Subscription tier/credits are **not configured** yet; the current handler returns `plan: "not_configured"` and `credits_remaining: null`.
+
+
+## 7. Contract accuracy note
+
+This document must describe only routes registered in `backend/src/routes/mod.rs`. As of this revision, WebAuthn/passkey routes and `GET /api/payroll/closure` are not registered. Do not treat code-level handler functions as public endpoints until router registration, authorization, and tests are present. The owner billing route reports operational usage metrics but does not implement subscription billing.
