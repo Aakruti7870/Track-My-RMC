@@ -56,8 +56,14 @@ impl AppConfig {
         let port = env::var("PORT").ok().and_then(|v| v.parse().ok()).unwrap_or(8000);
         let host = env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
 
-        let cors_allowed_origins: Vec<String> = env::var("CORS_ORIGIN")
-            .unwrap_or_else(|_| "https://trackmyrmc.com".to_string())
+        let cors_origin_value = match env::var("CORS_ORIGIN") {
+            Ok(value) => value,
+            Err(_) if environment != "production" => "https://trackmyrmc.com".to_string(),
+            Err(_) => {
+                return Err("CORS_ORIGIN environment variable is required in production".to_string());
+            }
+        };
+        let cors_allowed_origins: Vec<String> = cors_origin_value
             .split(',')
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
