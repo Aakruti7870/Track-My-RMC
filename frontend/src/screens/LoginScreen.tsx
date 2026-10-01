@@ -640,10 +640,6 @@ export default function LoginScreen() {
           </View>
         </View>
 
-        <Pressable testID="login-review-access" onPress={() => router.push("/review-access" as any)} style={styles.reviewLink} hitSlop={10}>
-          <AppText variant="caption" center color={colors.onSurfaceTertiary}>REVIEW APP · Google Play reviewer access</AppText>
-        </Pressable>
-
         <AppText variant="caption" center color={colors.onSurfaceTertiary} style={styles.poweredFooter}>Powered by <AppText variant="label">Gold e Tech</AppText></AppText>
       </KeyboardAwareScrollView>
     </View>
@@ -766,5 +762,4 @@ const styles = StyleSheet.create({
   legalArea: { width: "92%", maxWidth: 470, paddingTop: spacing.lg, paddingHorizontal: spacing.sm, gap: spacing.md },
   legalLink: { fontFamily: fonts.semibold },
   poweredFooter: { marginTop: spacing.sm },
-  reviewLink: { marginTop: spacing.md, paddingVertical: spacing.sm },
 });
