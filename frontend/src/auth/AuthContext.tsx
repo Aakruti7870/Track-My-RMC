@@ -63,7 +63,8 @@ type BackendMeResponse = {
 function normalizeMe(response: BackendMeResponse): Me {
   const user = response.user ?? response;
   if (!user.id || !user.role) throw new Error("The server returned an invalid user profile");
-  const role = user.role;
+  const backendRole = user.role;
+  const role = backendRole === "owner" ? "plant_owner" : backendRole;
   return {
     id: user.id,
     name: ("full_name" in user && user.full_name) || ("name" in user && user.name) || "TrackMyRMC User",
