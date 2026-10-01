@@ -32,14 +32,6 @@ const PRIVACY_POLICY_URL = "https://trackmyrmc.com/privacy_policy";
 const ACCOUNT_DELETION_URL = "https://trackmyrmc.com/account-deletion";
 const SUCCESS = "#28C48D";
 const ERROR = "#E5484D";
-const DEMO_LOGIN_ENABLED = process.env.EXPO_PUBLIC_ENABLE_DEMO_LOGIN === "1";
-
-const DEMO_ROLES = [
-  { role: "customer", label: "User" },
-  { role: "plant_owner", label: "Owner" },
-  { role: "driver", label: "Driver" },
-];
-
 type LoginMode = "user" | "plant";
 type LoginPhase = "enter" | "user_otp" | "staff_email_otp" | "staff_totp" | "staff_recovery";
 
@@ -62,7 +54,6 @@ export default function LoginScreen() {
     verifyStaff,
     verifyStaffAuthenticator,
     verifyStaffRecovery,
-    demoLogin,
   } = useAuth();
 
   const [mode, setMode] = useState<LoginMode>("user");
@@ -519,30 +510,6 @@ export default function LoginScreen() {
 
           {renderForm()}
 
-          {DEMO_LOGIN_ENABLED ? (
-            <View style={[styles.demoBox, { backgroundColor: colors.surface, borderColor: colors.border }]}> 
-              <AppText variant="caption" center>Google Play review demo</AppText>
-              <View style={styles.demoRow}>
-                {DEMO_ROLES.map((item) => (
-                  <Pressable
-                    key={item.role}
-                    disabled={loading}
-                    onPress={async () => {
-                      try {
-                        const me = await demoLogin(item.role);
-                        router.replace(roleRouteFor(me.role) as any);
-                      } catch (e: any) {
-                        setError(e.detail || "Demo login is unavailable");
-                      }
-                    }}
-                    style={[styles.demoChip, { borderColor: colors.border }]}
-                  >
-                    <AppText variant="caption">{item.label}</AppText>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-          ) : null}
         </View>
 
         <View style={styles.legalArea}>
