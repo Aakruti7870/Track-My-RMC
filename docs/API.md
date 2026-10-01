@@ -220,3 +220,14 @@ The passkey handler functions exist in source, but the router intentionally does
 ## 7. Contract accuracy note
 
 This document must describe only routes registered in `backend/src/routes/mod.rs`. As of this revision, WebAuthn/passkey routes and `GET /api/payroll/closure` are not registered. Do not treat code-level handler functions as public endpoints until router registration, authorization, and tests are present. The owner billing route reports operational usage metrics but does not implement subscription billing.
+
+
+## 8. Account deletion requests
+
+These routes require a valid Bearer token. They record and manage a request; they do **not** immediately erase the account or statutory records.
+
+- `GET /api/account-deletion/status`: Returns the latest request for the authenticated user, or `{"request": null}`.
+- `POST /api/account-deletion/request`: Requires `{"confirm":"DELETE","reason":"optional reason"}`. Returns the recorded request, or `409 Conflict` if a request is already pending. Active plant owners must transfer or deactivate their plants first.
+- `POST /api/account-deletion/cancel`: Cancels the authenticated user's pending request; returns `409 Conflict` when no pending request exists.
+
+Completion requires an authorized operational review and a separate data-retention/deletion procedure. Unauthenticated deletion requests are not exposed through the API yet; the app directs signed-out users to support for identity verification. Never request passwords or OTPs over email.
