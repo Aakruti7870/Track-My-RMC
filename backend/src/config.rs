@@ -50,12 +50,28 @@ impl AppConfig {
         let port = env::var("PORT").ok().and_then(|v| v.parse().ok()).unwrap_or(8000);
         let host = env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
 
-        let cors_allowed_origins = env::var("CORS_ORIGIN")
+        let cors_allowed_origins: Vec<String> = env::var("CORS_ORIGIN")
             .unwrap_or_else(|_| "https://trackmyrmc.com".to_string())
             .split(',')
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect();
+
+        if cors_allowed_origins.is_empty() {
+            return Err("CORS_ORIGIN must contain at least one allowed origin".to_string());
+        }
+        if environment == "production" {
+            if cors_allowed_origins.iter().any(|origin| origin == "*") {
+                return Err("CORS_ORIGIN must not contain '*' in production; configure explicit HTTPS origins".to_string());
+            }
+            if cors_allowed_origins.iter().any(|origin| !origin.starts_with("https://")) {
+                return Err("Production CORS_ORIGIN entries must use HTTPS".to_string());
+            }
+        }
+
+        if !(1..=168).contains(&jwt_expiration_hours) {
+            return Err("JWT_EXPIRATION_HOURS must be between 1 and 168".to_string());
+        }
 
         let meta_whatsapp_token = env::var("META_WHATSAPP_TOKEN").ok();
         let meta_whatsapp_phone_number_id = env::var("META_PHONE_NUMBER_ID").ok();
