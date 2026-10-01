@@ -4,7 +4,6 @@ import { storage } from "@/src/utils/storage";
 import {
   apiGet,
   apiPost,
-  demoLogin as apiDemoLogin,
   exchangeGoogleStaffCode,
   exchangeStaffPasskeyHandoff,
   isApiError,
@@ -97,7 +96,6 @@ type AuthContextValue = {
   verifyStaffRecovery: (identifier: string, code: string) => Promise<Me>;
   completeStaffPasskey: (handoffCode: string) => Promise<Me>;
   verifyGoogle: (code: string) => Promise<Me>;
-  demoLogin: (role: string) => Promise<Me>;
   refreshMe: () => Promise<void>;
   signOut: () => Promise<void>;
 };
@@ -176,10 +174,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return acceptSession(res.access_token ?? res.token);
   };
 
-  const demoLogin = async (role: string): Promise<Me> => {
-    const res = await apiDemoLogin(role);
-    return acceptSession(res.access_token ?? res.token);
-  };
 
   const refreshMe = async () => {
     if (!token) return;
@@ -239,7 +233,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         verifyStaffRecovery: verifyStaffRecoveryCode,
         completeStaffPasskey,
         verifyGoogle,
-        demoLogin,
         refreshMe,
         signOut,
       }}
