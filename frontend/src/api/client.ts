@@ -136,8 +136,6 @@ export type PasskeyRegisterResponse = {
   passkey_count: number;
 };
 
-export type PlayReviewRole = "customer" | "plant_owner" | "driver";
-
 type JsonBody = Record<string, unknown> | unknown[] | string | number | boolean | null;
 
 function validationDetail(value: unknown): string | null {
@@ -365,13 +363,6 @@ export async function removeStaffPasskey(
   return apiPost<{ status: "PASSKEY_REMOVED" }>("/auth/staff/passkey/remove", token, {
     credential_id: credentialId,
     actor_code: actorCode,
-  });
-}
-
-export async function playReviewLogin(role: PlayReviewRole, accessCode: string) {
-  return apiPublicPost<AuthSessionResponse>("/auth/play-review", {
-    role,
-    access_code: accessCode,
   });
 }
 
