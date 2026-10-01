@@ -71,7 +71,7 @@ function normalizeMe(response: BackendMeResponse): Me {
     phone: user.phone ?? null,
     mobile: user.phone ?? null,
     role,
-    role_label: role.replace(/_/g, " ").replace(/\\b\\w/g, (letter) => letter.toUpperCase()),
+    role_label: role.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()),
     roles: [role],
     plant_id: null,
     status: response.status ?? "active",
