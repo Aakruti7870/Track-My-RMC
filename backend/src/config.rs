@@ -69,8 +69,8 @@ impl AppConfig {
             }
         }
 
-        if !(1..=168).contains(&jwt_expiration_hours) {
-            return Err("JWT_EXPIRATION_HOURS must be between 1 and 168".to_string());
+        if !(1..=24).contains(&jwt_expiration_hours) {
+            return Err("JWT_EXPIRATION_HOURS must be between 1 and 24".to_string());
         }
 
         let meta_whatsapp_token = env::var("META_WHATSAPP_TOKEN").ok();
