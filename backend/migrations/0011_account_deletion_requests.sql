@@ -1,7 +1,8 @@
 -- Account deletion requests are queued for reviewed completion; requests never hard-delete statutory records.
 CREATE TABLE IF NOT EXISTS account_deletion_requests (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    -- Preserve the request/audit record if the user row is later removed.
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'PENDING'
         CHECK (status IN ('PENDING', 'CANCELLED', 'COMPLETED', 'REJECTED')),
     reason TEXT,
