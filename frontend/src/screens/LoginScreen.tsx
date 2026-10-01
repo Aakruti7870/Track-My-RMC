@@ -185,14 +185,20 @@ export default function LoginScreen() {
     }
     setLoading(true);
     try {
-      await requestStaffOtp(email);
-      // The current Rust API sends email OTP and returns { success, message }.
-      // Do not branch on legacy MFA status fields that this backend does not emit.
+      const response = await requestStaffOtp(email);
       setIdentifier(email);
       setPlantEmail(email);
       setCode("");
       setRecoveryCode("");
       setOtpVisual("idle");
+      if (response.status === "AUTHENTICATOR_REQUIRED") {
+        setPhase("staff_totp");
+        clearTimer();
+        return;
+      }
+      if (response.status !== "OTP_SENT") {
+        throw { detail: "Plant Staff secure login could not start" };
+      }
       setPhase("staff_email_otp");
       startCountdown(30);
     } catch (e: any) {
