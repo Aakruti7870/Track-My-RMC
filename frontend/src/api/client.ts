@@ -108,6 +108,7 @@ export type MfaEnrollmentStartResponse = {
   otpauth_uri: string;
   qr_data_uri?: string | null;
   expires_in: number;
+  backup_codes?: string[];
 };
 
 export type MfaEnrollmentConfirmResponse = {
@@ -286,12 +287,39 @@ export async function verifyStaffRecovery(identifier: string, recoveryCode: stri
   });
 }
 
-export async function startStaffMfaEnrollment(token: string) {
-  return apiPost<MfaEnrollmentStartResponse>("/auth/staff/mfa/enroll/start", token);
+export async function startStaffMfaEnrollment(token: string): Promise<MfaEnrollmentStartResponse> {
+  const response = await apiPost<{
+    success: boolean;
+    secret: string;
+    otpauth_uri: string;
+    backup_codes: string[];
+    instructions?: string;
+  }>("/auth/totp/setup", token);
+  let account = "TrackMyRMC account";
+  try {
+    account = decodeURIComponent(new URL(response.otpauth_uri).pathname.split(":").pop() || account);
+  } catch {
+    // The manual secret remains available even if the URI cannot be parsed.
+  }
+  return {
+    status: "MFA_ENROLLMENT_STARTED",
+    issuer: "TrackMyRMC",
+    account,
+    manual_key: response.secret,
+    otpauth_uri: response.otpauth_uri,
+    qr_data_uri: null,
+    expires_in: 300,
+    backup_codes: response.backup_codes,
+  };
 }
 
-export async function confirmStaffMfaEnrollment(token: string, code: string) {
-  return apiPost<MfaEnrollmentConfirmResponse>("/auth/staff/mfa/enroll/confirm", token, { code });
+export async function confirmStaffMfaEnrollment(token: string, code: string): Promise<MfaEnrollmentConfirmResponse> {
+  const response = await apiPost<{ success: boolean; message: string }>("/auth/totp/verify-setup", token, { code });
+  return {
+    status: "MFA_ENABLED",
+    recovery_codes: [],
+    message: response.message || "Authenticator enabled.",
+  };
 }
 
 export async function startStaffPasskeyAuthentication(
