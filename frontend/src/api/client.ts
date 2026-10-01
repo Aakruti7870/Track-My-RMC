@@ -277,13 +277,13 @@ export async function staffAuthMethod(identifier: string) {
 }
 
 export async function verifyStaffTotp(identifier: string, code: string) {
-  return apiPublicPost<AuthSessionResponse>("/auth/staff/mfa/verify-totp", { identifier, code });
+  return apiPublicPost<AuthSessionResponse>("/auth/totp/login", { username_or_phone: identifier, totp_code: code });
 }
 
 export async function verifyStaffRecovery(identifier: string, recoveryCode: string) {
-  return apiPublicPost<AuthSessionResponse>("/auth/staff/mfa/verify-recovery", {
-    identifier,
-    recovery_code: recoveryCode,
+  return apiPublicPost<AuthSessionResponse>("/auth/totp/login", {
+    username_or_phone: identifier,
+    totp_code: recoveryCode,
   });
 }
 
