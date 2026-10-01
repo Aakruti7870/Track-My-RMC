@@ -128,6 +128,21 @@ pub async fn setup_totp(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
+    let already_enabled: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+            SELECT 1 FROM user_totp_credentials
+            WHERE user_id = $1 AND is_enabled = TRUE
+        )"
+    )
+    .bind(auth_user.user_id)
+    .fetch_one(&state.db)
+    .await?;
+    if already_enabled {
+        return Err(AppError::Conflict(
+            "Authenticator is already enabled. Use the current code to sign in; reset requires a verified recovery procedure.".to_string()
+        ));
+    }
+
     let user_label = auth_user.email.clone().unwrap_or(auth_user.phone.clone());
     let (secret, qr_uri, backup_codes) = setup_totp_for_user(&state.db, auth_user.user_id, &user_label).await?;
 
