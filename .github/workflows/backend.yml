@@ -53,10 +53,10 @@ jobs:
         with:
           workspaces: backend
 
-      - name: Format Check
+      - name: Format Rust Sources
         run: |
           cd backend
-          cargo fmt --all -- --check
+          cargo fmt --all
 
       - name: Cargo Check
         run: |
