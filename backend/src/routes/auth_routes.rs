@@ -77,9 +77,39 @@ pub async fn send_email_otp(
     State(state): State<AppState>,
     Json(payload): Json<SendEmailOtpRequest>,
 ) -> Result<impl IntoResponse, AppError> {
+    let email = payload.email.trim().to_lowercase();
+    let authenticator_enabled: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+            SELECT 1
+            FROM users u
+            JOIN user_totp_credentials t ON t.user_id = u.id
+            WHERE LOWER(u.email) = $1
+              AND u.is_active = TRUE
+              AND t.is_enabled = TRUE
+        )"
+    )
+    .bind(&email)
+    .fetch_one(&state.db)
+    .await?;
+
+    // Enrolled staff must complete TOTP or a single-use recovery code; never
+    // silently downgrade an enrolled account to email OTP.
+    if authenticator_enabled {
+        return Ok(Json(json!({
+            "success": true,
+            "status": "AUTHENTICATOR_REQUIRED",
+            "method": "totp",
+            "email": email,
+            "message": "Use your Authenticator app or a saved recovery code."
+        })));
+    }
+
     auth_service::send_email_otp(&state, payload).await?;
     Ok(Json(json!({
         "success": true,
+        "status": "OTP_SENT",
+        "channel": "email",
+        "email": email,
         "message": "Verification code dispatched to your email address"
     })))
 }
