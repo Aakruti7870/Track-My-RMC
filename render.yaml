@@ -16,8 +16,10 @@ services:
         generateValue: true
       - key: JWT_EXPIRATION_HOURS
         value: "72"
+      # Configure the exact browser origins used by the deployed web apps.
+      # Do not use "*" in production.
       - key: CORS_ORIGIN
-        value: "*"
+        sync: false
       - key: APP_ENV
         value: "production"
       - key: RUST_LOG
