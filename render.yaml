@@ -12,10 +12,11 @@ services:
         fromDatabase:
           name: trackmyrmc-postgres
           property: connectionString
+      # Must be a unique random value of at least 64 bytes; configure it in the Render dashboard.
       - key: JWT_SECRET
-        generateValue: true
+        sync: false
       - key: JWT_EXPIRATION_HOURS
-        value: "72"
+        value: "24"
       # Required in production; set a unique random value in the Render dashboard.
       - key: OTP_PEPPER
         sync: false
