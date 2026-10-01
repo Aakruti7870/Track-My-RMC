@@ -72,12 +72,19 @@ function validatedApiPath(path: string): string {
 }
 
 export type AuthSessionResponse = {
+  success: boolean;
   access_token?: string;
   token: string;
-  token_type: string;
-  expires_at: string;
   role: string;
-  name: string;
+  user: {
+    id: string;
+    phone: string;
+    email: string | null;
+    full_name: string;
+    role: string;
+    kyc_status: string;
+    verified_name: string | null;
+  };
 };
 
 export type OtpRequestResponse = {
@@ -108,6 +115,7 @@ export type MfaEnrollmentStartResponse = {
   otpauth_uri: string;
   qr_data_uri?: string | null;
   expires_in: number;
+  backup_codes?: string[];
 };
 
 export type MfaEnrollmentConfirmResponse = {
@@ -135,8 +143,6 @@ export type PasskeyRegisterResponse = {
   return_mode: PasskeyReturnMode;
   passkey_count: number;
 };
-
-export type PlayReviewRole = "customer" | "plant_owner" | "driver";
 
 type JsonBody = Record<string, unknown> | unknown[] | string | number | boolean | null;
 
@@ -278,22 +284,49 @@ export async function staffAuthMethod(identifier: string) {
 }
 
 export async function verifyStaffTotp(identifier: string, code: string) {
-  return apiPublicPost<AuthSessionResponse>("/auth/staff/mfa/verify-totp", { identifier, code });
+  return apiPublicPost<AuthSessionResponse>("/auth/totp/login", { username_or_phone: identifier, totp_code: code });
 }
 
 export async function verifyStaffRecovery(identifier: string, recoveryCode: string) {
-  return apiPublicPost<AuthSessionResponse>("/auth/staff/mfa/verify-recovery", {
-    identifier,
-    recovery_code: recoveryCode,
+  return apiPublicPost<AuthSessionResponse>("/auth/totp/login", {
+    username_or_phone: identifier,
+    totp_code: recoveryCode,
   });
 }
 
-export async function startStaffMfaEnrollment(token: string) {
-  return apiPost<MfaEnrollmentStartResponse>("/auth/staff/mfa/enroll/start", token);
+export async function startStaffMfaEnrollment(token: string): Promise<MfaEnrollmentStartResponse> {
+  const response = await apiPost<{
+    success: boolean;
+    secret: string;
+    otpauth_uri: string;
+    backup_codes: string[];
+    instructions?: string;
+  }>("/auth/totp/setup", token);
+  let account = "TrackMyRMC account";
+  try {
+    account = decodeURIComponent(new URL(response.otpauth_uri).pathname.split(":").pop() || account);
+  } catch {
+    // The manual secret remains available even if the URI cannot be parsed.
+  }
+  return {
+    status: "MFA_ENROLLMENT_STARTED",
+    issuer: "TrackMyRMC",
+    account,
+    manual_key: response.secret,
+    otpauth_uri: response.otpauth_uri,
+    qr_data_uri: null,
+    expires_in: 300,
+    backup_codes: response.backup_codes,
+  };
 }
 
-export async function confirmStaffMfaEnrollment(token: string, code: string) {
-  return apiPost<MfaEnrollmentConfirmResponse>("/auth/staff/mfa/enroll/confirm", token, { code });
+export async function confirmStaffMfaEnrollment(token: string, code: string): Promise<MfaEnrollmentConfirmResponse> {
+  const response = await apiPost<{ success: boolean; message: string }>("/auth/totp/verify-setup", token, { code });
+  return {
+    status: "MFA_ENABLED",
+    recovery_codes: [],
+    message: response.message || "Authenticator enabled.",
+  };
 }
 
 export async function startStaffPasskeyAuthentication(
@@ -368,13 +401,6 @@ export async function removeStaffPasskey(
   });
 }
 
-export async function playReviewLogin(role: PlayReviewRole, accessCode: string) {
-  return apiPublicPost<AuthSessionResponse>("/auth/play-review", {
-    role,
-    access_code: accessCode,
-  });
-}
-
 export async function startGoogleStaffLogin() {
   return apiPublicGet<{ authorization_url: string }>("/auth/google/start");
 }
@@ -383,9 +409,6 @@ export async function exchangeGoogleStaffCode(code: string) {
   return apiPublicPost<AuthSessionResponse>("/auth/google/exchange", { code });
 }
 
-export async function demoLogin(role: string) {
-  return apiPublicPost<AuthSessionResponse>("/auth/demo-login", { role });
-}
 
 export async function apiGet<T>(path: string, token: string, signal?: AbortSignal): Promise<T> {
   return request<T>(path, { token, signal });

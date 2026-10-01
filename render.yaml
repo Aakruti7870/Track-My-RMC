@@ -12,16 +12,22 @@ services:
         fromDatabase:
           name: trackmyrmc-postgres
           property: connectionString
+      # Must be a unique random value of at least 64 bytes; configure it in the Render dashboard.
       - key: JWT_SECRET
-        generateValue: true
+        sync: false
       - key: JWT_EXPIRATION_HOURS
-        value: "72"
+        value: "24"
+      # Required in production; set a unique random value in the Render dashboard.
+      - key: OTP_PEPPER
+        sync: false
+      # Configure the exact browser origins used by the deployed web apps.
+      # Do not use "*" in production.
       - key: CORS_ORIGIN
-        value: "*"
+        sync: false
       - key: APP_ENV
         value: "production"
       - key: RUST_LOG
-        value: "info,trackmyrmc_backend=debug"
+        value: "info,trackmyrmc_backend=info"
       - key: META_WHATSAPP_TOKEN
         sync: false
       - key: META_PHONE_NUMBER_ID

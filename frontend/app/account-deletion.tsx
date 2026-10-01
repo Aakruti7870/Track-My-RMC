@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { apiPost, apiPublicPost, requestOtp } from "@/src/api/client";
+import { apiPost } from "@/src/api/client";
 import { useAuth } from "@/src/auth/AuthContext";
 import { AppText } from "@/src/components/ui/AppText";
 import { Button } from "@/src/components/ui/Button";
@@ -22,30 +22,31 @@ type DeletionRequest = {
   completed_at?: string | null;
 };
 
-type PublicPhase = "identify" | "verify" | "submitted";
-
 export default function AccountDeletion() {
   const { token } = useAuth();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const toast = useToast();
-  const { data, loading, refetch } = useGet<{ request: DeletionRequest | null }>(token ? "/account-deletion/status" : null);
+  const { data, loading, refetch } = useGet<{ request: DeletionRequest | null }>(
+    token ? "/account-deletion/status" : null,
+  );
 
   const [confirm, setConfirm] = useState("");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
-  const [identifier, setIdentifier] = useState("");
-  const [code, setCode] = useState("");
-  const [publicPhase, setPublicPhase] = useState<PublicPhase>("identify");
-  const [deliveryText, setDeliveryText] = useState("");
 
-  const requestSignedInDeletion = async () => {
+  const requestDeletion = async () => {
     if (!token) return;
-    if (confirm.trim().toUpperCase() !== "DELETE") return toast("Type DELETE to confirm", "error");
+    if (confirm.trim().toUpperCase() !== "DELETE") {
+      return toast("Type DELETE to confirm", "error");
+    }
     setBusy(true);
     try {
-      await apiPost("/account-deletion/request", token, { confirm: "DELETE", reason: reason.trim() || null });
-      toast("Deletion request submitted", "success");
+      await apiPost("/account-deletion/request", token, {
+        confirm: "DELETE",
+        reason: reason.trim() || null,
+      });
+      toast("Deletion request submitted for review", "success");
       setConfirm("");
       refetch();
     } catch (e: any) {
@@ -69,45 +70,6 @@ export default function AccountDeletion() {
     }
   };
 
-  const sendPublicCode = async () => {
-    const value = identifier.trim();
-    if (value.length < 3) return toast("Enter your registered mobile number or email", "error");
-    setBusy(true);
-    try {
-      const response = await requestOtp(value);
-      setDeliveryText(response.channel === "email" ? "Verification code sent by email." : "Verification code sent by SMS.");
-      setCode("");
-      setPublicPhase("verify");
-      toast("Verification code sent", "success");
-    } catch (e: any) {
-      toast(e.detail || "Could not send verification code", "error");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const submitPublicDeletion = async () => {
-    if (confirm.trim().toUpperCase() !== "DELETE") return toast("Type DELETE to confirm", "error");
-    if (code.trim().length < 4) return toast("Enter the verification code", "error");
-    setBusy(true);
-    try {
-      await apiPublicPost("/account-deletion/public-request", {
-        identifier: identifier.trim(),
-        code: code.trim(),
-        confirm: "DELETE",
-        reason: reason.trim() || null,
-      });
-      setPublicPhase("submitted");
-      setCode("");
-      setConfirm("");
-      toast("Deletion request submitted", "success");
-    } catch (e: any) {
-      toast(e.detail || "Could not submit deletion request", "error");
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const req = data?.request;
 
   return (
@@ -117,18 +79,25 @@ export default function AccountDeletion() {
           <AppText variant="caption" color={colors.brand}>TRACK MY RMC · ACCOUNT CONTROL</AppText>
           <AppText variant="title">Delete Account</AppText>
           <AppText variant="bodyMuted">
-            Request deletion of your TrackMyRMC sign-in identity and personal account data. You can request deletion without signing in by verifying your registered mobile number or email.
+            Signed-in users can submit an account deletion request. Requests are reviewed before completion; submitting a request does not immediately delete your data.
           </AppText>
         </Card>
 
         <Card style={{ gap: spacing.sm }}>
-          <AppText variant="heading">Before requesting deletion</AppText>
-          <AppText variant="caption">Your sign-in identity, personal profile and active sessions are removed or anonymized when deletion is completed.</AppText>
-          <AppText variant="caption">Orders, challans, invoices and other statutory transaction records may be retained only where required for legal, tax, fraud-prevention or accounting obligations.</AppText>
-          <AppText variant="caption">Plant Owners must transfer or disable owned plants before deletion can be completed.</AppText>
+          <AppText variant="heading">What happens next</AppText>
+          <AppText variant="caption">Your sign-in identity, personal profile and active sessions will be removed or anonymized when deletion is completed.</AppText>
+          <AppText variant="caption">Orders, challans, invoices and other statutory transaction records may be retained where required by legal, tax, fraud-prevention or accounting obligations.</AppText>
+          <AppText variant="caption">Plant Owners must transfer or deactivate active plants before a deletion request can be submitted.</AppText>
         </Card>
 
-        {token ? (
+        {!token ? (
+          <Card style={{ gap: spacing.md }}>
+            <AppText variant="heading">Need account deletion without signing in?</AppText>
+            <AppText variant="bodyMuted">
+              For account ownership verification and a deletion request, contact support@goldetech.com from your registered email address. Do not send passwords or OTP codes by email.
+            </AppText>
+          </Card>
+        ) : (
           <>
             {loading && !data ? <Skeleton height={120} /> : null}
             {req?.status === "PENDING" ? (
@@ -136,50 +105,23 @@ export default function AccountDeletion() {
                 <AppText variant="heading">Deletion request pending</AppText>
                 <AppText variant="bodyMuted">Submitted {req.created_at ? new Date(req.created_at).toLocaleString() : "recently"}.</AppText>
                 {req.reason ? <AppText variant="caption">Reason: {req.reason}</AppText> : null}
-                <AppText variant="caption">You can cancel the request until it is completed.</AppText>
+                <AppText variant="caption">You can cancel the request until it is reviewed and completed.</AppText>
                 <Button label="Cancel deletion request" variant="outline" onPress={cancel} loading={busy} />
+              </Card>
+            ) : req?.status === "COMPLETED" ? (
+              <Card style={{ gap: spacing.md }}>
+                <AppText variant="heading">Deletion completed</AppText>
+                <AppText variant="bodyMuted">This account's deletion request has been marked completed.</AppText>
               </Card>
             ) : (
               <Card style={{ gap: spacing.md }}>
-                <AppText variant="heading">Signed-in request</AppText>
+                <AppText variant="heading">Submit deletion request</AppText>
                 <Input label="Reason (optional)" value={reason} onChangeText={setReason} placeholder="Why are you deleting your account?" />
                 <Input label='Type "DELETE" to confirm' value={confirm} onChangeText={setConfirm} autoCapitalize="characters" autoCorrect={false} />
-                <Button label="Request Account Deletion" onPress={requestSignedInDeletion} loading={busy} />
+                <Button label="Request Account Deletion" onPress={requestDeletion} loading={busy} />
               </Card>
             )}
           </>
-        ) : publicPhase === "submitted" ? (
-          <Card style={{ gap: spacing.sm }}>
-            <AppText variant="heading">Deletion request submitted</AppText>
-            <AppText variant="bodyMuted">Your verified request has been recorded. TrackMyRMC will complete deletion subject to required operational and legal retention checks.</AppText>
-          </Card>
-        ) : (
-          <Card style={{ gap: spacing.md }}>
-            <AppText variant="heading">Verify account ownership</AppText>
-            <AppText variant="caption">No sign-in is required. We send a one-time verification code to your registered mobile number or email.</AppText>
-            <Input
-              label="Registered mobile number or email"
-              value={identifier}
-              onChangeText={(value) => { setIdentifier(value); setDeliveryText(""); }}
-              placeholder="Mobile number or email"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              editable={publicPhase === "identify"}
-            />
-            {publicPhase === "identify" ? (
-              <Button label="Send Verification Code" onPress={sendPublicCode} loading={busy} />
-            ) : (
-              <>
-                {deliveryText ? <AppText variant="caption" color={colors.brand}>{deliveryText}</AppText> : null}
-                <Input label="Verification code" value={code} onChangeText={(value) => setCode(value.replace(/\D/g, "").slice(0, 8))} placeholder="Enter OTP" keyboardType="number-pad" maxLength={8} />
-                <Input label="Reason (optional)" value={reason} onChangeText={setReason} placeholder="Why are you deleting your account?" />
-                <Input label='Type "DELETE" to confirm' value={confirm} onChangeText={setConfirm} autoCapitalize="characters" autoCorrect={false} />
-                <Button label="Submit Verified Deletion Request" onPress={submitPublicDeletion} loading={busy} />
-                <Button label="Change Mobile / Email" variant="outline" onPress={() => { setPublicPhase("identify"); setCode(""); setDeliveryText(""); }} disabled={busy} />
-              </>
-            )}
-          </Card>
         )}
 
         <AppText variant="caption" center>Privacy & support: support@goldetech.com</AppText>

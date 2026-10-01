@@ -69,8 +69,8 @@ export default function MfaSetup() {
     setLoading(true);
     setError(null);
     try {
-      const response = await confirmStaffMfaEnrollment(token, code);
-      setRecoveryCodes(response.recovery_codes);
+      await confirmStaffMfaEnrollment(token, code);
+      setRecoveryCodes(setup?.backup_codes ?? []);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e: any) {
       setError(e.detail || "Authenticator code did not match");
@@ -104,7 +104,7 @@ export default function MfaSetup() {
       return;
     }
     await refreshMe();
-    router.replace("/passkey-setup" as any);
+    router.replace(roleRouteFor(user?.role) as any);
   };
 
   if (recoveryCodes) {
@@ -125,7 +125,7 @@ export default function MfaSetup() {
           </View>
 
           <Button label="Share / Save Recovery Codes" onPress={shareRecoveryCodes} icon={<Ionicons name="share-outline" size={18} color={colors.onBrand} />} />
-          <Button label={centralAdminSetup ? "I Saved Them — Sign Out" : "I Saved Them — Add Passkey"} onPress={finish} icon={<Ionicons name={centralAdminSetup ? "log-out-outline" : "finger-print-outline"} size={18} color={colors.onBrand} />} />
+          <Button label={centralAdminSetup ? "I Saved Them — Sign Out" : "I Saved Them — Continue"} onPress={finish} icon={<Ionicons name={centralAdminSetup ? "log-out-outline" : "finger-print-outline"} size={18} color={colors.onBrand} />} />
           <AppText variant="caption" center>{centralAdminSetup ? "Central Admin setup is complete. Future privileged sign-in is web-only at control.trackmyrmc.com." : "Keep recovery codes outside the phone when possible. Each code is invalidated after one use."}</AppText>
         </ScrollView>
       </View>

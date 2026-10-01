@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Platform,
   Pressable,
   StyleSheet,
   TextInput,
@@ -15,9 +14,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import * as Linking from "expo-linking";
-import * as WebBrowser from "expo-web-browser";
 
-import { startStaffPasskeyAuthentication } from "@/src/api/client";
 import { useAuth } from "@/src/auth/AuthContext";
 import { roleRouteFor } from "@/src/auth/roleRoutes";
 import { OtpOrbitVerification, OtpVisualState } from "@/src/components/auth/OtpOrbitVerification";
@@ -35,16 +32,8 @@ const PRIVACY_POLICY_URL = "https://trackmyrmc.com/privacy_policy";
 const ACCOUNT_DELETION_URL = "https://trackmyrmc.com/account-deletion";
 const SUCCESS = "#28C48D";
 const ERROR = "#E5484D";
-const DEMO_LOGIN_ENABLED = process.env.EXPO_PUBLIC_ENABLE_DEMO_LOGIN === "1";
-
-const DEMO_ROLES = [
-  { role: "customer", label: "User" },
-  { role: "plant_owner", label: "Owner" },
-  { role: "driver", label: "Driver" },
-];
-
 type LoginMode = "user" | "plant";
-type LoginPhase = "enter" | "user_otp" | "staff_email_otp" | "staff_passkey" | "staff_totp" | "staff_recovery";
+type LoginPhase = "enter" | "user_otp" | "staff_email_otp" | "staff_totp" | "staff_recovery";
 
 const validEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -65,8 +54,6 @@ export default function LoginScreen() {
     verifyStaff,
     verifyStaffAuthenticator,
     verifyStaffRecovery,
-    completeStaffPasskey,
-    demoLogin,
   } = useAuth();
 
   const [mode, setMode] = useState<LoginMode>("user");
@@ -127,17 +114,13 @@ export default function LoginScreen() {
     clearTimer();
   };
 
-  const finishLogin = async (me: Awaited<ReturnType<typeof verify>>, offerPasskey = false) => {
+  const finishLogin = async (me: Awaited<ReturnType<typeof verify>>) => {
     setOtpVisual("success");
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     await delay(700);
 
     if (me.mfa_configured && !me.mfa_enabled && me.role !== "customer" && me.role !== "driver") {
       router.replace("/mfa-setup" as any);
-      return;
-    }
-    if (offerPasskey && me.mfa_enabled && !me.passkey_enabled && me.role !== "customer" && me.role !== "driver") {
-      router.replace("/passkey-setup" as any);
       return;
     }
     router.replace(roleRouteFor(me.role) as any);
@@ -161,8 +144,7 @@ export default function LoginScreen() {
     const fullNumber = `+91${mobile}`;
     setLoading(true);
     try {
-      const response = await requestOtp(fullNumber);
-      if (response.channel !== "sms") throw { detail: "User Login requires mobile OTP" };
+      await requestOtp(fullNumber);
       setIdentifier(fullNumber);
       setCode("");
       setOtpVisual("idle");
@@ -187,22 +169,17 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       const response = await requestStaffOtp(email);
-      if (response.status === "ONBOARDING_REQUIRED") {
-        setPlantEmail(response.email || email);
-        setOnboardingRequired(true);
-        return;
-      }
       setIdentifier(email);
       setPlantEmail(email);
       setCode("");
       setRecoveryCode("");
       setOtpVisual("idle");
       if (response.status === "AUTHENTICATOR_REQUIRED") {
-        setPhase(response.passkey_available ? "staff_passkey" : "staff_totp");
+        setPhase("staff_totp");
         clearTimer();
         return;
       }
-      if (response.status !== "OTP_SENT" || response.channel !== "email") {
+      if (response.status !== "OTP_SENT") {
         throw { detail: "Plant Staff secure login could not start" };
       }
       setPhase("staff_email_otp");
@@ -251,38 +228,13 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       const me = await verifyStaffAuthenticator(identifier, otp);
-      await finishLogin(me, true);
+      await finishLogin(me);
     } catch (e: any) {
       await failOtp(e.detail || "Incorrect Authenticator code.");
     } finally {
       setLoading(false);
     }
   }, [identifier, loading, verifyStaffAuthenticator]);
-
-  const handleVerifyPasskey = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const returnMode = Platform.OS === "web" ? "web" : "app";
-      const request = await startStaffPasskeyAuthentication(identifier, returnMode);
-      if (Platform.OS === "web") {
-        window.location.assign(request.authorization_url);
-        return;
-      }
-      const result = await WebBrowser.openAuthSessionAsync(request.authorization_url, "trackmyrmc://auth/passkey");
-      if (result.type !== "success") throw new Error("Passkey login was cancelled");
-      const parsed = Linking.parse(result.url);
-      const rawCode = parsed.queryParams?.code;
-      const handoff = Array.isArray(rawCode) ? String(rawCode[0] || "") : String(rawCode || "");
-      if (handoff.length < 24) throw new Error("Secure passkey return code was missing");
-      const me = await completeStaffPasskey(handoff);
-      router.replace(roleRouteFor(me.role) as any);
-    } catch (e: any) {
-      setError(e?.detail || e?.message || "Passkey verification could not be completed");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleVerifyRecovery = async () => {
     setError(null);
@@ -405,23 +357,6 @@ export default function LoginScreen() {
       );
     }
 
-    if (phase === "staff_passkey") {
-      return (
-        <View style={styles.formGap}>
-          <View style={styles.headingBlock}>
-            <Ionicons name="finger-print-outline" size={30} color={colors.brand} />
-            <AppText variant="heading" center>Passkey verification</AppText>
-            <AppText variant="bodyMuted" center>Use your trusted device credential, or continue with Authenticator.</AppText>
-          </View>
-          <Button testID="login-plant-passkey" label="Continue with Passkey" onPress={handleVerifyPasskey} loading={loading} icon={<Ionicons name="finger-print-outline" size={20} color={colors.onBrand} />} />
-          {error ? <AppText variant="caption" center color={colors.error}>{error}</AppText> : null}
-          <Pressable testID="login-use-authenticator" onPress={() => { setCode(""); setError(null); setPhase("staff_totp"); }}>
-            <AppText variant="label" center color={colors.brand}>Use Authenticator instead</AppText>
-          </Pressable>
-        </View>
-      );
-    }
-
     if (phase === "staff_recovery") {
       return (
         <View style={styles.formGap}>
@@ -511,13 +446,6 @@ export default function LoginScreen() {
               <AppText variant="caption" color={colors.onSurfaceTertiary}>Available after approved email</AppText>
             </View>
           </View>
-          <View style={[styles.altAuthCard, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-            <Ionicons name="finger-print-outline" size={18} color={colors.brand} />
-            <View style={styles.altAuthText}>
-              <AppText variant="label">Passkey</AppText>
-              <AppText variant="caption" color={colors.onSurfaceTertiary}>Trusted-device verification</AppText>
-            </View>
-          </View>
         </View>
         {onboardingRequired ? (
           <View style={[styles.onboardingCard, { borderColor: `${colors.brand}55`, backgroundColor: colors.brandSoft }]}> 
@@ -582,30 +510,6 @@ export default function LoginScreen() {
 
           {renderForm()}
 
-          {DEMO_LOGIN_ENABLED ? (
-            <View style={[styles.demoBox, { backgroundColor: colors.surface, borderColor: colors.border }]}> 
-              <AppText variant="caption" center>Google Play review demo</AppText>
-              <View style={styles.demoRow}>
-                {DEMO_ROLES.map((item) => (
-                  <Pressable
-                    key={item.role}
-                    disabled={loading}
-                    onPress={async () => {
-                      try {
-                        const me = await demoLogin(item.role);
-                        router.replace(roleRouteFor(me.role) as any);
-                      } catch (e: any) {
-                        setError(e.detail || "Demo login is unavailable");
-                      }
-                    }}
-                    style={[styles.demoChip, { borderColor: colors.border }]}
-                  >
-                    <AppText variant="caption">{item.label}</AppText>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-          ) : null}
         </View>
 
         <View style={styles.legalArea}>
@@ -639,10 +543,6 @@ export default function LoginScreen() {
             <AppText variant="caption" color={colors.onSurfaceTertiary}>Secured with 6-digit OTP verification</AppText>
           </View>
         </View>
-
-        <Pressable testID="login-review-access" onPress={() => router.push("/review-access" as any)} style={styles.reviewLink} hitSlop={10}>
-          <AppText variant="caption" center color={colors.onSurfaceTertiary}>REVIEW APP · Google Play reviewer access</AppText>
-        </Pressable>
 
         <AppText variant="caption" center color={colors.onSurfaceTertiary} style={styles.poweredFooter}>Powered by <AppText variant="label">Gold e Tech</AppText></AppText>
       </KeyboardAwareScrollView>
@@ -766,5 +666,4 @@ const styles = StyleSheet.create({
   legalArea: { width: "92%", maxWidth: 470, paddingTop: spacing.lg, paddingHorizontal: spacing.sm, gap: spacing.md },
   legalLink: { fontFamily: fonts.semibold },
   poweredFooter: { marginTop: spacing.sm },
-  reviewLink: { marginTop: spacing.md, paddingVertical: spacing.sm },
 });

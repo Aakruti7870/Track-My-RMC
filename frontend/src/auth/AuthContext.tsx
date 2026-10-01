@@ -4,12 +4,9 @@ import { storage } from "@/src/utils/storage";
 import {
   apiGet,
   apiPost,
-  demoLogin as apiDemoLogin,
   exchangeGoogleStaffCode,
   exchangeStaffPasskeyHandoff,
   isApiError,
-  playReviewLogin,
-  PlayReviewRole,
   requestOtp,
   requestStaffOtp,
   staffAuthMethod,
@@ -41,6 +38,51 @@ export type Me = {
   passkey_count?: number;
 };
 
+type BackendMeResponse = {
+  user?: {
+    id: string;
+    phone: string;
+    email: string | null;
+    full_name: string;
+    role: string;
+    kyc_status?: string;
+    verified_name?: string | null;
+  };
+  profile?: { kyc_status?: string | null } | null;
+  id?: string;
+  phone?: string | null;
+  email?: string | null;
+  full_name?: string;
+  name?: string;
+  role?: string;
+  kyc_status?: string;
+  status?: string;
+};
+
+function normalizeMe(response: BackendMeResponse): Me {
+  const user = response.user ?? response;
+  if (!user.id || !user.role) throw new Error("The server returned an invalid user profile");
+  const backendRole = user.role;
+  const role = backendRole === "owner" ? "plant_owner" : backendRole;
+  return {
+    id: user.id,
+    name: ("full_name" in user && user.full_name) || ("name" in user && user.name) || "TrackMyRMC User",
+    email: user.email ?? null,
+    phone: user.phone ?? null,
+    mobile: user.phone ?? null,
+    role,
+    role_label: role.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()),
+    roles: [role],
+    plant_id: null,
+    status: response.status ?? "active",
+    kyc_status: user.kyc_status ?? response.profile?.kyc_status ?? "unverified",
+    mfa_enabled: false,
+    mfa_configured: false,
+    passkey_enabled: false,
+    passkey_count: 0,
+  };
+}
+
 type AuthContextValue = {
   hydrating: boolean;
   token: string | null;
@@ -54,8 +96,6 @@ type AuthContextValue = {
   verifyStaffRecovery: (identifier: string, code: string) => Promise<Me>;
   completeStaffPasskey: (handoffCode: string) => Promise<Me>;
   verifyGoogle: (code: string) => Promise<Me>;
-  demoLogin: (role: string) => Promise<Me>;
-  verifyPlayReview: (role: PlayReviewRole, accessCode: string) => Promise<Me>;
   refreshMe: () => Promise<void>;
   signOut: () => Promise<void>;
 };
@@ -72,7 +112,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const saved = await storage.secureGet<string>(TOKEN_KEY, "");
       if (saved) {
         try {
-          const me = await apiGet<Me>("/me", saved);
+          const me = normalizeMe(await apiGet<BackendMeResponse>("/me", saved));
           setToken(saved);
           setUser(me);
         } catch {
@@ -90,7 +130,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const stored = await storage.secureSet(TOKEN_KEY, accessToken);
     if (!stored) throw new Error("Unable to securely store login session");
     try {
-      const me = await apiGet<Me>("/me", accessToken);
+      const me = normalizeMe(await apiGet<BackendMeResponse>("/me", accessToken));
       setToken(accessToken);
       setUser(me);
       return me;
@@ -134,20 +174,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return acceptSession(res.access_token ?? res.token);
   };
 
-  const demoLogin = async (role: string): Promise<Me> => {
-    const res = await apiDemoLogin(role);
-    return acceptSession(res.access_token ?? res.token);
-  };
-
-  const verifyPlayReview = async (role: PlayReviewRole, accessCode: string): Promise<Me> => {
-    const res = await playReviewLogin(role, accessCode);
-    return acceptSession(res.access_token ?? res.token);
-  };
 
   const refreshMe = async () => {
     if (!token) return;
     try {
-      const me = await apiGet<Me>("/me", token);
+      const me = normalizeMe(await apiGet<BackendMeResponse>("/me", token));
       setUser(me);
     } catch (error) {
       // A revoked, expired, suspended, or no-longer-authorized session must not
@@ -202,8 +233,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         verifyStaffRecovery: verifyStaffRecoveryCode,
         completeStaffPasskey,
         verifyGoogle,
-        demoLogin,
-        verifyPlayReview,
         refreshMe,
         signOut,
       }}
