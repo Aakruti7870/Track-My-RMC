@@ -27,7 +27,13 @@ impl AppConfig {
     pub fn from_env() -> Result<Self, String> {
         let database_url = env::var("DATABASE_URL")
             .map_err(|_| "DATABASE_URL environment variable is required".to_string())?;
-        let environment = env::var("APP_ENV").unwrap_or_else(|_| "production".to_string());
+        let environment = env::var("APP_ENV")
+            .unwrap_or_else(|_| "production".to_string())
+            .trim()
+            .to_ascii_lowercase();
+        if !matches!(environment.as_str(), "development" | "test" | "staging" | "production") {
+            return Err("APP_ENV must be one of: development, test, staging, production".to_string());
+        }
 
         let jwt_secret = match env::var("JWT_SECRET") {
             Ok(secret) if secret.as_bytes().len() >= 64 => secret,
