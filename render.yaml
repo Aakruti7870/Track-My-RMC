@@ -27,7 +27,7 @@ services:
       - key: APP_ENV
         value: "production"
       - key: RUST_LOG
-        value: "info,trackmyrmc_backend=debug"
+        value: "info,trackmyrmc_backend=info"
       - key: META_WHATSAPP_TOKEN
         sync: false
       - key: META_PHONE_NUMBER_ID
