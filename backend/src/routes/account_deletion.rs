@@ -41,6 +41,11 @@ pub async fn request(
     if payload.confirm.trim() != "DELETE" {
         return Err(AppError::BadRequest("Type DELETE to confirm account deletion".to_string()));
     }
+    if payload.reason.as_deref().is_some_and(|reason| reason.chars().count() > 1000) {
+        return Err(AppError::BadRequest(
+            "Deletion request reason must be 1000 characters or fewer.".to_string(),
+        ));
+    }
 
     // Do not let a plant owner orphan active plants. They must transfer or deactivate them first.
     if auth_user.role == "owner" {
