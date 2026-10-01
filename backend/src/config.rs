@@ -70,8 +70,11 @@ impl AppConfig {
             if cors_allowed_origins.iter().any(|origin| origin == "*") {
                 return Err("CORS_ORIGIN must not contain '*' in production; configure explicit HTTPS origins".to_string());
             }
-            if cors_allowed_origins.iter().any(|origin| !origin.starts_with("https://")) {
-                return Err("Production CORS_ORIGIN entries must use HTTPS".to_string());
+            if cors_allowed_origins.iter().any(|origin| !is_valid_production_origin(origin)) {
+                return Err(
+                    "Production CORS_ORIGIN entries must be exact HTTPS origins without paths, queries, fragments, or whitespace"
+                        .to_string(),
+                );
             }
         }
 
@@ -112,5 +115,36 @@ impl AppConfig {
             otp_pepper, otp_expiration_minutes, otp_cooldown_seconds,
             otp_max_verification_attempts,
         })
+    }
+}
+
+
+fn is_valid_production_origin(origin: &str) -> bool {
+    let Some(authority) = origin.strip_prefix("https://") else {
+        return false;
+    };
+    !authority.is_empty()
+        && !authority.chars().any(|c| c.is_whitespace() || matches!(c, '/' | '?' | '#' | '@'))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_valid_production_origin;
+
+    #[test]
+    fn production_cors_accepts_exact_https_origins() {
+        assert!(is_valid_production_origin("https://trackmyrmc.com"));
+        assert!(is_valid_production_origin("https://admin.trackmyrmc.com:8443"));
+    }
+
+    #[test]
+    fn production_cors_rejects_non_origins() {
+        assert!(!is_valid_production_origin("*"));
+        assert!(!is_valid_production_origin("http://trackmyrmc.com"));
+        assert!(!is_valid_production_origin("https://trackmyrmc.com/"));
+        assert!(!is_valid_production_origin("https://trackmyrmc.com/app"));
+        assert!(!is_valid_production_origin("https://trackmyrmc.com?x=1"));
+        assert!(!is_valid_production_origin("https://trackmyrmc.com bad"));
+        assert!(!is_valid_production_origin("https://user@trackmyrmc.com"));
     }
 }
