@@ -16,6 +16,9 @@ services:
         generateValue: true
       - key: JWT_EXPIRATION_HOURS
         value: "72"
+      # Required in production; set a unique random value in the Render dashboard.
+      - key: OTP_PEPPER
+        sync: false
       # Configure the exact browser origins used by the deployed web apps.
       # Do not use "*" in production.
       - key: CORS_ORIGIN
