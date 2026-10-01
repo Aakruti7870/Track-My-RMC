@@ -127,17 +127,13 @@ export default function LoginScreen() {
     clearTimer();
   };
 
-  const finishLogin = async (me: Awaited<ReturnType<typeof verify>>, offerPasskey = false) => {
+  const finishLogin = async (me: Awaited<ReturnType<typeof verify>>) => {
     setOtpVisual("success");
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     await delay(700);
 
     if (me.mfa_configured && !me.mfa_enabled && me.role !== "customer" && me.role !== "driver") {
       router.replace("/mfa-setup" as any);
-      return;
-    }
-    if (offerPasskey && me.mfa_enabled && !me.passkey_enabled && me.role !== "customer" && me.role !== "driver") {
-      router.replace("/passkey-setup" as any);
       return;
     }
     router.replace(roleRouteFor(me.role) as any);
@@ -245,7 +241,7 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       const me = await verifyStaffAuthenticator(identifier, otp);
-      await finishLogin(me, true);
+      await finishLogin(me);
     } catch (e: any) {
       await failOtp(e.detail || "Incorrect Authenticator code.");
     } finally {
