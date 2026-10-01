@@ -72,12 +72,19 @@ function validatedApiPath(path: string): string {
 }
 
 export type AuthSessionResponse = {
+  success: boolean;
   access_token?: string;
   token: string;
-  token_type: string;
-  expires_at: string;
   role: string;
-  name: string;
+  user: {
+    id: string;
+    phone: string;
+    email: string | null;
+    full_name: string;
+    role: string;
+    kyc_status: string;
+    verified_name: string | null;
+  };
 };
 
 export type OtpRequestResponse = {
