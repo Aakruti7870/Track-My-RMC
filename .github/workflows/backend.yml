@@ -5,11 +5,16 @@ on:
     branches: [ main, develop ]
     paths:
       - 'backend/**'
+      - 'render.yaml'
+      - 'docs/API.md'
       - '.github/workflows/backend.yml'
   pull_request:
     branches: [ main ]
     paths:
       - 'backend/**'
+      - 'render.yaml'
+      - 'docs/API.md'
+      - '.github/workflows/backend.yml'
 
 env:
   CARGO_TERM_COLOR: always
@@ -51,7 +56,7 @@ jobs:
       - name: Format Check
         run: |
           cd backend
-          cargo fmt --all
+          cargo fmt --all -- --check
 
       - name: Cargo Check
         run: |
@@ -66,7 +71,9 @@ jobs:
       - name: Run Tests
         env:
           DATABASE_URL: postgres://trackmyrmc_user:securepassword@localhost:5432/trackmyrmc_test
-          JWT_SECRET: test_jwt_secret_key_at_least_32_characters_long
+          JWT_SECRET: test_jwt_secret_key_for_ci_only_64_chars_minimum_xxxxxxxxxxxxxxxxxxxxx
+          OTP_PEPPER: test_otp_pepper_for_ci_only_32_chars_minimum_xxxxxxxxx
+          APP_ENV: test
         run: |
           cd backend
           cargo test --verbose
