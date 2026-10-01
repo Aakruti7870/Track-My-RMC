@@ -162,7 +162,6 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       const response = await requestOtp(fullNumber);
-      if (response.channel !== "sms") throw { detail: "User Login requires mobile OTP" };
       setIdentifier(fullNumber);
       setCode("");
       setOtpVisual("idle");
@@ -187,24 +186,13 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       const response = await requestStaffOtp(email);
-      if (response.status === "ONBOARDING_REQUIRED") {
-        setPlantEmail(response.email || email);
-        setOnboardingRequired(true);
-        return;
-      }
+      // The current Rust API sends email OTP and returns { success, message }.
+      // Do not branch on legacy MFA status fields that this backend does not emit.
       setIdentifier(email);
       setPlantEmail(email);
       setCode("");
       setRecoveryCode("");
       setOtpVisual("idle");
-      if (response.status === "AUTHENTICATOR_REQUIRED") {
-        setPhase(response.passkey_available ? "staff_passkey" : "staff_totp");
-        clearTimer();
-        return;
-      }
-      if (response.status !== "OTP_SENT" || response.channel !== "email") {
-        throw { detail: "Plant Staff secure login could not start" };
-      }
       setPhase("staff_email_otp");
       startCountdown(30);
     } catch (e: any) {
