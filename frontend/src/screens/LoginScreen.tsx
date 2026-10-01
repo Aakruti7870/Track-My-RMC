@@ -161,7 +161,7 @@ export default function LoginScreen() {
     const fullNumber = `+91${mobile}`;
     setLoading(true);
     try {
-      const response = await requestOtp(fullNumber);
+      await requestOtp(fullNumber);
       setIdentifier(fullNumber);
       setCode("");
       setOtpVisual("idle");
@@ -185,7 +185,7 @@ export default function LoginScreen() {
     }
     setLoading(true);
     try {
-      const response = await requestStaffOtp(email);
+      await requestStaffOtp(email);
       // The current Rust API sends email OTP and returns { success, message }.
       // Do not branch on legacy MFA status fields that this backend does not emit.
       setIdentifier(email);
