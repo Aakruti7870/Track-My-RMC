@@ -1,3 +1,4 @@
+pub mod account_deletion;
 pub mod admin_routes;
 pub mod auth_routes;
 pub mod customer_routes;
@@ -17,6 +18,11 @@ pub fn build_app_router(state: AppState) -> Router {
     Router::new()
         // Health check (Render monitoring)
         .route("/health", get(health::health_check))
+
+        // --- Account deletion requests (authenticated, reviewed completion) ---
+        .route("/api/account-deletion/status", get(account_deletion::status))
+        .route("/api/account-deletion/request", post(account_deletion::request))
+        .route("/api/account-deletion/cancel", post(account_deletion::cancel))
 
         // --- Authentication & Profile ---
         .route("/api/auth/register", post(auth_routes::register))
