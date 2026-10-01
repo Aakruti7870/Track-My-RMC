@@ -50,14 +50,14 @@ pub async fn request(
     // Do not let a plant owner orphan active plants. They must transfer or deactivate them first.
     if auth_user.role == "owner" {
         let active_plants: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM rmc_plants WHERE owner_id = $1 AND is_active = TRUE"
+            "SELECT COUNT(*) FROM rmc_plants WHERE owner_id = $1"
         )
         .bind(auth_user.user_id)
         .fetch_one(&state.db)
         .await?;
         if active_plants > 0 {
             return Err(AppError::Conflict(
-                "Transfer or deactivate your active plants before requesting account deletion.".to_string()
+                "Transfer ownership of all your plants before requesting account deletion.".to_string()
             ));
         }
     }
