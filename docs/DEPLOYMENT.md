@@ -30,7 +30,7 @@ The exact AWS account, region, resource names, DNS records, and approved monthly
 | `JWT_SECRET` | Unique high-entropy secret of at least 64 bytes |
 | `JWT_EXPIRATION_HOURS` | Integer from 1 to 24 |
 | `OTP_PEPPER` | Unique secret of at least 32 bytes |
-| `CORS_ORIGIN` | Comma-separated exact HTTPS origins; never `*` |
+| `CORS_ORIGIN` | **Required in production**; comma-separated exact HTTPS origins for every browser client (for example `https://trackmyrmc.com,https://admin.trackmyrmc.com`); never `*`. The API fails startup if unset or empty. |
 | `PORT` | Runtime-provided port, or the explicitly configured service port |
 | `META_WHATSAPP_TOKEN` | Required only when WhatsApp OTP delivery is enabled; store in Secrets Manager |
 | `META_PHONE_NUMBER_ID` | Required for the configured WhatsApp sender |
