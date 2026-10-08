@@ -77,9 +77,39 @@ pub async fn send_email_otp(
     State(state): State<AppState>,
     Json(payload): Json<SendEmailOtpRequest>,
 ) -> Result<impl IntoResponse, AppError> {
+    let email = payload.email.trim().to_lowercase();
+    let authenticator_enabled: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+            SELECT 1
+            FROM users u
+            JOIN user_totp_credentials t ON t.user_id = u.id
+            WHERE LOWER(u.email) = $1
+              AND u.is_active = TRUE
+              AND t.is_enabled = TRUE
+        )"
+    )
+    .bind(&email)
+    .fetch_one(&state.db)
+    .await?;
+
+    // Enrolled staff must complete TOTP or a single-use recovery code; never
+    // silently downgrade an enrolled account to email OTP.
+    if authenticator_enabled {
+        return Ok(Json(json!({
+            "success": true,
+            "status": "AUTHENTICATOR_REQUIRED",
+            "method": "totp",
+            "email": email,
+            "message": "Use your Authenticator app or a saved recovery code."
+        })));
+    }
+
     auth_service::send_email_otp(&state, payload).await?;
     Ok(Json(json!({
         "success": true,
+        "status": "OTP_SENT",
+        "channel": "email",
+        "email": email,
         "message": "Verification code dispatched to your email address"
     })))
 }
@@ -98,6 +128,21 @@ pub async fn setup_totp(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
+    let already_enabled: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+            SELECT 1 FROM user_totp_credentials
+            WHERE user_id = $1 AND is_enabled = TRUE
+        )"
+    )
+    .bind(auth_user.user_id)
+    .fetch_one(&state.db)
+    .await?;
+    if already_enabled {
+        return Err(AppError::Conflict(
+            "Authenticator is already enabled. Use the current code to sign in; reset requires a verified recovery procedure.".to_string()
+        ));
+    }
+
     let user_label = auth_user.email.clone().unwrap_or(auth_user.phone.clone());
     let (secret, qr_uri, backup_codes) = setup_totp_for_user(&state.db, auth_user.user_id, &user_label).await?;
 

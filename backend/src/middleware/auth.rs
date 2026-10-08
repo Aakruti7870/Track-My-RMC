@@ -3,6 +3,7 @@ use crate::{
     error::AppError,
     state::AppState,
 };
+use chrono::{DateTime, Utc};
 use axum::{
     async_trait,
     extract::{FromRef, FromRequestParts},
@@ -43,6 +44,27 @@ where
         };
 
         let claims: Claims = verify_token(token, &app_state.config.jwt_secret)?;
+
+        // Enforce account deactivation and logout revocation on every authenticated request.
+        // A valid signature alone must not keep a logged-out session alive.
+        let account: Option<(bool, Option<DateTime<Utc>>)> = sqlx::query_as(
+            "SELECT is_active, auth_revoked_at FROM users WHERE id = $1"
+        )
+        .bind(claims.sub)
+        .fetch_optional(&app_state.db)
+        .await?;
+
+        let (is_active, auth_revoked_at) = account
+            .ok_or_else(|| AppError::Unauthorized("Invalid or expired token".to_string()))?;
+        if !is_active {
+            return Err(AppError::Forbidden("Account is inactive. Contact support.".to_string()));
+        }
+        if auth_revoked_at
+            .map(|revoked_at| claims.iat as i64 <= revoked_at.timestamp())
+            .unwrap_or(false)
+        {
+            return Err(AppError::Unauthorized("Session has been revoked. Please sign in again.".to_string()));
+        }
 
         Ok(AuthUser {
             user_id: claims.sub,

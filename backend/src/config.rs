@@ -27,7 +27,13 @@ impl AppConfig {
     pub fn from_env() -> Result<Self, String> {
         let database_url = env::var("DATABASE_URL")
             .map_err(|_| "DATABASE_URL environment variable is required".to_string())?;
-        let environment = env::var("APP_ENV").unwrap_or_else(|_| "production".to_string());
+        let environment = env::var("APP_ENV")
+            .unwrap_or_else(|_| "production".to_string())
+            .trim()
+            .to_ascii_lowercase();
+        if !matches!(environment.as_str(), "development" | "test" | "staging" | "production") {
+            return Err("APP_ENV must be one of: development, test, staging, production".to_string());
+        }
 
         let jwt_secret = match env::var("JWT_SECRET") {
             Ok(secret) if secret.as_bytes().len() >= 64 => secret,
@@ -50,12 +56,37 @@ impl AppConfig {
         let port = env::var("PORT").ok().and_then(|v| v.parse().ok()).unwrap_or(8000);
         let host = env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
 
-        let cors_allowed_origins = env::var("CORS_ORIGIN")
-            .unwrap_or_else(|_| "https://trackmyrmc.com".to_string())
+        let cors_origin_value = match env::var("CORS_ORIGIN") {
+            Ok(value) => value,
+            Err(_) if environment != "production" => "https://trackmyrmc.com".to_string(),
+            Err(_) => {
+                return Err("CORS_ORIGIN environment variable is required in production".to_string());
+            }
+        };
+        let cors_allowed_origins: Vec<String> = cors_origin_value
             .split(',')
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect();
+
+        if cors_allowed_origins.is_empty() {
+            return Err("CORS_ORIGIN must contain at least one allowed origin".to_string());
+        }
+        if environment == "production" {
+            if cors_allowed_origins.iter().any(|origin| origin == "*") {
+                return Err("CORS_ORIGIN must not contain '*' in production; configure explicit HTTPS origins".to_string());
+            }
+            if cors_allowed_origins.iter().any(|origin| !is_valid_production_origin(origin)) {
+                return Err(
+                    "Production CORS_ORIGIN entries must be exact HTTPS origins without paths, queries, fragments, or whitespace"
+                        .to_string(),
+                );
+            }
+        }
+
+        if !(1..=24).contains(&jwt_expiration_hours) {
+            return Err("JWT_EXPIRATION_HOURS must be between 1 and 24".to_string());
+        }
 
         let meta_whatsapp_token = env::var("META_WHATSAPP_TOKEN").ok();
         let meta_whatsapp_phone_number_id = env::var("META_PHONE_NUMBER_ID").ok();
@@ -90,5 +121,36 @@ impl AppConfig {
             otp_pepper, otp_expiration_minutes, otp_cooldown_seconds,
             otp_max_verification_attempts,
         })
+    }
+}
+
+
+fn is_valid_production_origin(origin: &str) -> bool {
+    let Some(authority) = origin.strip_prefix("https://") else {
+        return false;
+    };
+    !authority.is_empty()
+        && !authority.chars().any(|c| c.is_whitespace() || matches!(c, '/' | '?' | '#' | '@'))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_valid_production_origin;
+
+    #[test]
+    fn production_cors_accepts_exact_https_origins() {
+        assert!(is_valid_production_origin("https://trackmyrmc.com"));
+        assert!(is_valid_production_origin("https://admin.trackmyrmc.com:8443"));
+    }
+
+    #[test]
+    fn production_cors_rejects_non_origins() {
+        assert!(!is_valid_production_origin("*"));
+        assert!(!is_valid_production_origin("http://trackmyrmc.com"));
+        assert!(!is_valid_production_origin("https://trackmyrmc.com/"));
+        assert!(!is_valid_production_origin("https://trackmyrmc.com/app"));
+        assert!(!is_valid_production_origin("https://trackmyrmc.com?x=1"));
+        assert!(!is_valid_production_origin("https://trackmyrmc.com bad"));
+        assert!(!is_valid_production_origin("https://user@trackmyrmc.com"));
     }
 }

@@ -6,7 +6,7 @@ This document specifies the complete REST API contract for the TrackMyRMC Rust b
 
 ## 1. Global Conventions
 
-- **Base URL**: `http://localhost:8000` (Local) / `https://trackmyrmc-backend.onrender.com` (Production)
+- **Base URL**: `http://localhost:8000` (Local). Production base URL must come from the active deployment configuration; the historical Render URL below is not proof of a current production deployment.
 - **Content-Type**: `application/json`
 - **Authentication**: `Authorization: Bearer <JWT>`
 - **Error Response Standard**:
@@ -174,12 +174,9 @@ This document specifies the complete REST API contract for the TrackMyRMC Rust b
 
 ---
 
-### 2.5 WebAuthn / FIDO2 Passkeys
+### 2.5 WebAuthn / FIDO2 Passkeys — NOT AVAILABLE
 
-- `POST /api/auth/passkey/register/options`: Initiates registration ceremony
-- `POST /api/auth/passkey/register/verify`: Cryptographically verifies attestation
-- `POST /api/auth/passkey/login/options`: Initiates authentication assertion
-- `POST /api/auth/passkey/login/verify`: Verifies cryptographic signature & issues JWT
+The passkey handler functions exist in source, but the router intentionally does not register these endpoints until challenge persistence, origin/RP-ID validation, attestation/assertion signature verification, and authenticator counter checks are complete. Do not call these endpoints or advertise passkeys as a supported login method. The routes must remain disabled until a security-reviewed implementation and end-to-end tests are merged.
 
 ---
 
@@ -216,6 +213,30 @@ This document specifies the complete REST API contract for the TrackMyRMC Rust b
 
 - `GET /api/workforce/roster`: Daily attendance roster for plant by date
 - `POST /api/workforce/attendance/mark`: Geofenced clock-in/out
-- `GET /api/payroll/closure`: Monthly payroll closure review and lock status
 - `POST /api/owner/plants`: Plant profile creation
-- `GET /api/owner/billing`: Subscription tier and usage ledger
+- `GET /api/owner/billing`: Returns current mixer count and monthly volume. Subscription tier/credits are **not configured** yet; the current handler returns `plan: "not_configured"` and `credits_remaining: null`.
+
+
+## 7. Contract accuracy note
+
+This document must describe only routes registered in `backend/src/routes/mod.rs`. As of this revision, WebAuthn/passkey routes and `GET /api/payroll/closure` are not registered. Do not treat code-level handler functions as public endpoints until router registration, authorization, and tests are present. The owner billing route reports operational usage metrics but does not implement subscription billing.
+
+
+## 8. Account deletion requests
+
+These routes require a valid Bearer token. They record and manage a request; they do **not** immediately erase the account or statutory records.
+
+- `GET /api/account-deletion/status`: Returns the latest request for the authenticated user, or `{"request": null}`.
+- `POST /api/account-deletion/request`: Requires `{"confirm":"DELETE","reason":"optional reason"}`. Returns the recorded request, or `409 Conflict` if a request is already pending. Active plant owners must transfer or deactivate their plants first.
+- `POST /api/account-deletion/cancel`: Cancels the authenticated user's pending request; returns `409 Conflict` when no pending request exists.
+
+Completion requires an authorized operational review and a separate data-retention/deletion procedure. Unauthenticated deletion requests are not exposed through the API yet; the app directs signed-out users to support for identity verification. Never request passwords or OTPs over email.
+
+
+## 9. Mobile authentication response contract
+
+- `POST /api/auth/otp/whatsapp/send` returns `success` and `message` after dispatching a WhatsApp OTP. The client must not assume SMS delivery.
+- `POST /api/auth/otp/email/send` returns `status: "OTP_SENT"` and `channel: "email"` for accounts using email OTP. For active accounts with an enabled TOTP factor, it returns `status: "AUTHENTICATOR_REQUIRED"` and does not send a downgrade email OTP.
+- `POST /api/auth/totp/login` accepts `{"username_or_phone":"...","totp_code":"..." }`. The same field accepts a one-time recovery code; consumed recovery codes are removed from the stored set.
+- `GET /api/me` currently returns `{"success":true,"user":{...},"profile":...}`. Mobile clients should normalize the nested `user` object and map backend role `owner` to the mobile route role `plant_owner`.
+- Passkey registration and authentication remain disabled in the mobile UI and router until a complete, security-reviewed WebAuthn implementation is available.

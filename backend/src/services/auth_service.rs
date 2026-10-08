@@ -150,6 +150,9 @@ pub async fn send_whatsapp_otp(
 
     // Check if user exists and verify role restrictions
     if let Some(user) = user_repo::find_by_phone_or_email(&state.db, &destination).await? {
+        if !user.is_active {
+            return Err(AppError::Forbidden("Account is inactive. Contact support.".to_string()));
+        }
         if user.role != "customer" && user.role != "driver" {
             return Err(AppError::Forbidden(
                 "WhatsApp OTP is restricted to Customer and Driver accounts. Plant staff and Administrators must use Email OTP or Authenticator App.".to_string(),
@@ -203,7 +206,17 @@ pub async fn verify_whatsapp_otp(
 
     // Fetch existing user or auto-provision verified customer
     let user = match user_repo::find_by_phone_or_email(&state.db, &destination).await? {
-        Some(u) => u,
+        Some(u) => {
+            if !u.is_active {
+                return Err(AppError::Forbidden("Account is inactive. Contact support.".to_string()));
+            }
+            if u.role != "customer" && u.role != "driver" {
+                return Err(AppError::Forbidden(
+                    "WhatsApp OTP is restricted to Customer and Driver accounts.".to_string(),
+                ));
+            }
+            u
+        },
         None => {
             // New user registration via WhatsApp OTP
             let dummy_password = hash_password(&Uuid::new_v4().to_string())?;
@@ -260,6 +273,10 @@ pub async fn send_email_otp(
     let user = user_repo::find_by_phone_or_email(&state.db, &destination)
         .await?
         .ok_or_else(|| AppError::NotFound("Staff/Admin account not found".to_string()))?;
+
+    if !user.is_active {
+        return Err(AppError::Forbidden("Account is inactive. Contact support.".to_string()));
+    }
 
     const STAFF_ROLES: &[&str] = &[
         "dispatcher",
@@ -324,6 +341,17 @@ pub async fn verify_email_otp(
         .await?
         .ok_or_else(|| AppError::NotFound("Staff/Admin account not found".to_string()))?;
 
+    if !user.is_active {
+        return Err(AppError::Forbidden("Account is inactive. Contact support.".to_string()));
+    }
+    const STAFF_ROLES: &[&str] = &[
+        "dispatcher", "operator", "supervisor", "quality_engineer",
+        "store_manager", "accountant", "fleet_manager", "owner", "admin",
+    ];
+    if !STAFF_ROLES.contains(&user.role.as_str()) {
+        return Err(AppError::Forbidden("Email OTP is restricted to staff, owner, and administrator accounts.".to_string()));
+    }
+
     let profile = user_repo::get_user_profile(&state.db, user.id).await?;
     let kyc_status = profile.as_ref().map(|p| p.kyc_status.clone()).unwrap_or_else(|| "unverified".to_string());
     let verified_name = profile.and_then(|p| p.verified_name);
@@ -361,6 +389,9 @@ pub async fn verify_totp_login(
     let user = user_repo::find_by_phone_or_email(&state.db, &req.username_or_phone)
         .await?
         .ok_or_else(|| AppError::Unauthorized("Invalid credentials".to_string()))?;
+    if !user.is_active {
+        return Err(AppError::Forbidden("Account is inactive. Contact support.".to_string()));
+    }
 
     crate::auth::totp::verify_totp_login(&state.db, user.id, &req.totp_code).await?;
 

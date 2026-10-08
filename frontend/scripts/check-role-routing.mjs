@@ -74,12 +74,8 @@ if (!login.includes('testID="login-plant-email-input"') || !login.includes('test
   failures.push("Plant Staff Login must start from the approved work email");
 }
 
-if (!login.includes('testID="login-plant-passkey"') || !login.includes('testID="login-use-authenticator"')) {
-  failures.push("Plant Staff Login must prefer passkey verification and keep Authenticator fallback");
-}
-
-if (!login.includes("startStaffPasskeyAuthentication") || !login.includes("completeStaffPasskey")) {
-  failures.push("Plant Staff passkey login must use the one-time WebAuthn handoff flow");
+if (login.includes('testID="login-plant-passkey"') || login.includes("startStaffPasskeyAuthentication")) {
+  failures.push("Passkey login must remain unavailable until backend WebAuthn verification is security-reviewed");
 }
 
 if (!login.includes('"login-plant-authenticator-input"') || !login.includes('testID="login-use-recovery"')) {
@@ -90,12 +86,12 @@ if (!mfaSetup.includes('testID="mfa-setup-code"') || !mfaSetup.includes('testID=
   failures.push("First-time Plant Staff login must include Authenticator enrollment confirmation");
 }
 
-if (!mfaSetup.includes("Add Passkey") || !passkeySetup.includes('testID="passkey-setup-totp"') || !passkeySetup.includes('testID="passkey-setup-create"')) {
-  failures.push("Passkey enrollment must follow Authenticator setup and require fresh TOTP confirmation");
+if (mfaSetup.includes("Add Passkey") || !mfaSetup.includes('testID="mfa-setup-code"') || !mfaSetup.includes('testID="mfa-setup-confirm"')) {
+  failures.push("Authenticator enrollment must use the implemented Rust TOTP API without redirecting to passkey setup");
 }
 
-if (!passkeyCeremony.includes("getBrowserPasskey") || !passkeyCeremony.includes("createBrowserPasskey") || !passkeyCeremony.includes("trackmyrmc://auth/passkey")) {
-  failures.push("Canonical browser WebAuthn ceremony and secure app return must remain wired");
+if (!passkeySetup.includes("Passkeys are temporarily unavailable") || !passkeyCeremony.includes("Passkey sign-in is disabled")) {
+  failures.push("Unsupported passkey routes must clearly remain disabled until WebAuthn verification is complete");
 }
 
 if (!webauthnClient.includes("navigator.credentials") || !webauthnClient.includes("PublicKeyCredential")) {
@@ -144,4 +140,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log("Auth routing regression check passed for all operational roles, mobile OTP, Plant Staff Passkey + Authenticator MFA, recovery and onboarding.");
+console.log("Auth routing regression check passed for operational roles, supported OTP/TOTP flows, disabled passkeys, recovery and onboarding.");
