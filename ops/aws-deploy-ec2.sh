@@ -30,7 +30,7 @@ if [ -d /opt/trackmyrmc/frontend ]; then mv /opt/trackmyrmc/frontend /opt/trackm
 mv /opt/trackmyrmc/frontend.new /opt/trackmyrmc/frontend
 
 DB_JSON="$(aws secretsmanager get-secret-value --secret-id "$RDS_SECRET" --query SecretString --output text)"
-DATABASE_URL="$(printf '%s' "$DB_JSON" | python3 -c 'import json,sys,urllib.parse as u; x=json.load(sys.stdin); print("postgres://%s:%s@%s:%s/%s?sslmode=require"%(u.quote(x["username"],safe=""),u.quote(x["password"],safe=""),x["host"],x.get("port",5432),x.get("dbname","postgres")))')"
+DATABASE_URL="$(printf '%s' "$DB_JSON" | python3 -c 'import json,sys,urllib.parse as u; x=json.load(sys.stdin); print("postgres://%s:%s@trackmyrmc-postgres.cf8mmcwuuinx.ap-south-1.rds.amazonaws.com:5432/postgres?sslmode=require"%(u.quote(x["username"],safe=""),u.quote(x["password"],safe="")))')"
 
 APP_JSON="$(aws secretsmanager get-secret-value --secret-id "$APP_SECRET" --query SecretString --output text)"
 JWT_SECRET="$(printf '%s' "$APP_JSON" | jq -r '.JWT_SECRET')"
