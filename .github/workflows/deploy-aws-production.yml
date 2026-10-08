@@ -1,0 +1,104 @@
+name: Deploy TrackMyRMC AWS Production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - backend/**
+      - frontend/**
+      - ops/aws-deploy-ec2.sh
+      - .github/workflows/deploy-aws-production.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: trackmyrmc-aws-production
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-south-1
+  AWS_ROLE_ARN: arn:aws:iam::260234292958:role/TrackMyRMC-GitHubDeploy
+  ARTIFACT_BUCKET: trackmyrmc-prod-artifacts-260234292958-ap-south-1
+  INSTANCE_ID: i-0598aad6e6d729c69
+  APP_SECRET_NAME: trackmyrmc/app-runtime
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Rust backend
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: x86_64-unknown-linux-gnu
+      - run: cargo build --release --manifest-path backend/Cargo.toml
+
+      - name: Build Expo web
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - working-directory: frontend
+        env:
+          EXPO_PUBLIC_BACKEND_URL: https://trackmyrmc.com
+        run: |
+          npm ci
+          npm run build:preview
+          test -f dist/index.html
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Ensure runtime secret exists
+        run: |
+          set -euo pipefail
+          if ! aws secretsmanager describe-secret --secret-id "${APP_SECRET_NAME}" >/dev/null 2>&1; then
+            JWT_SECRET="$(openssl rand -hex 64)"
+            OTP_PEPPER="$(openssl rand -hex 32)"
+            jq -n               --arg jwt "$JWT_SECRET"               --arg pepper "$OTP_PEPPER"               '{JWT_SECRET:$jwt,OTP_PEPPER:$pepper,META_WHATSAPP_TOKEN:"",META_PHONE_NUMBER_ID:"",META_WABA_ID:"",EMAIL_API_KEY:"",EMAIL_FROM_ADDRESS:"noreply@trackmyrmc.com"}'               >/tmp/app-secret.json
+            aws secretsmanager create-secret               --name "${APP_SECRET_NAME}"               --description "TrackMyRMC Rust production runtime configuration"               --secret-string file:///tmp/app-secret.json
+          fi
+
+      - name: Upload release
+        id: release
+        run: |
+          set -euo pipefail
+          SHA="${GITHUB_SHA}"
+          tar -C frontend -czf /tmp/frontend.tgz dist
+          aws s3 cp backend/target/release/trackmyrmc-backend "s3://${ARTIFACT_BUCKET}/backend-${SHA}"
+          aws s3 cp /tmp/frontend.tgz "s3://${ARTIFACT_BUCKET}/frontend-${SHA}.tgz"
+
+      - name: Deploy EC2 through SSM
+        run: |
+          set -euo pipefail
+          COMMAND_ID="$(aws ssm send-command             --instance-ids "${INSTANCE_ID}"             --document-name AWS-RunShellScript             --comment "TrackMyRMC production deploy ${GITHUB_SHA}"             --parameters commands="curl -fsSL https://raw.githubusercontent.com/Aakruti7870/Track-My-RMC/main/ops/aws-deploy-ec2.sh | RELEASE_SHA=${GITHUB_SHA} bash"             --query 'Command.CommandId'             --output text)"
+
+          for i in $(seq 1 60); do
+            STATUS="$(aws ssm get-command-invocation               --command-id "$COMMAND_ID"               --instance-id "${INSTANCE_ID}"               --query Status               --output text)"
+            echo "SSM: $STATUS"
+            case "$STATUS" in
+              Success) exit 0 ;;
+              Failed|Cancelled|TimedOut|Cancelling)
+                aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "${INSTANCE_ID}"
+                exit 1 ;;
+            esac
+            sleep 5
+          done
+          exit 1
+
+      - name: Verify EC2 health
+        run: |
+          set -euo pipefail
+          curl --retry 10 --retry-all-errors --retry-delay 3 -fsS http://13.203.215.125/health
+          curl --retry 10 --retry-all-errors --retry-delay 3 -fsS http://13.203.215.125/ | grep -F '_expo/static/' >/dev/null
