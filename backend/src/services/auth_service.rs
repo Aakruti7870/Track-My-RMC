@@ -240,6 +240,13 @@ pub async fn verify_whatsapp_otp(
         }
     };
 
+    if !user.is_active {
+        return Err(AppError::Forbidden("Account is inactive. Contact support.".to_string()));
+    }
+    if user.role != "customer" && user.role != "driver" {
+        return Err(AppError::Forbidden("WhatsApp OTP is restricted to Customer and Driver accounts.".to_string()));
+    }
+
     let profile = user_repo::get_user_profile(&state.db, user.id).await?;
     let kyc_status = profile.as_ref().map(|p| p.kyc_status.clone()).unwrap_or_else(|| "unverified".to_string());
     let verified_name = profile.and_then(|p| p.verified_name);
@@ -331,6 +338,24 @@ pub async fn verify_email_otp(
 ) -> Result<AuthResponse, AppError> {
     let destination = req.email.trim().to_lowercase();
 
+    let user = user_repo::find_by_phone_or_email(&state.db, &destination)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Staff/Admin account not found".to_string()))?;
+
+    if !user.is_active {
+        return Err(AppError::Forbidden("Account is inactive. Contact support.".to_string()));
+    }
+    if user.email.as_deref().map(|e| e.eq_ignore_ascii_case(&destination)) != Some(true) {
+        return Err(AppError::Forbidden("Email OTP is restricted to the account's registered email.".to_string()));
+    }
+    const STAFF_ROLES: &[&str] = &[
+        "dispatcher", "operator", "supervisor", "quality_engineer",
+        "store_manager", "accountant", "fleet_manager", "owner", "admin",
+    ];
+    if !STAFF_ROLES.contains(&user.role.as_str()) {
+        return Err(AppError::Forbidden("Email OTP is restricted to staff, owner, and administrator accounts.".to_string()));
+    }
+
     OtpEngine::verify_otp(
         state,
         &destination,
@@ -339,10 +364,6 @@ pub async fn verify_email_otp(
         &req.otp,
     )
     .await?;
-
-    let user = user_repo::find_by_phone_or_email(&state.db, &destination)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Staff/Admin account not found".to_string()))?;
 
     let profile = user_repo::get_user_profile(&state.db, user.id).await?;
     let kyc_status = profile.as_ref().map(|p| p.kyc_status.clone()).unwrap_or_else(|| "unverified".to_string());
