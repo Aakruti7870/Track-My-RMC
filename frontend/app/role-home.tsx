@@ -35,7 +35,23 @@ export default function RoleHome() {
 
   if (hydrating) return null;
   if (!token || !user) return <Redirect href="/login" />;
-  if (user.role === "customer") return <Redirect href="/customer" />;
+  // Route authenticated users into their actual role workspace. This route must
+  // never render the old "dashboard is on the way" placeholder.
+  const ROLE_HOME_ROUTES: Record<string, "/customer" | "/driver" | "/owner" | "/admin" | "/dispatcher" | "/operator" | "/supervisor" | "/accountant" | "/quality_engineer" | "/fleet_manager" | "/store_manager"> = {
+    customer: "/customer",
+    driver: "/driver",
+    plant_owner: "/owner",
+    admin: "/admin",
+    dispatcher: "/dispatcher",
+    operator: "/operator",
+    supervisor: "/supervisor",
+    accountant: "/accountant",
+    quality_engineer: "/quality_engineer",
+    fleet_manager: "/fleet_manager",
+    store_manager: "/store_manager",
+  };
+  const roleHome = ROLE_HOME_ROUTES[user.role];
+  if (roleHome) return <Redirect href={roleHome} />;
 
   const tabs = NAV_BLUEPRINT[user.role] || ["Home", "More"];
 
