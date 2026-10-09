@@ -8,7 +8,7 @@ use uuid::Uuid;
 pub async fn find_by_phone_or_email(pool: &PgPool, identifier: &str) -> Result<Option<User>, AppError> {
     let user = sqlx::query_as::<_, User>(
         r#"
-        SELECT id, phone, email, hashed_password, full_name, role, is_active, is_verified, created_at, updated_at
+        SELECT id, COALESCE(phone, '') AS phone, email, hashed_password, full_name, role, is_active, is_verified, created_at, updated_at
         FROM users
         WHERE phone = $1 OR email = $1
         LIMIT 1
@@ -24,7 +24,7 @@ pub async fn find_by_phone_or_email(pool: &PgPool, identifier: &str) -> Result<O
 pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<User>, AppError> {
     let user = sqlx::query_as::<_, User>(
         r#"
-        SELECT id, phone, email, hashed_password, full_name, role, is_active, is_verified, created_at, updated_at
+        SELECT id, COALESCE(phone, '') AS phone, email, hashed_password, full_name, role, is_active, is_verified, created_at, updated_at
         FROM users
         WHERE id = $1
         "#,
