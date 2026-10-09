@@ -57,7 +57,7 @@ impl WhatsAppService {
             "to": recipient,
             "type": "template",
             "template": {
-                "name": "login_code",
+                "name": "trackmyrmc_login_otp",
                 "language": {
                     "code": "en_US"
                 },
