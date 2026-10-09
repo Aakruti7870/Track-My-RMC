@@ -162,7 +162,7 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       const response = await requestOtp(fullNumber);
-      if (response.channel !== "whatsapp" && response.channel !== "sms") throw { detail: "WhatsApp OTP delivery was not confirmed. Please try again." };
+      // A successful HTTP response from /auth/otp/whatsapp/send confirms the backend accepted delivery. Do not require a response.channel field: this endpoint may return an empty success body.
       setIdentifier(fullNumber);
       setCode("");
       setOtpVisual("idle");
