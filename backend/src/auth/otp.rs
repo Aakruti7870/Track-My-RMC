@@ -99,6 +99,100 @@ impl OtpEngine {
         Ok(rec.0)
     }
 
+    pub async fn create_pending_session(
+        pool: &PgPool,
+        destination: &str,
+        channel: &str,
+        purpose: &str,
+        salt: &str,
+        hashed_otp: &str,
+        expiration_minutes: i64,
+        max_attempts: i32,
+    ) -> Result<Uuid, AppError> {
+        let expires_at = Utc::now() + Duration::minutes(expiration_minutes);
+        let rec: (Uuid,) = sqlx::query_as(
+            "INSERT INTO otp_verifications
+             (destination, channel, purpose, hashed_otp, salt, attempts,
+              max_attempts, is_verified, is_pending, expires_at)
+             VALUES ($1,$2,$3,$4,$5,0,$6,FALSE,TRUE,$7) RETURNING id"
+        )
+        .bind(destination)
+        .bind(channel)
+        .bind(purpose)
+        .bind(hashed_otp)
+        .bind(salt)
+        .bind(max_attempts)
+        .bind(expires_at)
+        .fetch_one(pool)
+        .await?;
+
+        Ok(rec.0)
+    }
+
+    pub async fn activate_pending_session(
+        pool: &PgPool,
+        session_id: Uuid,
+        destination: &str,
+        channel: &str,
+        purpose: &str,
+    ) -> Result<(), AppError> {
+        let mut tx = pool.begin().await?;
+
+        let pending: Option<(Uuid,)> = sqlx::query_as(
+            "SELECT id FROM otp_verifications
+             WHERE id=$1 AND destination=$2 AND channel=$3 AND purpose=$4
+               AND is_pending=TRUE AND is_verified=FALSE AND expires_at>NOW()
+             FOR UPDATE"
+        )
+        .bind(session_id)
+        .bind(destination)
+        .bind(channel)
+        .bind(purpose)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        if pending.is_none() {
+            return Err(AppError::InternalError(
+                "Pending OTP session could not be activated".to_string(),
+            ));
+        }
+
+        sqlx::query(
+            "UPDATE otp_verifications
+             SET is_verified=TRUE
+             WHERE destination=$1 AND channel=$2 AND purpose=$3
+               AND id<>$4 AND is_verified=FALSE AND is_pending=FALSE"
+        )
+        .bind(destination)
+        .bind(channel)
+        .bind(purpose)
+        .bind(session_id)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query("UPDATE otp_verifications SET is_pending=FALSE WHERE id=$1")
+            .bind(session_id)
+            .execute(&mut *tx)
+            .await?;
+
+        tx.commit().await?;
+        Ok(())
+    }
+
+    pub async fn discard_pending_session(
+        pool: &PgPool,
+        session_id: Uuid,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            "DELETE FROM otp_verifications WHERE id=$1 AND is_pending=TRUE"
+        )
+        .bind(session_id)
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    }
+
     pub async fn verify_otp(
         state: &AppState,
         destination: &str,
@@ -114,7 +208,8 @@ impl OtpEngine {
         let record = sqlx::query_as::<_, OtpVerificationRecord>(
             "SELECT id,destination,channel,purpose,hashed_otp,salt,attempts,max_attempts,is_verified,expires_at,created_at
              FROM otp_verifications
-             WHERE destination=$1 AND channel=$2 AND purpose=$3 AND is_verified=FALSE AND expires_at>NOW()
+             WHERE destination=$1 AND channel=$2 AND purpose=$3
+               AND is_verified=FALSE AND is_pending=FALSE AND expires_at>NOW()
              ORDER BY created_at DESC LIMIT 1 FOR UPDATE"
         ).bind(destination).bind(channel).bind(purpose).fetch_optional(&mut *tx).await?
         .ok_or_else(|| AppError::Unauthorized("Invalid or expired verification code".to_string()))?;
