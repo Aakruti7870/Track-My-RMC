@@ -288,6 +288,13 @@ pub async fn send_email_otp(
         .await?
         .ok_or_else(|| AppError::NotFound("Staff/Admin account not found".to_string()))?;
 
+    if !user.is_active {
+        return Err(AppError::Forbidden("Account is inactive. Contact support.".to_string()));
+    }
+    if user.email.as_deref().map(|e| e.eq_ignore_ascii_case(&destination)) != Some(true) {
+        return Err(AppError::Forbidden("Email OTP must be sent to the account's registered email.".to_string()));
+    }
+
     const STAFF_ROLES: &[&str] = &[
         "dispatcher",
         "operator",
