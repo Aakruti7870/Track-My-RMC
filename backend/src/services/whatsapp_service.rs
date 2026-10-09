@@ -10,6 +10,24 @@ pub struct WhatsAppService {
 }
 
 impl WhatsAppService {
+
+    pub fn validate_config(&self) -> Result<(), AppError> {
+        match (&self.token, &self.phone_number_id) {
+            (Some(token), Some(phone_number_id))
+                if !token.trim().is_empty() && !phone_number_id.trim().is_empty() =>
+            {
+                Ok(())
+            }
+            _ => {
+                error!("Meta WhatsApp credentials are missing");
+                Err(AppError::InternalError(
+                    "WhatsApp OTP service is not configured".to_string(),
+                ))
+            }
+        }
+    }
+
+
     pub fn new(token: Option<String>, phone_number_id: Option<String>) -> Self {
         Self {
             client: Client::new(),

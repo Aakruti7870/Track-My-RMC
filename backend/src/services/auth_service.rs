@@ -148,6 +148,12 @@ pub async fn send_whatsapp_otp(
     let destination = WhatsAppService::normalize_phone(&req.phone);
     let purpose = req.purpose.unwrap_or_else(|| "login".to_string());
 
+    let wa_service = WhatsAppService::new(
+        state.config.meta_whatsapp_token.clone(),
+        state.config.meta_whatsapp_phone_number_id.clone(),
+    );
+    wa_service.validate_config()?;
+
     // Check if user exists and verify role restrictions
     if let Some(user) = user_repo::find_by_phone_or_email(&state.db, &destination).await? {
         if user.role != "customer" && user.role != "driver" {
@@ -162,7 +168,8 @@ pub async fn send_whatsapp_otp(
 
     let (plain_otp, salt, hashed_otp) = OtpEngine::generate_secure_otp(&state.config.otp_pepper);
 
-    OtpEngine::create_session(
+    // Store as pending: this OTP cannot be verified until delivery is accepted.
+    let session_id = OtpEngine::create_pending_session(
         &state.db,
         &destination,
         "whatsapp",
@@ -174,12 +181,25 @@ pub async fn send_whatsapp_otp(
     )
     .await?;
 
-    // Dispatch via Meta WhatsApp Cloud API
-    let wa_service = WhatsAppService::new(
-        state.config.meta_whatsapp_token.clone(),
-        state.config.meta_whatsapp_phone_number_id.clone(),
-    );
-    wa_service.send_otp(&destination, &plain_otp).await?;
+    // If delivery fails, discard the pending session and preserve the old OTP.
+    if let Err(send_error) = wa_service.send_otp(&destination, &plain_otp).await {
+        let _ = OtpEngine::discard_pending_session(&state.db, session_id).await;
+        return Err(send_error);
+    }
+
+    // Only activate the new OTP after Meta accepts the send request.
+    if let Err(activation_error) = OtpEngine::activate_pending_session(
+        &state.db,
+        session_id,
+        &destination,
+        "whatsapp",
+        &purpose,
+    )
+    .await
+    {
+        let _ = OtpEngine::discard_pending_session(&state.db, session_id).await;
+        return Err(activation_error);
+    }
 
     Ok(())
 }
