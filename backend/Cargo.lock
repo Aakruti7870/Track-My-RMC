@@ -2851,6 +2851,7 @@ dependencies = [
  "bigdecimal",
  "chrono",
  "dotenvy",
+ "hex",
  "hmac",
  "jsonwebtoken",
  "rand",
