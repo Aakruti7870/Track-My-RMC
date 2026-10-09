@@ -101,7 +101,7 @@ impl WhatsAppService {
                         "parameters": [
                             {
                                 "type": "text",
-                                "text": otp
+                                "text": "COPY_CODE"
                             }
                         ]
                     }
