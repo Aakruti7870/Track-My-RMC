@@ -32,14 +32,19 @@ impl WhatsAppService {
     pub async fn send_otp(&self, recipient_phone: &str, otp: &str) -> Result<(), AppError> {
         let recipient = Self::normalize_phone(recipient_phone);
 
+        if !(10..=15).contains(&recipient.len()) || !recipient.chars().all(|c| c.is_ascii_digit()) {
+            return Err(AppError::InternalError(
+                "Invalid WhatsApp recipient number".to_string(),
+            ));
+        }
+
         let (token, phone_number_id) = match (&self.token, &self.phone_number_id) {
             (Some(t), Some(pid)) if !t.is_empty() && !pid.is_empty() => (t, pid),
             _ => {
-                info!(
-                    recipient = %recipient,
-                    "Meta WhatsApp credentials not configured. Mocking OTP dispatch in non-production mode"
-                );
-                return Ok(());
+                error!("Meta WhatsApp credentials are missing");
+                return Err(AppError::InternalError(
+                    "WhatsApp OTP service is not configured".to_string(),
+                ));
             }
         };
 
@@ -95,7 +100,9 @@ impl WhatsAppService {
             .await
             .map_err(|e| {
                 error!(error = ?e, "Failed to connect to Meta WhatsApp Cloud API");
-                AppError::InternalError("WhatsApp delivery service is temporarily unreachable".to_string())
+                AppError::InternalError(
+                    "WhatsApp delivery service is temporarily unreachable".to_string(),
+                )
             })?;
 
         if !response.status().is_success() {
