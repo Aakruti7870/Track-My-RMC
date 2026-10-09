@@ -10,7 +10,6 @@ pub struct WhatsAppService {
 }
 
 impl WhatsAppService {
-
     pub fn validate_config(&self) -> Result<(), AppError> {
         match (&self.token, &self.phone_number_id) {
             (Some(token), Some(phone_number_id))
@@ -27,7 +26,6 @@ impl WhatsAppService {
         }
     }
 
-
     pub fn new(token: Option<String>, phone_number_id: Option<String>) -> Self {
         Self {
             client: Client::new(),
@@ -40,24 +38,26 @@ impl WhatsAppService {
     pub fn normalize_phone(phone: &str) -> String {
         let clean: String = phone.chars().filter(|c| c.is_ascii_digit()).collect();
         if clean.len() == 10 {
-            format!("91{}", clean) // Default to India country code 91
+            format!("91{}", clean)
         } else {
             clean
         }
     }
 
-    /// Dispatches WhatsApp OTP message via Meta WhatsApp Cloud API
+    /// Dispatches WhatsApp OTP message via Meta WhatsApp Cloud API.
     pub async fn send_otp(&self, recipient_phone: &str, otp: &str) -> Result<(), AppError> {
         let recipient = Self::normalize_phone(recipient_phone);
 
-        if !(10..=15).contains(&recipient.len()) || !recipient.chars().all(|c| c.is_ascii_digit()) {
+        if !(10..=15).contains(&recipient.len())
+            || !recipient.chars().all(|c| c.is_ascii_digit())
+        {
             return Err(AppError::InternalError(
                 "Invalid WhatsApp recipient number".to_string(),
             ));
         }
 
         let (token, phone_number_id) = match (&self.token, &self.phone_number_id) {
-            (Some(t), Some(pid)) if !t.is_empty() && !pid.is_empty() => (t, pid),
+            (Some(t), Some(pid)) if !t.trim().is_empty() && !pid.trim().is_empty() => (t, pid),
             _ => {
                 error!("Meta WhatsApp credentials are missing");
                 return Err(AppError::InternalError(
@@ -71,9 +71,9 @@ impl WhatsAppService {
             phone_number_id
         );
 
-        // Approved Meta authentication template: login_code.
-        // The template shown in WhatsApp Manager uses the OTP body variable
-        // and the Copy code authentication button.
+        // The approved template body is:
+        // "OTP Code: {{1}}. This is your OTP code for {{2}}. ..."
+        // {{1}} is the generated OTP; {{2}} is the login context.
         let payload = json!({
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
@@ -91,6 +91,10 @@ impl WhatsAppService {
                             {
                                 "type": "text",
                                 "text": otp
+                            },
+                            {
+                                "type": "text",
+                                "text": "Login"
                             }
                         ]
                     },
