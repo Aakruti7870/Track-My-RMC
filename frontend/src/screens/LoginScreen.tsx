@@ -162,7 +162,7 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       const response = await requestOtp(fullNumber);
-      if (response.channel !== "sms") throw { detail: "User Login requires mobile OTP" };
+      if (response.channel !== "whatsapp" && response.channel !== "sms") throw { detail: "WhatsApp OTP delivery was not confirmed. Please try again." };
       setIdentifier(fullNumber);
       setCode("");
       setOtpVisual("idle");
