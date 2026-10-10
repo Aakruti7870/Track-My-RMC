@@ -15,14 +15,14 @@ flowchart TD
     C -- No --> D[Diagnose service, DB connectivity, migrations]
     C -- Yes --> E[Fix TLS and reverse-proxy configuration in deployment script]
     D --> E
-    E --> F[Fix DB target and validate secret/config mapping]
+    E --> F[Preserve DB target; verify migration gate]
     F --> G[Run Rust, frontend, admin, security and contract checks]
     G --> H{All CI checks pass?}
     H -- No --> I[Fix failing code/tests on remediation branch]
     I --> G
     H -- Yes --> J[Review diff and production release gates]
     J --> K[Deploy via GitHub OIDC and SSM]
-    K --> L[Verify HTTPS apex/www, API health, frontend assets]
+    K --> L[Verify HTTPS apex, API health, frontend assets; check www/Render separately]
     L --> M[Verify OTP delivery and role-based auth end-to-end]
     M --> N[Audit module parity and data migration evidence]
     N --> O{All release gates pass?}
@@ -39,6 +39,7 @@ flowchart TD
 - The current deployment script writes an Nginx HTTP-only server block. No origin certificate was found under the checked Let's Encrypt/SSL paths; public HTTPS previously returned Cloudflare 521.
 - Cloudflare DNS currently points apex `trackmyrmc.com` to EC2 `13.203.215.125` (proxied), but `www.trackmyrmc.com` is a proxied CNAME to `trackmyrmc-frontend.onrender.com`. The deployment must not assume apex and www terminate on the same origin; DNS was not changed. Cloudflare SSL mode is Full (strict), Always Use HTTPS is off, and automatic HTTPS rewrites are on.
 - The AWS deploy workflow builds and deploys `frontend/` and `backend/` but does not package/deploy `admin-web/`; the admin dashboard is currently CI-buildable but has no deployment target configured in this workflow.
+- The Rust route table does not expose WebAuthn/passkey endpoints, but the original mobile UI offered passkey login/enrollment that called those absent endpoints. The remediation branch disables the unsupported Expo routes and directs staff to implemented email OTP + TOTP/recovery instead.
 - The deploy script builds `DATABASE_URL` with database name `postgres`; the RDS instance metadata names `trackmyrmc` as the application database. This mismatch must be resolved and the actual live DB target verified before cutover.
 - The workflow can create `trackmyrmc/app-runtime` with blank provider credentials if the secret is absent. Production OTP delivery must be checked without printing secret values.
 - The current module parity audit documents major missing or partial Rust API domains compared with the original FastAPI/MongoDB implementation. A health endpoint does not establish functional parity.
