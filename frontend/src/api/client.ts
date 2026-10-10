@@ -117,11 +117,13 @@ export type MfaEnrollmentStartResponse = {
   otpauth_uri: string;
   qr_data_uri?: string | null;
   expires_in: number;
+  recovery_codes: string[];
 };
 
 export type MfaEnrollmentConfirmResponse = {
   status: "MFA_ENABLED";
   recovery_codes: string[];
+  challenge_token: string;
   message: string;
 };
 
