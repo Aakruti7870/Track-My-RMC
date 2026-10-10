@@ -200,11 +200,8 @@ export default function LoginScreen() {
       setCode("");
       setRecoveryCode("");
       setOtpVisual("idle");
-      if (response.status === "AUTHENTICATOR_REQUIRED") {
-        setPhase(response.passkey_available ? "staff_passkey" : "staff_totp");
-        clearTimer();
-        return;
-      }
+      // Staff must complete email OTP before the challenge-bound TOTP/recovery factor.
+      // Never jump directly to an authenticator or passkey from the OTP-send step.
       if (response.status !== "OTP_SENT" || response.channel !== "email") {
         throw { detail: "Plant Staff secure login could not start" };
       }
