@@ -114,7 +114,7 @@ cat > /etc/nginx/sites-available/trackmyrmc <<'NGINX_BOOTSTRAP'
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
-    server_name trackmyrmc.com www.trackmyrmc.com _;
+    server_name trackmyrmc.com _;
 
     location ^~ /.well-known/acme-challenge/ {
         root /var/www/certbot;
@@ -139,7 +139,7 @@ systemctl restart nginx
 certbot certonly --webroot -w /var/www/certbot \
     --non-interactive --agree-tos --register-unsafely-without-email \
     --keep-until-expiring --cert-name trackmyrmc.com \
-    -d trackmyrmc.com -d www.trackmyrmc.com
+    -d trackmyrmc.com
 
 test -s /etc/letsencrypt/live/trackmyrmc.com/fullchain.pem
 test -s /etc/letsencrypt/live/trackmyrmc.com/privkey.pem
@@ -172,7 +172,7 @@ server {
 server {
     listen 443 ssl;
     listen [::]:443 ssl;
-    server_name trackmyrmc.com www.trackmyrmc.com;
+    server_name trackmyrmc.com;
 
     ssl_certificate /etc/letsencrypt/live/trackmyrmc.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/trackmyrmc.com/privkey.pem;
