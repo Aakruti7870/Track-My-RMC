@@ -51,7 +51,9 @@ type AuthContextValue = {
   verify: (identifier: string, code: string) => Promise<Me>;
   verifyStaff: (identifier: string, code: string) => Promise<import("@/src/api/client").StaffMfaChallengeResponse>;
   verifyStaffAuthenticator: (identifier: string, code: string) => Promise<Me>;
-  verifyStaffRecovery: (identifier: string, code: string) => Promise<Me>;\n  startStaffMfaEnrollment: () => Promise<import("@/src/api/client").MfaEnrollmentStartResponse>;\n  confirmStaffMfaEnrollment: (code: string) => Promise<import("@/src/api/client").MfaEnrollmentConfirmResponse>;
+  verifyStaffRecovery: (identifier: string, code: string) => Promise<Me>;
+  startStaffMfaEnrollment: () => Promise<import("@/src/api/client").MfaEnrollmentStartResponse>;
+  confirmStaffMfaEnrollment: (code: string) => Promise<import("@/src/api/client").MfaEnrollmentConfirmResponse>;
   completeStaffPasskey: (handoffCode: string) => Promise<Me>;
   verifyGoogle: (code: string) => Promise<Me>;
   demoLogin: (role: string) => Promise<Me>;
@@ -65,7 +67,8 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [hydrating, setHydrating] = useState(true);
   const [token, setToken] = useState<string | null>(null);
-  const [user, setUser] = useState<Me | null>(null);\n  const [staffMfaChallenge, setStaffMfaChallenge] = useState<string | null>(null);
+  const [user, setUser] = useState<Me | null>(null);
+  const [staffMfaChallenge, setStaffMfaChallenge] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -199,7 +202,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         verify,
         verifyStaff,
         verifyStaffAuthenticator,
-        verifyStaffRecovery: verifyStaffRecoveryCode,\n        startStaffMfaEnrollment,\n        confirmStaffMfaEnrollment,
+        verifyStaffRecovery: verifyStaffRecoveryCode,
+        startStaffMfaEnrollment,
+        confirmStaffMfaEnrollment,
         completeStaffPasskey,
         verifyGoogle,
         demoLogin,
