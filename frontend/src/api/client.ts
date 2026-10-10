@@ -92,7 +92,7 @@ export type OtpRequestResponse = {
   delivery?: { adapter: string; configured: boolean };
 };
 
-export type StaffAuthMethodResponse = {
+export type StaffMfaChallengeResponse = {\n  status: "MFA_REQUIRED" | "MFA_ENROLLMENT_REQUIRED";\n  challenge_token: string;\n  expires_in: number;\n  email: string;\n  mfa_setup_required: boolean;\n  message: string;\n};\n\nexport type StaffAuthMethodResponse = {
   status: "AUTHENTICATOR_REQUIRED" | "EMAIL_OTP_REQUIRED";
   email: string;
   method: "totp" | "email_otp";
