@@ -40,6 +40,8 @@ flowchart TD
 - Cloudflare DNS currently points apex `trackmyrmc.com` to EC2 `13.203.215.125` (proxied), but `www.trackmyrmc.com` is a proxied CNAME to `trackmyrmc-frontend.onrender.com`. The deployment must not assume apex and www terminate on the same origin; DNS was not changed. Cloudflare SSL mode is Full (strict), Always Use HTTPS is off, and automatic HTTPS rewrites are on.
 - The AWS deploy workflow builds and deploys `frontend/` and `backend/` but does not package/deploy `admin-web/`; the admin dashboard is currently CI-buildable but has no deployment target configured in this workflow.
 - The Rust route table does not expose WebAuthn/passkey endpoints, but the original mobile UI offered passkey login/enrollment that called those absent endpoints. The remediation branch disables the unsupported Expo routes and directs staff to implemented email OTP + TOTP/recovery instead.
+- The Play Store readiness script was written against the removed Python backend. It is now aligned to the Rust project and explicitly checks required release endpoints. The current Rust router still lacks `/api/auth/play-review`, `/api/account-deletion/public-request`, and `/.well-known/assetlinks.json`; Android Play submission remains blocked until these contracts and isolated review fixtures are implemented and tested.
+- The admin dashboard can now be built in CI, but the production deployment workflow has no admin hosting target and `/api/admin/auth/login` intentionally fails closed until the admin UI uses the implemented challenge-bound email OTP plus TOTP/recovery flow. The hardcoded privileged email was removed from the handler.
 - The deploy script builds `DATABASE_URL` with database name `postgres`; the RDS instance metadata names `trackmyrmc` as the application database. This mismatch must be resolved and the actual live DB target verified before cutover.
 - The workflow can create `trackmyrmc/app-runtime` with blank provider credentials if the secret is absent. Production OTP delivery must be checked without printing secret values.
 - The current module parity audit documents major missing or partial Rust API domains compared with the original FastAPI/MongoDB implementation. A health endpoint does not establish functional parity.
@@ -53,9 +55,10 @@ flowchart TD
 4. **Automated verification:** Rust format/check/clippy/tests, frontend typecheck and route/policy checks, admin build, deployment workflow validation, and targeted auth/OTP tests.
 5. **Deploy from a review branch:** deploy only after CI passes; use existing GitHub OIDC/SSM deployment path; capture release SHA and SSM command result.
 6. **Live smoke tests:** HTTPS apex health, API response, frontend index/assets, redirects, TLS validity/hostname, and rollback readiness. Verify the separately hosted `www`/Render frontend independently; do not test it as though it were the EC2 API.
-7. **Authentication:** test customer/driver WhatsApp OTP and staff email OTP→TOTP/recovery using authorized test accounts; verify failures/rate limits/session revocation. Never disclose OTPs/tokens.
-8. **Parity/data audit:** compare source domains and Rust route coverage, verify production schema/migration state and record-count/relationship evidence before declaring migration complete.
-9. **Release decision:** mark each gate PASS/FAIL/NOT VERIFIED with evidence; do not claim production-ready while any critical gate is unverified.
+7. **Authentication:** test customer/driver WhatsApp OTP and staff email OTP→TOTP/recovery using authorized test accounts; complete admin challenge-bound MFA; verify failures/rate limits/session revocation. Never disclose OTPs/tokens.
+8. **Store/admin release gates:** implement and test isolated Play review accounts and fixtures, public account-deletion request, Android asset-links endpoint, and admin MFA/hosting. Do not claim Play Store or admin portal readiness until these pass.
+9. **Parity/data audit:** compare source domains and Rust route coverage, verify production schema/migration state and record-count/relationship evidence before declaring migration complete.
+10. **Release decision:** mark each gate PASS/FAIL/NOT VERIFIED with evidence; do not claim production-ready while any critical gate is unverified.
 
 ## Safety constraints
 
