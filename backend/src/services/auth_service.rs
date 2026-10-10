@@ -484,6 +484,7 @@ pub struct StaffMfaEnrollmentStartResponse {
 pub struct StaffMfaEnrollmentConfirmResponse {
     pub status: &'static str,
     pub recovery_codes: Vec<String>,
+    pub challenge_token: String,
     pub message: &'static str,
 }
 pub async fn start_staff_mfa_enrollment(state: &AppState, challenge_token: &str) -> Result<StaffMfaEnrollmentStartResponse, AppError> {
@@ -512,8 +513,8 @@ pub async fn confirm_staff_mfa_enrollment(state: &AppState, challenge_token: &st
     }
     let consumed = sqlx::query("UPDATE staff_mfa_challenges SET consumed_at=NOW() WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>NOW() AND attempts<max_attempts").bind(&digest).execute(&state.db).await?;
     if consumed.rows_affected() != 1 { return Err(AppError::Unauthorized("MFA enrollment challenge was already used or expired".to_string())); }
-    let recovery_codes: Vec<String> = sqlx::query_scalar("SELECT backup_codes FROM user_totp_credentials WHERE user_id=$1").bind(user_id).fetch_optional(&state.db).await?.unwrap_or_default();
-    Ok(StaffMfaEnrollmentConfirmResponse { status:"MFA_ENABLED", recovery_codes, message:"Authenticator enabled. Save your one-time recovery codes securely." })
+    let (challenge_token, _) = create_staff_challenge(state, user_id, "login").await?;
+    Ok(StaffMfaEnrollmentConfirmResponse { status:"MFA_ENABLED", recovery_codes: Vec::new(), challenge_token, message:"Authenticator enabled. Save the recovery codes shown during setup." })
 }
 
 /// Verifies a challenge-bound TOTP or recovery code and consumes the challenge before issuing a session.
