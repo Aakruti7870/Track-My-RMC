@@ -169,17 +169,6 @@ nginx -t
 systemctl enable nginx
 systemctl restart nginx
 
-aws s3 cp "s3://$BUCKET/backend-$RELEASE_SHA" "/opt/trackmyrmc/releases/backend-$RELEASE_SHA"
-aws s3 cp "s3://$BUCKET/frontend-$RELEASE_SHA.tgz" "/tmp/frontend-$RELEASE_SHA.tgz"
-chmod 0755 "/opt/trackmyrmc/releases/backend-$RELEASE_SHA"
-
-rm -rf /opt/trackmyrmc/frontend.new
-mkdir /opt/trackmyrmc/frontend.new
-tar -xzf "/tmp/frontend-$RELEASE_SHA.tgz" -C /opt/trackmyrmc/frontend.new --strip-components=1
-rm -rf /opt/trackmyrmc/frontend.prev
-if [ -d /opt/trackmyrmc/frontend ]; then mv /opt/trackmyrmc/frontend /opt/trackmyrmc/frontend.prev; fi
-mv /opt/trackmyrmc/frontend.new /opt/trackmyrmc/frontend
-
 APP_JSON="$(aws secretsmanager get-secret-value --secret-id "$APP_SECRET" --query SecretString --output text)"
 DB_NAME="$(printf '%s' "$APP_JSON" | jq -r '.DB_NAME // "trackmyrmc"')"
 if [[ ! "$DB_NAME" =~ ^[A-Za-z0-9_]+$ ]]; then
@@ -210,6 +199,19 @@ META_WABA="$(printf '%s' "$APP_JSON" | jq -r '.META_WABA_ID // empty')"
 EMAIL_KEY="$(printf '%s' "$APP_JSON" | jq -r '.EMAIL_API_KEY // empty')"
 EMAIL_FROM="$(printf '%s' "$APP_JSON" | jq -r '.EMAIL_FROM_ADDRESS // "noreply@trackmyrmc.com"')"
 META_GRAPH_API_VERSION="$(printf '%s' "$APP_JSON" | jq -r '.META_GRAPH_API_VERSION // "v26.0"')"
+
+
+aws s3 cp "s3://$BUCKET/backend-$RELEASE_SHA" "/opt/trackmyrmc/releases/backend-$RELEASE_SHA"
+aws s3 cp "s3://$BUCKET/frontend-$RELEASE_SHA.tgz" "/tmp/frontend-$RELEASE_SHA.tgz"
+chmod 0755 "/opt/trackmyrmc/releases/backend-$RELEASE_SHA"
+
+rm -rf /opt/trackmyrmc/frontend.new
+mkdir /opt/trackmyrmc/frontend.new
+tar -xzf "/tmp/frontend-$RELEASE_SHA.tgz" -C /opt/trackmyrmc/frontend.new --strip-components=1
+rm -rf /opt/trackmyrmc/frontend.prev
+if [ -d /opt/trackmyrmc/frontend ]; then mv /opt/trackmyrmc/frontend /opt/trackmyrmc/frontend.prev; fi
+mv /opt/trackmyrmc/frontend.new /opt/trackmyrmc/frontend
+
 
 install -d -m 0750 /etc/trackmyrmc
 cat > /etc/trackmyrmc/app.env <<EOF
