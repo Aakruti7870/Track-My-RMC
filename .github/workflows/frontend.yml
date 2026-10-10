@@ -10,6 +10,7 @@ on:
   pull_request:
     paths:
       - "frontend/**"
+      - "admin-web/**"
       - ".github/workflows/frontend.yml"
 
 jobs:
