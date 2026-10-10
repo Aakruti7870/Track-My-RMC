@@ -51,7 +51,7 @@ jobs:
       - name: Format Check
         run: |
           cd backend
-          cargo fmt --all
+          cargo fmt --all -- --check
 
       - name: Cargo Check
         run: |
