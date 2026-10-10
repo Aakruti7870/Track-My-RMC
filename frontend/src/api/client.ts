@@ -281,7 +281,7 @@ export async function requestStaffOtp(identifier: string) {
 }
 
 export async function verifyStaffOtp(identifier: string, code: string) {
-  return apiPublicPost<AuthSessionResponse>("/auth/otp/email/verify", { email: identifier, otp: code });
+  return apiPublicPost<StaffMfaChallengeResponse>("/auth/otp/email/verify", { email: identifier, otp: code });
 }
 
 export async function staffAuthMethod(identifier: string) {
@@ -302,12 +302,17 @@ export async function verifyStaffRecovery(challengeToken: string, recoveryCode: 
   });
 }
 
-export async function startStaffMfaEnrollment(token: string) {
-  return apiPost<MfaEnrollmentStartResponse>("/auth/staff/mfa/enroll/start", token);
+export async function startStaffMfaEnrollment(challengeToken: string) {
+  return apiPublicPost<MfaEnrollmentStartResponse>("/auth/staff/mfa/enroll/start", {
+    challenge_token: challengeToken,
+  });
 }
 
-export async function confirmStaffMfaEnrollment(token: string, code: string) {
-  return apiPost<MfaEnrollmentConfirmResponse>("/auth/staff/mfa/enroll/confirm", token, { code });
+export async function confirmStaffMfaEnrollment(challengeToken: string, code: string) {
+  return apiPublicPost<MfaEnrollmentConfirmResponse>("/auth/staff/mfa/enroll/confirm", {
+    challenge_token: challengeToken,
+    code,
+  });
 }
 
 export async function startStaffPasskeyAuthentication(
