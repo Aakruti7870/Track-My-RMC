@@ -18,6 +18,154 @@ fi
 id -u trackmyrmc >/dev/null 2>&1 || useradd --system --home /opt/trackmyrmc --shell /usr/sbin/nologin trackmyrmc
 mkdir -p /opt/trackmyrmc/releases /opt/trackmyrmc/frontend
 
+# Bootstrap HTTP virtual host for ACME HTTP-01 validation.
+install -d -m 0755 /var/www/certbot/.well-known/acme-challenge
+cat > /etc/nginx/sites-available/trackmyrmc <<'NGINX_BOOTSTRAP'
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name trackmyrmc.com _;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        default_type text/plain;
+        try_files $uri =404;
+    }
+
+    location = /healthz {
+        default_type text/plain;
+        return 200 "ok";
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_read_timeout 120s;
+    }
+
+    location = /health {
+        proxy_pass http://127.0.0.1:8000/health;
+        proxy_set_header Host $host;
+    }
+
+    location /_expo/static/ {
+        root /opt/trackmyrmc/frontend;
+        try_files $uri =404;
+    }
+
+    location / {
+        root /opt/trackmyrmc/frontend;
+        index index.html;
+        try_files $uri /index.html;
+    }
+}
+NGINX_BOOTSTRAP
+
+rm -f /etc/nginx/sites-enabled/default
+ln -sf /etc/nginx/sites-available/trackmyrmc /etc/nginx/sites-enabled/trackmyrmc
+nginx -t
+systemctl enable nginx
+systemctl restart nginx
+
+# Obtain/renew a publicly trusted certificate through the existing proxied HTTP origin.
+certbot certonly --webroot -w /var/www/certbot \
+    --non-interactive --agree-tos --register-unsafely-without-email \
+    --keep-until-expiring --cert-name trackmyrmc.com \
+    -d trackmyrmc.com
+
+test -s /etc/letsencrypt/live/trackmyrmc.com/fullchain.pem
+test -s /etc/letsencrypt/live/trackmyrmc.com/privkey.pem
+
+install -d -m 0755 /etc/letsencrypt/renewal-hooks/deploy
+cat > /etc/letsencrypt/renewal-hooks/deploy/reload-nginx <<'HOOK'
+#!/bin/sh
+systemctl reload nginx
+HOOK
+chmod 0755 /etc/letsencrypt/renewal-hooks/deploy/reload-nginx
+
+cat > /etc/nginx/sites-available/trackmyrmc <<'NGINX'
+# HTTP remains available for ACME renewal; all application traffic uses HTTPS.
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name trackmyrmc.com _;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        default_type text/plain;
+        try_files $uri =404;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name trackmyrmc.com;
+
+    ssl_certificate /etc/letsencrypt/live/trackmyrmc.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/trackmyrmc.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:TrackMyRMCTLS:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    add_header Strict-Transport-Security "max-age=31536000" always;
+
+    root /opt/trackmyrmc/frontend;
+    index index.html;
+
+    location = /healthz {
+        default_type text/plain;
+        return 200 "ok";
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_read_timeout 120s;
+    }
+
+    location = /health {
+        proxy_pass http://127.0.0.1:8000/health;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    location = /.well-known/assetlinks.json {
+        proxy_pass http://127.0.0.1:8000/.well-known/assetlinks.json;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /_expo/static/ {
+        try_files $uri =404;
+        expires 1y;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+    location / {
+        try_files $uri /index.html;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+    }
+}
+NGINX
+
+nginx -t
+
+systemctl enable nginx
+systemctl restart nginx
+
 aws s3 cp "s3://$BUCKET/backend-$RELEASE_SHA" "/opt/trackmyrmc/releases/backend-$RELEASE_SHA"
 aws s3 cp "s3://$BUCKET/frontend-$RELEASE_SHA.tgz" "/tmp/frontend-$RELEASE_SHA.tgz"
 chmod 0755 "/opt/trackmyrmc/releases/backend-$RELEASE_SHA"
@@ -108,125 +256,6 @@ sed -i "s/backend-PLACEHOLDER/backend-$RELEASE_SHA/" /etc/systemd/system/trackmy
 
 chown -R trackmyrmc:trackmyrmc /opt/trackmyrmc
 
-# Bootstrap HTTP virtual host for ACME HTTP-01 validation.
-install -d -m 0755 /var/www/certbot/.well-known/acme-challenge
-cat > /etc/nginx/sites-available/trackmyrmc <<'NGINX_BOOTSTRAP'
-server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
-    server_name trackmyrmc.com _;
-
-    location ^~ /.well-known/acme-challenge/ {
-        root /var/www/certbot;
-        default_type text/plain;
-        try_files $uri =404;
-    }
-
-    location / {
-        root /opt/trackmyrmc/frontend;
-        try_files $uri /index.html;
-    }
-}
-NGINX_BOOTSTRAP
-
-rm -f /etc/nginx/sites-enabled/default
-ln -sf /etc/nginx/sites-available/trackmyrmc /etc/nginx/sites-enabled/trackmyrmc
-nginx -t
-systemctl enable nginx
-systemctl restart nginx
-
-# Obtain/renew a publicly trusted certificate through the existing proxied HTTP origin.
-certbot certonly --webroot -w /var/www/certbot \
-    --non-interactive --agree-tos --register-unsafely-without-email \
-    --keep-until-expiring --cert-name trackmyrmc.com \
-    -d trackmyrmc.com
-
-test -s /etc/letsencrypt/live/trackmyrmc.com/fullchain.pem
-test -s /etc/letsencrypt/live/trackmyrmc.com/privkey.pem
-
-install -d -m 0755 /etc/letsencrypt/renewal-hooks/deploy
-cat > /etc/letsencrypt/renewal-hooks/deploy/reload-nginx <<'HOOK'
-#!/bin/sh
-systemctl reload nginx
-HOOK
-chmod 0755 /etc/letsencrypt/renewal-hooks/deploy/reload-nginx
-
-cat > /etc/nginx/sites-available/trackmyrmc <<'NGINX'
-# HTTP remains available for ACME renewal; all application traffic uses HTTPS.
-server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
-    server_name trackmyrmc.com www.trackmyrmc.com _;
-
-    location ^~ /.well-known/acme-challenge/ {
-        root /var/www/certbot;
-        default_type text/plain;
-        try_files $uri =404;
-    }
-
-    location / {
-        return 301 https://$host$request_uri;
-    }
-}
-
-server {
-    listen 443 ssl;
-    listen [::]:443 ssl;
-    server_name trackmyrmc.com;
-
-    ssl_certificate /etc/letsencrypt/live/trackmyrmc.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/trackmyrmc.com/privkey.pem;
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_session_cache shared:TrackMyRMCTLS:10m;
-    ssl_session_timeout 1d;
-    ssl_session_tickets off;
-
-    add_header Strict-Transport-Security "max-age=31536000" always;
-
-    root /opt/trackmyrmc/frontend;
-    index index.html;
-
-    location = /healthz {
-        default_type text/plain;
-        return 200 "ok";
-    }
-
-    location /api/ {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_read_timeout 120s;
-    }
-
-    location = /health {
-        proxy_pass http://127.0.0.1:8000/health;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
-
-    location = /.well-known/assetlinks.json {
-        proxy_pass http://127.0.0.1:8000/.well-known/assetlinks.json;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    location /_expo/static/ {
-        try_files $uri =404;
-        expires 1y;
-        add_header Cache-Control "public, max-age=31536000, immutable";
-    }
-
-    location / {
-        try_files $uri /index.html;
-        add_header Cache-Control "no-cache, no-store, must-revalidate";
-    }
-}
-NGINX
-
-nginx -t
 systemctl daemon-reload
 systemctl enable trackmyrmc-backend
 systemctl restart trackmyrmc-backend
