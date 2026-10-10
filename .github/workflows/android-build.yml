@@ -7,6 +7,11 @@ on:
     paths:
       - "frontend/**"
       - ".github/workflows/android-build.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/android-build.yml"
 
 permissions:
   contents: read
@@ -43,6 +48,7 @@ jobs:
           java-version: "17"
 
       - name: Verify production backend
+        if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           set -euo pipefail
@@ -76,7 +82,10 @@ jobs:
         run: npx expo prebuild --platform android --clean --no-install
 
       - name: Verify release version
-        run: grep -q 'versionCode 89' android/app/build.gradle
+        run: |
+          set -euo pipefail
+          grep -q 'versionCode 89' android/app/build.gradle
+          node -e "const app=require('./app.json').expo; if(app.version !== process.env.VERSION_NAME || app.android.versionCode !== Number(process.env.VERSION_CODE)) process.exit(1); console.log('Android release version verified')"
 
       - name: Restore upload keystore
         working-directory: frontend/android/app
