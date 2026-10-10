@@ -132,6 +132,13 @@ certbot certonly --webroot -w /var/www/certbot \
 test -s /etc/letsencrypt/live/trackmyrmc.com/fullchain.pem
 test -s /etc/letsencrypt/live/trackmyrmc.com/privkey.pem
 
+install -d -m 0755 /etc/letsencrypt/renewal-hooks/deploy
+cat > /etc/letsencrypt/renewal-hooks/deploy/reload-nginx <<'HOOK'
+#!/bin/sh
+systemctl reload nginx
+HOOK
+chmod 0755 /etc/letsencrypt/renewal-hooks/deploy/reload-nginx
+
 cat > /etc/nginx/sites-available/trackmyrmc <<'NGINX'
 # HTTP remains available for ACME renewal; all application traffic uses HTTPS.
 server {
