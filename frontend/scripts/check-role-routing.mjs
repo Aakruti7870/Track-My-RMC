@@ -24,6 +24,7 @@ const login = readLoginSource();
 const onboarding = read("app/plant-onboarding.tsx");
 const mfaSetup = read("app/mfa-setup.tsx");
 const apiClient = read("src/api/client.ts");
+const reviewAccess = read("app/review-access.tsx");
 const index = read("app/index.tsx");
 
 const expectedRoutes = {
@@ -70,6 +71,10 @@ if (!login.includes('testID="login-mobile-input"')) {
 
 if (!login.includes('testID="login-plant-email-input"') || !login.includes('testID="login-plant-send-otp"')) {
   failures.push("Plant Staff Login must start from the approved work email");
+}
+
+if (!login.includes('EXPO_PUBLIC_ENABLE_PLAY_REVIEW === "true"') || !reviewAccess.includes('EXPO_PUBLIC_ENABLE_PLAY_REVIEW === "true"') || !reviewAccess.includes('<Redirect href="/login" />')) {
+  failures.push("Google Play reviewer access must stay disabled by default until its Rust backend is implemented");
 }
 
 if (apiClient.includes("/auth/staff/passkey/") || apiClient.includes("exchangeStaffPasskeyHandoff")) {
