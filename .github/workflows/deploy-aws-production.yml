@@ -60,15 +60,22 @@ jobs:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Ensure runtime secret exists
+      - name: Validate production runtime secret
         run: |
           set -euo pipefail
-          if ! aws secretsmanager describe-secret --secret-id "${APP_SECRET_NAME}" >/dev/null 2>&1; then
-            JWT_SECRET="$(openssl rand -hex 64)"
-            OTP_PEPPER="$(openssl rand -hex 32)"
-            jq -n               --arg jwt "$JWT_SECRET"               --arg pepper "$OTP_PEPPER"               '{JWT_SECRET:$jwt,OTP_PEPPER:$pepper,META_WHATSAPP_TOKEN:"",META_PHONE_NUMBER_ID:"",META_WABA_ID:"",EMAIL_API_KEY:"",EMAIL_FROM_ADDRESS:"noreply@trackmyrmc.com"}'               >/tmp/app-secret.json
-            aws secretsmanager create-secret               --name "${APP_SECRET_NAME}"               --description "TrackMyRMC Rust production runtime configuration"               --secret-string file:///tmp/app-secret.json
-          fi
+          SECRET_JSON="$(aws secretsmanager get-secret-value --secret-id "${APP_SECRET_NAME}" --query SecretString --output text)"
+          printf '%s' "$SECRET_JSON" | jq -e '
+            (.JWT_SECRET | type == "string" and length >= 64) and
+            (.OTP_PEPPER | type == "string" and length >= 32) and
+            (.META_WHATSAPP_TOKEN | type == "string" and length > 0) and
+            (.META_PHONE_NUMBER_ID | type == "string" and length > 0) and
+            (.META_WABA_ID | type == "string" and length > 0) and
+            (.EMAIL_API_KEY | type == "string" and length > 0) and
+            (.EMAIL_FROM_ADDRESS | type == "string" and length > 0) and
+            (.DB_NAME == "trackmyrmc")
+          ' >/dev/null
+          unset SECRET_JSON
+          echo "Required production secrets are present; values were not logged."
 
       - name: Upload release
         id: release
@@ -97,8 +104,10 @@ jobs:
           done
           exit 1
 
-      - name: Verify EC2 health
+      - name: Verify public HTTPS, API, and web assets
         run: |
           set -euo pipefail
-          curl --retry 10 --retry-all-errors --retry-delay 3 -fsS http://13.203.215.125/health
-          curl --retry 10 --retry-all-errors --retry-delay 3 -fsS http://13.203.215.125/ | grep -F '_expo/static/' >/dev/null
+          curl --retry 10 --retry-all-errors --retry-delay 3 -fsS https://trackmyrmc.com/health
+          curl --retry 10 --retry-all-errors --retry-delay 3 -fsS https://www.trackmyrmc.com/health
+          curl --retry 10 --retry-all-errors --retry-delay 3 -fsS https://trackmyrmc.com/ | grep -F '_expo/static/' >/dev/null
+          curl --retry 10 --retry-all-errors --retry-delay 3 -fsSI https://trackmyrmc.com/ | grep -Eiq '^HTTP/[^ ]+ 200'
