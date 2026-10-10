@@ -11,7 +11,10 @@ use crate::{
     services::{email_service::EmailService, whatsapp_service::WhatsAppService},
     state::AppState,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use rand::{distributions::Alphanumeric, Rng};
+use chrono::{Duration, Utc};
 use uuid::Uuid;
 
 #[derive(Debug, Deserialize)]
@@ -389,54 +392,123 @@ pub async fn send_email_otp(state: &AppState, req: SendEmailOtpRequest) -> Resul
     Ok(())
 }
 
-/// Verifies Email OTP for Plant Staff, Owners, and Administrators
+#[derive(Debug, Serialize)]
+pub struct StaffMfaChallengeResponse {
+    pub status: &'static str,
+    pub challenge_token: String,
+    pub expires_in: i64,
+    pub email: String,
+    pub mfa_setup_required: bool,
+    pub message: &'static str,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct VerifyStaffMfaRequest {
+    pub challenge_token: String,
+    pub code: String,
+}
+
+fn challenge_digest(token: &str) -> String {
+    hex::encode(Sha256::digest(token.as_bytes()))
+}
+
+async fn create_staff_challenge(
+    state: &AppState,
+    user_id: Uuid,
+    purpose: &str,
+) -> Result<(String, i64), AppError> {
+    let token: String = rand::thread_rng().sample_iter(&Alphanumeric).take(48).map(char::from).collect();
+    let expires_in = 300_i64;
+    sqlx::query(
+        "INSERT INTO staff_mfa_challenges (user_id, token_hash, purpose, expires_at) VALUES ($1,$2,$3,$4)"
+    )
+    .bind(user_id)
+    .bind(challenge_digest(&token))
+    .bind(purpose)
+    .bind(Utc::now() + Duration::seconds(expires_in))
+    .execute(&state.db)
+    .await?;
+    Ok((token, expires_in))
+}
+
+/// Verifies the first factor and returns a short-lived challenge, never a privileged JWT.
 pub async fn verify_email_otp(
     state: &AppState,
     req: VerifyEmailOtpRequest,
-) -> Result<AuthResponse, AppError> {
+) -> Result<StaffMfaChallengeResponse, AppError> {
     let destination = req.email.trim().to_lowercase();
-
     let user = user_repo::find_by_phone_or_email(&state.db, &destination)
         .await?
-        .ok_or_else(|| AppError::NotFound("Staff/Admin account not found".to_string()))?;
-
+        .ok_or_else(|| AppError::Unauthorized("Invalid email or verification code".to_string()))?;
     if !user.is_active {
-        return Err(AppError::Forbidden(
-            "Account is inactive. Contact support.".to_string(),
-        ));
+        return Err(AppError::Forbidden("Account is inactive. Contact support.".to_string()));
     }
-    if user
-        .email
-        .as_deref()
-        .map(|e| e.eq_ignore_ascii_case(&destination))
-        != Some(true)
-    {
-        return Err(AppError::Forbidden(
-            "Email OTP is restricted to the account's registered email.".to_string(),
-        ));
+    if user.email.as_deref().map(|e| e.eq_ignore_ascii_case(&destination)) != Some(true) {
+        return Err(AppError::Unauthorized("Invalid email or verification code".to_string()));
     }
-    const STAFF_ROLES: &[&str] = &[
-        "dispatcher",
-        "operator",
-        "supervisor",
-        "quality_engineer",
-        "store_manager",
-        "accountant",
-        "fleet_manager",
-        "owner",
-        "admin",
-    ];
+    const STAFF_ROLES: &[&str] = &["dispatcher","operator","supervisor","quality_engineer","store_manager","accountant","fleet_manager","owner","admin"];
     if !STAFF_ROLES.contains(&user.role.as_str()) {
-        return Err(AppError::Forbidden(
-            "Email OTP is restricted to staff and owner accounts.".to_string(),
-        ));
+        return Err(AppError::Forbidden("Email OTP is restricted to staff accounts.".to_string()));
     }
+    if user.role == "admin" && destination != "krushnabade54@gmail.com" {
+        return Err(AppError::Forbidden("This administrator account is not allowlisted.".to_string()));
+    }
+    OtpEngine::verify_otp(state, &destination, "email", "staff_login", &req.otp).await?;
+    let enabled: Option<bool> = sqlx::query_scalar(
+        "SELECT is_enabled FROM user_totp_credentials WHERE user_id=$1"
+    ).bind(user.id).fetch_optional(&state.db).await?;
+    let mfa_setup_required = enabled != Some(true);
+    let purpose = if mfa_setup_required { "enrollment" } else { "login" };
+    let (challenge_token, expires_in) = create_staff_challenge(state, user.id, purpose).await?;
+    Ok(StaffMfaChallengeResponse {
+        status: if mfa_setup_required { "MFA_ENROLLMENT_REQUIRED" } else { "MFA_REQUIRED" },
+        challenge_token,
+        expires_in,
+        email: destination,
+        mfa_setup_required,
+        message: if mfa_setup_required { "Email verified. Complete authenticator setup to continue." } else { "Email verified. Enter your authenticator or one-time recovery code." },
+    })
+}
 
-    // Fail closed: email OTP alone must never issue a staff/admin JWT.
-    let _ = req.otp;
-    Err(AppError::Forbidden(
-        "Staff sign-in requires email OTP followed by authenticator MFA. Full sessions remain disabled until the server-bound MFA challenge flow is implemented.".to_string(),
-    ))
+/// Verifies a challenge-bound TOTP or recovery code and consumes the challenge before issuing a session.
+pub async fn verify_staff_mfa(
+    state: &AppState,
+    req: VerifyStaffMfaRequest,
+) -> Result<AuthResponse, AppError> {
+    let digest = challenge_digest(&req.challenge_token);
+    let mut tx = state.db.begin().await?;
+    let row: Option<(Uuid, String)> = sqlx::query_as(
+        "SELECT user_id, purpose FROM staff_mfa_challenges WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>NOW() AND attempts<max_attempts FOR UPDATE"
+    ).bind(&digest).fetch_optional(&mut *tx).await?;
+    let (user_id, purpose) = row.ok_or_else(|| AppError::Unauthorized("MFA challenge is invalid or expired".to_string()))?;
+    if purpose != "login" {
+        return Err(AppError::Forbidden("Authenticator enrollment is required before login.".to_string()));
+    }
+    sqlx::query("UPDATE staff_mfa_challenges SET consumed_at=NOW() WHERE token_hash=$1 AND consumed_at IS NULL")
+        .bind(&digest).execute(&mut *tx).await?;
+    tx.commit().await?;
+
+    if let Err(err) = crate::auth::totp::verify_totp_login(&state.db, user_id, &req.code).await {
+        let _ = sqlx::query("UPDATE staff_mfa_challenges SET attempts=attempts+1 WHERE token_hash=$1 AND consumed_at IS NULL")
+            .bind(&digest).execute(&state.db).await;
+        return Err(err);
+    }
+    let user = user_repo::find_by_id(&state.db, user_id).await?
+        .ok_or_else(|| AppError::Unauthorized("Account not found".to_string()))?;
+    if !user.is_active || !is_staff_role(&user.role) {
+        return Err(AppError::Forbidden("Account is not authorized for staff login.".to_string()));
+    }
+    if user.role == "admin" && user.email.as_deref().map(|e| e.eq_ignore_ascii_case("krushnabade54@gmail.com")) != Some(true) {
+        return Err(AppError::Forbidden("This administrator account is not allowlisted.".to_string()));
+    }
+    let profile = user_repo::get_user_profile(&state.db, user.id).await?;
+    let kyc_status = profile.as_ref().map(|p| p.kyc_status.clone()).unwrap_or_else(|| "unverified".to_string());
+    let verified_name = profile.and_then(|p| p.verified_name);
+    let token = generate_token(user.id, &user.role, &user.phone, user.email.as_deref(), &state.config.jwt_secret, state.config.jwt_expiration_hours)?;
+    Ok(AuthResponse {
+        success: true, token, role: user.role.clone(),
+        user: UserResponse { id:user.id, phone:user.phone, email:user.email, full_name:user.full_name, role:user.role, kyc_status, verified_name }
+    })
 }
 
 /// Verifies TOTP Authenticator code for second factor or primary passwordless staff login
