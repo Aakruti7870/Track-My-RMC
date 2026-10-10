@@ -88,7 +88,6 @@ export type OtpRequestResponse = {
   message?: string;
   dev_otp?: string;
   mfa_setup_required?: boolean;
-  passkey_available?: boolean;
   delivery?: { adapter: string; configured: boolean };
 };
 
@@ -292,17 +291,6 @@ export async function confirmStaffMfaEnrollment(challengeToken: string, code: st
   return apiPublicPost<MfaEnrollmentConfirmResponse>("/auth/staff/mfa/enroll/confirm", {
     challenge_token: challengeToken,
     code,
-  });
-}
-
-export async function removeStaffPasskey(
-  token: string,
-  credentialId: string,
-  actorCode: string,
-) {
-  return apiPost<{ status: "PASSKEY_REMOVED" }>("/auth/staff/passkey/remove", token, {
-    credential_id: credentialId,
-    actor_code: actorCode,
   });
 }
 
