@@ -36,6 +36,18 @@ if [[ ! "$DB_NAME" =~ ^[A-Za-z0-9_]+$ ]]; then
   exit 1
 fi
 
+# Do not cut production data over to a different database as a side effect of
+# a web/backend release. Until the database parity/backup gate is completed,
+# preserve the database already configured by the running release.
+CURRENT_DB_NAME=""
+if [ -r /etc/trackmyrmc/app.env ]; then
+  CURRENT_DB_NAME="$(python3 -c 'from urllib.parse import urlparse; import sys; print(urlparse(next(x.split("=",1)[1].strip() for x in open(sys.argv[1]) if x.startswith("DATABASE_URL="))).path.lstrip("/"))' /etc/trackmyrmc/app.env)"
+fi
+if [[ -n "$CURRENT_DB_NAME" && "$CURRENT_DB_NAME" != "$DB_NAME" && "${ALLOW_DATABASE_CUTOVER:-false}" != "true" ]]; then
+  echo "Database cutover is blocked: runtime currently uses '$CURRENT_DB_NAME' while secret DB_NAME is '$DB_NAME'. Preserving '$CURRENT_DB_NAME' until a verified backup and data/migration parity check authorizes cutover."
+  DB_NAME="$CURRENT_DB_NAME"
+fi
+
 DB_JSON="$(aws secretsmanager get-secret-value --secret-id "$RDS_SECRET" --query SecretString --output text)"
 DATABASE_URL="$(printf '%s' "$DB_JSON" | TRACKMYRMC_DB_NAME="$DB_NAME" python3 -c 'import json,sys,urllib.parse as u,os; x=json.load(sys.stdin); db=os.environ["TRACKMYRMC_DB_NAME"]; print("postgres://%s:%s@trackmyrmc-postgres.cf8mmcwuuinx.ap-south-1.rds.amazonaws.com:5432/%s?sslmode=require"%(u.quote(x["username"],safe=""),u.quote(x["password"],safe=""),u.quote(db,safe="")))')"
 
