@@ -221,7 +221,7 @@ JWT_EXPIRATION_HOURS=72
 PORT=8000
 HOST=127.0.0.1
 CORS_ORIGIN=https://trackmyrmc.com,https://www.trackmyrmc.com
-RUST_LOG=info,trackmyrmc_backend=debug
+RUST_LOG=info
 OTP_EXPIRATION_MINUTES=5
 OTP_COOLDOWN_SECONDS=60
 OTP_MAX_ATTEMPTS=5
