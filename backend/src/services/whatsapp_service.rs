@@ -27,7 +27,11 @@ impl WhatsAppService {
         }
     }
 
-    pub fn new(token: Option<String>, phone_number_id: Option<String>, api_version: String) -> Self {
+    pub fn new(
+        token: Option<String>,
+        phone_number_id: Option<String>,
+        api_version: String,
+    ) -> Self {
         Self {
             client: Client::new(),
             token,
