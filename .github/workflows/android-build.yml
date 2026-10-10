@@ -13,11 +13,11 @@ permissions:
 
 env:
   CI: "1"
-  EXPO_PUBLIC_BACKEND_URL: https://trackmyrmc-backend.onrender.com
+  EXPO_PUBLIC_BACKEND_URL: https://trackmyrmc.com
   EXPECTED_PLAY_UPLOAD_SHA1: "3D:5F:80:59:1C:BA:69:1B:03:28:4D:A1:74:91:38:1D:8F:A1:32:DC"
   PACKAGE_NAME: com.trackmyrmc.concreteking
-  VERSION_CODE: "88"
-  VERSION_NAME: "2.0.30"
+  VERSION_CODE: "89"
+  VERSION_NAME: "2.0.31"
 
 jobs:
   android-build:
@@ -66,11 +66,17 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Verify Firebase Android configuration
+        run: |
+          set -euo pipefail
+          test -s google-services.json
+          node -e "const c=require('./google-services.json'); const p=c.client?.[0]?.client_info?.android_client_info?.package_name; if(p !== process.env.PACKAGE_NAME) process.exit(1); console.log('Firebase Android package verified')"
+
       - name: Generate Android project
         run: npx expo prebuild --platform android --clean --no-install
 
       - name: Verify release version
-        run: grep -q 'versionCode 88' android/app/build.gradle
+        run: grep -q 'versionCode 89' android/app/build.gradle
 
       - name: Restore upload keystore
         working-directory: frontend/android/app
