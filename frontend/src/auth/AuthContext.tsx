@@ -17,6 +17,8 @@ import {
   verifyStaffOtp,
   verifyStaffRecovery,
   verifyStaffTotp,
+  startStaffMfaEnrollment as apiStartStaffMfaEnrollment,
+  confirmStaffMfaEnrollment as apiConfirmStaffMfaEnrollment,
 } from "@/src/api/client";
 import { stopTripLocationTracking } from "@/src/location/tripTracking";
 import { unregisterPushDevice } from "@/src/notifications/pushClient";
@@ -110,18 +112,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return acceptSession(res.access_token ?? res.token);
   };
 
-  const verifyStaff = async (identifier: string, code: string): Promise<Me> => {
-    const res = await verifyStaffOtp(identifier, code);
+  const verifyStaff = async (identifier: string, code: string): Promise<import("@/src/api/client").StaffMfaChallengeResponse> => {
+    const challenge = await verifyStaffOtp(identifier, code);
+    setStaffMfaChallenge(challenge.challenge_token);
+    return challenge;
+  };
+
+  const startStaffMfaEnrollment = async (): Promise<import("@/src/api/client").MfaEnrollmentStartResponse> => {
+    if (!staffMfaChallenge) throw new Error("Staff login challenge expired. Start login again.");
+    return apiStartStaffMfaEnrollment(staffMfaChallenge);
+  };
+
+  const confirmStaffMfaEnrollment = async (code: string): Promise<import("@/src/api/client").MfaEnrollmentConfirmResponse> => {
+    if (!staffMfaChallenge) throw new Error("Staff login challenge expired. Start login again.");
+    const result = await apiConfirmStaffMfaEnrollment(staffMfaChallenge, code);
+    setStaffMfaChallenge(result.challenge_token);
+    return result;
+  };
+
+  const verifyStaffAuthenticator = async (_identifier: string, code: string): Promise<Me> => {
+    if (!staffMfaChallenge) throw new Error("Staff login challenge expired. Start login again.");
+    const res = await verifyStaffTotp(staffMfaChallenge, code);
+    setStaffMfaChallenge(null);
     return acceptSession(res.access_token ?? res.token);
   };
 
-  const verifyStaffAuthenticator = async (identifier: string, code: string): Promise<Me> => {
-    const res = await verifyStaffTotp(identifier, code);
-    return acceptSession(res.access_token ?? res.token);
-  };
-
-  const verifyStaffRecoveryCode = async (identifier: string, code: string): Promise<Me> => {
-    const res = await verifyStaffRecovery(identifier, code);
+  const verifyStaffRecoveryCode = async (_identifier: string, code: string): Promise<Me> => {
+    if (!staffMfaChallenge) throw new Error("Staff login challenge expired. Start login again.");
+    const res = await verifyStaffRecovery(staffMfaChallenge, code);
+    setStaffMfaChallenge(null);
     return acceptSession(res.access_token ?? res.token);
   };
 
