@@ -18,6 +18,8 @@ fi
 id -u trackmyrmc >/dev/null 2>&1 || useradd --system --home /opt/trackmyrmc --shell /usr/sbin/nologin trackmyrmc
 mkdir -p /opt/trackmyrmc/releases /opt/trackmyrmc/frontend
 
+# Obtain a certificate only when absent; routine deploys keep HTTPS online.
+if [ ! -s /etc/letsencrypt/live/trackmyrmc.com/fullchain.pem ] || [ ! -s /etc/letsencrypt/live/trackmyrmc.com/privkey.pem ]; then
 # Bootstrap HTTP virtual host for ACME HTTP-01 validation.
 install -d -m 0755 /var/www/certbot/.well-known/acme-challenge
 cat > /etc/nginx/sites-available/trackmyrmc <<'NGINX_BOOTSTRAP'
@@ -75,6 +77,7 @@ certbot certonly --webroot -w /var/www/certbot \
     --non-interactive --agree-tos --register-unsafely-without-email \
     --keep-until-expiring --cert-name trackmyrmc.com \
     -d trackmyrmc.com
+fi
 
 test -s /etc/letsencrypt/live/trackmyrmc.com/fullchain.pem
 test -s /etc/letsencrypt/live/trackmyrmc.com/privkey.pem
