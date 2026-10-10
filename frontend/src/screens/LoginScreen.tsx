@@ -43,6 +43,8 @@ const DEMO_ROLES = [
 type LoginMode = "user" | "plant";
 type LoginPhase = "enter" | "user_otp" | "staff_email_otp" | "staff_totp" | "staff_recovery" | "staff_enroll";
 
+const PLAY_REVIEW_ACCESS_ENABLED = process.env.EXPO_PUBLIC_ENABLE_PLAY_REVIEW === "true";
+
 const validEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -639,9 +641,11 @@ export default function LoginScreen() {
           </View>
         </View>
 
-        <Pressable testID="login-review-access" onPress={() => router.push("/review-access" as any)} style={styles.reviewLink} hitSlop={10}>
-          <AppText variant="caption" center color={colors.onSurfaceTertiary}>REVIEW APP · Google Play reviewer access</AppText>
-        </Pressable>
+        {PLAY_REVIEW_ACCESS_ENABLED ? (
+          <Pressable testID="login-review-access" onPress={() => router.push("/review-access" as any)} style={styles.reviewLink} hitSlop={10}>
+            <AppText variant="caption" center color={colors.onSurfaceTertiary}>REVIEW APP · Google Play reviewer access</AppText>
+          </Pressable>
+        ) : null}
 
         <AppText variant="caption" center color={colors.onSurfaceTertiary} style={styles.poweredFooter}>Powered by <AppText variant="label">Gold e Tech</AppText></AppText>
       </KeyboardAwareScrollView>
