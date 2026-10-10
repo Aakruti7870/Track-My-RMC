@@ -49,7 +49,7 @@ type AuthContextValue = {
   requestStaffOtp: typeof requestStaffOtp;
   staffAuthMethod: typeof staffAuthMethod;
   verify: (identifier: string, code: string) => Promise<Me>;
-  verifyStaff: (identifier: string, code: string) => Promise<Me>;
+  verifyStaff: (identifier: string, code: string) => Promise<import("@/src/api/client").StaffMfaChallengeResponse>;
   verifyStaffAuthenticator: (identifier: string, code: string) => Promise<Me>;
   verifyStaffRecovery: (identifier: string, code: string) => Promise<Me>;
   completeStaffPasskey: (handoffCode: string) => Promise<Me>;
@@ -65,7 +65,7 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [hydrating, setHydrating] = useState(true);
   const [token, setToken] = useState<string | null>(null);
-  const [user, setUser] = useState<Me | null>(null);
+  const [user, setUser] = useState<Me | null>(null);\n  const [staffMfaChallenge, setStaffMfaChallenge] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
