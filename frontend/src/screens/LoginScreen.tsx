@@ -75,8 +75,7 @@ export default function LoginScreen() {
   const [plantEmail, setPlantEmail] = useState("");
   const [identifier, setIdentifier] = useState("");
   const [code, setCode] = useState("");
-  const [recoveryCode, setRecoveryCode] = useState("");\n  const [mfaEnrollment, setMfaEnrollment] = useState<import("@/src/api/client").MfaEnrollmentStartResponse | null>(null);\n  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [recoveryCode, setRecoveryCode] = useState("");\n  const [mfaEnrollment, setMfaEnrollment] = useState<import("@/src/api/client").MfaEnrollmentStartResponse | null>(null);\n  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [otpVisual, setOtpVisual] = useState<OtpVisualState>("idle");
   const [countdown, setCountdown] = useState(0);
@@ -249,7 +248,6 @@ export default function LoginScreen() {
     setLoading(true); setError(null);
     try {
       const result = await confirmStaffMfaEnrollment(otp);
-      setRecoveryCodes(result.recovery_codes || mfaEnrollment?.recovery_codes || []);
       setMfaEnrollment(null);
       setCode("");
       setPhase("staff_totp");
