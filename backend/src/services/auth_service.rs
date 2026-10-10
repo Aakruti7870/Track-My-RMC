@@ -470,6 +470,52 @@ pub async fn verify_email_otp(
     })
 }
 
+#[derive(Debug, Serialize)]
+pub struct StaffMfaEnrollmentStartResponse {
+    pub status: &'static str,
+    pub issuer: &'static str,
+    pub account: String,
+    pub manual_key: String,
+    pub otpauth_uri: String,
+    pub recovery_codes: Vec<String>,
+    pub expires_in: i64,
+}
+#[derive(Debug, Serialize)]
+pub struct StaffMfaEnrollmentConfirmResponse {
+    pub status: &'static str,
+    pub recovery_codes: Vec<String>,
+    pub message: &'static str,
+}
+pub async fn start_staff_mfa_enrollment(state: &AppState, challenge_token: &str) -> Result<StaffMfaEnrollmentStartResponse, AppError> {
+    let digest = challenge_digest(challenge_token);
+    let row: Option<(Uuid, String)> = sqlx::query_as("SELECT user_id, purpose FROM staff_mfa_challenges WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>NOW() AND attempts<max_attempts")
+        .bind(&digest).fetch_optional(&state.db).await?;
+    let (user_id, purpose) = row.ok_or_else(|| AppError::Unauthorized("MFA enrollment challenge is invalid or expired".to_string()))?;
+    if purpose != "enrollment" { return Err(AppError::Forbidden("This challenge is not valid for enrollment.".to_string())); }
+    let user = user_repo::find_by_id(&state.db, user_id).await?.ok_or_else(|| AppError::Unauthorized("Account not found".to_string()))?;
+    if !user.is_active || !is_staff_role(&user.role) { return Err(AppError::Forbidden("Account is not authorized for staff enrollment.".to_string())); }
+    if user.role == "admin" && user.email.as_deref().map(|e| e.eq_ignore_ascii_case("krushnabade54@gmail.com")) != Some(true) {
+        return Err(AppError::Forbidden("This administrator account is not allowlisted.".to_string()));
+    }
+    let (secret, otpauth_uri, recovery_codes) = crate::auth::totp::setup_totp_for_user(&state.db, user.id, user.email.as_deref().unwrap_or("staff")).await?;
+    Ok(StaffMfaEnrollmentStartResponse { status:"MFA_ENROLLMENT_STARTED", issuer:"TrackMyRMC", account:user.email.unwrap_or_else(|| user.phone.clone()), manual_key:secret, otpauth_uri, recovery_codes, expires_in:300 })
+}
+pub async fn confirm_staff_mfa_enrollment(state: &AppState, challenge_token: &str, code: &str) -> Result<StaffMfaEnrollmentConfirmResponse, AppError> {
+    let digest = challenge_digest(challenge_token);
+    let row: Option<(Uuid, String)> = sqlx::query_as("SELECT user_id, purpose FROM staff_mfa_challenges WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>NOW() AND attempts<max_attempts")
+        .bind(&digest).fetch_optional(&state.db).await?;
+    let (user_id, purpose) = row.ok_or_else(|| AppError::Unauthorized("MFA enrollment challenge is invalid or expired".to_string()))?;
+    if purpose != "enrollment" { return Err(AppError::Forbidden("This challenge is not valid for enrollment.".to_string())); }
+    if let Err(err) = crate::auth::totp::verify_and_enable_totp(&state.db, user_id, code).await {
+        let _ = sqlx::query("UPDATE staff_mfa_challenges SET attempts=attempts+1 WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>NOW()").bind(&digest).execute(&state.db).await;
+        return Err(err);
+    }
+    let consumed = sqlx::query("UPDATE staff_mfa_challenges SET consumed_at=NOW() WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>NOW() AND attempts<max_attempts").bind(&digest).execute(&state.db).await?;
+    if consumed.rows_affected() != 1 { return Err(AppError::Unauthorized("MFA enrollment challenge was already used or expired".to_string())); }
+    let recovery_codes: Vec<String> = sqlx::query_scalar("SELECT backup_codes FROM user_totp_credentials WHERE user_id=$1").bind(user_id).fetch_optional(&state.db).await?.unwrap_or_default();
+    Ok(StaffMfaEnrollmentConfirmResponse { status:"MFA_ENABLED", recovery_codes, message:"Authenticator enabled. Save your one-time recovery codes securely." })
+}
+
 /// Verifies a challenge-bound TOTP or recovery code and consumes the challenge before issuing a session.
 pub async fn verify_staff_mfa(
     state: &AppState,
