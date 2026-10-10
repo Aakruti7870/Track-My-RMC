@@ -30,7 +30,11 @@ impl OtpEngine {
         let mut rng = rand::thread_rng();
         let otp: u32 = rng.gen_range(100000..=999999);
         let otp_str = format!("{:06}", otp);
-        let salt: String = rng.sample_iter(&Alphanumeric).take(32).map(char::from).collect();
+        let salt: String = rng
+            .sample_iter(&Alphanumeric)
+            .take(32)
+            .map(char::from)
+            .collect();
         let hashed_otp = Self::hash_otp(&otp_str, &salt, pepper);
         (otp_str, salt, hashed_otp)
     }
@@ -63,12 +67,16 @@ impl OtpEngine {
 
         let hour_threshold = Utc::now() - Duration::hours(1);
         let count: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM otp_verifications WHERE destination=$1 AND created_at>$2"
-        ).bind(destination).bind(hour_threshold).fetch_one(pool).await?;
+            "SELECT COUNT(*) FROM otp_verifications WHERE destination=$1 AND created_at>$2",
+        )
+        .bind(destination)
+        .bind(hour_threshold)
+        .fetch_one(pool)
+        .await?;
 
         if count.0 >= 5 {
             return Err(AppError::Forbidden(
-                "Too many OTP requests. Please try again after an hour.".to_string()
+                "Too many OTP requests. Please try again after an hour.".to_string(),
             ));
         }
         Ok(())
@@ -114,7 +122,7 @@ impl OtpEngine {
             "INSERT INTO otp_verifications
              (destination, channel, purpose, hashed_otp, salt, attempts,
               max_attempts, is_verified, is_pending, expires_at)
-             VALUES ($1,$2,$3,$4,$5,0,$6,FALSE,TRUE,$7) RETURNING id"
+             VALUES ($1,$2,$3,$4,$5,0,$6,FALSE,TRUE,$7) RETURNING id",
         )
         .bind(destination)
         .bind(channel)
@@ -142,7 +150,7 @@ impl OtpEngine {
             "SELECT id FROM otp_verifications
              WHERE id=$1 AND destination=$2 AND channel=$3 AND purpose=$4
                AND is_pending=TRUE AND is_verified=FALSE AND expires_at>NOW()
-             FOR UPDATE"
+             FOR UPDATE",
         )
         .bind(session_id)
         .bind(destination)
@@ -161,7 +169,7 @@ impl OtpEngine {
             "UPDATE otp_verifications
              SET is_verified=TRUE
              WHERE destination=$1 AND channel=$2 AND purpose=$3
-               AND id<>$4 AND is_verified=FALSE AND is_pending=FALSE"
+               AND id<>$4 AND is_verified=FALSE AND is_pending=FALSE",
         )
         .bind(destination)
         .bind(channel)
@@ -179,16 +187,11 @@ impl OtpEngine {
         Ok(())
     }
 
-    pub async fn discard_pending_session(
-        pool: &PgPool,
-        session_id: Uuid,
-    ) -> Result<(), AppError> {
-        sqlx::query(
-            "DELETE FROM otp_verifications WHERE id=$1 AND is_pending=TRUE"
-        )
-        .bind(session_id)
-        .execute(pool)
-        .await?;
+    pub async fn discard_pending_session(pool: &PgPool, session_id: Uuid) -> Result<(), AppError> {
+        sqlx::query("DELETE FROM otp_verifications WHERE id=$1 AND is_pending=TRUE")
+            .bind(session_id)
+            .execute(pool)
+            .await?;
 
         Ok(())
     }
@@ -201,7 +204,9 @@ impl OtpEngine {
         submitted_otp: &str,
     ) -> Result<(), AppError> {
         if submitted_otp.len() != 6 || !submitted_otp.bytes().all(|b| b.is_ascii_digit()) {
-            return Err(AppError::Unauthorized("Invalid or expired verification code".to_string()));
+            return Err(AppError::Unauthorized(
+                "Invalid or expired verification code".to_string(),
+            ));
         }
 
         let mut tx = state.db.begin().await?;
@@ -215,27 +220,44 @@ impl OtpEngine {
         .ok_or_else(|| AppError::Unauthorized("Invalid or expired verification code".to_string()))?;
 
         if record.attempts >= record.max_attempts {
-            sqlx::query("UPDATE otp_verifications SET is_verified=TRUE WHERE id=$1").bind(record.id).execute(&mut *tx).await?;
+            sqlx::query("UPDATE otp_verifications SET is_verified=TRUE WHERE id=$1")
+                .bind(record.id)
+                .execute(&mut *tx)
+                .await?;
             tx.commit().await?;
-            return Err(AppError::Unauthorized("Maximum verification attempts exceeded. Please request a new code.".to_string()));
+            return Err(AppError::Unauthorized(
+                "Maximum verification attempts exceeded. Please request a new code.".to_string(),
+            ));
         }
 
         let computed = Self::hash_otp(submitted_otp, &record.salt, &state.config.otp_pepper);
         if !constant_time_equal(&computed, &record.hashed_otp) {
-            sqlx::query("UPDATE otp_verifications SET attempts=attempts+1 WHERE id=$1").bind(record.id).execute(&mut *tx).await?;
+            sqlx::query("UPDATE otp_verifications SET attempts=attempts+1 WHERE id=$1")
+                .bind(record.id)
+                .execute(&mut *tx)
+                .await?;
             tx.commit().await?;
-            return Err(AppError::Unauthorized("Invalid or expired verification code".to_string()));
+            return Err(AppError::Unauthorized(
+                "Invalid or expired verification code".to_string(),
+            ));
         }
 
-        sqlx::query("UPDATE otp_verifications SET is_verified=TRUE WHERE id=$1").bind(record.id).execute(&mut *tx).await?;
+        sqlx::query("UPDATE otp_verifications SET is_verified=TRUE WHERE id=$1")
+            .bind(record.id)
+            .execute(&mut *tx)
+            .await?;
         tx.commit().await?;
         Ok(())
     }
 }
 
 fn constant_time_equal(a: &str, b: &str) -> bool {
-    if a.len() != b.len() { return false; }
+    if a.len() != b.len() {
+        return false;
+    }
     let mut diff = 0u8;
-    for (x, y) in a.bytes().zip(b.bytes()) { diff |= x ^ y; }
+    for (x, y) in a.bytes().zip(b.bytes()) {
+        diff |= x ^ y;
+    }
     diff == 0
 }

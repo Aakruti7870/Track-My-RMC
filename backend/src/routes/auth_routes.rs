@@ -12,7 +12,7 @@ use crate::{
     models::user::{LoginRequest, RegisterRequest},
     services::auth_service::{
         self, SendEmailOtpRequest, SendWhatsAppOtpRequest, VerifyEmailOtpRequest,
-        VerifyTotpLoginRequest, VerifyWhatsAppOtpRequest,
+        VerifyStaffMfaRequest, VerifyTotpLoginRequest, VerifyWhatsAppOtpRequest,
     },
     state::AppState,
 };
@@ -42,7 +42,8 @@ pub async fn get_me(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
-    let (user_resp, profile) = auth_service::get_current_user_profile(&state, auth_user.user_id).await?;
+    let (user_resp, profile) =
+        auth_service::get_current_user_profile(&state, auth_user.user_id).await?;
     Ok(Json(json!({
         "success": true,
         "user": user_resp,
@@ -80,6 +81,8 @@ pub async fn send_email_otp(
     auth_service::send_email_otp(&state, payload).await?;
     Ok(Json(json!({
         "success": true,
+        "status": "OTP_SENT",
+        "channel": "email",
         "message": "Verification code dispatched to your email address"
     })))
 }
@@ -92,6 +95,42 @@ pub async fn verify_email_otp(
     Ok(Json(auth_res))
 }
 
+#[derive(Deserialize)]
+pub struct StaffMfaEnrollmentRequest {
+    pub challenge_token: String,
+}
+#[derive(Deserialize)]
+pub struct StaffMfaEnrollmentConfirmRequest {
+    pub challenge_token: String,
+    pub code: String,
+}
+pub async fn start_staff_mfa_enrollment(
+    State(state): State<AppState>,
+    Json(payload): Json<StaffMfaEnrollmentRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    Ok(Json(
+        auth_service::start_staff_mfa_enrollment(&state, &payload.challenge_token).await?,
+    ))
+}
+pub async fn confirm_staff_mfa_enrollment(
+    State(state): State<AppState>,
+    Json(payload): Json<StaffMfaEnrollmentConfirmRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    Ok(Json(
+        auth_service::confirm_staff_mfa_enrollment(&state, &payload.challenge_token, &payload.code)
+            .await?,
+    ))
+}
+
+// --- Challenge-bound staff MFA: second factor required before JWT issuance ---
+pub async fn verify_staff_mfa(
+    State(state): State<AppState>,
+    Json(payload): Json<VerifyStaffMfaRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    let auth_res = auth_service::verify_staff_mfa(&state, payload).await?;
+    Ok(Json(auth_res))
+}
+
 // --- Authenticator App (RFC 6238 TOTP) ---
 
 pub async fn setup_totp(
@@ -99,7 +138,8 @@ pub async fn setup_totp(
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
     let user_label = auth_user.email.clone().unwrap_or(auth_user.phone.clone());
-    let (secret, qr_uri, backup_codes) = setup_totp_for_user(&state.db, auth_user.user_id, &user_label).await?;
+    let (secret, qr_uri, backup_codes) =
+        setup_totp_for_user(&state.db, auth_user.user_id, &user_label).await?;
 
     Ok(Json(json!({
         "success": true,
@@ -137,9 +177,7 @@ pub async fn totp_login(
 
 // --- FIDO2 / WebAuthn Passkeys ---
 
-pub async fn passkey_register_options(
-    auth_user: AuthUser,
-) -> Result<impl IntoResponse, AppError> {
+pub async fn passkey_register_options(auth_user: AuthUser) -> Result<impl IntoResponse, AppError> {
     let challenge = PasskeyEngine::generate_challenge();
     let resp = PasskeyRegisterOptionsResponse {
         challenge,
@@ -213,4 +251,3 @@ pub async fn logout(
         "message": "Session revoked"
     })))
 }
-

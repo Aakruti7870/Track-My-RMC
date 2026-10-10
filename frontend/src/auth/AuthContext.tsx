@@ -17,6 +17,8 @@ import {
   verifyStaffOtp,
   verifyStaffRecovery,
   verifyStaffTotp,
+  startStaffMfaEnrollment as apiStartStaffMfaEnrollment,
+  confirmStaffMfaEnrollment as apiConfirmStaffMfaEnrollment,
 } from "@/src/api/client";
 import { stopTripLocationTracking } from "@/src/location/tripTracking";
 import { unregisterPushDevice } from "@/src/notifications/pushClient";
@@ -49,9 +51,11 @@ type AuthContextValue = {
   requestStaffOtp: typeof requestStaffOtp;
   staffAuthMethod: typeof staffAuthMethod;
   verify: (identifier: string, code: string) => Promise<Me>;
-  verifyStaff: (identifier: string, code: string) => Promise<Me>;
+  verifyStaff: (identifier: string, code: string) => Promise<import("@/src/api/client").StaffMfaChallengeResponse>;
   verifyStaffAuthenticator: (identifier: string, code: string) => Promise<Me>;
   verifyStaffRecovery: (identifier: string, code: string) => Promise<Me>;
+  startStaffMfaEnrollment: (challengeToken?: string) => Promise<import("@/src/api/client").MfaEnrollmentStartResponse>;
+  confirmStaffMfaEnrollment: (code: string) => Promise<import("@/src/api/client").MfaEnrollmentConfirmResponse>;
   completeStaffPasskey: (handoffCode: string) => Promise<Me>;
   verifyGoogle: (code: string) => Promise<Me>;
   demoLogin: (role: string) => Promise<Me>;
@@ -66,6 +70,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [hydrating, setHydrating] = useState(true);
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<Me | null>(null);
+  const [staffMfaChallenge, setStaffMfaChallenge] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -107,18 +112,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return acceptSession(res.access_token ?? res.token);
   };
 
-  const verifyStaff = async (identifier: string, code: string): Promise<Me> => {
-    const res = await verifyStaffOtp(identifier, code);
+  const verifyStaff = async (identifier: string, code: string): Promise<import("@/src/api/client").StaffMfaChallengeResponse> => {
+    const challenge = await verifyStaffOtp(identifier, code);
+    setStaffMfaChallenge(challenge.challenge_token);
+    return challenge;
+  };
+
+  const startStaffMfaEnrollment = async (challengeToken?: string): Promise<import("@/src/api/client").MfaEnrollmentStartResponse> => {
+    const activeChallenge = challengeToken || staffMfaChallenge;
+    if (!activeChallenge) throw new Error("Staff login challenge expired. Start login again.");
+    return apiStartStaffMfaEnrollment(activeChallenge);
+  };
+
+  const confirmStaffMfaEnrollment = async (code: string): Promise<import("@/src/api/client").MfaEnrollmentConfirmResponse> => {
+    if (!staffMfaChallenge) throw new Error("Staff login challenge expired. Start login again.");
+    const result = await apiConfirmStaffMfaEnrollment(staffMfaChallenge, code);
+    setStaffMfaChallenge(result.challenge_token);
+    return result;
+  };
+
+  const verifyStaffAuthenticator = async (_identifier: string, code: string): Promise<Me> => {
+    if (!staffMfaChallenge) throw new Error("Staff login challenge expired. Start login again.");
+    const res = await verifyStaffTotp(staffMfaChallenge, code);
+    setStaffMfaChallenge(null);
     return acceptSession(res.access_token ?? res.token);
   };
 
-  const verifyStaffAuthenticator = async (identifier: string, code: string): Promise<Me> => {
-    const res = await verifyStaffTotp(identifier, code);
-    return acceptSession(res.access_token ?? res.token);
-  };
-
-  const verifyStaffRecoveryCode = async (identifier: string, code: string): Promise<Me> => {
-    const res = await verifyStaffRecovery(identifier, code);
+  const verifyStaffRecoveryCode = async (_identifier: string, code: string): Promise<Me> => {
+    if (!staffMfaChallenge) throw new Error("Staff login challenge expired. Start login again.");
+    const res = await verifyStaffRecovery(staffMfaChallenge, code);
+    setStaffMfaChallenge(null);
     return acceptSession(res.access_token ?? res.token);
   };
 
@@ -200,6 +223,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         verifyStaff,
         verifyStaffAuthenticator,
         verifyStaffRecovery: verifyStaffRecoveryCode,
+        startStaffMfaEnrollment,
+        confirmStaffMfaEnrollment,
         completeStaffPasskey,
         verifyGoogle,
         demoLogin,

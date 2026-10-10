@@ -92,6 +92,15 @@ export type OtpRequestResponse = {
   delivery?: { adapter: string; configured: boolean };
 };
 
+export type StaffMfaChallengeResponse = {
+  status: "MFA_REQUIRED" | "MFA_ENROLLMENT_REQUIRED";
+  challenge_token: string;
+  expires_in: number;
+  email: string;
+  mfa_setup_required: boolean;
+  message: string;
+};
+
 export type StaffAuthMethodResponse = {
   status: "AUTHENTICATOR_REQUIRED" | "EMAIL_OTP_REQUIRED";
   email: string;
@@ -108,11 +117,13 @@ export type MfaEnrollmentStartResponse = {
   otpauth_uri: string;
   qr_data_uri?: string | null;
   expires_in: number;
+  recovery_codes: string[];
 };
 
 export type MfaEnrollmentConfirmResponse = {
   status: "MFA_ENABLED";
   recovery_codes: string[];
+  challenge_token: string;
   message: string;
 };
 
@@ -270,30 +281,38 @@ export async function requestStaffOtp(identifier: string) {
 }
 
 export async function verifyStaffOtp(identifier: string, code: string) {
-  return apiPublicPost<AuthSessionResponse>("/auth/otp/email/verify", { email: identifier, otp: code });
+  return apiPublicPost<StaffMfaChallengeResponse>("/auth/otp/email/verify", { email: identifier, otp: code });
 }
 
 export async function staffAuthMethod(identifier: string) {
   return apiPublicPost<StaffAuthMethodResponse>("/auth/staff/mfa/method", { identifier });
 }
 
-export async function verifyStaffTotp(identifier: string, code: string) {
-  return apiPublicPost<AuthSessionResponse>("/auth/staff/mfa/verify-totp", { identifier, code });
-}
-
-export async function verifyStaffRecovery(identifier: string, recoveryCode: string) {
-  return apiPublicPost<AuthSessionResponse>("/auth/staff/mfa/verify-recovery", {
-    identifier,
-    recovery_code: recoveryCode,
+export async function verifyStaffTotp(challengeToken: string, code: string) {
+  return apiPublicPost<AuthSessionResponse>("/auth/staff/mfa/verify-totp", {
+    challenge_token: challengeToken,
+    code,
   });
 }
 
-export async function startStaffMfaEnrollment(token: string) {
-  return apiPost<MfaEnrollmentStartResponse>("/auth/staff/mfa/enroll/start", token);
+export async function verifyStaffRecovery(challengeToken: string, recoveryCode: string) {
+  return apiPublicPost<AuthSessionResponse>("/auth/staff/mfa/verify-recovery", {
+    challenge_token: challengeToken,
+    code: recoveryCode,
+  });
 }
 
-export async function confirmStaffMfaEnrollment(token: string, code: string) {
-  return apiPost<MfaEnrollmentConfirmResponse>("/auth/staff/mfa/enroll/confirm", token, { code });
+export async function startStaffMfaEnrollment(challengeToken: string) {
+  return apiPublicPost<MfaEnrollmentStartResponse>("/auth/staff/mfa/enroll/start", {
+    challenge_token: challengeToken,
+  });
+}
+
+export async function confirmStaffMfaEnrollment(challengeToken: string, code: string) {
+  return apiPublicPost<MfaEnrollmentConfirmResponse>("/auth/staff/mfa/enroll/confirm", {
+    challenge_token: challengeToken,
+    code,
+  });
 }
 
 export async function startStaffPasskeyAuthentication(

@@ -5,7 +5,10 @@ use crate::{
 use sqlx::PgPool;
 use uuid::Uuid;
 
-pub async fn find_by_phone_or_email(pool: &PgPool, identifier: &str) -> Result<Option<User>, AppError> {
+pub async fn find_by_phone_or_email(
+    pool: &PgPool,
+    identifier: &str,
+) -> Result<Option<User>, AppError> {
     let user = sqlx::query_as::<_, User>(
         r#"
         SELECT id, COALESCE(phone, '') AS phone, email, hashed_password, full_name, role, is_active, is_verified, created_at, updated_at
@@ -77,7 +80,10 @@ pub async fn create_user(
     Ok(user)
 }
 
-pub async fn get_user_profile(pool: &PgPool, user_id: Uuid) -> Result<Option<UserProfile>, AppError> {
+pub async fn get_user_profile(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<Option<UserProfile>, AppError> {
     let profile = sqlx::query_as::<_, UserProfile>(
         r#"
         SELECT id, user_id, business_name, gst_number, kyc_status, verified_name, address_line, city, state, pincode, created_at, updated_at

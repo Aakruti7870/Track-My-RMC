@@ -44,7 +44,9 @@ pub async fn record_driver_location(
     .await?;
 
     if !owns_mixer {
-        return Err(AppError::Forbidden("Driver is not assigned to this mixer".to_string()));
+        return Err(AppError::Forbidden(
+            "Driver is not assigned to this mixer".to_string(),
+        ));
     }
 
     if let Some(load_id) = req.load_id {
@@ -66,7 +68,9 @@ pub async fn record_driver_location(
         .await?;
 
         if !owns_load {
-            return Err(AppError::Forbidden("Load is not assigned to this driver and mixer".to_string()));
+            return Err(AppError::Forbidden(
+                "Load is not assigned to this driver and mixer".to_string(),
+            ));
         }
     }
 

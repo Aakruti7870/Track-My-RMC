@@ -1,8 +1,8 @@
 use crate::error::AppError;
 use hmac::{Hmac, Mac};
-use sha2::{Digest, Sha256};
 use rand::{distributions::Alphanumeric, Rng};
 use sha1::Sha1;
+use sha2::{Digest, Sha256};
 use sqlx::{FromRow, PgPool};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
@@ -161,11 +161,7 @@ pub async fn setup_totp_for_user(
         r#"
         INSERT INTO user_totp_credentials (user_id, secret_key, is_enabled, backup_codes, updated_at)
         VALUES ($1, $2, FALSE, $3, NOW())
-        ON CONFLICT (user_id) DO UPDATE
-        SET secret_key = EXCLUDED.secret_key,
-            is_enabled = FALSE,
-            backup_codes = EXCLUDED.backup_codes,
-            updated_at = NOW()
+        ON CONFLICT (user_id) DO NOTHING
         "#,
     )
     .bind(user_id)
@@ -173,6 +169,19 @@ pub async fn setup_totp_for_user(
     .bind(&hashed_backup_codes)
     .execute(pool)
     .await?;
+
+    let stored_secret: Option<String> =
+        sqlx::query_scalar("SELECT secret_key FROM user_totp_credentials WHERE user_id = $1")
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await?;
+
+    if stored_secret.as_deref() != Some(secret.as_str()) {
+        return Err(AppError::Conflict(
+            "Authenticator setup already exists. Do not reset it through this endpoint."
+                .to_string(),
+        ));
+    }
 
     Ok((secret, qr_uri, backup_codes))
 }
@@ -201,14 +210,15 @@ pub async fn verify_and_enable_totp(
         ));
     }
 
-    sqlx::query("UPDATE user_totp_credentials SET is_enabled = TRUE, updated_at = NOW() WHERE user_id = $1")
-        .bind(user_id)
-        .execute(pool)
-        .await?;
+    sqlx::query(
+        "UPDATE user_totp_credentials SET is_enabled = TRUE, updated_at = NOW() WHERE user_id = $1",
+    )
+    .bind(user_id)
+    .execute(pool)
+    .await?;
 
     Ok(())
 }
-
 
 /// Verifies an enabled TOTP credential for passwordless/second-factor login.
 pub async fn verify_totp_login(
@@ -229,7 +239,9 @@ pub async fn verify_totp_login(
     .ok_or_else(|| AppError::Unauthorized("Authenticator login is not enabled".to_string()))?;
 
     if !rec.is_enabled {
-        return Err(AppError::Unauthorized("Authenticator login is not enabled".to_string()));
+        return Err(AppError::Unauthorized(
+            "Authenticator login is not enabled".to_string(),
+        ));
     }
 
     if TotpEngine::verify_code(&rec.secret_key, submitted_code)? {
@@ -243,18 +255,27 @@ pub async fn verify_totp_login(
         .to_uppercase();
     let attempted_hash = hash_backup_code(&normalized, &rec.secret_key);
 
-    if rec.backup_codes.iter().any(|stored| constant_time_eq(stored.as_bytes(), attempted_hash.as_bytes())) {
-        sqlx::query(
-            "UPDATE user_totp_credentials SET backup_codes = array_remove(backup_codes, $1), updated_at = NOW() WHERE user_id = $2",
+    if rec
+        .backup_codes
+        .iter()
+        .any(|stored| constant_time_eq(stored.as_bytes(), attempted_hash.as_bytes()))
+    {
+        let result = sqlx::query(
+            "UPDATE user_totp_credentials SET backup_codes = array_remove(backup_codes, $1), updated_at = NOW() WHERE user_id = $2 AND $1 = ANY(backup_codes)",
         )
         .bind(&attempted_hash)
         .bind(user_id)
         .execute(pool)
         .await?;
-        return Ok(());
+
+        if result.rows_affected() == 1 {
+            return Ok(());
+        }
     }
 
-    Err(AppError::Unauthorized("Invalid authenticator or recovery code".to_string()))
+    Err(AppError::Unauthorized(
+        "Invalid authenticator or recovery code".to_string(),
+    ))
 }
 
 fn hash_backup_code(code: &str, secret: &str) -> String {

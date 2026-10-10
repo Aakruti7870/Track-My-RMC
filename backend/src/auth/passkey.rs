@@ -76,7 +76,10 @@ impl PasskeyEngine {
     /// Generates a cryptographic challenge string
     pub fn generate_challenge() -> String {
         let mut rng = rand::thread_rng();
-        rng.sample_iter(&Alphanumeric).take(48).map(char::from).collect()
+        rng.sample_iter(&Alphanumeric)
+            .take(48)
+            .map(char::from)
+            .collect()
     }
 
     /// Stores a new WebAuthn passkey credential for a user

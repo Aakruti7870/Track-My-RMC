@@ -1,9 +1,9 @@
-use bigdecimal::FromPrimitive;
 use crate::{
     error::AppError,
     models::order::{Order, OrderLoad},
 };
 use bigdecimal::BigDecimal;
+use bigdecimal::FromPrimitive;
 use chrono::NaiveDate;
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -73,7 +73,10 @@ pub async fn find_order_by_id(pool: &PgPool, order_id: Uuid) -> Result<Option<Or
     Ok(order)
 }
 
-pub async fn list_customer_orders(pool: &PgPool, customer_id: Uuid) -> Result<Vec<Order>, AppError> {
+pub async fn list_customer_orders(
+    pool: &PgPool,
+    customer_id: Uuid,
+) -> Result<Vec<Order>, AppError> {
     let orders = sqlx::query_as::<_, Order>(
         r#"
         SELECT id, order_number, customer_id, plant_id, site_id, concrete_grade,
@@ -111,8 +114,21 @@ pub async fn list_plant_orders(pool: &PgPool, plant_id: Uuid) -> Result<Vec<Orde
     Ok(orders)
 }
 
-pub async fn update_order_status(pool: &PgPool, order_id: Uuid, status: &str) -> Result<(), AppError> {
-    let allowed = ["pending", "confirmed", "scheduled", "dispatched", "in_transit", "delivered", "completed", "cancelled"];
+pub async fn update_order_status(
+    pool: &PgPool,
+    order_id: Uuid,
+    status: &str,
+) -> Result<(), AppError> {
+    let allowed = [
+        "pending",
+        "confirmed",
+        "scheduled",
+        "dispatched",
+        "in_transit",
+        "delivered",
+        "completed",
+        "cancelled",
+    ];
     if !allowed.contains(&status) {
         return Err(AppError::BadRequest("Unsupported order status".to_string()));
     }

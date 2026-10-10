@@ -1,8 +1,8 @@
-use bigdecimal::FromPrimitive;
 use crate::{
     error::AppError,
     models::plant::{CustomerSite, RmcPlant},
 };
+use bigdecimal::FromPrimitive;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -79,7 +79,10 @@ pub async fn create_plant(
     Ok(plant)
 }
 
-pub async fn list_customer_sites(pool: &PgPool, customer_id: Uuid) -> Result<Vec<CustomerSite>, AppError> {
+pub async fn list_customer_sites(
+    pool: &PgPool,
+    customer_id: Uuid,
+) -> Result<Vec<CustomerSite>, AppError> {
     let sites = sqlx::query_as::<_, CustomerSite>(
         r#"
         SELECT id, customer_id, name, address_line, city, state, pincode, latitude, longitude, contact_person, contact_phone, created_at

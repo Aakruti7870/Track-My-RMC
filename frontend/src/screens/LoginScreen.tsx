@@ -44,7 +44,7 @@ const DEMO_ROLES = [
 ];
 
 type LoginMode = "user" | "plant";
-type LoginPhase = "enter" | "user_otp" | "staff_email_otp" | "staff_passkey" | "staff_totp" | "staff_recovery";
+type LoginPhase = "enter" | "user_otp" | "staff_email_otp" | "staff_passkey" | "staff_totp" | "staff_recovery" | "staff_enroll";
 
 const validEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -65,6 +65,8 @@ export default function LoginScreen() {
     verifyStaff,
     verifyStaffAuthenticator,
     verifyStaffRecovery,
+    startStaffMfaEnrollment,
+    confirmStaffMfaEnrollment,
     completeStaffPasskey,
     demoLogin,
   } = useAuth();
@@ -76,6 +78,7 @@ export default function LoginScreen() {
   const [identifier, setIdentifier] = useState("");
   const [code, setCode] = useState("");
   const [recoveryCode, setRecoveryCode] = useState("");
+  const [mfaEnrollment, setMfaEnrollment] = useState<import("@/src/api/client").MfaEnrollmentStartResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [otpVisual, setOtpVisual] = useState<OtpVisualState>("idle");
@@ -197,11 +200,8 @@ export default function LoginScreen() {
       setCode("");
       setRecoveryCode("");
       setOtpVisual("idle");
-      if (response.status === "AUTHENTICATOR_REQUIRED") {
-        setPhase(response.passkey_available ? "staff_passkey" : "staff_totp");
-        clearTimer();
-        return;
-      }
+      // Staff must complete email OTP before the challenge-bound TOTP/recovery factor.
+      // Never jump directly to an authenticator or passkey from the OTP-send step.
       if (response.status !== "OTP_SENT" || response.channel !== "email") {
         throw { detail: "Plant Staff secure login could not start" };
       }
@@ -235,14 +235,36 @@ export default function LoginScreen() {
     setOtpVisual("checking");
     setLoading(true);
     try {
-      const me = await verifyStaff(identifier, otp);
-      await finishLogin(me);
+      const challenge = await verifyStaff(identifier, otp);
+      clearTimer();
+      setCode("");
+      if (challenge.mfa_setup_required || challenge.status === "MFA_ENROLLMENT_REQUIRED") {
+        const enrollment = await startStaffMfaEnrollment(challenge.challenge_token);
+        setMfaEnrollment(enrollment);
+        setPhase("staff_enroll");
+      } else {
+        setPhase("staff_totp");
+      }
     } catch (e: any) {
       await failOtp(e.detail || "Incorrect or expired email OTP.");
     } finally {
       setLoading(false);
     }
-  }, [identifier, loading, verifyStaff]);
+  }, [identifier, loading, verifyStaff, clearTimer, startStaffMfaEnrollment]);
+
+  const handleConfirmMfaEnrollment = async (otp: string) => {
+    if (loading || otp.length !== 6) return;
+    setLoading(true); setError(null);
+    try {
+      await confirmStaffMfaEnrollment(otp);
+      setMfaEnrollment(null);
+      setCode("");
+      setPhase("staff_totp");
+      toast("Authenticator enabled. Save your recovery codes, then enter the current code to finish login.", "success");
+    } catch (e: any) {
+      setError(e.detail || "Could not enable authenticator");
+    } finally { setLoading(false); }
+  };
 
   const handleVerifyAuthenticator = useCallback(async (otp: string) => {
     if (loading || otp.length !== 6) return;
@@ -376,6 +398,33 @@ export default function LoginScreen() {
           <Pressable onPress={() => resetEntry("plant")} hitSlop={10}>
             <AppText variant="label" center color={colors.brand}>← Change email</AppText>
           </Pressable>
+        </View>
+      );
+    }
+
+    if (phase === "staff_enroll") {
+      return (
+        <View style={styles.formGap}>
+          <View style={styles.headingBlock}>
+            <Ionicons name="shield-checkmark-outline" size={30} color={colors.brand} />
+            <AppText variant="heading" center>Set up Authenticator</AppText>
+            <AppText variant="bodyMuted" center>Scan this URI in your authenticator app, or enter the setup key manually.</AppText>
+            <AppText selectable>{mfaEnrollment?.manual_key || ""}</AppText>
+            <AppText selectable>{mfaEnrollment?.otpauth_uri || ""}</AppText>
+            <AppText variant="caption" center>Save these recovery codes securely:</AppText>
+            {(mfaEnrollment?.recovery_codes || []).map((item) => <AppText key={item} selectable>{item}</AppText>)}
+          </View>
+          <OtpOrbitVerification
+            testID="login-staff-enroll-input"
+            value={code}
+            onChangeText={(next) => { setCode(next); setError(null); }}
+            onComplete={handleConfirmMfaEnrollment}
+            state={otpVisual}
+            title="Confirm setup"
+            subtitle="Enter the current 6-digit code from your authenticator."
+            errorText={error}
+            colors={otpColors}
+          />
         </View>
       );
     }

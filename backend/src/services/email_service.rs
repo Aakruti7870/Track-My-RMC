@@ -19,7 +19,12 @@ impl EmailService {
     }
 
     /// Dispatches Email OTP for staff, owner, and administrative authentication
-    pub async fn send_otp(&self, recipient_email: &str, otp: &str, role_display: &str) -> Result<(), AppError> {
+    pub async fn send_otp(
+        &self,
+        recipient_email: &str,
+        otp: &str,
+        role_display: &str,
+    ) -> Result<(), AppError> {
         let api_key = match &self.api_key {
             Some(key) if !key.is_empty() => key,
             _ => {
@@ -52,7 +57,9 @@ impl EmailService {
             .await
             .map_err(|e| {
                 error!(error = ?e, "Failed to connect to email provider");
-                AppError::InternalError("Email delivery service is temporarily unreachable".to_string())
+                AppError::InternalError(
+                    "Email delivery service is temporarily unreachable".to_string(),
+                )
             })?;
 
         if !response.status().is_success() {

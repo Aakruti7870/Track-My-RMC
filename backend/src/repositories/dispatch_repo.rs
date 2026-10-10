@@ -1,4 +1,3 @@
-use bigdecimal::FromPrimitive;
 use crate::{
     error::AppError,
     models::{
@@ -8,10 +7,14 @@ use crate::{
     },
 };
 use bigdecimal::BigDecimal;
+use bigdecimal::FromPrimitive;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-pub async fn list_plant_mixers(pool: &PgPool, plant_id: Uuid) -> Result<Vec<TransitMixer>, AppError> {
+pub async fn list_plant_mixers(
+    pool: &PgPool,
+    plant_id: Uuid,
+) -> Result<Vec<TransitMixer>, AppError> {
     let mixers = sqlx::query_as::<_, TransitMixer>(
         r#"
         SELECT id, plant_id, registration_number, capacity_m3, driver_id, status, last_latitude, last_longitude, last_ping_at, created_at
@@ -36,10 +39,14 @@ pub async fn assign_order_load(
     quantity_m3: f64,
 ) -> Result<OrderLoad, AppError> {
     if load_number <= 0 {
-        return Err(AppError::BadRequest("Load number must be greater than zero".to_string()));
+        return Err(AppError::BadRequest(
+            "Load number must be greater than zero".to_string(),
+        ));
     }
     if quantity_m3 <= 0.0 || !quantity_m3.is_finite() {
-        return Err(AppError::BadRequest("Load quantity must be greater than zero".to_string()));
+        return Err(AppError::BadRequest(
+            "Load quantity must be greater than zero".to_string(),
+        ));
     }
 
     let mut tx = pool.begin().await?;
@@ -53,7 +60,9 @@ pub async fn assign_order_load(
     .ok_or_else(|| AppError::NotFound("Order not found".to_string()))?;
 
     if matches!(order.1.as_str(), "cancelled" | "completed" | "delivered") {
-        return Err(AppError::BadRequest("Order cannot accept another load in its current state".to_string()));
+        return Err(AppError::BadRequest(
+            "Order cannot accept another load in its current state".to_string(),
+        ));
     }
 
     let mixer: (Uuid, bigdecimal::BigDecimal, Option<Uuid>) = sqlx::query_as(
@@ -65,38 +74,46 @@ pub async fn assign_order_load(
     .ok_or_else(|| AppError::NotFound("Transit mixer not found".to_string()))?;
 
     if mixer.0 != order.0 {
-        return Err(AppError::BadRequest("Transit mixer belongs to a different plant".to_string()));
+        return Err(AppError::BadRequest(
+            "Transit mixer belongs to a different plant".to_string(),
+        ));
     }
 
-    let driver_role: Option<String> = sqlx::query_scalar(
-        "SELECT role FROM users WHERE id = $1 AND is_active = TRUE",
-    )
-    .bind(driver_id)
-    .fetch_optional(&mut *tx)
-    .await?;
+    let driver_role: Option<String> =
+        sqlx::query_scalar("SELECT role FROM users WHERE id = $1 AND is_active = TRUE")
+            .bind(driver_id)
+            .fetch_optional(&mut *tx)
+            .await?;
     if driver_role.as_deref() != Some("driver") {
-        return Err(AppError::BadRequest("Selected user is not an active driver".to_string()));
+        return Err(AppError::BadRequest(
+            "Selected user is not an active driver".to_string(),
+        ));
     }
 
     if let Some(assigned_driver) = mixer.2 {
         if assigned_driver != driver_id {
-            return Err(AppError::BadRequest("Transit mixer is assigned to a different driver".to_string()));
+            return Err(AppError::BadRequest(
+                "Transit mixer is assigned to a different driver".to_string(),
+            ));
         }
     }
 
     if BigDecimal::from_f64(quantity_m3).unwrap_or_default() > mixer.1 {
-        return Err(AppError::BadRequest("Load quantity exceeds mixer capacity".to_string()));
+        return Err(AppError::BadRequest(
+            "Load quantity exceeds mixer capacity".to_string(),
+        ));
     }
 
-    let duplicate: Option<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM order_loads WHERE order_id = $1 AND load_number = $2",
-    )
-    .bind(order_id)
-    .bind(load_number)
-    .fetch_optional(&mut *tx)
-    .await?;
+    let duplicate: Option<Uuid> =
+        sqlx::query_scalar("SELECT id FROM order_loads WHERE order_id = $1 AND load_number = $2")
+            .bind(order_id)
+            .bind(load_number)
+            .fetch_optional(&mut *tx)
+            .await?;
     if duplicate.is_some() {
-        return Err(AppError::BadRequest("Load number already exists for this order".to_string()));
+        return Err(AppError::BadRequest(
+            "Load number already exists for this order".to_string(),
+        ));
     }
 
     let load = sqlx::query_as::<_, OrderLoad>(
@@ -126,7 +143,10 @@ pub async fn assign_order_load(
     Ok(load)
 }
 
-pub async fn list_loads_for_order(pool: &PgPool, order_id: Uuid) -> Result<Vec<OrderLoad>, AppError> {
+pub async fn list_loads_for_order(
+    pool: &PgPool,
+    order_id: Uuid,
+) -> Result<Vec<OrderLoad>, AppError> {
     let loads = sqlx::query_as::<_, OrderLoad>(
         r#"
         SELECT id, order_id, load_number, mixer_id, driver_id, quantity_m3, status,
@@ -144,7 +164,10 @@ pub async fn list_loads_for_order(pool: &PgPool, order_id: Uuid) -> Result<Vec<O
     Ok(loads)
 }
 
-pub async fn find_driver_active_trips(pool: &PgPool, driver_id: Uuid) -> Result<Vec<OrderLoad>, AppError> {
+pub async fn find_driver_active_trips(
+    pool: &PgPool,
+    driver_id: Uuid,
+) -> Result<Vec<OrderLoad>, AppError> {
     let loads = sqlx::query_as::<_, OrderLoad>(
         r#"
         SELECT id, order_id, load_number, mixer_id, driver_id, quantity_m3, status,
@@ -162,7 +185,10 @@ pub async fn find_driver_active_trips(pool: &PgPool, driver_id: Uuid) -> Result<
     Ok(loads)
 }
 
-pub async fn get_challan_by_load(pool: &PgPool, load_id: Uuid) -> Result<Option<Challan>, AppError> {
+pub async fn get_challan_by_load(
+    pool: &PgPool,
+    load_id: Uuid,
+) -> Result<Option<Challan>, AppError> {
     let challan = sqlx::query_as::<_, Challan>(
         r#"
         SELECT id, load_id, challan_number, plant_code, customer_name, site_address,
@@ -214,10 +240,12 @@ pub async fn record_pod(
     .fetch_one(&mut *tx)
     .await?;
 
-    sqlx::query("UPDATE order_loads SET status = 'completed', pour_completed_at = NOW() WHERE id = $1")
-        .bind(load_id)
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query(
+        "UPDATE order_loads SET status = 'completed', pour_completed_at = NOW() WHERE id = $1",
+    )
+    .bind(load_id)
+    .execute(&mut *tx)
+    .await?;
 
     tx.commit().await?;
     Ok(pod)

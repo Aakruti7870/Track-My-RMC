@@ -28,7 +28,17 @@ pub async fn get_roster(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(
         &auth_user,
-        &["supervisor", "owner", "admin", "accountant", "store_manager", "fleet_manager", "dispatcher", "operator", "quality_engineer"],
+        &[
+            "supervisor",
+            "owner",
+            "admin",
+            "accountant",
+            "store_manager",
+            "fleet_manager",
+            "dispatcher",
+            "operator",
+            "quality_engineer",
+        ],
     )?;
 
     if !matches!(auth_user.role.as_str(), "owner" | "admin") {
@@ -49,13 +59,19 @@ pub async fn get_roster(
         .await?;
 
         if !has_access {
-            return Err(AppError::Forbidden("You are not assigned to this plant".to_string()));
+            return Err(AppError::Forbidden(
+                "You are not assigned to this plant".to_string(),
+            ));
         }
     }
 
-    let date = query.date.unwrap_or_else(|| chrono::Utc::now().date_naive());
+    let date = query
+        .date
+        .unwrap_or_else(|| chrono::Utc::now().date_naive());
     let roster = payroll_service::fetch_daily_roster(&state, query.plant_id, date).await?;
-    Ok(Json(json!({ "success": true, "date": date, "roster": roster })))
+    Ok(Json(
+        json!({ "success": true, "date": date, "roster": roster }),
+    ))
 }
 
 pub async fn mark_attendance(
@@ -72,7 +88,9 @@ pub async fn mark_attendance(
         .fetch_one(&state.db)
         .await?;
         if !self_assigned {
-            return Err(AppError::Forbidden("You are not assigned to this plant".to_string()));
+            return Err(AppError::Forbidden(
+                "You are not assigned to this plant".to_string(),
+            ));
         }
     }
 
@@ -87,10 +105,14 @@ pub async fn mark_attendance(
             .fetch_one(&state.db)
             .await?;
             if !target_assigned {
-                return Err(AppError::BadRequest("Target employee is not assigned to this plant".to_string()));
+                return Err(AppError::BadRequest(
+                    "Target employee is not assigned to this plant".to_string(),
+                ));
             }
         }
     }
     payroll_service::handle_attendance_check(&state, auth_user.user_id, payload).await?;
-    Ok(Json(json!({ "success": true, "message": "Attendance recorded successfully" })))
+    Ok(Json(
+        json!({ "success": true, "message": "Attendance recorded successfully" }),
+    ))
 }
