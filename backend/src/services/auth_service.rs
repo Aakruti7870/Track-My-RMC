@@ -11,10 +11,10 @@ use crate::{
     services::{email_service::EmailService, whatsapp_service::WhatsAppService},
     state::AppState,
 };
+use chrono::{Duration, Utc};
+use rand::{distributions::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use rand::{distributions::Alphanumeric, Rng};
-use chrono::{Duration, Utc};
 use uuid::Uuid;
 
 #[derive(Debug, Deserialize)]
@@ -417,7 +417,11 @@ async fn create_staff_challenge(
     user_id: Uuid,
     purpose: &str,
 ) -> Result<(String, i64), AppError> {
-    let token: String = rand::thread_rng().sample_iter(&Alphanumeric).take(48).map(char::from).collect();
+    let token: String = rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(48)
+        .map(char::from)
+        .collect();
     let expires_in = 300_i64;
     sqlx::query(
         "INSERT INTO staff_mfa_challenges (user_id, token_hash, purpose, expires_at) VALUES ($1,$2,$3,$4)"
@@ -441,32 +445,69 @@ pub async fn verify_email_otp(
         .await?
         .ok_or_else(|| AppError::Unauthorized("Invalid email or verification code".to_string()))?;
     if !user.is_active {
-        return Err(AppError::Forbidden("Account is inactive. Contact support.".to_string()));
+        return Err(AppError::Forbidden(
+            "Account is inactive. Contact support.".to_string(),
+        ));
     }
-    if user.email.as_deref().map(|e| e.eq_ignore_ascii_case(&destination)) != Some(true) {
-        return Err(AppError::Unauthorized("Invalid email or verification code".to_string()));
+    if user
+        .email
+        .as_deref()
+        .map(|e| e.eq_ignore_ascii_case(&destination))
+        != Some(true)
+    {
+        return Err(AppError::Unauthorized(
+            "Invalid email or verification code".to_string(),
+        ));
     }
-    const STAFF_ROLES: &[&str] = &["dispatcher","operator","supervisor","quality_engineer","store_manager","accountant","fleet_manager","owner","admin"];
+    const STAFF_ROLES: &[&str] = &[
+        "dispatcher",
+        "operator",
+        "supervisor",
+        "quality_engineer",
+        "store_manager",
+        "accountant",
+        "fleet_manager",
+        "owner",
+        "admin",
+    ];
     if !STAFF_ROLES.contains(&user.role.as_str()) {
-        return Err(AppError::Forbidden("Email OTP is restricted to staff accounts.".to_string()));
+        return Err(AppError::Forbidden(
+            "Email OTP is restricted to staff accounts.".to_string(),
+        ));
     }
     if user.role == "admin" && destination != "krushnabade54@gmail.com" {
-        return Err(AppError::Forbidden("This administrator account is not allowlisted.".to_string()));
+        return Err(AppError::Forbidden(
+            "This administrator account is not allowlisted.".to_string(),
+        ));
     }
     OtpEngine::verify_otp(state, &destination, "email", "staff_login", &req.otp).await?;
-    let enabled: Option<bool> = sqlx::query_scalar(
-        "SELECT is_enabled FROM user_totp_credentials WHERE user_id=$1"
-    ).bind(user.id).fetch_optional(&state.db).await?;
+    let enabled: Option<bool> =
+        sqlx::query_scalar("SELECT is_enabled FROM user_totp_credentials WHERE user_id=$1")
+            .bind(user.id)
+            .fetch_optional(&state.db)
+            .await?;
     let mfa_setup_required = enabled != Some(true);
-    let purpose = if mfa_setup_required { "enrollment" } else { "login" };
+    let purpose = if mfa_setup_required {
+        "enrollment"
+    } else {
+        "login"
+    };
     let (challenge_token, expires_in) = create_staff_challenge(state, user.id, purpose).await?;
     Ok(StaffMfaChallengeResponse {
-        status: if mfa_setup_required { "MFA_ENROLLMENT_REQUIRED" } else { "MFA_REQUIRED" },
+        status: if mfa_setup_required {
+            "MFA_ENROLLMENT_REQUIRED"
+        } else {
+            "MFA_REQUIRED"
+        },
         challenge_token,
         expires_in,
         email: destination,
         mfa_setup_required,
-        message: if mfa_setup_required { "Email verified. Complete authenticator setup to continue." } else { "Email verified. Enter your authenticator or one-time recovery code." },
+        message: if mfa_setup_required {
+            "Email verified. Complete authenticator setup to continue."
+        } else {
+            "Email verified. Enter your authenticator or one-time recovery code."
+        },
     })
 }
 
@@ -487,34 +528,89 @@ pub struct StaffMfaEnrollmentConfirmResponse {
     pub challenge_token: String,
     pub message: &'static str,
 }
-pub async fn start_staff_mfa_enrollment(state: &AppState, challenge_token: &str) -> Result<StaffMfaEnrollmentStartResponse, AppError> {
+pub async fn start_staff_mfa_enrollment(
+    state: &AppState,
+    challenge_token: &str,
+) -> Result<StaffMfaEnrollmentStartResponse, AppError> {
     let digest = challenge_digest(challenge_token);
     let row: Option<(Uuid, String)> = sqlx::query_as("SELECT user_id, purpose FROM staff_mfa_challenges WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>NOW() AND attempts<max_attempts")
         .bind(&digest).fetch_optional(&state.db).await?;
-    let (user_id, purpose) = row.ok_or_else(|| AppError::Unauthorized("MFA enrollment challenge is invalid or expired".to_string()))?;
-    if purpose != "enrollment" { return Err(AppError::Forbidden("This challenge is not valid for enrollment.".to_string())); }
-    let user = user_repo::find_by_id(&state.db, user_id).await?.ok_or_else(|| AppError::Unauthorized("Account not found".to_string()))?;
-    if !user.is_active || !is_staff_role(&user.role) { return Err(AppError::Forbidden("Account is not authorized for staff enrollment.".to_string())); }
-    if user.role == "admin" && user.email.as_deref().map(|e| e.eq_ignore_ascii_case("krushnabade54@gmail.com")) != Some(true) {
-        return Err(AppError::Forbidden("This administrator account is not allowlisted.".to_string()));
+    let (user_id, purpose) = row.ok_or_else(|| {
+        AppError::Unauthorized("MFA enrollment challenge is invalid or expired".to_string())
+    })?;
+    if purpose != "enrollment" {
+        return Err(AppError::Forbidden(
+            "This challenge is not valid for enrollment.".to_string(),
+        ));
     }
-    let (secret, otpauth_uri, recovery_codes) = crate::auth::totp::setup_totp_for_user(&state.db, user.id, user.email.as_deref().unwrap_or("staff")).await?;
-    Ok(StaffMfaEnrollmentStartResponse { status:"MFA_ENROLLMENT_STARTED", issuer:"TrackMyRMC", account:user.email.unwrap_or_else(|| user.phone.clone()), manual_key:secret, otpauth_uri, recovery_codes, expires_in:300 })
+    let user = user_repo::find_by_id(&state.db, user_id)
+        .await?
+        .ok_or_else(|| AppError::Unauthorized("Account not found".to_string()))?;
+    if !user.is_active || !is_staff_role(&user.role) {
+        return Err(AppError::Forbidden(
+            "Account is not authorized for staff enrollment.".to_string(),
+        ));
+    }
+    if user.role == "admin"
+        && user
+            .email
+            .as_deref()
+            .map(|e| e.eq_ignore_ascii_case("krushnabade54@gmail.com"))
+            != Some(true)
+    {
+        return Err(AppError::Forbidden(
+            "This administrator account is not allowlisted.".to_string(),
+        ));
+    }
+    let (secret, otpauth_uri, recovery_codes) = crate::auth::totp::setup_totp_for_user(
+        &state.db,
+        user.id,
+        user.email.as_deref().unwrap_or("staff"),
+    )
+    .await?;
+    Ok(StaffMfaEnrollmentStartResponse {
+        status: "MFA_ENROLLMENT_STARTED",
+        issuer: "TrackMyRMC",
+        account: user.email.unwrap_or_else(|| user.phone.clone()),
+        manual_key: secret,
+        otpauth_uri,
+        recovery_codes,
+        expires_in: 300,
+    })
 }
-pub async fn confirm_staff_mfa_enrollment(state: &AppState, challenge_token: &str, code: &str) -> Result<StaffMfaEnrollmentConfirmResponse, AppError> {
+pub async fn confirm_staff_mfa_enrollment(
+    state: &AppState,
+    challenge_token: &str,
+    code: &str,
+) -> Result<StaffMfaEnrollmentConfirmResponse, AppError> {
     let digest = challenge_digest(challenge_token);
     let row: Option<(Uuid, String)> = sqlx::query_as("SELECT user_id, purpose FROM staff_mfa_challenges WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>NOW() AND attempts<max_attempts")
         .bind(&digest).fetch_optional(&state.db).await?;
-    let (user_id, purpose) = row.ok_or_else(|| AppError::Unauthorized("MFA enrollment challenge is invalid or expired".to_string()))?;
-    if purpose != "enrollment" { return Err(AppError::Forbidden("This challenge is not valid for enrollment.".to_string())); }
+    let (user_id, purpose) = row.ok_or_else(|| {
+        AppError::Unauthorized("MFA enrollment challenge is invalid or expired".to_string())
+    })?;
+    if purpose != "enrollment" {
+        return Err(AppError::Forbidden(
+            "This challenge is not valid for enrollment.".to_string(),
+        ));
+    }
     if let Err(err) = crate::auth::totp::verify_and_enable_totp(&state.db, user_id, code).await {
         let _ = sqlx::query("UPDATE staff_mfa_challenges SET attempts=attempts+1 WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>NOW()").bind(&digest).execute(&state.db).await;
         return Err(err);
     }
     let consumed = sqlx::query("UPDATE staff_mfa_challenges SET consumed_at=NOW() WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>NOW() AND attempts<max_attempts").bind(&digest).execute(&state.db).await?;
-    if consumed.rows_affected() != 1 { return Err(AppError::Unauthorized("MFA enrollment challenge was already used or expired".to_string())); }
+    if consumed.rows_affected() != 1 {
+        return Err(AppError::Unauthorized(
+            "MFA enrollment challenge was already used or expired".to_string(),
+        ));
+    }
     let (challenge_token, _) = create_staff_challenge(state, user_id, "login").await?;
-    Ok(StaffMfaEnrollmentConfirmResponse { status:"MFA_ENABLED", recovery_codes: Vec::new(), challenge_token, message:"Authenticator enabled. Save the recovery codes shown during setup." })
+    Ok(StaffMfaEnrollmentConfirmResponse {
+        status: "MFA_ENABLED",
+        recovery_codes: Vec::new(),
+        challenge_token,
+        message: "Authenticator enabled. Save the recovery codes shown during setup.",
+    })
 }
 
 /// Verifies a challenge-bound TOTP or recovery code and consumes the challenge before issuing a session.
@@ -526,9 +622,12 @@ pub async fn verify_staff_mfa(
     let row: Option<(Uuid, String)> = sqlx::query_as(
         "SELECT user_id, purpose FROM staff_mfa_challenges WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>NOW() AND attempts<max_attempts"
     ).bind(&digest).fetch_optional(&state.db).await?;
-    let (user_id, purpose) = row.ok_or_else(|| AppError::Unauthorized("MFA challenge is invalid or expired".to_string()))?;
+    let (user_id, purpose) = row
+        .ok_or_else(|| AppError::Unauthorized("MFA challenge is invalid or expired".to_string()))?;
     if purpose != "login" {
-        return Err(AppError::Forbidden("Authenticator enrollment is required before login.".to_string()));
+        return Err(AppError::Forbidden(
+            "Authenticator enrollment is required before login.".to_string(),
+        ));
     }
     if let Err(err) = crate::auth::totp::verify_totp_login(&state.db, user_id, &req.code).await {
         let _ = sqlx::query("UPDATE staff_mfa_challenges SET attempts=attempts+1 WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>NOW()")
@@ -538,23 +637,56 @@ pub async fn verify_staff_mfa(
     let consumed = sqlx::query("UPDATE staff_mfa_challenges SET consumed_at=NOW() WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>NOW() AND attempts<max_attempts")
         .bind(&digest).execute(&state.db).await?;
     if consumed.rows_affected() != 1 {
-        return Err(AppError::Unauthorized("MFA challenge was already used or expired".to_string()));
+        return Err(AppError::Unauthorized(
+            "MFA challenge was already used or expired".to_string(),
+        ));
     }
-    let user = user_repo::find_by_id(&state.db, user_id).await?
+    let user = user_repo::find_by_id(&state.db, user_id)
+        .await?
         .ok_or_else(|| AppError::Unauthorized("Account not found".to_string()))?;
     if !user.is_active || !is_staff_role(&user.role) {
-        return Err(AppError::Forbidden("Account is not authorized for staff login.".to_string()));
+        return Err(AppError::Forbidden(
+            "Account is not authorized for staff login.".to_string(),
+        ));
     }
-    if user.role == "admin" && user.email.as_deref().map(|e| e.eq_ignore_ascii_case("krushnabade54@gmail.com")) != Some(true) {
-        return Err(AppError::Forbidden("This administrator account is not allowlisted.".to_string()));
+    if user.role == "admin"
+        && user
+            .email
+            .as_deref()
+            .map(|e| e.eq_ignore_ascii_case("krushnabade54@gmail.com"))
+            != Some(true)
+    {
+        return Err(AppError::Forbidden(
+            "This administrator account is not allowlisted.".to_string(),
+        ));
     }
     let profile = user_repo::get_user_profile(&state.db, user.id).await?;
-    let kyc_status = profile.as_ref().map(|p| p.kyc_status.clone()).unwrap_or_else(|| "unverified".to_string());
+    let kyc_status = profile
+        .as_ref()
+        .map(|p| p.kyc_status.clone())
+        .unwrap_or_else(|| "unverified".to_string());
     let verified_name = profile.and_then(|p| p.verified_name);
-    let token = generate_token(user.id, &user.role, &user.phone, user.email.as_deref(), &state.config.jwt_secret, state.config.jwt_expiration_hours)?;
+    let token = generate_token(
+        user.id,
+        &user.role,
+        &user.phone,
+        user.email.as_deref(),
+        &state.config.jwt_secret,
+        state.config.jwt_expiration_hours,
+    )?;
     Ok(AuthResponse {
-        success: true, token, role: user.role.clone(),
-        user: UserResponse { id:user.id, phone:user.phone, email:user.email, full_name:user.full_name, role:user.role, kyc_status, verified_name }
+        success: true,
+        token,
+        role: user.role.clone(),
+        user: UserResponse {
+            id: user.id,
+            phone: user.phone,
+            email: user.email,
+            full_name: user.full_name,
+            role: user.role,
+            kyc_status,
+            verified_name,
+        },
     })
 }
 
