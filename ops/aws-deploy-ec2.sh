@@ -209,6 +209,7 @@ META_PHONE="$(printf '%s' "$APP_JSON" | jq -r '.META_PHONE_NUMBER_ID // empty')"
 META_WABA="$(printf '%s' "$APP_JSON" | jq -r '.META_WABA_ID // empty')"
 EMAIL_KEY="$(printf '%s' "$APP_JSON" | jq -r '.EMAIL_API_KEY // empty')"
 EMAIL_FROM="$(printf '%s' "$APP_JSON" | jq -r '.EMAIL_FROM_ADDRESS // "noreply@trackmyrmc.com"')"
+META_GRAPH_API_VERSION="$(printf '%s' "$APP_JSON" | jq -r '.META_GRAPH_API_VERSION // "v26.0"')"
 
 install -d -m 0750 /etc/trackmyrmc
 cat > /etc/trackmyrmc/app.env <<EOF
@@ -227,6 +228,7 @@ OTP_MAX_ATTEMPTS=5
 META_WHATSAPP_TOKEN=$META_TOKEN
 META_PHONE_NUMBER_ID=$META_PHONE
 META_WABA_ID=$META_WABA
+META_GRAPH_API_VERSION=$META_GRAPH_API_VERSION
 EMAIL_API_KEY=$EMAIL_KEY
 EMAIL_FROM_ADDRESS=$EMAIL_FROM
 EOF
