@@ -247,7 +247,7 @@ export default function LoginScreen() {
     if (loading || otp.length !== 6) return;
     setLoading(true); setError(null);
     try {
-      const result = await confirmStaffMfaEnrollment(otp);
+      await confirmStaffMfaEnrollment(otp);
       setMfaEnrollment(null);
       setCode("");
       setPhase("staff_totp");
