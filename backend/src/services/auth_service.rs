@@ -50,11 +50,16 @@ pub async fn register(state: &AppState, req: RegisterRequest) -> Result<AuthResp
         return Err(AppError::BadRequest("Phone number is required".to_string()));
     }
     if req.password.len() < 6 {
-        return Err(AppError::BadRequest("Password must be at least 6 characters".to_string()));
+        return Err(AppError::BadRequest(
+            "Password must be at least 6 characters".to_string(),
+        ));
     }
 
     if let Some(existing) = user_repo::find_by_phone_or_email(&state.db, &req.phone).await? {
-        return Err(AppError::Conflict(format!("User with phone {} already exists", existing.phone)));
+        return Err(AppError::Conflict(format!(
+            "User with phone {} already exists",
+            existing.phone
+        )));
     }
 
     let hashed = hash_password(&req.password)?;
@@ -97,13 +102,36 @@ pub async fn register(state: &AppState, req: RegisterRequest) -> Result<AuthResp
     })
 }
 
+fn is_staff_role(role: &str) -> bool {
+    matches!(
+        role.to_ascii_lowercase().as_str(),
+        "dispatcher"
+            | "operator"
+            | "supervisor"
+            | "quality_engineer"
+            | "store_manager"
+            | "accountant"
+            | "fleet_manager"
+            | "owner"
+            | "admin"
+    )
+}
+
 pub async fn login(state: &AppState, req: LoginRequest) -> Result<AuthResponse, AppError> {
     let user = user_repo::find_by_phone_or_email(&state.db, &req.username_or_phone)
         .await?
         .ok_or_else(|| AppError::Unauthorized("Invalid credentials".to_string()))?;
 
     if !user.is_active {
-        return Err(AppError::Forbidden("Account is inactive. Contact support.".to_string()));
+        return Err(AppError::Forbidden(
+            "Account is inactive. Contact support.".to_string(),
+        ));
+    }
+
+    if is_staff_role(&user.role) {
+        return Err(AppError::Forbidden(
+            "Staff password login is disabled. Sign in using email OTP followed by authenticator MFA.".to_string(),
+        ));
     }
 
     let is_valid = verify_password(&req.password, &user.hashed_password)?;
@@ -112,7 +140,10 @@ pub async fn login(state: &AppState, req: LoginRequest) -> Result<AuthResponse, 
     }
 
     let profile = user_repo::get_user_profile(&state.db, user.id).await?;
-    let kyc_status = profile.as_ref().map(|p| p.kyc_status.clone()).unwrap_or_else(|| "unverified".to_string());
+    let kyc_status = profile
+        .as_ref()
+        .map(|p| p.kyc_status.clone())
+        .unwrap_or_else(|| "unverified".to_string());
     let verified_name = profile.and_then(|p| p.verified_name);
 
     let token = generate_token(
@@ -147,6 +178,12 @@ pub async fn send_whatsapp_otp(
 ) -> Result<(), AppError> {
     let destination = WhatsAppService::normalize_phone(&req.phone);
     let purpose = req.purpose.unwrap_or_else(|| "login".to_string());
+
+    if !matches!(purpose.as_str(), "login" | "driver_login") {
+        return Err(AppError::BadRequest(
+            "Unsupported WhatsApp OTP purpose".to_string(),
+        ));
+    }
 
     let wa_service = WhatsAppService::new(
         state.config.meta_whatsapp_token.clone(),
@@ -212,14 +249,13 @@ pub async fn verify_whatsapp_otp(
     let destination = WhatsAppService::normalize_phone(&req.phone);
     let purpose = req.purpose.unwrap_or_else(|| "login".to_string());
 
-    OtpEngine::verify_otp(
-        state,
-        &destination,
-        "whatsapp",
-        &purpose,
-        &req.otp,
-    )
-    .await?;
+    if !matches!(purpose.as_str(), "login" | "driver_login") {
+        return Err(AppError::BadRequest(
+            "Unsupported WhatsApp OTP purpose".to_string(),
+        ));
+    }
+
+    OtpEngine::verify_otp(state, &destination, "whatsapp", &purpose, &req.otp).await?;
 
     // Fetch existing user or auto-provision verified customer
     let user = match user_repo::find_by_phone_or_email(&state.db, &destination).await? {
@@ -241,14 +277,21 @@ pub async fn verify_whatsapp_otp(
     };
 
     if !user.is_active {
-        return Err(AppError::Forbidden("Account is inactive. Contact support.".to_string()));
+        return Err(AppError::Forbidden(
+            "Account is inactive. Contact support.".to_string(),
+        ));
     }
     if user.role != "customer" && user.role != "driver" {
-        return Err(AppError::Forbidden("WhatsApp OTP is restricted to Customer and Driver accounts.".to_string()));
+        return Err(AppError::Forbidden(
+            "WhatsApp OTP is restricted to Customer and Driver accounts.".to_string(),
+        ));
     }
 
     let profile = user_repo::get_user_profile(&state.db, user.id).await?;
-    let kyc_status = profile.as_ref().map(|p| p.kyc_status.clone()).unwrap_or_else(|| "unverified".to_string());
+    let kyc_status = profile
+        .as_ref()
+        .map(|p| p.kyc_status.clone())
+        .unwrap_or_else(|| "unverified".to_string());
     let verified_name = profile.and_then(|p| p.verified_name);
 
     let token = generate_token(
@@ -277,10 +320,7 @@ pub async fn verify_whatsapp_otp(
 }
 
 /// Dispatches Email OTP for Plant Staff, Owners, and Administrators
-pub async fn send_email_otp(
-    state: &AppState,
-    req: SendEmailOtpRequest,
-) -> Result<(), AppError> {
+pub async fn send_email_otp(state: &AppState, req: SendEmailOtpRequest) -> Result<(), AppError> {
     let destination = req.email.trim().to_lowercase();
     let purpose = "staff_login".to_string();
 
@@ -289,10 +329,19 @@ pub async fn send_email_otp(
         .ok_or_else(|| AppError::NotFound("Staff/Admin account not found".to_string()))?;
 
     if !user.is_active {
-        return Err(AppError::Forbidden("Account is inactive. Contact support.".to_string()));
+        return Err(AppError::Forbidden(
+            "Account is inactive. Contact support.".to_string(),
+        ));
     }
-    if user.email.as_deref().map(|e| e.eq_ignore_ascii_case(&destination)) != Some(true) {
-        return Err(AppError::Forbidden("Email OTP must be sent to the account's registered email.".to_string()));
+    if user
+        .email
+        .as_deref()
+        .map(|e| e.eq_ignore_ascii_case(&destination))
+        != Some(true)
+    {
+        return Err(AppError::Forbidden(
+            "Email OTP must be sent to the account's registered email.".to_string(),
+        ));
     }
 
     const STAFF_ROLES: &[&str] = &[
@@ -333,7 +382,9 @@ pub async fn send_email_otp(
         state.config.email_api_key.clone(),
         state.config.email_from_address.clone(),
     );
-    email_service.send_otp(&destination, &plain_otp, "Staff/Admin Portal").await?;
+    email_service
+        .send_otp(&destination, &plain_otp, "Staff/Admin Portal")
+        .await?;
 
     Ok(())
 }
@@ -350,55 +401,42 @@ pub async fn verify_email_otp(
         .ok_or_else(|| AppError::NotFound("Staff/Admin account not found".to_string()))?;
 
     if !user.is_active {
-        return Err(AppError::Forbidden("Account is inactive. Contact support.".to_string()));
+        return Err(AppError::Forbidden(
+            "Account is inactive. Contact support.".to_string(),
+        ));
     }
-    if user.email.as_deref().map(|e| e.eq_ignore_ascii_case(&destination)) != Some(true) {
-        return Err(AppError::Forbidden("Email OTP is restricted to the account's registered email.".to_string()));
+    if user
+        .email
+        .as_deref()
+        .map(|e| e.eq_ignore_ascii_case(&destination))
+        != Some(true)
+    {
+        return Err(AppError::Forbidden(
+            "Email OTP is restricted to the account's registered email.".to_string(),
+        ));
     }
     const STAFF_ROLES: &[&str] = &[
-        "dispatcher", "operator", "supervisor", "quality_engineer",
-        "store_manager", "accountant", "fleet_manager", "owner", "admin",
+        "dispatcher",
+        "operator",
+        "supervisor",
+        "quality_engineer",
+        "store_manager",
+        "accountant",
+        "fleet_manager",
+        "owner",
+        "admin",
     ];
     if !STAFF_ROLES.contains(&user.role.as_str()) {
-        return Err(AppError::Forbidden("Email OTP is restricted to staff, owner, and administrator accounts.".to_string()));
+        return Err(AppError::Forbidden(
+            "Email OTP is restricted to staff and owner accounts.".to_string(),
+        ));
     }
 
-    OtpEngine::verify_otp(
-        state,
-        &destination,
-        "email",
-        "staff_login",
-        &req.otp,
-    )
-    .await?;
-
-    let profile = user_repo::get_user_profile(&state.db, user.id).await?;
-    let kyc_status = profile.as_ref().map(|p| p.kyc_status.clone()).unwrap_or_else(|| "unverified".to_string());
-    let verified_name = profile.and_then(|p| p.verified_name);
-
-    let token = generate_token(
-        user.id,
-        &user.role,
-        &user.phone,
-        user.email.as_deref(),
-        &state.config.jwt_secret,
-        state.config.jwt_expiration_hours,
-    )?;
-
-    Ok(AuthResponse {
-        success: true,
-        token,
-        role: user.role.clone(),
-        user: UserResponse {
-            id: user.id,
-            phone: user.phone,
-            email: user.email,
-            full_name: user.full_name,
-            role: user.role,
-            kyc_status,
-            verified_name,
-        },
-    })
+    // Fail closed: email OTP alone must never issue a staff/admin JWT.
+    let _ = req.otp;
+    Err(AppError::Forbidden(
+        "Staff sign-in requires email OTP followed by authenticator MFA. Full sessions remain disabled until the server-bound MFA challenge flow is implemented.".to_string(),
+    ))
 }
 
 /// Verifies TOTP Authenticator code for second factor or primary passwordless staff login
@@ -410,10 +448,25 @@ pub async fn verify_totp_login(
         .await?
         .ok_or_else(|| AppError::Unauthorized("Invalid credentials".to_string()))?;
 
+    if !user.is_active {
+        return Err(AppError::Forbidden(
+            "Account is inactive. Contact support.".to_string(),
+        ));
+    }
+
+    if is_staff_role(&user.role) {
+        return Err(AppError::Forbidden(
+            "Staff authenticator verification requires a valid, server-bound email OTP challenge. TOTP alone cannot issue an application JWT.".to_string(),
+        ));
+    }
+
     crate::auth::totp::verify_totp_login(&state.db, user.id, &req.totp_code).await?;
 
     let profile = user_repo::get_user_profile(&state.db, user.id).await?;
-    let kyc_status = profile.as_ref().map(|p| p.kyc_status.clone()).unwrap_or_else(|| "unverified".to_string());
+    let kyc_status = profile
+        .as_ref()
+        .map(|p| p.kyc_status.clone())
+        .unwrap_or_else(|| "unverified".to_string());
     let verified_name = profile.and_then(|p| p.verified_name);
 
     let token = generate_token(
@@ -450,14 +503,23 @@ pub async fn verify_passkey_login(
         .await?
         .ok_or_else(|| AppError::Unauthorized("Unrecognized passkey credential".to_string()))?;
 
-    PasskeyEngine::update_usage(&state.db, &req.credential_id).await?;
-
     let user = user_repo::find_by_id(&state.db, cred.user_id)
         .await?
         .ok_or_else(|| AppError::NotFound("User associated with passkey not found".to_string()))?;
 
+    if is_staff_role(&user.role) {
+        return Err(AppError::Forbidden(
+            "Staff passkey login is disabled until full WebAuthn assertion verification and MFA policy enforcement are implemented.".to_string(),
+        ));
+    }
+
+    PasskeyEngine::update_usage(&state.db, &req.credential_id).await?;
+
     let profile = user_repo::get_user_profile(&state.db, user.id).await?;
-    let kyc_status = profile.as_ref().map(|p| p.kyc_status.clone()).unwrap_or_else(|| "unverified".to_string());
+    let kyc_status = profile
+        .as_ref()
+        .map(|p| p.kyc_status.clone())
+        .unwrap_or_else(|| "unverified".to_string());
     let verified_name = profile.and_then(|p| p.verified_name);
 
     let token = generate_token(
@@ -485,13 +547,19 @@ pub async fn verify_passkey_login(
     })
 }
 
-pub async fn get_current_user_profile(state: &AppState, user_id: Uuid) -> Result<(UserResponse, Option<UserProfile>), AppError> {
+pub async fn get_current_user_profile(
+    state: &AppState,
+    user_id: Uuid,
+) -> Result<(UserResponse, Option<UserProfile>), AppError> {
     let user = user_repo::find_by_id(&state.db, user_id)
         .await?
         .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
 
     let profile = user_repo::get_user_profile(&state.db, user.id).await?;
-    let kyc_status = profile.as_ref().map(|p| p.kyc_status.clone()).unwrap_or_else(|| "unverified".to_string());
+    let kyc_status = profile
+        .as_ref()
+        .map(|p| p.kyc_status.clone())
+        .unwrap_or_else(|| "unverified".to_string());
     let verified_name = profile.as_ref().and_then(|p| p.verified_name.clone());
 
     Ok((

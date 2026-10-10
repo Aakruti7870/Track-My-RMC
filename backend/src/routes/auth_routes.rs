@@ -42,7 +42,8 @@ pub async fn get_me(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
-    let (user_resp, profile) = auth_service::get_current_user_profile(&state, auth_user.user_id).await?;
+    let (user_resp, profile) =
+        auth_service::get_current_user_profile(&state, auth_user.user_id).await?;
     Ok(Json(json!({
         "success": true,
         "user": user_resp,
@@ -80,6 +81,8 @@ pub async fn send_email_otp(
     auth_service::send_email_otp(&state, payload).await?;
     Ok(Json(json!({
         "success": true,
+        "status": "OTP_SENT",
+        "channel": "email",
         "message": "Verification code dispatched to your email address"
     })))
 }
@@ -99,7 +102,8 @@ pub async fn setup_totp(
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
     let user_label = auth_user.email.clone().unwrap_or(auth_user.phone.clone());
-    let (secret, qr_uri, backup_codes) = setup_totp_for_user(&state.db, auth_user.user_id, &user_label).await?;
+    let (secret, qr_uri, backup_codes) =
+        setup_totp_for_user(&state.db, auth_user.user_id, &user_label).await?;
 
     Ok(Json(json!({
         "success": true,
@@ -137,9 +141,7 @@ pub async fn totp_login(
 
 // --- FIDO2 / WebAuthn Passkeys ---
 
-pub async fn passkey_register_options(
-    auth_user: AuthUser,
-) -> Result<impl IntoResponse, AppError> {
+pub async fn passkey_register_options(auth_user: AuthUser) -> Result<impl IntoResponse, AppError> {
     let challenge = PasskeyEngine::generate_challenge();
     let resp = PasskeyRegisterOptionsResponse {
         challenge,
@@ -213,4 +215,3 @@ pub async fn logout(
         "message": "Session revoked"
     })))
 }
-

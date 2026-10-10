@@ -5,11 +5,7 @@ use crate::{
     repositories::plant_repo,
     state::AppState,
 };
-use axum::{
-    extract::State,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::State, response::IntoResponse, Json};
 use serde_json::json;
 
 pub async fn create_plant(

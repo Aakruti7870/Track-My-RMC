@@ -33,7 +33,9 @@ pub async fn update_location(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["driver"])?;
     tracking_service::record_driver_location(&state, auth_user.user_id, payload).await?;
-    Ok(Json(json!({ "success": true, "message": "Location updated" })))
+    Ok(Json(
+        json!({ "success": true, "message": "Location updated" }),
+    ))
 }
 
 pub async fn sign_challan(
@@ -44,7 +46,9 @@ pub async fn sign_challan(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["driver"])?;
     dispatch_service::sign_digital_challan(&state, load_id, auth_user.user_id, payload).await?;
-    Ok(Json(json!({ "success": true, "message": "Challan signed" })))
+    Ok(Json(
+        json!({ "success": true, "message": "Challan signed" }),
+    ))
 }
 
 pub async fn submit_pod(
@@ -54,6 +58,7 @@ pub async fn submit_pod(
     Json(payload): Json<SubmitPodRequest>,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["driver"])?;
-    let pod = dispatch_service::complete_delivery_pod(&state, load_id, auth_user.user_id, payload).await?;
+    let pod = dispatch_service::complete_delivery_pod(&state, load_id, auth_user.user_id, payload)
+        .await?;
     Ok(Json(json!({ "success": true, "pod": pod })))
 }

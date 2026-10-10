@@ -1,26 +1,33 @@
 use crate::{
     auth::{middleware::check_role, AuthUser},
     error::AppError,
-    models::user::LoginRequest,
-    services::auth_service,
     state::AppState,
 };
-use axum::{
-    extract::State,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::State, response::IntoResponse, Json};
 use serde_json::json;
 
+#[derive(Debug, serde::Deserialize)]
+pub struct AdminOtpLoginRequest {
+    pub email: String,
+    pub otp: String,
+}
+
 pub async fn admin_login(
-    State(state): State<AppState>,
-    Json(payload): Json<LoginRequest>,
-) -> Result<impl IntoResponse, AppError> {
-    let auth_res = auth_service::login(&state, payload).await?;
-    if auth_res.role != "admin" {
-        return Err(AppError::Forbidden("Administrative privileges required".to_string()));
+    Json(payload): Json<AdminOtpLoginRequest>,
+) -> Result<axum::response::Response, AppError> {
+    if !payload
+        .email
+        .trim()
+        .eq_ignore_ascii_case("krushnabade54@gmail.com")
+    {
+        return Err(AppError::Forbidden(
+            "Administrator account is not authorized.".to_string(),
+        ));
     }
-    Ok(Json(auth_res))
+
+    Err(AppError::Forbidden(
+        "Administrator OTP-only login is disabled until the complete email OTP plus authenticator challenge flow is implemented.".to_string(),
+    ))
 }
 
 pub async fn portal_overview(

@@ -13,7 +13,9 @@ pub async fn place_order(
     req: CreateOrderRequest,
 ) -> Result<Order, AppError> {
     if req.quantity_m3 <= 0.0 {
-        return Err(AppError::BadRequest("Order quantity must be greater than zero".to_string()));
+        return Err(AppError::BadRequest(
+            "Order quantity must be greater than zero".to_string(),
+        ));
     }
 
     let plant = plant_repo::find_plant_by_id(&state.db, req.plant_id)
@@ -21,7 +23,9 @@ pub async fn place_order(
         .ok_or_else(|| AppError::NotFound("Selected RMC plant does not exist".to_string()))?;
 
     if !plant.is_active {
-        return Err(AppError::BadRequest("Plant is currently not accepting orders".to_string()));
+        return Err(AppError::BadRequest(
+            "Plant is currently not accepting orders".to_string(),
+        ));
     }
 
     let random_num: u32 = rand::thread_rng().gen_range(100000..999999);
@@ -60,6 +64,7 @@ pub async fn get_order_with_loads(
         .await?
         .ok_or_else(|| AppError::NotFound("Order not found".to_string()))?;
 
-    let loads = crate::repositories::dispatch_repo::list_loads_for_order(&state.db, order_id).await?;
+    let loads =
+        crate::repositories::dispatch_repo::list_loads_for_order(&state.db, order_id).await?;
     Ok((order, loads))
 }

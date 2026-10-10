@@ -41,8 +41,12 @@ pub fn generate_token(
     };
     let mut header = Header::new(Algorithm::HS512);
     header.typ = Some("JWT".to_string());
-    encode(&header, &claims, &EncodingKey::from_secret(secret.as_bytes()))
-        .map_err(|e| AppError::JwtError(e.to_string()))
+    encode(
+        &header,
+        &claims,
+        &EncodingKey::from_secret(secret.as_bytes()),
+    )
+    .map_err(|e| AppError::JwtError(e.to_string()))
 }
 
 pub fn verify_token(token: &str, secret: &str) -> Result<Claims, AppError> {
@@ -56,6 +60,7 @@ pub fn verify_token(token: &str, secret: &str) -> Result<Claims, AppError> {
         token,
         &DecodingKey::from_secret(secret.as_bytes()),
         &validation,
-    ).map(|token_data| token_data.claims)
-     .map_err(|e| AppError::JwtError(e.to_string()))
+    )
+    .map(|token_data| token_data.claims)
+    .map_err(|e| AppError::JwtError(e.to_string()))
 }

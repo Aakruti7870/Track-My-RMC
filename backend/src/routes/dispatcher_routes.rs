@@ -13,7 +13,11 @@ use axum::{
 use serde_json::json;
 use uuid::Uuid;
 
-async fn ensure_plant_access(state: &AppState, auth_user: &AuthUser, plant_id: Uuid) -> Result<(), AppError> {
+async fn ensure_plant_access(
+    state: &AppState,
+    auth_user: &AuthUser,
+    plant_id: Uuid,
+) -> Result<(), AppError> {
     if matches!(auth_user.role.as_str(), "owner" | "admin") {
         return Ok(());
     }
@@ -25,7 +29,9 @@ async fn ensure_plant_access(state: &AppState, auth_user: &AuthUser, plant_id: U
     .fetch_one(&state.db)
     .await?;
     if !allowed {
-        return Err(AppError::Forbidden("You are not assigned to this plant".to_string()));
+        return Err(AppError::Forbidden(
+            "You are not assigned to this plant".to_string(),
+        ));
     }
     Ok(())
 }
@@ -35,7 +41,10 @@ pub async fn get_plant_fleet(
     auth_user: AuthUser,
     Path(plant_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["dispatcher", "owner", "fleet_manager", "admin"])?;
+    check_role(
+        &auth_user,
+        &["dispatcher", "owner", "fleet_manager", "admin"],
+    )?;
     ensure_plant_access(&state, &auth_user, plant_id).await?;
     let fleet = dispatch_repo::list_plant_mixers(&state.db, plant_id).await?;
     Ok(Json(json!({ "success": true, "fleet": fleet })))

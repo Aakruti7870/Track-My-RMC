@@ -1,6 +1,6 @@
-use bigdecimal::FromPrimitive;
 use crate::{error::AppError, models::telemetry::GpsTelemetry};
 use bigdecimal::BigDecimal;
+use bigdecimal::FromPrimitive;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -49,7 +49,10 @@ pub async fn insert_telemetry(
     Ok(())
 }
 
-pub async fn get_latest_position(pool: &PgPool, mixer_id: Uuid) -> Result<Option<GpsTelemetry>, AppError> {
+pub async fn get_latest_position(
+    pool: &PgPool,
+    mixer_id: Uuid,
+) -> Result<Option<GpsTelemetry>, AppError> {
     let pos = sqlx::query_as::<_, GpsTelemetry>(
         r#"
         SELECT id, mixer_id, driver_id, load_id, latitude, longitude, speed_kmh, heading, recorded_at

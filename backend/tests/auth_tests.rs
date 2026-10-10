@@ -27,7 +27,11 @@ mod tests {
     }
 
     fn hash_backup_code(code: &str, salt: &str) -> String {
-        let clean: String = code.chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>().to_uppercase();
+        let clean: String = code
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .collect::<String>()
+            .to_uppercase();
         let mut hasher = Sha256::new();
         hasher.update(salt.as_bytes());
         hasher.update(clean.as_bytes());

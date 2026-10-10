@@ -11,10 +11,10 @@ mod services;
 mod state;
 mod utils;
 
+use axum::http::HeaderValue;
 use config::AppConfig;
 use state::AppState;
 use std::net::SocketAddr;
-use axum::http::HeaderValue;
 use tokio::signal;
 use tower_http::{
     cors::{Any, CorsLayer},
@@ -51,7 +51,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let state = AppState::new(pool, config.clone());
 
-    let cors = if config.cors_allowed_origins.iter().any(|origin| origin == "*") {
+    let cors = if config
+        .cors_allowed_origins
+        .iter()
+        .any(|origin| origin == "*")
+    {
         CorsLayer::new()
             .allow_origin(Any)
             .allow_methods(Any)

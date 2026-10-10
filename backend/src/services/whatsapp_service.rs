@@ -48,9 +48,7 @@ impl WhatsAppService {
     pub async fn send_otp(&self, recipient_phone: &str, otp: &str) -> Result<(), AppError> {
         let recipient = Self::normalize_phone(recipient_phone);
 
-        if !(10..=15).contains(&recipient.len())
-            || !recipient.chars().all(|c| c.is_ascii_digit())
-        {
+        if !(10..=15).contains(&recipient.len()) || !recipient.chars().all(|c| c.is_ascii_digit()) {
             return Err(AppError::InternalError(
                 "Invalid WhatsApp recipient number".to_string(),
             ));

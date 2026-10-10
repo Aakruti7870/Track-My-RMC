@@ -48,11 +48,31 @@ pub enum AppError {
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, client_message, error_code) = match &self {
-            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone(), Some("NOT_FOUND".to_string())),
-            AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg.clone(), Some("UNAUTHORIZED".to_string())),
-            AppError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg.clone(), Some("FORBIDDEN".to_string())),
-            AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone(), Some("BAD_REQUEST".to_string())),
-            AppError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone(), Some("CONFLICT".to_string())),
+            AppError::NotFound(msg) => (
+                StatusCode::NOT_FOUND,
+                msg.clone(),
+                Some("NOT_FOUND".to_string()),
+            ),
+            AppError::Unauthorized(msg) => (
+                StatusCode::UNAUTHORIZED,
+                msg.clone(),
+                Some("UNAUTHORIZED".to_string()),
+            ),
+            AppError::Forbidden(msg) => (
+                StatusCode::FORBIDDEN,
+                msg.clone(),
+                Some("FORBIDDEN".to_string()),
+            ),
+            AppError::BadRequest(msg) => (
+                StatusCode::BAD_REQUEST,
+                msg.clone(),
+                Some("BAD_REQUEST".to_string()),
+            ),
+            AppError::Conflict(msg) => (
+                StatusCode::CONFLICT,
+                msg.clone(),
+                Some("CONFLICT".to_string()),
+            ),
             AppError::DatabaseError(err) => {
                 error!(error = ?err, "PostgreSQL execution failure");
                 (
