@@ -288,14 +288,17 @@ export async function staffAuthMethod(identifier: string) {
   return apiPublicPost<StaffAuthMethodResponse>("/auth/staff/mfa/method", { identifier });
 }
 
-export async function verifyStaffTotp(identifier: string, code: string) {
-  return apiPublicPost<AuthSessionResponse>("/auth/staff/mfa/verify-totp", { identifier, code });
+export async function verifyStaffTotp(challengeToken: string, code: string) {
+  return apiPublicPost<AuthSessionResponse>("/auth/staff/mfa/verify-totp", {
+    challenge_token: challengeToken,
+    code,
+  });
 }
 
-export async function verifyStaffRecovery(identifier: string, recoveryCode: string) {
+export async function verifyStaffRecovery(challengeToken: string, recoveryCode: string) {
   return apiPublicPost<AuthSessionResponse>("/auth/staff/mfa/verify-recovery", {
-    identifier,
-    recovery_code: recoveryCode,
+    challenge_token: challengeToken,
+    code: recoveryCode,
   });
 }
 
