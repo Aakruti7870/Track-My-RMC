@@ -476,22 +476,22 @@ pub async fn verify_staff_mfa(
     req: VerifyStaffMfaRequest,
 ) -> Result<AuthResponse, AppError> {
     let digest = challenge_digest(&req.challenge_token);
-    let mut tx = state.db.begin().await?;
     let row: Option<(Uuid, String)> = sqlx::query_as(
-        "SELECT user_id, purpose FROM staff_mfa_challenges WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>NOW() AND attempts<max_attempts FOR UPDATE"
-    ).bind(&digest).fetch_optional(&mut *tx).await?;
+        "SELECT user_id, purpose FROM staff_mfa_challenges WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>NOW() AND attempts<max_attempts"
+    ).bind(&digest).fetch_optional(&state.db).await?;
     let (user_id, purpose) = row.ok_or_else(|| AppError::Unauthorized("MFA challenge is invalid or expired".to_string()))?;
     if purpose != "login" {
         return Err(AppError::Forbidden("Authenticator enrollment is required before login.".to_string()));
     }
-    sqlx::query("UPDATE staff_mfa_challenges SET consumed_at=NOW() WHERE token_hash=$1 AND consumed_at IS NULL")
-        .bind(&digest).execute(&mut *tx).await?;
-    tx.commit().await?;
-
     if let Err(err) = crate::auth::totp::verify_totp_login(&state.db, user_id, &req.code).await {
-        let _ = sqlx::query("UPDATE staff_mfa_challenges SET attempts=attempts+1 WHERE token_hash=$1 AND consumed_at IS NULL")
+        let _ = sqlx::query("UPDATE staff_mfa_challenges SET attempts=attempts+1 WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>NOW()")
             .bind(&digest).execute(&state.db).await;
         return Err(err);
+    }
+    let consumed = sqlx::query("UPDATE staff_mfa_challenges SET consumed_at=NOW() WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>NOW() AND attempts<max_attempts")
+        .bind(&digest).execute(&state.db).await?;
+    if consumed.rows_affected() != 1 {
+        return Err(AppError::Unauthorized("MFA challenge was already used or expired".to_string()));
     }
     let user = user_repo::find_by_id(&state.db, user_id).await?
         .ok_or_else(|| AppError::Unauthorized("Account not found".to_string()))?;
