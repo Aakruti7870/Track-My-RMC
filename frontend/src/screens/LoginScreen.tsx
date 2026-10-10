@@ -239,7 +239,7 @@ export default function LoginScreen() {
       clearTimer();
       setCode("");
       if (challenge.mfa_setup_required || challenge.status === "MFA_ENROLLMENT_REQUIRED") {
-        const enrollment = await startStaffMfaEnrollment();
+        const enrollment = await startStaffMfaEnrollment(challenge.challenge_token);
         setMfaEnrollment(enrollment);
         setPhase("staff_enroll");
       } else {
