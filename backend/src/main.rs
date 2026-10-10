@@ -76,7 +76,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(cors)
         .layer(TraceLayer::new_for_http());
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
+    let bind_ip = config.host.parse::<std::net::IpAddr>().map_err(|_| {
+        format!("HOST must be a valid IP address; received an invalid value")
+    })?;
+    let addr = SocketAddr::new(bind_ip, config.port);
     info!("Server listening on http://{}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
