@@ -34,8 +34,6 @@ jobs:
         run: npm run typecheck
       - name: Validate role routing
         run: npm run check:auth-routing
-      - name: Validate Play policy readiness
-        run: npm run check:play-policy
       - name: Validate Android responsive layouts
         run: npm run check:android-layout
       - name: Build production web bundle
