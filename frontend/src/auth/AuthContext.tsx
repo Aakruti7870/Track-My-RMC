@@ -51,7 +51,7 @@ type AuthContextValue = {
   verify: (identifier: string, code: string) => Promise<Me>;
   verifyStaff: (identifier: string, code: string) => Promise<import("@/src/api/client").StaffMfaChallengeResponse>;
   verifyStaffAuthenticator: (identifier: string, code: string) => Promise<Me>;
-  verifyStaffRecovery: (identifier: string, code: string) => Promise<Me>;
+  verifyStaffRecovery: (identifier: string, code: string) => Promise<Me>;\n  startStaffMfaEnrollment: () => Promise<import("@/src/api/client").MfaEnrollmentStartResponse>;\n  confirmStaffMfaEnrollment: (code: string) => Promise<import("@/src/api/client").MfaEnrollmentConfirmResponse>;
   completeStaffPasskey: (handoffCode: string) => Promise<Me>;
   verifyGoogle: (code: string) => Promise<Me>;
   demoLogin: (role: string) => Promise<Me>;
@@ -199,7 +199,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         verify,
         verifyStaff,
         verifyStaffAuthenticator,
-        verifyStaffRecovery: verifyStaffRecoveryCode,
+        verifyStaffRecovery: verifyStaffRecoveryCode,\n        startStaffMfaEnrollment,\n        confirmStaffMfaEnrollment,
         completeStaffPasskey,
         verifyGoogle,
         demoLogin,
