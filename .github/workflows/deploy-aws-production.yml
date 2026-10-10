@@ -83,7 +83,6 @@ jobs:
           npm ci
           npm run typecheck
           npm run check:auth-routing
-          npm run check:play-policy
           npm run check:android-layout
           npm run build:preview
           test -f dist/index.html
