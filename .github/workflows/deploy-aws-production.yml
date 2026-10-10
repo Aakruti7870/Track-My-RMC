@@ -28,7 +28,21 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: trackmyrmc_user
+          POSTGRES_PASSWORD: securepassword
+          POSTGRES_DB: trackmyrmc_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - uses: actions/checkout@v4
@@ -37,8 +51,24 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
+          components: rustfmt, clippy
           targets: x86_64-unknown-linux-gnu
-      - run: cargo build --release --manifest-path backend/Cargo.toml
+      - name: Validate deployment script
+        run: bash -n ops/aws-deploy-ec2.sh
+      - name: Rust format check
+        working-directory: backend
+        run: cargo fmt --all -- --check
+      - name: Rust check
+        run: cargo check --all-targets --manifest-path backend/Cargo.toml
+      - name: Rust clippy
+        run: cargo clippy --all-targets --manifest-path backend/Cargo.toml
+      - name: Rust tests
+        env:
+          DATABASE_URL: postgres://trackmyrmc_user:securepassword@localhost:5432/trackmyrmc_test
+          JWT_SECRET: test_jwt_secret_key_at_least_32_characters_long
+        run: cargo test --manifest-path backend/Cargo.toml --verbose
+      - name: Build Rust backend
+        run: cargo build --release --manifest-path backend/Cargo.toml
 
       - name: Build Expo web
         uses: actions/setup-node@v4
@@ -51,8 +81,20 @@ jobs:
           EXPO_PUBLIC_BACKEND_URL: https://trackmyrmc.com
         run: |
           npm ci
+          npm run typecheck
+          npm run check:auth-routing
+          npm run check:play-policy
+          npm run check:android-layout
           npm run build:preview
           test -f dist/index.html
+
+      - name: Build admin dashboard
+        working-directory: admin-web
+        env:
+          VITE_API_URL: https://trackmyrmc.com
+        run: |
+          npm install
+          npm run build
 
       - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v4
