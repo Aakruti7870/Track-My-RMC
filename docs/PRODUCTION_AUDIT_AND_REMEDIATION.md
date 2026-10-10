@@ -6,6 +6,69 @@ Production region: `ap-south-1`
 Production EC2: `i-0598aad6e6d729c69`
 Production database: RDS PostgreSQL `trackmyrmc-postgres`
 
+## System architecture flow
+
+```mermaid
+flowchart LR
+    subgraph Clients
+      C[Customer Expo app]
+      D[Driver Expo app]
+      S[Plant staff / owner]
+      A[Admin dashboard]
+      W[Public web bundle]
+    end
+    subgraph Identity
+      OTP[WhatsApp OTP]
+      EOTP[Email OTP]
+      MFA[TOTP / recovery challenge]
+    end
+    subgraph Production
+      CF[Cloudflare proxy
+Full strict]
+      N[Nginx TLS :443]
+      API[Rust Axum API
+127.0.0.1:8000]
+      DB[(RDS PostgreSQL
+private subnet)]
+      SEC[AWS Secrets Manager]
+    end
+    subgraph Release
+      GH[GitHub Actions
+format, check, tests, client builds]
+      OIDC[GitHub OIDC role]
+      SSM[AWS SSM deployment]
+      ART[(S3 release artifacts)]
+    end
+    C --> OTP
+    D --> OTP
+    S --> EOTP --> MFA
+    OTP --> API
+    MFA --> API
+    W --> CF --> N --> API
+    N --> W
+    A --> CF
+    API --> DB
+    API --> SEC
+    GH --> OIDC --> ART
+    OIDC --> SSM --> N
+    SSM --> API
+```
+
+## Component status matrix
+
+| Component | Current implementation / status | Required verification |
+|---|---|---|
+| Customer/driver authentication | WhatsApp OTP service exists; client is being moved from expired Graph API v20.0 to configurable v26.0 | Provider credential check and a real test OTP/verification |
+| Staff/owner authentication | Email OTP and challenge-bound TOTP/recovery routes exist | End-to-end OTP delivery, challenge expiry, rate limits and session revocation |
+| Passkeys | Backend WebAuthn endpoints intentionally absent; mobile routes and API calls are disabled | Implement and security-test WebAuthn before exposing it |
+| Admin portal | Build passes; admin login endpoint fails closed; no production hosting target in deployment workflow | Implement challenge-bound admin MFA and choose/secure hosting target |
+| Play review access | UI hidden by default; Rust reviewer endpoint and isolated fixtures are missing | Implement isolated reviewer accounts, test data, and fixed credential gate |
+| Account deletion | Frontend submits a public request, but Rust route is absent | Implement auditable deletion-request endpoint and retention workflow |
+| Android App Links | Nginx proxies asset links to the API, but Rust route is absent | Serve verified package/signing fingerprints and validate association |
+| Database | Running service targets database `postgres`; runtime secret specifies `trackmyrmc` | Backup, schema/migration and data parity before any cutover |
+| HTTPS | Cloudflare Full (strict); EC2 origin has HTTP only; remediation adds persistent apex TLS | Public TLS/health/assets checks after deployment |
+| Domain routing | Apex maps to EC2; `www` maps to Render | Verify both independently; no DNS changes during HTTPS repair |
+
 ## Execution flow
 
 ```mermaid
