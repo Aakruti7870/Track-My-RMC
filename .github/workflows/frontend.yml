@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "frontend/**"
+      - "admin-web/**"
       - ".github/workflows/frontend.yml"
   pull_request:
     paths:
@@ -25,6 +26,36 @@ jobs:
         with:
           node-version: 20
       - name: Install Dependencies
-        run: npm install
+        run: npm ci
       - name: Type Check
         run: npm run typecheck
+      - name: Validate role routing
+        run: npm run check:auth-routing
+      - name: Validate Play policy readiness
+        run: npm run check:play-policy
+      - name: Validate Android responsive layouts
+        run: npm run check:android-layout
+      - name: Build production web bundle
+        env:
+          EXPO_PUBLIC_BACKEND_URL: https://trackmyrmc.com
+        run: npm run build:preview
+
+  admin-web-build:
+    name: Admin dashboard build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: admin-web
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install Dependencies
+        run: npm install
+      - name: Build Admin Dashboard
+        env:
+          VITE_API_URL: https://trackmyrmc.com
+        run: npm run build
