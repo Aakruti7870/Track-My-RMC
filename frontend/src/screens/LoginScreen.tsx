@@ -242,7 +242,7 @@ export default function LoginScreen() {
     } finally {
       setLoading(false);
     }
-  }, [identifier, loading, verifyStaff]);
+  }, [identifier, loading, verifyStaff, clearTimer]);
 
   const handleVerifyAuthenticator = useCallback(async (otp: string) => {
     if (loading || otp.length !== 6) return;
