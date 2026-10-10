@@ -13,6 +13,7 @@ pub struct AppConfig {
     pub meta_whatsapp_token: Option<String>,
     pub meta_whatsapp_phone_number_id: Option<String>,
     pub meta_whatsapp_waba_id: Option<String>,
+    pub meta_graph_api_version: String,
 
     pub email_api_key: Option<String>,
     pub email_from_address: String,
@@ -79,6 +80,17 @@ impl AppConfig {
         let meta_whatsapp_token = env::var("META_WHATSAPP_TOKEN").ok();
         let meta_whatsapp_phone_number_id = env::var("META_PHONE_NUMBER_ID").ok();
         let meta_whatsapp_waba_id = env::var("META_WABA_ID").ok();
+        let meta_graph_api_version = env::var("META_GRAPH_API_VERSION")
+            .unwrap_or_else(|_| "v26.0".to_string());
+        let version = meta_graph_api_version.strip_prefix('v').unwrap_or("");
+        let version_parts: Vec<&str> = version.split('.').collect();
+        if version_parts.len() != 2
+            || version_parts.iter().any(|part| {
+                part.is_empty() || !part.chars().all(|character| character.is_ascii_digit())
+            })
+        {
+            return Err("META_GRAPH_API_VERSION must use the vNN.N format".to_string());
+        }
 
         let email_api_key = env::var("EMAIL_API_KEY").ok();
         let email_from_address =
@@ -118,6 +130,7 @@ impl AppConfig {
             meta_whatsapp_token,
             meta_whatsapp_phone_number_id,
             meta_whatsapp_waba_id,
+            meta_graph_api_version,
             email_api_key,
             email_from_address,
             otp_pepper,
