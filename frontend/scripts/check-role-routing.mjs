@@ -129,4 +129,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log("Auth routing regression check passed for all operational roles, mobile OTP, Plant Staff Passkey + Authenticator MFA, recovery and onboarding.");
+console.log("Auth routing regression check passed for all operational roles, mobile OTP, implemented Plant Staff Authenticator MFA, recovery and onboarding.");
