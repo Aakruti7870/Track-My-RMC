@@ -44,7 +44,7 @@ const DEMO_ROLES = [
 ];
 
 type LoginMode = "user" | "plant";
-type LoginPhase = "enter" | "user_otp" | "staff_email_otp" | "staff_passkey" | "staff_totp" | "staff_recovery";
+type LoginPhase = "enter" | "user_otp" | "staff_email_otp" | "staff_passkey" | "staff_totp" | "staff_recovery" | "staff_enroll";
 
 const validEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -75,7 +75,7 @@ export default function LoginScreen() {
   const [plantEmail, setPlantEmail] = useState("");
   const [identifier, setIdentifier] = useState("");
   const [code, setCode] = useState("");
-  const [recoveryCode, setRecoveryCode] = useState("");
+  const [recoveryCode, setRecoveryCode] = useState("");\n  const [mfaEnrollment, setMfaEnrollment] = useState<import("@/src/api/client").MfaEnrollmentStartResponse | null>(null);\n  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [otpVisual, setOtpVisual] = useState<OtpVisualState>("idle");
@@ -242,7 +242,22 @@ export default function LoginScreen() {
     } finally {
       setLoading(false);
     }
-  }, [identifier, loading, verifyStaff, clearTimer]);
+  }, [identifier, loading, verifyStaff, clearTimer, startStaffMfaEnrollment]);
+
+  const handleConfirmMfaEnrollment = async (otp: string) => {
+    if (loading || otp.length !== 6) return;
+    setLoading(true); setError(null);
+    try {
+      const result = await confirmStaffMfaEnrollment(otp);
+      setRecoveryCodes(result.recovery_codes || mfaEnrollment?.recovery_codes || []);
+      setMfaEnrollment(null);
+      setCode("");
+      setPhase("staff_totp");
+      toast("Authenticator enabled. Save your recovery codes, then enter the current code to finish login.", "success");
+    } catch (e: any) {
+      setError(e.detail || "Could not enable authenticator");
+    } finally { setLoading(false); }
+  };
 
   const handleVerifyAuthenticator = useCallback(async (otp: string) => {
     if (loading || otp.length !== 6) return;
@@ -376,6 +391,33 @@ export default function LoginScreen() {
           <Pressable onPress={() => resetEntry("plant")} hitSlop={10}>
             <AppText variant="label" center color={colors.brand}>← Change email</AppText>
           </Pressable>
+        </View>
+      );
+    }
+
+    if (phase === "staff_enroll") {
+      return (
+        <View style={styles.formGap}>
+          <View style={styles.headingBlock}>
+            <Ionicons name="shield-checkmark-outline" size={30} color={colors.brand} />
+            <AppText variant="heading" center>Set up Authenticator</AppText>
+            <AppText variant="bodyMuted" center>Scan this URI in your authenticator app, or enter the setup key manually.</AppText>
+            <AppText selectable>{mfaEnrollment?.manual_key || ""}</AppText>
+            <AppText selectable>{mfaEnrollment?.otpauth_uri || ""}</AppText>
+            <AppText variant="caption" center>Save these recovery codes securely:</AppText>
+            {(mfaEnrollment?.recovery_codes || []).map((item) => <AppText key={item} selectable>{item}</AppText>)}
+          </View>
+          <OtpOrbitVerification
+            testID="login-staff-enroll-input"
+            value={code}
+            onChangeText={(next) => { setCode(next); setError(null); }}
+            onComplete={handleConfirmMfaEnrollment}
+            state={otpVisual}
+            title="Confirm setup"
+            subtitle="Enter the current 6-digit code from your authenticator."
+            errorText={error}
+            colors={otpColors}
+          />
         </View>
       );
     }
