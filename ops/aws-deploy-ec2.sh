@@ -170,6 +170,19 @@ systemctl enable nginx
 systemctl restart nginx
 
 APP_JSON="$(aws secretsmanager get-secret-value --secret-id "$APP_SECRET" --query SecretString --output text)"
+printf '%s' "$APP_JSON" | jq -e '
+  (.JWT_SECRET | type == "string" and length >= 64) and
+  (.OTP_PEPPER | type == "string" and length >= 32) and
+  (.META_WHATSAPP_TOKEN | type == "string" and length > 0) and
+  (.META_PHONE_NUMBER_ID | type == "string" and length > 0) and
+  (.META_WABA_ID | type == "string" and length > 0) and
+  (.EMAIL_API_KEY | type == "string" and length > 0) and
+  (.EMAIL_FROM_ADDRESS | type == "string" and length > 0) and
+  (.DB_NAME == "trackmyrmc")
+' >/dev/null || {
+  echo "Required production runtime fields are missing or invalid; refusing release." >&2
+  exit 1
+}
 DB_NAME="$(printf '%s' "$APP_JSON" | jq -r '.DB_NAME // "trackmyrmc"')"
 if [[ ! "$DB_NAME" =~ ^[A-Za-z0-9_]+$ ]]; then
   echo "DB_NAME contains unsupported characters; refusing deployment." >&2
