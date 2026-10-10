@@ -88,7 +88,6 @@ export type OtpRequestResponse = {
   message?: string;
   dev_otp?: string;
   mfa_setup_required?: boolean;
-  passkey_available?: boolean;
   delivery?: { adapter: string; configured: boolean };
 };
 
@@ -125,26 +124,6 @@ export type MfaEnrollmentConfirmResponse = {
   recovery_codes: string[];
   challenge_token: string;
   message: string;
-};
-
-export type PasskeyReturnMode = "app" | "web";
-export type PasskeyStartResponse = {
-  request_id: string;
-  authorization_url: string;
-  expires_in: number;
-  email?: string;
-};
-export type WebAuthnOptionsResponse = Record<string, unknown> & { ceremony_id: string };
-export type PasskeyVerifyResponse = {
-  status: "PASSKEY_VERIFIED";
-  handoff_code: string;
-  return_mode: PasskeyReturnMode;
-  expires_in: number;
-};
-export type PasskeyRegisterResponse = {
-  status: "PASSKEY_REGISTERED";
-  return_mode: PasskeyReturnMode;
-  passkey_count: number;
 };
 
 export type PlayReviewRole = "customer" | "plant_owner" | "driver";
@@ -312,78 +291,6 @@ export async function confirmStaffMfaEnrollment(challengeToken: string, code: st
   return apiPublicPost<MfaEnrollmentConfirmResponse>("/auth/staff/mfa/enroll/confirm", {
     challenge_token: challengeToken,
     code,
-  });
-}
-
-export async function startStaffPasskeyAuthentication(
-  identifier: string,
-  returnMode: PasskeyReturnMode,
-) {
-  return apiPublicPost<PasskeyStartResponse>("/auth/staff/passkey/authenticate/start", {
-    identifier,
-    return_mode: returnMode,
-  });
-}
-
-export async function staffPasskeyAuthenticationOptions(requestId: string) {
-  return apiPublicPost<WebAuthnOptionsResponse>("/auth/staff/passkey/authenticate/options", {
-    request_id: requestId,
-  });
-}
-
-export async function verifyStaffPasskeyAuthentication(
-  requestId: string,
-  ceremonyId: string,
-  credential: Record<string, unknown>,
-) {
-  return apiPublicPost<PasskeyVerifyResponse>("/auth/staff/passkey/authenticate/verify", {
-    request_id: requestId,
-    ceremony_id: ceremonyId,
-    credential,
-  });
-}
-
-export async function exchangeStaffPasskeyHandoff(code: string) {
-  return apiPublicPost<AuthSessionResponse>("/auth/staff/passkey/exchange", { code });
-}
-
-export async function startStaffPasskeyRegistration(
-  token: string,
-  actorCode: string,
-  returnMode: PasskeyReturnMode,
-) {
-  return apiPost<PasskeyStartResponse>("/auth/staff/passkey/register/start", token, {
-    actor_code: actorCode,
-    return_mode: returnMode,
-  });
-}
-
-export async function staffPasskeyRegistrationOptions(requestId: string) {
-  return apiPublicPost<WebAuthnOptionsResponse>("/auth/staff/passkey/register/options", {
-    request_id: requestId,
-  });
-}
-
-export async function verifyStaffPasskeyRegistration(
-  requestId: string,
-  ceremonyId: string,
-  credential: Record<string, unknown>,
-) {
-  return apiPublicPost<PasskeyRegisterResponse>("/auth/staff/passkey/register/verify", {
-    request_id: requestId,
-    ceremony_id: ceremonyId,
-    credential,
-  });
-}
-
-export async function removeStaffPasskey(
-  token: string,
-  credentialId: string,
-  actorCode: string,
-) {
-  return apiPost<{ status: "PASSKEY_REMOVED" }>("/auth/staff/passkey/remove", token, {
-    credential_id: credentialId,
-    actor_code: actorCode,
   });
 }
 

@@ -176,11 +176,7 @@ This document specifies the complete REST API contract for the TrackMyRMC Rust b
 
 ### 2.5 WebAuthn / FIDO2 Passkeys
 
-- `POST /api/auth/passkey/register/options`: Initiates registration ceremony
-- `POST /api/auth/passkey/register/verify`: Cryptographically verifies attestation
-- `POST /api/auth/passkey/login/options`: Initiates authentication assertion
-- `POST /api/auth/passkey/login/verify`: Verifies cryptographic signature & issues JWT
-
+Passkey/WebAuthn endpoints are **not available** in the current Rust API. The client UI and Expo routes remain disabled until the backend implements and tests challenge binding, origin/RP-ID validation, attestation/assertion signature verification, credential counters, expiry, and one-time handoff semantics. Do not treat passkey login or registration as a supported production capability.
 ---
 
 ## 3. Customer Domain APIs

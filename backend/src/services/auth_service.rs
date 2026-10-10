@@ -191,6 +191,7 @@ pub async fn send_whatsapp_otp(
     let wa_service = WhatsAppService::new(
         state.config.meta_whatsapp_token.clone(),
         state.config.meta_whatsapp_phone_number_id.clone(),
+        state.config.meta_graph_api_version.clone(),
     );
     wa_service.validate_config()?;
 

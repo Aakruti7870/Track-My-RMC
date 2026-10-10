@@ -7,6 +7,7 @@ pub struct WhatsAppService {
     client: Client,
     token: Option<String>,
     phone_number_id: Option<String>,
+    api_version: String,
 }
 
 impl WhatsAppService {
@@ -26,11 +27,16 @@ impl WhatsAppService {
         }
     }
 
-    pub fn new(token: Option<String>, phone_number_id: Option<String>) -> Self {
+    pub fn new(
+        token: Option<String>,
+        phone_number_id: Option<String>,
+        api_version: String,
+    ) -> Self {
         Self {
             client: Client::new(),
             token,
             phone_number_id,
+            api_version,
         }
     }
 
@@ -65,8 +71,8 @@ impl WhatsAppService {
         };
 
         let url = format!(
-            "https://graph.facebook.com/v20.0/{}/messages",
-            phone_number_id
+            "https://graph.facebook.com/{}/{}/messages",
+            self.api_version, phone_number_id
         );
 
         // The approved template body is:

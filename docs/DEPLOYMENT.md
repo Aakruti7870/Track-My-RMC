@@ -26,10 +26,10 @@ The repository includes a production-ready `render.yaml` defining:
 | `META_WABA_ID` | Yes | Meta WhatsApp Business Account ID |
 | `EMAIL_API_KEY` | Yes | Postmark or SendGrid API token |
 | `EMAIL_FROM_ADDRESS` | Yes | e.g., `noreply@trackmyrmc.com` |
-| `WEBAUTHN_RP_ID` | Yes | Domain name (e.g. `trackmyrmc.com`) |
-| `WEBAUTHN_RP_ORIGIN` | Yes | Scheme + host (e.g. `https://trackmyrmc.com`) |
 
 ---
+
+WebAuthn RP variables are not required by the current backend because passkey endpoints are intentionally disabled until complete verification is implemented.
 
 ## 3. Health Monitoring
 

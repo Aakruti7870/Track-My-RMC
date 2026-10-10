@@ -15,18 +15,12 @@ pub struct AdminOtpLoginRequest {
 pub async fn admin_login(
     Json(payload): Json<AdminOtpLoginRequest>,
 ) -> Result<axum::response::Response, AppError> {
-    if !payload
-        .email
-        .trim()
-        .eq_ignore_ascii_case("krushnabade54@gmail.com")
-    {
-        return Err(AppError::Forbidden(
-            "Administrator account is not authorized.".to_string(),
-        ));
-    }
-
+    // Do not hard-code or disclose a privileged administrator email in source.
+    // This endpoint remains fail-closed until the admin UI uses the complete
+    // challenge-bound email OTP + TOTP/recovery flow.
+    let _ = payload;
     Err(AppError::Forbidden(
-        "Administrator OTP-only login is disabled until the complete email OTP plus authenticator challenge flow is implemented.".to_string(),
+        "Administrator login is temporarily unavailable until multi-factor verification is completed.".to_string(),
     ))
 }
 

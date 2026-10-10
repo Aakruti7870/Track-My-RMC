@@ -5,11 +5,16 @@ on:
     branches: [ main, develop ]
     paths:
       - 'backend/**'
+      - 'ops/**'
       - '.github/workflows/backend.yml'
+      - '.github/workflows/deploy-aws-production.yml'
   pull_request:
     branches: [ main ]
     paths:
       - 'backend/**'
+      - 'ops/**'
+      - '.github/workflows/backend.yml'
+      - '.github/workflows/deploy-aws-production.yml'
 
 env:
   CARGO_TERM_COLOR: always
@@ -37,6 +42,8 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+      - name: Validate production deploy script syntax
+        run: bash -n ops/aws-deploy-ec2.sh
 
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -51,7 +58,7 @@ jobs:
       - name: Format Check
         run: |
           cd backend
-          cargo fmt --all
+          cargo fmt --all -- --check
 
       - name: Cargo Check
         run: |

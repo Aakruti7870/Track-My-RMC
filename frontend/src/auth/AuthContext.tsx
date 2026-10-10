@@ -6,7 +6,6 @@ import {
   apiPost,
   demoLogin as apiDemoLogin,
   exchangeGoogleStaffCode,
-  exchangeStaffPasskeyHandoff,
   isApiError,
   playReviewLogin,
   PlayReviewRole,
@@ -56,7 +55,6 @@ type AuthContextValue = {
   verifyStaffRecovery: (identifier: string, code: string) => Promise<Me>;
   startStaffMfaEnrollment: (challengeToken?: string) => Promise<import("@/src/api/client").MfaEnrollmentStartResponse>;
   confirmStaffMfaEnrollment: (code: string) => Promise<import("@/src/api/client").MfaEnrollmentConfirmResponse>;
-  completeStaffPasskey: (handoffCode: string) => Promise<Me>;
   verifyGoogle: (code: string) => Promise<Me>;
   demoLogin: (role: string) => Promise<Me>;
   verifyPlayReview: (role: PlayReviewRole, accessCode: string) => Promise<Me>;
@@ -145,11 +143,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return acceptSession(res.access_token ?? res.token);
   };
 
-  const completeStaffPasskey = useCallback(async (handoffCode: string): Promise<Me> => {
-    const res = await exchangeStaffPasskeyHandoff(handoffCode);
-    return acceptSession(res.access_token ?? res.token);
-  }, [acceptSession]);
-
   // Kept for backward compatibility and rollback safety. The normal Plant Staff
   // login UI no longer exposes Google OAuth.
   const verifyGoogle = async (code: string): Promise<Me> => {
@@ -225,8 +218,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         verifyStaffRecovery: verifyStaffRecoveryCode,
         startStaffMfaEnrollment,
         confirmStaffMfaEnrollment,
-        completeStaffPasskey,
-        verifyGoogle,
+          verifyGoogle,
         demoLogin,
         verifyPlayReview,
         refreshMe,

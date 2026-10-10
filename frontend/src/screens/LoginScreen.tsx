@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Platform,
   Pressable,
   StyleSheet,
   TextInput,
@@ -15,9 +14,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import * as Linking from "expo-linking";
-import * as WebBrowser from "expo-web-browser";
 
-import { startStaffPasskeyAuthentication } from "@/src/api/client";
 import { useAuth } from "@/src/auth/AuthContext";
 import { roleRouteFor } from "@/src/auth/roleRoutes";
 import { OtpOrbitVerification, OtpVisualState } from "@/src/components/auth/OtpOrbitVerification";
@@ -44,7 +41,9 @@ const DEMO_ROLES = [
 ];
 
 type LoginMode = "user" | "plant";
-type LoginPhase = "enter" | "user_otp" | "staff_email_otp" | "staff_passkey" | "staff_totp" | "staff_recovery" | "staff_enroll";
+type LoginPhase = "enter" | "user_otp" | "staff_email_otp" | "staff_totp" | "staff_recovery" | "staff_enroll";
+
+const PLAY_REVIEW_ACCESS_ENABLED = process.env.EXPO_PUBLIC_ENABLE_PLAY_REVIEW === "true";
 
 const validEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -67,7 +66,6 @@ export default function LoginScreen() {
     verifyStaffRecovery,
     startStaffMfaEnrollment,
     confirmStaffMfaEnrollment,
-    completeStaffPasskey,
     demoLogin,
   } = useAuth();
 
@@ -130,17 +128,13 @@ export default function LoginScreen() {
     clearTimer();
   };
 
-  const finishLogin = async (me: Awaited<ReturnType<typeof verify>>, offerPasskey = false) => {
+  const finishLogin = async (me: Awaited<ReturnType<typeof verify>>) => {
     setOtpVisual("success");
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     await delay(700);
 
     if (me.mfa_configured && !me.mfa_enabled && me.role !== "customer" && me.role !== "driver") {
       router.replace("/mfa-setup" as any);
-      return;
-    }
-    if (offerPasskey && me.mfa_enabled && !me.passkey_enabled && me.role !== "customer" && me.role !== "driver") {
-      router.replace("/passkey-setup" as any);
       return;
     }
     router.replace(roleRouteFor(me.role) as any);
@@ -273,38 +267,13 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       const me = await verifyStaffAuthenticator(identifier, otp);
-      await finishLogin(me, true);
+      await finishLogin(me);
     } catch (e: any) {
       await failOtp(e.detail || "Incorrect Authenticator code.");
     } finally {
       setLoading(false);
     }
   }, [identifier, loading, verifyStaffAuthenticator]);
-
-  const handleVerifyPasskey = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const returnMode = Platform.OS === "web" ? "web" : "app";
-      const request = await startStaffPasskeyAuthentication(identifier, returnMode);
-      if (Platform.OS === "web") {
-        window.location.assign(request.authorization_url);
-        return;
-      }
-      const result = await WebBrowser.openAuthSessionAsync(request.authorization_url, "trackmyrmc://auth/passkey");
-      if (result.type !== "success") throw new Error("Passkey login was cancelled");
-      const parsed = Linking.parse(result.url);
-      const rawCode = parsed.queryParams?.code;
-      const handoff = Array.isArray(rawCode) ? String(rawCode[0] || "") : String(rawCode || "");
-      if (handoff.length < 24) throw new Error("Secure passkey return code was missing");
-      const me = await completeStaffPasskey(handoff);
-      router.replace(roleRouteFor(me.role) as any);
-    } catch (e: any) {
-      setError(e?.detail || e?.message || "Passkey verification could not be completed");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleVerifyRecovery = async () => {
     setError(null);
@@ -450,23 +419,6 @@ export default function LoginScreen() {
               <AppText variant="label" color={colors.brand}>Use recovery code</AppText>
             </Pressable>
           </View>
-        </View>
-      );
-    }
-
-    if (phase === "staff_passkey") {
-      return (
-        <View style={styles.formGap}>
-          <View style={styles.headingBlock}>
-            <Ionicons name="finger-print-outline" size={30} color={colors.brand} />
-            <AppText variant="heading" center>Passkey verification</AppText>
-            <AppText variant="bodyMuted" center>Use your trusted device credential, or continue with Authenticator.</AppText>
-          </View>
-          <Button testID="login-plant-passkey" label="Continue with Passkey" onPress={handleVerifyPasskey} loading={loading} icon={<Ionicons name="finger-print-outline" size={20} color={colors.onBrand} />} />
-          {error ? <AppText variant="caption" center color={colors.error}>{error}</AppText> : null}
-          <Pressable testID="login-use-authenticator" onPress={() => { setCode(""); setError(null); setPhase("staff_totp"); }}>
-            <AppText variant="label" center color={colors.brand}>Use Authenticator instead</AppText>
-          </Pressable>
         </View>
       );
     }
@@ -689,9 +641,11 @@ export default function LoginScreen() {
           </View>
         </View>
 
-        <Pressable testID="login-review-access" onPress={() => router.push("/review-access" as any)} style={styles.reviewLink} hitSlop={10}>
-          <AppText variant="caption" center color={colors.onSurfaceTertiary}>REVIEW APP · Google Play reviewer access</AppText>
-        </Pressable>
+        {PLAY_REVIEW_ACCESS_ENABLED ? (
+          <Pressable testID="login-review-access" onPress={() => router.push("/review-access" as any)} style={styles.reviewLink} hitSlop={10}>
+            <AppText variant="caption" center color={colors.onSurfaceTertiary}>REVIEW APP · Google Play reviewer access</AppText>
+          </Pressable>
+        ) : null}
 
         <AppText variant="caption" center color={colors.onSurfaceTertiary} style={styles.poweredFooter}>Powered by <AppText variant="label">Gold e Tech</AppText></AppText>
       </KeyboardAwareScrollView>
