@@ -101,22 +101,11 @@ jobs:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Validate production runtime secret
+      - name: Verify production runtime secret exists
         run: |
           set -euo pipefail
-          SECRET_JSON="$(aws secretsmanager get-secret-value --secret-id "${APP_SECRET_NAME}" --query SecretString --output text)"
-          printf '%s' "$SECRET_JSON" | jq -e '
-            (.JWT_SECRET | type == "string" and length >= 64) and
-            (.OTP_PEPPER | type == "string" and length >= 32) and
-            (.META_WHATSAPP_TOKEN | type == "string" and length > 0) and
-            (.META_PHONE_NUMBER_ID | type == "string" and length > 0) and
-            (.META_WABA_ID | type == "string" and length > 0) and
-            (.EMAIL_API_KEY | type == "string" and length > 0) and
-            (.EMAIL_FROM_ADDRESS | type == "string" and length > 0) and
-            (.DB_NAME == "trackmyrmc")
-          ' >/dev/null
-          unset SECRET_JSON
-          echo "Required production secrets are present; values were not logged."
+          aws secretsmanager describe-secret --secret-id "${APP_SECRET_NAME}" >/dev/null
+          echo "Runtime secret exists. The EC2 instance validates required fields locally before replacing the application release."
 
       - name: Upload release
         id: release
