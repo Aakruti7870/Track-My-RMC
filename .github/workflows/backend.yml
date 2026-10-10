@@ -5,6 +5,7 @@ on:
     branches: [ main, develop ]
     paths:
       - 'backend/**'
+      - 'ops/**'
       - '.github/workflows/deploy-aws-production.yml'
       - '.github/workflows/backend.yml'
       - '.github/workflows/deploy-aws-production.yml'
