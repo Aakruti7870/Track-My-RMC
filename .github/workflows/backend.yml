@@ -6,13 +6,15 @@ on:
     paths:
       - 'backend/**'
       - 'ops/**'
-      - '.github/workflows/deploy-aws-production.yml'
       - '.github/workflows/backend.yml'
       - '.github/workflows/deploy-aws-production.yml'
   pull_request:
     branches: [ main ]
     paths:
       - 'backend/**'
+      - 'ops/**'
+      - '.github/workflows/backend.yml'
+      - '.github/workflows/deploy-aws-production.yml'
 
 env:
   CARGO_TERM_COLOR: always
