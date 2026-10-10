@@ -23,6 +23,7 @@ const readLoginSource = () => {
 const login = readLoginSource();
 const onboarding = read("app/plant-onboarding.tsx");
 const mfaSetup = read("app/mfa-setup.tsx");
+const apiClient = read("src/api/client.ts");
 const index = read("app/index.tsx");
 
 const expectedRoutes = {
@@ -69,6 +70,10 @@ if (!login.includes('testID="login-mobile-input"')) {
 
 if (!login.includes('testID="login-plant-email-input"') || !login.includes('testID="login-plant-send-otp"')) {
   failures.push("Plant Staff Login must start from the approved work email");
+}
+
+if (apiClient.includes("/auth/staff/passkey/") || apiClient.includes("exchangeStaffPasskeyHandoff")) {
+  failures.push("API client must not call WebAuthn endpoints until Rust verification is implemented");
 }
 
 if (login.includes('testID="login-plant-passkey"') || login.includes("startStaffPasskeyAuthentication") || login.includes("completeStaffPasskey")) {
