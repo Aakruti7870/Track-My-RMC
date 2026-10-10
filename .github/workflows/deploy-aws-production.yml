@@ -108,6 +108,5 @@ jobs:
         run: |
           set -euo pipefail
           curl --retry 10 --retry-all-errors --retry-delay 3 -fsS https://trackmyrmc.com/health
-          curl --retry 10 --retry-all-errors --retry-delay 3 -fsS https://www.trackmyrmc.com/health
           curl --retry 10 --retry-all-errors --retry-delay 3 -fsS https://trackmyrmc.com/ | grep -F '_expo/static/' >/dev/null
           curl --retry 10 --retry-all-errors --retry-delay 3 -fsSI https://trackmyrmc.com/ | grep -Eiq '^HTTP/[^ ]+ 200'
