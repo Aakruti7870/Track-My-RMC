@@ -65,6 +65,8 @@ export default function LoginScreen() {
     verifyStaff,
     verifyStaffAuthenticator,
     verifyStaffRecovery,
+    startStaffMfaEnrollment,
+    confirmStaffMfaEnrollment,
     completeStaffPasskey,
     demoLogin,
   } = useAuth();
@@ -236,8 +238,16 @@ export default function LoginScreen() {
     setOtpVisual("checking");
     setLoading(true);
     try {
-      const me = await verifyStaff(identifier, otp);
-      await finishLogin(me);
+      const challenge = await verifyStaff(identifier, otp);
+      clearTimer();
+      setCode("");
+      if (challenge.mfa_setup_required || challenge.status === "MFA_ENROLLMENT_REQUIRED") {
+        const enrollment = await startStaffMfaEnrollment();
+        setMfaEnrollment(enrollment);
+        setPhase("staff_enroll");
+      } else {
+        setPhase("staff_totp");
+      }
     } catch (e: any) {
       await failOtp(e.detail || "Incorrect or expired email OTP.");
     } finally {
