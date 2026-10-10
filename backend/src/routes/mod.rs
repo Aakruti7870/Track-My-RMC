@@ -49,6 +49,10 @@ pub fn build_app_router(state: AppState) -> Router {
             "/api/staff/auth/verify-otp",
             post(auth_routes::verify_email_otp),
         )
+        // Staff login second factor. These endpoints require the opaque challenge
+        // returned after successful email OTP; no identifier-only MFA is accepted.
+        .route("/api/auth/staff/mfa/verify-totp", post(auth_routes::verify_staff_mfa))
+        .route("/api/auth/staff/mfa/verify-recovery", post(auth_routes::verify_staff_mfa))
         // --- Authenticator App (RFC 6238 TOTP) ---
         .route("/api/auth/totp/setup", post(auth_routes::setup_totp))
         .route(
