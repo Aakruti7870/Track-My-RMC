@@ -54,7 +54,7 @@ type AuthContextValue = {
   verifyStaff: (identifier: string, code: string) => Promise<import("@/src/api/client").StaffMfaChallengeResponse>;
   verifyStaffAuthenticator: (identifier: string, code: string) => Promise<Me>;
   verifyStaffRecovery: (identifier: string, code: string) => Promise<Me>;
-  startStaffMfaEnrollment: () => Promise<import("@/src/api/client").MfaEnrollmentStartResponse>;
+  startStaffMfaEnrollment: (challengeToken?: string) => Promise<import("@/src/api/client").MfaEnrollmentStartResponse>;
   confirmStaffMfaEnrollment: (code: string) => Promise<import("@/src/api/client").MfaEnrollmentConfirmResponse>;
   completeStaffPasskey: (handoffCode: string) => Promise<Me>;
   verifyGoogle: (code: string) => Promise<Me>;
@@ -118,9 +118,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return challenge;
   };
 
-  const startStaffMfaEnrollment = async (): Promise<import("@/src/api/client").MfaEnrollmentStartResponse> => {
-    if (!staffMfaChallenge) throw new Error("Staff login challenge expired. Start login again.");
-    return apiStartStaffMfaEnrollment(staffMfaChallenge);
+  const startStaffMfaEnrollment = async (challengeToken?: string): Promise<import("@/src/api/client").MfaEnrollmentStartResponse> => {
+    const activeChallenge = challengeToken || staffMfaChallenge;
+    if (!activeChallenge) throw new Error("Staff login challenge expired. Start login again.");
+    return apiStartStaffMfaEnrollment(activeChallenge);
   };
 
   const confirmStaffMfaEnrollment = async (code: string): Promise<import("@/src/api/client").MfaEnrollmentConfirmResponse> => {
