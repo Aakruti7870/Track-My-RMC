@@ -95,6 +95,23 @@ pub async fn verify_email_otp(
     Ok(Json(auth_res))
 }
 
+#[derive(Deserialize)]
+pub struct StaffMfaEnrollmentRequest { pub challenge_token: String }
+#[derive(Deserialize)]
+pub struct StaffMfaEnrollmentConfirmRequest { pub challenge_token: String, pub code: String }
+pub async fn start_staff_mfa_enrollment(
+    State(state): State<AppState>,
+    Json(payload): Json<StaffMfaEnrollmentRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    Ok(Json(auth_service::start_staff_mfa_enrollment(&state, &payload.challenge_token).await?))
+}
+pub async fn confirm_staff_mfa_enrollment(
+    State(state): State<AppState>,
+    Json(payload): Json<StaffMfaEnrollmentConfirmRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    Ok(Json(auth_service::confirm_staff_mfa_enrollment(&state, &payload.challenge_token, &payload.code).await?))
+}
+
 // --- Challenge-bound staff MFA: second factor required before JWT issuance ---
 pub async fn verify_staff_mfa(
     State(state): State<AppState>,
