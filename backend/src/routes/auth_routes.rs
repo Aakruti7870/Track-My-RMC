@@ -12,7 +12,7 @@ use crate::{
     models::user::{LoginRequest, RegisterRequest},
     services::auth_service::{
         self, SendEmailOtpRequest, SendWhatsAppOtpRequest, VerifyEmailOtpRequest,
-        VerifyTotpLoginRequest, VerifyWhatsAppOtpRequest,
+        VerifyTotpLoginRequest, VerifyWhatsAppOtpRequest, VerifyStaffMfaRequest,
     },
     state::AppState,
 };
@@ -92,6 +92,15 @@ pub async fn verify_email_otp(
     Json(payload): Json<VerifyEmailOtpRequest>,
 ) -> Result<impl IntoResponse, AppError> {
     let auth_res = auth_service::verify_email_otp(&state, payload).await?;
+    Ok(Json(auth_res))
+}
+
+// --- Challenge-bound staff MFA: second factor required before JWT issuance ---
+pub async fn verify_staff_mfa(
+    State(state): State<AppState>,
+    Json(payload): Json<VerifyStaffMfaRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    let auth_res = auth_service::verify_staff_mfa(&state, payload).await?;
     Ok(Json(auth_res))
 }
 
