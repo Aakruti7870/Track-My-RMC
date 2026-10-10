@@ -37,6 +37,8 @@ flowchart TD
 - RDS PostgreSQL is available, private, encrypted, has deletion protection enabled, and has a seven-day backup retention period.
 - EC2-local HTTP health returns `status=ok`, `database=connected`. This is not proof of correct database selection or data parity.
 - The current deployment script writes an Nginx HTTP-only server block. No origin certificate was found under the checked Let's Encrypt/SSL paths; public HTTPS previously returned Cloudflare 521.
+- Cloudflare DNS currently points apex `trackmyrmc.com` to EC2 `13.203.215.125` (proxied), but `www.trackmyrmc.com` is a proxied CNAME to `trackmyrmc-frontend.onrender.com`. The deployment must not assume apex and www terminate on the same origin; DNS was not changed. Cloudflare SSL mode is Full (strict), Always Use HTTPS is off, and automatic HTTPS rewrites are on.
+- The AWS deploy workflow builds and deploys `frontend/` and `backend/` but does not package/deploy `admin-web/`; the admin dashboard is currently CI-buildable but has no deployment target configured in this workflow.
 - The deploy script builds `DATABASE_URL` with database name `postgres`; the RDS instance metadata names `trackmyrmc` as the application database. This mismatch must be resolved and the actual live DB target verified before cutover.
 - The workflow can create `trackmyrmc/app-runtime` with blank provider credentials if the secret is absent. Production OTP delivery must be checked without printing secret values.
 - The current module parity audit documents major missing or partial Rust API domains compared with the original FastAPI/MongoDB implementation. A health endpoint does not establish functional parity.
@@ -46,10 +48,10 @@ flowchart TD
 
 1. **Repository inventory:** inspect route registration, auth services, DB pool/migrations, mobile/admin clients, CI workflows, deployment script, and module-parity audit.
 2. **Production baseline:** capture service status, listener ports, Nginx configuration, TLS files, SSM health, secret key presence only, DB name/migration status, and HTTP/HTTPS behavior. Never print credentials or personal data.
-3. **Availability and database fixes:** make TLS provisioning persistent across every deployment; keep Cloudflare Full (strict); ensure app connects to the intended `trackmyrmc` database; preserve backups and avoid destructive schema/data changes.
+3. **Availability and database fixes:** make apex TLS provisioning persistent across every deployment; keep Cloudflare Full (strict); preserve the live database target (`postgres`) until the `trackmyrmc` database has a verified backup and data/migration parity; then perform an explicitly authorized cutover. Do not change DNS as part of the HTTPS fix.
 4. **Automated verification:** Rust format/check/clippy/tests, frontend typecheck and route/policy checks, admin build, deployment workflow validation, and targeted auth/OTP tests.
 5. **Deploy from a review branch:** deploy only after CI passes; use existing GitHub OIDC/SSM deployment path; capture release SHA and SSM command result.
-6. **Live smoke tests:** HTTPS apex and www, health, API response, frontend index/assets, redirects, TLS validity/hostname, and rollback readiness.
+6. **Live smoke tests:** HTTPS apex health, API response, frontend index/assets, redirects, TLS validity/hostname, and rollback readiness. Verify the separately hosted `www`/Render frontend independently; do not test it as though it were the EC2 API.
 7. **Authentication:** test customer/driver WhatsApp OTP and staff email OTP→TOTP/recovery using authorized test accounts; verify failures/rate limits/session revocation. Never disclose OTPs/tokens.
 8. **Parity/data audit:** compare source domains and Rust route coverage, verify production schema/migration state and record-count/relationship evidence before declaring migration complete.
 9. **Release decision:** mark each gate PASS/FAIL/NOT VERIFIED with evidence; do not claim production-ready while any critical gate is unverified.
