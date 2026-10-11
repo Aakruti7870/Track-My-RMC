@@ -1,6 +1,6 @@
 # TrackMyRMC Original-to-Rust Module Parity Audit
 
-Audit date: 2026-10-09
+Audit date: 2026-10-11
 
 ## Purpose and evidence boundary
 
@@ -24,6 +24,7 @@ Original roles in `backend/roles.py` include customer, driver, plant owner, admi
 - Workforce/payroll: daily roster, attendance marking.
 - Admin: admin login and portal overview.
 - Public app/web support: `/.well-known/assetlinks.json` (requires `PLAY_SIGNING_SHA256`) and `/kyc/return`.
+- Plant onboarding/discovery: public Places search (optional `GOOGLE_PLACES_API_KEY`), onboarding submission, admin review queue, approval/rejection, owner provisioning and plant creation.
 - Health: health check.
 
 The target explicitly does not expose WebAuthn passkey endpoints in `backend/src/routes/mod.rs` because full challenge/origin/RP-ID/signature/counter verification is not implemented.
@@ -36,13 +37,13 @@ The target explicitly does not expose WebAuthn passkey endpoints in `backend/src
 | Email OTP for staff/owner/admin | Email OTP routes and backward-compatible staff aliases | Present at route level; runtime delivery/login must be tested separately |
 | TOTP MFA | TOTP setup/verify/login routes | Present at route level |
 | Passkeys/WebAuthn | Explicitly not exposed pending full verification | Missing/not enabled |
-| Customer plant discovery/listing | `GET /api/customer/plants` | Partial; original discovery/onboarding workflows are not represented by these routes |
+| Customer plant discovery/listing | `GET /api/customer/plants`; `GET /api/plant-onboarding/places`; `POST /api/plant-onboarding/requests`; admin-only `/api/plant-discovery/requests` review routes | Partial; Places search is disabled until `GOOGLE_PLACES_API_KEY` is configured; onboarding submission and approval/rejection are implemented at API level, but frontend wiring and staging workflow tests remain |
 | Customer sites | list/create | Partial |
 | Orders | list/create/detail and status update | Partial; original order lifecycle/history and supporting workflows require route/service comparison |
 | Driver trips/location | trip list and location update | Partial; route history and additional tracking flows need comparison |
 | Challan/POD | sign challan and submit POD | Partial; storage/evidence workflows need comparison |
 | Dispatcher/fleet/load | fleet list, assign load, status update | Partial |
-| Owner plant/billing | create plant and billing overview | Partial; plans/promotions, plant onboarding, business profiles, quotations and finance workflows not represented in current route table |
+| Owner plant/billing | create plant and billing overview; admin approval provisions an owner and plant from a pending onboarding request | Partial; plans/promotions, business profiles, quotations and finance workflows are not represented in current route table |
 | Workforce/payroll | roster and attendance marking | Partial; reports, payroll closure/guards/concurrency workflows are not represented in current route table |
 | Admin/control center | admin login and portal overview | Partial; original control center, access management and security workspaces need implementation/parity verification |
 | KYC/DigiLocker recovery | Original has KYC recovery/onboarding routes | No corresponding route in inspected Rust route table |
@@ -69,5 +70,5 @@ The target explicitly does not expose WebAuthn passkey endpoints in `backend/src
 
 1. Verify live database counts and migration state.
 2. Fix the currently visible placeholder/nonresponsive role-home routes by tracing frontend role routing against the authenticated role and implemented API endpoints.
-3. Complete missing high-priority route parity in this order: plant discovery/onboarding; KYC recovery; maps/tracking history; finance/payments; plans/promotions; workforce reports/payroll closure; admin/control center; storage; automation/assistant; Play review/public policy; privileged account-deletion completion.
+3. Complete missing high-priority route parity in this order: KYC recovery; maps/tracking history; finance/payments; plans/promotions; workforce reports/payroll closure; admin/control center; storage; automation/assistant; Play review/public policy; privileged account-deletion completion. Finish plant onboarding by wiring the frontend and running staging end-to-end tests.
 4. Add integration tests for each module and role before deploying.
