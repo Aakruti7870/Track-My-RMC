@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { Linking, PanResponder, Platform, Pressable, StyleSheet, View } from "react-native";
+import { Alert, Linking, PanResponder, Platform, Pressable, StyleSheet, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
@@ -59,6 +59,21 @@ export default function PodScreen() {
   ).current;
 
   const pickImage = async (fromCamera: boolean) => {
+    const consented = await new Promise<boolean>((resolve) => {
+      Alert.alert(
+        fromCamera ? "Camera access for proof of delivery" : "Choose a proof-of-delivery photo",
+        fromCamera
+          ? "TrackMyRMC will access the camera only when you capture a site photo for this delivery's proof of delivery. The photo is attached to the delivery record for authorized operational users."
+          : "TrackMyRMC will open the system photo picker so you can select a site photo to attach to this delivery's proof of delivery. Only the photo you select is attached to the delivery record.",
+        [
+          { text: "Not now", style: "cancel", onPress: () => resolve(false) },
+          { text: "Continue", onPress: () => resolve(true) },
+        ],
+        { cancelable: true, onDismiss: () => resolve(false) },
+      );
+    });
+    if (!consented) return;
+
     if (fromCamera) {
       const req = await ImagePicker.requestCameraPermissionsAsync();
       if (!req.granted) {
