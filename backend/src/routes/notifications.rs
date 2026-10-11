@@ -38,10 +38,7 @@ pub struct UnregisterDeviceTokenRequest {
 
 fn validate_token(raw: &str) -> Result<&str, AppError> {
     let token = raw.trim();
-    if token.is_empty()
-        || token.len() > 4096
-        || token.chars().any(char::is_control)
-    {
+    if token.is_empty() || token.len() > 4096 || token.chars().any(char::is_control) {
         return Err(AppError::BadRequest("Invalid device token".to_string()));
     }
     Ok(token)
@@ -50,7 +47,9 @@ fn validate_token(raw: &str) -> Result<&str, AppError> {
 fn validate_platform(raw: &str) -> Result<&str, AppError> {
     match raw {
         "android" | "ios" | "web" => Ok(raw),
-        _ => Err(AppError::BadRequest("Unsupported device platform".to_string())),
+        _ => Err(AppError::BadRequest(
+            "Unsupported device platform".to_string(),
+        )),
     }
 }
 
@@ -60,12 +59,11 @@ pub async fn list_notifications(
     Query(query): Query<NotificationFeedQuery>,
 ) -> Result<impl IntoResponse, AppError> {
     let limit = query.limit.unwrap_or(50).clamp(1, 100);
-    let unread: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND is_read = FALSE",
-    )
-    .bind(auth_user.user_id)
-    .fetch_one(&state.db)
-    .await?;
+    let unread: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND is_read = FALSE")
+            .bind(auth_user.user_id)
+            .fetch_one(&state.db)
+            .await?;
 
     let items = sqlx::query_as::<_, NotificationFeedItem>(
         r#"
@@ -110,13 +108,12 @@ pub async fn mark_one_read(
     auth_user: AuthUser,
     Path(notification_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    let result = sqlx::query(
-        "UPDATE notifications SET is_read = TRUE WHERE id = $1 AND user_id = $2",
-    )
-    .bind(notification_id)
-    .bind(auth_user.user_id)
-    .execute(&state.db)
-    .await?;
+    let result =
+        sqlx::query("UPDATE notifications SET is_read = TRUE WHERE id = $1 AND user_id = $2")
+            .bind(notification_id)
+            .bind(auth_user.user_id)
+            .execute(&state.db)
+            .await?;
 
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound("Notification not found".to_string()));
@@ -132,9 +129,15 @@ pub async fn register_device_token(
 ) -> Result<impl IntoResponse, AppError> {
     let token = validate_token(&payload.token)?;
     let platform = validate_platform(&payload.platform)?;
-    let app_version = payload.app_version.as_deref().map(str::trim).filter(|v| !v.is_empty());
+    let app_version = payload
+        .app_version
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty());
     if app_version.is_some_and(|version| version.len() > 50) {
-        return Err(AppError::BadRequest("App version must be 50 characters or fewer".to_string()));
+        return Err(AppError::BadRequest(
+            "App version must be 50 characters or fewer".to_string(),
+        ));
     }
 
     sqlx::query(
@@ -164,13 +167,11 @@ pub async fn unregister_device_token(
     Json(payload): Json<UnregisterDeviceTokenRequest>,
 ) -> Result<impl IntoResponse, AppError> {
     let token = validate_token(&payload.token)?;
-    let result = sqlx::query(
-        "DELETE FROM device_push_tokens WHERE user_id = $1 AND token = $2",
-    )
-    .bind(auth_user.user_id)
-    .bind(token)
-    .execute(&state.db)
-    .await?;
+    let result = sqlx::query("DELETE FROM device_push_tokens WHERE user_id = $1 AND token = $2")
+        .bind(auth_user.user_id)
+        .bind(token)
+        .execute(&state.db)
+        .await?;
 
     Ok(Json(json!({
         "success": true,
