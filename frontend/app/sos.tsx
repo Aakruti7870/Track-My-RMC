@@ -36,7 +36,7 @@ export default function Sos() {
     if (!type) return toast("Select an emergency type", "error");
     setBusy(true);
     try {
-      const location = await getCurrentDeviceLocation();
+      const location = await getCurrentDeviceLocation("sos");
       const payload = {
         type,
         remark: remark.trim() || null,
