@@ -73,7 +73,7 @@ jobs:
         run: npm install
 
       - name: Validate Google Play privacy and permission readiness
-        run: npm run check:play-policy
+        run: npm run check:android-permissions
 
       - name: Verify Firebase Android configuration
         run: |
