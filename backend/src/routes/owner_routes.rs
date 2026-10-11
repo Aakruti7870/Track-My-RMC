@@ -8,7 +8,6 @@ use crate::{
 use axum::{extract::State, response::IntoResponse, Json};
 use serde_json::json;
 
-
 /// Lists only the plants visible to the authenticated account. This matches
 /// the frontend's /master/my-plants selector without granting cross-plant access.
 pub async fn my_plants(
