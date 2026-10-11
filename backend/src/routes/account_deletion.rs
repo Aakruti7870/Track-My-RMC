@@ -276,7 +276,9 @@ pub async fn submit_public_request(
         })?;
 
     let identifier_matches = if channel == "email" {
-        user.email.as_deref().is_some_and(|email| email.eq_ignore_ascii_case(&destination))
+        user.email
+            .as_deref()
+            .is_some_and(|email| email.eq_ignore_ascii_case(&destination))
     } else {
         user.phone == destination || WhatsAppService::normalize_phone(&user.phone) == destination
     };
@@ -288,14 +290,7 @@ pub async fn submit_public_request(
         ));
     }
 
-    let row = record_request(
-        &state.db,
-        user.id,
-        &destination,
-        reason,
-        "public_verified",
-    )
-    .await?;
+    let row = record_request(&state.db, user.id, &destination, reason, "public_verified").await?;
     Ok(Json(
         json!({ "success": true, "request": request_json(row) }),
     ))
@@ -328,7 +323,9 @@ pub async fn submit_signed_in_request(
     Json(payload): Json<DeletionRequestBody>,
 ) -> Result<impl IntoResponse, AppError> {
     if payload.confirm.trim() != DELETE_CONFIRMATION {
-        return Err(AppError::BadRequest("Type DELETE to confirm the request".to_string()));
+        return Err(AppError::BadRequest(
+            "Type DELETE to confirm the request".to_string(),
+        ));
     }
     let reason = normalized_reason(payload.reason)?;
     let identifier = auth_user
