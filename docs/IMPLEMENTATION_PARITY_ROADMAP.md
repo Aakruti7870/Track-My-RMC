@@ -54,7 +54,8 @@ This plan is a delivery checklist; it is not evidence that any feature or data m
 
 - [ ] Invoices, payments, ledger and billing history with idempotent payment handling.
 - [ ] HR/employee master and staff actions.
-- [ ] Roster, attendance, workforce reports and payslips.
+- [x] Initial read-only monthly workforce report endpoint (attendance counts + persisted payroll closure summary; plant/role scoped).
+- [ ] Full workforce reports, employee master, payroll workflow, closure, payslips, concurrency and audit parity.
 - [ ] Payroll calculation, closure, period guards, concurrency and audit evidence.
 - [ ] Role/plant scoping and reconciliation tests for all financial records.
 
@@ -89,6 +90,13 @@ This plan is a delivery checklist; it is not evidence that any feature or data m
 The current Rust router does not register equivalents for these original router domains: account deletion, automation, assistant, control center, finance operations, HR master, KYC recovery, maps, notifications, operator operations, payroll closure/guards/concurrency, permanent access, plant discovery, plant onboarding, plant plans, Play review, public policy, staff management, storage, workforce reports, and workforce roster beyond the limited current roster/attendance routes.
 
 This list indicates missing route registration in the inspected router, not proof that every domain has zero partial implementation elsewhere. Each item must be checked against Rust services, schemas, migrations, and frontend consumers before coding.
+
+## Implemented on `feat/original-module-parity-phase-1` (pending CI)
+
+- Added `GET /api/workforce-reports/monthly?plant_id=<uuid>&month=YYYY-MM`.
+- Requires a bearer-authenticated role; supports owner/admin/accountant/supervisor with plant scoping for non-admin users and owner-plant verification.
+- Returns monthly attendance aggregates and the existing persisted payroll closure summary; it does not infer salary from attendance or mutate payroll.
+- Existing WhatsApp OTP send/verify handlers and implementation files were not modified in this slice.
 
 ## Definition of done per module
 
