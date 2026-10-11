@@ -5,6 +5,7 @@ pub mod dispatcher_routes;
 pub mod driver_routes;
 pub mod health;
 pub mod owner_routes;
+pub mod workforce_reports;
 pub mod workforce_routes;
 
 use crate::state::AppState;
@@ -116,7 +117,11 @@ pub fn build_app_router(state: AppState) -> Router {
             patch(dispatcher_routes::update_order_status),
         )
         // --- Owner Domain ---
-        .route("/api/owner/plants", post(owner_routes::create_plant))
+        .route("/api/master/my-plants", get(owner_routes::my_plants))
+        .route(
+            "/api/owner/plants",
+            get(owner_routes::list_owner_plants).post(owner_routes::create_plant),
+        )
         .route(
             "/api/owner/billing",
             get(owner_routes::get_billing_overview),
@@ -126,6 +131,11 @@ pub fn build_app_router(state: AppState) -> Router {
         .route(
             "/api/workforce/attendance/mark",
             post(workforce_routes::mark_attendance),
+        )
+        // Read-only monthly attendance and persisted payroll summary.
+        .route(
+            "/api/workforce-reports/monthly",
+            get(workforce_reports::monthly_summary),
         )
         // --- Admin Portal ---
         .route("/api/admin/auth/login", post(admin_routes::admin_login))

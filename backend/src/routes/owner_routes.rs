@@ -8,6 +8,90 @@ use crate::{
 use axum::{extract::State, response::IntoResponse, Json};
 use serde_json::json;
 
+/// Lists only the plants visible to the authenticated account. This matches
+/// the frontend's /master/my-plants selector without granting cross-plant access.
+pub async fn my_plants(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+) -> Result<impl IntoResponse, AppError> {
+    check_role(
+        &auth_user,
+        &[
+            "owner",
+            "admin",
+            "dispatcher",
+            "operator",
+            "supervisor",
+            "quality_engineer",
+            "store_manager",
+            "accountant",
+            "fleet_manager",
+        ],
+    )?;
+
+    let rows: Vec<(uuid::Uuid, String, String)> = match auth_user.role.as_str() {
+        "admin" => {
+            sqlx::query_as(
+                "SELECT id, name, city FROM rmc_plants WHERE is_active = TRUE ORDER BY name",
+            )
+            .fetch_all(&state.db)
+            .await?
+        }
+        "owner" => {
+            sqlx::query_as(
+                "SELECT id, name, city FROM rmc_plants WHERE owner_id = $1 AND is_active = TRUE ORDER BY name",
+            )
+            .bind(auth_user.user_id)
+            .fetch_all(&state.db)
+            .await?
+        }
+        _ => {
+            sqlx::query_as(
+                "SELECT p.id, p.name, p.city
+                 FROM rmc_plants p
+                 INNER JOIN plant_staff ps ON ps.plant_id = p.id
+                 WHERE ps.user_id = $1 AND ps.is_active = TRUE AND p.is_active = TRUE
+                 ORDER BY p.name",
+            )
+            .bind(auth_user.user_id)
+            .fetch_all(&state.db)
+            .await?
+        }
+    };
+
+    let plants: Vec<_> = rows
+        .into_iter()
+        .map(|(id, name, city)| json!({ "id": id, "name": name, "city": city }))
+        .collect();
+
+    Ok(Json(json!({ "success": true, "plants": plants })))
+}
+
+pub async fn list_owner_plants(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+) -> Result<impl IntoResponse, AppError> {
+    check_role(&auth_user, &["owner", "admin"])?;
+
+    // Scope owners to their own plants; platform admins may view all plants.
+    let plants = if auth_user.role == "admin" {
+        sqlx::query_as::<_, crate::models::plant::RmcPlant>(
+            "SELECT id, owner_id, name, code, latitude, longitude, address_line, city, state, pincode, contact_phone, contact_email, capacity_m3_per_hr, rating, is_active, created_at, updated_at FROM rmc_plants ORDER BY created_at DESC",
+        )
+        .fetch_all(&state.db)
+        .await?
+    } else {
+        sqlx::query_as::<_, crate::models::plant::RmcPlant>(
+            "SELECT id, owner_id, name, code, latitude, longitude, address_line, city, state, pincode, contact_phone, contact_email, capacity_m3_per_hr, rating, is_active, created_at, updated_at FROM rmc_plants WHERE owner_id = $1 ORDER BY created_at DESC",
+        )
+        .bind(auth_user.user_id)
+        .fetch_all(&state.db)
+        .await?
+    };
+
+    Ok(Json(json!({ "success": true, "plants": plants })))
+}
+
 pub async fn create_plant(
     State(state): State<AppState>,
     auth_user: AuthUser,
