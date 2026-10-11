@@ -39,6 +39,12 @@ server {
         return 200 "ok";
     }
 
+    location = /kyc/return {
+        proxy_pass http://127.0.0.1:8000/kyc/return;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
     location /api/ {
         proxy_pass http://127.0.0.1:8000;
         proxy_http_version 1.1;
@@ -151,6 +157,12 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    location = /kyc/return {
+        proxy_pass http://127.0.0.1:8000/kyc/return;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
     location /_expo/static/ {
         try_files $uri =404;
         expires 1y;
@@ -212,6 +224,7 @@ META_WABA="$(printf '%s' "$APP_JSON" | jq -r '.META_WABA_ID // empty')"
 EMAIL_KEY="$(printf '%s' "$APP_JSON" | jq -r '.EMAIL_API_KEY // empty')"
 EMAIL_FROM="$(printf '%s' "$APP_JSON" | jq -r '.EMAIL_FROM_ADDRESS // "noreply@trackmyrmc.com"')"
 META_GRAPH_API_VERSION="$(printf '%s' "$APP_JSON" | jq -r '.META_GRAPH_API_VERSION // "v26.0"')"
+PLAY_SIGNING_SHA256="$(printf '%s' "$APP_JSON" | jq -r '.PLAY_SIGNING_SHA256 // empty')"
 
 
 aws s3 cp "s3://$BUCKET/backend-$RELEASE_SHA" "/opt/trackmyrmc/releases/backend-$RELEASE_SHA"
