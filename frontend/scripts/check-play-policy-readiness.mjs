@@ -50,6 +50,18 @@ expectIncludes(customerPlants, "TrackMyRMC Play Review Plant", "The review plant
 expectIncludes(customerPlants, "Location is optional; choose Not now", "Nearby Plants must remain usable without location.");
 expectIncludes(driverHome, "PLAY-REVIEW-001", "Driver review path must identify the review trip.");
 
+const currentLocation = read("frontend/src/location/currentLocation.ts");
+const workforce = read("frontend/app/workforce.tsx");
+const plantOnboarding = read("frontend/app/plant-onboarding.tsx");
+const podScreen = read("frontend/app/pod/[id].tsx");
+expectIncludes(currentLocation, "requestAttendanceLocationConsent", "Attendance location access must have an app-owned disclosure.");
+expectIncludes(currentLocation, "requestSosLocationConsent", "SOS location access must have an app-owned disclosure.");
+expectIncludes(workforce, "requestFieldVisitLocationConsent", "Field-visit location access must have an app-owned disclosure.");
+expectIncludes(plantOnboarding, "requestPlantOnboardingLocationConsent", "Plant onboarding location access must have an app-owned disclosure.");
+expectIncludes(podScreen, "Camera access for proof of delivery", "Camera access must have an app-owned disclosure before the OS prompt.");
+expectIncludes(podScreen, "Choose a proof-of-delivery photo", "Photo selection must explain what data is attached.");
+expect(fs.existsSync(path.join(repoRoot, "frontend/app/privacy_policy.tsx")), "Public /privacy_policy route must exist for Google Play and login links.");
+
 const frontendSourceFiles = [];
 function walk(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
