@@ -95,6 +95,14 @@ jobs:
           npm install
           npm run build
 
+      - name: Package complete source and admin dashboard
+        run: |
+          set -euo pipefail
+          git archive --format=tar.gz --output="/tmp/source-${GITHUB_SHA}.tgz" "${GITHUB_SHA}"
+          tar -C admin-web -czf "/tmp/admin-web-${GITHUB_SHA}.tgz" dist
+          test -s "/tmp/source-${GITHUB_SHA}.tgz"
+          test -s "/tmp/admin-web-${GITHUB_SHA}.tgz"
+
       - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -115,6 +123,8 @@ jobs:
           tar -C frontend -czf /tmp/frontend.tgz dist
           aws s3 cp backend/target/release/trackmyrmc-backend "s3://${ARTIFACT_BUCKET}/backend-${SHA}"
           aws s3 cp /tmp/frontend.tgz "s3://${ARTIFACT_BUCKET}/frontend-${SHA}.tgz"
+          aws s3 cp "/tmp/source-${SHA}.tgz" "s3://${ARTIFACT_BUCKET}/source-${SHA}.tgz"
+          aws s3 cp "/tmp/admin-web-${SHA}.tgz" "s3://${ARTIFACT_BUCKET}/admin-web-${SHA}.tgz"
 
       - name: Deploy EC2 through SSM
         run: |
