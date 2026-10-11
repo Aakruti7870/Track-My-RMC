@@ -55,7 +55,9 @@ fn normalize_identifier(raw: &str) -> Result<(String, &'static str), AppError> {
     if value.contains('@') {
         let email = value.to_ascii_lowercase();
         let Some((local, domain)) = email.split_once('@') else {
-            return Err(AppError::BadRequest("Enter a valid registered mobile number or email".to_string()));
+            return Err(AppError::BadRequest(
+                "Enter a valid registered mobile number or email".to_string(),
+            ));
         };
         if local.is_empty()
             || domain.is_empty()
@@ -63,17 +65,26 @@ fn normalize_identifier(raw: &str) -> Result<(String, &'static str), AppError> {
             || email.chars().any(char::is_whitespace)
             || email.matches('@').count() != 1
         {
-            return Err(AppError::BadRequest("Enter a valid registered mobile number or email".to_string()));
+            return Err(AppError::BadRequest(
+                "Enter a valid registered mobile number or email".to_string(),
+            ));
         }
         return Ok((email, "email"));
     }
 
-    if !value.chars().all(|c| c.is_ascii_digit() || matches!(c, '+' | ' ' | '-' | '(' | ')')) {
-        return Err(AppError::BadRequest("Enter a valid registered mobile number or email".to_string()));
+    if !value
+        .chars()
+        .all(|c| c.is_ascii_digit() || matches!(c, '+' | ' ' | '-' | '(' | ')'))
+    {
+        return Err(AppError::BadRequest(
+            "Enter a valid registered mobile number or email".to_string(),
+        ));
     }
     let phone = WhatsAppService::normalize_phone(value);
     if !(10..=15).contains(&phone.len()) || !phone.bytes().all(|b| b.is_ascii_digit()) {
-        return Err(AppError::BadRequest("Enter a valid registered mobile number or email".to_string()));
+        return Err(AppError::BadRequest(
+            "Enter a valid registered mobile number or email".to_string(),
+        ));
     }
     Ok((phone, "whatsapp"))
 }
