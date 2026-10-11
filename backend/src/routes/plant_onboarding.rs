@@ -202,9 +202,16 @@ pub async fn search_places(
             let address = place["formattedAddress"].as_str().unwrap_or_default();
             let location = &place["location"];
             Some(json!({
+                // Keep both names during migration: the Expo form's PlaceResult
+                // contract uses place_id while persistence uses google_place_id.
+                "place_id": id,
                 "google_place_id": id,
                 "name": name,
                 "address": address,
+                "city": null,
+                "taluka": null,
+                "district": null,
+                "state": null,
                 "lat": location["latitude"],
                 "lng": location["longitude"],
                 "google_maps_uri": place["googleMapsUri"],
