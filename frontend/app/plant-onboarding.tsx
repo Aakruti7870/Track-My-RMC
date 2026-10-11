@@ -129,7 +129,13 @@ export default function PlantOnboarding() {
     setError(null);
     setLocating(true);
     try {
-      const permission = await Location.requestForegroundPermissionsAsync();
+      const consented = await requestPlantOnboardingLocationConsent();
+      if (!consented) {
+        setError("You can enter the plant address manually without sharing device location.");
+        return;
+      }
+      let permission = await Location.getForegroundPermissionsAsync();
+      if (permission.status !== "granted") permission = await Location.requestForegroundPermissionsAsync();
       if (permission.status !== "granted") {
         setError("Location permission is required to mark the current plant location.");
         return;
