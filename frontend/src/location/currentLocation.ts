@@ -2,6 +2,11 @@ import { Platform } from "react-native";
 import * as Location from "expo-location";
 
 import NativeTripLocation from "@/modules/trip-location";
+import {
+  requestAttendanceLocationConsent,
+  requestSosLocationConsent,
+  requestForegroundLocationConsent,
+} from "@/src/location/BackgroundLocationConsent";
 
 export type CurrentDeviceLocation = {
   lat: number;
@@ -14,12 +19,19 @@ export type CurrentLocationResult =
   | { ok: true; location: CurrentDeviceLocation; source: "native" | "expo" }
   | { ok: false; reason: "permission-denied" | "services-disabled" | "unavailable" };
 
-export async function getCurrentDeviceLocation(): Promise<CurrentLocationResult> {
+export async function getCurrentDeviceLocation(purpose: "attendance" | "sos" | "foreground" = "foreground"): Promise<CurrentLocationResult> {
   if (Platform.OS === "web") return { ok: false, reason: "unavailable" };
 
   try {
     const servicesEnabled = await Location.hasServicesEnabledAsync();
     if (!servicesEnabled) return { ok: false, reason: "services-disabled" };
+
+    const consented = purpose === "attendance"
+      ? await requestAttendanceLocationConsent()
+      : purpose === "sos"
+        ? await requestSosLocationConsent()
+        : await requestForegroundLocationConsent();
+    if (!consented) return { ok: false, reason: "permission-denied" };
 
     let permission = await Location.getForegroundPermissionsAsync();
     if (permission.status !== "granted") {

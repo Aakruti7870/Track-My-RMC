@@ -34,6 +34,8 @@ jobs:
         run: npm run typecheck
       - name: Validate role routing
         run: npm run check:auth-routing
+      - name: Validate Google Play privacy and permission readiness
+        run: npm run check:android-permissions
       - name: Validate Android responsive layouts
         run: npm run check:android-layout
       - name: Build production web bundle

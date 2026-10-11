@@ -15,6 +15,10 @@ import { Input } from "@/src/components/ui/Input";
 import { useToast } from "@/src/components/ui/Toast";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
+import {
+  requestAttendanceLocationConsent,
+  requestFieldVisitLocationConsent,
+} from "@/src/location/BackgroundLocationConsent";
 
 type Attendance = {
   id: string;
@@ -96,10 +100,17 @@ function tomorrowLocalInput() {
   return local.toISOString().slice(0, 16);
 }
 
-async function locationEvidence() {
-  const permission = await Location.requestForegroundPermissionsAsync();
+async function locationEvidence(purpose: "attendance" | "field-visit") {
+  const consented = purpose === "attendance"
+    ? await requestAttendanceLocationConsent()
+    : await requestFieldVisitLocationConsent();
+  if (!consented) {
+    throw { detail: "Location sharing was not approved. You can continue without attaching coordinates." };
+  }
+  let permission = await Location.getForegroundPermissionsAsync();
+  if (permission.status !== "granted") permission = await Location.requestForegroundPermissionsAsync();
   if (permission.status !== "granted") {
-    throw { detail: "Location permission is required for attendance and field visits" };
+    throw { detail: "Location permission is required for this action" };
   }
   const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
   return {
@@ -203,13 +214,13 @@ export default function WorkforceScreen() {
 
   const attendanceAction = async (path: "punch-in" | "punch-out") => {
     if (!token) return;
-    const evidence = await locationEvidence();
+    const evidence = await locationEvidence("attendance");
     await run(() => apiPost(`/workforce/attendance/${path}`, token, evidence), path === "punch-in" ? "Punched in" : "Punched out");
   };
 
   const visitAction = async (visitId: string, action: "start" | "complete") => {
     if (!token) return;
-    const evidence = await locationEvidence();
+    const evidence = await locationEvidence("field-visit");
     await run(
       () => apiPost(`/workforce/visits/${visitId}/${action}`, token, { ...evidence, outcome: action === "complete" ? "Visit completed" : undefined }),
       action === "start" ? "Client visit started" : "Client visit completed",

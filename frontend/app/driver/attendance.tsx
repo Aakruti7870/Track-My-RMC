@@ -35,7 +35,7 @@ export default function Attendance() {
   const act = async (path: string, msg: string) => {
     setBusy(true);
     try {
-      const location = await getCurrentDeviceLocation();
+      const location = await getCurrentDeviceLocation("attendance");
       if (!location.ok) {
         toast(currentLocationFailureMessage(location), "error");
         return;

@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Location from "expo-location";
+import { requestPlantOnboardingLocationConsent } from "@/src/location/BackgroundLocationConsent";
 
 import { apiPublicGet, apiPublicPost } from "@/src/api/client";
 import { AppText } from "@/src/components/ui/AppText";
@@ -129,7 +130,13 @@ export default function PlantOnboarding() {
     setError(null);
     setLocating(true);
     try {
-      const permission = await Location.requestForegroundPermissionsAsync();
+      const consented = await requestPlantOnboardingLocationConsent();
+      if (!consented) {
+        setError("You can enter the plant address manually without sharing device location.");
+        return;
+      }
+      let permission = await Location.getForegroundPermissionsAsync();
+      if (permission.status !== "granted") permission = await Location.requestForegroundPermissionsAsync();
       if (permission.status !== "granted") {
         setError("Location permission is required to mark the current plant location.");
         return;
