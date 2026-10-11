@@ -126,8 +126,10 @@ impl AppConfig {
         let play_signing_sha256 = match env::var("PLAY_SIGNING_SHA256") {
             Ok(value) if value.trim().is_empty() => None,
             Ok(value) => Some(
-                normalize_sha256_fingerprint(&value)
-                    .ok_or_else(|| "PLAY_SIGNING_SHA256 must be a 32-byte SHA-256 fingerprint (64 hex characters, optionally colon-separated)".to_string())?,
+                normalize_sha256_fingerprint(&value).ok_or_else(|| {
+                    "PLAY_SIGNING_SHA256 must be a 32-byte SHA-256 fingerprint (64 hex characters, optionally colon-separated)"
+                        .to_string()
+                })?,
             ),
             Err(_) => None,
         };
@@ -158,8 +160,15 @@ impl AppConfig {
 /// Validate and normalize a SHA-256 certificate fingerprint to Android's
 /// conventional uppercase colon-separated format.
 pub fn normalize_sha256_fingerprint(value: &str) -> Option<String> {
-    let compact: String = value.chars().filter(|character| *character != ':').collect();
-    if compact.len() != 64 || !compact.chars().all(|character| character.is_ascii_hexdigit()) {
+    let compact: String = value
+        .chars()
+        .filter(|character| *character != ':')
+        .collect();
+    if compact.len() != 64
+        || !compact
+            .chars()
+            .all(|character| character.is_ascii_hexdigit())
+    {
         return None;
     }
     Some(
@@ -182,7 +191,9 @@ mod fingerprint_tests {
         let raw = "0123456789abcdef".repeat(4);
         assert_eq!(
             normalize_sha256_fingerprint(&raw).as_deref(),
-            Some("01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF")
+            Some(
+                "01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF"
+            )
         );
     }
 
