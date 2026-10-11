@@ -26,6 +26,8 @@ pub struct AppConfig {
     /// Google Play App Signing SHA-256 certificate fingerprint. Optional until
     /// the production Play App Signing certificate is confirmed.
     pub play_signing_sha256: Option<String>,
+    /// Optional Google Places API key for public plant onboarding search.
+    pub google_places_api_key: Option<String>,
 }
 
 impl AppConfig {
@@ -123,6 +125,11 @@ impl AppConfig {
             return Err("OTP_MAX_ATTEMPTS must be between 3 and 10".to_string());
         }
 
+        let google_places_api_key = env::var("GOOGLE_PLACES_API_KEY")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+
         let play_signing_sha256 = match env::var("PLAY_SIGNING_SHA256") {
             Ok(value) if value.trim().is_empty() => None,
             Ok(value) => Some(
@@ -153,6 +160,7 @@ impl AppConfig {
             otp_cooldown_seconds,
             otp_max_verification_attempts,
             play_signing_sha256,
+            google_places_api_key,
         })
     }
 }
