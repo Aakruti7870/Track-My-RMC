@@ -216,6 +216,8 @@ META_GRAPH_API_VERSION="$(printf '%s' "$APP_JSON" | jq -r '.META_GRAPH_API_VERSI
 
 aws s3 cp "s3://$BUCKET/backend-$RELEASE_SHA" "/opt/trackmyrmc/releases/backend-$RELEASE_SHA"
 aws s3 cp "s3://$BUCKET/frontend-$RELEASE_SHA.tgz" "/tmp/frontend-$RELEASE_SHA.tgz"
+aws s3 cp "s3://$BUCKET/source-$RELEASE_SHA.tgz" "/tmp/source-$RELEASE_SHA.tgz"
+aws s3 cp "s3://$BUCKET/admin-web-$RELEASE_SHA.tgz" "/tmp/admin-web-$RELEASE_SHA.tgz"
 chmod 0755 "/opt/trackmyrmc/releases/backend-$RELEASE_SHA"
 
 rm -rf /opt/trackmyrmc/frontend.new
@@ -225,6 +227,30 @@ rm -rf /opt/trackmyrmc/frontend.prev
 if [ -d /opt/trackmyrmc/frontend ]; then mv /opt/trackmyrmc/frontend /opt/trackmyrmc/frontend.prev; fi
 mv /opt/trackmyrmc/frontend.new /opt/trackmyrmc/frontend
 
+# Keep a complete, SHA-pinned source checkout and the separately built admin dashboard on EC2.
+rm -rf /opt/trackmyrmc/source.new
+install -d -o trackmyrmc -g trackmyrmc /opt/trackmyrmc/source.new
+tar -xzf "/tmp/source-$RELEASE_SHA.tgz" -C /opt/trackmyrmc/source.new
+test -f /opt/trackmyrmc/source.new/backend/Cargo.toml
+test -f /opt/trackmyrmc/source.new/frontend/package.json
+test -f /opt/trackmyrmc/source.new/admin-web/package.json
+if [ -d /opt/trackmyrmc/source ]; then
+  rm -rf /opt/trackmyrmc/source.prev
+  mv /opt/trackmyrmc/source /opt/trackmyrmc/source.prev
+fi
+mv /opt/trackmyrmc/source.new /opt/trackmyrmc/source
+
+rm -rf /opt/trackmyrmc/admin-web.new
+install -d -o trackmyrmc -g trackmyrmc /opt/trackmyrmc/admin-web.new
+tar -xzf "/tmp/admin-web-$RELEASE_SHA.tgz" -C /opt/trackmyrmc/admin-web.new
+test -s /opt/trackmyrmc/admin-web.new/index.html
+if [ -d /opt/trackmyrmc/admin-web ]; then
+  rm -rf /opt/trackmyrmc/admin-web.prev
+  mv /opt/trackmyrmc/admin-web /opt/trackmyrmc/admin-web.prev
+fi
+mv /opt/trackmyrmc/admin-web.new /opt/trackmyrmc/admin-web
+
+printf '%s\\n' "$RELEASE_SHA" > /opt/trackmyrmc/DEPLOYED_RELEASE_SHA
 
 install -d -m 0750 /etc/trackmyrmc
 cat > /etc/trackmyrmc/app.env <<EOF
