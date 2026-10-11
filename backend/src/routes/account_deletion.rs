@@ -1,6 +1,6 @@
 use crate::{
-    auth::AuthUser,
     auth::otp::OtpEngine,
+    auth::AuthUser,
     error::AppError,
     repositories::user_repo,
     services::{email_service::EmailService, whatsapp_service::WhatsAppService},
@@ -36,18 +36,28 @@ pub struct PublicDeletionRequestBody {
     pub reason: Option<String>,
 }
 
-type DeletionRow = (Uuid, String, Option<String>, DateTime<Utc>, Option<DateTime<Utc>>);
+type DeletionRow = (
+    Uuid,
+    String,
+    Option<String>,
+    DateTime<Utc>,
+    Option<DateTime<Utc>>,
+);
 
 fn normalize_identifier(raw: &str) -> Result<(String, &'static str), AppError> {
     let value = raw.trim();
     if value.is_empty() || value.len() > 254 {
-        return Err(AppError::BadRequest("Enter a valid registered mobile number or email".to_string()));
+        return Err(AppError::BadRequest(
+            "Enter a valid registered mobile number or email".to_string(),
+        ));
     }
 
     if value.contains('@') {
         let email = value.to_ascii_lowercase();
         let Some((local, domain)) = email.split_once('@') else {
-            return Err(AppError::BadRequest("Enter a valid registered mobile number or email".to_string()));
+            return Err(AppError::BadRequest(
+                "Enter a valid registered mobile number or email".to_string(),
+            ));
         };
         if local.is_empty()
             || domain.is_empty()
@@ -55,25 +65,38 @@ fn normalize_identifier(raw: &str) -> Result<(String, &'static str), AppError> {
             || email.chars().any(char::is_whitespace)
             || email.matches('@').count() != 1
         {
-            return Err(AppError::BadRequest("Enter a valid registered mobile number or email".to_string()));
+            return Err(AppError::BadRequest(
+                "Enter a valid registered mobile number or email".to_string(),
+            ));
         }
         return Ok((email, "email"));
     }
 
-    if !value.chars().all(|c| c.is_ascii_digit() || matches!(c, '+' | ' ' | '-' | '(' | ')')) {
-        return Err(AppError::BadRequest("Enter a valid registered mobile number or email".to_string()));
+    if !value
+        .chars()
+        .all(|c| c.is_ascii_digit() || matches!(c, '+' | ' ' | '-' | '(' | ')'))
+    {
+        return Err(AppError::BadRequest(
+            "Enter a valid registered mobile number or email".to_string(),
+        ));
     }
     let phone = WhatsAppService::normalize_phone(value);
     if !(10..=15).contains(&phone.len()) || !phone.bytes().all(|b| b.is_ascii_digit()) {
-        return Err(AppError::BadRequest("Enter a valid registered mobile number or email".to_string()));
+        return Err(AppError::BadRequest(
+            "Enter a valid registered mobile number or email".to_string(),
+        ));
     }
     Ok((phone, "whatsapp"))
 }
 
 fn normalized_reason(reason: Option<String>) -> Result<Option<String>, AppError> {
-    let reason = reason.map(|value| value.trim().to_string()).filter(|value| !value.is_empty());
+    let reason = reason
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
     if reason.as_ref().is_some_and(|value| value.len() > 1000) {
-        return Err(AppError::BadRequest("Reason must be 1000 characters or fewer".to_string()));
+        return Err(AppError::BadRequest(
+            "Reason must be 1000 characters or fewer".to_string(),
+        ));
     }
     Ok(reason)
 }
@@ -150,7 +173,9 @@ pub async fn send_public_otp(
     };
 
     let identifier_matches = if channel == "email" {
-        user.email.as_deref().is_some_and(|email| email.eq_ignore_ascii_case(&destination))
+        user.email
+            .as_deref()
+            .is_some_and(|email| email.eq_ignore_ascii_case(&destination))
     } else {
         user.phone == destination || WhatsAppService::normalize_phone(&user.phone) == destination
     };
@@ -164,7 +189,9 @@ pub async fn send_public_otp(
         return Ok(public_otp_response(channel));
     }
 
-    match OtpEngine::check_rate_limit(&state.db, &destination, state.config.otp_cooldown_seconds).await {
+    match OtpEngine::check_rate_limit(&state.db, &destination, state.config.otp_cooldown_seconds)
+        .await
+    {
         Ok(()) => {}
         Err(AppError::BadRequest(_) | AppError::Forbidden(_)) => {
             // Keep the public response non-enumerating and avoid exposing rate-limit internals.
@@ -225,29 +252,48 @@ pub async fn submit_public_request(
     Json(payload): Json<PublicDeletionRequestBody>,
 ) -> Result<impl IntoResponse, AppError> {
     if payload.confirm.trim() != DELETE_CONFIRMATION {
-        return Err(AppError::BadRequest("Type DELETE to confirm the request".to_string()));
+        return Err(AppError::BadRequest(
+            "Type DELETE to confirm the request".to_string(),
+        ));
     }
     let reason = normalized_reason(payload.reason)?;
     let (destination, channel) = normalize_identifier(&payload.identifier)?;
 
     // The OTP is bound to the exact normalized identifier, channel, and deletion purpose.
-    OtpEngine::verify_otp(&state, &destination, channel, DELETION_OTP_PURPOSE, &payload.code).await?;
+    OtpEngine::verify_otp(
+        &state,
+        &destination,
+        channel,
+        DELETION_OTP_PURPOSE,
+        &payload.code,
+    )
+    .await?;
     let user = user_repo::find_by_phone_or_email(&state.db, &destination)
         .await?
         .filter(|user| user.is_active)
-        .ok_or_else(|| AppError::Unauthorized("Invalid or expired verification code".to_string()))?;
+        .ok_or_else(|| {
+            AppError::Unauthorized("Invalid or expired verification code".to_string())
+        })?;
 
     let identifier_matches = if channel == "email" {
-        user.email.as_deref().is_some_and(|email| email.eq_ignore_ascii_case(&destination))
+        user.email
+            .as_deref()
+            .is_some_and(|email| email.eq_ignore_ascii_case(&destination))
     } else {
         user.phone == destination || WhatsAppService::normalize_phone(&user.phone) == destination
     };
-    if !identifier_matches || (channel == "whatsapp" && !matches!(user.role.as_str(), "customer" | "driver")) {
-        return Err(AppError::Unauthorized("Invalid or expired verification code".to_string()));
+    if !identifier_matches
+        || (channel == "whatsapp" && !matches!(user.role.as_str(), "customer" | "driver"))
+    {
+        return Err(AppError::Unauthorized(
+            "Invalid or expired verification code".to_string(),
+        ));
     }
 
     let row = record_request(&state.db, user.id, &destination, reason, "public_verified").await?;
-    Ok(Json(json!({ "success": true, "request": request_json(row) })))
+    Ok(Json(
+        json!({ "success": true, "request": request_json(row) }),
+    ))
 }
 
 pub async fn status(
@@ -277,12 +323,28 @@ pub async fn submit_signed_in_request(
     Json(payload): Json<DeletionRequestBody>,
 ) -> Result<impl IntoResponse, AppError> {
     if payload.confirm.trim() != DELETE_CONFIRMATION {
-        return Err(AppError::BadRequest("Type DELETE to confirm the request".to_string()));
+        return Err(AppError::BadRequest(
+            "Type DELETE to confirm the request".to_string(),
+        ));
     }
     let reason = normalized_reason(payload.reason)?;
-    let identifier = auth_user.email.as_deref().unwrap_or(&auth_user.phone).trim().to_ascii_lowercase();
-    let row = record_request(&state.db, auth_user.user_id, &identifier, reason, "signed_in").await?;
-    Ok(Json(json!({ "success": true, "request": request_json(row) })))
+    let identifier = auth_user
+        .email
+        .as_deref()
+        .unwrap_or(&auth_user.phone)
+        .trim()
+        .to_ascii_lowercase();
+    let row = record_request(
+        &state.db,
+        auth_user.user_id,
+        &identifier,
+        reason,
+        "signed_in",
+    )
+    .await?;
+    Ok(Json(
+        json!({ "success": true, "request": request_json(row) }),
+    ))
 }
 
 pub async fn cancel(
@@ -301,7 +363,9 @@ pub async fn cancel(
     .await?;
 
     let Some((request_id,)) = row else {
-        return Err(AppError::NotFound("No pending deletion request was found".to_string()));
+        return Err(AppError::NotFound(
+            "No pending deletion request was found".to_string(),
+        ));
     };
 
     sqlx::query(
