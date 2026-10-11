@@ -5,8 +5,8 @@ pub mod customer_routes;
 pub mod dispatcher_routes;
 pub mod driver_routes;
 pub mod health;
-pub mod owner_routes;
 pub mod notifications;
+pub mod owner_routes;
 pub mod workforce_reports;
 pub mod workforce_routes;
 
@@ -42,10 +42,7 @@ pub fn build_app_router(state: AppState) -> Router {
             post(account_deletion::cancel),
         )
         // --- User-scoped notifications and push-token registration ---
-        .route(
-            "/api/notifications",
-            get(notifications::list_notifications),
-        )
+        .route("/api/notifications", get(notifications::list_notifications))
         .route(
             "/api/notifications/read-all",
             post(notifications::mark_all_read),
