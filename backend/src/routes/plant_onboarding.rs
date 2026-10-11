@@ -103,7 +103,9 @@ fn normalized_email(raw: &str) -> Result<String, AppError> {
         || email.matches('@').count() != 1
         || email.chars().any(char::is_whitespace)
     {
-        return Err(AppError::BadRequest("Enter a valid email address".to_string()));
+        return Err(AppError::BadRequest(
+            "Enter a valid email address".to_string(),
+        ));
     }
     Ok(email)
 }
