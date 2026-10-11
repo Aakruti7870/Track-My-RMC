@@ -23,6 +23,8 @@ Original roles in `backend/roles.py` include customer, driver, plant owner, admi
 - Owner: create plant, billing overview.
 - Workforce/payroll: daily roster, attendance marking.
 - Admin: admin login and portal overview.
+- Notifications: user-scoped feed, unread count, mark-one-read, mark-all-read, and device-token registration/unregistration (on the parity branch; push delivery still requires a provider/worker).
+- Account deletion: OTP send, verified public request, signed-in request, status, and cancel (on the parity branch; privileged completion/anonymization is still missing).
 - Health: health check.
 
 The target explicitly does not expose WebAuthn passkey endpoints in `backend/src/routes/mod.rs` because full challenge/origin/RP-ID/signature/counter verification is not implemented.
@@ -45,7 +47,7 @@ The target explicitly does not expose WebAuthn passkey endpoints in `backend/src
 | Workforce/payroll | roster and attendance marking | Partial; reports, payroll closure/guards/concurrency workflows are not represented in current route table |
 | Admin/control center | admin login and portal overview | Partial; original control center, access management and security workspaces need implementation/parity verification |
 | KYC/DigiLocker recovery | Original has KYC recovery/onboarding routes | No corresponding route in inspected Rust route table |
-| Notifications | Original notifications router | No corresponding route in inspected Rust route table |
+| Notifications | Feed/read/device-token handlers and PostgreSQL token table added in parity PRs | Partial: feed and token registration routes implemented; provider delivery worker and end-to-end push verification remain |
 | Maps/live fleet map | Original maps router | No corresponding route in inspected Rust route table |
 | Finance/invoices/payments | Original finance operations and billing domains | No corresponding route in inspected Rust route table |
 | Automation/assistant | Original automation and assistant routers | No corresponding route in inspected Rust route table |
@@ -53,7 +55,7 @@ The target explicitly does not expose WebAuthn passkey endpoints in `backend/src
 | Storage | Original storage router | No corresponding route in inspected Rust route table |
 | Plant plans/promotions | Original plant plans router | No corresponding route in inspected Rust route table |
 | HR/master data/operator workflows | Original HR, master data, operator routers | No corresponding route in inspected Rust route table |
-| Account deletion | Original account deletion router | No corresponding route in inspected Rust route table |
+| Account deletion | OTP-verified public request plus signed-in request/status/cancel handlers and PostgreSQL audit-backed requests added in parity PRs | Partial: request lifecycle exists; privileged completion/anonymization and legal-retention workflow remain |
 
 ## Production data verification still required
 
