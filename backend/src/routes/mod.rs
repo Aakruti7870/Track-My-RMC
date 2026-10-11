@@ -5,8 +5,8 @@ pub mod dispatcher_routes;
 pub mod driver_routes;
 pub mod health;
 pub mod owner_routes;
-pub mod workforce_routes;
 pub mod workforce_reports;
+pub mod workforce_routes;
 
 use crate::state::AppState;
 use axum::{
@@ -129,7 +129,10 @@ pub fn build_app_router(state: AppState) -> Router {
             post(workforce_routes::mark_attendance),
         )
         // Read-only monthly attendance and persisted payroll summary.
-        .route("/api/workforce-reports/monthly", get(workforce_reports::monthly_summary))
+        .route(
+            "/api/workforce-reports/monthly",
+            get(workforce_reports::monthly_summary),
+        )
         // --- Admin Portal ---
         .route("/api/admin/auth/login", post(admin_routes::admin_login))
         .route(
