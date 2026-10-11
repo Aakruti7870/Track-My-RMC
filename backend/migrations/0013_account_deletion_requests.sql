@@ -1,9 +1,5 @@
--- 0006_account_deletion_and_pending_otp.sql
--- Support provider-safe OTP delivery and verified account-deletion requests.
--- Existing OTP records default to active (not pending), preserving login behavior.
-ALTER TABLE otp_verifications
-    ADD COLUMN IF NOT EXISTS is_pending BOOLEAN NOT NULL DEFAULT FALSE;
-
+-- 0013_account_deletion_requests.sql
+-- Store verified account-deletion requests with idempotent pending-request protection.
 CREATE TABLE IF NOT EXISTS account_deletion_requests (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID REFERENCES users(id) ON DELETE SET NULL,

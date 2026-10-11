@@ -1,4 +1,4 @@
--- 0007_notification_device_tokens.sql
+-- 0014_notification_device_tokens.sql
 -- Store per-user device tokens for authenticated push-notification registration.
 CREATE TABLE IF NOT EXISTS device_push_tokens (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
