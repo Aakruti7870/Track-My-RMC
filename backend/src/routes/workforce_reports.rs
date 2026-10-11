@@ -28,16 +28,10 @@ pub async fn monthly_summary(
     auth_user: AuthUser,
     Query(query): Query<MonthlyReportQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(
-        &auth_user,
-        &["owner", "admin", "accountant", "supervisor"],
-    )?;
+    check_role(&auth_user, &["owner", "admin", "accountant", "supervisor"])?;
 
-    let month_start = NaiveDate::parse_from_str(
-        &format!("{}-01", query.month),
-        "%Y-%m-%d",
-    )
-    .map_err(|_| AppError::BadRequest("month must use YYYY-MM format".to_string()))?;
+    let month_start = NaiveDate::parse_from_str(&format!("{}-01", query.month), "%Y-%m-%d")
+        .map_err(|_| AppError::BadRequest("month must use YYYY-MM format".to_string()))?;
     if month_start.format("%Y-%m").to_string() != query.month {
         return Err(AppError::BadRequest(
             "month must use YYYY-MM format".to_string(),
@@ -120,14 +114,16 @@ pub async fn monthly_summary(
         "completed_shifts": attendance.get::<i64, _>("completed_shifts"),
     });
 
-    let payroll_json = payroll.map(|row| json!({
-        "closure_id": row.get::<Uuid, _>("id"),
-        "total_gross": row.get::<bigdecimal::BigDecimal, _>("total_gross").to_string(),
-        "total_net": row.get::<bigdecimal::BigDecimal, _>("total_net").to_string(),
-        "employee_count": row.get::<i32, _>("employee_count"),
-        "is_closed": row.get::<bool, _>("is_closed"),
-        "closed_at": row.get::<Option<chrono::DateTime<chrono::Utc>>, _>("closed_at"),
-    }));
+    let payroll_json = payroll.map(|row| {
+        json!({
+            "closure_id": row.get::<Uuid, _>("id"),
+            "total_gross": row.get::<bigdecimal::BigDecimal, _>("total_gross").to_string(),
+            "total_net": row.get::<bigdecimal::BigDecimal, _>("total_net").to_string(),
+            "employee_count": row.get::<i32, _>("employee_count"),
+            "is_closed": row.get::<bool, _>("is_closed"),
+            "closed_at": row.get::<Option<chrono::DateTime<chrono::Utc>>, _>("closed_at"),
+        })
+    });
 
     Ok(Json(json!({
         "success": true,
