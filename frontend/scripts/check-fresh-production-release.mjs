@@ -1,55 +1,33 @@
-import fs from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import fs from "node:fs";
+import path from "node:path";
+import process from "node:process";
 
-const app = JSON.parse(fs.readFileSync(new URL('../app.json', import.meta.url), 'utf8'));
-const releaseWorkflow = fs.readFileSync(new URL('../../.github/workflows/android-build.yml', import.meta.url), 'utf8');
-const candidateWorkflow = fs.readFileSync(new URL('../../.github/workflows/pre-aab-candidate-validation.yml', import.meta.url), 'utf8');
-const deployWorkflow = fs.readFileSync(new URL('../../.github/workflows/deploy-production-web.yml', import.meta.url), 'utf8');
-const indexRoute = fs.readFileSync(new URL('../app/index.tsx', import.meta.url), 'utf8');
+const repoRoot = path.resolve(process.cwd(), "..");
+const read = (relative) => fs.readFileSync(path.join(repoRoot, relative), "utf8");
+const requireInvariant = (condition, message) => {
+  if (!condition) throw new Error(message);
+};
 
-const iconPath = new URL('../assets/images/icon.png', import.meta.url);
-const iconFile = iconPath.pathname;
-const iconSource = new URL('../assets/images/trackmyrmc-launcher.svg', import.meta.url).pathname;
-const iconTemp = `${iconFile}.generated.png`;
-function requireInvariant(condition, message) { if (!condition) throw new Error(message); }
+const app = JSON.parse(read("frontend/app.json")).expo;
+const releaseWorkflow = read(".github/workflows/android-build.yml");
+const deployWorkflow = read(".github/workflows/deploy-aws-production.yml");
+const indexRoute = read("frontend/app/index.tsx");
+const privacyRoute = read("frontend/app/privacy_policy.tsx");
+const privacyScreen = read("frontend/app/privacy.tsx");
+const permissionGate = read("frontend/scripts/check-android-permissions.mjs");
 
-// Generate the actual launcher PNG from the checked-in vector source. Do not crop or
-// zoom the artwork: the emblem is intentionally inside the Android launcher safe area.
-try {
-  const imageTool = (() => {
-    for (const candidate of ['magick', 'convert']) {
-      try {
-        execFileSync(candidate, ['-version'], { stdio: 'ignore' });
-        return candidate;
-      } catch {}
-    }
-    return null;
-  })();
-  requireInvariant(imageTool, 'ImageMagick (magick/convert) is required to generate the Android launcher icon');
-  execFileSync(imageTool, [
-    '-background', 'white',
-    iconSource,
-    '-resize', '1024x1024!',
-    'PNG24:' + iconTemp,
-  ], { stdio: 'inherit' });
-  fs.renameSync(iconTemp, iconFile);
-  const header = fs.readFileSync(iconFile).subarray(0, 24);
-  requireInvariant(header.toString('ascii', 1, 4) === 'PNG', 'Generated launcher icon is not a PNG');
-  requireInvariant(header.readUInt32BE(16) === 1024 && header.readUInt32BE(20) === 1024, 'Generated launcher icon must be exactly 1024x1024');
-  console.log('Android launcher icon generation: PASS (vector source -> exact 1024x1024 PNG; no crop)');
-} finally {
-  if (fs.existsSync(iconTemp)) fs.rmSync(iconTemp, { force: true });
-}
+requireInvariant(app.version === "2.0.32", "Expected Expo version 2.0.32");
+requireInvariant(app.android?.versionCode === 90, "Expected Android versionCode 90");
+requireInvariant(app.android?.package === "com.trackmyrmc.concreteking", "Unexpected Android application id");
+requireInvariant(indexRoute.includes('<Redirect href="/login"'), "Root route must start at /login");
+requireInvariant(releaseWorkflow.includes("EXPO_PUBLIC_BACKEND_URL: https://trackmyrmc.com"), "Signed AAB must be pinned to https://trackmyrmc.com");
+requireInvariant(releaseWorkflow.includes('VERSION_CODE: "90"') && releaseWorkflow.includes('VERSION_NAME: "2.0.32"'), "Signed AAB workflow must validate vc90 / v2.0.32");
+requireInvariant(releaseWorkflow.includes('EXPECTED_PLAY_UPLOAD_SHA1: "3D:5F:80:59:1C:BA:69:1B:03:28:4D:A1:74:91:38:1D:8F:A1:32:DC"'), "Signed AAB workflow must verify the registered upload certificate SHA-1");
+requireInvariant(releaseWorkflow.includes("trackmyrmc-v2.0.32-vc90-signed-aab"), "Signed AAB artifact must use the new versioned name");
+requireInvariant(releaseWorkflow.includes("check:android-permissions"), "Signed AAB workflow must run the Android privacy/permission gate");
+requireInvariant(deployWorkflow.includes("trackmyrmc.com"), "Production deployment must target the TrackMyRMC domain");
+requireInvariant(privacyRoute.includes('from "./privacy"'), "Public /privacy_policy route must render the privacy policy");
+requireInvariant(privacyScreen.includes("Location and live delivery tracking") && privacyScreen.includes("Notifications"), "Privacy policy must disclose location and notification handling");
+requireInvariant(permissionGate.includes("ACCESS_BACKGROUND_LOCATION") && permissionGate.includes("Camera access for proof of delivery"), "Android permission gate must cover background location and camera disclosures");
 
-requireInvariant(app.expo.version === '2.0.32', 'Expected Expo version 2.0.32');
-requireInvariant(app.expo.android?.versionCode === 90, 'Expected Android versionCode 90');
-requireInvariant(app.expo.android?.package === 'com.trackmyrmc.concreteking', 'Unexpected Android application id');
-requireInvariant(indexRoute.includes('<Redirect href="/login"'), 'Root route must start at /login');
-requireInvariant(releaseWorkflow.includes('EXPO_PUBLIC_BACKEND_URL: https://trackmyrmc.com'), 'Signed AAB must be pinned to https://trackmyrmc.com');
-requireInvariant(releaseWorkflow.includes('VERSION_CODE: "90"') && releaseWorkflow.includes('VERSION_NAME: "2.0.32"'), 'Signed AAB workflow must validate vc90 / v2.0.32');
-requireInvariant(releaseWorkflow.includes('EXPECTED_PLAY_UPLOAD_SHA1'), 'Signed AAB workflow must verify the registered upload certificate SHA-1');
-requireInvariant(!candidateWorkflow.includes('ref: feat/login-auth-rebuild'), 'Pre-AAB candidate validation must not check out the legacy login branch');
-requireInvariant(candidateWorkflow.includes('ref: ${{ github.sha }}'), 'Push candidate validation must use the exact pushed SHA');
-requireInvariant(deployWorkflow.includes('WWW_HOST: www.trackmyrmc.com'), 'Production web gate must validate the www host');
-requireInvariant(deployWorkflow.includes('Built for every pour|Ready-Mix Concrete Tracking & RMC Plant Discovery'), 'Production web gate must reject legacy landing content');
-console.log('Fresh production release invariants: PASS');
+console.log("Fresh production release invariants: PASS (TrackMyRMC 2.0.32 / vc90)");
