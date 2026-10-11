@@ -229,7 +229,9 @@ export function BackgroundLocationConsentProvider() {
           ? "Attach location to SOS"
           : state.scope === "plant-onboarding"
             ? "Mark plant location"
-            : "Allow location for delivery";
+            : state.scope === "field-visit"
+              ? "Use location for client visit"
+              : "Allow location for delivery";
   const declineFooter = isBackground
     ? "You can change this anytime in Android Settings. If you decline, live tracking still works while the app is open."
     : isNearbyPlants
@@ -240,7 +242,9 @@ export function BackgroundLocationConsentProvider() {
           ? "If you decline, you can still submit the SOS without coordinates or contact your plant directly."
           : state.scope === "plant-onboarding"
             ? "If you decline, enter the plant address or coordinates manually."
-            : "You can change this anytime in Android Settings. Without location, delivery tracking and ETA will not work.";
+            : state.scope === "field-visit"
+              ? "If you decline, you can contact your supervisor to verify the visit another way."
+              : "You can change this anytime in Android Settings. Without location, delivery tracking and ETA will not work.";
 
   return (
     <Modal
