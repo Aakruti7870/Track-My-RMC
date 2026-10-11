@@ -6,6 +6,7 @@ on:
     paths:
       - backend/**
       - frontend/**
+      - admin-web/**
       - ops/aws-deploy-ec2.sh
       - .github/workflows/deploy-aws-production.yml
   workflow_dispatch:
@@ -99,7 +100,7 @@ jobs:
         run: |
           set -euo pipefail
           git archive --format=tar.gz --output="/tmp/source-${GITHUB_SHA}.tgz" "${GITHUB_SHA}"
-          tar -C admin-web -czf "/tmp/admin-web-${GITHUB_SHA}.tgz" dist
+          tar -C admin-web/dist -czf "/tmp/admin-web-${GITHUB_SHA}.tgz" .
           test -s "/tmp/source-${GITHUB_SHA}.tgz"
           test -s "/tmp/admin-web-${GITHUB_SHA}.tgz"
 
