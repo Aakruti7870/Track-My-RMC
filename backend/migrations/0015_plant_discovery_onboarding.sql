@@ -56,3 +56,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_plant_onboarding_pending_email
     WHERE source = 'self_onboarding'
       AND status = 'PENDING'
       AND applicant_email IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_plant_onboarding_pending_mobile
+    ON plant_listing_requests(applicant_mobile)
+    WHERE source = 'self_onboarding'
+      AND status = 'PENDING'
+      AND applicant_mobile IS NOT NULL;
