@@ -222,7 +222,7 @@ pub async fn submit_onboarding(
 ) -> Result<impl IntoResponse, AppError> {
     let owner_name = bounded_text(&payload.owner_name, 2, 120, "Owner name")?;
     let plant_name = bounded_text(&payload.plant_name, 2, 160, "Plant name")?;
-    let address = bounded_text(&payload.address, 3, 500, "Address")?;
+    let address = bounded_text(&payload.address, 3, 255, "Address")?;
     if !payload.lat.is_finite()
         || !payload.lng.is_finite()
         || !(-90.0..=90.0).contains(&payload.lat)
