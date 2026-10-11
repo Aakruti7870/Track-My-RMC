@@ -22,6 +22,10 @@ pub struct AppConfig {
     pub otp_expiration_minutes: i64,
     pub otp_cooldown_seconds: i64,
     pub otp_max_verification_attempts: i32,
+
+    /// Google Play App Signing SHA-256 certificate fingerprint. Optional until
+    /// the production Play App Signing certificate is confirmed.
+    pub play_signing_sha256: Option<String>,
 }
 
 impl AppConfig {
@@ -119,6 +123,15 @@ impl AppConfig {
             return Err("OTP_MAX_ATTEMPTS must be between 3 and 10".to_string());
         }
 
+        let play_signing_sha256 = match env::var("PLAY_SIGNING_SHA256") {
+            Ok(value) if value.trim().is_empty() => None,
+            Ok(value) => Some(
+                normalize_sha256_fingerprint(&value)
+                    .ok_or_else(|| "PLAY_SIGNING_SHA256 must be a 32-byte SHA-256 fingerprint (64 hex characters, optionally colon-separated)".to_string())?,
+            ),
+            Err(_) => None,
+        };
+
         Ok(Self {
             database_url,
             jwt_secret,
@@ -137,6 +150,45 @@ impl AppConfig {
             otp_expiration_minutes,
             otp_cooldown_seconds,
             otp_max_verification_attempts,
+            play_signing_sha256,
         })
+    }
+}
+
+/// Validate and normalize a SHA-256 certificate fingerprint to Android's
+/// conventional uppercase colon-separated format.
+pub fn normalize_sha256_fingerprint(value: &str) -> Option<String> {
+    let compact: String = value.chars().filter(|character| *character != ':').collect();
+    if compact.len() != 64 || !compact.chars().all(|character| character.is_ascii_hexdigit()) {
+        return None;
+    }
+    Some(
+        compact
+            .to_ascii_uppercase()
+            .as_bytes()
+            .chunks(2)
+            .map(|pair| std::str::from_utf8(pair).expect("hex input is valid UTF-8"))
+            .collect::<Vec<_>>()
+            .join(":"),
+    )
+}
+
+#[cfg(test)]
+mod fingerprint_tests {
+    use super::normalize_sha256_fingerprint;
+
+    #[test]
+    fn normalizes_valid_fingerprint() {
+        let raw = "0123456789abcdef".repeat(4);
+        assert_eq!(
+            normalize_sha256_fingerprint(&raw).as_deref(),
+            Some("01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF")
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_fingerprint() {
+        assert!(normalize_sha256_fingerprint("not-a-fingerprint").is_none());
+        assert!(normalize_sha256_fingerprint(&"z".repeat(64)).is_none());
     }
 }
