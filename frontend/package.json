@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "check:auth-routing": "node ./scripts/check-role-routing.mjs",
     "check:play-policy": "node ./scripts/check-play-policy-readiness.mjs",
+    "check:android-permissions": "node ./scripts/check-android-permissions.mjs",
     "check:android-layout": "node ./scripts/check-android-responsive-layout.mjs",
     "doctor": "expo-doctor",
     "build:preview": "expo export --platform web --output-dir dist"
