@@ -19,8 +19,8 @@ const android = expo.android || {};
 const permissions = new Set(android.permissions || []);
 const blocked = new Set(android.blockedPermissions || []);
 
-expect(expo.version === "2.0.31", "Expo version must be 2.0.31 for vc89.");
-expect(android.versionCode === 89, "Android versionCode must be 89.");
+expect(expo.version === "2.0.32", "Expo version must be 2.0.32 for vc90.");
+expect(android.versionCode === 90, "Android versionCode must be 89.");
 expect(android.package === "com.trackmyrmc.concreteking", "Android package identity changed unexpectedly.");
 for (const permission of [
   "android.permission.READ_MEDIA_IMAGES",
@@ -98,4 +98,4 @@ expectIncludes(rustRoutes, '"/.well-known/assetlinks.json"', "Android asset-link
 expect(!reviewScreen.includes('role: "authority"'), "Authority must not be exposed through mobile reviewer access.");
 
 if (process.exitCode) process.exit(process.exitCode);
-console.log("Google Play policy readiness assertions passed for TrackMyRMC v2.0.31 / vc89.");
+console.log("Google Play policy readiness assertions passed for TrackMyRMC v2.0.32 / vc90.");
