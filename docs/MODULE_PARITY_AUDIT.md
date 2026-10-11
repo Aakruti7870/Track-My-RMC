@@ -23,6 +23,7 @@ Original roles in `backend/roles.py` include customer, driver, plant owner, admi
 - Owner: create plant, billing overview.
 - Workforce/payroll: daily roster, attendance marking.
 - Admin: admin login and portal overview.
+- Public app/web support: `/.well-known/assetlinks.json` (requires `PLAY_SIGNING_SHA256`) and `/kyc/return`.
 - Health: health check.
 
 The target explicitly does not expose WebAuthn passkey endpoints in `backend/src/routes/mod.rs` because full challenge/origin/RP-ID/signature/counter verification is not implemented.
@@ -45,15 +46,15 @@ The target explicitly does not expose WebAuthn passkey endpoints in `backend/src
 | Workforce/payroll | roster and attendance marking | Partial; reports, payroll closure/guards/concurrency workflows are not represented in current route table |
 | Admin/control center | admin login and portal overview | Partial; original control center, access management and security workspaces need implementation/parity verification |
 | KYC/DigiLocker recovery | Original has KYC recovery/onboarding routes | No corresponding route in inspected Rust route table |
-| Notifications | Original notifications router | No corresponding route in inspected Rust route table |
+| Notifications | User-scoped feed, unread count, read-one/read-all, device token register/unregister | Partial; device token persistence is present but push-delivery provider/worker is not verified |
 | Maps/live fleet map | Original maps router | No corresponding route in inspected Rust route table |
 | Finance/invoices/payments | Original finance operations and billing domains | No corresponding route in inspected Rust route table |
 | Automation/assistant | Original automation and assistant routers | No corresponding route in inspected Rust route table |
-| Play review/public policy | Original Play review/public policy routers | No corresponding route in inspected Rust route table |
+| Play review/public policy | Public Android App Links and KYC return route now exist | Partial; reviewer status/access/session fixture routes and the full public policy pages are still missing; App Links require the correct Play signing fingerprint and web-origin routing |
 | Storage | Original storage router | No corresponding route in inspected Rust route table |
 | Plant plans/promotions | Original plant plans router | No corresponding route in inspected Rust route table |
 | HR/master data/operator workflows | Original HR, master data, operator routers | No corresponding route in inspected Rust route table |
-| Account deletion | Original account deletion router | No corresponding route in inspected Rust route table |
+| Account deletion | Verified public request, authenticated request/status/cancel, request table and audit logging | Partial; privileged completion/anonymization workflow and staging/legal-retention verification remain missing |
 
 ## Production data verification still required
 
@@ -68,5 +69,5 @@ The target explicitly does not expose WebAuthn passkey endpoints in `backend/src
 
 1. Verify live database counts and migration state.
 2. Fix the currently visible placeholder/nonresponsive role-home routes by tracing frontend role routing against the authenticated role and implemented API endpoints.
-3. Complete missing high-priority route parity in this order: plant discovery/onboarding; KYC; notifications; maps/tracking history; finance/payments; plans/promotions; workforce reports/payroll closure; admin/control center; storage; automation/assistant; account deletion and Play policy.
+3. Complete missing high-priority route parity in this order: plant discovery/onboarding; KYC recovery; maps/tracking history; finance/payments; plans/promotions; workforce reports/payroll closure; admin/control center; storage; automation/assistant; Play review/public policy; privileged account-deletion completion.
 4. Add integration tests for each module and role before deploying.

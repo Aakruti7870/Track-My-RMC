@@ -1,10 +1,13 @@
+pub mod account_deletion;
 pub mod admin_routes;
 pub mod auth_routes;
 pub mod customer_routes;
 pub mod dispatcher_routes;
 pub mod driver_routes;
 pub mod health;
+pub mod notifications;
 pub mod owner_routes;
+pub mod well_known;
 pub mod workforce_reports;
 pub mod workforce_routes;
 
@@ -18,6 +21,48 @@ pub fn build_app_router(state: AppState) -> Router {
     Router::new()
         // Health check (Render monitoring)
         .route("/health", get(health::health_check))
+        // Android Digital Asset Links and KYC return page.
+        .route("/.well-known/assetlinks.json", get(well_known::asset_links))
+        .route("/kyc/return", get(well_known::kyc_return))
+        // --- Account deletion requests (verified public request + authenticated status/cancel) ---
+        .route(
+            "/api/account-deletion/otp/send",
+            post(account_deletion::send_public_otp),
+        )
+        .route(
+            "/api/account-deletion/public-request",
+            post(account_deletion::submit_public_request),
+        )
+        .route(
+            "/api/account-deletion/status",
+            get(account_deletion::status),
+        )
+        .route(
+            "/api/account-deletion/request",
+            post(account_deletion::submit_signed_in_request),
+        )
+        .route(
+            "/api/account-deletion/cancel",
+            post(account_deletion::cancel),
+        )
+        // --- User-scoped notifications and push-token registration ---
+        .route("/api/notifications", get(notifications::list_notifications))
+        .route(
+            "/api/notifications/read-all",
+            post(notifications::mark_all_read),
+        )
+        .route(
+            "/api/notifications/:id/read",
+            post(notifications::mark_one_read),
+        )
+        .route(
+            "/api/notifications/device/register",
+            post(notifications::register_device_token),
+        )
+        .route(
+            "/api/notifications/device/unregister",
+            post(notifications::unregister_device_token),
+        )
         // --- Authentication & Profile ---
         .route("/api/auth/register", post(auth_routes::register))
         .route("/api/auth/login", post(auth_routes::login))
