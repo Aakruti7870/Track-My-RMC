@@ -8,7 +8,6 @@ use crate::{
 use axum::{extract::State, response::IntoResponse, Json};
 use serde_json::json;
 
-
 pub async fn list_owner_plants(
     State(state): State<AppState>,
     auth_user: AuthUser,
