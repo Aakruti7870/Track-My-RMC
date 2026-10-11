@@ -395,6 +395,7 @@ pub async fn reject_listing(
         ));
     }
 
+    let mut tx = state.db.begin().await?;
     let updated: Option<(String,)> = sqlx::query_as(
         "UPDATE plant_listing_requests
          SET status = 'REJECTED', reject_reason = $1, reviewed_by = $2,
@@ -405,7 +406,7 @@ pub async fn reject_listing(
     .bind(reason)
     .bind(auth_user.user_id)
     .bind(request_id)
-    .fetch_optional(&state.db)
+    .fetch_optional(&mut *tx)
     .await?;
     let Some((request_number,)) = updated else {
         return Err(AppError::NotFound(
@@ -420,9 +421,10 @@ pub async fn reject_listing(
     .bind(auth_user.user_id)
     .bind(request_id.to_string())
     .bind(json!({"request_number": request_number, "reason": reason}))
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await?;
 
+    tx.commit().await?;
     Ok(Json(
         json!({"success": true, "status": "REJECTED", "request_number": request_number}),
     ))
