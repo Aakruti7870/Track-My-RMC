@@ -14,7 +14,7 @@ import { fonts, fontSize, spacing } from "@/src/theme/tokens";
 // language, while customer nearby-plant discovery uses a separate foreground-
 // only explanation so reviewers can see why location is requested.
 type Resolver = (granted: boolean) => void;
-type Scope = "foreground" | "background" | "nearby-plants" | "attendance" | "sos" | "plant-onboarding";
+type Scope = "foreground" | "background" | "nearby-plants" | "attendance" | "sos" | "plant-onboarding" | "field-visit";
 type Payload = { scope: Scope; resolver: Resolver };
 
 let showFn: ((payload: Payload) => void) | null = null;
@@ -53,6 +53,10 @@ export function requestSosLocationConsent(): Promise<boolean> {
 
 export function requestPlantOnboardingLocationConsent(): Promise<boolean> {
   return requestConsent("plant-onboarding");
+}
+
+export function requestFieldVisitLocationConsent(): Promise<boolean> {
+  return requestConsent("field-visit");
 }
 
 const PRIVACY_URL = "https://trackmyrmc.com/privacy";
@@ -122,6 +126,17 @@ const SOS_POINTS: Point[] = [
   },
 ];
 
+const FIELD_VISIT_POINTS: Point[] = [
+  {
+    icon: "navigate-outline",
+    text: "TrackMyRMC collects your current precise location when you start or complete a scheduled client visit so the assigned plant can verify the field visit.",
+  },
+  {
+    icon: "shield-checkmark-outline",
+    text: "Coordinates are attached to that visit action only. This does not start continuous background tracking or advertising use.",
+  },
+];
+
 const PLANT_ONBOARDING_POINTS: Point[] = [
   {
     icon: "business-outline",
@@ -187,7 +202,9 @@ export function BackgroundLocationConsentProvider() {
           ? SOS_POINTS
           : state.scope === "plant-onboarding"
             ? PLANT_ONBOARDING_POINTS
-            : FOREGROUND_POINTS;
+            : state.scope === "field-visit"
+              ? FIELD_VISIT_POINTS
+              : FOREGROUND_POINTS;
   const title = isBackground
     ? "Allow background location for delivery tracking?"
     : isNearbyPlants
@@ -198,7 +215,9 @@ export function BackgroundLocationConsentProvider() {
           ? "Attach location to your SOS?"
           : state.scope === "plant-onboarding"
             ? "Mark the plant's current location?"
-            : "Allow TrackMyRMC to use location for delivery tracking?";
+            : state.scope === "field-visit"
+              ? "Use location for this client visit?"
+              : "Allow TrackMyRMC to use location for delivery tracking?";
   const intro = "Before Android asks for permission, here is exactly what TrackMyRMC does with your location.";
   const allowLabel = isBackground
     ? "Allow background tracking"
