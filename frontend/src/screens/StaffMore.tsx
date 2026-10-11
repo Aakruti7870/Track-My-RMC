@@ -101,6 +101,21 @@ export function StaffMore() {
           </View>
         ) : null}
 
+        {user?.role === "admin" ? (
+          <Pressable
+            testID="admin-plant-onboarding-review"
+            onPress={() => router.push("/admin-plant-onboarding" as any)}
+            style={[styles.manage, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}
+          >
+            <Ionicons name="business-outline" size={22} color={colors.brand} />
+            <View style={{ flex: 1 }}>
+              <AppText style={{ fontFamily: fonts.semibold, color: colors.onSurface }}>Plant Onboarding Review</AppText>
+              <AppText variant="caption">Approve or reject pending Plant Owner requests</AppText>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceTertiary} />
+          </Pressable>
+        ) : null}
+
         <Pressable testID="logout-button" onPress={doLogout} style={[styles.logout, { borderColor: colors.error }]}><Ionicons name="log-out-outline" size={20} color={colors.error} /><AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: colors.error }}>Logout</AppText></Pressable>
         <AppText variant="caption" center>TrackMyRMC · v2.0.18 (76)</AppText>
       </ScrollView>
