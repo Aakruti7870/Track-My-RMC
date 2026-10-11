@@ -14,7 +14,7 @@ import { fonts, fontSize, spacing } from "@/src/theme/tokens";
 // language, while customer nearby-plant discovery uses a separate foreground-
 // only explanation so reviewers can see why location is requested.
 type Resolver = (granted: boolean) => void;
-type Scope = "foreground" | "background" | "nearby-plants";
+type Scope = "foreground" | "background" | "nearby-plants" | "attendance" | "sos" | "plant-onboarding";
 type Payload = { scope: Scope; resolver: Resolver };
 
 let showFn: ((payload: Payload) => void) | null = null;
@@ -41,6 +41,18 @@ export function requestForegroundLocationConsent(): Promise<boolean> {
 
 export function requestNearbyPlantsLocationConsent(): Promise<boolean> {
   return requestConsent("nearby-plants");
+}
+
+export function requestAttendanceLocationConsent(): Promise<boolean> {
+  return requestConsent("attendance");
+}
+
+export function requestSosLocationConsent(): Promise<boolean> {
+  return requestConsent("sos");
+}
+
+export function requestPlantOnboardingLocationConsent(): Promise<boolean> {
+  return requestConsent("plant-onboarding");
 }
 
 const PRIVACY_URL = "https://trackmyrmc.com/privacy";
@@ -88,6 +100,39 @@ const BACKGROUND_POINTS: Point[] = [
   },
 ];
 
+const ATTENDANCE_POINTS: Point[] = [
+  {
+    icon: "time-outline",
+    text: "TrackMyRMC collects your current precise location when you punch in or out so the assigned plant can verify the attendance event.",
+  },
+  {
+    icon: "shield-checkmark-outline",
+    text: "Your coordinates are attached to that attendance record and are not used for continuous background tracking or advertising.",
+  },
+];
+
+const SOS_POINTS: Point[] = [
+  {
+    icon: "warning-outline",
+    text: "If you submit an SOS, TrackMyRMC uses your current precise location to help authorized plant staff respond to the reported emergency, accident, breakdown or safety issue.",
+  },
+  {
+    icon: "shield-checkmark-outline",
+    text: "Location is sent with the SOS report only when you submit it. This action does not start continuous background tracking.",
+  },
+];
+
+const PLANT_ONBOARDING_POINTS: Point[] = [
+  {
+    icon: "business-outline",
+    text: "TrackMyRMC uses your current precise location to mark the RMC plant's map position and help verify the plant location during onboarding.",
+  },
+  {
+    icon: "shield-checkmark-outline",
+    text: "Coordinates are attached to the plant onboarding request. You can enter the address manually instead and this action does not start background tracking.",
+  },
+];
+
 const NEARBY_PLANTS_POINTS: Point[] = [
   {
     icon: "business-outline",
@@ -132,23 +177,51 @@ export function BackgroundLocationConsentProvider() {
 
   const isBackground = state.scope === "background";
   const isNearbyPlants = state.scope === "nearby-plants";
-  const points = isBackground ? BACKGROUND_POINTS : isNearbyPlants ? NEARBY_PLANTS_POINTS : FOREGROUND_POINTS;
+  const points = isBackground
+    ? BACKGROUND_POINTS
+    : isNearbyPlants
+      ? NEARBY_PLANTS_POINTS
+      : state.scope === "attendance"
+        ? ATTENDANCE_POINTS
+        : state.scope === "sos"
+          ? SOS_POINTS
+          : state.scope === "plant-onboarding"
+            ? PLANT_ONBOARDING_POINTS
+            : FOREGROUND_POINTS;
   const title = isBackground
     ? "Allow background location for delivery tracking?"
     : isNearbyPlants
       ? "Use your location to find nearby RMC plants?"
-      : "Allow TrackMyRMC to use location for delivery tracking?";
+      : state.scope === "attendance"
+        ? "Use location for attendance?"
+        : state.scope === "sos"
+          ? "Attach location to your SOS?"
+          : state.scope === "plant-onboarding"
+            ? "Mark the plant's current location?"
+            : "Allow TrackMyRMC to use location for delivery tracking?";
   const intro = "Before Android asks for permission, here is exactly what TrackMyRMC does with your location.";
   const allowLabel = isBackground
     ? "Allow background tracking"
     : isNearbyPlants
       ? "Use my location"
-      : "Allow location for delivery";
+      : state.scope === "attendance"
+        ? "Use location for attendance"
+        : state.scope === "sos"
+          ? "Attach location to SOS"
+          : state.scope === "plant-onboarding"
+            ? "Mark plant location"
+            : "Allow location for delivery";
   const declineFooter = isBackground
     ? "You can change this anytime in Android Settings. If you decline, live tracking still works while the app is open."
     : isNearbyPlants
       ? "Location is optional for browsing registered plants. You can enable it later from Nearby Plants."
-      : "You can change this anytime in Android Settings. Without location, delivery tracking and ETA will not work.";
+      : state.scope === "attendance"
+        ? "If you decline, you can leave this action and contact your plant supervisor about attendance verification."
+        : state.scope === "sos"
+          ? "If you decline, you can still submit the SOS without coordinates or contact your plant directly."
+          : state.scope === "plant-onboarding"
+            ? "If you decline, enter the plant address or coordinates manually."
+            : "You can change this anytime in Android Settings. Without location, delivery tracking and ETA will not work.";
 
   return (
     <Modal
