@@ -34,7 +34,8 @@ pub async fn asset_links(State(state): State<AppState>) -> impl IntoResponse {
 
 /// Deep-link landing page used when DigiLocker/KYC returns to the app.
 pub async fn kyc_return() -> Html<&'static str> {
-    Html(r#"<!doctype html>
+    Html(
+        r#"<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -49,7 +50,8 @@ pub async fn kyc_return() -> Html<&'static str> {
 <a href="trackmyrmc://kyc" style="color:#dfff62">Open TrackMyRMC</a>
 </main>
 </body>
-</html>"#)
+</html>"#,
+    )
 }
 
 #[cfg(test)]
