@@ -117,7 +117,10 @@ pub fn build_app_router(state: AppState) -> Router {
             patch(dispatcher_routes::update_order_status),
         )
         // --- Owner Domain ---
-        .route("/api/owner/plants", post(owner_routes::create_plant))
+        .route(
+            "/api/owner/plants",
+            get(owner_routes::list_owner_plants).post(owner_routes::create_plant),
+        )
         .route(
             "/api/owner/billing",
             get(owner_routes::get_billing_overview),
