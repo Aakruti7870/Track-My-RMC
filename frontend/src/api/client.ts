@@ -247,6 +247,10 @@ export async function apiPublicPost<T>(path: string, body?: unknown): Promise<T>
   return request<T>(path, { method: "POST", body });
 }
 
+export async function requestAccountDeletionOtp(identifier: string) {
+  return apiPublicPost<OtpRequestResponse>("/account-deletion/otp/send", { identifier });
+}
+
 export async function requestOtp(identifier: string) {
   return apiPublicPost<OtpRequestResponse>("/auth/otp/whatsapp/send", { phone: identifier });
 }
