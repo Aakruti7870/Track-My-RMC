@@ -7,6 +7,7 @@ pub mod driver_routes;
 pub mod health;
 pub mod notifications;
 pub mod owner_routes;
+pub mod plant_onboarding;
 pub mod well_known;
 pub mod workforce_reports;
 pub mod workforce_routes;
@@ -160,6 +161,27 @@ pub fn build_app_router(state: AppState) -> Router {
         .route(
             "/api/dispatcher/orders/:id/status",
             patch(dispatcher_routes::update_order_status),
+        )
+        // --- Plant discovery and public partner onboarding ---
+        .route(
+            "/api/plant-onboarding/places",
+            get(plant_onboarding::search_places),
+        )
+        .route(
+            "/api/plant-onboarding/requests",
+            post(plant_onboarding::submit_onboarding),
+        )
+        .route(
+            "/api/plant-discovery/requests",
+            get(plant_onboarding::list_requests),
+        )
+        .route(
+            "/api/plant-discovery/requests/:request_id/approve",
+            post(plant_onboarding::approve_listing),
+        )
+        .route(
+            "/api/plant-discovery/requests/:request_id/reject",
+            post(plant_onboarding::reject_listing),
         )
         // --- Owner Domain ---
         .route("/api/master/my-plants", get(owner_routes::my_plants))
