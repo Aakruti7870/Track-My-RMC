@@ -42,7 +42,7 @@ try {
 }
 
 requireInvariant(app.expo.version === '2.0.32', 'Expected Expo version 2.0.32');
-requireInvariant(app.expo.android?.versionCode === 89, 'Expected Android versionCode 90');
+requireInvariant(app.expo.android?.versionCode === 90, 'Expected Android versionCode 90');
 requireInvariant(app.expo.android?.package === 'com.trackmyrmc.concreteking', 'Unexpected Android application id');
 requireInvariant(indexRoute.includes('<Redirect href="/login"'), 'Root route must start at /login');
 requireInvariant(releaseWorkflow.includes('EXPO_PUBLIC_BACKEND_URL: https://trackmyrmc.com'), 'Signed AAB must be pinned to https://trackmyrmc.com');
