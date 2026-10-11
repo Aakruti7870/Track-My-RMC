@@ -23,13 +23,12 @@ async fn migrations_apply_from_an_empty_database() {
         "device_push_tokens",
         "plant_listing_requests",
     ] {
-        let exists: bool = sqlx::query_scalar(
-            "SELECT to_regclass(format('public.%s', $1)) IS NOT NULL",
-        )
-        .bind(table)
-        .fetch_one(&pool)
-        .await
-        .expect("verify expected migration table");
+        let exists: bool =
+            sqlx::query_scalar("SELECT to_regclass(format('public.%s', $1)) IS NOT NULL")
+                .bind(table)
+                .fetch_one(&pool)
+                .await
+                .expect("verify expected migration table");
         assert!(exists, "migration should create {table}");
     }
 
