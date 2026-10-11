@@ -61,7 +61,9 @@ mod tests {
         let fingerprint = "0123456789abcdef".repeat(4);
         assert_eq!(
             normalize_sha256_fingerprint(&fingerprint).as_deref(),
-            Some("01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF")
+            Some(
+                "01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF"
+            )
         );
     }
 
