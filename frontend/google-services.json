@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "292475211835",
+    "project_id": "track-my-rmc",
+    "storage_bucket": "track-my-rmc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:292475211835:android:4fd85fc2c3101895380c1e",
+        "android_client_info": {
+          "package_name": "com.trackmyrmc.concreteking"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCfzbwZe9fgOxsvkncROQxxnno9of4YGCA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
