@@ -7,6 +7,7 @@ pub mod driver_routes;
 pub mod health;
 pub mod notifications;
 pub mod owner_routes;
+pub mod well_known;
 pub mod workforce_reports;
 pub mod workforce_routes;
 
@@ -20,6 +21,9 @@ pub fn build_app_router(state: AppState) -> Router {
     Router::new()
         // Health check (Render monitoring)
         .route("/health", get(health::health_check))
+        // Android Digital Asset Links and KYC return page.
+        .route("/.well-known/assetlinks.json", get(well_known::asset_links))
+        .route("/kyc/return", get(well_known::kyc_return))
         // --- Account deletion requests (verified public request + authenticated status/cancel) ---
         .route(
             "/api/account-deletion/otp/send",
