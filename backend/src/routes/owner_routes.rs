@@ -8,6 +8,32 @@ use crate::{
 use axum::{extract::State, response::IntoResponse, Json};
 use serde_json::json;
 
+
+pub async fn list_owner_plants(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+) -> Result<impl IntoResponse, AppError> {
+    check_role(&auth_user, &["owner", "admin"])?;
+
+    // Scope owners to their own plants; platform admins may view all plants.
+    let plants = if auth_user.role == "admin" {
+        sqlx::query_as::<_, crate::models::plant::RmcPlant>(
+            "SELECT id, owner_id, name, code, latitude, longitude, address_line, city, state, pincode, contact_phone, contact_email, capacity_m3_per_hr, rating, is_active, created_at, updated_at FROM rmc_plants ORDER BY created_at DESC",
+        )
+        .fetch_all(&state.db)
+        .await?
+    } else {
+        sqlx::query_as::<_, crate::models::plant::RmcPlant>(
+            "SELECT id, owner_id, name, code, latitude, longitude, address_line, city, state, pincode, contact_phone, contact_email, capacity_m3_per_hr, rating, is_active, created_at, updated_at FROM rmc_plants WHERE owner_id = $1 ORDER BY created_at DESC",
+        )
+        .bind(auth_user.user_id)
+        .fetch_all(&state.db)
+        .await?
+    };
+
+    Ok(Json(json!({ "success": true, "plants": plants })))
+}
+
 pub async fn create_plant(
     State(state): State<AppState>,
     auth_user: AuthUser,
