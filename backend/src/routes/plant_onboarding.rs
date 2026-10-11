@@ -1,6 +1,6 @@
 use crate::{
-    auth::{middleware::check_role, AuthUser},
     auth::password::hash_password,
+    auth::{middleware::check_role, AuthUser},
     error::AppError,
     state::AppState,
 };
@@ -92,7 +92,9 @@ struct ApprovalSource {
 fn normalized_email(raw: &str) -> Result<String, AppError> {
     let email = raw.trim().to_ascii_lowercase();
     let Some((local, domain)) = email.split_once('@') else {
-        return Err(AppError::BadRequest("Enter a valid email address".to_string()));
+        return Err(AppError::BadRequest(
+            "Enter a valid email address".to_string(),
+        ));
     };
     if email.len() > 254
         || local.is_empty()
@@ -114,7 +116,9 @@ fn normalized_mobile(raw: &str) -> Result<String, AppError> {
         digits
     };
     if !(10..=15).contains(&phone.len()) {
-        return Err(AppError::BadRequest("Enter a valid mobile number".to_string()));
+        return Err(AppError::BadRequest(
+            "Enter a valid mobile number".to_string(),
+        ));
     }
     Ok(phone)
 }
@@ -222,7 +226,9 @@ pub async fn submit_onboarding(
         || !(-90.0..=90.0).contains(&payload.lat)
         || !(-180.0..=180.0).contains(&payload.lng)
     {
-        return Err(AppError::BadRequest("Invalid plant coordinates".to_string()));
+        return Err(AppError::BadRequest(
+            "Invalid plant coordinates".to_string(),
+        ));
     }
 
     let email = normalized_email(&payload.email)?;
@@ -332,7 +338,10 @@ pub async fn submit_onboarding(
                 $1, 'plant_onboarding', $2
          FROM users WHERE role = 'admin' AND is_active = TRUE",
     )
-    .bind(format!("A new plant partner request ({}) is waiting for review.", row.1))
+    .bind(format!(
+        "A new plant partner request ({}) is waiting for review.",
+        row.1
+    ))
     .bind(row.0.to_string())
     .execute(&mut *tx)
     .await?;
@@ -412,7 +421,9 @@ pub async fn reject_listing(
     .execute(&state.db)
     .await?;
 
-    Ok(Json(json!({"success": true, "status": "REJECTED", "request_number": request_number})))
+    Ok(Json(
+        json!({"success": true, "status": "REJECTED", "request_number": request_number}),
+    ))
 }
 
 pub async fn approve_listing(
@@ -425,7 +436,10 @@ pub async fn approve_listing(
     let city = bounded_text(&payload.city, 2, 100, "City")?;
     let region = bounded_text(&payload.state, 2, 100, "State")?;
     let pincode = bounded_text(&payload.pincode, 4, 10, "PIN code")?;
-    if !pincode.chars().all(|character| character.is_ascii_alphanumeric() || character == '-') {
+    if !pincode
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || character == '-')
+    {
         return Err(AppError::BadRequest("Invalid PIN code".to_string()));
     }
 
@@ -438,9 +452,12 @@ pub async fn approve_listing(
     .bind(request_id)
     .fetch_optional(&mut *tx)
     .await?;
-    let req = req.ok_or_else(|| AppError::NotFound("Plant listing request not found".to_string()))?;
+    let req =
+        req.ok_or_else(|| AppError::NotFound("Plant listing request not found".to_string()))?;
     if req.status != "PENDING" {
-        return Err(AppError::Conflict("Only pending plant listings can be approved".to_string()));
+        return Err(AppError::Conflict(
+            "Only pending plant listings can be approved".to_string(),
+        ));
     }
     if req.source != "self_onboarding" {
         return Err(AppError::BadRequest(
@@ -465,7 +482,9 @@ pub async fn approve_listing(
                 .fetch_optional(&mut *tx)
                 .await?;
         if exists.is_some() {
-            return Err(AppError::Conflict("This Google plant is already registered".to_string()));
+            return Err(AppError::Conflict(
+                "This Google plant is already registered".to_string(),
+            ));
         }
     }
 
@@ -527,7 +546,9 @@ pub async fn approve_listing(
         .filter(|value| !value.is_empty())
         .unwrap_or(&req.request_number);
     if plant_code.len() > 50 {
-        return Err(AppError::BadRequest("Plant code must be 50 characters or fewer".to_string()));
+        return Err(AppError::BadRequest(
+            "Plant code must be 50 characters or fewer".to_string(),
+        ));
     }
 
     let plant_id: Uuid = sqlx::query_scalar(
@@ -579,7 +600,10 @@ pub async fn approve_listing(
          VALUES ($1, 'Plant Owner access enabled', $2, 'plant_onboarding', $3)",
     )
     .bind(owner_id)
-    .bind(format!("Your plant {} was approved. Sign in using email OTP to continue setup.", req.name))
+    .bind(format!(
+        "Your plant {} was approved. Sign in using email OTP to continue setup.",
+        req.name
+    ))
     .bind(plant_id.to_string())
     .execute(&mut *tx)
     .await?;
@@ -600,7 +624,10 @@ mod tests {
 
     #[test]
     fn normalizes_onboarding_identifiers() {
-        assert_eq!(normalized_email(" OWNER@Example.com ").unwrap(), "owner@example.com");
+        assert_eq!(
+            normalized_email(" OWNER@Example.com ").unwrap(),
+            "owner@example.com"
+        );
         assert_eq!(normalized_mobile("98765 43210").unwrap(), "919876543210");
     }
 
