@@ -129,10 +129,7 @@ pub fn build_app_router(state: AppState) -> Router {
             post(workforce_routes::mark_attendance),
         )
         // Read-only monthly attendance and persisted payroll summary.
-        .route(
-            "/api/workforce-reports/monthly",
-            get(workforce_reports::monthly_summary),
-        )
+        .route("/api/workforce-reports/monthly", get(workforce_reports::monthly_summary))
         // --- Admin Portal ---
         .route("/api/admin/auth/login", post(admin_routes::admin_login))
         .route(
