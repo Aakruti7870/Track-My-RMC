@@ -3,12 +3,7 @@ use crate::{
     services::play_review::{self, PlayReviewLoginRequest},
     state::AppState,
 };
-use axum::{
-    extract::State,
-    http::HeaderMap,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::State, http::HeaderMap, response::IntoResponse, Json};
 
 fn client_identifier(headers: &HeaderMap) -> String {
     // Cloudflare supplies CF-Connecting-IP at the public edge. Prefer it to
@@ -16,7 +11,11 @@ fn client_identifier(headers: &HeaderMap) -> String {
     headers
         .get("cf-connecting-ip")
         .and_then(|value| value.to_str().ok())
-        .or_else(|| headers.get("x-real-ip").and_then(|value| value.to_str().ok()))
+        .or_else(|| {
+            headers
+                .get("x-real-ip")
+                .and_then(|value| value.to_str().ok())
+        })
         .map(str::trim)
         .filter(|value| !value.is_empty() && value.len() <= 64)
         .unwrap_or("unknown-client")
