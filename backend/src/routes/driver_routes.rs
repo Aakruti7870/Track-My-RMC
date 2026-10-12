@@ -144,11 +144,14 @@ pub async fn get_driver_home(
     .await?
     .ok_or_else(|| AppError::NotFound("Active driver account not found".to_string()))?;
 
-    let active_trip = row.2.map(|trip| {
-        serde_json::from_str::<Value>(&trip).map_err(|_| {
-            AppError::InternalError("Failed to decode active driver trip".to_string())
+    let active_trip = row
+        .2
+        .map(|trip| {
+            serde_json::from_str::<Value>(&trip).map_err(|_| {
+                AppError::InternalError("Failed to decode active driver trip".to_string())
+            })
         })
-    }).transpose()?;
+        .transpose()?;
 
     Ok(Json(json!({
         "success": true,
@@ -223,7 +226,9 @@ pub async fn check_in_driver(
         ));
     }
 
-    Ok(Json(json!({ "success": true, "message": "Checked in successfully" })))
+    Ok(Json(
+        json!({ "success": true, "message": "Checked in successfully" }),
+    ))
 }
 
 pub async fn check_out_driver(
@@ -254,20 +259,19 @@ pub async fn check_out_driver(
     .await?;
 
     if updated.rows_affected() == 0 {
-        let existing: Option<(Option<DateTime<Utc>>, Option<DateTime<Utc>>)> =
-            sqlx::query_as(
-                r#"
-                SELECT check_in_time, check_out_time
-                FROM workforce_attendance
-                WHERE plant_id = $1 AND user_id = $2 AND attendance_date = $3
-                LIMIT 1
-                "#,
-            )
-            .bind(plant_id)
-            .bind(auth_user.user_id)
-            .bind(today)
-            .fetch_optional(&state.db)
-            .await?;
+        let existing: Option<(Option<DateTime<Utc>>, Option<DateTime<Utc>>)> = sqlx::query_as(
+            r#"
+            SELECT check_in_time, check_out_time
+            FROM workforce_attendance
+            WHERE plant_id = $1 AND user_id = $2 AND attendance_date = $3
+            LIMIT 1
+            "#,
+        )
+        .bind(plant_id)
+        .bind(auth_user.user_id)
+        .bind(today)
+        .fetch_optional(&state.db)
+        .await?;
 
         return match existing {
             Some((Some(_), Some(_))) => Err(AppError::Conflict(
@@ -279,7 +283,9 @@ pub async fn check_out_driver(
         };
     }
 
-    Ok(Json(json!({ "success": true, "message": "Checked out successfully" })))
+    Ok(Json(
+        json!({ "success": true, "message": "Checked out successfully" }),
+    ))
 }
 
 pub async fn update_location(
