@@ -16,9 +16,24 @@ use uuid::Uuid;
 
 pub async fn list_plants(
     State(state): State<AppState>,
-    _auth_user: AuthUser,
+    auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
-    let plants = plant_repo::list_plants(&state.db).await?;
+    let review_customer: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM play_review_fixtures WHERE user_id = $1 AND role = 'customer' AND enabled = TRUE)",
+    )
+    .bind(auth_user.user_id)
+    .fetch_one(&state.db)
+    .await?;
+    let review_plant_ids: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT plant_id FROM play_review_fixtures WHERE role = 'customer' AND enabled = TRUE AND plant_id IS NOT NULL",
+    )
+    .fetch_all(&state.db)
+    .await?;
+    let mut plants = plant_repo::list_plants(&state.db).await?;
+    plants.retain(|plant| {
+        let is_review_plant = review_plant_ids.contains(&plant.id);
+        if review_customer { is_review_plant } else { !is_review_plant }
+    });
     Ok(Json(json!({ "success": true, "plants": plants })))
 }
 
