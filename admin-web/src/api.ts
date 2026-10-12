@@ -12,7 +12,7 @@ export const apiClient = axios.create({
 });
 
 apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('trackmyrmc_admin_token');
+  const token = typeof window === 'undefined' ? null : window.sessionStorage.getItem('trackmyrmc_admin_token');
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;
   }
