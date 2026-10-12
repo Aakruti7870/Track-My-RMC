@@ -128,5 +128,3 @@ ON CONFLICT (role) DO UPDATE SET
  order_id = EXCLUDED.order_id,
  load_id = EXCLUDED.load_id,
  enabled = TRUE;
-
--- Keep attempts table bounded; this cleanup runs only when reviewer login is used.
