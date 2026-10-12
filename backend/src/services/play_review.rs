@@ -80,8 +80,7 @@ pub async fn login(
     }
 
     let supplied = request.access_code.trim();
-    let valid_format = supplied.len() == 6
-        && supplied.bytes().all(|byte| byte.is_ascii_digit());
+    let valid_format = supplied.len() == 6 && supplied.bytes().all(|byte| byte.is_ascii_digit());
     let valid_code = valid_format && constant_time_eq(supplied.as_bytes(), expected.as_bytes());
 
     sqlx::query("INSERT INTO play_review_login_attempts (client_hash, succeeded) VALUES ($1, $2)")
