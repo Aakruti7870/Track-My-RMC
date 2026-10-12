@@ -26,6 +26,8 @@ pub struct AppConfig {
     /// Google Play App Signing SHA-256 certificate fingerprint. Optional until
     /// the production Play App Signing certificate is confirmed.
     pub play_signing_sha256: Option<String>,
+    /// Fixed six-digit Google Play reviewer code. Absent means reviewer access is disabled.
+    pub play_review_access_code: Option<String>,
     /// Optional Google Places API key for public plant onboarding search.
     pub google_places_api_key: Option<String>,
 }
@@ -125,6 +127,15 @@ impl AppConfig {
             return Err("OTP_MAX_ATTEMPTS must be between 3 and 10".to_string());
         }
 
+        let play_review_access_code = match env::var("PLAY_REVIEW_ACCESS_CODE") {
+            Ok(value) if value.trim().is_empty() => None,
+            Ok(value) if value.len() == 6 && value.bytes().all(|byte| byte.is_ascii_digit()) => {
+                Some(value)
+            }
+            Ok(_) => return Err("PLAY_REVIEW_ACCESS_CODE must be exactly six digits".to_string()),
+            Err(_) => None,
+        };
+
         let google_places_api_key = env::var("GOOGLE_PLACES_API_KEY")
             .ok()
             .map(|value| value.trim().to_string())
@@ -160,6 +171,7 @@ impl AppConfig {
             otp_cooldown_seconds,
             otp_max_verification_attempts,
             play_signing_sha256,
+            play_review_access_code,
             google_places_api_key,
         })
     }
