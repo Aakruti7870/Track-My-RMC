@@ -32,7 +32,7 @@ pub async fn my_plants(
     let rows: Vec<(uuid::Uuid, String, String)> = match auth_user.role.as_str() {
         "admin" => {
             sqlx::query_as(
-                "SELECT id, name, city FROM rmc_plants WHERE is_active = TRUE ORDER BY name",
+                "SELECT p.id, p.name, p.city FROM rmc_plants p WHERE p.is_active = TRUE AND NOT EXISTS (SELECT 1 FROM play_review_fixtures f WHERE f.plant_id = p.id) ORDER BY p.name",
             )
             .fetch_all(&state.db)
             .await?
@@ -76,7 +76,7 @@ pub async fn list_owner_plants(
     // Scope owners to their own plants; platform admins may view all plants.
     let plants = if auth_user.role == "admin" {
         sqlx::query_as::<_, crate::models::plant::RmcPlant>(
-            "SELECT id, owner_id, name, code, latitude, longitude, address_line, city, state, pincode, contact_phone, contact_email, capacity_m3_per_hr, rating, is_active, created_at, updated_at FROM rmc_plants ORDER BY created_at DESC",
+            "SELECT p.id, p.owner_id, p.name, p.code, p.latitude, p.longitude, p.address_line, p.city, p.state, p.pincode, p.contact_phone, p.contact_email, p.capacity_m3_per_hr, p.rating, p.is_active, p.created_at, p.updated_at FROM rmc_plants p WHERE NOT EXISTS (SELECT 1 FROM play_review_fixtures f WHERE f.plant_id = p.id) ORDER BY p.created_at DESC",
         )
         .fetch_all(&state.db)
         .await?
