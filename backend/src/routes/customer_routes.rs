@@ -32,7 +32,11 @@ pub async fn list_plants(
     let mut plants = plant_repo::list_plants(&state.db).await?;
     plants.retain(|plant| {
         let is_review_plant = review_plant_ids.contains(&plant.id);
-        if review_customer { is_review_plant } else { !is_review_plant }
+        if review_customer {
+            is_review_plant
+        } else {
+            !is_review_plant
+        }
     });
     Ok(Json(json!({ "success": true, "plants": plants })))
 }
