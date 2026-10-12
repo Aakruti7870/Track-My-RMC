@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Redirect, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -14,8 +14,6 @@ import { Card } from "@/src/components/ui/Card";
 import { Input } from "@/src/components/ui/Input";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { radius, spacing } from "@/src/theme/tokens";
-
-const playReviewEnabled = process.env.EXPO_PUBLIC_ENABLE_PLAY_REVIEW === "true";
 
 const ROLES: { role: PlayReviewRole; label: string; description: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { role: "customer", label: "User / Customer", description: "Customer ordering and delivery experience", icon: "person-outline" },
@@ -39,10 +37,6 @@ const REVIEW_GUIDANCE: Record<PlayReviewRole, { title: string; text: string }> =
 };
 
 export default function ReviewAccess() {
-  if (!playReviewEnabled) {
-    return <Redirect href="/login" />;
-  }
-
   const { colors, scheme } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
