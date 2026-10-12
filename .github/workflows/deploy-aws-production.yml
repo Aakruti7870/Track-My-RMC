@@ -151,3 +151,6 @@ jobs:
           curl --retry 10 --retry-all-errors --retry-delay 3 -fsS https://trackmyrmc.com/health
           curl --retry 10 --retry-all-errors --retry-delay 3 -fsS https://trackmyrmc.com/ | grep -F '_expo/static/' >/dev/null
           curl --retry 10 --retry-all-errors --retry-delay 3 -fsSI https://trackmyrmc.com/ | grep -Eiq '^HTTP/[^ ]+ 200'
+          ADMIN_JS="$(curl --retry 10 --retry-all-errors --retry-delay 3 -fsS https://trackmyrmc.com/admin/ | grep -Eo 'src="/admin/assets/[^"]+\.js"' | head -n 1 | cut -d '"' -f 2)"
+          test -n "$ADMIN_JS"
+          curl --retry 10 --retry-all-errors --retry-delay 3 -fsSI "https://trackmyrmc.com$ADMIN_JS" | grep -Eiq '^HTTP/[^ ]+ 200'
