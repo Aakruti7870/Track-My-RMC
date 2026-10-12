@@ -22,6 +22,8 @@ async fn migrations_apply_from_an_empty_database() {
         "account_deletion_requests",
         "device_push_tokens",
         "plant_listing_requests",
+        "play_review_fixtures",
+        "play_review_login_attempts",
     ] {
         let exists: bool =
             sqlx::query_scalar("SELECT to_regclass(format('public.%s', $1)) IS NOT NULL")
