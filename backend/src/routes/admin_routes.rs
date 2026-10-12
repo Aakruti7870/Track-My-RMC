@@ -30,15 +30,15 @@ pub async fn portal_overview(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["admin"])?;
 
-    let user_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
+    let user_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users u WHERE NOT EXISTS (SELECT 1 FROM play_review_fixtures f WHERE f.user_id = u.id)")
         .fetch_one(&state.db)
         .await?;
 
-    let plant_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM rmc_plants")
+    let plant_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM rmc_plants p WHERE NOT EXISTS (SELECT 1 FROM play_review_fixtures f WHERE f.plant_id = p.id)")
         .fetch_one(&state.db)
         .await?;
 
-    let order_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM orders")
+    let order_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM orders o WHERE NOT EXISTS (SELECT 1 FROM play_review_fixtures f WHERE f.order_id = o.id)")
         .fetch_one(&state.db)
         .await?;
 
