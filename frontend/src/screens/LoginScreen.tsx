@@ -33,7 +33,6 @@ const ACCOUNT_DELETION_URL = "https://trackmyrmc.com/account-deletion";
 const SUCCESS = "#28C48D";
 const ERROR = "#E5484D";
 const DEMO_LOGIN_ENABLED = process.env.EXPO_PUBLIC_ENABLE_DEMO_LOGIN === "1";
-const PLAY_REVIEW_ENABLED = process.env.EXPO_PUBLIC_ENABLE_PLAY_REVIEW === "true";
 
 const DEMO_ROLES = [
   { role: "customer", label: "User" },
