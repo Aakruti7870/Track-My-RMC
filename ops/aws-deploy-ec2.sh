@@ -141,7 +141,10 @@ server {
     }
 
     location = /admin/ {
-        alias /opt/trackmyrmc/admin-web/index.html;
+        # Use root + an explicit file lookup. An alias to index.html makes
+        # Nginx's index module append a second "index.html" and return HTTP 500.
+        root /opt/trackmyrmc/admin-web;
+        try_files /index.html =404;
         add_header Cache-Control "no-cache, no-store, must-revalidate";
     }
 
@@ -152,8 +155,8 @@ server {
     }
 
     location ^~ /admin/ {
+        # The alias maps dashboard files directly; missing files naturally 404.
         alias /opt/trackmyrmc/admin-web/;
-        try_files $uri =404;
     }
 
     location /api/ {
@@ -352,5 +355,12 @@ sleep 3
 curl --resolve trackmyrmc.com:443:127.0.0.1 --fail --silent --show-error https://trackmyrmc.com/health
 curl --resolve trackmyrmc.com:443:127.0.0.1 --fail --silent --show-error https://trackmyrmc.com/healthz
 curl --resolve trackmyrmc.com:443:127.0.0.1 --fail --silent --show-error https://trackmyrmc.com/ | grep -F '_expo/static/' >/dev/null
+
+# Verify the separate admin SPA and one real JavaScript asset before reporting
+# a successful deployment; this catches Nginx alias/index regressions.
+ADMIN_HTML="$(curl --resolve trackmyrmc.com:443:127.0.0.1 --fail --silent --show-error https://trackmyrmc.com/admin/)"
+ADMIN_JS="$(printf '%s' "$ADMIN_HTML" | grep -Eo 'src="/admin/assets/[^"]+\.js"' | head -n 1 | cut -d '"' -f 2)"
+test -n "$ADMIN_JS"
+curl --resolve trackmyrmc.com:443:127.0.0.1 --fail --silent --show-error "https://trackmyrmc.com$ADMIN_JS" >/dev/null
 
 echo "TrackMyRMC deployment successful: $RELEASE_SHA"
