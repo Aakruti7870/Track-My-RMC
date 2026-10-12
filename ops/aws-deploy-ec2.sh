@@ -214,7 +214,7 @@ printf '%s' "$APP_JSON" | jq -e '
   (.META_WABA_ID | type == "string" and length > 0) and
   (.EMAIL_API_KEY | type == "string" and length > 0) and
   (.EMAIL_FROM_ADDRESS | type == "string" and length > 0) and
-  ((.PLAY_REVIEW_ACCESS_CODE // "") == "" or ((.PLAY_REVIEW_ACCESS_CODE | type) == "string" and (.PLAY_REVIEW_ACCESS_CODE | test("^[0-9]{6}$")))) and
+  (if (.PLAY_REVIEW_ACCESS_CODE // "") == "" then true else ((.PLAY_REVIEW_ACCESS_CODE | type) == "string" and (.PLAY_REVIEW_ACCESS_CODE | test("^[0-9]{6}$"))) end) and
   (.DB_NAME == "trackmyrmc")
 ' >/dev/null || {
   echo "Required production runtime fields are missing or invalid; refusing release." >&2
