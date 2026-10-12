@@ -36,6 +36,8 @@ jobs:
         run: npm run check:auth-routing
       - name: Validate Google Play privacy and permission readiness
         run: npm run check:android-permissions
+      - name: Validate Play review, account deletion, and App Links contracts
+        run: npm run check:play-policy
       - name: Validate Android responsive layouts
         run: npm run check:android-layout
       - name: Build production web bundle

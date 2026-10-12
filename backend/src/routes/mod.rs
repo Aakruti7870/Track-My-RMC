@@ -8,6 +8,7 @@ pub mod health;
 pub mod notifications;
 pub mod owner_routes;
 pub mod plant_onboarding;
+pub mod play_review;
 pub mod well_known;
 pub mod workforce_reports;
 pub mod workforce_routes;
@@ -65,6 +66,7 @@ pub fn build_app_router(state: AppState) -> Router {
             post(notifications::unregister_device_token),
         )
         // --- Authentication & Profile ---
+        .route("/api/auth/play-review", post(play_review::login))
         .route("/api/auth/register", post(auth_routes::register))
         .route("/api/auth/login", post(auth_routes::login))
         .route("/api/me", get(auth_routes::get_me))
