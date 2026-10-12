@@ -131,6 +131,18 @@ pub async fn login(state: &AppState, req: LoginRequest) -> Result<AuthResponse, 
         ));
     }
 
+    if sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM play_review_fixtures WHERE user_id = $1 AND enabled = TRUE)",
+    )
+    .bind(user.id)
+    .fetch_one(&state.db)
+    .await?
+    {
+        return Err(AppError::Forbidden(
+            "Play review accounts must use the dedicated reviewer access flow.".to_string(),
+        ));
+    }
+
     if is_staff_role(&user.role) {
         return Err(AppError::Forbidden(
             "Staff password login is disabled. Sign in using email OTP followed by authenticator MFA.".to_string(),
@@ -197,6 +209,17 @@ pub async fn send_whatsapp_otp(
 
     // Check if user exists and verify role restrictions
     if let Some(user) = user_repo::find_by_phone_or_email(&state.db, &destination).await? {
+        let is_review_fixture: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM play_review_fixtures WHERE user_id = $1 AND enabled = TRUE)",
+        )
+        .bind(user.id)
+        .fetch_one(&state.db)
+        .await?;
+        if is_review_fixture {
+            return Err(AppError::Forbidden(
+                "Play review accounts must use the dedicated reviewer access flow.".to_string(),
+            ));
+        }
         if user.role != "customer" && user.role != "driver" {
             return Err(AppError::Forbidden(
                 "WhatsApp OTP is restricted to Customer and Driver accounts. Plant staff and Administrators must use Email OTP or Authenticator App.".to_string(),
@@ -283,6 +306,17 @@ pub async fn verify_whatsapp_otp(
     if !user.is_active {
         return Err(AppError::Forbidden(
             "Account is inactive. Contact support.".to_string(),
+        ));
+    }
+    let is_review_fixture: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM play_review_fixtures WHERE user_id = $1 AND enabled = TRUE)",
+    )
+    .bind(user.id)
+    .fetch_one(&state.db)
+    .await?;
+    if is_review_fixture {
+        return Err(AppError::Forbidden(
+            "Play review accounts must use the dedicated reviewer access flow.".to_string(),
         ));
     }
     if user.role != "customer" && user.role != "driver" {
@@ -476,11 +510,6 @@ pub async fn verify_email_otp(
             "Email OTP is restricted to staff accounts.".to_string(),
         ));
     }
-    if user.role == "admin" && destination != "krushnabade54@gmail.com" {
-        return Err(AppError::Forbidden(
-            "This administrator account is not allowlisted.".to_string(),
-        ));
-    }
     OtpEngine::verify_otp(state, &destination, "email", "staff_login", &req.otp).await?;
     let enabled: Option<bool> =
         sqlx::query_scalar("SELECT is_enabled FROM user_totp_credentials WHERE user_id=$1")
@@ -550,17 +579,6 @@ pub async fn start_staff_mfa_enrollment(
     if !user.is_active || !is_staff_role(&user.role) {
         return Err(AppError::Forbidden(
             "Account is not authorized for staff enrollment.".to_string(),
-        ));
-    }
-    if user.role == "admin"
-        && user
-            .email
-            .as_deref()
-            .map(|e| e.eq_ignore_ascii_case("krushnabade54@gmail.com"))
-            != Some(true)
-    {
-        return Err(AppError::Forbidden(
-            "This administrator account is not allowlisted.".to_string(),
         ));
     }
     let (secret, otpauth_uri, recovery_codes) = crate::auth::totp::setup_totp_for_user(
@@ -648,17 +666,6 @@ pub async fn verify_staff_mfa(
     if !user.is_active || !is_staff_role(&user.role) {
         return Err(AppError::Forbidden(
             "Account is not authorized for staff login.".to_string(),
-        ));
-    }
-    if user.role == "admin"
-        && user
-            .email
-            .as_deref()
-            .map(|e| e.eq_ignore_ascii_case("krushnabade54@gmail.com"))
-            != Some(true)
-    {
-        return Err(AppError::Forbidden(
-            "This administrator account is not allowlisted.".to_string(),
         ));
     }
     let profile = user_repo::get_user_profile(&state.db, user.id).await?;
