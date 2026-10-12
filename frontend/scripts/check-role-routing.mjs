@@ -73,8 +73,14 @@ if (!login.includes('testID="login-plant-email-input"') || !login.includes('test
   failures.push("Plant Staff Login must start from the approved work email");
 }
 
-if (!login.includes('EXPO_PUBLIC_ENABLE_PLAY_REVIEW === "true"') || !reviewAccess.includes('EXPO_PUBLIC_ENABLE_PLAY_REVIEW === "true"') || !reviewAccess.includes('<Redirect href="/login" />')) {
-  failures.push("Google Play reviewer access must stay disabled by default until its Rust backend is implemented");
+if (!login.includes('testID="login-review-access"') || !login.includes('router.push("/review-access" as any)')) {
+  failures.push("Google Play reviewer access must be discoverable from the login landing screen");
+}
+if (login.includes('EXPO_PUBLIC_ENABLE_PLAY_REVIEW === "true"') || reviewAccess.includes('EXPO_PUBLIC_ENABLE_PLAY_REVIEW === "true"') || reviewAccess.includes('<Redirect href="/login" />')) {
+  failures.push("Implemented Google Play reviewer access must not be hidden behind a build-time feature flag");
+}
+if (!reviewAccess.includes("verifyPlayReview") || !apiClient.includes('"/auth/play-review"')) {
+  failures.push("Google Play reviewer access must use the dedicated server-validated reviewer login flow");
 }
 
 if (apiClient.includes("/auth/staff/passkey/") || apiClient.includes("exchangeStaffPasskeyHandoff")) {
