@@ -15,7 +15,7 @@ import { Input } from "@/src/components/ui/Input";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { radius, spacing } from "@/src/theme/tokens";
 
-const PLAY_REVIEW_ACCESS_ENABLED = process.env.EXPO_PUBLIC_ENABLE_PLAY_REVIEW === "true";
+const playReviewEnabled = process.env.EXPO_PUBLIC_ENABLE_PLAY_REVIEW === "true";
 
 const ROLES: { role: PlayReviewRole; label: string; description: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { role: "customer", label: "User / Customer", description: "Customer ordering and delivery experience", icon: "person-outline" },
@@ -26,7 +26,7 @@ const ROLES: { role: PlayReviewRole; label: string; description: string; icon: k
 const REVIEW_GUIDANCE: Record<PlayReviewRole, { title: string; text: string }> = {
   customer: {
     title: "Nearby Plants review path",
-    text: "After login, open Nearby Plants. TrackMyRMC shows an in-app location explanation before Android asks for location. The seeded TrackMyRMC Play Review Plant remains visible even if you choose Not now.",
+    text: "After login, open Nearby Plants. TrackMyRMC shows an in-app location explanation before Android asks for location. The seeded TrackMyRMC Play Review Plant remains visible even if you change location settings.",
   },
   plant_owner: {
     title: "Plant Owner review path",
@@ -34,12 +34,15 @@ const REVIEW_GUIDANCE: Record<PlayReviewRole, { title: string; text: string }> =
   },
   driver: {
     title: "Background location review path",
-    text: "After login, open Current Trip PLAY-REVIEW-001. Before Android asks for location, TrackMyRMC shows the prominent delivery-location disclosure. Continue to see the foreground and background permission flow used only for an active delivery.",
+    text: "After login, open Current Trip PLAY-REVIEW-001. Before Android asks for location, TrackMyRMC shows the prominent delivery-location disclosure. Continue to see the foreground and background location flow in the isolated review trip.",
   },
 };
 
 export default function ReviewAccess() {
-  if (!PLAY_REVIEW_ACCESS_ENABLED) return <Redirect href="/login" />;
+  if (!playReviewEnabled) {
+    return <Redirect href="/login" />;
+  }
+
   const { colors, scheme } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -96,7 +99,7 @@ export default function ReviewAccess() {
             <AppText variant="label">Reviewing BACKGROUND_LOCATION?</AppText>
           </View>
           <AppText variant="bodyMuted">
-            Background location applies only to active Driver deliveries. Select Driver below, sign in, then open Current Trip PLAY-REVIEW-001 to see TrackMyRMC&apos;s prominent disclosure before Android permission prompts.
+            Background location applies only to active Driver deliveries. Select Driver below, sign in, then open Current Trip PLAY-REVIEW-001 to see TrackMyRMC&apos;s prominent disclosure before Android asks for location.
           </AppText>
         </Card>
 
@@ -194,3 +197,4 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
 });
+
