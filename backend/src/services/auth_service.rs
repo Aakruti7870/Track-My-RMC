@@ -371,6 +371,11 @@ pub async fn send_email_otp(state: &AppState, req: SendEmailOtpRequest) -> Resul
             "Account is inactive. Contact support.".to_string(),
         ));
     }
+    if crate::services::play_review::is_review_fixture(state, user.id).await? {
+        return Err(AppError::Forbidden(
+            "Play review accounts must use the dedicated reviewer access flow.".to_string(),
+        ));
+    }
     if user
         .email
         .as_deref()
@@ -482,6 +487,11 @@ pub async fn verify_email_otp(
     if !user.is_active {
         return Err(AppError::Forbidden(
             "Account is inactive. Contact support.".to_string(),
+        ));
+    }
+    if crate::services::play_review::is_review_fixture(state, user.id).await? {
+        return Err(AppError::Forbidden(
+            "Play review accounts must use the dedicated reviewer access flow.".to_string(),
         ));
     }
     if user
