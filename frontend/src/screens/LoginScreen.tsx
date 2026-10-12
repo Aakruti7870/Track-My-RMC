@@ -43,7 +43,6 @@ const DEMO_ROLES = [
 type LoginMode = "user" | "plant";
 type LoginPhase = "enter" | "user_otp" | "staff_email_otp" | "staff_totp" | "staff_recovery" | "staff_enroll";
 
-const PLAY_REVIEW_ACCESS_ENABLED = process.env.EXPO_PUBLIC_ENABLE_PLAY_REVIEW === "true";
 
 const validEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -570,6 +569,23 @@ export default function LoginScreen() {
             <View style={[styles.sheetHandle, { backgroundColor: colors.isDark ? "rgba(255,255,255,0.18)" : "rgba(15,23,42,0.12)" }]} />
           </View>
 
+          <Pressable
+            testID="login-review-access"
+            accessibilityRole="button"
+            onPress={() => router.push("/review-access" as any)}
+            style={[styles.reviewAccessCard, { backgroundColor: colors.brandSoft, borderColor: `${colors.brand}66` }]}
+            hitSlop={8}
+          >
+            <View style={[styles.reviewAccessIcon, { backgroundColor: colors.surface }]}>
+              <Ionicons name="shield-checkmark-outline" size={21} color={colors.brand} />
+            </View>
+            <View style={{ flex: 1, gap: 3 }}>
+              <AppText variant="label">Google Play Reviewer Access</AppText>
+              <AppText variant="caption" color={colors.onSurfaceSecondary}>Dedicated Customer, Plant Owner and Driver review accounts</AppText>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.brand} />
+          </Pressable>
+
           <View style={[styles.segmented, { backgroundColor: colors.surface, borderColor: colors.border }]}> 
             <Pressable testID="login-user-tab" onPress={() => resetEntry("user")} style={[styles.segment, mode === "user" && { backgroundColor: colors.brandSoft, borderColor: `${colors.brand}88` }]}> 
               <Ionicons name="person-outline" size={18} color={mode === "user" ? colors.brand : colors.onSurfaceTertiary} />
@@ -640,12 +656,6 @@ export default function LoginScreen() {
             <AppText variant="caption" color={colors.onSurfaceTertiary}>Secured with 6-digit OTP verification</AppText>
           </View>
         </View>
-
-        {PLAY_REVIEW_ACCESS_ENABLED ? (
-          <Pressable testID="login-review-access" onPress={() => router.push("/review-access" as any)} style={styles.reviewLink} hitSlop={10}>
-            <AppText variant="caption" center color={colors.onSurfaceTertiary}>REVIEW APP · Google Play reviewer access</AppText>
-          </Pressable>
-        ) : null}
 
         <AppText variant="caption" center color={colors.onSurfaceTertiary} style={styles.poweredFooter}>Powered by <AppText variant="label">Gold e Tech</AppText></AppText>
       </KeyboardAwareScrollView>
@@ -769,5 +779,20 @@ const styles = StyleSheet.create({
   legalArea: { width: "92%", maxWidth: 470, paddingTop: spacing.lg, paddingHorizontal: spacing.sm, gap: spacing.md },
   legalLink: { fontFamily: fonts.semibold },
   poweredFooter: { marginTop: spacing.sm },
-  reviewLink: { marginTop: spacing.md, paddingVertical: spacing.sm },
+  reviewAccessCard: {
+    minHeight: 68,
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  reviewAccessIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });
