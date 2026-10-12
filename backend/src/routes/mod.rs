@@ -140,7 +140,10 @@ pub fn build_app_router(state: AppState) -> Router {
         )
         // --- Driver Domain ---
         .route("/api/driver/home", get(driver_routes::get_driver_home))
-        .route("/api/driver/attendance", get(driver_routes::get_driver_attendance))
+        .route(
+            "/api/driver/attendance",
+            get(driver_routes::get_driver_attendance),
+        )
         .route(
             "/api/driver/attendance/checkin",
             post(driver_routes::check_in_driver),
