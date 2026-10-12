@@ -5,3 +5,4 @@ pub mod order_service;
 pub mod payroll_service;
 pub mod tracking_service;
 pub mod whatsapp_service;
+pub mod play_review;
