@@ -4,11 +4,11 @@
 CREATE TABLE IF NOT EXISTS play_review_fixtures (
     role VARCHAR(24) PRIMARY KEY CHECK (role IN ('customer', 'plant_owner', 'driver')),
     user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
-    plant_id UUID REFERENCES rmc_plants(id) ON DELETE CASCADE,
-    site_id UUID REFERENCES customer_sites(id) ON DELETE CASCADE,
-    mixer_id UUID REFERENCES transit_mixers(id) ON DELETE CASCADE,
-    order_id UUID REFERENCES orders(id) ON DELETE CASCADE,
-    load_id UUID REFERENCES order_loads(id) ON DELETE CASCADE,
+    plant_id UUID REFERENCES rmc_plants(id) ON DELETE SET NULL,
+    site_id UUID REFERENCES customer_sites(id) ON DELETE SET NULL,
+    mixer_id UUID REFERENCES transit_mixers(id) ON DELETE SET NULL,
+    order_id UUID REFERENCES orders(id) ON DELETE SET NULL,
+    load_id UUID REFERENCES order_loads(id) ON DELETE SET NULL,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
