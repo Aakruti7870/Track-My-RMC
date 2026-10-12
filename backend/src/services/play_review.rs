@@ -51,14 +51,18 @@ pub async fn login(
         .config
         .play_review_access_code
         .as_deref()
-        .ok_or_else(|| AppError::Forbidden("Google Play reviewer access is not configured".to_string()))?;
+        .ok_or_else(|| {
+            AppError::Forbidden("Google Play reviewer access is not configured".to_string())
+        })?;
 
     let role = normalized_role(&request.role)?;
     let client_hash = digest(client_identifier);
 
-    sqlx::query("DELETE FROM play_review_login_attempts WHERE attempted_at < NOW() - INTERVAL '24 hours'")
-        .execute(&state.db)
-        .await?;
+    sqlx::query(
+        "DELETE FROM play_review_login_attempts WHERE attempted_at < NOW() - INTERVAL '24 hours'",
+    )
+    .execute(&state.db)
+    .await?;
 
     let recent_failures: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM play_review_login_attempts
@@ -76,16 +80,15 @@ pub async fn login(
     }
 
     let supplied = request.access_code.trim();
-    let valid_format = supplied.len() == 6 && supplied.bytes().all(|byte| byte.is_ascii_digit());
+    let valid_format = supplied.len() == 6
+        && supplied.bytes().all(|byte| byte.is_ascii_digit());
     let valid_code = valid_format && constant_time_eq(supplied.as_bytes(), expected.as_bytes());
 
-    sqlx::query(
-        "INSERT INTO play_review_login_attempts (client_hash, succeeded) VALUES ($1, $2)",
-    )
-    .bind(&client_hash)
-    .bind(valid_code)
-    .execute(&state.db)
-    .await?;
+    sqlx::query("INSERT INTO play_review_login_attempts (client_hash, succeeded) VALUES ($1, $2)")
+        .bind(&client_hash)
+        .bind(valid_code)
+        .execute(&state.db)
+        .await?;
 
     if !valid_code {
         return Err(AppError::Unauthorized(
