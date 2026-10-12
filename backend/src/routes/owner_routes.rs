@@ -125,7 +125,7 @@ pub async fn get_billing_overview(
     check_role(&auth_user, &["owner", "admin"])?;
 
     let active_mixers: i64 = if auth_user.role == "admin" {
-        sqlx::query_scalar("SELECT COUNT(*) FROM transit_mixers WHERE status <> 'inactive'")
+        sqlx::query_scalar("SELECT COUNT(*) FROM transit_mixers tm WHERE tm.status <> 'inactive' AND NOT EXISTS (SELECT 1 FROM play_review_fixtures f WHERE f.mixer_id = tm.id)")
             .fetch_one(&state.db)
             .await?
     } else {
@@ -142,9 +142,10 @@ pub async fn get_billing_overview(
 
     let monthly_volume_m3: f64 = if auth_user.role == "admin" {
         sqlx::query_scalar(
-            "SELECT COALESCE(SUM(total_quantity_m3), 0)::double precision
-             FROM orders
-             WHERE created_at >= date_trunc('month', CURRENT_DATE)",
+            "SELECT COALESCE(SUM(o.total_quantity_m3), 0)::double precision
+             FROM orders o
+             WHERE o.created_at >= date_trunc('month', CURRENT_DATE)
+               AND NOT EXISTS (SELECT 1 FROM play_review_fixtures f WHERE f.order_id = o.id)",
         )
         .fetch_one(&state.db)
         .await?
