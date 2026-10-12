@@ -135,6 +135,27 @@ server {
         return 200 "ok";
     }
 
+    # Admin dashboard is a separately built SPA mounted under /admin/.
+    location = /admin {
+        return 301 /admin/;
+    }
+
+    location = /admin/ {
+        alias /opt/trackmyrmc/admin-web/index.html;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+    }
+
+    location ^~ /admin/assets/ {
+        alias /opt/trackmyrmc/admin-web/assets/;
+        expires 1y;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+    location ^~ /admin/ {
+        alias /opt/trackmyrmc/admin-web/;
+        try_files $uri =404;
+    }
+
     location /api/ {
         proxy_pass http://127.0.0.1:8000;
         proxy_http_version 1.1;
