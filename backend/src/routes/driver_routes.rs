@@ -87,7 +87,7 @@ pub async fn get_driver_home(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["driver"])?;
 
-    let row = sqlx::query_as::<_, (String, Option<String>, Option<Value>, i64, bool)>(
+    let row = sqlx::query_as::<_, (String, Option<String>, Option<String>, i64, bool)>(
         r#"
         SELECT
             u.full_name,
@@ -107,7 +107,7 @@ pub async fn get_driver_home(
                     'quantity', ol.quantity_m3::DOUBLE PRECISION,
                     'tm_number', COALESCE(tm.registration_number, ''),
                     'site_name', COALESCE(cs.name, '')
-                )
+                )::text
                 FROM order_loads ol
                 JOIN orders o ON o.id = ol.order_id
                 LEFT JOIN customer_sites cs ON cs.id = o.site_id
@@ -144,11 +144,17 @@ pub async fn get_driver_home(
     .await?
     .ok_or_else(|| AppError::NotFound("Active driver account not found".to_string()))?;
 
+    let active_trip = row.2.map(|trip| {
+        serde_json::from_str::<Value>(&trip).map_err(|_| {
+            AppError::InternalError("Failed to decode active driver trip".to_string())
+        })
+    }).transpose()?;
+
     Ok(Json(json!({
         "success": true,
         "name": row.0,
         "vehicle": row.1,
-        "active_trip": row.2,
+        "active_trip": active_trip,
         "completed_today": row.3,
         "checked_in": row.4
     })))
