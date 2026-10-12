@@ -5,7 +5,6 @@ use crate::{
     repositories::user_repo,
     state::AppState,
 };
-use rand::{distributions::Alphanumeric, Rng};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -56,6 +55,10 @@ pub async fn login(
 
     let role = normalized_role(&request.role)?;
     let client_hash = digest(client_identifier);
+
+    sqlx::query("DELETE FROM play_review_login_attempts WHERE attempted_at < NOW() - INTERVAL '24 hours'")
+        .execute(&state.db)
+        .await?;
 
     let recent_failures: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM play_review_login_attempts
