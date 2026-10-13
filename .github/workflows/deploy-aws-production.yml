@@ -1,15 +1,19 @@
 name: Deploy TrackMyRMC AWS Production
 
+# Production deployment is manual-only until the database-name mismatch and
+# prior 502 incident have been reconciled. A merge to main must not redeploy
+# production as a side effect.
 on:
-  push:
-    branches: [main]
-    paths:
-      - backend/**
-      - frontend/**
-      - admin-web/**
-      - ops/aws-deploy-ec2.sh
-      - .github/workflows/deploy-aws-production.yml
   workflow_dispatch:
+    inputs:
+      confirm_production_deploy:
+        description: "Type yes only after the production recovery plan has been reviewed"
+        required: true
+        type: choice
+        options:
+          - "no"
+          - "yes"
+        default: "no"
 
 permissions:
   contents: read
@@ -28,6 +32,7 @@ env:
 
 jobs:
   deploy:
+    if: github.event_name == 'workflow_dispatch' && inputs.confirm_production_deploy == 'yes'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     services:
