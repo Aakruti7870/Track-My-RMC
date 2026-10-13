@@ -251,3 +251,33 @@ pub async fn logout(
         "message": "Session revoked"
     })))
 }
+
+#[derive(Deserialize)]
+pub struct StaffAuthMethodRequest {
+    pub identifier: String,
+}
+
+pub async fn staff_mfa_method(
+    State(state): State<AppState>,
+    Json(payload): Json<StaffAuthMethodRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    let email = payload.identifier.trim().to_lowercase();
+    let user = crate::repositories::user_repo::find_by_phone_or_email(&state.db, &email)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Account not found".to_string()))?;
+
+    let enabled: Option<bool> =
+        sqlx::query_scalar("SELECT is_enabled FROM user_totp_credentials WHERE user_id=$1")
+            .bind(user.id)
+            .fetch_optional(&state.db)
+            .await?;
+
+    let has_totp = enabled == Some(true);
+    Ok(Json(json!({
+        "status": if has_totp { "AUTHENTICATOR_REQUIRED" } else { "EMAIL_OTP_REQUIRED" },
+        "email": email,
+        "method": if has_totp { "totp" } else { "email_otp" },
+        "recovery_available": has_totp,
+        "message": if has_totp { "Authenticator code required" } else { "Email OTP verification required" }
+    })))
+}

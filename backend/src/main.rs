@@ -79,7 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bind_ip = config
         .host
         .parse::<std::net::IpAddr>()
-        .map_err(|_| format!("HOST must be a valid IP address; received an invalid value"))?;
+        .map_err(|_| "HOST must be a valid IP address; received an invalid value".to_string())?;
     let addr = SocketAddr::new(bind_ip, config.port);
     info!("Server listening on http://{}", addr);
 
