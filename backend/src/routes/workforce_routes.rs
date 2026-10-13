@@ -1203,7 +1203,6 @@ pub async fn get_my_roster_me(
     })))
 }
 
-
 #[cfg(test)]
 mod roster_access_tests {
     use super::roster_access_allowed;
