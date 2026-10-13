@@ -2,6 +2,7 @@ pub mod account_deletion;
 pub mod admin_routes;
 pub mod assistant_routes;
 pub mod auth_routes;
+pub mod automation_routes;
 pub mod business_routes;
 pub mod control_center_routes;
 pub mod customer_routes;
@@ -934,6 +935,31 @@ pub fn build_app_router(state: AppState) -> Router {
         .route(
             "/api/control-center/summary",
             get(control_center_routes::get_portal_summary),
+        )
+        // --- Order Status Automation Queue & Worker Endpoints ---
+        .route(
+            "/api/automation/events/claim",
+            post(automation_routes::claim_events),
+        )
+        .route(
+            "/api/automation/worker-health",
+            get(automation_routes::get_worker_health),
+        )
+        .route(
+            "/api/automation/events/:event_id/ack",
+            post(automation_routes::ack_event),
+        )
+        .route(
+            "/api/automation/events/:event_id/fail",
+            post(automation_routes::fail_event),
+        )
+        .route(
+            "/api/automation/events/:event_id/deliver",
+            post(automation_routes::deliver_event),
+        )
+        .route(
+            "/api/automation/provider-callback",
+            post(automation_routes::provider_callback),
         )
         .with_state(state)
 }
