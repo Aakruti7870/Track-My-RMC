@@ -664,12 +664,17 @@ pub async fn owner_leave_decision(
         UPDATE workforce_leave_requests
         SET status = $1, decision_note = $2, decided_by = $3, decided_at = NOW()
         WHERE id = $4
+          AND ($5 = 'admin' OR EXISTS (
+              SELECT 1 FROM rmc_plants p
+              WHERE p.id = workforce_leave_requests.plant_id AND p.owner_id = $3
+          ))
         "#,
     )
     .bind(status)
     .bind(payload.note)
     .bind(auth_user.user_id)
     .bind(request_id)
+    .bind(&auth_user.role)
     .execute(&state.db)
     .await?;
 
@@ -697,12 +702,17 @@ pub async fn owner_expense_decision(
         UPDATE workforce_expense_claims
         SET status = $1, owner_note = $2, approved_by = $3, approved_at = NOW()
         WHERE id = $4
+          AND ($5 = 'admin' OR EXISTS (
+              SELECT 1 FROM rmc_plants p
+              WHERE p.id = workforce_expense_claims.plant_id AND p.owner_id = $3
+          ))
         "#,
     )
     .bind(status)
     .bind(payload.note)
     .bind(auth_user.user_id)
     .bind(claim_id)
+    .bind(&auth_user.role)
     .execute(&state.db)
     .await?;
 
@@ -877,12 +887,17 @@ pub async fn owner_unified_decision(
                 UPDATE workforce_leave_requests
                 SET status = $1, decision_note = $2, decided_by = $3, decided_at = NOW()
                 WHERE id = $4
+                  AND ($5 = 'admin' OR EXISTS (
+                      SELECT 1 FROM rmc_plants p
+                      WHERE p.id = workforce_leave_requests.plant_id AND p.owner_id = $3
+                  ))
                 "#,
             )
             .bind(status)
             .bind(payload.note.as_deref())
             .bind(auth_user.user_id)
             .bind(id)
+            .bind(&auth_user.role)
             .execute(&state.db)
             .await?;
         }
@@ -892,12 +907,17 @@ pub async fn owner_unified_decision(
                 UPDATE workforce_expense_claims
                 SET status = $1, owner_note = $2, approved_by = $3, approved_at = NOW()
                 WHERE id = $4
+                  AND ($5 = 'admin' OR EXISTS (
+                      SELECT 1 FROM rmc_plants p
+                      WHERE p.id = workforce_expense_claims.plant_id AND p.owner_id = $3
+                  ))
                 "#,
             )
             .bind(status)
             .bind(payload.note.as_deref())
             .bind(auth_user.user_id)
             .bind(id)
+            .bind(&auth_user.role)
             .execute(&state.db)
             .await?;
         }
@@ -907,10 +927,16 @@ pub async fn owner_unified_decision(
                 UPDATE workforce_client_visits
                 SET status = $1
                 WHERE id = $2
+                  AND ($4 = 'admin' OR EXISTS (
+                      SELECT 1 FROM rmc_plants p
+                      WHERE p.id = workforce_client_visits.plant_id AND p.owner_id = $3
+                  ))
                 "#,
             )
             .bind(status)
             .bind(id)
+            .bind(auth_user.user_id)
+            .bind(&auth_user.role)
             .execute(&state.db)
             .await?;
         }
