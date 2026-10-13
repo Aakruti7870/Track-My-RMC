@@ -324,3 +324,182 @@ pub async fn submit_pod(
         .await?;
     Ok(Json(json!({ "success": true, "pod": pod })))
 }
+
+pub async fn get_trip_details(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Path(trip_id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    check_role(&auth_user, &["driver"])?;
+
+    let row = sqlx::query!(
+        r#"
+        SELECT l.id, l.load_number, l.quantity_m3, l.status,
+               o.order_number, o.concrete_grade,
+               p.name as plant_name, p.address_line as plant_address,
+               s.name as site_name, s.address_line as site_address,
+               s.latitude as site_lat, s.longitude as site_lng,
+               s.contact_person, s.contact_phone
+        FROM order_loads l
+        INNER JOIN orders o ON o.id = l.order_id
+        INNER JOIN rmc_plants p ON p.id = o.plant_id
+        INNER JOIN customer_sites s ON s.id = o.site_id
+        WHERE l.id = $1 AND l.driver_id = $2
+        "#,
+        trip_id,
+        auth_user.user_id
+    )
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Trip not found".to_string()))?;
+
+    Ok(Json(json!({
+        "success": true,
+        "trip": {
+            "id": row.id,
+            "load_number": row.load_number,
+            "order_number": row.order_number,
+            "grade": row.concrete_grade,
+            "quantity_m3": row.quantity_m3,
+            "status": row.status,
+            "plant": {
+                "name": row.plant_name,
+                "address": row.plant_address
+            },
+            "site": {
+                "name": row.site_name,
+                "address": row.site_address,
+                "lat": row.site_lat,
+                "lng": row.site_lng,
+                "contact_person": row.contact_person,
+                "contact_phone": row.contact_phone
+            }
+        }
+    })))
+}
+
+pub async fn start_trip(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Path(trip_id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    check_role(&auth_user, &["driver"])?;
+
+    sqlx::query!(
+        "UPDATE order_loads SET status = 'dispatched', dispatched_at = NOW() WHERE id = $1 AND driver_id = $2",
+        trip_id,
+        auth_user.user_id
+    )
+    .execute(&state.db)
+    .await?;
+
+    Ok(Json(json!({ "success": true, "status": "dispatched", "message": "Trip started" })))
+}
+
+pub async fn arrive_trip(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Path(trip_id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    check_role(&auth_user, &["driver"])?;
+
+    sqlx::query!(
+        "UPDATE order_loads SET status = 'arrived', arrived_at = NOW() WHERE id = $1 AND driver_id = $2",
+        trip_id,
+        auth_user.user_id
+    )
+    .execute(&state.db)
+    .await?;
+
+    Ok(Json(json!({ "success": true, "status": "arrived", "message": "Arrived at delivery site" })))
+}
+
+pub async fn unload_trip(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Path(trip_id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    check_role(&auth_user, &["driver"])?;
+
+    sqlx::query!(
+        "UPDATE order_loads SET status = 'pouring', pour_started_at = NOW() WHERE id = $1 AND driver_id = $2",
+        trip_id,
+        auth_user.user_id
+    )
+    .execute(&state.db)
+    .await?;
+
+    Ok(Json(json!({ "success": true, "status": "pouring", "message": "Pouring commenced" })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DriverSosPayload {
+    pub lat: f64,
+    pub lng: f64,
+    pub alert_type: Option<String>,
+    pub message: Option<String>,
+    pub trip_id: Option<Uuid>,
+}
+
+pub async fn trigger_driver_sos(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Json(payload): Json<DriverSosPayload>,
+) -> Result<impl IntoResponse, AppError> {
+    check_role(&auth_user, &["driver"])?;
+
+    let alert_type = payload.alert_type.unwrap_or_else(|| "EMERGENCY".to_string());
+
+    let id = sqlx::query_scalar!(
+        r#"
+        INSERT INTO driver_sos_alerts (driver_id, load_id, latitude, longitude, alert_type, message, status)
+        VALUES ($1, $2, $3, $4, $5, $6, 'OPEN')
+        RETURNING id
+        "#,
+        auth_user.user_id,
+        payload.trip_id,
+        payload.lat,
+        payload.lng,
+        alert_type,
+        payload.message
+    )
+    .fetch_one(&state.db)
+    .await?;
+
+    Ok(Json(json!({
+        "success": true,
+        "sos_id": id,
+        "status": "OPEN",
+        "message": "Emergency SOS broadcasted to plant operations"
+    })))
+}
+
+pub async fn get_driver_sos_status(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+) -> Result<impl IntoResponse, AppError> {
+    check_role(&auth_user, &["driver"])?;
+
+    let alert = sqlx::query!(
+        r#"
+        SELECT id, alert_type, status, created_at, resolved_at
+        FROM driver_sos_alerts
+        WHERE driver_id = $1 AND status != 'RESOLVED'
+        ORDER BY created_at DESC
+        LIMIT 1
+        "#,
+        auth_user.user_id
+    )
+    .fetch_optional(&state.db)
+    .await?;
+
+    Ok(Json(json!({
+        "success": true,
+        "active_sos": alert.map(|a| json!({
+            "id": a.id,
+            "alert_type": a.alert_type,
+            "status": a.status,
+            "created_at": a.created_at
+        }))
+    })))
+}
