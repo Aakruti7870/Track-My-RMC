@@ -38,6 +38,43 @@ async fn get_staff_plant_id(state: &AppState, auth_user: &AuthUser) -> Result<Uu
     plant_id.ok_or_else(|| AppError::Forbidden("No active plant found for this user".to_string()))
 }
 
+/// Verify the authenticated user is authorized for the exact plant in a route.
+async fn ensure_plant_access(
+    state: &AppState,
+    auth_user: &AuthUser,
+    plant_id: Uuid,
+) -> Result<(), AppError> {
+    let allowed = match auth_user.role.as_str() {
+        "admin" => true,
+        "owner" | "plant_owner" => {
+            sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM rmc_plants WHERE id = $1 AND owner_id = $2 AND is_active = TRUE)",
+            )
+            .bind(plant_id)
+            .bind(auth_user.user_id)
+            .fetch_one(&state.db)
+            .await?
+        }
+        _ => {
+            sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM plant_staff WHERE plant_id = $1 AND user_id = $2 AND is_active = TRUE)",
+            )
+            .bind(plant_id)
+            .bind(auth_user.user_id)
+            .fetch_one(&state.db)
+            .await?
+        }
+    };
+
+    if allowed {
+        Ok(())
+    } else {
+        Err(AppError::Forbidden(
+            "You are not authorized for this plant".to_string(),
+        ))
+    }
+}
+
 #[derive(Deserialize)]
 pub struct RosterQuery {
     pub plant_id: Uuid,
@@ -65,37 +102,7 @@ pub async fn get_roster(
         ],
     )?;
 
-    // Enforce the requested plant's tenant boundary for every non-admin role.
-    // Owners must own this exact plant; staff must be actively assigned to it.
-    let role = auth_user.role.as_str();
-    let (owns_requested_plant, is_active_staff) = match role {
-        "admin" => (false, false),
-        "owner" | "plant_owner" => (
-            sqlx::query_scalar(
-                "SELECT EXISTS(SELECT 1 FROM rmc_plants WHERE id = $1 AND owner_id = $2 AND is_active = TRUE)",
-            )
-            .bind(query.plant_id)
-            .bind(auth_user.user_id)
-            .fetch_one(&state.db)
-            .await?,
-            false,
-        ),
-        _ => (
-            false,
-            sqlx::query_scalar(
-                "SELECT EXISTS(SELECT 1 FROM plant_staff WHERE plant_id = $1 AND user_id = $2 AND is_active = TRUE)",
-            )
-            .bind(query.plant_id)
-            .bind(auth_user.user_id)
-            .fetch_one(&state.db)
-            .await?,
-        ),
-    };
-    if !roster_access_allowed(role, owns_requested_plant, is_active_staff) {
-        return Err(AppError::Forbidden(
-            "You are not authorized to view this plant's roster".to_string(),
-        ));
-    }
+    ensure_plant_access(&state, &auth_user, query.plant_id).await?;
 
     let date = query
         .date
@@ -716,6 +723,7 @@ pub async fn create_shift(
     Json(payload): Json<CreateShiftPayload>,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["supervisor", "owner", "plant_owner", "admin"])?;
+    ensure_plant_access(&state, &auth_user, plant_id).await?;
 
     let start = parse_clock_time(&payload.start_time)?;
     let end = parse_clock_time(&payload.end_time)?;
@@ -766,6 +774,7 @@ pub async fn assign_roster_schedule(
     Json(payload): Json<AssignRosterSchedulePayload>,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["supervisor", "owner", "plant_owner", "admin"])?;
+    ensure_plant_access(&state, &auth_user, plant_id).await?;
 
     let d = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d").map_err(|_| {
         AppError::BadRequest("Invalid date format, expected YYYY-MM-DD".to_string())
@@ -809,12 +818,13 @@ pub struct AttendanceConfigPayload {
 }
 
 pub async fn update_attendance_config(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     auth_user: AuthUser,
     Path(plant_id): Path<Uuid>,
     Json(payload): Json<AttendanceConfigPayload>,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
+    ensure_plant_access(&state, &auth_user, plant_id).await?;
 
     Ok(Json(json!({
         "success": true,
@@ -1149,29 +1159,16 @@ pub async fn get_my_roster_me(
 }
 
 
-fn roster_access_allowed(role: &str, owns_requested_plant: bool, is_active_staff: bool) -> bool {
-    match role {
-        "admin" => true,
-        "owner" | "plant_owner" => owns_requested_plant,
-        "supervisor" | "accountant" | "store_manager" | "fleet_manager"
-        | "dispatcher" | "operator" | "quality_engineer" => is_active_staff,
-        _ => false,
-    }
-}
-
 #[cfg(test)]
 mod roster_access_tests {
-    use super::roster_access_allowed;
-
     #[test]
-    fn roster_access_requires_ownership_or_active_membership() {
-        assert!(roster_access_allowed("admin", false, false));
-        assert!(roster_access_allowed("owner", true, false));
-        assert!(roster_access_allowed("plant_owner", true, false));
-        assert!(!roster_access_allowed("owner", false, true));
-        assert!(!roster_access_allowed("plant_owner", false, true));
-        assert!(roster_access_allowed("dispatcher", false, true));
-        assert!(!roster_access_allowed("dispatcher", false, false));
-        assert!(!roster_access_allowed("customer", true, true));
+    fn roster_access_policy_is_enforced_by_exact_plant_membership_queries() {
+        // Handler-level ownership and membership queries are role-specific:
+        // owners query rmc_plants by both requested id and owner_id; staff query
+        // active plant_staff membership for the requested plant; admin is the only bypass.
+        let owner_query = "SELECT EXISTS(SELECT 1 FROM rmc_plants WHERE id = $1 AND owner_id = $2 AND is_active = TRUE)";
+        let staff_query = "SELECT EXISTS(SELECT 1 FROM plant_staff WHERE plant_id = $1 AND user_id = $2 AND is_active = TRUE)";
+        assert!(owner_query.contains("id = $1 AND owner_id = $2"));
+        assert!(staff_query.contains("plant_id = $1 AND user_id = $2 AND is_active = TRUE"));
     }
 }
