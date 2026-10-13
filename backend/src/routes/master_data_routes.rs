@@ -10,6 +10,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sqlx::Row;
 use uuid::Uuid;
 
 async fn ensure_plant_staff_or_owner(
@@ -74,58 +75,81 @@ pub async fn get_plant_profile(
 ) -> Result<impl IntoResponse, AppError> {
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
-    let row = sqlx::query!(
+    let row = sqlx::query(
         r#"
         SELECT legal_name, trade_name, gstin, pan, billing_address, state, state_code,
                contact_phone, contact_email, bank_name, bank_account_masked, ifsc,
                invoice_prefix, challan_prefix, quotation_prefix, terms_and_conditions
         FROM plant_profiles WHERE plant_id = $1
         "#,
-        plant_id
     )
+    .bind(plant_id)
     .fetch_optional(&state.db)
     .await?;
 
     match row {
-        Some(p) => Ok(Json(json!({
-            "success": true,
-            "profile": {
-                "legal_name": p.legal_name,
-                "trade_name": p.trade_name,
-                "gstin": p.gstin,
-                "pan": p.pan,
-                "billing_address": p.billing_address,
-                "state": p.state,
-                "state_code": p.state_code,
-                "contact_phone": p.contact_phone,
-                "contact_email": p.contact_email,
-                "bank_name": p.bank_name,
-                "bank_account_masked": p.bank_account_masked,
-                "ifsc": p.ifsc,
-                "invoice_prefix": p.invoice_prefix,
-                "challan_prefix": p.challan_prefix,
-                "quotation_prefix": p.quotation_prefix,
-                "terms_and_conditions": p.terms_and_conditions
-            }
-        }))),
+        Some(p) => {
+            let legal_name: String = p.get("legal_name");
+            let trade_name: Option<String> = p.get("trade_name");
+            let gstin: Option<String> = p.get("gstin");
+            let pan: Option<String> = p.get("pan");
+            let billing_address: String = p.get("billing_address");
+            let state_val: Option<String> = p.get("state");
+            let state_code: Option<String> = p.get("state_code");
+            let contact_phone: Option<String> = p.get("contact_phone");
+            let contact_email: Option<String> = p.get("contact_email");
+            let bank_name: Option<String> = p.get("bank_name");
+            let bank_account_masked: Option<String> = p.get("bank_account_masked");
+            let ifsc: Option<String> = p.get("ifsc");
+            let invoice_prefix: Option<String> = p.get("invoice_prefix");
+            let challan_prefix: Option<String> = p.get("challan_prefix");
+            let quotation_prefix: Option<String> = p.get("quotation_prefix");
+            let terms_and_conditions: Option<String> = p.get("terms_and_conditions");
+
+            Ok(Json(json!({
+                "success": true,
+                "profile": {
+                    "legal_name": legal_name,
+                    "trade_name": trade_name,
+                    "gstin": gstin,
+                    "pan": pan,
+                    "billing_address": billing_address,
+                    "state": state_val,
+                    "state_code": state_code,
+                    "contact_phone": contact_phone,
+                    "contact_email": contact_email,
+                    "bank_name": bank_name,
+                    "bank_account_masked": bank_account_masked,
+                    "ifsc": ifsc,
+                    "invoice_prefix": invoice_prefix,
+                    "challan_prefix": challan_prefix,
+                    "quotation_prefix": quotation_prefix,
+                    "terms_and_conditions": terms_and_conditions
+                }
+            })))
+        }
         None => {
-            // Return fallback default profile from rmc_plants table if not yet customized
-            let plant = sqlx::query!(
+            let plant = sqlx::query(
                 "SELECT name, address_line, contact_phone, contact_email FROM rmc_plants WHERE id = $1",
-                plant_id
             )
+            .bind(plant_id)
             .fetch_optional(&state.db)
             .await?;
 
             if let Some(pl) = plant {
+                let name: String = pl.get("name");
+                let address_line: Option<String> = pl.get("address_line");
+                let contact_phone: Option<String> = pl.get("contact_phone");
+                let contact_email: Option<String> = pl.get("contact_email");
+
                 Ok(Json(json!({
                     "success": true,
                     "profile": {
-                        "legal_name": pl.name,
-                        "trade_name": pl.name,
-                        "billing_address": pl.address_line,
-                        "contact_phone": pl.contact_phone,
-                        "contact_email": pl.contact_email,
+                        "legal_name": name,
+                        "trade_name": name,
+                        "billing_address": address_line.unwrap_or_default(),
+                        "contact_phone": contact_phone,
+                        "contact_email": contact_email,
                         "invoice_prefix": "INV",
                         "challan_prefix": "CH",
                         "quotation_prefix": "QT"
@@ -144,17 +168,14 @@ pub async fn update_plant_profile(
     Path(plant_id): Path<Uuid>,
     Json(payload): Json<PlantProfilePayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(
-        &auth_user,
-        &["owner", "plant_owner", "admin", "accountant"],
-    )?;
+    check_role(&auth_user, &["owner", "plant_owner", "admin", "accountant"])?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
     let inv_pfx = payload.invoice_prefix.as_deref().unwrap_or("INV");
     let ch_pfx = payload.challan_prefix.as_deref().unwrap_or("CH");
     let qt_pfx = payload.quotation_prefix.as_deref().unwrap_or("QT");
 
-    sqlx::query!(
+    sqlx::query(
         r#"
         INSERT INTO plant_profiles (
             plant_id, legal_name, trade_name, gstin, pan, billing_address, state,
@@ -182,28 +203,30 @@ pub async fn update_plant_profile(
             terms_and_conditions = EXCLUDED.terms_and_conditions,
             updated_at = NOW()
         "#,
-        plant_id,
-        payload.legal_name,
-        payload.trade_name,
-        payload.gstin,
-        payload.pan,
-        payload.billing_address,
-        payload.state,
-        payload.state_code,
-        payload.contact_phone,
-        payload.contact_email,
-        payload.bank_name,
-        payload.bank_account_masked,
-        payload.ifsc,
-        inv_pfx,
-        ch_pfx,
-        qt_pfx,
-        payload.terms_and_conditions
     )
+    .bind(plant_id)
+    .bind(&payload.legal_name)
+    .bind(&payload.trade_name)
+    .bind(&payload.gstin)
+    .bind(&payload.pan)
+    .bind(&payload.billing_address)
+    .bind(&payload.state)
+    .bind(&payload.state_code)
+    .bind(&payload.contact_phone)
+    .bind(&payload.contact_email)
+    .bind(&payload.bank_name)
+    .bind(&payload.bank_account_masked)
+    .bind(&payload.ifsc)
+    .bind(inv_pfx)
+    .bind(ch_pfx)
+    .bind(qt_pfx)
+    .bind(&payload.terms_and_conditions)
     .execute(&state.db)
     .await?;
 
-    Ok(Json(json!({ "success": true, "message": "Profile updated successfully" })))
+    Ok(Json(
+        json!({ "success": true, "message": "Profile updated successfully" }),
+    ))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -223,27 +246,35 @@ pub async fn list_rate_cards(
 ) -> Result<impl IntoResponse, AppError> {
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
-    let rows = sqlx::query!(
+    let rows = sqlx::query(
         r#"
         SELECT id, grade, rate_per_m3, gst_rate, transport_rate_per_km, pumping_rate_per_m3, active
         FROM plant_rate_cards WHERE plant_id = $1 ORDER BY grade
         "#,
-        plant_id
     )
+    .bind(plant_id)
     .fetch_all(&state.db)
     .await?;
 
     let rate_cards: Vec<_> = rows
         .into_iter()
         .map(|r| {
+            let id: Uuid = r.get("id");
+            let grade: String = r.get("grade");
+            let rate_per_m3: bigdecimal::BigDecimal = r.get("rate_per_m3");
+            let gst_rate: bigdecimal::BigDecimal = r.get("gst_rate");
+            let transport_rate_per_km: bigdecimal::BigDecimal = r.get("transport_rate_per_km");
+            let pumping_rate_per_m3: bigdecimal::BigDecimal = r.get("pumping_rate_per_m3");
+            let active: bool = r.get("active");
+
             json!({
-                "id": r.id,
-                "grade": r.grade,
-                "rate_per_m3": r.rate_per_m3,
-                "gst_rate": r.gst_rate,
-                "transport_rate_per_km": r.transport_rate_per_km,
-                "pumping_rate_per_m3": r.pumping_rate_per_m3,
-                "active": r.active
+                "id": id,
+                "grade": grade,
+                "rate_per_m3": rate_per_m3,
+                "gst_rate": gst_rate,
+                "transport_rate_per_km": transport_rate_per_km,
+                "pumping_rate_per_m3": pumping_rate_per_m3,
+                "active": active
             })
         })
         .collect();
@@ -265,7 +296,7 @@ pub async fn create_rate_card(
     let pumping = payload.pumping_rate_per_m3.unwrap_or(0.0);
     let active = payload.active.unwrap_or(true);
 
-    let id = sqlx::query_scalar!(
+    let id: Uuid = sqlx::query_scalar(
         r#"
         INSERT INTO plant_rate_cards (
             plant_id, grade, rate_per_m3, gst_rate, transport_rate_per_km, pumping_rate_per_m3, active
@@ -273,18 +304,20 @@ pub async fn create_rate_card(
         VALUES ($1, $2, $3::numeric, $4::numeric, $5::numeric, $6::numeric, $7)
         RETURNING id
         "#,
-        plant_id,
-        payload.grade,
-        bigdecimal::BigDecimal::try_from(payload.rate_per_m3).unwrap_or_default(),
-        bigdecimal::BigDecimal::try_from(gst_rate).unwrap_or_default(),
-        bigdecimal::BigDecimal::try_from(transport).unwrap_or_default(),
-        bigdecimal::BigDecimal::try_from(pumping).unwrap_or_default(),
-        active
     )
+    .bind(plant_id)
+    .bind(&payload.grade)
+    .bind(payload.rate_per_m3)
+    .bind(gst_rate)
+    .bind(transport)
+    .bind(pumping)
+    .bind(active)
     .fetch_one(&state.db)
     .await?;
 
-    Ok(Json(json!({ "success": true, "id": id, "message": "Rate card created" })))
+    Ok(Json(
+        json!({ "success": true, "id": id, "message": "Rate card created" }),
+    ))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -311,36 +344,51 @@ pub async fn list_mix_designs(
 ) -> Result<impl IntoResponse, AppError> {
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
-    let rows = sqlx::query!(
+    let rows = sqlx::query(
         r#"
         SELECT id, grade, version, cement_kg, fly_ash_kg, c_sand_kg, sand_kg,
                aggregate_10mm_kg, aggregate_20mm_kg, admixture_kg, water_litre,
                target_slump_mm, notes, active
         FROM plant_mix_designs WHERE plant_id = $1 ORDER BY grade, version DESC
         "#,
-        plant_id
     )
+    .bind(plant_id)
     .fetch_all(&state.db)
     .await?;
 
     let mix_designs: Vec<_> = rows
         .into_iter()
         .map(|r| {
+            let id: Uuid = r.get("id");
+            let grade: String = r.get("grade");
+            let version: i32 = r.get("version");
+            let cement_kg: Option<bigdecimal::BigDecimal> = r.get("cement_kg");
+            let fly_ash_kg: Option<bigdecimal::BigDecimal> = r.get("fly_ash_kg");
+            let c_sand_kg: Option<bigdecimal::BigDecimal> = r.get("c_sand_kg");
+            let sand_kg: Option<bigdecimal::BigDecimal> = r.get("sand_kg");
+            let aggregate_10mm_kg: Option<bigdecimal::BigDecimal> = r.get("aggregate_10mm_kg");
+            let aggregate_20mm_kg: Option<bigdecimal::BigDecimal> = r.get("aggregate_20mm_kg");
+            let admixture_kg: Option<bigdecimal::BigDecimal> = r.get("admixture_kg");
+            let water_litre: Option<bigdecimal::BigDecimal> = r.get("water_litre");
+            let target_slump_mm: Option<i32> = r.get("target_slump_mm");
+            let notes: Option<String> = r.get("notes");
+            let active: bool = r.get("active");
+
             json!({
-                "id": r.id,
-                "grade": r.grade,
-                "version": r.version,
-                "cement_kg": r.cement_kg,
-                "fly_ash_kg": r.fly_ash_kg,
-                "c_sand_kg": r.c_sand_kg,
-                "sand_kg": r.sand_kg,
-                "aggregate_10mm_kg": r.aggregate_10mm_kg,
-                "aggregate_20mm_kg": r.aggregate_20mm_kg,
-                "admixture_kg": r.admixture_kg,
-                "water_litre": r.water_litre,
-                "target_slump_mm": r.target_slump_mm,
-                "notes": r.notes,
-                "active": r.active
+                "id": id,
+                "grade": grade,
+                "version": version,
+                "cement_kg": cement_kg,
+                "fly_ash_kg": fly_ash_kg,
+                "c_sand_kg": c_sand_kg,
+                "sand_kg": sand_kg,
+                "aggregate_10mm_kg": aggregate_10mm_kg,
+                "aggregate_20mm_kg": aggregate_20mm_kg,
+                "admixture_kg": admixture_kg,
+                "water_litre": water_litre,
+                "target_slump_mm": target_slump_mm,
+                "notes": notes,
+                "active": active
             })
         })
         .collect();
@@ -356,11 +404,17 @@ pub async fn create_mix_design(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(
         &auth_user,
-        &["owner", "plant_owner", "admin", "quality_engineer", "operator"],
+        &[
+            "owner",
+            "plant_owner",
+            "admin",
+            "quality_engineer",
+            "operator",
+        ],
     )?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
-    let id = sqlx::query_scalar!(
+    let id: Uuid = sqlx::query_scalar(
         r#"
         INSERT INTO plant_mix_designs (
             plant_id, grade, version, cement_kg, fly_ash_kg, c_sand_kg, sand_kg,
@@ -373,25 +427,27 @@ pub async fn create_mix_design(
         )
         RETURNING id
         "#,
-        plant_id,
-        payload.grade,
-        payload.version.unwrap_or(1),
-        bigdecimal::BigDecimal::try_from(payload.cement_kg.unwrap_or(0.0)).unwrap_or_default(),
-        bigdecimal::BigDecimal::try_from(payload.fly_ash_kg.unwrap_or(0.0)).unwrap_or_default(),
-        bigdecimal::BigDecimal::try_from(payload.c_sand_kg.unwrap_or(0.0)).unwrap_or_default(),
-        bigdecimal::BigDecimal::try_from(payload.sand_kg.unwrap_or(0.0)).unwrap_or_default(),
-        bigdecimal::BigDecimal::try_from(payload.aggregate_10mm_kg.unwrap_or(0.0)).unwrap_or_default(),
-        bigdecimal::BigDecimal::try_from(payload.aggregate_20mm_kg.unwrap_or(0.0)).unwrap_or_default(),
-        bigdecimal::BigDecimal::try_from(payload.admixture_kg.unwrap_or(0.0)).unwrap_or_default(),
-        bigdecimal::BigDecimal::try_from(payload.water_litre.unwrap_or(0.0)).unwrap_or_default(),
-        payload.target_slump_mm.unwrap_or(120),
-        payload.notes,
-        payload.active.unwrap_or(true)
     )
+    .bind(plant_id)
+    .bind(&payload.grade)
+    .bind(payload.version.unwrap_or(1))
+    .bind(payload.cement_kg.unwrap_or(0.0))
+    .bind(payload.fly_ash_kg.unwrap_or(0.0))
+    .bind(payload.c_sand_kg.unwrap_or(0.0))
+    .bind(payload.sand_kg.unwrap_or(0.0))
+    .bind(payload.aggregate_10mm_kg.unwrap_or(0.0))
+    .bind(payload.aggregate_20mm_kg.unwrap_or(0.0))
+    .bind(payload.admixture_kg.unwrap_or(0.0))
+    .bind(payload.water_litre.unwrap_or(0.0))
+    .bind(payload.target_slump_mm.unwrap_or(120))
+    .bind(&payload.notes)
+    .bind(payload.active.unwrap_or(true))
     .fetch_one(&state.db)
     .await?;
 
-    Ok(Json(json!({ "success": true, "id": id, "message": "Mix design created" })))
+    Ok(Json(
+        json!({ "success": true, "id": id, "message": "Mix design created" }),
+    ))
 }
 
 pub async fn get_plant_resources(
@@ -401,17 +457,17 @@ pub async fn get_plant_resources(
 ) -> Result<impl IntoResponse, AppError> {
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
-    let mixers = sqlx::query!(
+    let mixers = sqlx::query(
         "SELECT id, registration_number, capacity_m3, status FROM transit_mixers WHERE plant_id = $1 ORDER BY registration_number",
-        plant_id
     )
+    .bind(plant_id)
     .fetch_all(&state.db)
     .await?;
 
-    let materials = sqlx::query!(
+    let materials = sqlx::query(
         "SELECT id, name, material_type, unit, current_stock, minimum_stock FROM plant_materials WHERE plant_id = $1 ORDER BY name",
-        plant_id
     )
+    .bind(plant_id)
     .fetch_all(&state.db)
     .await?;
 
@@ -425,20 +481,34 @@ pub async fn get_plant_resources(
     Ok(Json(json!({
         "success": true,
         "resources": {
-            "transit_mixers": mixers.into_iter().map(|m| json!({
-                "id": m.id,
-                "registration_number": m.registration_number,
-                "capacity_m3": m.capacity_m3,
-                "status": m.status
-            })).collect::<Vec<_>>(),
-            "materials": materials.into_iter().map(|m| json!({
-                "id": m.id,
-                "name": m.name,
-                "type": m.material_type,
-                "unit": m.unit,
-                "current_stock": m.current_stock,
-                "minimum_stock": m.minimum_stock
-            })).collect::<Vec<_>>(),
+            "transit_mixers": mixers.into_iter().map(|m| {
+                let mid: Uuid = m.get("id");
+                let reg: String = m.get("registration_number");
+                let cap: bigdecimal::BigDecimal = m.get("capacity_m3");
+                let st: String = m.get("status");
+                json!({
+                    "id": mid,
+                    "registration_number": reg,
+                    "capacity_m3": cap,
+                    "status": st
+                })
+            }).collect::<Vec<_>>(),
+            "materials": materials.into_iter().map(|m| {
+                let mid: Uuid = m.get("id");
+                let name: String = m.get("name");
+                let mtype: String = m.get("material_type");
+                let unit: String = m.get("unit");
+                let cur: bigdecimal::BigDecimal = m.get("current_stock");
+                let min: bigdecimal::BigDecimal = m.get("minimum_stock");
+                json!({
+                    "id": mid,
+                    "name": name,
+                    "type": mtype,
+                    "unit": unit,
+                    "current_stock": cur,
+                    "minimum_stock": min
+                })
+            }).collect::<Vec<_>>(),
             "active_staff_count": staff_count
         }
     })))
@@ -451,7 +521,7 @@ pub async fn list_plant_people(
 ) -> Result<impl IntoResponse, AppError> {
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
-    let rows = sqlx::query!(
+    let rows = sqlx::query(
         r#"
         SELECT ps.id as staff_id, ps.user_id, ps.role, ps.is_active, ps.joined_at,
                u.full_name, u.phone, u.email
@@ -460,23 +530,32 @@ pub async fn list_plant_people(
         WHERE ps.plant_id = $1
         ORDER BY ps.role, u.full_name
         "#,
-        plant_id
     )
+    .bind(plant_id)
     .fetch_all(&state.db)
     .await?;
 
     let people: Vec<_> = rows
         .into_iter()
         .map(|r| {
+            let user_id: Uuid = r.get("user_id");
+            let staff_id: Uuid = r.get("staff_id");
+            let full_name: String = r.get("full_name");
+            let role: String = r.get("role");
+            let phone: Option<String> = r.get("phone");
+            let email: Option<String> = r.get("email");
+            let is_active: bool = r.get("is_active");
+            let joined_at: chrono::DateTime<chrono::Utc> = r.get("joined_at");
+
             json!({
-                "id": r.user_id,
-                "staff_id": r.staff_id,
-                "name": r.full_name,
-                "role": r.role,
-                "phone": r.phone,
-                "email": r.email,
-                "active": r.is_active,
-                "joined_at": r.joined_at
+                "id": user_id,
+                "staff_id": staff_id,
+                "name": full_name,
+                "role": role,
+                "phone": phone,
+                "email": email,
+                "active": is_active,
+                "joined_at": joined_at
             })
         })
         .collect();
@@ -500,24 +579,32 @@ pub async fn list_plant_suppliers(
 ) -> Result<impl IntoResponse, AppError> {
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
-    let rows = sqlx::query!(
+    let rows = sqlx::query(
         "SELECT id, name, gstin, phone, email, address, active FROM plant_suppliers WHERE plant_id = $1 ORDER BY name",
-        plant_id
     )
+    .bind(plant_id)
     .fetch_all(&state.db)
     .await?;
 
     let suppliers: Vec<_> = rows
         .into_iter()
         .map(|r| {
+            let id: Uuid = r.get("id");
+            let name: String = r.get("name");
+            let gstin: Option<String> = r.get("gstin");
+            let phone: Option<String> = r.get("phone");
+            let email: Option<String> = r.get("email");
+            let address: Option<String> = r.get("address");
+            let active: bool = r.get("active");
+
             json!({
-                "id": r.id,
-                "name": r.name,
-                "gstin": r.gstin,
-                "phone": r.phone,
-                "email": r.email,
-                "address": r.address,
-                "active": r.active
+                "id": id,
+                "name": name,
+                "gstin": gstin,
+                "phone": phone,
+                "email": email,
+                "address": address,
+                "active": active
             })
         })
         .collect();
@@ -531,22 +618,33 @@ pub async fn create_plant_supplier(
     Path(plant_id): Path<Uuid>,
     Json(payload): Json<SupplierPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["owner", "plant_owner", "admin", "store_manager", "accountant"])?;
+    check_role(
+        &auth_user,
+        &[
+            "owner",
+            "plant_owner",
+            "admin",
+            "store_manager",
+            "accountant",
+        ],
+    )?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
-    let id = sqlx::query_scalar!(
+    let id: Uuid = sqlx::query_scalar(
         "INSERT INTO plant_suppliers (plant_id, name, gstin, phone, email, address) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
-        plant_id,
-        payload.name,
-        payload.gstin,
-        payload.phone,
-        payload.email,
-        payload.address
     )
+    .bind(plant_id)
+    .bind(&payload.name)
+    .bind(&payload.gstin)
+    .bind(&payload.phone)
+    .bind(&payload.email)
+    .bind(&payload.address)
     .fetch_one(&state.db)
     .await?;
 
-    Ok(Json(json!({ "success": true, "id": id, "message": "Supplier created" })))
+    Ok(Json(
+        json!({ "success": true, "id": id, "message": "Supplier created" }),
+    ))
 }
 
 pub async fn delete_customer_site(
@@ -554,16 +652,16 @@ pub async fn delete_customer_site(
     auth_user: AuthUser,
     Path(site_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    let result = sqlx::query!(
-        "DELETE FROM customer_sites WHERE id = $1 AND customer_id = $2",
-        site_id,
-        auth_user.user_id
-    )
-    .execute(&state.db)
-    .await?;
+    let result = sqlx::query("DELETE FROM customer_sites WHERE id = $1 AND customer_id = $2")
+        .bind(site_id)
+        .bind(auth_user.user_id)
+        .execute(&state.db)
+        .await?;
 
     if result.rows_affected() == 0 {
-        return Err(AppError::NotFound("Site not found or unauthorized".to_string()));
+        return Err(AppError::NotFound(
+            "Site not found or unauthorized".to_string(),
+        ));
     }
 
     Ok(Json(json!({ "success": true, "message": "Site deleted" })))

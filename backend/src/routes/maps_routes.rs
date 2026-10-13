@@ -1,15 +1,12 @@
-use crate::{
-    auth::AuthUser,
-    error::AppError,
-    state::AppState,
-};
+use crate::{auth::AuthUser, error::AppError, state::AppState};
 use axum::{
     extract::{Path, Query, State},
     response::IntoResponse,
     Json,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
+use sqlx::Row;
 
 #[derive(Debug, Deserialize)]
 pub struct AutocompleteQuery {
@@ -59,9 +56,18 @@ pub async fn get_place_details(
         if let Ok(res) = client.get(&url).send().await {
             if let Ok(data) = res.json::<serde_json::Value>().await {
                 if let Some(result) = data.get("result") {
-                    let lat = result.pointer("/geometry/location/lat").and_then(|v| v.as_f64()).unwrap_or(19.0760);
-                    let lng = result.pointer("/geometry/location/lng").and_then(|v| v.as_f64()).unwrap_or(72.8777);
-                    let address = result.get("formatted_address").and_then(|v| v.as_str()).unwrap_or("");
+                    let lat = result
+                        .pointer("/geometry/location/lat")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(19.0760);
+                    let lng = result
+                        .pointer("/geometry/location/lng")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(72.8777);
+                    let address = result
+                        .get("formatted_address")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
                     return Ok(Json(json!({
                         "success": true,
                         "place_id": place_id,
@@ -111,19 +117,25 @@ pub async fn autocomplete_places(
     }
 
     // Embedded fallback suggestions based on active plants
-    let plants = sqlx::query!("SELECT name, city, address_line FROM rmc_plants WHERE is_active = TRUE LIMIT 5")
-        .fetch_all(&state.db)
-        .await?;
+    let plants = sqlx::query(
+        "SELECT name, city, address_line FROM rmc_plants WHERE is_active = TRUE LIMIT 5",
+    )
+    .fetch_all(&state.db)
+    .await?;
 
     let predictions: Vec<_> = plants
         .into_iter()
         .map(|p| {
+            let name: String = p.get("name");
+            let city: String = p.get("city");
+            let address_line: Option<String> = p.get("address_line");
+            let addr = address_line.unwrap_or_default();
             json!({
-                "place_id": format!("tm-place-{}", p.city.to_lowercase()),
-                "description": format!("{}, {}, {}", p.name, p.address_line, p.city),
+                "place_id": format!("tm-place-{}", city.to_lowercase()),
+                "description": format!("{}, {}, {}", name, addr, city),
                 "structured_formatting": {
-                    "main_text": p.name,
-                    "secondary_text": format!("{}, {}", p.address_line, p.city)
+                    "main_text": name,
+                    "secondary_text": format!("{}, {}", addr, city)
                 }
             })
         })
@@ -139,7 +151,9 @@ pub async fn geocode_address(
 ) -> Result<impl IntoResponse, AppError> {
     let lat = q.lat.unwrap_or(19.0760);
     let lng = q.lng.unwrap_or(72.8777);
-    let address = q.address.unwrap_or_else(|| "Mumbai, Maharashtra".to_string());
+    let address = q
+        .address
+        .unwrap_or_else(|| "Mumbai, Maharashtra".to_string());
 
     Ok(Json(json!({
         "success": true,
@@ -154,15 +168,15 @@ pub async fn calculate_route(
     _auth_user: AuthUser,
     Query(q): Query<RouteQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    // Haversine formula calculation for distance in kilometers
     let d_lat = (q.dest_lat - q.origin_lat).to_radians();
     let d_lng = (q.dest_lng - q.origin_lng).to_radians();
     let a = (d_lat / 2.0).sin().powi(2)
-        + q.origin_lat.to_radians().cos() * q.dest_lat.to_radians().cos() * (d_lng / 2.0).sin().powi(2);
+        + q.origin_lat.to_radians().cos()
+            * q.dest_lat.to_radians().cos()
+            * (d_lng / 2.0).sin().powi(2);
     let c = 2.0 * a.sqrt().atan2((1.0 - a).sqrt());
     let distance_km = 6371.0 * c;
 
-    // Approximate transit speed in urban RMC corridors: ~25 km/h
     let duration_minutes = (distance_km / 25.0 * 60.0).max(10.0);
 
     Ok(Json(json!({

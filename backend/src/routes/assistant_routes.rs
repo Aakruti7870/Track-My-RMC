@@ -10,6 +10,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sqlx::Row;
 use uuid::Uuid;
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -53,15 +54,15 @@ pub async fn prepare_order_intent(
         }
     }
 
-    let default_site = sqlx::query!(
+    let default_site = sqlx::query(
         "SELECT id, name, address_line FROM customer_sites WHERE customer_id = $1 ORDER BY created_at DESC LIMIT 1",
-        auth_user.user_id
     )
+    .bind(auth_user.user_id)
     .fetch_optional(&state.db)
     .await?;
 
-    let default_plant = sqlx::query!(
-        "SELECT id, name FROM rmc_plants WHERE is_active = TRUE ORDER BY rating DESC LIMIT 1"
+    let default_plant = sqlx::query(
+        "SELECT id, name FROM rmc_plants WHERE is_active = TRUE ORDER BY rating DESC LIMIT 1",
     )
     .fetch_optional(&state.db)
     .await?;
@@ -73,16 +74,27 @@ pub async fn prepare_order_intent(
 
     let token = format!("intent-tok-{}", Uuid::new_v4());
 
+    let site_id: Option<Uuid> = default_site.as_ref().map(|s| s.get("id"));
+    let site_name: String = default_site
+        .as_ref()
+        .map(|s| s.get("name"))
+        .unwrap_or_else(|| "Default Site".to_string());
+    let plant_id: Option<Uuid> = default_plant.as_ref().map(|p| p.get("id"));
+    let plant_name: String = default_plant
+        .as_ref()
+        .map(|p| p.get("name"))
+        .unwrap_or_else(|| "Nearby Plant".to_string());
+
     Ok(Json(json!({
         "success": true,
         "token": token,
         "draft_order": {
             "grade": grade,
             "quantity_m3": quantity,
-            "plant_id": default_plant.as_ref().map(|p| p.id),
-            "plant_name": default_plant.as_ref().map(|p| p.name.clone()).unwrap_or_else(|| "Nearby Plant".to_string()),
-            "site_id": default_site.as_ref().map(|s| s.id),
-            "site_name": default_site.as_ref().map(|s| s.name.clone()).unwrap_or_else(|| "Default Site".to_string()),
+            "plant_id": plant_id,
+            "plant_name": plant_name,
+            "site_id": site_id,
+            "site_name": site_name,
             "estimated_rate_per_m3": estimated_rate,
             "estimated_total_amount": total
         }
@@ -115,11 +127,12 @@ pub async fn confirm_order_intent(
     let total = subtotal + tax;
 
     let dt = match payload.delivery_date {
-        Some(s) => chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d").unwrap_or_else(|_| chrono::Utc::now().naive_utc().date()),
+        Some(s) => chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d")
+            .unwrap_or_else(|_| chrono::Utc::now().naive_utc().date()),
         None => chrono::Utc::now().naive_utc().date(),
     };
 
-    let order_id = sqlx::query_scalar!(
+    let order_id: Uuid = sqlx::query_scalar(
         r#"
         INSERT INTO orders (
             order_number, customer_id, plant_id, site_id, concrete_grade,
@@ -132,28 +145,28 @@ pub async fn confirm_order_intent(
         )
         RETURNING id
         "#,
-        order_number,
-        auth_user.user_id,
-        payload.plant_id,
-        payload.site_id,
-        payload.concrete_grade,
-        bigdecimal::BigDecimal::try_from(payload.quantity_m3).unwrap_or_default(),
-        dt,
-        bigdecimal::BigDecimal::try_from(total).unwrap_or_default(),
-        bigdecimal::BigDecimal::try_from(tax).unwrap_or_default()
     )
+    .bind(&order_number)
+    .bind(auth_user.user_id)
+    .bind(payload.plant_id)
+    .bind(payload.site_id)
+    .bind(&payload.concrete_grade)
+    .bind(payload.quantity_m3)
+    .bind(dt)
+    .bind(total)
+    .bind(tax)
     .fetch_one(&state.db)
     .await?;
 
     // Create primary load
-    sqlx::query!(
+    sqlx::query(
         r#"
         INSERT INTO order_loads (order_id, load_number, quantity_m3, status)
         VALUES ($1, 1, $2::numeric, 'planned')
         "#,
-        order_id,
-        bigdecimal::BigDecimal::try_from(payload.quantity_m3.min(6.0)).unwrap_or_default()
     )
+    .bind(order_id)
+    .bind(payload.quantity_m3.min(6.0))
     .execute(&state.db)
     .await?;
 
@@ -168,11 +181,13 @@ pub async fn confirm_order_intent(
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CreateSupportCasePayload {
-    pub subject: String,
+    pub subject: Option<String>,
     pub order_id: Option<Uuid>,
     pub category: Option<String>,
     pub priority: Option<String>,
     pub message: String,
+    pub escalate: Option<bool>,
+    pub request_id: Option<String>,
 }
 
 pub async fn create_support_case(
@@ -182,43 +197,63 @@ pub async fn create_support_case(
 ) -> Result<impl IntoResponse, AppError> {
     let mut tx = state.db.begin().await?;
 
-    let case_id = sqlx::query_scalar!(
+    let cat = payload
+        .category
+        .as_deref()
+        .unwrap_or("GENERAL")
+        .to_uppercase();
+    let subj = payload
+        .subject
+        .unwrap_or_else(|| format!("Support request: {}", cat));
+
+    let case_id: Uuid = sqlx::query_scalar(
         r#"
         INSERT INTO support_cases (user_id, order_id, subject, category, priority, status)
         VALUES ($1, $2, $3, $4, $5, 'open')
         RETURNING id
         "#,
-        auth_user.user_id,
-        payload.order_id,
-        payload.subject,
-        payload.category.unwrap_or_else(|| "general".to_string()),
-        payload.priority.unwrap_or_else(|| "normal".to_string())
     )
+    .bind(auth_user.user_id)
+    .bind(payload.order_id)
+    .bind(&subj)
+    .bind(&cat)
+    .bind(payload.priority.as_deref().unwrap_or("normal"))
     .fetch_one(&mut *tx)
     .await?;
 
-    sqlx::query!(
+    sqlx::query(
         r#"
         INSERT INTO support_case_replies (case_id, sender_id, is_staff, message)
         VALUES ($1, $2, FALSE, $3)
         "#,
-        case_id,
-        auth_user.user_id,
-        payload.message
     )
+    .bind(case_id)
+    .bind(auth_user.user_id)
+    .bind(&payload.message)
     .execute(&mut *tx)
     .await?;
 
     tx.commit().await?;
 
-    Ok(Json(json!({ "success": true, "case_id": case_id, "message": "Support case opened" })))
+    let case_number = format!("CAS-{:04}", case_id.as_fields().0 % 10000);
+
+    Ok(Json(json!({
+        "success": true,
+        "case_id": case_id,
+        "case_number": case_number,
+        "case_status": "open",
+        "category": cat,
+        "guidance": "Our support team has received your ticket and will assist you shortly.",
+        "action": "view_case",
+        "message": "Support case opened"
+    })))
 }
 
 pub async fn list_support_cases(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
-    let rows = sqlx::query!(
+    let rows = sqlx::query(
         r#"
         SELECT c.id, c.subject, c.category, c.priority, c.status, c.created_at, c.updated_at,
                o.order_number
@@ -227,23 +262,31 @@ pub async fn list_support_cases(
         WHERE c.user_id = $1
         ORDER BY c.updated_at DESC
         "#,
-        auth_user.user_id
     )
+    .bind(auth_user.user_id)
     .fetch_all(&state.db)
     .await?;
 
     let cases: Vec<_> = rows
         .into_iter()
         .map(|r| {
+            let id: Uuid = r.get("id");
+            let subject: String = r.get("subject");
+            let category: String = r.get("category");
+            let priority: String = r.get("priority");
+            let status: String = r.get("status");
+            let order_number: Option<String> = r.get("order_number");
+            let created_at: chrono::DateTime<chrono::Utc> = r.get("created_at");
+            let updated_at: chrono::DateTime<chrono::Utc> = r.get("updated_at");
             json!({
-                "id": r.id,
-                "subject": r.subject,
-                "category": r.category,
-                "priority": r.priority,
-                "status": r.status,
-                "order_number": r.order_number,
-                "created_at": r.created_at,
-                "updated_at": r.updated_at
+                "id": id,
+                "subject": subject,
+                "category": category,
+                "priority": priority,
+                "status": status,
+                "order_number": order_number,
+                "created_at": created_at,
+                "updated_at": updated_at
             })
         })
         .collect();
@@ -256,7 +299,7 @@ pub async fn get_support_case_details(
     auth_user: AuthUser,
     Path(case_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    let case = sqlx::query!(
+    let case = sqlx::query(
         r#"
         SELECT c.id, c.user_id, c.subject, c.category, c.priority, c.status, c.created_at, c.updated_at,
                u.full_name as user_name
@@ -264,17 +307,20 @@ pub async fn get_support_case_details(
         INNER JOIN users u ON u.id = c.user_id
         WHERE c.id = $1
         "#,
-        case_id
     )
+    .bind(case_id)
     .fetch_optional(&state.db)
     .await?
     .ok_or_else(|| AppError::NotFound("Case not found".to_string()))?;
 
-    if auth_user.role != "admin" && case.user_id != auth_user.user_id {
-        return Err(AppError::Forbidden("Unauthorized to view this case".to_string()));
+    let owner_id: Uuid = case.get("user_id");
+    if auth_user.role != "admin" && owner_id != auth_user.user_id {
+        return Err(AppError::Forbidden(
+            "Unauthorized to view this case".to_string(),
+        ));
     }
 
-    let replies = sqlx::query!(
+    let replies = sqlx::query(
         r#"
         SELECT r.id, r.sender_id, r.is_staff, r.message, r.created_at,
                u.full_name as sender_name
@@ -283,31 +329,48 @@ pub async fn get_support_case_details(
         WHERE r.case_id = $1
         ORDER BY r.created_at ASC
         "#,
-        case_id
     )
+    .bind(case_id)
     .fetch_all(&state.db)
     .await?;
+
+    let cid: Uuid = case.get("id");
+    let subject: String = case.get("subject");
+    let category: String = case.get("category");
+    let priority: String = case.get("priority");
+    let status: String = case.get("status");
+    let user_name: String = case.get("user_name");
+    let created_at: chrono::DateTime<chrono::Utc> = case.get("created_at");
+    let updated_at: chrono::DateTime<chrono::Utc> = case.get("updated_at");
 
     Ok(Json(json!({
         "success": true,
         "case": {
-            "id": case.id,
-            "subject": case.subject,
-            "category": case.category,
-            "priority": case.priority,
-            "status": case.status,
-            "user_name": case.user_name,
-            "created_at": case.created_at,
-            "updated_at": case.updated_at
+            "id": cid,
+            "subject": subject,
+            "category": category,
+            "priority": priority,
+            "status": status,
+            "user_name": user_name,
+            "created_at": created_at,
+            "updated_at": updated_at
         },
-        "replies": replies.into_iter().map(|r| json!({
-            "id": r.id,
-            "sender_id": r.sender_id,
-            "sender_name": r.sender_name,
-            "is_staff": r.is_staff,
-            "message": r.message,
-            "created_at": r.created_at
-        })).collect::<Vec<_>>()
+        "replies": replies.into_iter().map(|r| {
+            let rid: Uuid = r.get("id");
+            let sender_id: Uuid = r.get("sender_id");
+            let sender_name: String = r.get("sender_name");
+            let is_staff: bool = r.get("is_staff");
+            let message: String = r.get("message");
+            let reply_created_at: chrono::DateTime<chrono::Utc> = r.get("created_at");
+            json!({
+                "id": rid,
+                "sender_id": sender_id,
+                "sender_name": sender_name,
+                "is_staff": is_staff,
+                "message": message,
+                "created_at": reply_created_at
+            })
+        }).collect::<Vec<_>>()
     })))
 }
 
@@ -332,20 +395,21 @@ pub async fn add_case_reply(
 
     let mut tx = state.db.begin().await?;
 
-    sqlx::query!(
+    sqlx::query(
         r#"
         INSERT INTO support_case_replies (case_id, sender_id, is_staff, message)
         VALUES ($1, $2, $3, $4)
         "#,
-        case_id,
-        auth_user.user_id,
-        is_staff,
-        payload.message
     )
+    .bind(case_id)
+    .bind(auth_user.user_id)
+    .bind(is_staff)
+    .bind(&payload.message)
     .execute(&mut *tx)
     .await?;
 
-    sqlx::query!("UPDATE support_cases SET updated_at = NOW() WHERE id = $1", case_id)
+    sqlx::query("UPDATE support_cases SET updated_at = NOW() WHERE id = $1")
+        .bind(case_id)
         .execute(&mut *tx)
         .await?;
 
@@ -360,14 +424,14 @@ pub async fn list_staff_support_cases(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["admin", "owner", "plant_owner", "dispatcher"])?;
 
-    let rows = sqlx::query!(
+    let rows = sqlx::query(
         r#"
         SELECT c.id, c.subject, c.category, c.priority, c.status, c.created_at, c.updated_at,
                u.full_name as customer_name, u.phone as customer_phone
         FROM support_cases c
         INNER JOIN users u ON u.id = c.user_id
         ORDER BY c.updated_at DESC
-        "#
+        "#,
     )
     .fetch_all(&state.db)
     .await?;
@@ -375,16 +439,25 @@ pub async fn list_staff_support_cases(
     let cases: Vec<_> = rows
         .into_iter()
         .map(|r| {
+            let id: Uuid = r.get("id");
+            let subject: String = r.get("subject");
+            let category: String = r.get("category");
+            let priority: String = r.get("priority");
+            let status: String = r.get("status");
+            let customer_name: String = r.get("customer_name");
+            let customer_phone: Option<String> = r.get("customer_phone");
+            let created_at: chrono::DateTime<chrono::Utc> = r.get("created_at");
+            let updated_at: chrono::DateTime<chrono::Utc> = r.get("updated_at");
             json!({
-                "id": r.id,
-                "subject": r.subject,
-                "category": r.category,
-                "priority": r.priority,
-                "status": r.status,
-                "customer_name": r.customer_name,
-                "customer_phone": r.customer_phone,
-                "created_at": r.created_at,
-                "updated_at": r.updated_at
+                "id": id,
+                "subject": subject,
+                "category": category,
+                "priority": priority,
+                "status": status,
+                "customer_name": customer_name,
+                "customer_phone": customer_phone,
+                "created_at": created_at,
+                "updated_at": updated_at
             })
         })
         .collect();
@@ -394,7 +467,7 @@ pub async fn list_staff_support_cases(
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct UpdateCaseStatusPayload {
-    pub status: String, // "open", "in_progress", "resolved", "closed"
+    pub status: String,
 }
 
 pub async fn update_case_status(
@@ -405,13 +478,13 @@ pub async fn update_case_status(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["admin", "owner", "plant_owner"])?;
 
-    sqlx::query!(
-        "UPDATE support_cases SET status = $1, updated_at = NOW() WHERE id = $2",
-        payload.status,
-        case_id
-    )
-    .execute(&state.db)
-    .await?;
+    sqlx::query("UPDATE support_cases SET status = $1, updated_at = NOW() WHERE id = $2")
+        .bind(&payload.status)
+        .bind(case_id)
+        .execute(&state.db)
+        .await?;
 
-    Ok(Json(json!({ "success": true, "status": payload.status, "message": "Case status updated" })))
+    Ok(Json(
+        json!({ "success": true, "status": payload.status, "message": "Case status updated" }),
+    ))
 }

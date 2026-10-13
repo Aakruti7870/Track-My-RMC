@@ -7,13 +7,14 @@ use crate::{
     state::AppState,
 };
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     response::IntoResponse,
     Json,
 };
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sqlx::Row;
 use uuid::Uuid;
 
 pub async fn list_plants(
@@ -42,6 +43,129 @@ pub async fn list_plants(
         }
     });
     Ok(Json(json!({ "success": true, "plants": plants })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ComparePlantsQuery {
+    pub grade: String,
+    pub quantity: f64,
+    pub lat: Option<f64>,
+    pub lng: Option<f64>,
+    #[serde(default)]
+    pub pump_required: bool,
+}
+
+pub async fn compare_plants(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Query(query): Query<ComparePlantsQuery>,
+) -> Result<impl IntoResponse, AppError> {
+    check_role(&auth_user, &["customer", "admin", "owner", "plant_owner"])?;
+
+    if query.quantity <= 0.0 {
+        return Err(AppError::BadRequest(
+            "Quantity must be greater than zero".to_string(),
+        ));
+    }
+
+    let rows = sqlx::query(
+        r#"
+        SELECT 
+            p.id as plant_id,
+            p.name as plant_name,
+            p.city,
+            p.state as district,
+            p.latitude,
+            p.longitude,
+            rc.grade,
+            CAST(rc.rate_per_m3 AS DOUBLE PRECISION) as rate_per_m3,
+            CAST(rc.gst_rate AS DOUBLE PRECISION) as gst_rate,
+            CAST(rc.transport_rate_per_km AS DOUBLE PRECISION) as transport_rate_per_km,
+            CAST(rc.pumping_rate_per_m3 AS DOUBLE PRECISION) as pumping_rate_per_m3
+        FROM plant_rate_cards rc
+        JOIN rmc_plants p ON p.id = rc.plant_id
+        WHERE rc.active = TRUE
+          AND p.is_active = TRUE
+          AND LOWER(rc.grade) = LOWER($1)
+        "#,
+    )
+    .bind(&query.grade)
+    .fetch_all(&state.db)
+    .await?;
+
+    let mut estimates = Vec::new();
+
+    for row in rows {
+        let plant_id: Uuid = row.get("plant_id");
+        let plant_name: String = row.get("plant_name");
+        let city: Option<String> = row.get("city");
+        let district: Option<String> = row.get("district");
+        let plat: f64 = row.get("latitude");
+        let plng: f64 = row.get("longitude");
+        let grade: String = row.get("grade");
+        let rate_per_m3: f64 = row.get("rate_per_m3");
+        let gst_rate: f64 = row.get("gst_rate");
+        let transport_rate_per_km: f64 = row.get("transport_rate_per_km");
+        let pumping_rate_per_m3: f64 = row.get("pumping_rate_per_m3");
+
+        let distance_km = match (query.lat, query.lng) {
+            (Some(ulat), Some(ulng)) => Some(crate::utils::geo::haversine_distance_km(
+                ulat, ulng, plat, plng,
+            )),
+            _ => None,
+        };
+
+        let base_amount = (rate_per_m3 * query.quantity * 100.0).round() / 100.0;
+        let transport_amount =
+            distance_km.map(|d| ((transport_rate_per_km * d) * 100.0).round() / 100.0);
+        let pumping_amount = if query.pump_required {
+            Some(((pumping_rate_per_m3 * query.quantity) * 100.0).round() / 100.0)
+        } else {
+            None
+        };
+
+        let subtotal =
+            base_amount + transport_amount.unwrap_or(0.0) + pumping_amount.unwrap_or(0.0);
+        let gst_amount = ((subtotal * gst_rate / 100.0) * 100.0).round() / 100.0;
+        let estimated_total = ((subtotal + gst_amount) * 100.0).round() / 100.0;
+        let service_area_km = 50.0;
+        let within_service_area = distance_km.map(|d| d <= service_area_km);
+
+        estimates.push(json!({
+            "plant_id": plant_id.to_string(),
+            "plant_name": plant_name,
+            "city": city,
+            "district": district,
+            "verified": true,
+            "grade": grade,
+            "rate_per_m3": rate_per_m3,
+            "gst_rate": gst_rate,
+            "distance_km": distance_km.map(|d| (d * 100.0).round() / 100.0),
+            "service_area_km": service_area_km,
+            "within_service_area": within_service_area,
+            "base_amount": base_amount,
+            "transport_amount": transport_amount,
+            "pumping_amount": pumping_amount,
+            "gst_amount": gst_amount,
+            "estimated_total": estimated_total,
+            "transport_included": transport_amount.is_some()
+        }));
+    }
+
+    estimates.sort_by(|a, b| {
+        let total_a = a["estimated_total"].as_f64().unwrap_or(f64::MAX);
+        let total_b = b["estimated_total"].as_f64().unwrap_or(f64::MAX);
+        total_a
+            .partial_cmp(&total_b)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let count = estimates.len();
+    Ok(Json(json!({
+        "estimates": estimates,
+        "count": count,
+        "disclaimer": "Estimate only. Final price, delivery eligibility and tax invoice require plant confirmation."
+    })))
 }
 
 pub async fn get_grades() -> impl IntoResponse {
@@ -162,12 +286,15 @@ pub async fn get_customer_home(
     .fetch_one(&state.db)
     .await?;
 
-    let profile = sqlx::query!(
-        "SELECT kyc_status FROM user_profiles WHERE user_id = $1",
-        auth_user.user_id
-    )
-    .fetch_optional(&state.db)
-    .await?;
+    let profile = sqlx::query("SELECT kyc_status FROM user_profiles WHERE user_id = $1")
+        .bind(auth_user.user_id)
+        .fetch_optional(&state.db)
+        .await?;
+
+    let kyc_status: String = profile
+        .as_ref()
+        .and_then(|p| p.get("kyc_status"))
+        .unwrap_or_else(|| "unverified".to_string());
 
     Ok(Json(json!({
         "success": true,
@@ -175,7 +302,7 @@ pub async fn get_customer_home(
             "active_orders": active_orders,
             "completed_orders": completed_orders,
             "total_spent": total_spent,
-            "kyc_status": profile.map(|p| p.kyc_status).unwrap_or_else(|| "unverified".to_string())
+            "kyc_status": kyc_status
         }
     })))
 }
@@ -185,31 +312,38 @@ pub async fn cancel_order(
     auth_user: AuthUser,
     Path(order_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    let order = sqlx::query!(
-        "SELECT customer_id, status FROM orders WHERE id = $1",
-        order_id
-    )
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Order not found".to_string()))?;
+    let order = sqlx::query("SELECT customer_id, status FROM orders WHERE id = $1")
+        .bind(order_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Order not found".to_string()))?;
 
-    if order.customer_id != auth_user.user_id && auth_user.role != "admin" {
+    let cid: Uuid = order.get("customer_id");
+    let status: String = order.get("status");
+
+    if cid != auth_user.user_id && auth_user.role != "admin" {
         return Err(AppError::Forbidden("Unauthorized".to_string()));
     }
 
-    if !matches!(order.status.to_lowercase().as_str(), "pending" | "confirmed") {
-        return Err(AppError::BadRequest("Cannot cancel order once production or dispatch has begun".to_string()));
+    if !matches!(status.to_lowercase().as_str(), "pending" | "confirmed") {
+        return Err(AppError::BadRequest(
+            "Cannot cancel order once production or dispatch has begun".to_string(),
+        ));
     }
 
-    sqlx::query!("UPDATE orders SET status = 'cancelled', updated_at = NOW() WHERE id = $1", order_id)
+    sqlx::query("UPDATE orders SET status = 'cancelled', updated_at = NOW() WHERE id = $1")
+        .bind(order_id)
         .execute(&state.db)
         .await?;
 
-    sqlx::query!("UPDATE order_loads SET status = 'cancelled' WHERE order_id = $1", order_id)
+    sqlx::query("UPDATE order_loads SET status = 'cancelled' WHERE order_id = $1")
+        .bind(order_id)
         .execute(&state.db)
         .await?;
 
-    Ok(Json(json!({ "success": true, "message": "Order cancelled successfully" })))
+    Ok(Json(
+        json!({ "success": true, "message": "Order cancelled successfully" }),
+    ))
 }
 
 pub async fn get_order_tracking(
@@ -217,19 +351,21 @@ pub async fn get_order_tracking(
     auth_user: AuthUser,
     Path(order_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    let order = sqlx::query!(
-        "SELECT customer_id, plant_id, site_id, status FROM orders WHERE id = $1",
-        order_id
-    )
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Order not found".to_string()))?;
+    let order =
+        sqlx::query("SELECT customer_id, plant_id, site_id, status FROM orders WHERE id = $1")
+            .bind(order_id)
+            .fetch_optional(&state.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Order not found".to_string()))?;
 
-    if order.customer_id != auth_user.user_id && auth_user.role != "admin" {
+    let cid: Uuid = order.get("customer_id");
+    let status: String = order.get("status");
+
+    if cid != auth_user.user_id && auth_user.role != "admin" {
         return Err(AppError::Forbidden("Unauthorized".to_string()));
     }
 
-    let active_loads = sqlx::query!(
+    let active_loads = sqlx::query(
         r#"
         SELECT l.id as load_id, l.load_number, l.status,
                m.registration_number, m.last_latitude, m.last_longitude, m.last_ping_at,
@@ -240,24 +376,41 @@ pub async fn get_order_tracking(
         WHERE l.order_id = $1
         ORDER BY l.load_number
         "#,
-        order_id
     )
+    .bind(order_id)
     .fetch_all(&state.db)
     .await?;
 
-    let tracking: Vec<_> = active_loads.into_iter().map(|l| json!({
-        "load_id": l.load_id,
-        "load_number": l.load_number,
-        "status": l.status,
-        "mixer_number": l.registration_number,
-        "driver_name": l.driver_name,
-        "driver_phone": l.driver_phone,
-        "latitude": l.last_latitude,
-        "longitude": l.last_longitude,
-        "last_ping_at": l.last_ping_at
-    })).collect();
+    let tracking: Vec<_> = active_loads
+        .into_iter()
+        .map(|l| {
+            let load_id: Uuid = l.get("load_id");
+            let load_number: i32 = l.get("load_number");
+            let load_status: String = l.get("status");
+            let mixer_number: Option<String> = l.get("registration_number");
+            let driver_name: Option<String> = l.get("driver_name");
+            let driver_phone: Option<String> = l.get("driver_phone");
+            let latitude: Option<f64> = l.get("last_latitude");
+            let longitude: Option<f64> = l.get("last_longitude");
+            let last_ping: Option<chrono::DateTime<chrono::Utc>> = l.get("last_ping_at");
 
-    Ok(Json(json!({ "success": true, "order_status": order.status, "loads": tracking })))
+            json!({
+                "load_id": load_id,
+                "load_number": load_number,
+                "status": load_status,
+                "mixer_number": mixer_number,
+                "driver_name": driver_name,
+                "driver_phone": driver_phone,
+                "latitude": latitude,
+                "longitude": longitude,
+                "last_ping_at": last_ping
+            })
+        })
+        .collect();
+
+    Ok(Json(
+        json!({ "success": true, "order_status": status, "loads": tracking }),
+    ))
 }
 
 pub async fn get_order_challan(
@@ -275,7 +428,7 @@ pub async fn get_order_challan(
         return Err(AppError::Forbidden("Unauthorized".to_string()));
     }
 
-    let challan = sqlx::query!(
+    let challan = sqlx::query(
         r#"
         SELECT c.id, c.challan_number, c.plant_code, c.customer_name, c.site_address,
                c.concrete_grade, c.quantity_m3, c.slump_mm, c.water_cement_ratio,
@@ -287,40 +440,57 @@ pub async fn get_order_challan(
         ORDER BY c.created_at DESC
         LIMIT 1
         "#,
-        order_id
     )
+    .bind(order_id)
     .fetch_optional(&state.db)
     .await?
     .ok_or_else(|| AppError::NotFound("Challan not yet generated for this order".to_string()))?;
 
+    let cid: Uuid = challan.get("id");
+    let cnum: String = challan.get("challan_number");
+    let pcode: String = challan.get("plant_code");
+    let cname: String = challan.get("customer_name");
+    let saddr: String = challan.get("site_address");
+    let grade: String = challan.get("concrete_grade");
+    let qty: bigdecimal::BigDecimal = challan.get("quantity_m3");
+    let slump: Option<i32> = challan.get("slump_mm");
+    let btime: Option<chrono::DateTime<chrono::Utc>> = challan.get("batch_time");
+    let mnum: Option<String> = challan.get("mixer_number");
+    let dname: Option<String> = challan.get("driver_name");
+    let sig: Option<String> = challan.get("digital_signature");
+    let cstatus: String = challan.get("status");
+
     Ok(Json(json!({
         "success": true,
         "challan": {
-            "id": challan.id,
-            "challan_number": challan.challan_number,
-            "plant_code": challan.plant_code,
-            "customer_name": challan.customer_name,
-            "site_address": challan.site_address,
-            "grade": challan.concrete_grade,
-            "quantity_m3": challan.quantity_m3,
-            "slump_mm": challan.slump_mm,
-            "batch_time": challan.batch_time,
-            "mixer_number": challan.mixer_number,
-            "driver_name": challan.driver_name,
-            "signature": challan.digital_signature,
-            "status": challan.status
+            "id": cid,
+            "challan_number": cnum,
+            "plant_code": pcode,
+            "customer_name": cname,
+            "site_address": saddr,
+            "grade": grade,
+            "quantity_m3": qty,
+            "slump_mm": slump,
+            "batch_time": btime,
+            "mixer_number": mnum,
+            "driver_name": dname,
+            "signature": sig,
+            "status": cstatus
         }
     })))
 }
 
-// RFQs, Pour Plans, Receiving Records
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CustomerRfqPayload {
     pub plant_id: Uuid,
     pub site_id: Option<Uuid>,
+    pub site_name: Option<String>,
+    pub site_address: Option<String>,
     pub grade: String,
-    pub quantity_m3: f64,
-    pub required_date: String,
+    pub quantity_m3: Option<f64>,
+    pub quantity: Option<f64>,
+    pub required_date: Option<String>,
+    pub pump_required: Option<bool>,
     pub notes: Option<String>,
 }
 
@@ -329,10 +499,21 @@ pub async fn create_quotation_request(
     auth_user: AuthUser,
     Json(payload): Json<CustomerRfqPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    let req_date = NaiveDate::parse_from_str(&payload.required_date, "%Y-%m-%d")
-        .map_err(|_| AppError::BadRequest("Invalid required_date, expected YYYY-MM-DD".to_string()))?;
+    let req_date = match &payload.required_date {
+        Some(d) => NaiveDate::parse_from_str(d, "%Y-%m-%d").map_err(|_| {
+            AppError::BadRequest("Invalid required_date, expected YYYY-MM-DD".to_string())
+        })?,
+        None => chrono::Utc::now().date_naive() + chrono::Duration::days(1),
+    };
 
-    let id = sqlx::query_scalar!(
+    let quantity = payload.quantity_m3.or(payload.quantity).unwrap_or(6.0);
+    if quantity <= 0.0 {
+        return Err(AppError::BadRequest(
+            "Quantity must be greater than zero".to_string(),
+        ));
+    }
+
+    let id: Uuid = sqlx::query_scalar(
         r#"
         INSERT INTO customer_quotation_requests (
             customer_id, plant_id, site_id, grade, quantity_m3, required_date, notes, status
@@ -340,25 +521,27 @@ pub async fn create_quotation_request(
         VALUES ($1, $2, $3, $4, $5::numeric, $6, $7, 'PENDING')
         RETURNING id
         "#,
-        auth_user.user_id,
-        payload.plant_id,
-        payload.site_id,
-        payload.grade,
-        bigdecimal::BigDecimal::try_from(payload.quantity_m3).unwrap_or_default(),
-        req_date,
-        payload.notes
     )
+    .bind(auth_user.user_id)
+    .bind(payload.plant_id)
+    .bind(payload.site_id)
+    .bind(&payload.grade)
+    .bind(quantity)
+    .bind(req_date)
+    .bind(&payload.notes)
     .fetch_one(&state.db)
     .await?;
 
-    Ok(Json(json!({ "success": true, "id": id, "message": "Quotation request submitted" })))
+    Ok(Json(
+        json!({ "success": true, "id": id, "message": "Quotation request submitted" }),
+    ))
 }
 
 pub async fn list_customer_rfqs(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
-    let rows = sqlx::query!(
+    let rows = sqlx::query(
         r#"
         SELECT r.id, r.plant_id, r.grade, r.quantity_m3, r.required_date, r.status, r.notes, r.created_at,
                p.name as plant_name, p.contact_phone as plant_phone
@@ -367,23 +550,39 @@ pub async fn list_customer_rfqs(
         WHERE r.customer_id = $1
         ORDER BY r.created_at DESC
         "#,
-        auth_user.user_id
     )
+    .bind(auth_user.user_id)
     .fetch_all(&state.db)
     .await?;
 
-    let rfqs: Vec<_> = rows.into_iter().map(|r| json!({
-        "id": r.id,
-        "plant_id": r.plant_id,
-        "plant_name": r.plant_name,
-        "plant_phone": r.plant_phone,
-        "grade": r.grade,
-        "quantity_m3": r.quantity_m3,
-        "required_date": r.required_date,
-        "status": r.status,
-        "notes": r.notes,
-        "created_at": r.created_at
-    })).collect();
+    let rfqs: Vec<_> = rows
+        .into_iter()
+        .map(|r| {
+            let id: Uuid = r.get("id");
+            let plant_id: Uuid = r.get("plant_id");
+            let grade: String = r.get("grade");
+            let quantity_m3: bigdecimal::BigDecimal = r.get("quantity_m3");
+            let required_date: chrono::NaiveDate = r.get("required_date");
+            let status: String = r.get("status");
+            let notes: Option<String> = r.get("notes");
+            let created_at: chrono::DateTime<chrono::Utc> = r.get("created_at");
+            let plant_name: String = r.get("plant_name");
+            let plant_phone: Option<String> = r.get("plant_phone");
+
+            json!({
+                "id": id,
+                "plant_id": plant_id,
+                "plant_name": plant_name,
+                "plant_phone": plant_phone,
+                "grade": grade,
+                "quantity_m3": quantity_m3,
+                "required_date": required_date,
+                "status": status,
+                "notes": notes,
+                "created_at": created_at
+            })
+        })
+        .collect();
 
     Ok(Json(json!({ "success": true, "requests": rfqs })))
 }
@@ -413,7 +612,7 @@ pub async fn create_pour_plan(
     let unload = payload.unload_minutes.unwrap_or(30);
     let mode = payload.discharge_mode.unwrap_or_else(|| "PUMP".to_string());
 
-    let id = sqlx::query_scalar!(
+    let id: Uuid = sqlx::query_scalar(
         r#"
         INSERT INTO customer_pour_plans (
             customer_id, site_id, grade, total_quantity_m3, mixer_capacity_m3,
@@ -422,28 +621,30 @@ pub async fn create_pour_plan(
         VALUES ($1, $2, $3, $4::numeric, $5::numeric, $6, $7, $8, $9, $10)
         RETURNING id
         "#,
-        auth_user.user_id,
-        payload.site_id,
-        payload.grade,
-        bigdecimal::BigDecimal::try_from(payload.total_quantity_m3).unwrap_or_default(),
-        bigdecimal::BigDecimal::try_from(cap).unwrap_or_default(),
-        p_date,
-        payload.start_time,
-        unload,
-        mode,
-        payload.notes
     )
+    .bind(auth_user.user_id)
+    .bind(payload.site_id)
+    .bind(&payload.grade)
+    .bind(payload.total_quantity_m3)
+    .bind(cap)
+    .bind(p_date)
+    .bind(&payload.start_time)
+    .bind(unload)
+    .bind(&mode)
+    .bind(&payload.notes)
     .fetch_one(&state.db)
     .await?;
 
-    Ok(Json(json!({ "success": true, "id": id, "message": "Pour plan created" })))
+    Ok(Json(
+        json!({ "success": true, "id": id, "message": "Pour plan created" }),
+    ))
 }
 
 pub async fn list_pour_plans(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
-    let rows = sqlx::query!(
+    let rows = sqlx::query(
         r#"
         SELECT p.id, p.site_id, p.grade, p.total_quantity_m3, p.mixer_capacity_m3,
                p.pour_date, p.start_time, p.unload_minutes, p.discharge_mode, p.notes, p.created_at,
@@ -453,25 +654,43 @@ pub async fn list_pour_plans(
         WHERE p.customer_id = $1
         ORDER BY p.pour_date DESC
         "#,
-        auth_user.user_id
     )
+    .bind(auth_user.user_id)
     .fetch_all(&state.db)
     .await?;
 
-    let plans: Vec<_> = rows.into_iter().map(|r| json!({
-        "id": r.id,
-        "site_id": r.site_id,
-        "site_name": r.site_name,
-        "site_address": r.site_address,
-        "grade": r.grade,
-        "total_quantity_m3": r.total_quantity_m3,
-        "mixer_capacity_m3": r.mixer_capacity_m3,
-        "pour_date": r.pour_date,
-        "start_time": r.start_time,
-        "unload_minutes": r.unload_minutes,
-        "discharge_mode": r.discharge_mode,
-        "notes": r.notes
-    })).collect();
+    let plans: Vec<_> = rows
+        .into_iter()
+        .map(|r| {
+            let id: Uuid = r.get("id");
+            let site_id: Uuid = r.get("site_id");
+            let site_name: String = r.get("site_name");
+            let site_address: String = r.get("site_address");
+            let grade: String = r.get("grade");
+            let total_quantity_m3: bigdecimal::BigDecimal = r.get("total_quantity_m3");
+            let mixer_capacity_m3: bigdecimal::BigDecimal = r.get("mixer_capacity_m3");
+            let pour_date: chrono::NaiveDate = r.get("pour_date");
+            let start_time: String = r.get("start_time");
+            let unload_minutes: i32 = r.get("unload_minutes");
+            let discharge_mode: String = r.get("discharge_mode");
+            let notes: Option<String> = r.get("notes");
+
+            json!({
+                "id": id,
+                "site_id": site_id,
+                "site_name": site_name,
+                "site_address": site_address,
+                "grade": grade,
+                "total_quantity_m3": total_quantity_m3,
+                "mixer_capacity_m3": mixer_capacity_m3,
+                "pour_date": pour_date,
+                "start_time": start_time,
+                "unload_minutes": unload_minutes,
+                "discharge_mode": discharge_mode,
+                "notes": notes
+            })
+        })
+        .collect();
 
     Ok(Json(json!({ "success": true, "pour_plans": plans })))
 }
@@ -481,19 +700,19 @@ pub async fn delete_pour_plan(
     auth_user: AuthUser,
     Path(plan_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    let res = sqlx::query!(
-        "DELETE FROM customer_pour_plans WHERE id = $1 AND customer_id = $2",
-        plan_id,
-        auth_user.user_id
-    )
-    .execute(&state.db)
-    .await?;
+    let res = sqlx::query("DELETE FROM customer_pour_plans WHERE id = $1 AND customer_id = $2")
+        .bind(plan_id)
+        .bind(auth_user.user_id)
+        .execute(&state.db)
+        .await?;
 
     if res.rows_affected() == 0 {
         return Err(AppError::NotFound("Plan not found".to_string()));
     }
 
-    Ok(Json(json!({ "success": true, "message": "Pour plan deleted" })))
+    Ok(Json(
+        json!({ "success": true, "message": "Pour plan deleted" }),
+    ))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -513,7 +732,7 @@ pub async fn create_receiving_record(
     auth_user: AuthUser,
     Json(payload): Json<CreateReceivingRecordPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    let id = sqlx::query_scalar!(
+    let id: Uuid = sqlx::query_scalar(
         r#"
         INSERT INTO customer_receiving_records (
             customer_id, site_id, order_id, grade, received_quantity_m3,
@@ -522,27 +741,29 @@ pub async fn create_receiving_record(
         VALUES ($1, $2, $3, $4, $5::numeric, $6, $7, $8::numeric, $9)
         RETURNING id
         "#,
-        auth_user.user_id,
-        payload.site_id,
-        payload.order_id,
-        payload.grade,
-        bigdecimal::BigDecimal::try_from(payload.received_quantity_m3).unwrap_or_default(),
-        payload.challan_number,
-        payload.tm_number,
-        payload.observed_slump_mm.and_then(|v| bigdecimal::BigDecimal::try_from(v).ok()),
-        payload.notes
     )
+    .bind(auth_user.user_id)
+    .bind(payload.site_id)
+    .bind(payload.order_id)
+    .bind(&payload.grade)
+    .bind(payload.received_quantity_m3)
+    .bind(&payload.challan_number)
+    .bind(&payload.tm_number)
+    .bind(payload.observed_slump_mm)
+    .bind(&payload.notes)
     .fetch_one(&state.db)
     .await?;
 
-    Ok(Json(json!({ "success": true, "id": id, "message": "Receiving record logged" })))
+    Ok(Json(
+        json!({ "success": true, "id": id, "message": "Receiving record logged" }),
+    ))
 }
 
 pub async fn list_receiving_records(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
-    let rows = sqlx::query!(
+    let rows = sqlx::query(
         r#"
         SELECT r.id, r.site_id, r.order_id, r.grade, r.received_quantity_m3,
                r.challan_number, r.tm_number, r.observed_slump_mm, r.notes, r.created_at,
@@ -552,24 +773,41 @@ pub async fn list_receiving_records(
         WHERE r.customer_id = $1
         ORDER BY r.created_at DESC
         "#,
-        auth_user.user_id
     )
+    .bind(auth_user.user_id)
     .fetch_all(&state.db)
     .await?;
 
-    let records: Vec<_> = rows.into_iter().map(|r| json!({
-        "id": r.id,
-        "site_id": r.site_id,
-        "site_name": r.site_name,
-        "order_id": r.order_id,
-        "grade": r.grade,
-        "received_quantity_m3": r.received_quantity_m3,
-        "challan_number": r.challan_number,
-        "tm_number": r.tm_number,
-        "observed_slump_mm": r.observed_slump_mm,
-        "notes": r.notes,
-        "created_at": r.created_at
-    })).collect();
+    let records: Vec<_> = rows
+        .into_iter()
+        .map(|r| {
+            let id: Uuid = r.get("id");
+            let site_id: Uuid = r.get("site_id");
+            let site_name: String = r.get("site_name");
+            let order_id: Option<Uuid> = r.get("order_id");
+            let grade: String = r.get("grade");
+            let received_quantity_m3: bigdecimal::BigDecimal = r.get("received_quantity_m3");
+            let challan_number: Option<String> = r.get("challan_number");
+            let tm_number: Option<String> = r.get("tm_number");
+            let observed_slump_mm: Option<bigdecimal::BigDecimal> = r.get("observed_slump_mm");
+            let notes: Option<String> = r.get("notes");
+            let created_at: chrono::DateTime<chrono::Utc> = r.get("created_at");
+
+            json!({
+                "id": id,
+                "site_id": site_id,
+                "site_name": site_name,
+                "order_id": order_id,
+                "grade": grade,
+                "received_quantity_m3": received_quantity_m3,
+                "challan_number": challan_number,
+                "tm_number": tm_number,
+                "observed_slump_mm": observed_slump_mm,
+                "notes": notes,
+                "created_at": created_at
+            })
+        })
+        .collect();
 
     Ok(Json(json!({ "success": true, "records": records })))
 }
@@ -577,7 +815,7 @@ pub async fn list_receiving_records(
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CubeResultPayload {
     pub sample_id: String,
-    pub age_days: i32, // 7 or 28
+    pub age_days: i32,
     pub tested_on: String,
     pub result_mpa: f64,
     pub lab_name: Option<String>,
@@ -590,11 +828,12 @@ pub async fn add_cube_test_result(
     Path(record_id): Path<Uuid>,
     Json(payload): Json<CubeResultPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    let rec_cust: Uuid = sqlx::query_scalar("SELECT customer_id FROM customer_receiving_records WHERE id = $1")
-        .bind(record_id)
-        .fetch_optional(&state.db)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Receiving record not found".to_string()))?;
+    let rec_cust: Uuid =
+        sqlx::query_scalar("SELECT customer_id FROM customer_receiving_records WHERE id = $1")
+            .bind(record_id)
+            .fetch_optional(&state.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Receiving record not found".to_string()))?;
 
     if rec_cust != auth_user.user_id && auth_user.role != "admin" {
         return Err(AppError::Forbidden("Unauthorized".to_string()));
@@ -603,7 +842,7 @@ pub async fn add_cube_test_result(
     let t_date = NaiveDate::parse_from_str(&payload.tested_on, "%Y-%m-%d")
         .map_err(|_| AppError::BadRequest("Invalid tested_on date".to_string()))?;
 
-    let id = sqlx::query_scalar!(
+    let id: Uuid = sqlx::query_scalar(
         r#"
         INSERT INTO cube_test_results (
             record_id, sample_id, age_days, tested_on, result_mpa, lab_name, report_reference
@@ -611,18 +850,20 @@ pub async fn add_cube_test_result(
         VALUES ($1, $2, $3, $4, $5::numeric, $6, $7)
         RETURNING id
         "#,
-        record_id,
-        payload.sample_id,
-        payload.age_days,
-        t_date,
-        bigdecimal::BigDecimal::try_from(payload.result_mpa).unwrap_or_default(),
-        payload.lab_name,
-        payload.report_reference
     )
+    .bind(record_id)
+    .bind(&payload.sample_id)
+    .bind(payload.age_days)
+    .bind(t_date)
+    .bind(payload.result_mpa)
+    .bind(&payload.lab_name)
+    .bind(&payload.report_reference)
     .fetch_one(&state.db)
     .await?;
 
-    Ok(Json(json!({ "success": true, "id": id, "message": "Cube test result recorded" })))
+    Ok(Json(
+        json!({ "success": true, "id": id, "message": "Cube test result recorded" }),
+    ))
 }
 
 pub async fn delete_receiving_record(
@@ -630,37 +871,45 @@ pub async fn delete_receiving_record(
     auth_user: AuthUser,
     Path(record_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    let res = sqlx::query!(
-        "DELETE FROM customer_receiving_records WHERE id = $1 AND customer_id = $2",
-        record_id,
-        auth_user.user_id
-    )
-    .execute(&state.db)
-    .await?;
+    let res =
+        sqlx::query("DELETE FROM customer_receiving_records WHERE id = $1 AND customer_id = $2")
+            .bind(record_id)
+            .bind(auth_user.user_id)
+            .execute(&state.db)
+            .await?;
 
     if res.rows_affected() == 0 {
         return Err(AppError::NotFound("Record not found".to_string()));
     }
 
-    Ok(Json(json!({ "success": true, "message": "Record deleted" })))
+    Ok(Json(
+        json!({ "success": true, "message": "Record deleted" }),
+    ))
 }
 
 pub async fn get_customer_kyc(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
-    let profile = sqlx::query!(
+    let profile = sqlx::query(
         "SELECT kyc_status, verified_name, gst_number FROM user_profiles WHERE user_id = $1",
-        auth_user.user_id
     )
+    .bind(auth_user.user_id)
     .fetch_optional(&state.db)
     .await?;
 
+    let kyc_status: String = profile
+        .as_ref()
+        .and_then(|p| p.get("kyc_status"))
+        .unwrap_or_else(|| "unverified".to_string());
+    let verified_name: Option<String> = profile.as_ref().and_then(|p| p.get("verified_name"));
+    let gst_number: Option<String> = profile.as_ref().and_then(|p| p.get("gst_number"));
+
     Ok(Json(json!({
         "success": true,
-        "kyc_status": profile.as_ref().map(|p| p.kyc_status.clone()).unwrap_or_else(|| "unverified".to_string()),
-        "verified_name": profile.as_ref().and_then(|p| p.verified_name.clone()),
-        "gst_number": profile.as_ref().and_then(|p| p.gst_number.clone())
+        "kyc_status": kyc_status,
+        "verified_name": verified_name,
+        "gst_number": gst_number
     })))
 }
 
@@ -668,13 +917,12 @@ pub async fn start_customer_kyc(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
-    // Generate sandbox KYC redirect trampoline URL
     let callback_url = "https://trackmyrmc.com/kyc/return";
 
-    sqlx::query!(
+    sqlx::query(
         "UPDATE user_profiles SET kyc_status = 'pending', updated_at = NOW() WHERE user_id = $1",
-        auth_user.user_id
     )
+    .bind(auth_user.user_id)
     .execute(&state.db)
     .await?;
 

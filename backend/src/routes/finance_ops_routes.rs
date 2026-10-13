@@ -11,6 +11,7 @@ use axum::{
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sqlx::Row;
 use uuid::Uuid;
 
 async fn ensure_plant_staff_or_owner(
@@ -73,39 +74,57 @@ pub async fn list_plant_quotations(
 ) -> Result<impl IntoResponse, AppError> {
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
-    let rows = sqlx::query!(
+    let rows = sqlx::query(
         r#"
         SELECT id, quotation_number, customer_name, customer_mobile, site_name, site_address,
                grade, quantity_m3, rate_per_m3, gst_rate, transport_amount, pumping_amount,
                total_amount, valid_until, status, notes, created_at
         FROM plant_quotations WHERE plant_id = $1 ORDER BY created_at DESC
         "#,
-        plant_id
     )
+    .bind(plant_id)
     .fetch_all(&state.db)
     .await?;
 
     let quotations: Vec<_> = rows
         .into_iter()
         .map(|r| {
+            let id: Uuid = r.get("id");
+            let quotation_number: String = r.get("quotation_number");
+            let customer_name: String = r.get("customer_name");
+            let customer_mobile: Option<String> = r.get("customer_mobile");
+            let site_name: String = r.get("site_name");
+            let site_address: String = r.get("site_address");
+            let grade: String = r.get("grade");
+            let quantity_m3: bigdecimal::BigDecimal = r.get("quantity_m3");
+            let rate_per_m3: bigdecimal::BigDecimal = r.get("rate_per_m3");
+            let gst_rate: bigdecimal::BigDecimal = r.get("gst_rate");
+            let transport_amount: bigdecimal::BigDecimal = r.get("transport_amount");
+            let pumping_amount: bigdecimal::BigDecimal = r.get("pumping_amount");
+            let total_amount: bigdecimal::BigDecimal = r.get("total_amount");
+            let valid_until: chrono::NaiveDate = r.get("valid_until");
+            let status: String = r.get("status");
+            let notes: Option<String> = r.get("notes");
+            let created_at: chrono::DateTime<chrono::Utc> = r.get("created_at");
+
             json!({
-                "id": r.id,
-                "quotation_number": r.quotation_number,
-                "customer_name": r.customer_name,
-                "customer_mobile": r.customer_mobile,
-                "site_name": r.site_name,
-                "site_address": r.site_address,
-                "grade": r.grade,
-                "quantity_m3": r.quantity_m3,
-                "rate_per_m3": r.rate_per_m3,
-                "gst_rate": r.gst_rate,
-                "transport_amount": r.transport_amount,
-                "pumping_amount": r.pumping_amount,
-                "total_amount": r.total_amount,
-                "valid_until": r.valid_until,
-                "status": r.status,
-                "notes": r.notes,
-                "created_at": r.created_at
+                "id": id,
+                "quotation_number": quotation_number,
+                "customer_name": customer_name,
+                "customer_mobile": customer_mobile,
+                "site_name": site_name,
+                "site_address": site_address,
+                "grade": grade,
+                "quantity_m3": quantity_m3,
+                "rate_per_m3": rate_per_m3,
+                "gst_rate": gst_rate,
+                "transport_amount": transport_amount,
+                "pumping_amount": pumping_amount,
+                "total_amount": total_amount,
+                "valid_until": valid_until,
+                "status": status,
+                "notes": notes,
+                "created_at": created_at
             })
         })
         .collect();
@@ -122,8 +141,9 @@ pub async fn create_plant_quotation(
     check_role(&auth_user, &["owner", "plant_owner", "admin", "accountant"])?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
-    let valid_date = NaiveDate::parse_from_str(&payload.valid_until, "%Y-%m-%d")
-        .map_err(|_| AppError::BadRequest("Invalid valid_until date, format must be YYYY-MM-DD".to_string()))?;
+    let valid_date = NaiveDate::parse_from_str(&payload.valid_until, "%Y-%m-%d").map_err(|_| {
+        AppError::BadRequest("Invalid valid_until date, format must be YYYY-MM-DD".to_string())
+    })?;
 
     let gst_rate = payload.gst_rate.unwrap_or(18.0);
     let transport = payload.transport_amount.unwrap_or(0.0);
@@ -131,14 +151,15 @@ pub async fn create_plant_quotation(
     let subtotal = payload.quantity_m3 * payload.rate_per_m3 + transport + pumping;
     let total = subtotal * (1.0 + (gst_rate / 100.0));
 
-    let quotation_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM plant_quotations WHERE plant_id = $1")
-        .bind(plant_id)
-        .fetch_one(&state.db)
-        .await?;
+    let quotation_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM plant_quotations WHERE plant_id = $1")
+            .bind(plant_id)
+            .fetch_one(&state.db)
+            .await?;
 
     let quotation_number = format!("QT-{:04}", quotation_count + 1);
 
-    let id = sqlx::query_scalar!(
+    let id: Uuid = sqlx::query_scalar(
         r#"
         INSERT INTO plant_quotations (
             plant_id, quotation_number, request_id, customer_id, customer_name, customer_mobile,
@@ -151,30 +172,30 @@ pub async fn create_plant_quotation(
         )
         RETURNING id
         "#,
-        plant_id,
-        quotation_number,
-        payload.request_id,
-        payload.customer_id,
-        payload.customer_name,
-        payload.customer_mobile,
-        payload.site_name,
-        payload.site_address,
-        payload.grade,
-        bigdecimal::BigDecimal::try_from(payload.quantity_m3).unwrap_or_default(),
-        bigdecimal::BigDecimal::try_from(payload.rate_per_m3).unwrap_or_default(),
-        bigdecimal::BigDecimal::try_from(gst_rate).unwrap_or_default(),
-        bigdecimal::BigDecimal::try_from(transport).unwrap_or_default(),
-        bigdecimal::BigDecimal::try_from(pumping).unwrap_or_default(),
-        bigdecimal::BigDecimal::try_from(total).unwrap_or_default(),
-        valid_date,
-        payload.notes
     )
+    .bind(plant_id)
+    .bind(&quotation_number)
+    .bind(payload.request_id)
+    .bind(payload.customer_id)
+    .bind(&payload.customer_name)
+    .bind(&payload.customer_mobile)
+    .bind(&payload.site_name)
+    .bind(&payload.site_address)
+    .bind(&payload.grade)
+    .bind(payload.quantity_m3)
+    .bind(payload.rate_per_m3)
+    .bind(gst_rate)
+    .bind(transport)
+    .bind(pumping)
+    .bind(total)
+    .bind(valid_date)
+    .bind(&payload.notes)
     .fetch_one(&state.db)
     .await?;
 
-    // If linked to an RFQ request, update RFQ status to QUOTED
     if let Some(req_id) = payload.request_id {
-        let _ = sqlx::query!("UPDATE customer_quotation_requests SET status = 'QUOTED', updated_at = NOW() WHERE id = $1", req_id)
+        let _ = sqlx::query("UPDATE customer_quotation_requests SET status = 'QUOTED', updated_at = NOW() WHERE id = $1")
+            .bind(req_id)
             .execute(&state.db)
             .await;
     }
@@ -194,7 +215,7 @@ pub async fn list_plant_quotation_requests(
 ) -> Result<impl IntoResponse, AppError> {
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
-    let rows = sqlx::query!(
+    let rows = sqlx::query(
         r#"
         SELECT r.id, r.customer_id, r.grade, r.quantity_m3, r.required_date, r.status, r.notes, r.created_at,
                u.full_name as customer_name, u.phone as customer_phone,
@@ -205,27 +226,40 @@ pub async fn list_plant_quotation_requests(
         WHERE r.plant_id = $1
         ORDER BY r.created_at DESC
         "#,
-        plant_id
     )
+    .bind(plant_id)
     .fetch_all(&state.db)
     .await?;
 
     let requests: Vec<_> = rows
         .into_iter()
         .map(|r| {
+            let id: Uuid = r.get("id");
+            let customer_id: Uuid = r.get("customer_id");
+            let customer_name: String = r.get("customer_name");
+            let customer_phone: Option<String> = r.get("customer_phone");
+            let site_name: Option<String> = r.get("site_name");
+            let site_address: Option<String> = r.get("site_address");
+            let grade: String = r.get("grade");
+            let quantity_m3: bigdecimal::BigDecimal = r.get("quantity_m3");
+            let required_date: chrono::NaiveDate = r.get("required_date");
+            let status: String = r.get("status");
+            let notes: Option<String> = r.get("notes");
+            let created_at: chrono::DateTime<chrono::Utc> = r.get("created_at");
+
             json!({
-                "id": r.id,
-                "customer_id": r.customer_id,
-                "customer_name": r.customer_name,
-                "customer_phone": r.customer_phone,
-                "site_name": r.site_name,
-                "site_address": r.site_address,
-                "grade": r.grade,
-                "quantity_m3": r.quantity_m3,
-                "required_date": r.required_date,
-                "status": r.status,
-                "notes": r.notes,
-                "created_at": r.created_at
+                "id": id,
+                "customer_id": customer_id,
+                "customer_name": customer_name,
+                "customer_phone": customer_phone,
+                "site_name": site_name,
+                "site_address": site_address,
+                "grade": grade,
+                "quantity_m3": quantity_m3,
+                "required_date": required_date,
+                "status": status,
+                "notes": notes,
+                "created_at": created_at
             })
         })
         .collect();
@@ -235,7 +269,7 @@ pub async fn list_plant_quotation_requests(
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct RespondRfqPayload {
-    pub action: String, // "SEND" | "DECLINE"
+    pub action: String,
     pub rate_per_m3: Option<f64>,
     pub gst_rate: Option<f64>,
     pub transport_amount: Option<f64>,
@@ -254,7 +288,7 @@ pub async fn respond_quotation_request(
     check_role(&auth_user, &["owner", "plant_owner", "admin", "accountant"])?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
-    let rfq = sqlx::query!(
+    let rfq = sqlx::query(
         r#"
         SELECT r.id, r.customer_id, r.grade, r.quantity_m3,
                u.full_name as customer_name, u.phone as customer_phone,
@@ -264,43 +298,60 @@ pub async fn respond_quotation_request(
         LEFT JOIN customer_sites s ON s.id = r.site_id
         WHERE r.id = $1 AND r.plant_id = $2
         "#,
-        request_id,
-        plant_id
     )
+    .bind(request_id)
+    .bind(plant_id)
     .fetch_optional(&state.db)
     .await?
     .ok_or_else(|| AppError::NotFound("RFQ not found".to_string()))?;
 
     if payload.action.to_uppercase() == "DECLINE" {
-        sqlx::query!(
-            "UPDATE customer_quotation_requests SET status = 'DECLINED', updated_at = NOW() WHERE id = $1",
-            request_id
-        )
-        .execute(&state.db)
-        .await?;
+        sqlx::query("UPDATE customer_quotation_requests SET status = 'DECLINED', updated_at = NOW() WHERE id = $1")
+            .bind(request_id)
+            .execute(&state.db)
+            .await?;
 
         return Ok(Json(json!({ "success": true, "message": "RFQ declined" })));
     }
 
-    let rate = payload.rate_per_m3.ok_or_else(|| AppError::BadRequest("rate_per_m3 required when sending quote".to_string()))?;
-    let valid_str = payload.valid_until.unwrap_or_else(|| chrono::Utc::now().naive_utc().date().succ_opt().unwrap().to_string());
-    let valid_date = NaiveDate::parse_from_str(&valid_str, "%Y-%m-%d")
-        .map_err(|_| AppError::BadRequest("Invalid valid_until date, format must be YYYY-MM-DD".to_string()))?;
+    let rate = payload.rate_per_m3.ok_or_else(|| {
+        AppError::BadRequest("rate_per_m3 required when sending quote".to_string())
+    })?;
+    let valid_str = payload.valid_until.unwrap_or_else(|| {
+        chrono::Utc::now()
+            .naive_utc()
+            .date()
+            .succ_opt()
+            .unwrap()
+            .to_string()
+    });
+    let valid_date = NaiveDate::parse_from_str(&valid_str, "%Y-%m-%d").map_err(|_| {
+        AppError::BadRequest("Invalid valid_until date, format must be YYYY-MM-DD".to_string())
+    })?;
 
-    let q_m3: f64 = rfq.quantity_m3.to_string().parse().unwrap_or(0.0);
+    let q_m3_dec: bigdecimal::BigDecimal = rfq.get("quantity_m3");
+    let q_m3: f64 = q_m3_dec.to_string().parse().unwrap_or(0.0);
     let gst = payload.gst_rate.unwrap_or(18.0);
     let transport = payload.transport_amount.unwrap_or(0.0);
     let pumping = payload.pumping_amount.unwrap_or(0.0);
     let subtotal = q_m3 * rate + transport + pumping;
     let total = subtotal * (1.0 + (gst / 100.0));
 
-    let quotation_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM plant_quotations WHERE plant_id = $1")
-        .bind(plant_id)
-        .fetch_one(&state.db)
-        .await?;
+    let quotation_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM plant_quotations WHERE plant_id = $1")
+            .bind(plant_id)
+            .fetch_one(&state.db)
+            .await?;
     let quotation_number = format!("QT-{:04}", quotation_count + 1);
 
-    sqlx::query!(
+    let customer_id: Uuid = rfq.get("customer_id");
+    let customer_name: String = rfq.get("customer_name");
+    let customer_phone: Option<String> = rfq.get("customer_phone");
+    let site_name: Option<String> = rfq.get("site_name");
+    let site_address: Option<String> = rfq.get("site_address");
+    let grade: String = rfq.get("grade");
+
+    sqlx::query(
         r#"
         INSERT INTO plant_quotations (
             plant_id, quotation_number, request_id, customer_id, customer_name, customer_mobile,
@@ -312,33 +363,31 @@ pub async fn respond_quotation_request(
             $13::numeric, $14::numeric, $15::numeric, $16, 'SENT', $17
         )
         "#,
-        plant_id,
-        quotation_number,
-        request_id,
-        rfq.customer_id,
-        rfq.customer_name,
-        rfq.customer_phone,
-        rfq.site_name.unwrap_or_else(|| "Site".to_string()),
-        rfq.site_address.unwrap_or_else(|| "Site Address".to_string()),
-        rfq.grade,
-        bigdecimal::BigDecimal::try_from(q_m3).unwrap_or_default(),
-        bigdecimal::BigDecimal::try_from(rate).unwrap_or_default(),
-        bigdecimal::BigDecimal::try_from(gst).unwrap_or_default(),
-        bigdecimal::BigDecimal::try_from(transport).unwrap_or_default(),
-        bigdecimal::BigDecimal::try_from(pumping).unwrap_or_default(),
-        bigdecimal::BigDecimal::try_from(total).unwrap_or_default(),
-        valid_date,
-        payload.notes
     )
+    .bind(plant_id)
+    .bind(&quotation_number)
+    .bind(request_id)
+    .bind(customer_id)
+    .bind(&customer_name)
+    .bind(customer_phone)
+    .bind(site_name.unwrap_or_else(|| "Site".to_string()))
+    .bind(site_address.unwrap_or_else(|| "Site Address".to_string()))
+    .bind(&grade)
+    .bind(q_m3)
+    .bind(rate)
+    .bind(gst)
+    .bind(transport)
+    .bind(pumping)
+    .bind(total)
+    .bind(valid_date)
+    .bind(&payload.notes)
     .execute(&state.db)
     .await?;
 
-    sqlx::query!(
-        "UPDATE customer_quotation_requests SET status = 'QUOTED', updated_at = NOW() WHERE id = $1",
-        request_id
-    )
-    .execute(&state.db)
-    .await?;
+    sqlx::query("UPDATE customer_quotation_requests SET status = 'QUOTED', updated_at = NOW() WHERE id = $1")
+        .bind(request_id)
+        .execute(&state.db)
+        .await?;
 
     Ok(Json(json!({
         "success": true,
@@ -352,7 +401,7 @@ pub async fn list_customer_quotations(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
-    let rows = sqlx::query!(
+    let rows = sqlx::query(
         r#"
         SELECT q.id, q.quotation_number, q.plant_id, q.grade, q.quantity_m3, q.rate_per_m3,
                q.gst_rate, q.transport_amount, q.pumping_amount, q.total_amount,
@@ -363,27 +412,40 @@ pub async fn list_customer_quotations(
         WHERE q.customer_id = $1
         ORDER BY q.created_at DESC
         "#,
-        auth_user.user_id
     )
+    .bind(auth_user.user_id)
     .fetch_all(&state.db)
     .await?;
 
     let quotations: Vec<_> = rows
         .into_iter()
         .map(|r| {
+            let id: Uuid = r.get("id");
+            let quotation_number: String = r.get("quotation_number");
+            let plant_id: Uuid = r.get("plant_id");
+            let plant_name: String = r.get("plant_name");
+            let plant_phone: Option<String> = r.get("plant_phone");
+            let grade: String = r.get("grade");
+            let quantity_m3: bigdecimal::BigDecimal = r.get("quantity_m3");
+            let rate_per_m3: bigdecimal::BigDecimal = r.get("rate_per_m3");
+            let total_amount: bigdecimal::BigDecimal = r.get("total_amount");
+            let valid_until: chrono::NaiveDate = r.get("valid_until");
+            let status: String = r.get("status");
+            let created_at: chrono::DateTime<chrono::Utc> = r.get("created_at");
+
             json!({
-                "id": r.id,
-                "quotation_number": r.quotation_number,
-                "plant_id": r.plant_id,
-                "plant_name": r.plant_name,
-                "plant_phone": r.plant_phone,
-                "grade": r.grade,
-                "quantity_m3": r.quantity_m3,
-                "rate_per_m3": r.rate_per_m3,
-                "total_amount": r.total_amount,
-                "valid_until": r.valid_until,
-                "status": r.status,
-                "created_at": r.created_at
+                "id": id,
+                "quotation_number": quotation_number,
+                "plant_id": plant_id,
+                "plant_name": plant_name,
+                "plant_phone": plant_phone,
+                "grade": grade,
+                "quantity_m3": quantity_m3,
+                "rate_per_m3": rate_per_m3,
+                "total_amount": total_amount,
+                "valid_until": valid_until,
+                "status": status,
+                "created_at": created_at
             })
         })
         .collect();
@@ -393,7 +455,7 @@ pub async fn list_customer_quotations(
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CustomerQuotationDecisionPayload {
-    pub action: String, // "ACCEPT" | "DECLINE"
+    pub action: String,
     pub reason: Option<String>,
 }
 
@@ -409,22 +471,24 @@ pub async fn decide_customer_quotation(
         "DECLINED"
     };
 
-    let result = sqlx::query!(
+    let result = sqlx::query(
         r#"
         UPDATE plant_quotations
         SET status = $1, decline_reason = $2, updated_at = NOW()
         WHERE id = $3 AND customer_id = $4
         "#,
-        new_status,
-        payload.reason,
-        quotation_id,
-        auth_user.user_id
     )
+    .bind(new_status)
+    .bind(payload.reason)
+    .bind(quotation_id)
+    .bind(auth_user.user_id)
     .execute(&state.db)
     .await?;
 
     if result.rows_affected() == 0 {
-        return Err(AppError::NotFound("Quotation not found or unauthorized".to_string()));
+        return Err(AppError::NotFound(
+            "Quotation not found or unauthorized".to_string(),
+        ));
     }
 
     Ok(Json(json!({
@@ -452,29 +516,39 @@ pub async fn list_plant_expenses(
 ) -> Result<impl IntoResponse, AppError> {
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
-    let rows = sqlx::query!(
+    let rows = sqlx::query(
         r#"
         SELECT id, category, amount, expense_date, vendor, reference, payment_method, notes, created_at
         FROM plant_expenses WHERE plant_id = $1 ORDER BY expense_date DESC, created_at DESC
         "#,
-        plant_id
     )
+    .bind(plant_id)
     .fetch_all(&state.db)
     .await?;
 
     let expenses: Vec<_> = rows
         .into_iter()
         .map(|r| {
+            let id: Uuid = r.get("id");
+            let category: String = r.get("category");
+            let amount: bigdecimal::BigDecimal = r.get("amount");
+            let expense_date: chrono::NaiveDate = r.get("expense_date");
+            let vendor: Option<String> = r.get("vendor");
+            let reference: Option<String> = r.get("reference");
+            let payment_method: String = r.get("payment_method");
+            let notes: Option<String> = r.get("notes");
+            let created_at: chrono::DateTime<chrono::Utc> = r.get("created_at");
+
             json!({
-                "id": r.id,
-                "category": r.category,
-                "amount": r.amount,
-                "expense_date": r.expense_date,
-                "vendor": r.vendor,
-                "reference": r.reference,
-                "payment_method": r.payment_method,
-                "notes": r.notes,
-                "created_at": r.created_at
+                "id": id,
+                "category": category,
+                "amount": amount,
+                "expense_date": expense_date,
+                "vendor": vendor,
+                "reference": reference,
+                "payment_method": payment_method,
+                "notes": notes,
+                "created_at": created_at
             })
         })
         .collect();
@@ -492,11 +566,12 @@ pub async fn record_plant_expense(
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
     let dt = match payload.expense_date {
-        Some(s) => NaiveDate::parse_from_str(&s, "%Y-%m-%d").unwrap_or_else(|_| chrono::Utc::now().naive_utc().date()),
+        Some(s) => NaiveDate::parse_from_str(&s, "%Y-%m-%d")
+            .unwrap_or_else(|_| chrono::Utc::now().naive_utc().date()),
         None => chrono::Utc::now().naive_utc().date(),
     };
 
-    let id = sqlx::query_scalar!(
+    let id: Uuid = sqlx::query_scalar(
         r#"
         INSERT INTO plant_expenses (
             plant_id, recorded_by, category, amount, expense_date, vendor, reference, payment_method, notes
@@ -504,25 +579,27 @@ pub async fn record_plant_expense(
         VALUES ($1, $2, $3, $4::numeric, $5, $6, $7, $8, $9)
         RETURNING id
         "#,
-        plant_id,
-        auth_user.user_id,
-        payload.category,
-        bigdecimal::BigDecimal::try_from(payload.amount).unwrap_or_default(),
-        dt,
-        payload.vendor,
-        payload.reference,
-        payload.payment_method.unwrap_or_else(|| "cash".to_string()),
-        payload.notes
     )
+    .bind(plant_id)
+    .bind(auth_user.user_id)
+    .bind(&payload.category)
+    .bind(payload.amount)
+    .bind(dt)
+    .bind(&payload.vendor)
+    .bind(&payload.reference)
+    .bind(payload.payment_method.unwrap_or_else(|| "cash".to_string()))
+    .bind(&payload.notes)
     .fetch_one(&state.db)
     .await?;
 
-    Ok(Json(json!({ "success": true, "id": id, "message": "Expense recorded" })))
+    Ok(Json(
+        json!({ "success": true, "id": id, "message": "Expense recorded" }),
+    ))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct DieselPayload {
-    pub transaction_type: String, // "IN" | "OUT" | "ADJUSTMENT"
+    pub transaction_type: String,
     pub litres: f64,
     pub rate_per_litre: Option<f64>,
     pub vehicle_id: Option<Uuid>,
@@ -539,7 +616,7 @@ pub async fn list_diesel_transactions(
 ) -> Result<impl IntoResponse, AppError> {
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
-    let rows = sqlx::query!(
+    let rows = sqlx::query(
         r#"
         SELECT d.id, d.transaction_type, d.litres, d.rate_per_litre, d.odometer_km,
                d.reference, d.notes, d.transaction_date, d.created_at,
@@ -550,31 +627,45 @@ pub async fn list_diesel_transactions(
         WHERE d.plant_id = $1
         ORDER BY d.transaction_date DESC, d.created_at DESC
         "#,
-        plant_id
     )
+    .bind(plant_id)
     .fetch_all(&state.db)
     .await?;
 
     let transactions: Vec<_> = rows
         .into_iter()
         .map(|r| {
+            let id: Uuid = r.get("id");
+            let transaction_type: String = r.get("transaction_type");
+            let litres: bigdecimal::BigDecimal = r.get("litres");
+            let rate_per_litre: Option<bigdecimal::BigDecimal> = r.get("rate_per_litre");
+            let odometer_km: Option<bigdecimal::BigDecimal> = r.get("odometer_km");
+            let vehicle_number: Option<String> = r.get("vehicle_number");
+            let supplier_name: Option<String> = r.get("supplier_name");
+            let reference: Option<String> = r.get("reference");
+            let notes: Option<String> = r.get("notes");
+            let transaction_date: chrono::NaiveDate = r.get("transaction_date");
+            let created_at: chrono::DateTime<chrono::Utc> = r.get("created_at");
+
             json!({
-                "id": r.id,
-                "transaction_type": r.transaction_type,
-                "litres": r.litres,
-                "rate_per_litre": r.rate_per_litre,
-                "odometer_km": r.odometer_km,
-                "vehicle_number": r.vehicle_number,
-                "supplier_name": r.supplier_name,
-                "reference": r.reference,
-                "notes": r.notes,
-                "transaction_date": r.transaction_date,
-                "created_at": r.created_at
+                "id": id,
+                "transaction_type": transaction_type,
+                "litres": litres,
+                "rate_per_litre": rate_per_litre,
+                "odometer_km": odometer_km,
+                "vehicle_number": vehicle_number,
+                "supplier_name": supplier_name,
+                "reference": reference,
+                "notes": notes,
+                "transaction_date": transaction_date,
+                "created_at": created_at
             })
         })
         .collect();
 
-    Ok(Json(json!({ "success": true, "transactions": transactions })))
+    Ok(Json(
+        json!({ "success": true, "transactions": transactions }),
+    ))
 }
 
 pub async fn record_diesel_transaction(
@@ -585,11 +676,17 @@ pub async fn record_diesel_transaction(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(
         &auth_user,
-        &["owner", "plant_owner", "admin", "accountant", "fleet_manager"],
+        &[
+            "owner",
+            "plant_owner",
+            "admin",
+            "accountant",
+            "fleet_manager",
+        ],
     )?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
-    let id = sqlx::query_scalar!(
+    let id: Uuid = sqlx::query_scalar(
         r#"
         INSERT INTO diesel_transactions (
             plant_id, recorded_by, transaction_type, litres, rate_per_litre,
@@ -598,21 +695,23 @@ pub async fn record_diesel_transaction(
         VALUES ($1, $2, $3, $4::numeric, $5::numeric, $6, $7, $8::numeric, $9, $10)
         RETURNING id
         "#,
-        plant_id,
-        auth_user.user_id,
-        payload.transaction_type,
-        bigdecimal::BigDecimal::try_from(payload.litres).unwrap_or_default(),
-        bigdecimal::BigDecimal::try_from(payload.rate_per_litre.unwrap_or(0.0)).unwrap_or_default(),
-        payload.vehicle_id,
-        payload.supplier_id,
-        bigdecimal::BigDecimal::try_from(payload.odometer_km.unwrap_or(0.0)).unwrap_or_default(),
-        payload.reference,
-        payload.notes
     )
+    .bind(plant_id)
+    .bind(auth_user.user_id)
+    .bind(&payload.transaction_type)
+    .bind(payload.litres)
+    .bind(payload.rate_per_litre.unwrap_or(0.0))
+    .bind(payload.vehicle_id)
+    .bind(payload.supplier_id)
+    .bind(payload.odometer_km.unwrap_or(0.0))
+    .bind(&payload.reference)
+    .bind(&payload.notes)
     .fetch_one(&state.db)
     .await?;
 
-    Ok(Json(json!({ "success": true, "id": id, "message": "Diesel transaction recorded" })))
+    Ok(Json(
+        json!({ "success": true, "id": id, "message": "Diesel transaction recorded" }),
+    ))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -634,7 +733,7 @@ pub async fn list_purchase_receipts(
 ) -> Result<impl IntoResponse, AppError> {
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
-    let rows = sqlx::query!(
+    let rows = sqlx::query(
         r#"
         SELECT p.id, p.receipt_number, p.receipt_date, p.lines, p.gst_amount,
                p.freight_amount, p.total_amount, p.notes, p.created_at,
@@ -644,25 +743,36 @@ pub async fn list_purchase_receipts(
         WHERE p.plant_id = $1
         ORDER BY p.receipt_date DESC, p.created_at DESC
         "#,
-        plant_id
     )
+    .bind(plant_id)
     .fetch_all(&state.db)
     .await?;
 
     let purchases: Vec<_> = rows
         .into_iter()
         .map(|r| {
+            let id: Uuid = r.get("id");
+            let receipt_number: String = r.get("receipt_number");
+            let supplier_name: String = r.get("supplier_name");
+            let receipt_date: chrono::NaiveDate = r.get("receipt_date");
+            let lines: serde_json::Value = r.get("lines");
+            let gst_amount: bigdecimal::BigDecimal = r.get("gst_amount");
+            let freight_amount: bigdecimal::BigDecimal = r.get("freight_amount");
+            let total_amount: bigdecimal::BigDecimal = r.get("total_amount");
+            let notes: Option<String> = r.get("notes");
+            let created_at: chrono::DateTime<chrono::Utc> = r.get("created_at");
+
             json!({
-                "id": r.id,
-                "receipt_number": r.receipt_number,
-                "supplier_name": r.supplier_name,
-                "receipt_date": r.receipt_date,
-                "lines": r.lines,
-                "gst_amount": r.gst_amount,
-                "freight_amount": r.freight_amount,
-                "total_amount": r.total_amount,
-                "notes": r.notes,
-                "created_at": r.created_at
+                "id": id,
+                "receipt_number": receipt_number,
+                "supplier_name": supplier_name,
+                "receipt_date": receipt_date,
+                "lines": lines,
+                "gst_amount": gst_amount,
+                "freight_amount": freight_amount,
+                "total_amount": total_amount,
+                "notes": notes,
+                "created_at": created_at
             })
         })
         .collect();
@@ -678,16 +788,23 @@ pub async fn record_purchase_receipt(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(
         &auth_user,
-        &["owner", "plant_owner", "admin", "accountant", "store_manager"],
+        &[
+            "owner",
+            "plant_owner",
+            "admin",
+            "accountant",
+            "store_manager",
+        ],
     )?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
     let dt = match payload.receipt_date {
-        Some(s) => NaiveDate::parse_from_str(&s, "%Y-%m-%d").unwrap_or_else(|_| chrono::Utc::now().naive_utc().date()),
+        Some(s) => NaiveDate::parse_from_str(&s, "%Y-%m-%d")
+            .unwrap_or_else(|_| chrono::Utc::now().naive_utc().date()),
         None => chrono::Utc::now().naive_utc().date(),
     };
 
-    let id = sqlx::query_scalar!(
+    let id: Uuid = sqlx::query_scalar(
         r#"
         INSERT INTO purchase_receipts (
             plant_id, supplier_id, receipt_number, receipt_date, lines,
@@ -696,18 +813,20 @@ pub async fn record_purchase_receipt(
         VALUES ($1, $2, $3, $4, $5, $6::numeric, $7::numeric, $8::numeric, $9)
         RETURNING id
         "#,
-        plant_id,
-        payload.supplier_id,
-        payload.receipt_number,
-        dt,
-        payload.lines,
-        bigdecimal::BigDecimal::try_from(payload.gst_amount.unwrap_or(0.0)).unwrap_or_default(),
-        bigdecimal::BigDecimal::try_from(payload.freight_amount.unwrap_or(0.0)).unwrap_or_default(),
-        bigdecimal::BigDecimal::try_from(payload.total_amount).unwrap_or_default(),
-        payload.notes
     )
+    .bind(plant_id)
+    .bind(payload.supplier_id)
+    .bind(&payload.receipt_number)
+    .bind(dt)
+    .bind(&payload.lines)
+    .bind(payload.gst_amount.unwrap_or(0.0))
+    .bind(payload.freight_amount.unwrap_or(0.0))
+    .bind(payload.total_amount)
+    .bind(&payload.notes)
     .fetch_one(&state.db)
     .await?;
 
-    Ok(Json(json!({ "success": true, "id": id, "message": "Purchase receipt recorded" })))
+    Ok(Json(
+        json!({ "success": true, "id": id, "message": "Purchase receipt recorded" }),
+    ))
 }

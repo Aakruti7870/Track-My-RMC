@@ -10,6 +10,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sqlx::Row;
 use uuid::Uuid;
 
 async fn ensure_plant_staff_or_owner(
@@ -63,23 +64,29 @@ pub async fn list_materials(
 ) -> Result<impl IntoResponse, AppError> {
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
-    let rows = sqlx::query!(
+    let rows = sqlx::query(
         "SELECT id, name, material_type, unit, current_stock, minimum_stock FROM plant_materials WHERE plant_id = $1 ORDER BY name",
-        plant_id
     )
+    .bind(plant_id)
     .fetch_all(&state.db)
     .await?;
 
     let materials: Vec<_> = rows
         .into_iter()
         .map(|r| {
+            let id: Uuid = r.get("id");
+            let name: String = r.get("name");
+            let material_type: String = r.get("material_type");
+            let unit: String = r.get("unit");
+            let current_stock: bigdecimal::BigDecimal = r.get("current_stock");
+            let minimum_stock: bigdecimal::BigDecimal = r.get("minimum_stock");
             json!({
-                "id": r.id,
-                "name": r.name,
-                "material_type": r.material_type,
-                "unit": r.unit,
-                "current_stock": r.current_stock,
-                "minimum_stock": r.minimum_stock
+                "id": id,
+                "name": name,
+                "material_type": material_type,
+                "unit": unit,
+                "current_stock": current_stock,
+                "minimum_stock": minimum_stock
             })
         })
         .collect();
@@ -95,7 +102,13 @@ pub async fn create_material(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(
         &auth_user,
-        &["owner", "plant_owner", "admin", "store_manager", "supervisor"],
+        &[
+            "owner",
+            "plant_owner",
+            "admin",
+            "store_manager",
+            "supervisor",
+        ],
     )?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
@@ -103,23 +116,25 @@ pub async fn create_material(
     let current = payload.current_stock.unwrap_or(0.0);
     let minimum = payload.minimum_stock.unwrap_or(0.0);
 
-    let id = sqlx::query_scalar!(
+    let id: Uuid = sqlx::query_scalar(
         r#"
         INSERT INTO plant_materials (plant_id, name, material_type, unit, current_stock, minimum_stock)
         VALUES ($1, $2, $3, $4, $5::numeric, $6::numeric)
         RETURNING id
         "#,
-        plant_id,
-        payload.name,
-        payload.material_type,
-        unit,
-        bigdecimal::BigDecimal::try_from(current).unwrap_or_default(),
-        bigdecimal::BigDecimal::try_from(minimum).unwrap_or_default()
     )
+    .bind(plant_id)
+    .bind(&payload.name)
+    .bind(&payload.material_type)
+    .bind(&unit)
+    .bind(current)
+    .bind(minimum)
     .fetch_one(&state.db)
     .await?;
 
-    Ok(Json(json!({ "success": true, "id": id, "message": "Material created" })))
+    Ok(Json(
+        json!({ "success": true, "id": id, "message": "Material created" }),
+    ))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -136,43 +151,49 @@ pub async fn adjust_material_stock(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(
         &auth_user,
-        &["owner", "plant_owner", "admin", "store_manager", "supervisor"],
+        &[
+            "owner",
+            "plant_owner",
+            "admin",
+            "store_manager",
+            "supervisor",
+        ],
     )?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
-    let change = bigdecimal::BigDecimal::try_from(payload.quantity_change).unwrap_or_default();
-
     let mut tx = state.db.begin().await?;
 
-    sqlx::query!(
+    sqlx::query(
         r#"
         UPDATE plant_materials
         SET current_stock = current_stock + $1::numeric, updated_at = NOW()
         WHERE id = $2 AND plant_id = $3
         "#,
-        change,
-        material_id,
-        plant_id
     )
+    .bind(payload.quantity_change)
+    .bind(material_id)
+    .bind(plant_id)
     .execute(&mut *tx)
     .await?;
 
-    sqlx::query!(
+    sqlx::query(
         r#"
         INSERT INTO plant_material_adjustments (material_id, adjusted_by, quantity_change, reason)
         VALUES ($1, $2, $3::numeric, $4)
         "#,
-        material_id,
-        auth_user.user_id,
-        change,
-        payload.reason
     )
+    .bind(material_id)
+    .bind(auth_user.user_id)
+    .bind(payload.quantity_change)
+    .bind(&payload.reason)
     .execute(&mut *tx)
     .await?;
 
     tx.commit().await?;
 
-    Ok(Json(json!({ "success": true, "message": "Stock adjusted successfully" })))
+    Ok(Json(
+        json!({ "success": true, "message": "Stock adjusted successfully" }),
+    ))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -189,7 +210,7 @@ pub async fn list_vehicles(
 ) -> Result<impl IntoResponse, AppError> {
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
-    let rows = sqlx::query!(
+    let rows = sqlx::query(
         r#"
         SELECT m.id, m.registration_number, m.capacity_m3, m.status, m.driver_id,
                u.full_name as driver_name, u.phone as driver_phone
@@ -198,22 +219,29 @@ pub async fn list_vehicles(
         WHERE m.plant_id = $1
         ORDER BY m.registration_number
         "#,
-        plant_id
     )
+    .bind(plant_id)
     .fetch_all(&state.db)
     .await?;
 
     let vehicles: Vec<_> = rows
         .into_iter()
         .map(|r| {
+            let id: Uuid = r.get("id");
+            let registration_number: String = r.get("registration_number");
+            let capacity_m3: bigdecimal::BigDecimal = r.get("capacity_m3");
+            let status: String = r.get("status");
+            let driver_id: Option<Uuid> = r.get("driver_id");
+            let driver_name: Option<String> = r.get("driver_name");
+            let driver_phone: Option<String> = r.get("driver_phone");
             json!({
-                "id": r.id,
-                "registration_number": r.registration_number,
-                "capacity_m3": r.capacity_m3,
-                "status": r.status,
-                "driver_id": r.driver_id,
-                "driver_name": r.driver_name,
-                "driver_phone": r.driver_phone
+                "id": id,
+                "registration_number": registration_number,
+                "capacity_m3": capacity_m3,
+                "status": status,
+                "driver_id": driver_id,
+                "driver_name": driver_name,
+                "driver_phone": driver_phone
             })
         })
         .collect();
@@ -229,27 +257,35 @@ pub async fn create_vehicle(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(
         &auth_user,
-        &["owner", "plant_owner", "admin", "fleet_manager", "dispatcher"],
+        &[
+            "owner",
+            "plant_owner",
+            "admin",
+            "fleet_manager",
+            "dispatcher",
+        ],
     )?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
     let cap = payload.capacity_m3.unwrap_or(6.0);
 
-    let id = sqlx::query_scalar!(
+    let id: Uuid = sqlx::query_scalar(
         r#"
         INSERT INTO transit_mixers (plant_id, registration_number, capacity_m3, driver_id, status)
         VALUES ($1, $2, $3::numeric, $4, 'idle')
         RETURNING id
         "#,
-        plant_id,
-        payload.registration_number,
-        bigdecimal::BigDecimal::try_from(cap).unwrap_or_default(),
-        payload.driver_id
     )
+    .bind(plant_id)
+    .bind(&payload.registration_number)
+    .bind(cap)
+    .bind(payload.driver_id)
     .fetch_one(&state.db)
     .await?;
 
-    Ok(Json(json!({ "success": true, "id": id, "message": "Vehicle added" })))
+    Ok(Json(
+        json!({ "success": true, "id": id, "message": "Vehicle added" }),
+    ))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -265,20 +301,26 @@ pub async fn update_vehicle_status(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(
         &auth_user,
-        &["owner", "plant_owner", "admin", "fleet_manager", "dispatcher"],
+        &[
+            "owner",
+            "plant_owner",
+            "admin",
+            "fleet_manager",
+            "dispatcher",
+        ],
     )?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
-    sqlx::query!(
-        "UPDATE transit_mixers SET status = $1 WHERE id = $2 AND plant_id = $3",
-        payload.status,
-        vehicle_id,
-        plant_id
-    )
-    .execute(&state.db)
-    .await?;
+    sqlx::query("UPDATE transit_mixers SET status = $1 WHERE id = $2 AND plant_id = $3")
+        .bind(&payload.status)
+        .bind(vehicle_id)
+        .bind(plant_id)
+        .execute(&state.db)
+        .await?;
 
-    Ok(Json(json!({ "success": true, "message": "Vehicle status updated" })))
+    Ok(Json(
+        json!({ "success": true, "message": "Vehicle status updated" }),
+    ))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -296,20 +338,22 @@ pub async fn add_plant_staff(
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
-    sqlx::query!(
+    sqlx::query(
         r#"
         INSERT INTO plant_staff (plant_id, user_id, role, is_active)
         VALUES ($1, $2, $3, TRUE)
         ON CONFLICT (plant_id, user_id) DO UPDATE SET role = EXCLUDED.role, is_active = TRUE
         "#,
-        plant_id,
-        payload.user_id,
-        payload.role
     )
+    .bind(plant_id)
+    .bind(payload.user_id)
+    .bind(&payload.role)
     .execute(&state.db)
     .await?;
 
-    Ok(Json(json!({ "success": true, "message": "Staff member assigned" })))
+    Ok(Json(
+        json!({ "success": true, "message": "Staff member assigned" }),
+    ))
 }
 
 pub async fn suspend_plant_staff(
@@ -320,15 +364,15 @@ pub async fn suspend_plant_staff(
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
-    sqlx::query!(
-        "UPDATE plant_staff SET is_active = FALSE WHERE plant_id = $1 AND user_id = $2",
-        plant_id,
-        user_id
-    )
-    .execute(&state.db)
-    .await?;
+    sqlx::query("UPDATE plant_staff SET is_active = FALSE WHERE plant_id = $1 AND user_id = $2")
+        .bind(plant_id)
+        .bind(user_id)
+        .execute(&state.db)
+        .await?;
 
-    Ok(Json(json!({ "success": true, "message": "Staff member suspended" })))
+    Ok(Json(
+        json!({ "success": true, "message": "Staff member suspended" }),
+    ))
 }
 
 pub async fn activate_plant_staff(
@@ -339,15 +383,15 @@ pub async fn activate_plant_staff(
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
-    sqlx::query!(
-        "UPDATE plant_staff SET is_active = TRUE WHERE plant_id = $1 AND user_id = $2",
-        plant_id,
-        user_id
-    )
-    .execute(&state.db)
-    .await?;
+    sqlx::query("UPDATE plant_staff SET is_active = TRUE WHERE plant_id = $1 AND user_id = $2")
+        .bind(plant_id)
+        .bind(user_id)
+        .execute(&state.db)
+        .await?;
 
-    Ok(Json(json!({ "success": true, "message": "Staff member activated" })))
+    Ok(Json(
+        json!({ "success": true, "message": "Staff member activated" }),
+    ))
 }
 
 pub async fn list_plant_customers(
@@ -357,7 +401,7 @@ pub async fn list_plant_customers(
 ) -> Result<impl IntoResponse, AppError> {
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
-    let rows = sqlx::query!(
+    let rows = sqlx::query(
         r#"
         SELECT DISTINCT u.id, u.full_name, u.phone, u.email,
                COUNT(o.id) as total_orders
@@ -367,20 +411,25 @@ pub async fn list_plant_customers(
         GROUP BY u.id, u.full_name, u.phone, u.email
         ORDER BY u.full_name
         "#,
-        plant_id
     )
+    .bind(plant_id)
     .fetch_all(&state.db)
     .await?;
 
     let customers: Vec<_> = rows
         .into_iter()
         .map(|r| {
+            let id: Uuid = r.get("id");
+            let full_name: String = r.get("full_name");
+            let phone: Option<String> = r.get("phone");
+            let email: Option<String> = r.get("email");
+            let total_orders: i64 = r.get("total_orders");
             json!({
-                "id": r.id,
-                "name": r.full_name,
-                "phone": r.phone,
-                "email": r.email,
-                "total_orders": r.total_orders
+                "id": id,
+                "name": full_name,
+                "phone": phone,
+                "email": email,
+                "total_orders": total_orders
             })
         })
         .collect();

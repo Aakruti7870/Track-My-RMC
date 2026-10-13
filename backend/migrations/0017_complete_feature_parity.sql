@@ -3,6 +3,8 @@
 -- Production Batching, Workforce Lifecycles, Support Threading, and Stored Files.
 
 -- 1. Plant Commercial Profiles
+ALTER TABLE rmc_plants ADD COLUMN IF NOT EXISTS district VARCHAR(100);
+
 CREATE TABLE IF NOT EXISTS plant_profiles (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     plant_id UUID NOT NULL REFERENCES rmc_plants(id) ON DELETE CASCADE UNIQUE,
@@ -196,6 +198,15 @@ CREATE TABLE IF NOT EXISTS cube_test_results (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Quality inspection cube tests extensions
+ALTER TABLE cube_tests ADD COLUMN IF NOT EXISTS slump_mm INT;
+ALTER TABLE cube_tests ADD COLUMN IF NOT EXISTS compressive_strength_7d_mpa NUMERIC(6,2);
+ALTER TABLE cube_tests ADD COLUMN IF NOT EXISTS compressive_strength_28d_mpa NUMERIC(6,2);
+ALTER TABLE cube_tests ADD COLUMN IF NOT EXISTS actual_cement NUMERIC(8,2);
+ALTER TABLE cube_tests ADD COLUMN IF NOT EXISTS actual_water NUMERIC(8,2);
+ALTER TABLE cube_tests ADD COLUMN IF NOT EXISTS result VARCHAR(20) DEFAULT 'PASS';
+ALTER TABLE cube_tests ADD COLUMN IF NOT EXISTS testing_date DATE DEFAULT CURRENT_DATE;
+
 -- 8. Production Batching Records & Gate Passes
 CREATE TABLE IF NOT EXISTS batch_production_records (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -313,6 +324,10 @@ CREATE TABLE IF NOT EXISTS plant_payments (
 CREATE INDEX IF NOT EXISTS idx_payments_plant ON plant_payments(plant_id);
 
 -- 11. Workforce: Roster Schedules, Leaves, Visits, Expense Claims, HR Salary Profiles
+ALTER TABLE workforce_shifts ADD COLUMN IF NOT EXISTS grace_minutes INT DEFAULT 10;
+ALTER TABLE workforce_shifts ADD COLUMN IF NOT EXISTS half_day_threshold_minutes INT;
+ALTER TABLE workforce_shifts ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
+
 CREATE TABLE IF NOT EXISTS workforce_roster_schedules (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     plant_id UUID NOT NULL REFERENCES rmc_plants(id) ON DELETE CASCADE,
@@ -382,12 +397,41 @@ CREATE TABLE IF NOT EXISTS workforce_expense_claims (
 );
 CREATE INDEX IF NOT EXISTS idx_expense_claims_plant ON workforce_expense_claims(plant_id, status);
 
+CREATE TABLE IF NOT EXISTS employee_hr_profiles (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    plant_id UUID NOT NULL REFERENCES rmc_plants(id) ON DELETE CASCADE,
+    employee_code VARCHAR(50),
+    designation VARCHAR(100),
+    department VARCHAR(100),
+    join_date DATE,
+    employment_type VARCHAR(50) NOT NULL DEFAULT 'PERMANENT',
+    weekly_off_day VARCHAR(20) NOT NULL DEFAULT 'SUNDAY',
+    work_location VARCHAR(150),
+    emergency_contact_name VARCHAR(120),
+    emergency_contact_phone VARCHAR(30),
+    document_references JSONB NOT NULL DEFAULT '[]',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(user_id, plant_id)
+);
+CREATE INDEX IF NOT EXISTS idx_hr_profiles_plant ON employee_hr_profiles(plant_id);
+
 CREATE TABLE IF NOT EXISTS employee_salary_profiles (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     plant_id UUID NOT NULL REFERENCES rmc_plants(id) ON DELETE CASCADE,
+    effective_from DATE NOT NULL DEFAULT CURRENT_DATE,
+    pay_basis VARCHAR(20) NOT NULL DEFAULT 'MONTHLY',
     basic_amount NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+    hra_amount NUMERIC(10,2) NOT NULL DEFAULT 0.00,
     allowances NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+    overtime_rate_per_hour NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+    fixed_deductions NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+    employee_pf NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+    employee_esi NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+    professional_tax NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+    tds NUMERIC(10,2) NOT NULL DEFAULT 0.00,
     deductions NUMERIC(10,2) NOT NULL DEFAULT 0.00,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

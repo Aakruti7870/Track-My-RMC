@@ -10,6 +10,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sqlx::Row;
 use uuid::Uuid;
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -35,10 +36,14 @@ pub async fn run_ai_command(
         || prompt_lower.contains("delete from users")
         || prompt_lower.contains("bypass")
     {
-        return Err(AppError::Forbidden("This capability is prohibited by the Control Center policy".to_string()));
+        return Err(AppError::Forbidden(
+            "This capability is prohibited by the Control Center policy".to_string(),
+        ));
     }
 
-    let is_high_risk = prompt_lower.contains("suspend") || prompt_lower.contains("revoke") || prompt_lower.contains("deploy");
+    let is_high_risk = prompt_lower.contains("suspend")
+        || prompt_lower.contains("revoke")
+        || prompt_lower.contains("deploy");
     if is_high_risk && !payload.confirmed.unwrap_or(false) {
         return Ok(Json(json!({
             "command_id": command_id,
@@ -50,15 +55,15 @@ pub async fn run_ai_command(
     }
 
     // Log diagnostic command to audit trail
-    sqlx::query!(
+    sqlx::query(
         r#"
         INSERT INTO audit_logs (user_id, action, resource_type, resource_id, metadata)
         VALUES ($1, 'control_center.ai.command', 'ai_command', $2, $3)
         "#,
-        auth_user.user_id,
-        command_id,
-        json!({ "prompt": payload.prompt, "status": "completed" })
     )
+    .bind(auth_user.user_id)
+    .bind(&command_id)
+    .bind(json!({ "prompt": payload.prompt, "status": "completed" }))
     .execute(&state.db)
     .await?;
 
@@ -78,12 +83,28 @@ pub async fn get_capabilities(
     check_role(&auth_user, &["admin"])?;
 
     let permissions = vec![
-        "dashboard.view", "ai.diagnose", "ai.create_draft", "user.view",
-        "user.manage", "kyc.view", "kyc.manage", "payment.view", "plant.view",
-        "plant.manage", "order.view", "support.view", "support.manage",
-        "system.view", "owner.view", "owner.manage", "reviewer_access.manage",
-        "admin_access.manage", "permissions.manage", "session.view", "session.manage",
-        "audit.view"
+        "dashboard.view",
+        "ai.diagnose",
+        "ai.create_draft",
+        "user.view",
+        "user.manage",
+        "kyc.view",
+        "kyc.manage",
+        "payment.view",
+        "plant.view",
+        "plant.manage",
+        "order.view",
+        "support.view",
+        "support.manage",
+        "system.view",
+        "owner.view",
+        "owner.manage",
+        "reviewer_access.manage",
+        "admin_access.manage",
+        "permissions.manage",
+        "session.view",
+        "session.manage",
+        "audit.view",
     ];
 
     Ok(Json(json!({
@@ -109,12 +130,11 @@ pub async fn get_reviewer_access(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["admin"])?;
 
-    let enabled: bool = sqlx::query_scalar!(
-        "SELECT EXISTS(SELECT 1 FROM play_review_fixtures WHERE enabled = TRUE)"
+    let enabled: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM play_review_fixtures WHERE enabled = TRUE)",
     )
     .fetch_one(&state.db)
-    .await?
-    .unwrap_or(false);
+    .await?;
 
     Ok(Json(json!({
         "enabled": enabled,
@@ -136,21 +156,19 @@ pub async fn set_reviewer_access(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["admin"])?;
 
-    sqlx::query!(
-        "UPDATE play_review_fixtures SET enabled = $1",
-        payload.enabled
-    )
-    .execute(&state.db)
-    .await?;
+    sqlx::query("UPDATE play_review_fixtures SET enabled = $1")
+        .bind(payload.enabled)
+        .execute(&state.db)
+        .await?;
 
-    sqlx::query!(
+    sqlx::query(
         r#"
         INSERT INTO audit_logs (user_id, action, resource_type, metadata)
         VALUES ($1, 'control_center.reviewer_access', 'reviewer_fixtures', $2)
         "#,
-        auth_user.user_id,
-        json!({ "enabled": payload.enabled, "reason": payload.reason })
     )
+    .bind(auth_user.user_id)
+    .bind(json!({ "enabled": payload.enabled, "reason": payload.reason }))
     .execute(&state.db)
     .await?;
 
@@ -167,12 +185,12 @@ pub async fn list_admin_access(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["admin"])?;
 
-    let admins = sqlx::query!(
+    let admins = sqlx::query(
         r#"
         SELECT id, full_name, email, is_active, created_at
         FROM users WHERE role = 'admin'
         ORDER BY created_at ASC
-        "#
+        "#,
     )
     .fetch_all(&state.db)
     .await?;
@@ -180,12 +198,17 @@ pub async fn list_admin_access(
     let result: Vec<_> = admins
         .into_iter()
         .map(|a| {
+            let id: Uuid = a.get("id");
+            let name: String = a.get("full_name");
+            let email: Option<String> = a.get("email");
+            let enabled: bool = a.get("is_active");
+            let created_at: chrono::DateTime<chrono::Utc> = a.get("created_at");
             json!({
-                "id": a.id,
-                "name": a.full_name,
-                "email": a.email,
-                "enabled": a.is_active,
-                "created_at": a.created_at
+                "id": id,
+                "name": name,
+                "email": email,
+                "enabled": enabled,
+                "created_at": created_at
             })
         })
         .collect();
@@ -208,26 +231,28 @@ pub async fn update_admin_access(
     check_role(&auth_user, &["admin"])?;
 
     let email_lower = payload.email.trim().to_lowercase();
-    sqlx::query!(
+    sqlx::query(
         "UPDATE users SET is_active = $1, updated_at = NOW() WHERE email = $2 AND role = 'admin'",
-        payload.enabled,
-        email_lower
     )
+    .bind(payload.enabled)
+    .bind(&email_lower)
     .execute(&state.db)
     .await?;
 
-    sqlx::query!(
+    sqlx::query(
         r#"
         INSERT INTO audit_logs (user_id, action, resource_type, metadata)
         VALUES ($1, 'control_center.admin_access', 'user', $2)
         "#,
-        auth_user.user_id,
-        json!({ "email": email_lower, "enabled": payload.enabled, "reason": payload.reason })
     )
+    .bind(auth_user.user_id)
+    .bind(json!({ "email": email_lower, "enabled": payload.enabled, "reason": payload.reason }))
     .execute(&state.db)
     .await?;
 
-    Ok(Json(json!({ "success": true, "message": "Admin access updated" })))
+    Ok(Json(
+        json!({ "success": true, "message": "Admin access updated" }),
+    ))
 }
 
 pub async fn list_unowned_plants(
@@ -236,13 +261,13 @@ pub async fn list_unowned_plants(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["admin"])?;
 
-    let rows = sqlx::query!(
+    let rows = sqlx::query(
         r#"
         SELECT p.id, p.name, p.code, p.city, p.state, p.address_line, p.contact_phone
         FROM rmc_plants p
         WHERE NOT EXISTS (SELECT 1 FROM users u WHERE u.id = p.owner_id AND u.role IN ('owner', 'plant_owner'))
         ORDER BY p.name
-        "#
+        "#,
     )
     .fetch_all(&state.db)
     .await?;
@@ -250,14 +275,21 @@ pub async fn list_unowned_plants(
     let plants: Vec<_> = rows
         .into_iter()
         .map(|p| {
+            let id: Uuid = p.get("id");
+            let name: String = p.get("name");
+            let code: String = p.get("code");
+            let city: Option<String> = p.get("city");
+            let state_val: Option<String> = p.get("state");
+            let address: Option<String> = p.get("address_line");
+            let phone: Option<String> = p.get("contact_phone");
             json!({
-                "id": p.id,
-                "name": p.name,
-                "code": p.code,
-                "city": p.city,
-                "state": p.state,
-                "address": p.address_line,
-                "phone": p.contact_phone
+                "id": id,
+                "name": name,
+                "code": code,
+                "city": city,
+                "state": state_val,
+                "address": address,
+                "phone": phone
             })
         })
         .collect();
@@ -278,22 +310,20 @@ pub async fn assign_plant_owner(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["admin"])?;
 
-    sqlx::query!(
-        "UPDATE rmc_plants SET owner_id = $1, updated_at = NOW() WHERE id = $2",
-        payload.owner_user_id,
-        plant_id
-    )
-    .execute(&state.db)
-    .await?;
+    sqlx::query("UPDATE rmc_plants SET owner_id = $1, updated_at = NOW() WHERE id = $2")
+        .bind(payload.owner_user_id)
+        .bind(plant_id)
+        .execute(&state.db)
+        .await?;
 
-    sqlx::query!(
-        "UPDATE users SET role = 'owner', updated_at = NOW() WHERE id = $1",
-        payload.owner_user_id
-    )
-    .execute(&state.db)
-    .await?;
+    sqlx::query("UPDATE users SET role = 'owner', updated_at = NOW() WHERE id = $1")
+        .bind(payload.owner_user_id)
+        .execute(&state.db)
+        .await?;
 
-    Ok(Json(json!({ "success": true, "message": "Owner assigned to plant" })))
+    Ok(Json(
+        json!({ "success": true, "message": "Owner assigned to plant" }),
+    ))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -307,7 +337,9 @@ pub async fn admin_step_up(
     Json(_payload): Json<StepUpPayload>,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["admin"])?;
-    Ok(Json(json!({ "success": true, "verified": true, "step_up_fresh": true })))
+    Ok(Json(
+        json!({ "success": true, "verified": true, "step_up_fresh": true }),
+    ))
 }
 
 pub async fn admin_logout_all(
@@ -316,17 +348,19 @@ pub async fn admin_logout_all(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["admin"])?;
 
-    sqlx::query!(
+    sqlx::query(
         r#"
         INSERT INTO audit_logs (user_id, action, resource_type, metadata)
         VALUES ($1, 'control_center.session.logout_all', 'session', '{}')
         "#,
-        auth_user.user_id
     )
+    .bind(auth_user.user_id)
     .execute(&state.db)
     .await?;
 
-    Ok(Json(json!({ "success": true, "message": "All sessions revoked" })))
+    Ok(Json(
+        json!({ "success": true, "message": "All sessions revoked" }),
+    ))
 }
 
 pub async fn get_portal_summary(
@@ -335,9 +369,10 @@ pub async fn get_portal_summary(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["admin"])?;
 
-    let total_plants: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM rmc_plants WHERE is_active = TRUE")
-        .fetch_one(&state.db)
-        .await?;
+    let total_plants: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM rmc_plants WHERE is_active = TRUE")
+            .fetch_one(&state.db)
+            .await?;
 
     let total_users: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE is_active = TRUE")
         .fetch_one(&state.db)
@@ -348,16 +383,15 @@ pub async fn get_portal_summary(
         .await?;
 
     let total_revenue: bigdecimal::BigDecimal = sqlx::query_scalar(
-        "SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE payment_status = 'paid'"
+        "SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE payment_status = 'paid'",
     )
     .fetch_one(&state.db)
     .await?;
 
-    let pending_kyc: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM user_profiles WHERE kyc_status = 'pending'"
-    )
-    .fetch_one(&state.db)
-    .await?;
+    let pending_kyc: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM user_profiles WHERE kyc_status = 'pending'")
+            .fetch_one(&state.db)
+            .await?;
 
     Ok(Json(json!({
         "success": true,

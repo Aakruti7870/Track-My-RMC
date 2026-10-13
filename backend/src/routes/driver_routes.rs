@@ -17,6 +17,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use sqlx::Row;
 use uuid::Uuid;
 
 pub async fn get_driver_trips(
@@ -332,7 +333,7 @@ pub async fn get_trip_details(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["driver"])?;
 
-    let row = sqlx::query!(
+    let row = sqlx::query(
         r#"
         SELECT l.id, l.load_number, l.quantity_m3, l.status,
                o.order_number, o.concrete_grade,
@@ -346,33 +347,48 @@ pub async fn get_trip_details(
         INNER JOIN customer_sites s ON s.id = o.site_id
         WHERE l.id = $1 AND l.driver_id = $2
         "#,
-        trip_id,
-        auth_user.user_id
     )
+    .bind(trip_id)
+    .bind(auth_user.user_id)
     .fetch_optional(&state.db)
     .await?
     .ok_or_else(|| AppError::NotFound("Trip not found".to_string()))?;
 
+    let lid: Uuid = row.get("id");
+    let lnum: i32 = row.get("load_number");
+    let lqty: bigdecimal::BigDecimal = row.get("quantity_m3");
+    let lstatus: String = row.get("status");
+    let onum: String = row.get("order_number");
+    let grade: String = row.get("concrete_grade");
+    let pname: String = row.get("plant_name");
+    let paddr: Option<String> = row.get("plant_address");
+    let sname: String = row.get("site_name");
+    let saddr: String = row.get("site_address");
+    let slat: Option<f64> = row.get("site_lat");
+    let slng: Option<f64> = row.get("site_lng");
+    let cperson: Option<String> = row.get("contact_person");
+    let cphone: Option<String> = row.get("contact_phone");
+
     Ok(Json(json!({
         "success": true,
         "trip": {
-            "id": row.id,
-            "load_number": row.load_number,
-            "order_number": row.order_number,
-            "grade": row.concrete_grade,
-            "quantity_m3": row.quantity_m3,
-            "status": row.status,
+            "id": lid,
+            "load_number": lnum,
+            "order_number": onum,
+            "grade": grade,
+            "quantity_m3": lqty,
+            "status": lstatus,
             "plant": {
-                "name": row.plant_name,
-                "address": row.plant_address
+                "name": pname,
+                "address": paddr
             },
             "site": {
-                "name": row.site_name,
-                "address": row.site_address,
-                "lat": row.site_lat,
-                "lng": row.site_lng,
-                "contact_person": row.contact_person,
-                "contact_phone": row.contact_phone
+                "name": sname,
+                "address": saddr,
+                "lat": slat,
+                "lng": slng,
+                "contact_person": cperson,
+                "contact_phone": cphone
             }
         }
     })))
@@ -385,15 +401,17 @@ pub async fn start_trip(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["driver"])?;
 
-    sqlx::query!(
+    sqlx::query(
         "UPDATE order_loads SET status = 'dispatched', dispatched_at = NOW() WHERE id = $1 AND driver_id = $2",
-        trip_id,
-        auth_user.user_id
     )
+    .bind(trip_id)
+    .bind(auth_user.user_id)
     .execute(&state.db)
     .await?;
 
-    Ok(Json(json!({ "success": true, "status": "dispatched", "message": "Trip started" })))
+    Ok(Json(
+        json!({ "success": true, "status": "dispatched", "message": "Trip started" }),
+    ))
 }
 
 pub async fn arrive_trip(
@@ -403,15 +421,17 @@ pub async fn arrive_trip(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["driver"])?;
 
-    sqlx::query!(
+    sqlx::query(
         "UPDATE order_loads SET status = 'arrived', arrived_at = NOW() WHERE id = $1 AND driver_id = $2",
-        trip_id,
-        auth_user.user_id
     )
+    .bind(trip_id)
+    .bind(auth_user.user_id)
     .execute(&state.db)
     .await?;
 
-    Ok(Json(json!({ "success": true, "status": "arrived", "message": "Arrived at delivery site" })))
+    Ok(Json(
+        json!({ "success": true, "status": "arrived", "message": "Arrived at delivery site" }),
+    ))
 }
 
 pub async fn unload_trip(
@@ -421,15 +441,17 @@ pub async fn unload_trip(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["driver"])?;
 
-    sqlx::query!(
+    sqlx::query(
         "UPDATE order_loads SET status = 'pouring', pour_started_at = NOW() WHERE id = $1 AND driver_id = $2",
-        trip_id,
-        auth_user.user_id
     )
+    .bind(trip_id)
+    .bind(auth_user.user_id)
     .execute(&state.db)
     .await?;
 
-    Ok(Json(json!({ "success": true, "status": "pouring", "message": "Pouring commenced" })))
+    Ok(Json(
+        json!({ "success": true, "status": "pouring", "message": "Pouring commenced" }),
+    ))
 }
 
 #[derive(Debug, Deserialize)]
@@ -448,21 +470,23 @@ pub async fn trigger_driver_sos(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["driver"])?;
 
-    let alert_type = payload.alert_type.unwrap_or_else(|| "EMERGENCY".to_string());
+    let alert_type = payload
+        .alert_type
+        .unwrap_or_else(|| "EMERGENCY".to_string());
 
-    let id = sqlx::query_scalar!(
+    let id: Uuid = sqlx::query_scalar(
         r#"
         INSERT INTO driver_sos_alerts (driver_id, load_id, latitude, longitude, alert_type, message, status)
         VALUES ($1, $2, $3, $4, $5, $6, 'OPEN')
         RETURNING id
         "#,
-        auth_user.user_id,
-        payload.trip_id,
-        payload.lat,
-        payload.lng,
-        alert_type,
-        payload.message
     )
+    .bind(auth_user.user_id)
+    .bind(payload.trip_id)
+    .bind(payload.lat)
+    .bind(payload.lng)
+    .bind(&alert_type)
+    .bind(&payload.message)
     .fetch_one(&state.db)
     .await?;
 
@@ -480,7 +504,7 @@ pub async fn get_driver_sos_status(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["driver"])?;
 
-    let alert = sqlx::query!(
+    let alert = sqlx::query(
         r#"
         SELECT id, alert_type, status, created_at, resolved_at
         FROM driver_sos_alerts
@@ -488,18 +512,26 @@ pub async fn get_driver_sos_status(
         ORDER BY created_at DESC
         LIMIT 1
         "#,
-        auth_user.user_id
     )
+    .bind(auth_user.user_id)
     .fetch_optional(&state.db)
     .await?;
 
+    let active_sos = alert.map(|a| {
+        let aid: Uuid = a.get("id");
+        let atype: String = a.get("alert_type");
+        let astatus: String = a.get("status");
+        let acrt: chrono::DateTime<chrono::Utc> = a.get("created_at");
+        json!({
+            "id": aid,
+            "alert_type": atype,
+            "status": astatus,
+            "created_at": acrt
+        })
+    });
+
     Ok(Json(json!({
         "success": true,
-        "active_sos": alert.map(|a| json!({
-            "id": a.id,
-            "alert_type": a.alert_type,
-            "status": a.status,
-            "created_at": a.created_at
-        }))
+        "active_sos": active_sos
     })))
 }
