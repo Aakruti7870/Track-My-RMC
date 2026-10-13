@@ -67,29 +67,31 @@ pub async fn get_roster(
 
     // Enforce the requested plant's tenant boundary for every non-admin role.
     // Owners must own this exact plant; staff must be actively assigned to it.
-    let has_access: bool = match auth_user.role.as_str() {
-        "admin" => true,
-        "owner" | "plant_owner" => {
+    let role = auth_user.role.as_str();
+    let (owns_requested_plant, is_active_staff) = match role {
+        "admin" => (false, false),
+        "owner" | "plant_owner" => (
             sqlx::query_scalar(
                 "SELECT EXISTS(SELECT 1 FROM rmc_plants WHERE id = $1 AND owner_id = $2 AND is_active = TRUE)",
             )
             .bind(query.plant_id)
             .bind(auth_user.user_id)
             .fetch_one(&state.db)
-            .await?
-        }
-        _ => {
+            .await?,
+            false,
+        ),
+        _ => (
+            false,
             sqlx::query_scalar(
                 "SELECT EXISTS(SELECT 1 FROM plant_staff WHERE plant_id = $1 AND user_id = $2 AND is_active = TRUE)",
             )
             .bind(query.plant_id)
             .bind(auth_user.user_id)
             .fetch_one(&state.db)
-            .await?
-        }
+            .await?,
+        ),
     };
-
-    if !has_access {
+    if !roster_access_allowed(role, owns_requested_plant, is_active_staff) {
         return Err(AppError::Forbidden(
             "You are not authorized to view this plant's roster".to_string(),
         ));
@@ -1147,28 +1149,29 @@ pub async fn get_my_roster_me(
 }
 
 
+fn roster_access_allowed(role: &str, owns_requested_plant: bool, is_active_staff: bool) -> bool {
+    match role {
+        "admin" => true,
+        "owner" | "plant_owner" => owns_requested_plant,
+        "supervisor" | "accountant" | "store_manager" | "fleet_manager"
+        | "dispatcher" | "operator" | "quality_engineer" => is_active_staff,
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod roster_access_tests {
-    // Mirror the role-specific access policy used by get_roster.
-    fn can_access_roster(role: &str, owns_requested_plant: bool, is_active_staff: bool) -> bool {
-        match role {
-            "admin" => true,
-            "owner" | "plant_owner" => owns_requested_plant,
-            "supervisor" | "accountant" | "store_manager" | "fleet_manager"
-            | "dispatcher" | "operator" | "quality_engineer" => is_active_staff,
-            _ => false,
-        }
-    }
+    use super::roster_access_allowed;
 
     #[test]
     fn roster_access_requires_ownership_or_active_membership() {
-        assert!(can_access_roster("admin", false, false));
-        assert!(can_access_roster("owner", true, false));
-        assert!(can_access_roster("plant_owner", true, false));
-        assert!(!can_access_roster("owner", false, true));
-        assert!(!can_access_roster("plant_owner", false, true));
-        assert!(can_access_roster("dispatcher", false, true));
-        assert!(!can_access_roster("dispatcher", false, false));
-        assert!(!can_access_roster("customer", true, true));
+        assert!(roster_access_allowed("admin", false, false));
+        assert!(roster_access_allowed("owner", true, false));
+        assert!(roster_access_allowed("plant_owner", true, false));
+        assert!(!roster_access_allowed("owner", false, true));
+        assert!(!roster_access_allowed("plant_owner", false, true));
+        assert!(roster_access_allowed("dispatcher", false, true));
+        assert!(!roster_access_allowed("dispatcher", false, false));
+        assert!(!roster_access_allowed("customer", true, true));
     }
 }
