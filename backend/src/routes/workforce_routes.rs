@@ -42,8 +42,8 @@ fn roster_access_allowed(role: &str, owns_requested_plant: bool, is_active_staff
     match role {
         "admin" => true,
         "owner" | "plant_owner" => owns_requested_plant,
-        "supervisor" | "accountant" | "store_manager" | "fleet_manager"
-        | "dispatcher" | "operator" | "quality_engineer" => is_active_staff,
+        "supervisor" | "accountant" | "store_manager" | "fleet_manager" | "dispatcher"
+        | "operator" | "quality_engineer" => is_active_staff,
         _ => false,
     }
 }
