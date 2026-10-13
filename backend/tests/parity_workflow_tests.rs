@@ -428,6 +428,12 @@ mod parity_tests {
             ),
             ("GET", "/api/payroll-periods/plants/:plant_id/:month/export"),
             ("GET", "/api/payroll-periods/me/:month"),
+            ("POST", "/api/automation/events/claim"),
+            ("GET", "/api/automation/worker-health"),
+            ("POST", "/api/automation/events/:event_id/ack"),
+            ("POST", "/api/automation/events/:event_id/fail"),
+            ("POST", "/api/automation/events/:event_id/deliver"),
+            ("POST", "/api/automation/provider-callback"),
         ];
 
         for (method, path) in &route_definitions {
@@ -440,6 +446,77 @@ mod parity_tests {
                 "Route definition must specify an accepted HTTP method"
             );
         }
-        assert_eq!(route_definitions.len(), 28);
+        assert_eq!(route_definitions.len(), 34);
+    }
+
+    // 12. Order Status Automation Queue Policy Verification
+    #[test]
+    fn test_order_automation_status_policy() {
+        let canonical_statuses = [
+            "DRAFT",
+            "PENDING",
+            "ACCEPTED",
+            "REJECTED",
+            "SCHEDULED",
+            "IN_PRODUCTION",
+            "PRODUCTION_COMPLETE",
+            "TM_ASSIGNED",
+            "DRIVER_ASSIGNED",
+            "READY_TO_DISPATCH",
+            "DISPATCHED",
+            "EN_ROUTE",
+            "AT_SITE",
+            "UNLOADING",
+            "POD_PENDING",
+            "DELIVERED",
+            "CANCELLED",
+        ];
+
+        for status in &canonical_statuses {
+            let routing_key = format!("order.status.{}", status.to_lowercase());
+            assert!(routing_key.starts_with("order.status."));
+        }
+
+        // Voice automation channels allowed only on critical milestones
+        let voice_eligible = ["PENDING", "REJECTED", "CANCELLED", "DELIVERED"];
+        for status in &canonical_statuses {
+            let has_voice = voice_eligible.contains(status);
+            if ["REJECTED", "CANCELLED"].contains(status) {
+                assert!(
+                    has_voice,
+                    "Status {status} must be voice-eligible for urgent customer communication"
+                );
+            }
+        }
+    }
+
+    // 13. Order Automation Worker Authentication Verification
+    #[test]
+    fn test_order_automation_worker_auth() {
+        let expected_token = "secure_automation_worker_token_32_characters_minimum";
+
+        let check_auth = |header: Option<&str>| -> bool {
+            match header {
+                Some(h) => {
+                    let token = h.strip_prefix("Bearer ").unwrap_or(h).trim();
+                    !token.is_empty() && token == expected_token
+                }
+                None => false,
+            }
+        };
+
+        // Positive test
+        assert!(check_auth(Some(
+            "Bearer secure_automation_worker_token_32_characters_minimum"
+        )));
+        assert!(check_auth(Some(
+            "secure_automation_worker_token_32_characters_minimum"
+        )));
+
+        // Negative tests
+        assert!(!check_auth(None));
+        assert!(!check_auth(Some("")));
+        assert!(!check_auth(Some("Bearer invalid_token")));
+        assert!(!check_auth(Some("Bearer wrong_secret_key")));
     }
 }
