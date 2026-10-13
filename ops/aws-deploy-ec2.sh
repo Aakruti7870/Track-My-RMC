@@ -354,8 +354,24 @@ if systemctl list-unit-files certbot.timer --no-legend | grep -q certbot.timer; 
     systemctl enable --now certbot.timer
 fi
 
-sleep 3
-curl --resolve trackmyrmc.com:443:127.0.0.1 --fail --silent --show-error https://trackmyrmc.com/health
+# Allow the backend time to start, but fail clearly if it never becomes healthy.
+health_ok=0
+for attempt in $(seq 1 15); do
+    if curl --resolve trackmyrmc.com:443:127.0.0.1 --fail --silent --show-error https://trackmyrmc.com/health; then
+        health_ok=1
+        break
+    fi
+    if [ "$attempt" -lt 15 ]; then
+        echo "Backend health check attempt $attempt/15 failed; retrying in 2 seconds..."
+        sleep 2
+    fi
+done
+if [ "$health_ok" -ne 1 ]; then
+    echo "ERROR: TrackMyRMC backend did not become healthy after 15 attempts." >&2
+    systemctl --no-pager --full status trackmyrmc-backend || true
+    journalctl -u trackmyrmc-backend -n 100 --no-pager || true
+    exit 1
+fi
 curl --resolve trackmyrmc.com:443:127.0.0.1 --fail --silent --show-error https://trackmyrmc.com/healthz
 curl --resolve trackmyrmc.com:443:127.0.0.1 --fail --silent --show-error https://trackmyrmc.com/ | grep -F '_expo/static/' >/dev/null
 
