@@ -131,18 +131,24 @@ pub async fn mark_attendance(
     auth_user: AuthUser,
     Json(payload): Json<MarkAttendanceRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    if !matches!(auth_user.role.as_str(), "owner" | "plant_owner" | "admin") {
-        let self_assigned: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM plant_staff WHERE plant_id = $1 AND user_id = $2 AND is_active = TRUE)",
-        )
-        .bind(payload.plant_id)
-        .bind(auth_user.user_id)
-        .fetch_one(&state.db)
-        .await?;
-        if !self_assigned {
-            return Err(AppError::Forbidden(
-                "You are not assigned to this plant".to_string(),
-            ));
+    match auth_user.role.as_str() {
+        "admin" => {}
+        "owner" | "plant_owner" => {
+            ensure_plant_access(&state, &auth_user, payload.plant_id).await?;
+        }
+        _ => {
+            let self_assigned: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM plant_staff WHERE plant_id = $1 AND user_id = $2 AND is_active = TRUE)",
+            )
+            .bind(payload.plant_id)
+            .bind(auth_user.user_id)
+            .fetch_one(&state.db)
+            .await?;
+            if !self_assigned {
+                return Err(AppError::Forbidden(
+                    "You are not assigned to this plant".to_string(),
+                ));
+            }
         }
     }
 
