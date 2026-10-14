@@ -101,7 +101,45 @@ export default function CustomerHome() {
       </View>
 
       {error && !data ? (
-        <ErrorView message={error} onRetry={reload} />
+        <ScrollView
+          testID="customer-home-scroll"
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <ErrorView message={error} onRetry={reload} />
+          <View style={styles.section} testID="customer-module-grid">
+            <View style={styles.rowBetween}>
+              <AppText style={[styles.sectionTitle, { color: colors.onSurface }]}>Your Modules</AppText>
+              <Pressable testID="view-all-customer-modules" onPress={() => router.push("/customer/more")}>
+                <AppText variant="label" color={colors.brand}>All tools  ›</AppText>
+              </Pressable>
+            </View>
+            <View style={styles.moduleGrid}>
+              {CUSTOMER_MODULES.map((module) => (
+                <Pressable
+                  key={module.key}
+                  testID={`customer-module-${module.key}`}
+                  onPress={() => router.push(module.route)}
+                  style={({ pressed }) => [
+                    styles.moduleCard,
+                    {
+                      backgroundColor: colors.surfaceSecondary,
+                      borderColor: colors.border,
+                      opacity: pressed ? 0.82 : 1,
+                      transform: [{ scale: pressed ? 0.985 : 1 }],
+                    },
+                  ]}
+                >
+                  <View style={[styles.moduleIcon, { backgroundColor: colors.brandSoft }]}>
+                    <Ionicons name={module.icon} size={22} color={colors.brand} />
+                  </View>
+                  <AppText style={[styles.moduleLabel, { color: colors.onSurface }]}>{module.label}</AppText>
+                  <AppText variant="caption" numberOfLines={2}>{module.description}</AppText>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        </ScrollView>
       ) : (
         <ScrollView
           testID="customer-home-scroll"
