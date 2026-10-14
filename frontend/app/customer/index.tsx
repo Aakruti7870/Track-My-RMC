@@ -260,7 +260,7 @@ const styles = StyleSheet.create({
   actionIcon: { width: 54, height: 54, borderRadius: 17, alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
   actionLabel: { fontFamily: fonts.semibold, fontSize: 12, textAlign: "center" },
   moduleGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  moduleCard: { width: "48.5%", minHeight: 150, borderRadius: 18, borderWidth: 1, padding: 14, gap: 8 },
+  moduleCard: { width: "47.5%", minHeight: 150, borderRadius: 18, borderWidth: 1, padding: 14, gap: 8 },
   moduleIcon: { width: 42, height: 42, borderRadius: 13, alignItems: "center", justifyContent: "center" },
   moduleLabel: { fontFamily: fonts.semibold, fontSize: 13 },
   rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
