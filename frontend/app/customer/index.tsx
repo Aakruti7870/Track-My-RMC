@@ -1,7 +1,7 @@
 import React from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { Href, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/src/auth/AuthContext";
@@ -34,6 +34,17 @@ const ACTIONS: { key: "new" | "track" | "plants" | "orders"; label: string; icon
   { key: "track", label: "Track Order", icon: "navigate" },
   { key: "plants", label: "Nearby Plants", icon: "location" },
   { key: "orders", label: "My Orders", icon: "document-text" },
+];
+
+const CUSTOMER_MODULES: { key: string; label: string; description: string; icon: keyof typeof Ionicons.glyphMap; route: Href }[] = [
+  { key: "projects", label: "Project & Site Hub", description: "Manage project sites", icon: "briefcase-outline", route: "/customer/projects" },
+  { key: "pour-planner", label: "Concrete Pour Planner", description: "Plan upcoming pours", icon: "time-outline", route: "/customer/pour-planner" },
+  { key: "receiving-guide", label: "Receiving & Quality Guide", description: "Delivery and quality guidance", icon: "shield-checkmark-outline", route: "/customer/receiving-guide" },
+  { key: "cube-tests", label: "Cube Test Follow-up", description: "Follow test results", icon: "flask-outline", route: "/customer/cube-test-follow-up" },
+  { key: "compare-plants", label: "Estimate & Compare Plants", description: "Compare plant options", icon: "git-compare-outline", route: "/customer/compare-plants" },
+  { key: "quotations", label: "Quotations", description: "Review your quotations", icon: "document-text-outline", route: "/customer/quotations" },
+  { key: "documents", label: "Documents", description: "Order-related documents", icon: "folder-outline", route: "/customer/documents" },
+  { key: "free-tools", label: "Free RMC Tools", description: "Concrete planning calculators", icon: "calculator-outline", route: "/customer/free-tools" },
 ];
 
 export default function CustomerHome() {
@@ -137,6 +148,39 @@ export default function CustomerHome() {
                 </View>
               </View>
 
+              <View style={styles.section} testID="customer-module-grid">
+                <View style={styles.rowBetween}>
+                  <AppText style={[styles.sectionTitle, { color: colors.onSurface }]}>Your Modules</AppText>
+                  <Pressable testID="view-all-customer-modules" onPress={() => router.push("/customer/more")}>
+                    <AppText variant="label" color={colors.brand}>All tools  ›</AppText>
+                  </Pressable>
+                </View>
+                <View style={styles.moduleGrid}>
+                  {CUSTOMER_MODULES.map((module) => (
+                    <Pressable
+                      key={module.key}
+                      testID={`customer-module-${module.key}`}
+                      onPress={() => router.push(module.route)}
+                      style={({ pressed }) => [
+                        styles.moduleCard,
+                        {
+                          backgroundColor: colors.surfaceSecondary,
+                          borderColor: colors.border,
+                          opacity: pressed ? 0.82 : 1,
+                          transform: [{ scale: pressed ? 0.985 : 1 }],
+                        },
+                      ]}
+                    >
+                      <View style={[styles.moduleIcon, { backgroundColor: colors.brandSoft }]}>
+                        <Ionicons name={module.icon} size={22} color={colors.brand} />
+                      </View>
+                      <AppText style={[styles.moduleLabel, { color: colors.onSurface }]}>{module.label}</AppText>
+                      <AppText variant="caption" numberOfLines={2}>{module.description}</AppText>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+
               <View style={styles.section}>
                 <View style={styles.rowBetween}>
                   <AppText style={[styles.sectionTitle, { color: colors.onSurface }]}>Active Order</AppText>
@@ -215,6 +259,10 @@ const styles = StyleSheet.create({
   action: { flex: 1, minHeight: 126, borderRadius: 22, borderWidth: 1, padding: 12, alignItems: "center", justifyContent: "center", gap: 10 },
   actionIcon: { width: 54, height: 54, borderRadius: 17, alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
   actionLabel: { fontFamily: fonts.semibold, fontSize: 12, textAlign: "center" },
+  moduleGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  moduleCard: { width: "47.5%", minHeight: 150, borderRadius: 18, borderWidth: 1, padding: 14, gap: 8 },
+  moduleIcon: { width: 42, height: 42, borderRadius: 13, alignItems: "center", justifyContent: "center" },
+  moduleLabel: { fontFamily: fonts.semibold, fontSize: 13 },
   rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   activeCard: { padding: 0, overflow: "hidden", borderRadius: 24 },
   activeTop: { flexDirection: "row", minHeight: 186 },
