@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeProvider";
+import { RoleModuleDirectory } from "@/src/components/RoleModuleDirectory";
 import { AppText } from "@/src/components/ui/AppText";
 import { Card } from "@/src/components/ui/Card";
 import { Badge } from "@/src/components/ui/Badge";
@@ -62,6 +63,8 @@ export function StaffMore() {
             })}
           </View>
         </View>
+
+        <RoleModuleDirectory role={user?.role} title="All Role Modules" />
 
         {workforceEnabled ? <View style={{ gap: spacing.sm }}>
           <Pressable testID="staff-workforce-hub" onPress={() => router.push("/workforce")} style={[styles.manage, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
