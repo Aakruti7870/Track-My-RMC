@@ -530,9 +530,15 @@ mod security_tests {
     #[test]
     fn step_up_hash_is_session_specific_and_does_not_store_bearer() {
         let mut first = HeaderMap::new();
-        first.insert(AUTHORIZATION, HeaderValue::from_static("Bearer session-one"));
+        first.insert(
+            AUTHORIZATION,
+            HeaderValue::from_static("Bearer session-one"),
+        );
         let mut second = HeaderMap::new();
-        second.insert(AUTHORIZATION, HeaderValue::from_static("Bearer session-two"));
+        second.insert(
+            AUTHORIZATION,
+            HeaderValue::from_static("Bearer session-two"),
+        );
         let first_hash = session_token_hash(&first).expect("valid bearer");
         let second_hash = session_token_hash(&second).expect("valid bearer");
         assert_eq!(first_hash.len(), 64);
