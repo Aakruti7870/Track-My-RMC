@@ -27,7 +27,10 @@ pub async fn monthly_summary(
     auth_user: AuthUser,
     Query(query): Query<MonthlyReportQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["owner", "plant_owner", "admin", "accountant", "supervisor"])?;
+    check_role(
+        &auth_user,
+        &["owner", "plant_owner", "admin", "accountant", "supervisor"],
+    )?;
 
     let month_start = NaiveDate::parse_from_str(&format!("{}-01", query.month), "%Y-%m-%d")
         .map_err(|_| AppError::BadRequest("month must use YYYY-MM format".to_string()))?;
