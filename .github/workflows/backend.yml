@@ -13,7 +13,7 @@ on:
   # Include stacked feature PRs so dependent slices are tested before retargeting
   # to main; otherwise their base branch would silently skip required CI.
   pull_request:
-    branches: [ main, 'feat/**' ]
+    branches: [ main, 'feat/**', 'integration/**' ]
     paths:
       - 'backend/**'
       - 'frontend/**'
