@@ -8,7 +8,7 @@ on:
       - "frontend/**"
       - ".github/workflows/android-build.yml"
   pull_request:
-    branches: [main]
+    branches: [main, 'integration/**']
     paths:
       - "frontend/**"
       - ".github/workflows/android-build.yml"
