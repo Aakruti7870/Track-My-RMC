@@ -70,6 +70,45 @@ for (const privilegedRole of ["central_admin", "authority"]) {
     failures.push(`Privileged role ${privilegedRole} must not receive public mobile tabs`);
   }
 }
+// Machine-readable snapshot of all original role screens. This inventory is
+// compared with the source repository using Git SHAs; GitHub CI only validates
+// the target's checked-in local files (the source repository is private).
+const inventoryPath = path.resolve(root, "../docs/reference-role-module-inventory.json");
+if (!fs.existsSync(inventoryPath)) {
+  failures.push("Missing source-to-target role module inventory");
+} else {
+  const inventory = JSON.parse(fs.readFileSync(inventoryPath, "utf8"));
+  const ids = new Set(inventory.roles.map((role) => role.id));
+  for (const role of [
+    "customer", "driver", "plant_owner", "admin", "dispatcher", "operator",
+    "supervisor", "accountant", "quality_engineer", "fleet_manager",
+    "store_manager", "authority", "central_admin"
+  ]) {
+    if (!ids.has(role)) failures.push(`Missing reference role from role inventory: ${role}`);
+  }
+  for (const role of inventory.roles) {
+    const expectedPresent = role.screens.filter((screen) => screen.sourceToTarget !== "missing");
+    if (role.targetScreenCount !== expectedPresent.length) {
+      failures.push(`Invalid target screen count for role ${role.id}`);
+    }
+    for (const screen of expectedPresent) {
+      const relativeToFrontend = screen.path.replace(/^frontend\//, "");
+      if (!fs.existsSync(path.join(root, relativeToFrontend))) {
+        failures.push(`Ported role screen absent: ${screen.path}`);
+      }
+    }
+  }
+  for (const restricted of ["authority", "central_admin"]) {
+    const role = inventory.roles.find((candidate) => candidate.id === restricted);
+    if (role?.targetRoute) failures.push(`Restricted ${restricted} unexpectedly has a mobile route`);
+  }
+  for (const screen of inventory.sharedScreens.filter((item) => item.sourceToTarget === "missing")) {
+    if (!["frontend/app/passkey-ceremony.tsx", "frontend/app/passkey-setup.tsx"].includes(screen.path)) {
+      failures.push(`Missing shared reference screen requires review: ${screen.path}`);
+    }
+  }
+}
+
 for (const forbiddenRole of ["authority", "central_admin", "super_admin"]) {
   if (roleRoutes.includes(`${forbiddenRole}:`)) {
     failures.push(`Privileged role must not have a public mobile route: ${forbiddenRole}`);
