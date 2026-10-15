@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
 
 // The real Expo UI, Rust router and disposable PostgreSQL database are used.
 // Only delivery is replaced. All transient codes remain in process memory;
@@ -12,6 +13,14 @@ import assert from 'node:assert/strict';
 assert.equal(process.env.GITHUB_ACTIONS, 'true');
 assert.equal(process.env.APP_ENV, 'test');
 const root = fileURLToPath(new URL('../../', import.meta.url));
+const frontendRequire = createRequire(new URL('../../frontend/package.json', import.meta.url));
+const typescript = frontendRequire('typescript');
+const catalogSource = await readFile(new URL('../../frontend/src/navigation/moduleCatalog.ts', import.meta.url), 'utf8');
+const transpiledCatalog = typescript.transpileModule(catalogSource, {
+  compilerOptions: { module: typescript.ModuleKind.ES2022, target: typescript.ScriptTarget.ES2022 },
+}).outputText;
+const { modulesForRole } = await import(`data:text/javascript;base64,${Buffer.from(transpiledCatalog).toString('base64')}`);
+
 const manifest = JSON.parse(await readFile(new URL('../../backend/tests/fixtures/staging_identities.json', import.meta.url)));
 assert.equal(manifest.live_provider_delivery_allowed, false);
 assert.equal(manifest.persistent_privileged_accounts_allowed, false);
@@ -165,6 +174,21 @@ try {
     await expect.poll(() => currentIdentity?.role).toBe(user.role);
     assert.ok(currentIdentity.name && token);
     if (user.role !== 'customer') assert.ok(currentIdentity.plant_id);
+    phase = 'role module discovery';
+    // Verify the rendered Expo menu against the same typed catalog that CI
+    // checks for existing routes. Do not capture response bodies or credentials.
+    if (user.role === 'customer') {
+      await expect(page.getByTestId('customer-module-grid')).toBeVisible();
+      await page.getByText('More', { exact: true }).last().click();
+    }
+    await expect(page.getByTestId('role-module-directory')).toBeVisible();
+    for (const module of modulesForRole(user.role)) {
+      await expect(page.getByTestId('role-module-' + module.key)).toBeVisible();
+    }
+    if (user.role === 'customer') {
+      await page.getByText('Home', { exact: true }).last().click();
+      await expect(page.getByTestId('customer-home-scroll')).toBeVisible();
+    }
     if (user.role === 'customer') {
       phase = 'orders';
       await page.getByText('Orders', { exact: true }).last().click();
