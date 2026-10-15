@@ -945,3 +945,56 @@ async fn customer_receiving_and_cube_follow_up_persist_observations_with_tenant_
         2
     );
 }
+
+#[sqlx::test]
+async fn pour_plan_returns_saved_load_schedule_without_allocating_real_trips(db: PgPool) {
+    let (state, app, customer, _, token) = fixture(&db).await;
+    let (_, site) = call(
+        &app,
+        "/api/master/customer/sites",
+        Some(json!({"name":"Pour site","address":"Customer address"})),
+        &token,
+    )
+    .await;
+    let tomorrow = chrono::Utc::now().date_naive() + chrono::Duration::days(1);
+    let payload = json!({"site_id":site["id"],"grade":"M25","total_quantity_m3":13,"mixer_capacity_m3":6,"pour_date":tomorrow,"start_time":"23:30","unload_minutes":30,"discharge_mode":"PUMP"});
+    let foreign = identity(&db, "customer").await;
+    let foreign_token =
+        generate_token(foreign, "customer", "", None, &state.config.jwt_secret, 1).unwrap();
+    assert_eq!(
+        call(
+            &app,
+            "/api/customer/pour-plans",
+            Some(payload.clone()),
+            &foreign_token
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    let mut invalid = payload.clone();
+    invalid["mixer_capacity_m3"] = json!(0.01);
+    invalid["total_quantity_m3"] = json!(10000);
+    assert_eq!(
+        call(&app, "/api/customer/pour-plans", Some(invalid), &token)
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+    let (status, created) = call(&app, "/api/customer/pour-plans", Some(payload), &token).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(created["plan"]["loads_count"], 3);
+    assert_eq!(created["plan"]["loads"][2]["quantity_m3"], 1.0);
+    assert_eq!(created["plan"]["loads"][1]["suggested_arrival"], "00:00");
+    assert_eq!(created["plan"]["estimated_end_time"], "01:00");
+    assert_eq!(
+        created["plan"]["estimated_end_date"],
+        json!(tomorrow + chrono::Duration::days(1))
+    );
+    let (_, plans) = call(&app, "/api/customer/pour-plans", None, &token).await;
+    assert_eq!(plans["plans"][0]["loads"], created["plan"]["loads"]);
+    assert_eq!(plans["plans"][0]["site_address"], "Customer address");
+    let (_, plans) = call(&app, "/api/customer/pour-plans", None, &foreign_token).await;
+    assert!(plans["plans"].as_array().unwrap().is_empty());
+    assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM order_loads WHERE order_id IN(SELECT id FROM orders WHERE customer_id=$1)").bind(customer).fetch_one(&db).await.unwrap(),0);
+}

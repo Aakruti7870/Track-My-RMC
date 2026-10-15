@@ -589,119 +589,149 @@ pub struct CreatePourPlanPayload {
     pub notes: Option<String>,
 }
 
+fn pour_plan_dto(mut plan: serde_json::Value) -> Result<serde_json::Value, AppError> {
+    let quantity = (plan["total_quantity_m3"].as_f64().unwrap_or(0.0) * 100.0).round() as i64;
+    let capacity = (plan["mixer_capacity_m3"].as_f64().unwrap_or(0.0) * 100.0).round() as i64;
+    let interval = plan["unload_minutes"].as_i64().unwrap_or(0);
+    if quantity <= 0
+        || quantity > 1_000_000
+        || capacity <= 0
+        || capacity > 2000
+        || !(5..=180).contains(&interval)
+        || (quantity + capacity - 1) / capacity > 500
+    {
+        return Err(AppError::Conflict(
+            "Stored pour plan requires reconciliation".into(),
+        ));
+    }
+    let date = NaiveDate::parse_from_str(plan["pour_date"].as_str().unwrap_or(""), "%Y-%m-%d")
+        .map_err(|_| AppError::Conflict("Stored pour date requires correction".into()))?;
+    let time =
+        crate::services::customer_observations::clock(plan["start_time"].as_str().unwrap_or(""))?;
+    let start = date.and_time(time);
+    let count = (quantity + capacity - 1) / capacity;
+    let mut loads = Vec::new();
+    for i in 0..count {
+        let arrival = start
+            .checked_add_signed(chrono::Duration::minutes(i * interval))
+            .ok_or_else(|| {
+                AppError::BadRequest("Pour schedule exceeds the supported date range".into())
+            })?;
+        loads.push(json!({"load_number":i+1,"quantity_m3":(quantity-i*capacity).min(capacity) as f64/100.0,"suggested_arrival":arrival.format("%H:%M").to_string(),"suggested_arrival_date":arrival.date().to_string()}));
+    }
+    let end = start
+        .checked_add_signed(chrono::Duration::minutes(count * interval))
+        .ok_or_else(|| {
+            AppError::BadRequest("Pour schedule exceeds the supported date range".into())
+        })?;
+    plan["loads_count"] = json!(count);
+    plan["loads"] = json!(loads);
+    plan["estimated_end_time"] = json!(end.format("%H:%M").to_string());
+    plan["estimated_end_date"] = json!(end.date());
+    plan["status"] = json!("PLANNED");
+    Ok(plan)
+}
+
 pub async fn create_pour_plan(
     State(state): State<AppState>,
     auth_user: AuthUser,
     Json(payload): Json<CreatePourPlanPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    let p_date = NaiveDate::parse_from_str(&payload.pour_date, "%Y-%m-%d")
-        .map_err(|_| AppError::BadRequest("Invalid pour_date format".to_string()))?;
-
-    let cap = payload.mixer_capacity_m3.unwrap_or(6.0);
-    let unload = payload.unload_minutes.unwrap_or(30);
-    let mode = payload.discharge_mode.unwrap_or_else(|| "PUMP".to_string());
-
-    let id: Uuid = sqlx::query_scalar(
-        r#"
-        INSERT INTO customer_pour_plans (
-            customer_id, site_id, grade, total_quantity_m3, mixer_capacity_m3,
-            pour_date, start_time, unload_minutes, discharge_mode, notes
-        )
-        VALUES ($1, $2, $3, $4::numeric, $5::numeric, $6, $7, $8, $9, $10)
-        RETURNING id
-        "#,
+    check_role(&auth_user, &["customer"])?;
+    let date = NaiveDate::parse_from_str(&payload.pour_date, "%Y-%m-%d")
+        .map_err(|_| AppError::BadRequest("Invalid pour date".into()))?;
+    crate::services::customer_observations::clock(&payload.start_time)?;
+    let capacity = payload.mixer_capacity_m3.unwrap_or(6.0);
+    let interval = payload.unload_minutes.unwrap_or(30);
+    let mode = payload.discharge_mode.as_deref().unwrap_or("PUMP");
+    if !crate::services::customer_observations::valid_grade(&payload.grade)
+        || !payload.total_quantity_m3.is_finite()
+        || payload.total_quantity_m3 <= 0.0
+        || payload.total_quantity_m3 > 10000.0
+        || !capacity.is_finite()
+        || capacity <= 0.0
+        || capacity > 20.0
+        || !(5..=180).contains(&interval)
+        || !matches!(mode, "PUMP" | "DIRECT")
+        || date < chrono::Utc::now().date_naive()
+        || payload.notes.as_ref().is_some_and(|s| s.len() > 2000)
+    {
+        return Err(AppError::BadRequest(
+            "Invalid pour quantity, capacity, schedule or mode".into(),
+        ));
+    }
+    if (payload.total_quantity_m3 * 100.0 - (payload.total_quantity_m3 * 100.0).round()).abs()
+        > 0.00001
+        || (capacity * 100.0 - (capacity * 100.0).round()).abs() > 0.00001
+    {
+        return Err(AppError::BadRequest(
+            "Planning quantities support at most two decimal places".into(),
+        ));
+    }
+    let quantity_cents = (payload.total_quantity_m3 * 100.0).round() as i64;
+    let capacity_cents = (capacity * 100.0).round() as i64;
+    if quantity_cents <= 0
+        || capacity_cents <= 0
+        || (quantity_cents + capacity_cents - 1) / capacity_cents > 500
+    {
+        return Err(AppError::BadRequest(
+            "Pour plan exceeds supported load count".into(),
+        ));
+    }
+    let mut tx = state.db.begin().await?;
+    let site = sqlx::query(
+        "SELECT name,address_line FROM customer_sites WHERE id=$1 AND customer_id=$2 FOR SHARE",
     )
-    .bind(auth_user.user_id)
     .bind(payload.site_id)
-    .bind(&payload.grade)
-    .bind(payload.total_quantity_m3)
-    .bind(cap)
-    .bind(p_date)
-    .bind(&payload.start_time)
-    .bind(unload)
-    .bind(&mode)
-    .bind(&payload.notes)
-    .fetch_one(&state.db)
-    .await?;
-
-    Ok(Json(
-        json!({ "success": true, "id": id, "message": "Pour plan created" }),
-    ))
+    .bind(auth_user.user_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| AppError::Forbidden("Saved site does not belong to this customer".into()))?;
+    let id:Uuid=sqlx::query_scalar("INSERT INTO customer_pour_plans(customer_id,site_id,grade,total_quantity_m3,mixer_capacity_m3,pour_date,start_time,unload_minutes,discharge_mode,notes) VALUES($1,$2,$3,$4::DOUBLE PRECISION::NUMERIC,$5::DOUBLE PRECISION::NUMERIC,$6,$7,$8,$9,$10) RETURNING id")
+        .bind(auth_user.user_id).bind(payload.site_id).bind(&payload.grade).bind(payload.total_quantity_m3).bind(capacity).bind(date).bind(&payload.start_time).bind(interval).bind(mode).bind(&payload.notes).fetch_one(&mut *tx).await?;
+    let plan = pour_plan_dto(
+        json!({"id":id,"site_id":payload.site_id,"site_name":site.get::<String,_>("name"),"site_address":site.get::<String,_>("address_line"),"grade":payload.grade,"total_quantity_m3":payload.total_quantity_m3,"mixer_capacity_m3":capacity,"pour_date":date,"start_time":payload.start_time,"unload_minutes":interval,"discharge_mode":mode,"notes":payload.notes}),
+    )?;
+    sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'pour_plan.create','pour_plan',$2,$3)").bind(auth_user.user_id).bind(id.to_string()).bind(json!({"site_id":payload.site_id,"loads":plan["loads_count"]})).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(Json(json!({"success":true,"id":id,"plan":plan})))
 }
 
 pub async fn list_pour_plans(
     State(state): State<AppState>,
     auth_user: AuthUser,
+    Query(filter): Query<CustomerSiteFilter>,
 ) -> Result<impl IntoResponse, AppError> {
-    let rows = sqlx::query(
-        r#"
-        SELECT p.id, p.site_id, p.grade, p.total_quantity_m3, p.mixer_capacity_m3,
-               p.pour_date, p.start_time, p.unload_minutes, p.discharge_mode, p.notes, p.created_at,
-               s.name as site_name, s.address_line as site_address
-        FROM customer_pour_plans p
-        INNER JOIN customer_sites s ON s.id = p.site_id
-        WHERE p.customer_id = $1
-        ORDER BY p.pour_date DESC
-        "#,
-    )
-    .bind(auth_user.user_id)
-    .fetch_all(&state.db)
-    .await?;
-
-    let plans: Vec<_> = rows
+    check_role(&auth_user, &["customer"])?;
+    let rows:Vec<serde_json::Value>=sqlx::query_scalar("SELECT to_jsonb(p)||jsonb_build_object('site_name',s.name,'site_address',s.address_line,'total_quantity_m3',p.total_quantity_m3::DOUBLE PRECISION,'mixer_capacity_m3',p.mixer_capacity_m3::DOUBLE PRECISION) FROM customer_pour_plans p JOIN customer_sites s ON s.id=p.site_id AND s.customer_id=p.customer_id WHERE p.customer_id=$1 AND($2::UUID IS NULL OR p.site_id=$2) ORDER BY p.pour_date DESC,p.created_at DESC LIMIT 500")
+        .bind(auth_user.user_id).bind(filter.site_id).fetch_all(&state.db).await?;
+    let plans = rows
         .into_iter()
-        .map(|r| {
-            let id: Uuid = r.get("id");
-            let site_id: Uuid = r.get("site_id");
-            let site_name: String = r.get("site_name");
-            let site_address: String = r.get("site_address");
-            let grade: String = r.get("grade");
-            let total_quantity_m3: bigdecimal::BigDecimal = r.get("total_quantity_m3");
-            let mixer_capacity_m3: bigdecimal::BigDecimal = r.get("mixer_capacity_m3");
-            let pour_date: chrono::NaiveDate = r.get("pour_date");
-            let start_time: String = r.get("start_time");
-            let unload_minutes: i32 = r.get("unload_minutes");
-            let discharge_mode: String = r.get("discharge_mode");
-            let notes: Option<String> = r.get("notes");
-
-            json!({
-                "id": id,
-                "site_id": site_id,
-                "site_name": site_name,
-                "site_address": site_address,
-                "grade": grade,
-                "total_quantity_m3": total_quantity_m3,
-                "mixer_capacity_m3": mixer_capacity_m3,
-                "pour_date": pour_date,
-                "start_time": start_time,
-                "unload_minutes": unload_minutes,
-                "discharge_mode": discharge_mode,
-                "notes": notes
-            })
-        })
-        .collect();
-
-    Ok(Json(json!({ "success": true, "pour_plans": plans })))
+        .map(pour_plan_dto)
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Json(
+        json!({"success":true,"plans":plans,"pour_plans":plans}),
+    ))
 }
 
 pub async fn delete_pour_plan(
     State(state): State<AppState>,
     auth_user: AuthUser,
-    Path(plan_id): Path<Uuid>,
+    Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    let res = sqlx::query("DELETE FROM customer_pour_plans WHERE id = $1 AND customer_id = $2")
-        .bind(plan_id)
+    check_role(&auth_user, &["customer"])?;
+    let mut tx = state.db.begin().await?;
+    let deleted = sqlx::query("DELETE FROM customer_pour_plans WHERE id=$1 AND customer_id=$2")
+        .bind(id)
         .bind(auth_user.user_id)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await?;
-
-    if res.rows_affected() == 0 {
-        return Err(AppError::NotFound("Plan not found".to_string()));
+    if deleted.rows_affected() != 1 {
+        return Err(AppError::NotFound("Pour plan not found".into()));
     }
-
-    Ok(Json(
-        json!({ "success": true, "message": "Pour plan deleted" }),
-    ))
+    sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id) VALUES($1,'pour_plan.delete','pour_plan',$2)").bind(auth_user.user_id).bind(id.to_string()).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(Json(json!({"success":true,"status":"deleted"})))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
