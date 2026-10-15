@@ -197,7 +197,7 @@ try {
       assert.ok(successfulPaths.has('/api/customer/orders'));
       phase = 'project hub';
       await page.getByText('More', { exact: true }).last().click();
-      await page.getByTestId('more-projects').click();
+      await page.getByTestId('role-module-projects').click();
       await expect(page.getByText('Browser site', { exact: true }).first()).toBeVisible();
       await expect.poll(() => successfulPaths.has('/api/customer/project-sites')).toBe(true);
       await page.goBack();
