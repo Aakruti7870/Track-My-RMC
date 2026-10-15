@@ -195,15 +195,19 @@ try {
       await expect(page.getByTestId('orders-list')).toBeVisible();
       await expect(page.getByText('Browser site', { exact: true }).first()).toBeVisible();
       assert.ok(successfulPaths.has('/api/customer/orders'));
-      phase = 'project hub';
+      phase = 'project hub: open More';
       await page.getByText('More', { exact: true }).last().click();
+      phase = 'project hub: open module';
       await page.getByTestId('role-module-projects').click();
-      // The Project & Site Hub is the route-level contract; a site card is
-      // conditional on the authorized project-sites response and must not be
-      // assumed to exist merely because the Orders fixture contains a site.
+      phase = 'project hub: route heading';
       await expect(page.getByText('Project & Site Hub', { exact: true })).toBeVisible();
+      phase = 'project hub: authorized API';
       await expect.poll(() => successfulPaths.has('/api/customer/project-sites')).toBe(true);
-      await page.goBack();
+      phase = 'project hub: return to More';
+      // The native header back button uses expo-router's history, which is
+      // not necessarily equivalent to browser history in Expo web tests.
+      await page.getByRole('button', { name: 'Back' }).first().click();
+      await expect(page.getByTestId('role-module-directory')).toBeVisible();
       phase = 'support create';
       await page.getByTestId('customer-support-widget').click();
       await page.getByTestId('customer-support-open-center').click();
