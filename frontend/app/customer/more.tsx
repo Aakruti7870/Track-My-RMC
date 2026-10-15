@@ -1,7 +1,7 @@
 import React from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Href, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/src/auth/AuthContext";
@@ -10,21 +10,7 @@ import { AppText } from "@/src/components/ui/AppText";
 import { Card } from "@/src/components/ui/Card";
 import { Badge } from "@/src/components/ui/Badge";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
-
-const ITEMS: { key: string; label: string; icon: keyof typeof Ionicons.glyphMap; route: Href }[] = [
-  { key: "projects", label: "Project & Site Hub", icon: "briefcase-outline", route: "/customer/projects" },
-  { key: "pour_planner", label: "Concrete Pour Planner", icon: "time-outline", route: "/customer/pour-planner" },
-  { key: "receiving", label: "Receiving & Quality Guide", icon: "shield-checkmark-outline", route: "/customer/receiving-guide" },
-  { key: "cube_follow_up", label: "Cube Test Follow-up", icon: "flask-outline", route: "/customer/cube-test-follow-up" },
-  { key: "tools", label: "Free RMC Tools", icon: "calculator-outline", route: "/customer/free-tools" },
-  { key: "compare", label: "Estimate & Compare Plants", icon: "git-compare-outline", route: "/customer/compare-plants" },
-  { key: "kyc", label: "KYC Verification", icon: "id-card-outline", route: "/kyc" },
-  { key: "sites", label: "Saved Sites", icon: "location-outline", route: "/customer/sites" },
-  { key: "quotations", label: "Quotations", icon: "document-text-outline", route: "/customer/quotations" },
-  { key: "notifications", label: "Notifications", icon: "notifications-outline", route: "/notifications" },
-  { key: "documents", label: "Documents", icon: "folder-outline", route: "/customer/documents" },
-  { key: "delete", label: "Account Deletion", icon: "trash-outline", route: "/account-deletion" },
-];
+import { RoleModuleDirectory } from "@/src/components/RoleModuleDirectory";
 
 const MODES: { key: "system" | "light" | "dark"; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { key: "light", label: "Light", icon: "sunny-outline" },
@@ -119,23 +105,7 @@ export default function CustomerMore() {
             })}
           </View>
         </View>
-
-        <Card padded={false}>
-          {ITEMS.map((item, i) => (
-            <Pressable
-              key={item.key}
-              testID={`more-${item.key}`}
-              onPress={() => router.push(item.route)}
-              style={[styles.item, i < ITEMS.length - 1 && { borderBottomColor: colors.divider, borderBottomWidth: StyleSheet.hairlineWidth }]}
-            >
-              <Ionicons name={item.icon} size={20} color={item.key === "delete" ? colors.error : colors.onSurfaceSecondary} />
-              <AppText style={{ flex: 1, fontFamily: fonts.medium, fontSize: fontSize.base, color: item.key === "delete" ? colors.error : colors.onSurface }}>
-                {item.label}
-              </AppText>
-              <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceTertiary} />
-            </Pressable>
-          ))}
-        </Card>
+        <RoleModuleDirectory role={user?.role} title="All Customer Modules" />
 
         <Card style={{ gap: 4 }}>
           <AppText variant="label">Legal & support</AppText>
