@@ -118,6 +118,8 @@ fn is_staff_role(role: &str) -> bool {
             | "owner"
             | "plant_owner"
             | "admin"
+            | "central_admin"
+            | "authority"
     )
 }
 

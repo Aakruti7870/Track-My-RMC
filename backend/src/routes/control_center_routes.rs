@@ -1,5 +1,5 @@
 use crate::{
-    auth::{middleware::check_role, totp::verify_totp_login, AuthUser},
+    auth::{control_center::WebAdmin, totp::verify_totp_login, AuthUser},
     error::AppError,
     state::AppState,
 };
@@ -55,10 +55,10 @@ pub struct AiCommandPayload {
 
 pub async fn run_ai_command(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    auth_user: WebAdmin,
     Json(payload): Json<AiCommandPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["admin"])?;
+    auth_user.require("ai.diagnose")?;
 
     let prompt_lower = payload.prompt.to_lowercase();
     let command_id = format!("cmd-{}", Uuid::new_v4().simple());
@@ -87,7 +87,14 @@ pub async fn run_ai_command(
         })));
     }
 
-    // Log diagnostic command to audit trail
+    if is_high_risk {
+        return Err(AppError::BadRequest(
+            "This diagnostic endpoint cannot execute privileged commands".into(),
+        ));
+    }
+    let connected: i32 = sqlx::query_scalar("SELECT 1").fetch_one(&state.db).await?;
+    // Record only diagnostic metadata; never claim execution of an unsupported operation.
+
     sqlx::query(
         r#"
         INSERT INTO audit_logs (user_id, action, resource_type, resource_id, metadata)
@@ -102,66 +109,29 @@ pub async fn run_ai_command(
 
     Ok(Json(json!({
         "command_id": command_id,
+        "database_connected": connected == 1,
         "intent": "diagnostic_query",
         "risk": "LOW",
         "status": "completed",
-        "message": "Diagnostic analysis complete. Platform status is normal."
+        "message": "Database connectivity checked"
     })))
 }
 
 pub async fn get_capabilities(
     State(_state): State<AppState>,
-    auth_user: AuthUser,
+    auth_user: WebAdmin,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["admin"])?;
-
-    let permissions = vec![
-        "dashboard.view",
-        "ai.diagnose",
-        "ai.create_draft",
-        "user.view",
-        "user.manage",
-        "kyc.view",
-        "kyc.manage",
-        "payment.view",
-        "plant.view",
-        "plant.manage",
-        "order.view",
-        "support.view",
-        "support.manage",
-        "system.view",
-        "owner.view",
-        "owner.manage",
-        "reviewer_access.manage",
-        "admin_access.manage",
-        "permissions.manage",
-        "session.view",
-        "session.manage",
-        "audit.view",
-    ];
-
     Ok(Json(json!({
-        "permissions": permissions,
-        "allowed_module_keys": [
-            "Dashboard", "AI Command Center", "Users", "Orders", "Support",
-            "KYC", "Payments", "All Plants", "Onboarding", "Owners / Staff",
-            "System", "Security Overview", "Reviewer Access", "Admins",
-            "Roles", "Permissions", "Sessions", "Audit Logs"
-        ],
-        "session_security": {
-            "auth_surface": "control_center_web",
-            "control_center_mfa": true,
-            "recent_mfa_step_up": true
-        },
-        "constraints": []
+        "permissions": auth_user.permissions,
+        "session_security": {"auth_surface":"control_center_web", "control_center_mfa":true}
     })))
 }
 
 pub async fn get_reviewer_access(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    auth_user: WebAdmin,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["admin"])?;
+    auth_user.require("reviewer_access.manage")?;
 
     let enabled: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM play_review_fixtures WHERE enabled = TRUE)",
@@ -184,11 +154,11 @@ pub struct ReviewerAccessPayload {
 
 pub async fn set_reviewer_access(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    auth_user: WebAdmin,
     headers: HeaderMap,
     Json(payload): Json<ReviewerAccessPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["admin"])?;
+    auth_user.require("reviewer_access.manage")?;
     require_recent_step_up(&state, &auth_user, &headers).await?;
     if payload.reason.trim().len() < 10 {
         return Err(AppError::BadRequest(
@@ -221,14 +191,14 @@ pub async fn set_reviewer_access(
 
 pub async fn list_admin_access(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    auth_user: WebAdmin,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["admin"])?;
+    auth_user.require("admin_access.manage")?;
 
     let admins = sqlx::query(
         r#"
         SELECT id, full_name, email, is_active, created_at
-        FROM users WHERE role = 'admin'
+        FROM users WHERE role = 'central_admin'
         ORDER BY created_at ASC
         "#,
     )
@@ -265,11 +235,11 @@ pub struct AdminAccessUpdatePayload {
 
 pub async fn update_admin_access(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    auth_user: WebAdmin,
     headers: HeaderMap,
     Json(payload): Json<AdminAccessUpdatePayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["admin"])?;
+    auth_user.require("admin_access.manage")?;
     require_recent_step_up(&state, &auth_user, &headers).await?;
     if payload.reason.trim().len() < 10 {
         return Err(AppError::BadRequest(
@@ -288,7 +258,7 @@ pub async fn update_admin_access(
         ));
     }
     sqlx::query(
-        "UPDATE users SET is_active = $1, updated_at = NOW() WHERE email = $2 AND role = 'admin'",
+        "UPDATE users SET is_active = $1, updated_at = NOW() WHERE email = $2 AND role = 'central_admin'",
     )
     .bind(payload.enabled)
     .bind(&email_lower)
@@ -313,9 +283,9 @@ pub async fn update_admin_access(
 
 pub async fn list_unowned_plants(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    auth_user: WebAdmin,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["admin"])?;
+    auth_user.require("plant.view")?;
 
     let rows = sqlx::query(
         r#"
@@ -362,11 +332,11 @@ pub struct AssignOwnerPayload {
 
 pub async fn assign_plant_owner(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    auth_user: WebAdmin,
     headers: HeaderMap,
     Json(payload): Json<AssignOwnerPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["admin"])?;
+    auth_user.require("owner.assign")?;
     require_recent_step_up(&state, &auth_user, &headers).await?;
     if payload.reason.trim().len() < 10 {
         return Err(AppError::BadRequest(
@@ -419,15 +389,26 @@ pub struct StepUpPayload {
 
 pub async fn admin_step_up(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    auth_user: WebAdmin,
     headers: HeaderMap,
     Json(payload): Json<StepUpPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["admin"])?;
     let code = payload.code.trim();
     if code.len() != 6 || !code.bytes().all(|c| c.is_ascii_digit()) {
         return Err(AppError::Unauthorized(
             "A six-digit authenticator code is required".to_string(),
+        ));
+    }
+    let hash = session_token_hash(&headers)?;
+    let attempts: i32 = sqlx::query_scalar(
+        "UPDATE control_center_sessions SET step_up_attempts = CASE WHEN step_up_window_started_at < NOW()-INTERVAL '5 minutes' THEN 1 ELSE step_up_attempts+1 END,
+         step_up_window_started_at = CASE WHEN step_up_window_started_at < NOW()-INTERVAL '5 minutes' THEN NOW() ELSE step_up_window_started_at END
+         WHERE token_hash=$1 AND user_id=$2 AND revoked_at IS NULL AND expires_at>NOW()
+         RETURNING step_up_attempts",
+    ).bind(&hash).bind(auth_user.user_id).fetch_one(&state.db).await?;
+    if attempts > 5 {
+        return Err(AppError::Forbidden(
+            "Authenticator verification temporarily locked".into(),
         ));
     }
     // Verify the actual enrolled credential; never treat a supplied code as proof by itself.
@@ -447,10 +428,9 @@ pub async fn admin_step_up(
 
 pub async fn admin_logout_all(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    auth_user: WebAdmin,
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["admin"])?;
     require_recent_step_up(&state, &auth_user, &headers).await?;
 
     let mut tx = state.db.begin().await?;
@@ -458,6 +438,8 @@ pub async fn admin_logout_all(
         .bind(auth_user.user_id)
         .execute(&mut *tx)
         .await?;
+    sqlx::query("UPDATE control_center_sessions SET revoked_at=NOW() WHERE user_id=$1 AND revoked_at IS NULL")
+        .bind(auth_user.user_id).execute(&mut *tx).await?;
     sqlx::query("DELETE FROM control_center_step_ups WHERE user_id = $1")
         .bind(auth_user.user_id)
         .execute(&mut *tx)
@@ -476,9 +458,9 @@ pub async fn admin_logout_all(
 
 pub async fn get_portal_summary(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    auth_user: WebAdmin,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["admin"])?;
+    auth_user.require("system.view")?;
 
     let total_plants: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM rmc_plants WHERE is_active = TRUE")
@@ -507,11 +489,11 @@ pub async fn get_portal_summary(
     Ok(Json(json!({
         "success": true,
         "kpis": [
-            { "label": "Active Plants", "value": total_plants },
-            { "label": "Registered Users", "value": total_users },
-            { "label": "Total Orders", "value": total_orders },
-            { "label": "Paid Revenue", "value": total_revenue },
-            { "label": "Pending KYC Verifications", "value": pending_kyc }
+            { "label": "Active Plants", "value": if auth_user.permissions.iter().any(|p| p == "plant.view") { Some(total_plants) } else { None } },
+            { "label": "Registered Users", "value": if auth_user.permissions.iter().any(|p| p == "user.view") { Some(total_users) } else { None } },
+            { "label": "Total Orders", "value": if auth_user.permissions.iter().any(|p| p == "order.view") { Some(total_orders) } else { None } },
+            { "label": "Paid Revenue", "value": if auth_user.permissions.iter().any(|p| p == "payment.view") { Some(total_revenue) } else { None } },
+            { "label": "Pending KYC Verifications", "value": if auth_user.permissions.iter().any(|p| p == "kyc.view") { Some(pending_kyc) } else { None } }
         ]
     })))
 }

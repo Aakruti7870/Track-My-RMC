@@ -43,7 +43,7 @@ where
 
         let claims: Claims = verify_token(token, &app_state.config.jwt_secret)?;
 
-        let row = sqlx::query("SELECT is_active, auth_revoked_at FROM users WHERE id=$1")
+        let row = sqlx::query("SELECT is_active, auth_revoked_at, role FROM users WHERE id=$1")
             .bind(claims.sub)
             .fetch_optional(&app_state.db)
             .await?
@@ -59,9 +59,22 @@ where
             return Err(AppError::Unauthorized("Session revoked".to_string()));
         }
 
+        let current_role: String = row.get("role");
+        let canonical = |role: &str| {
+            if role == "plant_owner" {
+                "owner".to_string()
+            } else {
+                role.to_string()
+            }
+        };
+        if canonical(&current_role) != canonical(&claims.role) {
+            return Err(AppError::Unauthorized(
+                "Account permissions changed; sign in again".into(),
+            ));
+        }
         Ok(AuthUser {
             user_id: claims.sub,
-            role: claims.role,
+            role: current_role,
             phone: claims.phone,
             email: claims.email,
         })

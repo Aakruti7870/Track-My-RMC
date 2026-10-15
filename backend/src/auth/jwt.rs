@@ -10,6 +10,8 @@ const AUDIENCE: &str = "trackmyrmc-mobile";
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
     pub sub: Uuid,
+    #[serde(default)]
+    pub jti: Option<Uuid>,
     pub role: String,
     pub phone: String,
     pub email: Option<String>,
@@ -31,6 +33,7 @@ pub fn generate_token(
     let expiration = now + Duration::hours(expiration_hours.clamp(1, 24));
     let claims = Claims {
         sub: user_id,
+        jti: Some(Uuid::new_v4()),
         role: role.to_string(),
         phone: phone.to_string(),
         email: email.map(str::to_string),

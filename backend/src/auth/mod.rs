@@ -6,3 +6,5 @@ pub mod password;
 pub mod totp;
 
 pub use middleware::AuthUser;
+
+pub mod control_center;

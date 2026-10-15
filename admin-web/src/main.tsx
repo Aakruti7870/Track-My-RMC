@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import apiClient from './api';
 
-type Stage = 'email' | 'otp' | 'mfa-enroll' | 'mfa-login' | 'authenticated';
+type Stage = 'central-login' | 'email' | 'otp' | 'mfa-enroll' | 'mfa-login' | 'authenticated';
 
 type StaffUser = {
   id?: string;
@@ -40,7 +40,7 @@ function errorMessage(error: unknown): string {
 }
 
 function CommandCenter() {
-  const [stage, setStage] = useState<Stage>('email');
+  const [stage, setStage] = useState<Stage>('central-login');
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
   const [mfaCode, setMfaCode] = useState('');
@@ -61,9 +61,10 @@ function CommandCenter() {
 
     let active = true;
     apiClient.get('/api/me')
-      .then((response) => {
+      .then(async (response) => {
         const currentUser = response.data?.user as StaffUser | undefined;
         if (!active || !currentUser?.role) return;
+        if (currentUser.role === 'central_admin') await apiClient.get('/api/admin/auth/me');
         setUser(currentUser);
         setStage('authenticated');
       })
@@ -84,7 +85,7 @@ function CommandCenter() {
   }, [stage]);
 
   useEffect(() => {
-    if (stage !== 'authenticated' || user?.role !== 'admin') {
+    if (stage !== 'authenticated' || user?.role !== 'central_admin') {
       setAdminKpis([]);
       setAdminOverviewError('');
       return;
@@ -107,6 +108,17 @@ function CommandCenter() {
       });
     return () => { active = false; };
   }, [stage, user?.role]);
+
+  async function centralLogin(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setError('');
+    try {
+      const response = await apiClient.post('/api/admin/auth/verify-totp', { identifier: email.trim(), code: mfaCode.trim() });
+      if (!response.data?.token || response.data?.user?.role !== 'central_admin') throw new Error('Administrator session was not established.');
+      window.sessionStorage.setItem('trackmyrmc_admin_token', response.data.token);
+      setUser(response.data.user); setMfaCode(''); setStage('authenticated');
+    } catch (error) { setError(errorMessage(error)); }
+    finally { setBusy(false); }
+  }
 
   async function sendEmailOtp(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -199,7 +211,7 @@ function CommandCenter() {
       if (!auth?.token || !signedInUser?.role) {
         throw new Error('The server response did not contain a valid authenticated session.');
       }
-      const allowedRoles = ['dispatcher', 'operator', 'supervisor', 'quality_engineer', 'store_manager', 'accountant', 'fleet_manager', 'owner', 'admin'];
+      const allowedRoles = ['plant_owner','dispatcher', 'operator', 'supervisor', 'quality_engineer', 'store_manager', 'accountant', 'fleet_manager', 'owner', 'admin'];
       if (!allowedRoles.includes(signedInUser.role)) {
         throw new Error('This account is not authorized for staff portal access.');
       }
@@ -231,7 +243,7 @@ function CommandCenter() {
       setChallengeToken('');
       setOtp('');
       setMfaCode('');
-      setStage('email');
+      setStage('central-login');
       setNotice('Signed out of this browser session.');
       setError('');
       setBusy(false);
@@ -267,16 +279,27 @@ function CommandCenter() {
           TrackMyRMC · Secure Access
         </div>
         <h1 id="portal-title" style={{ margin: '10px 0 6px', fontSize: 30, lineHeight: 1.2 }}>
-          {stage === 'authenticated' ? 'Command Center' : 'Staff sign in'}
+          {stage === 'authenticated' ? 'Command Center' : stage === 'central-login' ? 'Central Admin sign in' : 'Plant staff sign in'}
         </h1>
         <p style={{ color: '#cbd5e1', lineHeight: 1.6, marginTop: 0 }}>
           {stage === 'authenticated'
-            ? 'Your staff session is authenticated using email verification and multi-factor authentication.'
-            : 'Staff, plant owners, and administrators sign in with registered email OTP followed by an authenticator factor.'}
+            ? 'Your access is restricted to the permissions assigned to your account.'
+            : stage === 'central-login' ? 'Approved Central Admin accounts use the enrolled authenticator. Staff sessions do not grant Control Center access.' : 'Plant staff use email verification followed by authenticator MFA.'}
         </p>
 
         {error && <div role="alert" style={{ padding: 12, borderRadius: 8, background: '#451a1a', border: '1px solid #b91c1c', color: '#fecaca', margin: '16px 0' }}>{error}</div>}
         {notice && <div role="status" style={{ padding: 12, borderRadius: 8, background: '#172554', border: '1px solid #3730a3', color: '#dbeafe', margin: '16px 0' }}>{notice}</div>}
+
+        {stage === 'central-login' && (
+          <form onSubmit={centralLogin}>
+            <label htmlFor="central-email">Approved administrator email</label>
+            <input id="central-email" type="email" autoComplete="username" required value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} disabled={busy} />
+            <label htmlFor="central-code" style={{display:'block',marginTop:18}}>Authenticator code</label>
+            <input id="central-code" inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" maxLength={6} value={mfaCode} onChange={e => setMfaCode(e.target.value)} style={inputStyle} disabled={busy} />
+            <button type="submit" disabled={busy} style={buttonStyle}>{busy ? 'Verifying…' : 'Sign in with authenticator'}</button>
+            <button type="button" onClick={() => {setStage('email');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Plant staff sign in</button>
+          </form>
+        )}
 
         {stage === 'email' && (
           <form onSubmit={sendEmailOtp}>
@@ -344,7 +367,7 @@ function CommandCenter() {
             <div style={{ marginTop: 20, padding: 16, border: '1px solid #334155', borderRadius: 10, background: '#111827' }}>
               <p style={{ margin: '0 0 8px' }}><strong>Signed in as</strong> {user.full_name || user.email || user.phone || 'Staff user'}</p>
               <p style={{ margin: '0 0 8px' }}><strong>Role</strong> {user.role}</p>
-              <p style={{ margin: 0 }}><strong>Session</strong> Email OTP + MFA verified</p>
+              <p style={{ margin: 0 }}><strong>Session</strong> {user.role === 'central_admin' ? 'Dedicated web authenticator session' : 'Email OTP + MFA verified'}</p>
             </div>
             <div style={{ marginTop: 14, padding: 16, border: '1px solid #334155', borderRadius: 10 }}>
               <h2 style={{ marginTop: 0, fontSize: 18 }}>Service health</h2>
@@ -353,7 +376,7 @@ function CommandCenter() {
               <p><strong>Environment:</strong> {health?.environment || 'Unknown'}</p>
               <p style={{ color: '#94a3b8', fontSize: 12 }}>This portal is being connected incrementally to secured Rust APIs. Privileged actions require recent authenticator verification.</p>
             </div>
-            {user.role === 'admin' && (
+            {user.role === 'central_admin' && (
               <section aria-label="Platform overview" style={{ marginTop: 14, padding: 16, border: '1px solid #334155', borderRadius: 10 }}>
                 <h2 style={{ marginTop: 0, fontSize: 18 }}>Live platform overview</h2>
                 {adminOverviewError && <p role="alert" style={{ color: '#fecaca' }}>Unable to load overview: {adminOverviewError}</p>}

@@ -52,7 +52,7 @@ fn user(id: Uuid, role: &str) -> AuthUser {
 async fn create_user(db: &PgPool, role: &str) -> Uuid {
     sqlx::query_scalar(
         "INSERT INTO users (phone, hashed_password, full_name, role) VALUES ($1, 'test', $2, $3) RETURNING id",
-    ).bind(Uuid::new_v4().to_string()).bind(format!("Test {role}")).bind(role)
+    ).bind(Uuid::new_v4().simple().to_string()[..18].to_string()).bind(format!("Test {role}")).bind(role)
      .fetch_one(db).await.expect("create user")
 }
 

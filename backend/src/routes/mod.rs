@@ -35,6 +35,23 @@ use axum::{
 
 pub fn build_app_router(state: AppState) -> Router {
     Router::new()
+        .route(
+            "/api/admin/auth/method",
+            post(crate::auth::control_center::method),
+        )
+        .route(
+            "/api/admin/auth/verify-totp",
+            post(crate::auth::control_center::login),
+        )
+        .route("/api/admin/auth/me", get(crate::auth::control_center::me))
+        .route(
+            "/api/admin/auth/step-up",
+            post(control_center_routes::admin_step_up),
+        )
+        .route(
+            "/api/admin/auth/logout-all",
+            post(control_center_routes::admin_logout_all),
+        )
         // Health check (monitoring & probes)
         .route("/health", get(health::health_check))
         // Android Digital Asset Links and KYC return page
