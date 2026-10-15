@@ -3,9 +3,9 @@
     "reference_commit": "51903571f110908c3f1ddcffa6e4171ed406888c",
     "reference_entries": 297,
     "reference_unique_pairs": 288,
-    "target_unique_pairs": 307,
-    "matched_entries": 199,
-    "unmatched_entries": 98
+    "target_unique_pairs": 308,
+    "matched_entries": 200,
+    "unmatched_entries": 97
   },
   "entries": [
     {
@@ -759,10 +759,10 @@
       "module": "customer",
       "method": "GET",
       "path": "/api/customer/project-sites",
-      "path_match": false,
+      "path_match": true,
       "status": "PARTIAL",
-      "classification": "Compatibility route or frontend correction",
-      "note": "Existing /api/customer/sites; project-site DTO compatibility remains."
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
     },
     {
       "module": "customer",

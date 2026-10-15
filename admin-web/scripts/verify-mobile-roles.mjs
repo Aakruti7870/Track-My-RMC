@@ -55,8 +55,18 @@ const sink = createServer(async (req, res) => {
 });
 await new Promise(resolve => sink.listen(8302, '127.0.0.1', resolve));
 const children = [];
+const startupDiagnostics = [];
 function start(command, args, options = {}) {
-  const child = spawn(command, args, { cwd: root, env: process.env, stdio: ['pipe', 'ignore', 'ignore'], ...options });
+  const child = spawn(command, args, { cwd: root, env: process.env, stdio: ['pipe', 'ignore', 'pipe'], ...options });
+  let partial = '';
+  child.stderr.on('data', chunk => {
+    partial += chunk;
+    const lines = partial.split('\n');
+    partial = lines.pop().slice(-1024);
+    for (const line of lines) {
+      if (/^CI-FIXTURE: [a-z0-9=_ -]+$/i.test(line.trim())) startupDiagnostics.push(line.trim());
+    }
+  });
   child.on('error', () => {});
   children.push(child);
   return child;
@@ -76,6 +86,7 @@ try {
   const api = start('cargo', ['run', '--manifest-path', 'backend/Cargo.toml', '--example', 'mobile_browser_fixture']);
   api.stdin.end(JSON.stringify({ capture_token: captureToken, totp_secrets: Object.fromEntries([...authenticators].map(([role, bytes]) => [role, base32(bytes)])) }));
   await ready('http://127.0.0.1:8301/health', api);
+  phase = 'Expo startup';
   const web = start(process.execPath, ['node_modules/expo/bin/cli', 'start', '--web', '--localhost', '--offline', '--port', '8081', '--max-workers', '2'], {
     cwd: fileURLToPath(new URL('../../frontend/', import.meta.url)),
     env: { ...process.env, CI: 'true', EXPO_PUBLIC_BACKEND_URL: 'http://127.0.0.1:8301' },
@@ -175,6 +186,7 @@ try {
   // Playwright errors can contain fill values. Never print the original error.
   console.error(`FAIL: synthetic mobile browser role=${activeRole} phase=${phase}. No credential-bearing diagnostics retained.`);
   for (const diagnostic of safeDiagnostics) console.error(diagnostic);
+  for (const diagnostic of startupDiagnostics) console.error(diagnostic);
   process.exitCode = 1;
 } finally {
   await browser?.close();

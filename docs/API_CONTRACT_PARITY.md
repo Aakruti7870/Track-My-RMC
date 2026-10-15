@@ -1,6 +1,6 @@
 # API contract parity
 
-Status: PARTIAL. Regenerate with `node ops/regenerate-parity-inventory.mjs`. Reference 51903571f110908c3f1ddcffa6e4171ed406888c; source inventory is preserved unchanged. Static comparison normalizes named and wildcard path parameters. There are 297 decorator entries, 288 unique source pairs, 307 target pairs, 199 matching source entries and 98 unmatched entries. These are method/path counts, not functional acceptance percentages.
+Status: PARTIAL. Regenerate with `node ops/regenerate-parity-inventory.mjs`. Reference 51903571f110908c3f1ddcffa6e4171ed406888c; source inventory is preserved unchanged. Static comparison normalizes named and wildcard path parameters. There are 297 decorator entries, 288 unique source pairs, 308 target pairs, 200 matching source entries and 97 unmatched entries. These are method/path counts, not functional acceptance percentages.
 
 Critical contracts are exercised by authentication_delivery_tests, customer_order_tests, delivery_lifecycle_tests and integration_security_tests with real PostgreSQL and HTTP handlers. Provider transport is injected only in synthetic OTP tests. Older parity_workflow_tests/auth_tests contain mirrored helper assertions and are not proof of live endpoint behavior. Production deployment and live provider testing remain BLOCKED.
 
@@ -91,7 +91,7 @@ Known cross-screen gaps include RFQ and plant quotation DTOs, workforce review w
 | customer | GET | `/api/customer/pour-plans` | PARTIAL | Matching Rust endpoint | Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence. |
 | customer | POST | `/api/customer/pour-plans` | PARTIAL | Matching Rust endpoint | Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence. |
 | customer | DELETE | `/api/customer/pour-plans/{plan_id}` | PARTIAL | Matching Rust endpoint | Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence. |
-| customer | GET | `/api/customer/project-sites` | PARTIAL | Compatibility route or frontend correction | Existing /api/customer/sites; project-site DTO compatibility remains. |
+| customer | GET | `/api/customer/project-sites` | PARTIAL | Matching Rust endpoint | Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence. |
 | customer | POST | `/api/customer/quotation-requests` | PARTIAL | Matching Rust endpoint | Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence. |
 | customer | GET | `/api/customer/quotation-requests` | PARTIAL | Matching Rust endpoint | Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence. |
 | customer | GET | `/api/customer/receiving-records` | PARTIAL | Matching Rust endpoint | Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence. |

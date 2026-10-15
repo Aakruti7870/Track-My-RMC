@@ -998,3 +998,127 @@ async fn pour_plan_returns_saved_load_schedule_without_allocating_real_trips(db:
     assert!(plans["plans"].as_array().unwrap().is_empty());
     assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM order_loads WHERE order_id IN(SELECT id FROM orders WHERE customer_id=$1)").bind(customer).fetch_one(&db).await.unwrap(),0);
 }
+
+#[sqlx::test]
+async fn project_hub_aggregates_owned_records_without_multiplying_counts_or_guessing_delivery(
+    db: PgPool,
+) {
+    let (state, app, customer, plant, token) = fixture(&db).await;
+    let (_, first) = call(
+        &app,
+        "/api/customer/orders",
+        Some(order(plant, "hub-first")),
+        &token,
+    )
+    .await;
+    let site = first["order"]["site_id"]
+        .as_str()
+        .unwrap()
+        .parse::<Uuid>()
+        .unwrap();
+    let mut payload = order(plant, "hub-delivered");
+    payload["site_id"] = json!(site);
+    let (_, delivered) = call(&app, "/api/customer/orders", Some(payload.clone()), &token).await;
+    let delivered_id = delivered["id"].as_str().unwrap().parse::<Uuid>().unwrap();
+    sqlx::query("UPDATE orders SET status='delivered' WHERE id=$1")
+        .bind(delivered_id)
+        .execute(&db)
+        .await
+        .unwrap();
+    let load:Uuid=sqlx::query_scalar("INSERT INTO order_loads(order_id,load_number,quantity_m3,status) VALUES($1,1,6,'delivered') RETURNING id").bind(delivered_id).fetch_one(&db).await.unwrap();
+    sqlx::query("INSERT INTO proof_of_deliveries(load_id,receiver_name,receiver_phone,delivered_quantity) VALUES($1,'Synthetic receiver','0',5.5)").bind(load).execute(&db).await.unwrap();
+    payload["idempotency_key"] = json!("hub-draft");
+    payload["save_draft"] = json!(true);
+    assert_eq!(
+        call(&app, "/api/customer/orders", Some(payload), &token)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let cast = chrono::Utc::now().date_naive() - chrono::Duration::days(29);
+    let (_, receiving) = call(&app,"/api/customer/receiving-records",Some(json!({"site_id":site,"grade":"M25","received_quantity_m3":5.5,"sample_cast_date":cast,"cube_sample_ids":["A","B"]})),&token).await;
+    let record = receiving["id"].as_str().unwrap().parse::<Uuid>().unwrap();
+    sqlx::query("INSERT INTO cube_test_results(record_id,sample_id,age_days,tested_on,result_mpa) VALUES($1,'a',7,CURRENT_DATE,30)").bind(record).execute(&db).await.unwrap();
+    assert_eq!(
+        call(
+            &app,
+            "/api/customer/receiving-records",
+            Some(json!({"site_id":site,"grade":"M25","received_quantity_m3":1})),
+            &token
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    sqlx::query("INSERT INTO customer_pour_plans(customer_id,site_id,grade,total_quantity_m3,pour_date,start_time) VALUES($1,$2,'M25',6,CURRENT_DATE,'10:00')").bind(customer).bind(site).execute(&db).await.unwrap();
+    let request:Uuid=sqlx::query_scalar("INSERT INTO customer_quotation_requests(customer_id,plant_id,site_id,grade,quantity_m3,required_date) VALUES($1,$2,$3,'M25',2,CURRENT_DATE) RETURNING id").bind(customer).bind(plant).bind(site).fetch_one(&db).await.unwrap();
+    for (number, req, expiry) in [
+        ("HUB-LINKED", Some(request), 1),
+        ("HUB-LEGACY", None, 1),
+        ("HUB-EXPIRED", None, -1),
+    ] {
+        sqlx::query("INSERT INTO plant_quotations(plant_id,quotation_number,request_id,customer_id,customer_name,site_name,site_address,grade,quantity_m3,rate_per_m3,total_amount,valid_until) VALUES($1,$2,$3,$4,'Customer','  SITE  ','  Manual   address  ','M25',2,5000,11800,CURRENT_DATE+$5::int)").bind(plant).bind(number).bind(req).bind(customer).bind(expiry).execute(&db).await.unwrap();
+    }
+    // A foreign customer's malformed historical link must not enter any aggregate.
+    let foreign = identity(&db, "customer").await;
+    let foreign_token =
+        generate_token(foreign, "customer", "", None, &state.config.jwt_secret, 1).unwrap();
+    sqlx::query("INSERT INTO customer_pour_plans(customer_id,site_id,grade,total_quantity_m3,pour_date,start_time) VALUES($1,$2,'M25',999,CURRENT_DATE,'10:00')").bind(foreign).bind(site).execute(&db).await.unwrap();
+    let (status, hub) = call(&app, "/api/customer/project-sites", None, &token).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(hub["count"], 1);
+    let summary = &hub["sites"][0];
+    assert_eq!(summary["orders_count"], 3);
+    assert_eq!(summary["active_orders"], 1);
+    assert_eq!(summary["delivered_orders"], 1);
+    assert_eq!(summary["ordered_m3"], 18.0);
+    assert_eq!(summary["delivered_m3"], 5.5);
+    assert_eq!(summary["delivery_quantity_source"], "RECORDED_POD");
+    assert_eq!(summary["pour_plans"], 1);
+    assert_eq!(summary["receiving_records"], 2);
+    assert_eq!(summary["pending_cube_tests"], 3);
+    assert_eq!(summary["overdue_cube_tests"], 3);
+    assert_eq!(summary["quotation_requests"], 1);
+    assert_eq!(summary["official_quotations"], 3);
+    assert_eq!(summary["open_quotations"], 2);
+    assert_eq!(summary["upcoming_delivery"]["order_id"], first["id"]);
+    assert_eq!(summary["upcoming_delivery"]["quantity"], 6.0);
+    assert_eq!(
+        call(&app, "/api/customer/project-sites", None, &foreign_token)
+            .await
+            .1["count"],
+        0
+    );
+    let admin = identity(&db, "admin").await;
+    let admin_token =
+        generate_token(admin, "admin", "", None, &state.config.jwt_secret, 1).unwrap();
+    assert_eq!(
+        call(&app, "/api/customer/project-sites", None, &admin_token)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    sqlx::query("INSERT INTO customer_sites(customer_id,name,address_line,city,state,pincode,contact_person,contact_phone) VALUES($1,'Site','Manual address','','','','','')").bind(customer).execute(&db).await.unwrap();
+    let (_, hub) = call(&app, "/api/customer/project-sites", None, &token).await;
+    let original = hub["sites"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["id"] == json!(site))
+        .unwrap();
+    assert_eq!(
+        original["official_quotations"], 1,
+        "Ambiguous legacy names must not double-attribute quotations"
+    );
+    let other = hub["sites"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["id"] != json!(site))
+        .unwrap();
+    assert_eq!(other["official_quotations"], 0);
+    assert_eq!(other["orders_count"], 0);
+    assert_eq!(other["delivered_m3"], 0.0);
+    assert!(other["latest_order"].is_null());
+    assert!(other["upcoming_delivery"].is_null());
+}

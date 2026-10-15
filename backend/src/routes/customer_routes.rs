@@ -215,6 +215,79 @@ pub async fn list_sites(
     Ok(Json(json!({"success":true,"sites":rows})))
 }
 
+/// One statement gives a consistent persisted summary without joining child
+/// collections together (which would multiply quantities and counts).
+pub async fn project_sites(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+) -> Result<impl IntoResponse, AppError> {
+    check_role(&auth_user, &["customer"])?;
+    let sites: Vec<serde_json::Value> = sqlx::query_scalar(
+        r#"
+        WITH own_sites AS (
+            SELECT s.*, lower(regexp_replace(trim(s.name || ' ' || s.address_line), '\s+', ' ', 'g')) AS site_key,
+                count(*) OVER (PARTITION BY lower(regexp_replace(trim(s.name || ' ' || s.address_line), '\s+', ' ', 'g'))) AS key_count
+            FROM customer_sites s WHERE s.customer_id=$1
+        )
+        SELECT jsonb_build_object(
+            'id',s.id,'name',s.name,'address',s.address_line,'lat',s.latitude,'lng',s.longitude,
+            'contact_person',s.contact_person,'contact_mobile',s.contact_phone,'is_default',s.is_default,
+            'orders_count',o.total,'active_orders',o.active,'delivered_orders',o.delivered,
+            'ordered_m3',o.quantity,'delivered_m3',p.quantity,'delivery_quantity_source','RECORDED_POD',
+            'pour_plans',(SELECT count(*) FROM customer_pour_plans pp WHERE pp.customer_id=$1 AND pp.site_id=s.id),
+            'receiving_records',(SELECT count(*) FROM customer_receiving_records rr WHERE rr.customer_id=$1 AND rr.site_id=s.id),
+            'pending_cube_tests',c.pending,'overdue_cube_tests',c.overdue,
+            'quotation_requests',(SELECT count(*) FROM customer_quotation_requests r WHERE r.customer_id=$1 AND r.site_id=s.id),
+            'official_quotations',q.total,'open_quotations',q.open,
+            'upcoming_delivery',(SELECT jsonb_build_object('order_id',n.id,'order_number',n.order_number,
+                'delivery_date',n.delivery_date,'delivery_time',n.delivery_time_slot,'grade',n.concrete_grade,
+                'quantity',n.total_quantity_m3::double precision,'status',upper(n.status))
+                FROM orders n WHERE n.customer_id=$1 AND n.site_id=s.id
+                AND lower(n.status) NOT IN ('draft','delivered','rejected','cancelled')
+                ORDER BY n.delivery_date,n.delivery_time_slot,n.created_at,n.id LIMIT 1),
+            'latest_order',(SELECT jsonb_build_object('id',n.id,'order_number',n.order_number,'status',upper(n.status))
+                FROM orders n WHERE n.customer_id=$1 AND n.site_id=s.id ORDER BY n.created_at DESC,n.id DESC LIMIT 1)
+        )
+        FROM own_sites s
+        CROSS JOIN LATERAL (
+            SELECT count(*) total,
+                count(*) FILTER (WHERE lower(status) NOT IN ('draft','delivered','rejected','cancelled')) active,
+                count(*) FILTER (WHERE lower(status)='delivered') delivered,
+                coalesce(sum(total_quantity_m3),0)::double precision quantity
+            FROM orders WHERE customer_id=$1 AND site_id=s.id
+        ) o
+        CROSS JOIN LATERAL (
+            SELECT coalesce(sum(d.delivered_quantity),0)::double precision quantity
+            FROM orders n JOIN order_loads l ON l.order_id=n.id JOIN proof_of_deliveries d ON d.load_id=l.id
+            WHERE n.customer_id=$1 AND n.site_id=s.id
+        ) p
+        CROSS JOIN LATERAL (
+            SELECT count(*) pending, count(*) FILTER (WHERE r.sample_cast_date + a.days < $2::date) overdue
+            FROM customer_receiving_records r CROSS JOIN LATERAL unnest(r.cube_sample_ids) sample(id)
+            CROSS JOIN (VALUES(7),(28)) a(days)
+            WHERE r.customer_id=$1 AND r.site_id=s.id AND r.sample_cast_date IS NOT NULL
+            AND NOT EXISTS(SELECT 1 FROM cube_test_results t WHERE t.record_id=r.id
+                AND lower(t.sample_id)=lower(sample.id) AND t.age_days=a.days)
+        ) c
+        CROSS JOIN LATERAL (
+            SELECT count(*) total, count(*) FILTER (WHERE upper(q.status) IN ('SENT','OPEN','ACCEPTED') AND q.valid_until >= $2::date) open
+            FROM plant_quotations q LEFT JOIN customer_quotation_requests r ON r.id=q.request_id AND r.customer_id=$1
+            WHERE q.customer_id=$1 AND (
+                r.site_id=s.id OR (r.site_id IS NULL AND EXISTS(SELECT 1 FROM orders n WHERE n.quotation_id=q.id AND n.customer_id=$1 AND n.site_id=s.id))
+                OR (r.site_id IS NULL AND NOT EXISTS(SELECT 1 FROM orders n WHERE n.quotation_id=q.id AND n.customer_id=$1)
+                    AND s.key_count=1 AND lower(regexp_replace(trim(q.site_name || ' ' || q.site_address), '\s+', ' ', 'g'))=s.site_key)
+            )
+        ) q
+        ORDER BY s.is_default DESC,s.created_at DESC,s.id LIMIT 500
+        "#,
+    )
+    .bind(auth_user.user_id)
+    .bind(chrono::Utc::now().date_naive())
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(json!({"sites":sites,"count":sites.len()})))
+}
+
 pub async fn create_site(
     State(state): State<AppState>,
     auth_user: AuthUser,

@@ -293,6 +293,10 @@ pub fn build_app_router(state: AppState) -> Router {
         )
         .route("/api/customer/grades", get(customer_routes::get_grades))
         .route(
+            "/api/customer/project-sites",
+            get(customer_routes::project_sites),
+        )
+        .route(
             "/api/customer/sites",
             get(customer_routes::list_sites).post(customer_routes::create_site),
         )

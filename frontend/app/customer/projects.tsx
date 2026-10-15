@@ -59,7 +59,7 @@ export default function CustomerProjects() {
       </View>
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 110, gap: spacing.lg }} refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={colors.brand} />}>
         <Card style={{ gap: spacing.sm }}>
-          <View style={styles.notice}><Ionicons name="information-circle-outline" size={19} color={colors.brand} /><AppText variant="caption" style={{ flex: 1 }}>Orders and quotations are linked by saved site. Older records are safely matched by the same site name and address.</AppText></View>
+          <View style={styles.notice}><Ionicons name="information-circle-outline" size={19} color={colors.brand} /><AppText variant="caption" style={{ flex: 1 }}>Orders and quotations are linked by saved site. Older quotations match only when the site name and address identify one saved site. Delivered quantity comes from recorded delivery receipts.</AppText></View>
         </Card>
         {loading && !data ? <><Skeleton height={210} /><Skeleton height={210} /></> : null}
         {error && !data ? <Card style={{ gap: spacing.md }}><AppText color={colors.error}>{error}</AppText><Button label="Retry" onPress={reload} /></Card> : null}

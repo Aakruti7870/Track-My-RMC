@@ -69,7 +69,27 @@ impl OtpDelivery for LoopbackDelivery {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() {
+    if let Err(error) = run().await {
+        let database = error.downcast_ref::<sqlx::Error>().or_else(|| {
+            error.downcast_ref::<AppError>().and_then(|app| match app {
+                AppError::DatabaseError(database) => Some(database),
+                _ => None,
+            })
+        });
+        let code = database
+            .and_then(sqlx::Error::as_database_error)
+            .and_then(|db| db.code());
+        eprintln!(
+            "CI-FIXTURE: failed sqlstate={}",
+            code.as_deref().unwrap_or("unavailable")
+        );
+        std::process::exit(1);
+    }
+}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    eprintln!("CI-FIXTURE: configuration");
     if std::env::var("GITHUB_ACTIONS").as_deref() != Ok("true")
         || std::env::var("APP_ENV").as_deref() != Ok("test")
     {
@@ -97,10 +117,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .max_connections(10)
         .connect(&config.database_url)
         .await?;
+    eprintln!("CI-FIXTURE: migrations");
     sqlx::migrate!("./migrations").run(&pool).await?;
     let mut identities = HashMap::new();
     let mut approved = HashSet::new();
     let mut tx = pool.begin().await?;
+    eprintln!("CI-FIXTURE: synthetic identities");
     for (index, entry) in manifest["users"]
         .as_array()
         .ok_or("Missing synthetic manifest")?
@@ -155,6 +177,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .get("customer")
         .ok_or("Missing customer fixture")?;
     let driver = *identities.get("driver").ok_or("Missing driver fixture")?;
+    eprintln!("CI-FIXTURE: plant and assignments");
     let plant:Uuid=sqlx::query_scalar("INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,address_line,city,state,pincode,contact_phone) VALUES($1,'Browser staging plant','CI-MOBILE',19.076,72.877,'Synthetic staging address','Mumbai','Maharashtra','400001','0') RETURNING id").bind(owner).fetch_one(&mut *tx).await?;
     sqlx::query("INSERT INTO plant_listing_requests(name,address,lat,lng,status,plant_id) VALUES('Browser staging plant','Synthetic staging address',19.076,72.877,'APPROVED',$1)").bind(plant).execute(&mut *tx).await?;
     sqlx::query("INSERT INTO plant_rate_cards(plant_id,grade,rate_per_m3) VALUES($1,'M25',4500)")
@@ -174,6 +197,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     sqlx::query("INSERT INTO transit_mixers(plant_id,registration_number,driver_id) VALUES($1,'CI-MOBILE-TM',$2)").bind(plant).bind(driver).execute(&mut *tx).await?;
     let site:Uuid=sqlx::query_scalar("INSERT INTO customer_sites(customer_id,name,address_line,city,state,pincode,latitude,longitude,contact_person,contact_phone,is_default) VALUES($1,'Browser site','Synthetic staging delivery address','Mumbai','Maharashtra','400001',19.1,72.9,'Staging customer','12025550101',TRUE) RETURNING id").bind(customer).fetch_one(&mut *tx).await?;
     tx.commit().await?;
+    eprintln!("CI-FIXTURE: customer order");
     config.meta_whatsapp_token = None;
     config.email_api_key = None;
     let mut state = AppState::new(pool, config);
@@ -185,6 +209,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         json!({"plant_id":plant,"site_id":site,"grade":"M25","quantity":6,"delivery_date":chrono::Utc::now().date_naive()+chrono::Duration::days(1),"delivery_time":"10:00","idempotency_key":"ci-mobile-seed-order"}),
     )?;
     customer_order::place(&state, customer, order).await?;
+    eprintln!("CI-FIXTURE: router");
     let cors = CorsLayer::new()
         .allow_origin("http://127.0.0.1:8081".parse::<axum::http::HeaderValue>()?)
         .allow_methods(Any)
