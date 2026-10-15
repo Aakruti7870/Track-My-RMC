@@ -19,6 +19,8 @@ type Health = {
   timestamp?: string;
 };
 
+type PortalKpi = { label: string; value: string | number };
+
 type Enrollment = {
   account: string;
   manual_key: string;
@@ -47,6 +49,8 @@ function CommandCenter() {
   const [recoveryCodesSaved, setRecoveryCodesSaved] = useState(false);
   const [user, setUser] = useState<StaffUser | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
+  const [adminKpis, setAdminKpis] = useState<PortalKpi[]>([]);
+  const [adminOverviewError, setAdminOverviewError] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -78,6 +82,31 @@ function CommandCenter() {
       .catch(() => { if (active) setHealth(null); });
     return () => { active = false; };
   }, [stage]);
+
+  useEffect(() => {
+    if (stage !== 'authenticated' || user?.role !== 'admin') {
+      setAdminKpis([]);
+      setAdminOverviewError('');
+      return;
+    }
+    let active = true;
+    apiClient.get('/api/control-center/summary')
+      .then((response) => {
+        if (!active) return;
+        const kpis: unknown = response.data?.kpis;
+        setAdminKpis(Array.isArray(kpis) ? kpis.filter((item): item is PortalKpi =>
+          typeof item?.label === 'string' &&
+          (typeof item?.value === 'number' || typeof item?.value === 'string')
+        ) : []);
+        setAdminOverviewError('');
+      })
+      .catch((requestError) => {
+        if (!active) return;
+        setAdminKpis([]);
+        setAdminOverviewError(errorMessage(requestError));
+      });
+    return () => { active = false; };
+  }, [stage, user?.role]);
 
   async function sendEmailOtp(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -196,6 +225,8 @@ function CommandCenter() {
       window.sessionStorage.removeItem('trackmyrmc_admin_token');
       setUser(null);
       setHealth(null);
+      setAdminKpis([]);
+      setAdminOverviewError('');
       setEnrollment(null);
       setChallengeToken('');
       setOtp('');
@@ -320,8 +351,24 @@ function CommandCenter() {
               <p><strong>API:</strong> {health?.status || 'Unavailable'}</p>
               <p><strong>Database:</strong> {health?.database || 'Not confirmed'}</p>
               <p><strong>Environment:</strong> {health?.environment || 'Unknown'}</p>
-              <p style={{ color: '#94a3b8', fontSize: 12 }}>Operational management modules are not connected to this portal yet.</p>
+              <p style={{ color: '#94a3b8', fontSize: 12 }}>This portal is being connected incrementally to secured Rust APIs. Privileged actions require recent authenticator verification.</p>
             </div>
+            {user.role === 'admin' && (
+              <section aria-label="Platform overview" style={{ marginTop: 14, padding: 16, border: '1px solid #334155', borderRadius: 10 }}>
+                <h2 style={{ marginTop: 0, fontSize: 18 }}>Live platform overview</h2>
+                {adminOverviewError && <p role="alert" style={{ color: '#fecaca' }}>Unable to load overview: {adminOverviewError}</p>}
+                {!adminOverviewError && adminKpis.length === 0 && <p style={{ color: '#94a3b8' }}>No overview data available.</p>}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(175px, 1fr))', gap: 10 }}>
+                  {adminKpis.map((item) => (
+                    <div key={item.label} style={{ padding: 12, border: '1px solid #475569', borderRadius: 8, background: '#111827' }}>
+                      <div style={{ color: '#cbd5e1', fontSize: 12 }}>{item.label}</div>
+                      <strong style={{ fontSize: 22 }}>{String(item.value)}</strong>
+                    </div>
+                  ))}
+                </div>
+                <p style={{ color: '#94a3b8', fontSize: 12 }}>Read-only statistics from the Rust API. This is not the complete reference Control Center.</p>
+              </section>
+            )}
             <button type="button" onClick={logout} disabled={busy} style={buttonStyle}>{busy ? 'Signing out…' : 'Sign out and revoke session'}</button>
           </div>
         )}
