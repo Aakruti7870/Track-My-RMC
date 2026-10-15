@@ -53,7 +53,7 @@ export default function CustomerProjects() {
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
       <View style={{ height: insets.top }} />
       <View style={[styles.header, { backgroundColor: colors.surfaceSecondary, borderBottomColor: colors.divider }]}>
-        <Pressable onPress={() => router.back()}><Ionicons name="arrow-back" size={24} color={colors.onSurface} /></Pressable>
+        <Pressable testID="project-hub-back" accessibilityRole="button" accessibilityLabel="Back" onPress={() => router.back()}><Ionicons name="arrow-back" size={24} color={colors.onSurface} /></Pressable>
         <View style={{ flex: 1 }}><AppText style={[styles.headerTitle, { color: colors.onSurface }]}>Project & Site Hub</AppText><AppText style={[styles.headerSub, { color: colors.onSurfaceTertiary }]}>Everything for each concrete delivery site</AppText></View>
         <Ionicons name="briefcase-outline" size={25} color={colors.brand} />
       </View>
