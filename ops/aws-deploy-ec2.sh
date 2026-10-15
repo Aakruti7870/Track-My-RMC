@@ -39,10 +39,10 @@ for pair in \
   if [ -f "$from" ]; then cp -a "$from" "$ROLLBACK_DIR/$to"; fi
 done
 
-rollback_on_error() {
-  rc=$?
-  trap - ERR
-  if [ "$ROLLBACK_ARMED" -eq 1 ]; then
+rollback_on_exit() {
+  rc="$1"
+  trap - EXIT
+  if [ "$rc" -ne 0 ] && [ "$ROLLBACK_ARMED" -eq 1 ]; then
     echo "DEPLOY FAILED: restoring previous application files and services." >&2
     set +e
     for item in frontend admin-web source; do
@@ -69,10 +69,10 @@ rollback_on_error() {
       echo "ALERT: application rollback attempted, backend health still failed." >&2
     fi
   fi
-  exit "$rc"
+  if [ "$rc" -ne 0 ]; then exit "$rc"; fi
 }
 ROLLBACK_ARMED=1
-trap rollback_on_error ERR
+trap 'rollback_on_exit $?' EXIT
 
 REGION="ap-south-1"
 BUCKET="trackmyrmc-prod-artifacts-260234292958-ap-south-1"
@@ -445,5 +445,5 @@ test -n "$ADMIN_JS"
 curl --resolve trackmyrmc.com:443:127.0.0.1 --fail --silent --show-error "https://trackmyrmc.com$ADMIN_JS" >/dev/null
 
 ROLLBACK_ARMED=0
-trap - ERR
+trap - EXIT
 echo "TrackMyRMC deployment successful: $RELEASE_SHA"
