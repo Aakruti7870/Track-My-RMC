@@ -1,22 +1,25 @@
+
 name: Deploy TrackMyRMC AWS Production
 
-# Production deployment is manual-only until the database-name mismatch and
-# prior 502 incident have been reconciled. A merge to main must not redeploy
-# production as a side effect.
+# Automatic production deployment:
+# - Triggered by completion of Backend CI or Frontend CI
+# - Requires both workflows to pass for the exact same main commit
+# - Does not authorize database cutover
+# - Deploys only a SHA-pinned release
+
 on:
-  workflow_dispatch:
-    inputs:
-      confirm_production_deploy:
-        description: "Type yes only after the production recovery plan has been reviewed"
-        required: true
-        type: choice
-        options:
-          - "no"
-          - "yes"
-        default: "no"
+  workflow_run:
+    workflows:
+      - "Backend CI"
+      - "Frontend CI"
+    types:
+      - completed
+    branches:
+      - main
 
 permissions:
   contents: read
+  actions: read
   id-token: write
 
 concurrency:
@@ -29,12 +32,19 @@ env:
   ARTIFACT_BUCKET: trackmyrmc-prod-artifacts-260234292958-ap-south-1
   INSTANCE_ID: i-0598aad6e6d729c69
   APP_SECRET_NAME: trackmyrmc/app-runtime
+  RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
 
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' && inputs.confirm_production_deploy == 'yes'
+    name: Verify, Build and Deploy to AWS
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
+
     services:
       postgres:
         image: postgres:16-alpine
@@ -51,111 +61,316 @@ jobs:
           --health-retries 5
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Verify both CI workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
 
-      - name: Build Rust backend
+          echo "Release commit: $RELEASE_SHA"
+
+          MAIN_SHA="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/commits/main" \
+            --jq '.sha')"
+
+          if [ "$MAIN_SHA" != "$RELEASE_SHA" ]; then
+            echo "Release commit is not current main."
+            exit 1
+          fi
+
+          for workflow in backend.yml frontend.yml; do
+            echo "Checking $workflow"
+
+            passed=false
+
+            for attempt in $(seq 1 45); do
+              response="$(gh api \
+                "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow}/runs?event=push&head_sha=${RELEASE_SHA}&per_page=50")"
+
+              status="$(printf '%s' "$response" | jq -r \
+                --arg sha "$RELEASE_SHA" '
+                  [
+                    .workflow_runs[]
+                    | select(.head_sha == $sha)
+                  ]
+                  | sort_by(.run_attempt, .run_number)
+                  | last
+                  | if . == null then
+                      "missing"
+                    else
+                      (.status + ":" + (.conclusion // ""))
+                    end
+                ')"
+
+              echo "$workflow: $status"
+
+              if [ "$status" = "completed:success" ]; then
+                passed=true
+                break
+              fi
+
+              if [[ "$status" == completed:* ]]; then
+                echo "Required workflow failed."
+                exit 1
+              fi
+
+              sleep 20
+            done
+
+            if [ "$passed" != true ]; then
+              echo "$workflow did not pass."
+              exit 1
+            fi
+          done
+
+          MAIN_SHA="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/commits/main" \
+            --jq '.sha')"
+
+          test "$MAIN_SHA" = "$RELEASE_SHA"
+
+          echo "Both required CI workflows passed."
+
+      - name: Checkout verified commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
           components: rustfmt, clippy
           targets: x86_64-unknown-linux-gnu
+
       - name: Validate deployment script
-        run: bash -n ops/aws-deploy-ec2.sh
-      - name: Rust format check
+        run: |
+          set -euo pipefail
+          bash -n ops/aws-deploy-ec2.sh
+
+      - name: Rust formatting
         working-directory: backend
         run: cargo fmt --all -- --check
+
       - name: Rust check
         run: cargo check --all-targets --manifest-path backend/Cargo.toml
+
       - name: Rust clippy
-        run: cargo clippy --all-targets --manifest-path backend/Cargo.toml
+        run: cargo clippy --all-targets --manifest-path backend/Cargo.toml -- -D warnings
+
       - name: Rust tests
         env:
           DATABASE_URL: postgres://trackmyrmc_user:securepassword@localhost:5432/trackmyrmc_test
           JWT_SECRET: test_jwt_secret_key_at_least_32_characters_long
+          APP_ENV: test
         run: cargo test --manifest-path backend/Cargo.toml --verbose
+
       - name: Build Rust backend
         run: cargo build --release --manifest-path backend/Cargo.toml
 
-      - name: Build Expo web
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - working-directory: frontend
+
+      - name: Build Expo web
+        working-directory: frontend
         env:
           EXPO_PUBLIC_BACKEND_URL: https://trackmyrmc.com
         run: |
+          set -euo pipefail
           npm ci
           npm run typecheck
           npm run check:auth-routing
           npm run check:android-layout
           npm run build:preview
-          test -f dist/index.html
+          test -s dist/index.html
 
       - name: Build admin dashboard
         working-directory: admin-web
         env:
           VITE_API_URL: https://trackmyrmc.com
         run: |
-          npm install
+          set -euo pipefail
+          npm ci
           npm run build
+          test -s dist/index.html
 
-      - name: Package complete source and admin dashboard
+      - name: Package release artifacts
         run: |
           set -euo pipefail
-          git archive --format=tar.gz --output="/tmp/source-${GITHUB_SHA}.tgz" "${GITHUB_SHA}"
-          tar -C admin-web/dist -czf "/tmp/admin-web-${GITHUB_SHA}.tgz" .
-          test -s "/tmp/source-${GITHUB_SHA}.tgz"
-          test -s "/tmp/admin-web-${GITHUB_SHA}.tgz"
 
-      - name: Configure AWS
+          git archive \
+            --format=tar.gz \
+            --output="/tmp/source-${RELEASE_SHA}.tgz" \
+            "${RELEASE_SHA}"
+
+          tar -C admin-web/dist \
+            -czf "/tmp/admin-web-${RELEASE_SHA}.tgz" .
+
+          tar -C frontend \
+            -czf "/tmp/frontend-${RELEASE_SHA}.tgz" dist
+
+          test -s "/tmp/source-${RELEASE_SHA}.tgz"
+          test -s "/tmp/admin-web-${RELEASE_SHA}.tgz"
+          test -s "/tmp/frontend-${RELEASE_SHA}.tgz"
+          test -s backend/target/release/trackmyrmc-backend
+
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Verify production runtime secret exists
+      - name: Verify AWS identity and runtime secret
         run: |
           set -euo pipefail
-          aws secretsmanager describe-secret --secret-id "${APP_SECRET_NAME}" >/dev/null
-          echo "Runtime secret exists. The EC2 instance validates required fields locally before replacing the application release."
 
-      - name: Upload release
-        id: release
+          ACCOUNT="$(aws sts get-caller-identity \
+            --query Account --output text)"
+
+          test "$ACCOUNT" = "260234292958"
+
+          aws secretsmanager describe-secret \
+            --secret-id "$APP_SECRET_NAME" >/dev/null
+
+          echo "AWS identity and runtime secret verified."
+
+      - name: Upload release artifacts to S3
         run: |
           set -euo pipefail
-          SHA="${GITHUB_SHA}"
-          tar -C frontend -czf /tmp/frontend.tgz dist
-          aws s3 cp backend/target/release/trackmyrmc-backend "s3://${ARTIFACT_BUCKET}/backend-${SHA}"
-          aws s3 cp /tmp/frontend.tgz "s3://${ARTIFACT_BUCKET}/frontend-${SHA}.tgz"
-          aws s3 cp "/tmp/source-${SHA}.tgz" "s3://${ARTIFACT_BUCKET}/source-${SHA}.tgz"
-          aws s3 cp "/tmp/admin-web-${SHA}.tgz" "s3://${ARTIFACT_BUCKET}/admin-web-${SHA}.tgz"
 
-      - name: Deploy EC2 through SSM
+          aws s3 cp \
+            backend/target/release/trackmyrmc-backend \
+            "s3://${ARTIFACT_BUCKET}/backend-${RELEASE_SHA}"
+
+          aws s3 cp \
+            "/tmp/frontend-${RELEASE_SHA}.tgz" \
+            "s3://${ARTIFACT_BUCKET}/frontend-${RELEASE_SHA}.tgz"
+
+          aws s3 cp \
+            "/tmp/source-${RELEASE_SHA}.tgz" \
+            "s3://${ARTIFACT_BUCKET}/source-${RELEASE_SHA}.tgz"
+
+          aws s3 cp \
+            "/tmp/admin-web-${RELEASE_SHA}.tgz" \
+            "s3://${ARTIFACT_BUCKET}/admin-web-${RELEASE_SHA}.tgz"
+
+          echo "Release artifacts uploaded."
+
+      - name: Recheck main before production deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          COMMAND_ID="$(aws ssm send-command             --instance-ids "${INSTANCE_ID}"             --document-name AWS-RunShellScript             --comment "TrackMyRMC production deploy ${GITHUB_SHA}"             --parameters commands="curl -fsSL "https://raw.githubusercontent.com/Aakruti7870/Track-My-RMC/${GITHUB_SHA}/ops/aws-deploy-ec2.sh" | RELEASE_SHA=${GITHUB_SHA} bash"             --query 'Command.CommandId'             --output text)"
 
-          for i in $(seq 1 60); do
-            STATUS="$(aws ssm get-command-invocation               --command-id "$COMMAND_ID"               --instance-id "${INSTANCE_ID}"               --query Status               --output text)"
-            echo "SSM: $STATUS"
-            case "$STATUS" in
-              Success) exit 0 ;;
-              Failed|Cancelled|TimedOut|Cancelling)
-                aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "${INSTANCE_ID}"
-                exit 1 ;;
-            esac
-            sleep 5
-          done
-          exit 1
+          MAIN_SHA="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/commits/main" \
+            --jq '.sha')"
 
-      - name: Verify public HTTPS, API, and web assets
+          test "$MAIN_SHA" = "$RELEASE_SHA" || {
+            echo "Main changed during build. Refusing stale deployment."
+            exit 1
+          }
+
+      - name: Deploy EC2 through AWS SSM
         run: |
           set -euo pipefail
-          curl --retry 10 --retry-all-errors --retry-delay 3 -fsS https://trackmyrmc.com/health
-          curl --retry 10 --retry-all-errors --retry-delay 3 -fsS https://trackmyrmc.com/ | grep -F '_expo/static/' >/dev/null
-          curl --retry 10 --retry-all-errors --retry-delay 3 -fsSI https://trackmyrmc.com/ | grep -Eiq '^HTTP/[^ ]+ 200'
-          ADMIN_JS="$(curl --retry 10 --retry-all-errors --retry-delay 3 -fsS https://trackmyrmc.com/admin/ | grep -Eo 'src="/admin/assets/[^"]+\.js"' | head -n 1 | cut -d '"' -f 2)"
+
+          SCRIPT_URL="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${RELEASE_SHA}/ops/aws-deploy-ec2.sh"
+
+          REMOTE_COMMAND="set -euo pipefail; curl --fail --silent --show-error --location '${SCRIPT_URL}' -o /tmp/trackmyrmc-deploy.sh && bash -n /tmp/trackmyrmc-deploy.sh && RELEASE_SHA='${RELEASE_SHA}' bash /tmp/trackmyrmc-deploy.sh"
+
+          PARAMS="$(jq -nc \
+            --arg command "$REMOTE_COMMAND" \
+            '{commands: [$command]}')"
+
+          COMMAND_ID="$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "TrackMyRMC production deploy ${RELEASE_SHA}" \
+            --parameters "$PARAMS" \
+            --query 'Command.CommandId' \
+            --output text)"
+
+          echo "SSM Command ID: $COMMAND_ID"
+
+          aws ssm wait command-executed \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$INSTANCE_ID"
+
+          STATUS="$(aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$INSTANCE_ID" \
+            --query Status \
+            --output text)"
+
+          if [ "$STATUS" != "Success" ]; then
+            echo "AWS deployment failed: $STATUS"
+            exit 1
+          fi
+
+          echo "SSM deployment completed."
+
+      - name: Verify public production health
+        run: |
+          set -euo pipefail
+
+          BASE_URL="https://trackmyrmc.com"
+
+          curl \
+            --retry 10 \
+            --retry-all-errors \
+            --retry-delay 3 \
+            -fsS "${BASE_URL}/health"
+
+          curl \
+            --retry 10 \
+            --retry-all-errors \
+            --retry-delay 3 \
+            -fsS "${BASE_URL}/" \
+            | grep -F '_expo/static/' >/dev/null
+
+          curl \
+            --retry 10 \
+            --retry-all-errors \
+            --retry-delay 3 \
+            -fsSI "${BASE_URL}/" \
+            | grep -Eiq '^HTTP/[^ ]+ 200'
+
+          ADMIN_HTML="$(curl \
+            --retry 10 \
+            --retry-all-errors \
+            --retry-delay 3 \
+            -fsS "${BASE_URL}/admin/")"
+
+          ADMIN_JS="$(printf '%s' "$ADMIN_HTML" \
+            | grep -Eo 'src="/admin/assets/[^"]+\.js"' \
+            | head -n 1 \
+            | cut -d '"' -f 2)"
+
           test -n "$ADMIN_JS"
-          curl --retry 10 --retry-all-errors --retry-delay 3 -fsSI "https://trackmyrmc.com$ADMIN_JS" | grep -Eiq '^HTTP/[^ ]+ 200'
+
+          curl \
+            --retry 10 \
+            --retry-all-errors \
+            --retry-delay 3 \
+            -fsSI "${BASE_URL}${ADMIN_JS}" \
+            | grep -Eiq '^HTTP/[^ ]+ 200'
+
+          echo "Production health checks passed."
+
+      - name: Deployment summary
+        if: success()
+        run: |
+          echo "## TrackMyRMC AWS Deployment" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Status: Successful" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Commit: ${RELEASE_SHA}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Branch: main" >> "$GITHUB_STEP_SUMMARY"
+          echo "- AWS region: ${AWS_REGION}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Instance: ${INSTANCE_ID}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- URL: https://trackmyrmc.com" >> "$GITHUB_STEP_SUMMARY"
