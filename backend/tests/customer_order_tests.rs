@@ -1590,7 +1590,8 @@ async fn quality_recording_requires_active_plant_engineer_and_matching_load(db: 
             StatusCode::FORBIDDEN
         );
     }
-    // Deny mismatched privileged claims without creating or elevating privileged identities.
+    // A JWT claiming a different privileged role than the current database role
+    // must be rejected at authentication (401), before endpoint authorization (403).
     for role in ["authority", "central_admin"] {
         let mismatched =
             generate_token(engineer, role, "", None, &state.config.jwt_secret, 1).unwrap();
@@ -1603,7 +1604,7 @@ async fn quality_recording_requires_active_plant_engineer_and_matching_load(db: 
             )
             .await
             .0,
-            StatusCode::FORBIDDEN
+            StatusCode::UNAUTHORIZED
         );
     }
     let outsider = identity(&db, "quality_engineer").await;
