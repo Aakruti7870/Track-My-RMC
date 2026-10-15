@@ -195,6 +195,31 @@ async fn multi_load_pod_reconciles_parent_and_prevents_overwrite(pool: PgPool) {
         .await,
         Err(AppError::BadRequest(_))
     ));
+    sqlx::query("UPDATE orders SET status='pending' WHERE id=$1")
+        .bind(order)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(matches!(
+        dispatch_repo::record_pod(
+            &pool,
+            first,
+            driver,
+            "Receiver",
+            "",
+            Some("signature"),
+            Some("trackmyrmc/pod/test.jpg"),
+            None,
+            6.0
+        )
+        .await,
+        Err(AppError::Conflict(_))
+    ));
+    sqlx::query("UPDATE orders SET status='dispatched' WHERE id=$1")
+        .bind(order)
+        .execute(&pool)
+        .await
+        .unwrap();
     for load in [first, second] {
         let photo = if load == first {
             "trackmyrmc/pod/test.jpg"

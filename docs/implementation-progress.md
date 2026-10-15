@@ -45,3 +45,9 @@ Initial commit: ef35db7c07a0deb609146e6ca283a99e1469b386
 - Frontend CI run 38734684220 passed both jobs for that commit.
 - Final follow-up additionally asserts over-delivery rejection, foreign-trip photo rejection, and persisted receiver/quantity in delivered trip responses.
 - Release/rollback requirements are in docs/delivery-release-plan.md.
+
+## Final source verification
+- Source commit aaf3c4b296debe9ae7cf186be9b80aa0b53008f7 passed backend CI 38735200180 and frontend CI 38735199925 (mobile and admin dashboard).
+- All four delivery regression tests passed; the backend suite reported 59 passing test executions in total.
+- A final parent-state guard now prevents POD for orders that were never dispatched and has a regression assertion; this follow-up requires backend CI.
+- Mobile screen inventory: 100 of 102 reference TSX files exist. passkey-ceremony.tsx and passkey-setup.tsx are absent; review approved security policy before restoration. See docs/mobile-screen-parity.md.

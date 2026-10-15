@@ -264,10 +264,7 @@ pub async fn record_pod(
             "Proof of delivery requires arrival or unloading".to_string(),
         ));
     }
-    if matches!(
-        parent_status.as_str(),
-        "cancelled" | "rejected" | "completed" | "delivered"
-    ) {
+    if !matches!(parent_status.as_str(), "dispatched" | "in_transit") {
         return Err(AppError::Conflict(
             "Parent order cannot accept delivery".to_string(),
         ));
