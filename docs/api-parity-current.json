@@ -1,0 +1,2685 @@
+{
+  "summary": {
+    "reference_commit": "51903571f110908c3f1ddcffa6e4171ed406888c",
+    "reference_entries": 297,
+    "reference_unique_pairs": 288,
+    "target_unique_pairs": 307,
+    "matched_entries": 199,
+    "unmatched_entries": 98
+  },
+  "entries": [
+    {
+      "module": "account_deletion",
+      "method": "POST",
+      "path": "/api/account-deletion/cancel",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "account_deletion",
+      "method": "POST",
+      "path": "/api/account-deletion/public-request",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "account_deletion",
+      "method": "POST",
+      "path": "/api/account-deletion/request",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "account_deletion",
+      "method": "GET",
+      "path": "/api/account-deletion/requests",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "account_deletion",
+      "method": "POST",
+      "path": "/api/account-deletion/requests/{request_id}/complete",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "account_deletion",
+      "method": "GET",
+      "path": "/api/account-deletion/status",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "admin_auth",
+      "method": "POST",
+      "path": "/api/admin/auth/logout-all",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "admin_auth",
+      "method": "POST",
+      "path": "/api/admin/auth/method",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "admin_auth",
+      "method": "POST",
+      "path": "/api/admin/auth/recover",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "admin_auth",
+      "method": "POST",
+      "path": "/api/admin/auth/step-up",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "admin_auth",
+      "method": "POST",
+      "path": "/api/admin/auth/verify-totp",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "admin_portal",
+      "method": "GET",
+      "path": "/api/admin/portal/audit",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Equivalent Rust endpoint",
+      "note": "Dedicated web-session /api/control-center/collections/{kind} provides scoped read data; legacy DTO compatibility is incomplete."
+    },
+    {
+      "module": "admin_portal",
+      "method": "GET",
+      "path": "/api/admin/portal/kyc",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "admin_portal",
+      "method": "GET",
+      "path": "/api/admin/portal/orders",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Equivalent Rust endpoint",
+      "note": "Dedicated web-session /api/control-center/collections/{kind} provides scoped read data; legacy DTO compatibility is incomplete."
+    },
+    {
+      "module": "admin_portal",
+      "method": "GET",
+      "path": "/api/admin/portal/payments",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "admin_portal",
+      "method": "GET",
+      "path": "/api/admin/portal/plants",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Equivalent Rust endpoint",
+      "note": "Dedicated web-session /api/control-center/collections/{kind} provides scoped read data; legacy DTO compatibility is incomplete."
+    },
+    {
+      "module": "admin_portal",
+      "method": "GET",
+      "path": "/api/admin/portal/summary",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "admin_portal",
+      "method": "GET",
+      "path": "/api/admin/portal/support",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Equivalent Rust endpoint",
+      "note": "Dedicated web-session /api/control-center/collections/{kind} provides scoped read data; legacy DTO compatibility is incomplete."
+    },
+    {
+      "module": "admin_portal",
+      "method": "GET",
+      "path": "/api/admin/portal/system",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "admin_portal",
+      "method": "GET",
+      "path": "/api/admin/portal/users",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Equivalent Rust endpoint",
+      "note": "Dedicated web-session /api/control-center/collections/{kind} provides scoped read data; legacy DTO compatibility is incomplete."
+    },
+    {
+      "module": "assistant",
+      "method": "POST",
+      "path": "/api/assistant/orders/confirm",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "assistant",
+      "method": "POST",
+      "path": "/api/assistant/orders/prepare",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "assistant",
+      "method": "POST",
+      "path": "/api/assistant/support",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "assistant",
+      "method": "GET",
+      "path": "/api/assistant/support/cases",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "assistant",
+      "method": "GET",
+      "path": "/api/assistant/support/cases/{case_id}",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "assistant",
+      "method": "POST",
+      "path": "/api/assistant/support/cases/{case_id}/replies",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "assistant",
+      "method": "GET",
+      "path": "/api/assistant/support/staff/cases",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "assistant",
+      "method": "GET",
+      "path": "/api/assistant/support/staff/cases/{case_id}",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "assistant",
+      "method": "POST",
+      "path": "/api/assistant/support/staff/cases/{case_id}/replies",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "assistant",
+      "method": "PATCH",
+      "path": "/api/assistant/support/staff/cases/{case_id}/status",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "auth",
+      "method": "POST",
+      "path": "/api/auth/demo-login",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Intentionally retired for security",
+      "note": "Use verified OTP/MFA and approved payroll lifecycle; insecure legacy authentication/direct payroll mutation is not restored."
+    },
+    {
+      "module": "auth",
+      "method": "GET",
+      "path": "/api/auth/google/callback",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Intentionally retired for security",
+      "note": "Use verified OTP/MFA and approved payroll lifecycle; insecure legacy authentication/direct payroll mutation is not restored."
+    },
+    {
+      "module": "auth",
+      "method": "POST",
+      "path": "/api/auth/google/exchange",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Intentionally retired for security",
+      "note": "Use verified OTP/MFA and approved payroll lifecycle; insecure legacy authentication/direct payroll mutation is not restored."
+    },
+    {
+      "module": "auth",
+      "method": "GET",
+      "path": "/api/auth/google/start",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Intentionally retired for security",
+      "note": "Use verified OTP/MFA and approved payroll lifecycle; insecure legacy authentication/direct payroll mutation is not restored."
+    },
+    {
+      "module": "auth",
+      "method": "POST",
+      "path": "/api/auth/logout",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "auth",
+      "method": "POST",
+      "path": "/api/auth/request-otp",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Compatibility route or frontend correction",
+      "note": "Use explicit /api/auth/otp/{email|whatsapp}/{send|verify} and challenge-bound staff MFA; legacy generic OTP contracts need migration."
+    },
+    {
+      "module": "auth",
+      "method": "POST",
+      "path": "/api/auth/verify-otp",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Compatibility route or frontend correction",
+      "note": "Use explicit /api/auth/otp/{email|whatsapp}/{send|verify} and challenge-bound staff MFA; legacy generic OTP contracts need migration."
+    },
+    {
+      "module": "automation",
+      "method": "POST",
+      "path": "/api/automation/events/{event_id}/ack",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "automation",
+      "method": "POST",
+      "path": "/api/automation/events/{event_id}/deliver",
+      "path_match": true,
+      "status": "BLOCKED",
+      "classification": "External integration unavailable",
+      "note": "Guarded route rejects unconfigured providers; no fabricated delivery, KYC or payment success."
+    },
+    {
+      "module": "automation",
+      "method": "POST",
+      "path": "/api/automation/events/{event_id}/fail",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "automation",
+      "method": "POST",
+      "path": "/api/automation/events/claim",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "automation",
+      "method": "POST",
+      "path": "/api/automation/provider-callback",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "automation",
+      "method": "GET",
+      "path": "/api/automation/worker-health",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "business_ui",
+      "method": "GET",
+      "path": "/api/business/plants/{plant_id}/customers",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "business_ui",
+      "method": "POST",
+      "path": "/api/business/plants/{plant_id}/materials",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "business_ui",
+      "method": "POST",
+      "path": "/api/business/plants/{plant_id}/materials/{material_id}/adjust",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "business_ui",
+      "method": "POST",
+      "path": "/api/business/plants/{plant_id}/people",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "business_ui",
+      "method": "POST",
+      "path": "/api/business/plants/{plant_id}/people/{user_id}/activate",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "business_ui",
+      "method": "POST",
+      "path": "/api/business/plants/{plant_id}/people/{user_id}/suspend",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "business_ui",
+      "method": "POST",
+      "path": "/api/business/plants/{plant_id}/vehicles",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "business_ui",
+      "method": "POST",
+      "path": "/api/business/plants/{plant_id}/vehicles/{vehicle_id}/status",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "control_center",
+      "method": "GET",
+      "path": "/api/control-center/admin-access",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "control_center",
+      "method": "POST",
+      "path": "/api/control-center/admin-access",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "control_center",
+      "method": "POST",
+      "path": "/api/control-center/ai/commands",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "control_center",
+      "method": "GET",
+      "path": "/api/control-center/capabilities",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "control_center",
+      "method": "POST",
+      "path": "/api/control-center/owners/plants/{plant_id}/assign",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Equivalent Rust endpoint",
+      "note": "Secure /api/control-center/assign-owner and /api/control-center/unowned-plants; legacy path/DTO compatibility remains."
+    },
+    {
+      "module": "control_center",
+      "method": "GET",
+      "path": "/api/control-center/owners/requests",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "control_center",
+      "method": "POST",
+      "path": "/api/control-center/owners/requests/{request_id}/approve",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "control_center",
+      "method": "GET",
+      "path": "/api/control-center/owners/unowned-plants",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Equivalent Rust endpoint",
+      "note": "Secure /api/control-center/assign-owner and /api/control-center/unowned-plants; legacy path/DTO compatibility remains."
+    },
+    {
+      "module": "control_center",
+      "method": "GET",
+      "path": "/api/control-center/reviewer-access",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "control_center",
+      "method": "POST",
+      "path": "/api/control-center/reviewer-access",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "control_center",
+      "method": "GET",
+      "path": "/api/control-center/sessions",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Equivalent Rust endpoint",
+      "note": "Dedicated /api/control-center/collections/sessions provides permission-filtered session reads."
+    },
+    {
+      "module": "control_center",
+      "method": "POST",
+      "path": "/api/control-center/sessions/{session_id}/revoke",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "control_center",
+      "method": "GET",
+      "path": "/api/control-center/support/cases",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Equivalent Rust endpoint",
+      "note": "Dedicated /api/control-center/collections/support provides permission-filtered reads; support mutations remain incomplete."
+    },
+    {
+      "module": "control_center",
+      "method": "GET",
+      "path": "/api/control-center/support/cases/{case_id}",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "control_center",
+      "method": "POST",
+      "path": "/api/control-center/support/cases/{case_id}/notes",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "control_center",
+      "method": "POST",
+      "path": "/api/control-center/support/cases/{case_id}/replies",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "control_center",
+      "method": "PATCH",
+      "path": "/api/control-center/support/cases/{case_id}/status",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "customer",
+      "method": "GET",
+      "path": "/api/customer/compare-plants",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "customer",
+      "method": "GET",
+      "path": "/api/customer/home",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "customer",
+      "method": "GET",
+      "path": "/api/customer/kyc",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "customer",
+      "method": "POST",
+      "path": "/api/customer/kyc/start",
+      "path_match": true,
+      "status": "BLOCKED",
+      "classification": "External integration unavailable",
+      "note": "Guarded route rejects unconfigured providers; no fabricated delivery, KYC or payment success."
+    },
+    {
+      "module": "customer",
+      "method": "GET",
+      "path": "/api/customer/orders",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "customer",
+      "method": "POST",
+      "path": "/api/customer/orders",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "customer",
+      "method": "GET",
+      "path": "/api/customer/orders/{order_id}",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "customer",
+      "method": "POST",
+      "path": "/api/customer/orders/{order_id}/cancel",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "customer",
+      "method": "GET",
+      "path": "/api/customer/orders/{order_id}/challan",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "customer",
+      "method": "GET",
+      "path": "/api/customer/orders/{order_id}/tracking",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "customer",
+      "method": "GET",
+      "path": "/api/customer/plants",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "customer",
+      "method": "GET",
+      "path": "/api/customer/plants/{plant_id}",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "customer",
+      "method": "GET",
+      "path": "/api/customer/pour-plans",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "customer",
+      "method": "POST",
+      "path": "/api/customer/pour-plans",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "customer",
+      "method": "DELETE",
+      "path": "/api/customer/pour-plans/{plan_id}",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "customer",
+      "method": "GET",
+      "path": "/api/customer/project-sites",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Compatibility route or frontend correction",
+      "note": "Existing /api/customer/sites; project-site DTO compatibility remains."
+    },
+    {
+      "module": "customer",
+      "method": "POST",
+      "path": "/api/customer/quotation-requests",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "customer",
+      "method": "GET",
+      "path": "/api/customer/quotation-requests",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "customer",
+      "method": "GET",
+      "path": "/api/customer/receiving-records",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "customer",
+      "method": "POST",
+      "path": "/api/customer/receiving-records",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "customer",
+      "method": "DELETE",
+      "path": "/api/customer/receiving-records/{record_id}",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "customer",
+      "method": "PATCH",
+      "path": "/api/customer/receiving-records/{record_id}/cube-results",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "driver",
+      "method": "GET",
+      "path": "/api/driver/attendance",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "driver",
+      "method": "POST",
+      "path": "/api/driver/attendance/checkin",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "driver",
+      "method": "POST",
+      "path": "/api/driver/attendance/checkout",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "driver",
+      "method": "GET",
+      "path": "/api/driver/home",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "driver",
+      "method": "POST",
+      "path": "/api/driver/sos",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "driver",
+      "method": "GET",
+      "path": "/api/driver/sos",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Compatibility route or frontend correction",
+      "note": "Existing /api/driver/sos/status; response and legacy path need alignment."
+    },
+    {
+      "module": "driver",
+      "method": "GET",
+      "path": "/api/driver/trips",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "driver",
+      "method": "GET",
+      "path": "/api/driver/trips/{trip_id}",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "driver",
+      "method": "POST",
+      "path": "/api/driver/trips/{trip_id}/arrive",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "driver",
+      "method": "POST",
+      "path": "/api/driver/trips/{trip_id}/location",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "driver",
+      "method": "POST",
+      "path": "/api/driver/trips/{trip_id}/pod",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "driver",
+      "method": "POST",
+      "path": "/api/driver/trips/{trip_id}/start",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "driver",
+      "method": "POST",
+      "path": "/api/driver/trips/{trip_id}/unload",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "finance_ops",
+      "method": "GET",
+      "path": "/api/ops/customer/quotations",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "finance_ops",
+      "method": "POST",
+      "path": "/api/ops/customer/quotations/{quotation_id}/decision",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "finance_ops",
+      "method": "GET",
+      "path": "/api/ops/plants/{plant_id}/attendance/{date_key}",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "finance_ops",
+      "method": "POST",
+      "path": "/api/ops/plants/{plant_id}/attendance/checkin",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "finance_ops",
+      "method": "POST",
+      "path": "/api/ops/plants/{plant_id}/attendance/checkout",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "finance_ops",
+      "method": "GET",
+      "path": "/api/ops/plants/{plant_id}/diesel",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "finance_ops",
+      "method": "POST",
+      "path": "/api/ops/plants/{plant_id}/diesel",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "finance_ops",
+      "method": "GET",
+      "path": "/api/ops/plants/{plant_id}/expenses",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "finance_ops",
+      "method": "POST",
+      "path": "/api/ops/plants/{plant_id}/expenses",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "finance_ops",
+      "method": "PUT",
+      "path": "/api/ops/plants/{plant_id}/payroll",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Intentionally retired for security",
+      "note": "Use verified OTP/MFA and approved payroll lifecycle; insecure legacy authentication/direct payroll mutation is not restored."
+    },
+    {
+      "module": "finance_ops",
+      "method": "GET",
+      "path": "/api/ops/plants/{plant_id}/payroll/{month}",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "finance_ops",
+      "method": "GET",
+      "path": "/api/ops/plants/{plant_id}/purchases",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "finance_ops",
+      "method": "POST",
+      "path": "/api/ops/plants/{plant_id}/purchases",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "finance_ops",
+      "method": "GET",
+      "path": "/api/ops/plants/{plant_id}/quotation-requests",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "finance_ops",
+      "method": "POST",
+      "path": "/api/ops/plants/{plant_id}/quotation-requests/{request_id}/respond",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "finance_ops",
+      "method": "GET",
+      "path": "/api/ops/plants/{plant_id}/quotations",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "finance_ops",
+      "method": "POST",
+      "path": "/api/ops/plants/{plant_id}/quotations",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "hr_master",
+      "method": "GET",
+      "path": "/api/hr/employees",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "hr_master",
+      "method": "GET",
+      "path": "/api/hr/plants/{plant_id}/employees/{user_id}",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "hr_master",
+      "method": "PUT",
+      "path": "/api/hr/plants/{plant_id}/employees/{user_id}/profile",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "hr_master",
+      "method": "PUT",
+      "path": "/api/hr/plants/{plant_id}/employees/{user_id}/salary",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "hr_master",
+      "method": "GET",
+      "path": "/api/hr/plants/{plant_id}/employees/{user_id}/salary-suggestion/{month}",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "kyc_recovery",
+      "method": "GET",
+      "path": "/api/staff/kyc-recovery",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "kyc_recovery",
+      "method": "POST",
+      "path": "/api/staff/kyc-recovery/{profile_id}/reset",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "loads",
+      "method": "PUT",
+      "path": "/api/loads/{load_id}/assignment",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "loads",
+      "method": "POST",
+      "path": "/api/loads/{load_id}/cancel",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "loads",
+      "method": "POST",
+      "path": "/api/loads/{load_id}/dispatch",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "loads",
+      "method": "POST",
+      "path": "/api/loads/{load_id}/prepare",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "loads",
+      "method": "POST",
+      "path": "/api/loads/gate-pass",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "loads",
+      "method": "GET",
+      "path": "/api/loads/orders/{order_id}",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "loads",
+      "method": "POST",
+      "path": "/api/loads/orders/{order_id}",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "maps",
+      "method": "GET",
+      "path": "/api/maps/authority/rmc-plants",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "maps",
+      "method": "GET",
+      "path": "/api/maps/autocomplete",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "maps",
+      "method": "GET",
+      "path": "/api/maps/geocode",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "maps",
+      "method": "GET",
+      "path": "/api/maps/place/{place_id}",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "maps",
+      "method": "GET",
+      "path": "/api/maps/rmc-plants",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "maps",
+      "method": "POST",
+      "path": "/api/maps/rmc-plants/{place_id}/request-listing",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "maps",
+      "method": "GET",
+      "path": "/api/maps/route",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "maps",
+      "method": "GET",
+      "path": "/api/maps/status",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "master_data",
+      "method": "GET",
+      "path": "/api/master/customer/sites",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "master_data",
+      "method": "POST",
+      "path": "/api/master/customer/sites",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "master_data",
+      "method": "DELETE",
+      "path": "/api/master/customer/sites/{site_id}",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "master_data",
+      "method": "GET",
+      "path": "/api/master/my-plants",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "master_data",
+      "method": "GET",
+      "path": "/api/master/plants/{plant_id}/mix-designs",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "master_data",
+      "method": "POST",
+      "path": "/api/master/plants/{plant_id}/mix-designs",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "master_data",
+      "method": "GET",
+      "path": "/api/master/plants/{plant_id}/people",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "master_data",
+      "method": "GET",
+      "path": "/api/master/plants/{plant_id}/profile",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "master_data",
+      "method": "PUT",
+      "path": "/api/master/plants/{plant_id}/profile",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Compatibility route or frontend correction",
+      "note": "Existing profile save uses POST; validate PUT semantics before adding an alias."
+    },
+    {
+      "module": "master_data",
+      "method": "GET",
+      "path": "/api/master/plants/{plant_id}/rate-cards",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "master_data",
+      "method": "POST",
+      "path": "/api/master/plants/{plant_id}/rate-cards",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "master_data",
+      "method": "GET",
+      "path": "/api/master/plants/{plant_id}/resources",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "master_data",
+      "method": "GET",
+      "path": "/api/master/plants/{plant_id}/summary",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "master_data",
+      "method": "GET",
+      "path": "/api/master/plants/{plant_id}/suppliers",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "master_data",
+      "method": "POST",
+      "path": "/api/master/plants/{plant_id}/suppliers",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "me",
+      "method": "GET",
+      "path": "/api/me",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "meta_whatsapp",
+      "method": "GET",
+      "path": "/api/meta/whatsapp/webhook",
+      "path_match": false,
+      "status": "BLOCKED",
+      "classification": "External integration unavailable",
+      "note": "Provider webhook adapter/configuration and controlled live destinations are unavailable."
+    },
+    {
+      "module": "meta_whatsapp",
+      "method": "POST",
+      "path": "/api/meta/whatsapp/webhook",
+      "path_match": false,
+      "status": "BLOCKED",
+      "classification": "External integration unavailable",
+      "note": "Provider webhook adapter/configuration and controlled live destinations are unavailable."
+    },
+    {
+      "module": "notify",
+      "method": "GET",
+      "path": "/api/notifications",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "notify",
+      "method": "POST",
+      "path": "/api/notifications/{notification_id}/read",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "notify",
+      "method": "POST",
+      "path": "/api/notifications/device/register",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "notify",
+      "method": "POST",
+      "path": "/api/notifications/device/unregister",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "notify",
+      "method": "POST",
+      "path": "/api/notifications/read-all",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "operator_ops",
+      "method": "GET",
+      "path": "/api/staff/orders/{order_id}/production",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "operator_ops",
+      "method": "POST",
+      "path": "/api/staff/orders/{order_id}/production/batch",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "owner",
+      "method": "GET",
+      "path": "/api/owner/drivers",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "owner",
+      "method": "GET",
+      "path": "/api/owner/fleet",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "owner",
+      "method": "GET",
+      "path": "/api/owner/home",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "owner",
+      "method": "GET",
+      "path": "/api/owner/incidents",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "owner",
+      "method": "POST",
+      "path": "/api/owner/incidents/{incident_id}/resolve",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "owner",
+      "method": "GET",
+      "path": "/api/owner/insights",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "owner",
+      "method": "GET",
+      "path": "/api/owner/invoices",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "owner",
+      "method": "POST",
+      "path": "/api/owner/invoices/{invoice_id}/payment",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "owner",
+      "method": "GET",
+      "path": "/api/owner/ledger",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "owner",
+      "method": "GET",
+      "path": "/api/owner/orders",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "owner",
+      "method": "GET",
+      "path": "/api/owner/orders/{order_id}",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "owner",
+      "method": "POST",
+      "path": "/api/owner/orders/{order_id}/approve",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "owner",
+      "method": "POST",
+      "path": "/api/owner/orders/{order_id}/assign-driver",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Equivalent Rust endpoint",
+      "note": "Guarded /api/staff/orders and /api/loads workflows cover allocation/challan/dispatch; legacy wrappers and request contracts remain."
+    },
+    {
+      "module": "owner",
+      "method": "POST",
+      "path": "/api/owner/orders/{order_id}/assign-tm",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Equivalent Rust endpoint",
+      "note": "Guarded /api/staff/orders and /api/loads workflows cover allocation/challan/dispatch; legacy wrappers and request contracts remain."
+    },
+    {
+      "module": "owner",
+      "method": "POST",
+      "path": "/api/owner/orders/{order_id}/challan",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Equivalent Rust endpoint",
+      "note": "Guarded /api/staff/orders and /api/loads workflows cover allocation/challan/dispatch; legacy wrappers and request contracts remain."
+    },
+    {
+      "module": "owner",
+      "method": "GET",
+      "path": "/api/owner/orders/{order_id}/challan",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Equivalent Rust endpoint",
+      "note": "Guarded /api/staff/orders and /api/loads workflows cover allocation/challan/dispatch; legacy wrappers and request contracts remain."
+    },
+    {
+      "module": "owner",
+      "method": "POST",
+      "path": "/api/owner/orders/{order_id}/dispatch",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Equivalent Rust endpoint",
+      "note": "Guarded /api/staff/orders and /api/loads workflows cover allocation/challan/dispatch; legacy wrappers and request contracts remain."
+    },
+    {
+      "module": "owner",
+      "method": "POST",
+      "path": "/api/owner/orders/{order_id}/invoice",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "owner",
+      "method": "GET",
+      "path": "/api/owner/orders/{order_id}/production",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "owner",
+      "method": "POST",
+      "path": "/api/owner/orders/{order_id}/production/batch",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "owner",
+      "method": "POST",
+      "path": "/api/owner/orders/{order_id}/production/complete",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "owner",
+      "method": "POST",
+      "path": "/api/owner/orders/{order_id}/production/start",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "owner",
+      "method": "POST",
+      "path": "/api/owner/orders/{order_id}/reject",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "payroll_closure",
+      "method": "GET",
+      "path": "/api/payroll-periods/{month}",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "payroll_closure",
+      "method": "GET",
+      "path": "/api/payroll-periods/me/{month}",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "payroll_closure",
+      "method": "POST",
+      "path": "/api/payroll-periods/plants/{plant_id}/{month}/close",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "payroll_closure",
+      "method": "GET",
+      "path": "/api/payroll-periods/plants/{plant_id}/{month}/export",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "payroll_closure",
+      "method": "GET",
+      "path": "/api/payroll-periods/plants/{plant_id}/{month}/payslips",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "payroll_closure",
+      "method": "POST",
+      "path": "/api/payroll-periods/plants/{plant_id}/{month}/reopen",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "payroll_concurrency_hotfix",
+      "method": "PUT",
+      "path": "/api/workforce-reports/plants/{plant_id}/payroll/{month}/{user_id}/draft",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "payroll_concurrency_hotfix",
+      "method": "POST",
+      "path": "/api/workforce-reports/plants/{plant_id}/payroll/{month}/{user_id}/mark-paid",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "payroll_concurrency_hotfix",
+      "method": "POST",
+      "path": "/api/workforce-reports/plants/{plant_id}/payroll/{month}/{user_id}/owner-decision",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "payroll_guard",
+      "method": "PUT",
+      "path": "/api/ops/plants/{plant_id}/payroll",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Intentionally retired for security",
+      "note": "Use verified OTP/MFA and approved payroll lifecycle; insecure legacy authentication/direct payroll mutation is not restored."
+    },
+    {
+      "module": "permanent_access",
+      "method": "POST",
+      "path": "/api/auth/request-otp",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Compatibility route or frontend correction",
+      "note": "Use explicit /api/auth/otp/{email|whatsapp}/{send|verify} and challenge-bound staff MFA; legacy generic OTP contracts need migration."
+    },
+    {
+      "module": "permanent_access",
+      "method": "POST",
+      "path": "/api/auth/staff/request-otp",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Compatibility route or frontend correction",
+      "note": "Use explicit /api/auth/otp/{email|whatsapp}/{send|verify} and challenge-bound staff MFA; legacy generic OTP contracts need migration."
+    },
+    {
+      "module": "permanent_access",
+      "method": "POST",
+      "path": "/api/auth/staff/verify-otp",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Compatibility route or frontend correction",
+      "note": "Use explicit /api/auth/otp/{email|whatsapp}/{send|verify} and challenge-bound staff MFA; legacy generic OTP contracts need migration."
+    },
+    {
+      "module": "permanent_access",
+      "method": "POST",
+      "path": "/api/auth/verify-otp",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Compatibility route or frontend correction",
+      "note": "Use explicit /api/auth/otp/{email|whatsapp}/{send|verify} and challenge-bound staff MFA; legacy generic OTP contracts need migration."
+    },
+    {
+      "module": "permanent_access",
+      "method": "GET",
+      "path": "/api/customer/kyc",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "plant_discovery",
+      "method": "POST",
+      "path": "/api/plant-discovery/plants/{plant_id}/assign-owner",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "plant_discovery",
+      "method": "GET",
+      "path": "/api/plant-discovery/requests",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "plant_discovery",
+      "method": "POST",
+      "path": "/api/plant-discovery/requests/{request_id}/approve",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "plant_discovery",
+      "method": "POST",
+      "path": "/api/plant-discovery/requests/{request_id}/reject",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "plant_discovery",
+      "method": "POST",
+      "path": "/api/plant-discovery/requests/bulk-approve",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "plant_discovery",
+      "method": "POST",
+      "path": "/api/plant-discovery/requests/bulk-import",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "plant_discovery",
+      "method": "GET",
+      "path": "/api/plant-discovery/unowned-plants",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "plant_onboarding",
+      "method": "GET",
+      "path": "/api/plant-onboarding/places",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "plant_onboarding",
+      "method": "POST",
+      "path": "/api/plant-onboarding/requests",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "plant_plans",
+      "method": "POST",
+      "path": "/api/plant-plans/activate",
+      "path_match": true,
+      "status": "BLOCKED",
+      "classification": "External integration unavailable",
+      "note": "Guarded route rejects unconfigured providers; no fabricated delivery, KYC or payment success."
+    },
+    {
+      "module": "plant_plans",
+      "method": "GET",
+      "path": "/api/plant-plans/authority-control",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "plant_plans",
+      "method": "GET",
+      "path": "/api/plant-plans/cashfree/return",
+      "path_match": false,
+      "status": "BLOCKED",
+      "classification": "External integration unavailable",
+      "note": "Provider webhook adapter/configuration and controlled live destinations are unavailable."
+    },
+    {
+      "module": "plant_plans",
+      "method": "POST",
+      "path": "/api/plant-plans/cashfree/webhook",
+      "path_match": false,
+      "status": "BLOCKED",
+      "classification": "External integration unavailable",
+      "note": "Provider webhook adapter/configuration and controlled live destinations are unavailable."
+    },
+    {
+      "module": "plant_plans",
+      "method": "GET",
+      "path": "/api/plant-plans/context",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "plant_plans",
+      "method": "GET",
+      "path": "/api/plant-plans/orders/{order_number}",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "plant_plans",
+      "method": "GET",
+      "path": "/api/plant-plans/payment-history",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "plant_plans",
+      "method": "POST",
+      "path": "/api/plant-plans/promo-codes",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "plant_plans",
+      "method": "POST",
+      "path": "/api/plant-plans/quote",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "play_review",
+      "method": "POST",
+      "path": "/api/auth/play-review",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "play_review",
+      "method": "GET",
+      "path": "/api/auth/play-review/status",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "public_policy",
+      "method": "GET",
+      "path": "/api/account-deletion",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "public_policy",
+      "method": "GET",
+      "path": "/api/delete-account",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "public_policy",
+      "method": "GET",
+      "path": "/api/privacy",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "public_policy",
+      "method": "GET",
+      "path": "/api/privacy_policy",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "public_policy",
+      "method": "GET",
+      "path": "/api/terms",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "staff",
+      "method": "GET",
+      "path": "/api/staff/collection/{kind}",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "staff",
+      "method": "GET",
+      "path": "/api/staff/drivers",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "staff",
+      "method": "GET",
+      "path": "/api/staff/fleet",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "staff",
+      "method": "GET",
+      "path": "/api/staff/home",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "staff",
+      "method": "POST",
+      "path": "/api/staff/invoices/{invoice_id}/payment",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "staff",
+      "method": "POST",
+      "path": "/api/staff/kyc/{profile_id}/approve",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "staff",
+      "method": "POST",
+      "path": "/api/staff/kyc/{profile_id}/reject",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "staff",
+      "method": "POST",
+      "path": "/api/staff/materials",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Equivalent Rust endpoint",
+      "note": "Plant-scoped /api/business/plants/{plant_id} and /api/master/plants/{plant_id} handlers exist; legacy no-plant request wrappers remain."
+    },
+    {
+      "module": "staff",
+      "method": "POST",
+      "path": "/api/staff/materials/{material_id}/adjust",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Equivalent Rust endpoint",
+      "note": "Plant-scoped /api/business/plants/{plant_id} and /api/master/plants/{plant_id} handlers exist; legacy no-plant request wrappers remain."
+    },
+    {
+      "module": "staff",
+      "method": "GET",
+      "path": "/api/staff/orders/{order_id}",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "staff",
+      "method": "POST",
+      "path": "/api/staff/orders/{order_id}/assign-driver",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "staff",
+      "method": "POST",
+      "path": "/api/staff/orders/{order_id}/assign-tm",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "staff",
+      "method": "POST",
+      "path": "/api/staff/orders/{order_id}/challan",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Equivalent Rust endpoint",
+      "note": "Existing /api/staff/orders/{order_id}/generate-challan delegates to guarded load preparation."
+    },
+    {
+      "module": "staff",
+      "method": "POST",
+      "path": "/api/staff/orders/{order_id}/dispatch",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "staff",
+      "method": "POST",
+      "path": "/api/staff/orders/{order_id}/production/complete",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "staff",
+      "method": "POST",
+      "path": "/api/staff/orders/{order_id}/production/start",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "staff",
+      "method": "POST",
+      "path": "/api/staff/quality",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "staff",
+      "method": "GET",
+      "path": "/api/staff/quality/{order_id}",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "staff",
+      "method": "POST",
+      "path": "/api/staff/users/{user_id}/activate",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Equivalent Rust endpoint",
+      "note": "Plant-scoped /api/business/plants/{plant_id} and /api/master/plants/{plant_id} handlers exist; legacy no-plant request wrappers remain."
+    },
+    {
+      "module": "staff",
+      "method": "POST",
+      "path": "/api/staff/users/{user_id}/suspend",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Equivalent Rust endpoint",
+      "note": "Plant-scoped /api/business/plants/{plant_id} and /api/master/plants/{plant_id} handlers exist; legacy no-plant request wrappers remain."
+    },
+    {
+      "module": "staff",
+      "method": "POST",
+      "path": "/api/staff/vehicles",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Equivalent Rust endpoint",
+      "note": "Plant-scoped /api/business/plants/{plant_id} and /api/master/plants/{plant_id} handlers exist; legacy no-plant request wrappers remain."
+    },
+    {
+      "module": "staff",
+      "method": "POST",
+      "path": "/api/staff/vehicles/{vehicle_id}/status",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Equivalent Rust endpoint",
+      "note": "Plant-scoped /api/business/plants/{plant_id} and /api/master/plants/{plant_id} handlers exist; legacy no-plant request wrappers remain."
+    },
+    {
+      "module": "staff_auth",
+      "method": "POST",
+      "path": "/api/auth/staff/request-otp",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Compatibility route or frontend correction",
+      "note": "Use explicit /api/auth/otp/{email|whatsapp}/{send|verify} and challenge-bound staff MFA; legacy generic OTP contracts need migration."
+    },
+    {
+      "module": "staff_auth",
+      "method": "POST",
+      "path": "/api/auth/staff/verify-otp",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Compatibility route or frontend correction",
+      "note": "Use explicit /api/auth/otp/{email|whatsapp}/{send|verify} and challenge-bound staff MFA; legacy generic OTP contracts need migration."
+    },
+    {
+      "module": "staff_mfa",
+      "method": "POST",
+      "path": "/api/auth/staff/mfa/enroll/confirm",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "staff_mfa",
+      "method": "POST",
+      "path": "/api/auth/staff/mfa/enroll/start",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "staff_mfa",
+      "method": "POST",
+      "path": "/api/auth/staff/mfa/method",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "staff_mfa",
+      "method": "POST",
+      "path": "/api/auth/staff/mfa/reset-user",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "staff_mfa",
+      "method": "GET",
+      "path": "/api/auth/staff/mfa/status",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "staff_mfa",
+      "method": "POST",
+      "path": "/api/auth/staff/mfa/verify-recovery",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "staff_mfa",
+      "method": "POST",
+      "path": "/api/auth/staff/mfa/verify-totp",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "staff_passkeys",
+      "method": "POST",
+      "path": "/api/auth/staff/passkey/authenticate/options",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Intentionally retired for security",
+      "note": "Use verified OTP/MFA and approved payroll lifecycle; insecure legacy authentication/direct payroll mutation is not restored."
+    },
+    {
+      "module": "staff_passkeys",
+      "method": "POST",
+      "path": "/api/auth/staff/passkey/authenticate/start",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Intentionally retired for security",
+      "note": "Use verified OTP/MFA and approved payroll lifecycle; insecure legacy authentication/direct payroll mutation is not restored."
+    },
+    {
+      "module": "staff_passkeys",
+      "method": "POST",
+      "path": "/api/auth/staff/passkey/authenticate/verify",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Intentionally retired for security",
+      "note": "Use verified OTP/MFA and approved payroll lifecycle; insecure legacy authentication/direct payroll mutation is not restored."
+    },
+    {
+      "module": "staff_passkeys",
+      "method": "POST",
+      "path": "/api/auth/staff/passkey/exchange",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Intentionally retired for security",
+      "note": "Use verified OTP/MFA and approved payroll lifecycle; insecure legacy authentication/direct payroll mutation is not restored."
+    },
+    {
+      "module": "staff_passkeys",
+      "method": "POST",
+      "path": "/api/auth/staff/passkey/register/options",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Intentionally retired for security",
+      "note": "Use verified OTP/MFA and approved payroll lifecycle; insecure legacy authentication/direct payroll mutation is not restored."
+    },
+    {
+      "module": "staff_passkeys",
+      "method": "POST",
+      "path": "/api/auth/staff/passkey/register/start",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Intentionally retired for security",
+      "note": "Use verified OTP/MFA and approved payroll lifecycle; insecure legacy authentication/direct payroll mutation is not restored."
+    },
+    {
+      "module": "staff_passkeys",
+      "method": "POST",
+      "path": "/api/auth/staff/passkey/register/verify",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Intentionally retired for security",
+      "note": "Use verified OTP/MFA and approved payroll lifecycle; insecure legacy authentication/direct payroll mutation is not restored."
+    },
+    {
+      "module": "staff_passkeys",
+      "method": "POST",
+      "path": "/api/auth/staff/passkey/remove",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Intentionally retired for security",
+      "note": "Use verified OTP/MFA and approved payroll lifecycle; insecure legacy authentication/direct payroll mutation is not restored."
+    },
+    {
+      "module": "staff_passkeys",
+      "method": "GET",
+      "path": "/api/auth/staff/passkey/status",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Intentionally retired for security",
+      "note": "Use verified OTP/MFA and approved payroll lifecycle; insecure legacy authentication/direct payroll mutation is not restored."
+    },
+    {
+      "module": "storage",
+      "method": "GET",
+      "path": "/api/files/{path:path}",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "storage",
+      "method": "POST",
+      "path": "/api/upload",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "workforce",
+      "method": "GET",
+      "path": "/api/workforce/accountant/expenses",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "workforce",
+      "method": "POST",
+      "path": "/api/workforce/accountant/expenses/{claim_id}/decision",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "workforce",
+      "method": "POST",
+      "path": "/api/workforce/attendance/punch-in",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "workforce",
+      "method": "POST",
+      "path": "/api/workforce/attendance/punch-out",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "workforce",
+      "method": "POST",
+      "path": "/api/workforce/expenses",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "workforce",
+      "method": "POST",
+      "path": "/api/workforce/leave",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "workforce",
+      "method": "GET",
+      "path": "/api/workforce/me",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "workforce",
+      "method": "GET",
+      "path": "/api/workforce/owner/control",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "workforce",
+      "method": "POST",
+      "path": "/api/workforce/owner/expenses/{claim_id}/decision",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Compatibility route or frontend correction",
+      "note": "Existing plant-scoped leave/owner-expense decision routes use different URLs; legacy DTO migration remains."
+    },
+    {
+      "module": "workforce",
+      "method": "POST",
+      "path": "/api/workforce/owner/leave/{request_id}/decision",
+      "path_match": false,
+      "status": "PARTIAL",
+      "classification": "Compatibility route or frontend correction",
+      "note": "Existing plant-scoped leave/owner-expense decision routes use different URLs; legacy DTO migration remains."
+    },
+    {
+      "module": "workforce",
+      "method": "POST",
+      "path": "/api/workforce/owner/visits/{visit_id}/decision",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "workforce",
+      "method": "POST",
+      "path": "/api/workforce/visits",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "workforce",
+      "method": "POST",
+      "path": "/api/workforce/visits/{visit_id}/complete",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "workforce",
+      "method": "POST",
+      "path": "/api/workforce/visits/{visit_id}/start",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "workforce_reports",
+      "method": "GET",
+      "path": "/api/workforce-reports/monthly/{month}",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "workforce_reports",
+      "method": "PUT",
+      "path": "/api/workforce-reports/plants/{plant_id}/payroll/{month}/{user_id}/draft",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "workforce_reports",
+      "method": "POST",
+      "path": "/api/workforce-reports/plants/{plant_id}/payroll/{month}/{user_id}/mark-paid",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "workforce_reports",
+      "method": "POST",
+      "path": "/api/workforce-reports/plants/{plant_id}/payroll/{month}/{user_id}/owner-decision",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "workforce_roster",
+      "method": "GET",
+      "path": "/api/workforce-roster/me",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "workforce_roster",
+      "method": "GET",
+      "path": "/api/workforce-roster/overview/{date_key}",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "workforce_roster",
+      "method": "PUT",
+      "path": "/api/workforce-roster/plants/{plant_id}/attendance-config",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "workforce_roster",
+      "method": "POST",
+      "path": "/api/workforce-roster/plants/{plant_id}/attendance/{attendance_id}/override",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    },
+    {
+      "module": "workforce_roster",
+      "method": "PUT",
+      "path": "/api/workforce-roster/plants/{plant_id}/roster/{date_key}/{user_id}",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "workforce_roster",
+      "method": "POST",
+      "path": "/api/workforce-roster/plants/{plant_id}/shifts",
+      "path_match": true,
+      "status": "PARTIAL",
+      "classification": "Matching Rust endpoint",
+      "note": "Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence."
+    },
+    {
+      "module": "workforce_roster",
+      "method": "PUT",
+      "path": "/api/workforce-roster/plants/{plant_id}/shifts/{shift_id}",
+      "path_match": false,
+      "status": "NOT IMPLEMENTED",
+      "classification": "Missing business logic",
+      "note": "No equivalent complete Rust workflow has been established; implementation and regression tests remain."
+    }
+  ]
+}

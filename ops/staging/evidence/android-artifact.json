@@ -1,0 +1,12 @@
+{
+  "verified_commit": "deea5c352e2292f5e0a32b749ffbd5646ab4b729",
+  "run_id": 38777317672,
+  "status": "COMPLETE",
+  "artifact_id": 11995043488,
+  "name": "trackmyrmc-v2.0.32-vc90-signed-aab",
+  "size_in_bytes": 70286018,
+  "digest": "sha256:0d7f51a273ce4bb45ac484d3429a6ecc4c8d51c81d9ed525b16930447faf13a2",
+  "package": "com.trackmyrmc.concreteking",
+  "device_validation": "BLOCKED",
+  "latest_candidate_build": "PARTIAL"
+}

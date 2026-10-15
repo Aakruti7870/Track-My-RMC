@@ -1,0 +1,2126 @@
+﻿{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "FAIL",
+  "not_compliant": [
+    {
+      "Rule": {
+        "name": "EBS_OPTIMIZED_INSTANCE",
+        "metadata": {},
+        "messages": {
+          "custom_message": null,
+          "error_message": null
+        },
+        "checks": [
+          {
+            "Clause": {
+              "Binary": {
+                "context": " %ec2_ebs_optimized_instances[*].Properties.EbsOptimized EQUALS  true",
+                "messages": {
+                  "custom_message": "\r\n\t\t\tViolation: EBS optimization must be enabled for your EC2 instances\r\n\t\t\tFix: set the EbsOptimized property to true\r\n    ",
+                  "error_message": "Check was not compliant as property [EbsOptimized] to compare from is missing. Value traversed to [Path=/Resources/AppHost/Properties[L:621,C:20] Value={\"ImageId\":{\"Ref\":\"ImageId\"},\"InstanceType\":{\"Ref\":\"ComputeSize\"},\"SubnetId\":{\"Ref\":\"AppSubnet\"},\"SecurityGroupIds\":[{\"Ref\":\"AppSecurityGroup\"}],\"IamInstanceProfile\":{\"Ref\":\"InstanceProfile\"},\"MetadataOptions\":{\"HttpTokens\":\"required\",\"HttpEndpoint\":\"enabled\",\"HttpPutResponseHopLimit\":1},\"BlockDeviceMappings\":[{\"DeviceName\":\"/dev/xvda\",\"Ebs\":{\"VolumeType\":\"gp3\",\"VolumeSize\":30,\"Encrypted\":true,\"DeleteOnTermination\":true}}],\"Tags\":[{\"Key\":\"Project\",\"Value\":\"TrackMyRMC\"},{\"Key\":\"Environment\",\"Value\":\"staging\"},{\"Key\":\"ManagedBy\",\"Value\":\"CloudFormation\"},{\"Key\":\"Name\",\"Value\":{\"Fn::Sub\":\"${AWS::StackName}-app\"}}],\"UserData\":{\"Fn::Base64\":\"#!/bin/bash\nset -euo pipefail\nsystemctl enable --now amazon-ssm-agent\ninstall -d -m 0750 /opt/trackmyrmc-staging\nprintf '%s\\n' 'Foundation only: no production data or accounts loaded' > /opt/trackmyrmc-staging/STATUS\n\"},\"CreditSpecification\":{\"CPUCredits\":\"standard\"}}]."
+                },
+                "check": {
+                  "UnResolved": {
+                    "value": {
+                      "traversed_to": {
+                        "path": "/Resources/AppHost/Properties",
+                        "value": {
+                          "ImageId": {
+                            "Ref": "ImageId"
+                          },
+                          "InstanceType": {
+                            "Ref": "ComputeSize"
+                          },
+                          "SubnetId": {
+                            "Ref": "AppSubnet"
+                          },
+                          "SecurityGroupIds": [
+                            {
+                              "Ref": "AppSecurityGroup"
+                            }
+                          ],
+                          "IamInstanceProfile": {
+                            "Ref": "InstanceProfile"
+                          },
+                          "MetadataOptions": {
+                            "HttpTokens": "required",
+                            "HttpEndpoint": "enabled",
+                            "HttpPutResponseHopLimit": 1
+                          },
+                          "BlockDeviceMappings": [
+                            {
+                              "DeviceName": "/dev/xvda",
+                              "Ebs": {
+                                "VolumeType": "gp3",
+                                "VolumeSize": 30,
+                                "Encrypted": true,
+                                "DeleteOnTermination": true
+                              }
+                            }
+                          ],
+                          "Tags": [
+                            {
+                              "Key": "Project",
+                              "Value": "TrackMyRMC"
+                            },
+                            {
+                              "Key": "Environment",
+                              "Value": "staging"
+                            },
+                            {
+                              "Key": "ManagedBy",
+                              "Value": "CloudFormation"
+                            },
+                            {
+                              "Key": "Name",
+                              "Value": {
+                                "Fn::Sub": "${AWS::StackName}-app"
+                              }
+                            }
+                          ],
+                          "UserData": {
+                            "Fn::Base64": "#!/bin/bash\nset -euo pipefail\nsystemctl enable --now amazon-ssm-agent\ninstall -d -m 0750 /opt/trackmyrmc-staging\nprintf '%s\\n' 'Foundation only: no production data or accounts loaded' > /opt/trackmyrmc-staging/STATUS\n"
+                          },
+                          "CreditSpecification": {
+                            "CPUCredits": "standard"
+                          }
+                        }
+                      },
+                      "remaining_query": "EbsOptimized",
+                      "reason": "Could not find key EbsOptimized inside struct at path /Resources/AppHost/Properties[L:621,C:20]"
+                    },
+                    "comparison": [
+                      "Eq",
+                      false
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "not_applicable": [],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "SKIP",
+  "not_compliant": [],
+  "not_applicable": [
+    "EBS_VOLUME_ENCRYPTION_KEY_RULE"
+  ],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "FAIL",
+  "not_compliant": [
+    {
+      "Rule": {
+        "name": "EC2_INSTANCE_DETAILED_MONITORING_ENABLED",
+        "metadata": {},
+        "messages": {
+          "custom_message": null,
+          "error_message": null
+        },
+        "checks": [
+          {
+            "Clause": {
+              "Binary": {
+                "context": " %ec2_instances_detailed_monitoring_enabled[*].Properties.Monitoring EQUALS  true",
+                "messages": {
+                  "custom_message": "\r\n      Violation: EC2 Instance Monitoring must be enabled on all EC2 instances\r\n      Fix: set the Monitoring property to true\r\n    ",
+                  "error_message": "Check was not compliant as property [Monitoring] to compare from is missing. Value traversed to [Path=/Resources/AppHost/Properties[L:621,C:20] Value={\"ImageId\":{\"Ref\":\"ImageId\"},\"InstanceType\":{\"Ref\":\"ComputeSize\"},\"SubnetId\":{\"Ref\":\"AppSubnet\"},\"SecurityGroupIds\":[{\"Ref\":\"AppSecurityGroup\"}],\"IamInstanceProfile\":{\"Ref\":\"InstanceProfile\"},\"MetadataOptions\":{\"HttpTokens\":\"required\",\"HttpEndpoint\":\"enabled\",\"HttpPutResponseHopLimit\":1},\"BlockDeviceMappings\":[{\"DeviceName\":\"/dev/xvda\",\"Ebs\":{\"VolumeType\":\"gp3\",\"VolumeSize\":30,\"Encrypted\":true,\"DeleteOnTermination\":true}}],\"Tags\":[{\"Key\":\"Project\",\"Value\":\"TrackMyRMC\"},{\"Key\":\"Environment\",\"Value\":\"staging\"},{\"Key\":\"ManagedBy\",\"Value\":\"CloudFormation\"},{\"Key\":\"Name\",\"Value\":{\"Fn::Sub\":\"${AWS::StackName}-app\"}}],\"UserData\":{\"Fn::Base64\":\"#!/bin/bash\nset -euo pipefail\nsystemctl enable --now amazon-ssm-agent\ninstall -d -m 0750 /opt/trackmyrmc-staging\nprintf '%s\\n' 'Foundation only: no production data or accounts loaded' > /opt/trackmyrmc-staging/STATUS\n\"},\"CreditSpecification\":{\"CPUCredits\":\"standard\"}}]."
+                },
+                "check": {
+                  "UnResolved": {
+                    "value": {
+                      "traversed_to": {
+                        "path": "/Resources/AppHost/Properties",
+                        "value": {
+                          "ImageId": {
+                            "Ref": "ImageId"
+                          },
+                          "InstanceType": {
+                            "Ref": "ComputeSize"
+                          },
+                          "SubnetId": {
+                            "Ref": "AppSubnet"
+                          },
+                          "SecurityGroupIds": [
+                            {
+                              "Ref": "AppSecurityGroup"
+                            }
+                          ],
+                          "IamInstanceProfile": {
+                            "Ref": "InstanceProfile"
+                          },
+                          "MetadataOptions": {
+                            "HttpTokens": "required",
+                            "HttpEndpoint": "enabled",
+                            "HttpPutResponseHopLimit": 1
+                          },
+                          "BlockDeviceMappings": [
+                            {
+                              "DeviceName": "/dev/xvda",
+                              "Ebs": {
+                                "VolumeType": "gp3",
+                                "VolumeSize": 30,
+                                "Encrypted": true,
+                                "DeleteOnTermination": true
+                              }
+                            }
+                          ],
+                          "Tags": [
+                            {
+                              "Key": "Project",
+                              "Value": "TrackMyRMC"
+                            },
+                            {
+                              "Key": "Environment",
+                              "Value": "staging"
+                            },
+                            {
+                              "Key": "ManagedBy",
+                              "Value": "CloudFormation"
+                            },
+                            {
+                              "Key": "Name",
+                              "Value": {
+                                "Fn::Sub": "${AWS::StackName}-app"
+                              }
+                            }
+                          ],
+                          "UserData": {
+                            "Fn::Base64": "#!/bin/bash\nset -euo pipefail\nsystemctl enable --now amazon-ssm-agent\ninstall -d -m 0750 /opt/trackmyrmc-staging\nprintf '%s\\n' 'Foundation only: no production data or accounts loaded' > /opt/trackmyrmc-staging/STATUS\n"
+                          },
+                          "CreditSpecification": {
+                            "CPUCredits": "standard"
+                          }
+                        }
+                      },
+                      "remaining_query": "Monitoring",
+                      "reason": "Could not find key Monitoring inside struct at path /Resources/AppHost/Properties[L:621,C:20]"
+                    },
+                    "comparison": [
+                      "Eq",
+                      false
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "not_applicable": [],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "SKIP",
+  "not_compliant": [],
+  "not_applicable": [
+    "EC2_INSTANCE_NO_PUBLIC_IP"
+  ],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "EC2_INSTANCE_PROFILE_ATTACHED"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "EC2_INSTANCES_IN_VPC"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "SKIP",
+  "not_compliant": [],
+  "not_applicable": [
+    "EC2_NETWORK_ACL_ENTRY_INEFFECTIVE_DENY_RULE"
+  ],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "SKIP",
+  "not_compliant": [],
+  "not_applicable": [
+    "EC2_NETWORK_ACL_PORT_RANGE_RULE"
+  ],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "SKIP",
+  "not_compliant": [],
+  "not_applicable": [
+    "EC2_NETWORK_ACL_PROTOCOL_RULE"
+  ],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "FAIL",
+  "not_compliant": [
+    {
+      "Rule": {
+        "name": "EC2_SECURITY_GROUP_EGRESS_OPEN_TO_WORLD_RULE",
+        "metadata": {},
+        "messages": {
+          "custom_message": null,
+          "error_message": null
+        },
+        "checks": [
+          {
+            "Clause": {
+              "Unary": {
+                "check": {
+                  "Resolved": {
+                    "value": {
+                      "path": "/Resources/AppSecurityGroup",
+                      "value": {
+                        "Type": "AWS::EC2::SecurityGroup",
+                        "Properties": {
+                          "GroupDescription": "Staging host with no inbound access; use authenticated SSM sessions",
+                          "VpcId": {
+                            "Ref": "Vpc"
+                          },
+                          "SecurityGroupEgress": [
+                            {
+                              "IpProtocol": "tcp",
+                              "FromPort": 443,
+                              "ToPort": 443,
+                              "CidrIp": "0.0.0.0/0",
+                              "Description": "AWS APIs, SSM and HTTPS package repositories"
+                            },
+                            {
+                              "IpProtocol": "tcp",
+                              "FromPort": 80,
+                              "ToPort": 80,
+                              "CidrIp": "0.0.0.0/0",
+                              "Description": "OS package repositories"
+                            },
+                            {
+                              "IpProtocol": "tcp",
+                              "FromPort": 5432,
+                              "ToPort": 5432,
+                              "CidrIp": "10.88.0.0/16",
+                              "Description": "Isolated staging PostgreSQL"
+                            }
+                          ],
+                          "Tags": [
+                            {
+                              "Key": "Project",
+                              "Value": "TrackMyRMC"
+                            },
+                            {
+                              "Key": "Environment",
+                              "Value": "staging"
+                            },
+                            {
+                              "Key": "ManagedBy",
+                              "Value": "CloudFormation"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "comparison": [
+                      "Empty",
+                      false
+                    ]
+                  }
+                },
+                "context": " %violations_sg EMPTY  ",
+                "messages": {
+                  "custom_message": "",
+                  "error_message": "Check was not compliant as property [/Resources/AppSecurityGroup[L:231,C:24]] was not empty."
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "not_applicable": [],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "EC2_SECURITY_GROUP_INGRESS_OPEN_TO_WORLD_RULE"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "SKIP",
+  "not_compliant": [],
+  "not_applicable": [
+    "ENCRYPTED_VOLUMES"
+  ],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "FAIL",
+  "not_compliant": [
+    {
+      "Rule": {
+        "name": "NO_UNRESTRICTED_ROUTE_TO_IGW",
+        "metadata": {},
+        "messages": {
+          "custom_message": null,
+          "error_message": null
+        },
+        "checks": [
+          {
+            "Clause": {
+              "Binary": {
+                "context": " DestinationCidrBlock not IN  [\"0.0.0.0/0\",\"::/0\"]",
+                "messages": {
+                  "custom_message": "\r\n\t\t\t\tViolation: EC2 Routes to an IGW cannot have a destination CIDR block of '0.0.0.0/0' or '::/0' \r\n\t\t\t\tFix: Remove routes to an IGW (with the GatewayId property defined) or modify the DestinationCidrBlock property to a more restricted CIDR block\r\n\t\t\t",
+                  "error_message": "Check was not compliant as property [/Resources/PublicRoute/Properties/DestinationCidrBlock[L:214,C:32]] was not present in [(resolved, Path=[L:0,C:0] Value=[\"0.0.0.0/0\",\"::/0\"])]"
+                },
+                "check": {
+                  "InResolved": {
+                    "from": {
+                      "path": "/Resources/PublicRoute/Properties/DestinationCidrBlock",
+                      "value": "0.0.0.0/0"
+                    },
+                    "to": [
+                      {
+                        "path": "",
+                        "value": [
+                          "0.0.0.0/0",
+                          "::/0"
+                        ]
+                      }
+                    ],
+                    "comparison": [
+                      "In",
+                      true
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "not_applicable": [],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "RESTRICTED_INCOMING_TRAFFIC"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "SKIP",
+  "not_compliant": [],
+  "not_applicable": [
+    "INCOMING_SSH_DISABLED"
+  ],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "FAIL",
+  "not_compliant": [
+    {
+      "Rule": {
+        "name": "SECURITY_GROUP_DESCRIPTION_RULE",
+        "metadata": {},
+        "messages": {
+          "custom_message": null,
+          "error_message": null
+        },
+        "checks": [
+          {
+            "Clause": {
+              "Unary": {
+                "check": {
+                  "Resolved": {
+                    "value": {
+                      "path": "/Resources/DatabaseSecurityGroup",
+                      "value": {
+                        "Type": "AWS::EC2::SecurityGroup",
+                        "Properties": {
+                          "GroupDescription": "PostgreSQL from the new staging host only",
+                          "VpcId": {
+                            "Ref": "Vpc"
+                          },
+                          "SecurityGroupIngress": [
+                            {
+                              "IpProtocol": "tcp",
+                              "FromPort": 5432,
+                              "ToPort": 5432,
+                              "SourceSecurityGroupId": {
+                                "Ref": "AppSecurityGroup"
+                              }
+                            }
+                          ],
+                          "SecurityGroupEgress": [
+                            {
+                              "IpProtocol": "tcp",
+                              "FromPort": 443,
+                              "ToPort": 443,
+                              "CidrIp": "10.88.0.0/16",
+                              "Description": "No internet route exists on database subnets"
+                            }
+                          ],
+                          "Tags": [
+                            {
+                              "Key": "Project",
+                              "Value": "TrackMyRMC"
+                            },
+                            {
+                              "Key": "Environment",
+                              "Value": "staging"
+                            },
+                            {
+                              "Key": "ManagedBy",
+                              "Value": "CloudFormation"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "comparison": [
+                      "Empty",
+                      false
+                    ]
+                  }
+                },
+                "context": " %violations_sg EMPTY  ",
+                "messages": {
+                  "custom_message": "",
+                  "error_message": "Check was not compliant as property [/Resources/DatabaseSecurityGroup[L:277,C:29]] was not empty."
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "not_applicable": [],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "SECURITY_GROUP_EGRESS_ALL_PROTOCOLS_RULE"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "SECURITY_GROUP_EGRESS_PORT_RANGE_RULE"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "SECURITY_GROUP_INGRESS_ALL_PROTOCOLS_RULE"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "SECURITY_GROUP_INGRESS_CIDR_NON_32_RULE"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "SECURITY_GROUP_INGRESS_PORT_RANGE_RULE"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "SECURITY_GROUP_MISSING_EGRESS_RULE"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "FAIL",
+  "not_compliant": [
+    {
+      "Rule": {
+        "name": "SUBNET_AUTO_ASSIGN_PUBLIC_IP_DISABLED",
+        "metadata": {},
+        "messages": {
+          "custom_message": null,
+          "error_message": null
+        },
+        "checks": [
+          {
+            "Disjunctions": {
+              "checks": [
+                {
+                  "Clause": {
+                    "Unary": {
+                      "check": {
+                        "Resolved": {
+                          "value": {
+                            "path": "/Resources/AppSubnet/Properties/MapPublicIpOnLaunch",
+                            "value": true
+                          },
+                          "comparison": [
+                            "Exists",
+                            true
+                          ]
+                        }
+                      },
+                      "context": " %ec2_subnets_auto_assign_public_ip_disabled[*].Properties.MapPublicIpOnLaunch not EXISTS  ",
+                      "messages": {
+                        "custom_message": "",
+                        "error_message": "Check was not compliant as property [/Resources/AppSubnet/Properties/MapPublicIpOnLaunch[L:104,C:31]] existed."
+                      }
+                    }
+                  }
+                },
+                {
+                  "Clause": {
+                    "Unary": {
+                      "check": {
+                        "Resolved": {
+                          "value": {
+                            "path": "/Resources/DbSubnet0/Properties/MapPublicIpOnLaunch",
+                            "value": false
+                          },
+                          "comparison": [
+                            "Exists",
+                            true
+                          ]
+                        }
+                      },
+                      "context": " %ec2_subnets_auto_assign_public_ip_disabled[*].Properties.MapPublicIpOnLaunch not EXISTS  ",
+                      "messages": {
+                        "custom_message": "",
+                        "error_message": "Check was not compliant as property [/Resources/DbSubnet0/Properties/MapPublicIpOnLaunch[L:136,C:31]] existed."
+                      }
+                    }
+                  }
+                },
+                {
+                  "Clause": {
+                    "Unary": {
+                      "check": {
+                        "Resolved": {
+                          "value": {
+                            "path": "/Resources/DbSubnet1/Properties/MapPublicIpOnLaunch",
+                            "value": false
+                          },
+                          "comparison": [
+                            "Exists",
+                            true
+                          ]
+                        }
+                      },
+                      "context": " %ec2_subnets_auto_assign_public_ip_disabled[*].Properties.MapPublicIpOnLaunch not EXISTS  ",
+                      "messages": {
+                        "custom_message": "",
+                        "error_message": "Check was not compliant as property [/Resources/DbSubnet1/Properties/MapPublicIpOnLaunch[L:168,C:31]] existed."
+                      }
+                    }
+                  }
+                },
+                {
+                  "Clause": {
+                    "Binary": {
+                      "context": " %ec2_subnets_auto_assign_public_ip_disabled[*].Properties.MapPublicIpOnLaunch EQUALS  false",
+                      "messages": {
+                        "custom_message": "\r\n    Violation: VPCs should not have subnets that are assigned a public IP address.\r\n    Fix: remove the MapPublicIpOnLaucnh property or set it to false\r\n\t",
+                        "error_message": "Check was not compliant as property value [Path=/Resources/AppSubnet/Properties/MapPublicIpOnLaunch[L:104,C:31] Value=true] not equal to value [Path=[L:0,C:0] Value=false]."
+                      },
+                      "check": {
+                        "Resolved": {
+                          "from": {
+                            "path": "/Resources/AppSubnet/Properties/MapPublicIpOnLaunch",
+                            "value": true
+                          },
+                          "to": {
+                            "path": "",
+                            "value": false
+                          },
+                          "comparison": [
+                            "Eq",
+                            false
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "not_applicable": [],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "SKIP",
+  "not_compliant": [],
+  "not_applicable": [
+    "AURORA_MYSQL_BACKTRACKING_ENABLED"
+  ],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "DB_INSTANCE_BACKUP_ENABLED"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "RDS_AUTOMATIC_MINOR_VERSION_UPGRADE_ENABLED"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "SKIP",
+  "not_compliant": [],
+  "not_applicable": [
+    "RDS_CLUSTER_MASTER_USER_PASSWORD_NO_PLAINTEXT_PASSWORD",
+    "RDS_CLUSTER_MASTER_USER_PASSWORD_USES_SECURE_PARAMETER",
+    "RDS_CLUSTER_MASTER_USER_PASSWORD_USES_SECURE_SERVICE"
+  ],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "FAIL",
+  "not_compliant": [
+    {
+      "Rule": {
+        "name": "RDS_ENHANCED_MONITORING_ENABLED",
+        "metadata": {},
+        "messages": {
+          "custom_message": null,
+          "error_message": null
+        },
+        "checks": [
+          {
+            "Clause": {
+              "Unary": {
+                "check": {
+                  "UnResolved": {
+                    "value": {
+                      "traversed_to": {
+                        "path": "/Resources/Database/Properties",
+                        "value": {
+                          "DBInstanceIdentifier": {
+                            "Fn::Sub": "${AWS::StackName}-postgres"
+                          },
+                          "DBName": "trackmyrmc_staging",
+                          "Engine": "postgres",
+                          "EngineVersion": "18.3",
+                          "DBInstanceClass": "db.t4g.micro",
+                          "AllocatedStorage": "20",
+                          "StorageType": "gp3",
+                          "StorageEncrypted": true,
+                          "MasterUsername": "staging_owner",
+                          "ManageMasterUserPassword": true,
+                          "DBSubnetGroupName": {
+                            "Ref": "DatabaseSubnets"
+                          },
+                          "VPCSecurityGroups": [
+                            {
+                              "Ref": "DatabaseSecurityGroup"
+                            }
+                          ],
+                          "PubliclyAccessible": false,
+                          "MultiAZ": false,
+                          "BackupRetentionPeriod": 7,
+                          "DeletionProtection": true,
+                          "AutoMinorVersionUpgrade": true,
+                          "CopyTagsToSnapshot": true,
+                          "Tags": [
+                            {
+                              "Key": "Project",
+                              "Value": "TrackMyRMC"
+                            },
+                            {
+                              "Key": "Environment",
+                              "Value": "staging"
+                            },
+                            {
+                              "Key": "ManagedBy",
+                              "Value": "CloudFormation"
+                            }
+                          ]
+                        }
+                      },
+                      "remaining_query": "MonitoringInterval",
+                      "reason": "Could not find key MonitoringInterval inside struct at path /Resources/Database/Properties[L:351,C:20]"
+                    },
+                    "comparison": [
+                      "Exists",
+                      false
+                    ]
+                  }
+                },
+                "context": " %aws_rds_instances_enhanced_monitoring_enabled[*].Properties.MonitoringInterval EXISTS  ",
+                "messages": {
+                  "custom_message": "",
+                  "error_message": "Check was not compliant as property [MonitoringInterval] is missing. Value traversed to [Path=/Resources/Database/Properties[L:351,C:20] Value={\"DBInstanceIdentifier\":{\"Fn::Sub\":\"${AWS::StackName}-postgres\"},\"DBName\":\"trackmyrmc_staging\",\"Engine\":\"postgres\",\"EngineVersion\":\"18.3\",\"DBInstanceClass\":\"db.t4g.micro\",\"AllocatedStorage\":\"20\",\"StorageType\":\"gp3\",\"StorageEncrypted\":true,\"MasterUsername\":\"staging_owner\",\"ManageMasterUserPassword\":true,\"DBSubnetGroupName\":{\"Ref\":\"DatabaseSubnets\"},\"VPCSecurityGroups\":[{\"Ref\":\"DatabaseSecurityGroup\"}],\"PubliclyAccessible\":false,\"MultiAZ\":false,\"BackupRetentionPeriod\":7,\"DeletionProtection\":true,\"AutoMinorVersionUpgrade\":true,\"CopyTagsToSnapshot\":true,\"Tags\":[{\"Key\":\"Project\",\"Value\":\"TrackMyRMC\"},{\"Key\":\"Environment\",\"Value\":\"staging\"},{\"Key\":\"ManagedBy\",\"Value\":\"CloudFormation\"}]}]."
+                }
+              }
+            }
+          },
+          {
+            "Clause": {
+              "Binary": {
+                "context": " %aws_rds_instances_enhanced_monitoring_enabled[*].Properties.MonitoringInterval IN  [1,5,10,15,30,60]",
+                "messages": {
+                  "custom_message": "\r\n    Violation: RDS Instance enhanced monitoring required.\r\n    Fix: Specify a value of 1, 5, 10, 15, 30, or 60 for the parameter on the property MonitoringInterval.\r\n  ",
+                  "error_message": "Check was not compliant as property [MonitoringInterval] to compare from is missing. Value traversed to [Path=/Resources/Database/Properties[L:351,C:20] Value={\"DBInstanceIdentifier\":{\"Fn::Sub\":\"${AWS::StackName}-postgres\"},\"DBName\":\"trackmyrmc_staging\",\"Engine\":\"postgres\",\"EngineVersion\":\"18.3\",\"DBInstanceClass\":\"db.t4g.micro\",\"AllocatedStorage\":\"20\",\"StorageType\":\"gp3\",\"StorageEncrypted\":true,\"MasterUsername\":\"staging_owner\",\"ManageMasterUserPassword\":true,\"DBSubnetGroupName\":{\"Ref\":\"DatabaseSubnets\"},\"VPCSecurityGroups\":[{\"Ref\":\"DatabaseSecurityGroup\"}],\"PubliclyAccessible\":false,\"MultiAZ\":false,\"BackupRetentionPeriod\":7,\"DeletionProtection\":true,\"AutoMinorVersionUpgrade\":true,\"CopyTagsToSnapshot\":true,\"Tags\":[{\"Key\":\"Project\",\"Value\":\"TrackMyRMC\"},{\"Key\":\"Environment\",\"Value\":\"staging\"},{\"Key\":\"ManagedBy\",\"Value\":\"CloudFormation\"}]}]."
+                },
+                "check": {
+                  "UnResolved": {
+                    "value": {
+                      "traversed_to": {
+                        "path": "/Resources/Database/Properties",
+                        "value": {
+                          "DBInstanceIdentifier": {
+                            "Fn::Sub": "${AWS::StackName}-postgres"
+                          },
+                          "DBName": "trackmyrmc_staging",
+                          "Engine": "postgres",
+                          "EngineVersion": "18.3",
+                          "DBInstanceClass": "db.t4g.micro",
+                          "AllocatedStorage": "20",
+                          "StorageType": "gp3",
+                          "StorageEncrypted": true,
+                          "MasterUsername": "staging_owner",
+                          "ManageMasterUserPassword": true,
+                          "DBSubnetGroupName": {
+                            "Ref": "DatabaseSubnets"
+                          },
+                          "VPCSecurityGroups": [
+                            {
+                              "Ref": "DatabaseSecurityGroup"
+                            }
+                          ],
+                          "PubliclyAccessible": false,
+                          "MultiAZ": false,
+                          "BackupRetentionPeriod": 7,
+                          "DeletionProtection": true,
+                          "AutoMinorVersionUpgrade": true,
+                          "CopyTagsToSnapshot": true,
+                          "Tags": [
+                            {
+                              "Key": "Project",
+                              "Value": "TrackMyRMC"
+                            },
+                            {
+                              "Key": "Environment",
+                              "Value": "staging"
+                            },
+                            {
+                              "Key": "ManagedBy",
+                              "Value": "CloudFormation"
+                            }
+                          ]
+                        }
+                      },
+                      "remaining_query": "MonitoringInterval",
+                      "reason": "Could not find key MonitoringInterval inside struct at path /Resources/Database/Properties[L:351,C:20]"
+                    },
+                    "comparison": [
+                      "In",
+                      false
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "not_applicable": [],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "RDS_INSTANCE_DELETION_PROTECTION_ENABLED"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "RDS_INSTANCE_PUBLIC_ACCESS_CHECK"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "FAIL",
+  "not_compliant": [
+    {
+      "Rule": {
+        "name": "RDS_INSTANCE_LOGGING_ENABLED",
+        "metadata": {},
+        "messages": {
+          "custom_message": null,
+          "error_message": null
+        },
+        "checks": [
+          {
+            "Clause": {
+              "Unary": {
+                "check": {
+                  "UnResolved": {
+                    "value": {
+                      "traversed_to": {
+                        "path": "/Resources/Database/Properties",
+                        "value": {
+                          "DBInstanceIdentifier": {
+                            "Fn::Sub": "${AWS::StackName}-postgres"
+                          },
+                          "DBName": "trackmyrmc_staging",
+                          "Engine": "postgres",
+                          "EngineVersion": "18.3",
+                          "DBInstanceClass": "db.t4g.micro",
+                          "AllocatedStorage": "20",
+                          "StorageType": "gp3",
+                          "StorageEncrypted": true,
+                          "MasterUsername": "staging_owner",
+                          "ManageMasterUserPassword": true,
+                          "DBSubnetGroupName": {
+                            "Ref": "DatabaseSubnets"
+                          },
+                          "VPCSecurityGroups": [
+                            {
+                              "Ref": "DatabaseSecurityGroup"
+                            }
+                          ],
+                          "PubliclyAccessible": false,
+                          "MultiAZ": false,
+                          "BackupRetentionPeriod": 7,
+                          "DeletionProtection": true,
+                          "AutoMinorVersionUpgrade": true,
+                          "CopyTagsToSnapshot": true,
+                          "Tags": [
+                            {
+                              "Key": "Project",
+                              "Value": "TrackMyRMC"
+                            },
+                            {
+                              "Key": "Environment",
+                              "Value": "staging"
+                            },
+                            {
+                              "Key": "ManagedBy",
+                              "Value": "CloudFormation"
+                            }
+                          ]
+                        }
+                      },
+                      "remaining_query": "EnableCloudwatchLogsExports",
+                      "reason": "Could not find key EnableCloudwatchLogsExports inside struct at path /Resources/Database/Properties[L:351,C:20]"
+                    },
+                    "comparison": [
+                      "Exists",
+                      false
+                    ]
+                  }
+                },
+                "context": " %aws_rds_instances_logging_enabled[*].Properties.EnableCloudwatchLogsExports EXISTS  ",
+                "messages": {
+                  "custom_message": "\r\n    Violation: Enable CloudWatch Logs Exports for monitoring and logging.\r\n    Fix: Provide EnableCloudWatchLogsExports object to start exporting cloudwatch logs.\r\n  ",
+                  "error_message": "Check was not compliant as property [EnableCloudwatchLogsExports] is missing. Value traversed to [Path=/Resources/Database/Properties[L:351,C:20] Value={\"DBInstanceIdentifier\":{\"Fn::Sub\":\"${AWS::StackName}-postgres\"},\"DBName\":\"trackmyrmc_staging\",\"Engine\":\"postgres\",\"EngineVersion\":\"18.3\",\"DBInstanceClass\":\"db.t4g.micro\",\"AllocatedStorage\":\"20\",\"StorageType\":\"gp3\",\"StorageEncrypted\":true,\"MasterUsername\":\"staging_owner\",\"ManageMasterUserPassword\":true,\"DBSubnetGroupName\":{\"Ref\":\"DatabaseSubnets\"},\"VPCSecurityGroups\":[{\"Ref\":\"DatabaseSecurityGroup\"}],\"PubliclyAccessible\":false,\"MultiAZ\":false,\"BackupRetentionPeriod\":7,\"DeletionProtection\":true,\"AutoMinorVersionUpgrade\":true,\"CopyTagsToSnapshot\":true,\"Tags\":[{\"Key\":\"Project\",\"Value\":\"TrackMyRMC\"},{\"Key\":\"Environment\",\"Value\":\"staging\"},{\"Key\":\"ManagedBy\",\"Value\":\"CloudFormation\"}]}]."
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "not_applicable": [],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "FAIL",
+  "not_compliant": [
+    {
+      "Rule": {
+        "name": "RDS_MASTER_USER_NAME_USES_SECURE_PARAMETER",
+        "metadata": {},
+        "messages": {
+          "custom_message": null,
+          "error_message": null
+        },
+        "checks": [
+          {
+            "Clause": {
+              "Unary": {
+                "check": {
+                  "UnResolved": {
+                    "value": {
+                      "traversed_to": {
+                        "path": "/Resources/Database/Properties/MasterUsername",
+                        "value": "staging_owner"
+                      },
+                      "remaining_query": "!Ref",
+                      "reason": "Attempting to retrieve from key !Ref but type is not an struct type at path /Resources/Database/Properties/MasterUsername[L:362,C:26], Type = String, Value = String((Path(\"/Resources/Database/Properties/MasterUsername\", Location { line: 362, col: 26 }), \"staging_owner\"))"
+                    },
+                    "comparison": [
+                      "Empty",
+                      true
+                    ]
+                  }
+                },
+                "context": " %rds_master_user_name_refs not EMPTY  ",
+                "messages": {
+                  "custom_message": "",
+                  "error_message": "Check was not compliant as property [!Ref] is missing. Value traversed to [Path=/Resources/Database/Properties/MasterUsername[L:362,C:26] Value=\"staging_owner\"]."
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "Rule": {
+        "name": "RDS_MASTER_USER_NAME_USES_SECURE_SERVICE",
+        "metadata": {},
+        "messages": {
+          "custom_message": null,
+          "error_message": null
+        },
+        "checks": [
+          {
+            "Disjunctions": {
+              "checks": [
+                {
+                  "Clause": {
+                    "Unary": {
+                      "check": {
+                        "Resolved": {
+                          "value": {
+                            "path": "/Resources/Database/Properties/MasterUsername",
+                            "value": "staging_owner"
+                          },
+                          "comparison": [
+                            "Exists",
+                            true
+                          ]
+                        }
+                      },
+                      "context": " %rds_master_user_name_no_plaintext_password[*].Properties.MasterUsername not EXISTS  ",
+                      "messages": {
+                        "custom_message": "",
+                        "error_message": "Check was not compliant as property [/Resources/Database/Properties/MasterUsername[L:362,C:26]] existed."
+                      }
+                    }
+                  }
+                },
+                {
+                  "Clause": {
+                    "Binary": {
+                      "context": " %rds_master_user_name_no_plaintext_password[*].Properties.MasterUsername IN  [\"/{{resolve\\:secretsmanager\\:.*}}/\",\"/{{resolve\\:ssm-secure\\:.*}}/\"]",
+                      "messages": {
+                        "custom_message": "\r\n    Violation: RDS MasterUsername must not be a plaintext string or a Ref to a Parameter with a Default value. Can be Ref to a NoEcho Parameter without a Default, or a dynamic reference to a secretsmanager value.\r\n    Fix: Replace plaintext value with a secure one.\r\n  ",
+                        "error_message": "Check was not compliant as property [/Resources/Database/Properties/MasterUsername[L:362,C:26]] was not present in [(resolved, Path=[L:0,C:0] Value=[\"/{{resolve\\:secretsmanager\\:.*}}/\",\"/{{resolve\\:ssm-secure\\:.*}}/\"])]"
+                      },
+                      "check": {
+                        "InResolved": {
+                          "from": {
+                            "path": "/Resources/Database/Properties/MasterUsername",
+                            "value": "staging_owner"
+                          },
+                          "to": [
+                            {
+                              "path": "",
+                              "value": [
+                                "/{{resolve\\:secretsmanager\\:.*}}/",
+                                "/{{resolve\\:ssm-secure\\:.*}}/"
+                              ]
+                            }
+                          ],
+                          "comparison": [
+                            "In",
+                            false
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "Rule": {
+        "name": "RDS_MASTER_USER_NAME_NO_PLAINTEXT_PASSWORD",
+        "metadata": {},
+        "messages": {
+          "custom_message": null,
+          "error_message": null
+        },
+        "checks": [
+          {
+            "Disjunctions": {
+              "checks": [
+                {
+                  "Clause": {
+                    "Unary": {
+                      "check": {
+                        "UnResolvedContext": "RDS_MASTER_USER_NAME_USES_SECURE_PARAMETER"
+                      },
+                      "context": "Rule(RDS_MASTER_USER_NAME_USES_SECURE_PARAMETER@Location[file:rds_master_user_name_no_plaintext_password.guard, line:77, column:3])",
+                      "messages": {
+                        "custom_message": "",
+                        "error_message": "Check was not compliant as dependent rule [RDS_MASTER_USER_NAME_USES_SECURE_PARAMETER] did not PASS. Context [Rule(RDS_MASTER_USER_NAME_USES_SECURE_PARAMETER@Location[file:rds_master_user_name_no_plaintext_password.guard, line:77, column:3])]"
+                      }
+                    }
+                  }
+                },
+                {
+                  "Clause": {
+                    "Unary": {
+                      "check": {
+                        "UnResolvedContext": "RDS_MASTER_USER_NAME_USES_SECURE_SERVICE"
+                      },
+                      "context": "Rule(RDS_MASTER_USER_NAME_USES_SECURE_SERVICE@Location[file:rds_master_user_name_no_plaintext_password.guard, line:79, column:3])",
+                      "messages": {
+                        "custom_message": "",
+                        "error_message": "Check was not compliant as dependent rule [RDS_MASTER_USER_NAME_USES_SECURE_SERVICE] did not PASS. Context [Rule(RDS_MASTER_USER_NAME_USES_SECURE_SERVICE@Location[file:rds_master_user_name_no_plaintext_password.guard, line:79, column:3])]"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "not_applicable": [],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "FAIL",
+  "not_compliant": [
+    {
+      "Rule": {
+        "name": "RDS_MASTER_USER_PASSWORD_USES_SECURE_PARAMETER",
+        "metadata": {},
+        "messages": {
+          "custom_message": null,
+          "error_message": null
+        },
+        "checks": [
+          {
+            "Clause": {
+              "Unary": {
+                "check": {
+                  "UnResolved": {
+                    "value": {
+                      "traversed_to": {
+                        "path": "/Resources/Database/Properties",
+                        "value": {
+                          "DBInstanceIdentifier": {
+                            "Fn::Sub": "${AWS::StackName}-postgres"
+                          },
+                          "DBName": "trackmyrmc_staging",
+                          "Engine": "postgres",
+                          "EngineVersion": "18.3",
+                          "DBInstanceClass": "db.t4g.micro",
+                          "AllocatedStorage": "20",
+                          "StorageType": "gp3",
+                          "StorageEncrypted": true,
+                          "MasterUsername": "staging_owner",
+                          "ManageMasterUserPassword": true,
+                          "DBSubnetGroupName": {
+                            "Ref": "DatabaseSubnets"
+                          },
+                          "VPCSecurityGroups": [
+                            {
+                              "Ref": "DatabaseSecurityGroup"
+                            }
+                          ],
+                          "PubliclyAccessible": false,
+                          "MultiAZ": false,
+                          "BackupRetentionPeriod": 7,
+                          "DeletionProtection": true,
+                          "AutoMinorVersionUpgrade": true,
+                          "CopyTagsToSnapshot": true,
+                          "Tags": [
+                            {
+                              "Key": "Project",
+                              "Value": "TrackMyRMC"
+                            },
+                            {
+                              "Key": "Environment",
+                              "Value": "staging"
+                            },
+                            {
+                              "Key": "ManagedBy",
+                              "Value": "CloudFormation"
+                            }
+                          ]
+                        }
+                      },
+                      "remaining_query": "MasterUserPassword.!Ref",
+                      "reason": "Could not find key MasterUserPassword inside struct at path /Resources/Database/Properties[L:351,C:20]"
+                    },
+                    "comparison": [
+                      "Empty",
+                      true
+                    ]
+                  }
+                },
+                "context": " %rds_master_user_password_refs not EMPTY  ",
+                "messages": {
+                  "custom_message": "",
+                  "error_message": "Check was not compliant as property [MasterUserPassword.!Ref] is missing. Value traversed to [Path=/Resources/Database/Properties[L:351,C:20] Value={\"DBInstanceIdentifier\":{\"Fn::Sub\":\"${AWS::StackName}-postgres\"},\"DBName\":\"trackmyrmc_staging\",\"Engine\":\"postgres\",\"EngineVersion\":\"18.3\",\"DBInstanceClass\":\"db.t4g.micro\",\"AllocatedStorage\":\"20\",\"StorageType\":\"gp3\",\"StorageEncrypted\":true,\"MasterUsername\":\"staging_owner\",\"ManageMasterUserPassword\":true,\"DBSubnetGroupName\":{\"Ref\":\"DatabaseSubnets\"},\"VPCSecurityGroups\":[{\"Ref\":\"DatabaseSecurityGroup\"}],\"PubliclyAccessible\":false,\"MultiAZ\":false,\"BackupRetentionPeriod\":7,\"DeletionProtection\":true,\"AutoMinorVersionUpgrade\":true,\"CopyTagsToSnapshot\":true,\"Tags\":[{\"Key\":\"Project\",\"Value\":\"TrackMyRMC\"},{\"Key\":\"Environment\",\"Value\":\"staging\"},{\"Key\":\"ManagedBy\",\"Value\":\"CloudFormation\"}]}]."
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "not_applicable": [],
+  "compliant": [
+    "RDS_MASTER_USER_PASSWORD_NO_PLAINTEXT_PASSWORD",
+    "RDS_MASTER_USER_PASSWORD_USES_SECURE_SERVICE"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "FAIL",
+  "not_compliant": [
+    {
+      "Rule": {
+        "name": "RDS_MULTI_AZ_SUPPORT",
+        "metadata": {},
+        "messages": {
+          "custom_message": null,
+          "error_message": null
+        },
+        "checks": [
+          {
+            "Clause": {
+              "Binary": {
+                "context": " %aws_rds_instances_multi_az_support[*].Properties.MultiAZ EQUALS  true",
+                "messages": {
+                  "custom_message": "\r\n    Violation: All RDS instances must have MultiAZ support enabled.\r\n    Fix: Set the MultiAZ parameter to true.\r\n  ",
+                  "error_message": "Check was not compliant as property value [Path=/Resources/Database/Properties/MultiAZ[L:373,C:19] Value=false] not equal to value [Path=[L:0,C:0] Value=true]."
+                },
+                "check": {
+                  "Resolved": {
+                    "from": {
+                      "path": "/Resources/Database/Properties/MultiAZ",
+                      "value": false
+                    },
+                    "to": {
+                      "path": "",
+                      "value": true
+                    },
+                    "comparison": [
+                      "Eq",
+                      false
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "not_applicable": [],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "RDS_STORAGE_ENCRYPTED"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "FAIL",
+  "not_compliant": [
+    {
+      "Rule": {
+        "name": "S3_BUCKET_DEFAULT_LOCK_ENABLED",
+        "metadata": {},
+        "messages": {
+          "custom_message": null,
+          "error_message": null
+        },
+        "checks": [
+          {
+            "Clause": {
+              "Unary": {
+                "check": {
+                  "UnResolved": {
+                    "value": {
+                      "traversed_to": {
+                        "path": "/Resources/Artifacts/Properties",
+                        "value": {
+                          "PublicAccessBlockConfiguration": {
+                            "BlockPublicAcls": true,
+                            "IgnorePublicAcls": true,
+                            "BlockPublicPolicy": true,
+                            "RestrictPublicBuckets": true
+                          },
+                          "BucketEncryption": {
+                            "ServerSideEncryptionConfiguration": [
+                              {
+                                "ServerSideEncryptionByDefault": {
+                                  "SSEAlgorithm": "AES256"
+                                }
+                              }
+                            ]
+                          },
+                          "VersioningConfiguration": {
+                            "Status": "Enabled"
+                          },
+                          "OwnershipControls": {
+                            "Rules": [
+                              {
+                                "ObjectOwnership": "BucketOwnerEnforced"
+                              }
+                            ]
+                          },
+                          "Tags": [
+                            {
+                              "Key": "Project",
+                              "Value": "TrackMyRMC"
+                            },
+                            {
+                              "Key": "Environment",
+                              "Value": "staging"
+                            },
+                            {
+                              "Key": "ManagedBy",
+                              "Value": "CloudFormation"
+                            }
+                          ]
+                        }
+                      },
+                      "remaining_query": "ObjectLockEnabled",
+                      "reason": "Could not find key ObjectLockEnabled inside struct at path /Resources/Artifacts/Properties[L:460,C:20]"
+                    },
+                    "comparison": [
+                      "Exists",
+                      false
+                    ]
+                  }
+                },
+                "context": " %s3_buckets_default_lock_enabled[*].Properties.ObjectLockEnabled EXISTS  ",
+                "messages": {
+                  "custom_message": "",
+                  "error_message": "Check was not compliant as property [ObjectLockEnabled] is missing. Value traversed to [Path=/Resources/Artifacts/Properties[L:460,C:20] Value={\"PublicAccessBlockConfiguration\":{\"BlockPublicAcls\":true,\"IgnorePublicAcls\":true,\"BlockPublicPolicy\":true,\"RestrictPublicBuckets\":true},\"BucketEncryption\":{\"ServerSideEncryptionConfiguration\":[{\"ServerSideEncryptionByDefault\":{\"SSEAlgorithm\":\"AES256\"}}]},\"VersioningConfiguration\":{\"Status\":\"Enabled\"},\"OwnershipControls\":{\"Rules\":[{\"ObjectOwnership\":\"BucketOwnerEnforced\"}]},\"Tags\":[{\"Key\":\"Project\",\"Value\":\"TrackMyRMC\"},{\"Key\":\"Environment\",\"Value\":\"staging\"},{\"Key\":\"ManagedBy\",\"Value\":\"CloudFormation\"}]}]."
+                }
+              }
+            }
+          },
+          {
+            "Clause": {
+              "Binary": {
+                "context": " %s3_buckets_default_lock_enabled[*].Properties.ObjectLockEnabled EQUALS  true",
+                "messages": {
+                  "custom_message": "\r\n    Violation: S3 Bucket ObjectLockEnabled must be set to true.\r\n    Fix: Set the S3 property ObjectLockEnabled parameter to true.\r\n  ",
+                  "error_message": "Check was not compliant as property [ObjectLockEnabled] to compare from is missing. Value traversed to [Path=/Resources/Artifacts/Properties[L:460,C:20] Value={\"PublicAccessBlockConfiguration\":{\"BlockPublicAcls\":true,\"IgnorePublicAcls\":true,\"BlockPublicPolicy\":true,\"RestrictPublicBuckets\":true},\"BucketEncryption\":{\"ServerSideEncryptionConfiguration\":[{\"ServerSideEncryptionByDefault\":{\"SSEAlgorithm\":\"AES256\"}}]},\"VersioningConfiguration\":{\"Status\":\"Enabled\"},\"OwnershipControls\":{\"Rules\":[{\"ObjectOwnership\":\"BucketOwnerEnforced\"}]},\"Tags\":[{\"Key\":\"Project\",\"Value\":\"TrackMyRMC\"},{\"Key\":\"Environment\",\"Value\":\"staging\"},{\"Key\":\"ManagedBy\",\"Value\":\"CloudFormation\"}]}]."
+                },
+                "check": {
+                  "UnResolved": {
+                    "value": {
+                      "traversed_to": {
+                        "path": "/Resources/Artifacts/Properties",
+                        "value": {
+                          "PublicAccessBlockConfiguration": {
+                            "BlockPublicAcls": true,
+                            "IgnorePublicAcls": true,
+                            "BlockPublicPolicy": true,
+                            "RestrictPublicBuckets": true
+                          },
+                          "BucketEncryption": {
+                            "ServerSideEncryptionConfiguration": [
+                              {
+                                "ServerSideEncryptionByDefault": {
+                                  "SSEAlgorithm": "AES256"
+                                }
+                              }
+                            ]
+                          },
+                          "VersioningConfiguration": {
+                            "Status": "Enabled"
+                          },
+                          "OwnershipControls": {
+                            "Rules": [
+                              {
+                                "ObjectOwnership": "BucketOwnerEnforced"
+                              }
+                            ]
+                          },
+                          "Tags": [
+                            {
+                              "Key": "Project",
+                              "Value": "TrackMyRMC"
+                            },
+                            {
+                              "Key": "Environment",
+                              "Value": "staging"
+                            },
+                            {
+                              "Key": "ManagedBy",
+                              "Value": "CloudFormation"
+                            }
+                          ]
+                        }
+                      },
+                      "remaining_query": "ObjectLockEnabled",
+                      "reason": "Could not find key ObjectLockEnabled inside struct at path /Resources/Artifacts/Properties[L:460,C:20]"
+                    },
+                    "comparison": [
+                      "Eq",
+                      false
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "not_applicable": [],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "S3_BUCKET_LEVEL_PUBLIC_ACCESS_PROHIBITED"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "FAIL",
+  "not_compliant": [
+    {
+      "Rule": {
+        "name": "S3_BUCKET_LOGGING_ENABLED",
+        "metadata": {},
+        "messages": {
+          "custom_message": null,
+          "error_message": null
+        },
+        "checks": [
+          {
+            "Clause": {
+              "Unary": {
+                "check": {
+                  "UnResolved": {
+                    "value": {
+                      "traversed_to": {
+                        "path": "/Resources/Artifacts/Properties",
+                        "value": {
+                          "PublicAccessBlockConfiguration": {
+                            "BlockPublicAcls": true,
+                            "IgnorePublicAcls": true,
+                            "BlockPublicPolicy": true,
+                            "RestrictPublicBuckets": true
+                          },
+                          "BucketEncryption": {
+                            "ServerSideEncryptionConfiguration": [
+                              {
+                                "ServerSideEncryptionByDefault": {
+                                  "SSEAlgorithm": "AES256"
+                                }
+                              }
+                            ]
+                          },
+                          "VersioningConfiguration": {
+                            "Status": "Enabled"
+                          },
+                          "OwnershipControls": {
+                            "Rules": [
+                              {
+                                "ObjectOwnership": "BucketOwnerEnforced"
+                              }
+                            ]
+                          },
+                          "Tags": [
+                            {
+                              "Key": "Project",
+                              "Value": "TrackMyRMC"
+                            },
+                            {
+                              "Key": "Environment",
+                              "Value": "staging"
+                            },
+                            {
+                              "Key": "ManagedBy",
+                              "Value": "CloudFormation"
+                            }
+                          ]
+                        }
+                      },
+                      "remaining_query": "LoggingConfiguration",
+                      "reason": "Could not find key LoggingConfiguration inside struct at path /Resources/Artifacts/Properties[L:460,C:20]"
+                    },
+                    "comparison": [
+                      "Exists",
+                      false
+                    ]
+                  }
+                },
+                "context": " %s3_buckets_bucket_logging_enabled[*].Properties.LoggingConfiguration EXISTS  ",
+                "messages": {
+                  "custom_message": "\r\n    Violation: S3 Bucket Logging needs to be configured to enable logging.\r\n    Fix: Set the S3 Bucket property LoggingConfiguration to start logging into S3 bucket.\r\n  ",
+                  "error_message": "Check was not compliant as property [LoggingConfiguration] is missing. Value traversed to [Path=/Resources/Artifacts/Properties[L:460,C:20] Value={\"PublicAccessBlockConfiguration\":{\"BlockPublicAcls\":true,\"IgnorePublicAcls\":true,\"BlockPublicPolicy\":true,\"RestrictPublicBuckets\":true},\"BucketEncryption\":{\"ServerSideEncryptionConfiguration\":[{\"ServerSideEncryptionByDefault\":{\"SSEAlgorithm\":\"AES256\"}}]},\"VersioningConfiguration\":{\"Status\":\"Enabled\"},\"OwnershipControls\":{\"Rules\":[{\"ObjectOwnership\":\"BucketOwnerEnforced\"}]},\"Tags\":[{\"Key\":\"Project\",\"Value\":\"TrackMyRMC\"},{\"Key\":\"Environment\",\"Value\":\"staging\"},{\"Key\":\"ManagedBy\",\"Value\":\"CloudFormation\"}]}]."
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "not_applicable": [],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "S3_BUCKET_POLICY_NO_ALLOW_PLUS_NOT_ACTION"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "S3_BUCKET_POLICY_NO_WILDCARD_ACTION"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "S3_BUCKET_POLICY_NO_WILDCARD_PRINCIPAL"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "S3_BUCKET_PUBLIC_READ_ACL"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "S3_BUCKET_PUBLIC_READ_PROHIBITED"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "FAIL",
+  "not_compliant": [
+    {
+      "Rule": {
+        "name": "S3_BUCKET_NO_PUBLIC_RW_ACL",
+        "metadata": {},
+        "messages": {
+          "custom_message": null,
+          "error_message": null
+        },
+        "checks": [
+          {
+            "Clause": {
+              "Binary": {
+                "context": " %s3_bucket_public_rw_acl[*].Properties.AccessControl not EQUALS  \"PublicReadWrite\"",
+                "messages": {
+                  "custom_message": "\r\n    Violation: S3 Bucket should not have the PublicReadWrite ACL.\r\n    Fix: Allow ReadWrite access only to authorized, authenticated users.\r\n  ",
+                  "error_message": "Check was not compliant as property [AccessControl] to compare from is missing. Value traversed to [Path=/Resources/Artifacts/Properties[L:460,C:20] Value={\"PublicAccessBlockConfiguration\":{\"BlockPublicAcls\":true,\"IgnorePublicAcls\":true,\"BlockPublicPolicy\":true,\"RestrictPublicBuckets\":true},\"BucketEncryption\":{\"ServerSideEncryptionConfiguration\":[{\"ServerSideEncryptionByDefault\":{\"SSEAlgorithm\":\"AES256\"}}]},\"VersioningConfiguration\":{\"Status\":\"Enabled\"},\"OwnershipControls\":{\"Rules\":[{\"ObjectOwnership\":\"BucketOwnerEnforced\"}]},\"Tags\":[{\"Key\":\"Project\",\"Value\":\"TrackMyRMC\"},{\"Key\":\"Environment\",\"Value\":\"staging\"},{\"Key\":\"ManagedBy\",\"Value\":\"CloudFormation\"}]}]."
+                },
+                "check": {
+                  "UnResolved": {
+                    "value": {
+                      "traversed_to": {
+                        "path": "/Resources/Artifacts/Properties",
+                        "value": {
+                          "PublicAccessBlockConfiguration": {
+                            "BlockPublicAcls": true,
+                            "IgnorePublicAcls": true,
+                            "BlockPublicPolicy": true,
+                            "RestrictPublicBuckets": true
+                          },
+                          "BucketEncryption": {
+                            "ServerSideEncryptionConfiguration": [
+                              {
+                                "ServerSideEncryptionByDefault": {
+                                  "SSEAlgorithm": "AES256"
+                                }
+                              }
+                            ]
+                          },
+                          "VersioningConfiguration": {
+                            "Status": "Enabled"
+                          },
+                          "OwnershipControls": {
+                            "Rules": [
+                              {
+                                "ObjectOwnership": "BucketOwnerEnforced"
+                              }
+                            ]
+                          },
+                          "Tags": [
+                            {
+                              "Key": "Project",
+                              "Value": "TrackMyRMC"
+                            },
+                            {
+                              "Key": "Environment",
+                              "Value": "staging"
+                            },
+                            {
+                              "Key": "ManagedBy",
+                              "Value": "CloudFormation"
+                            }
+                          ]
+                        }
+                      },
+                      "remaining_query": "AccessControl",
+                      "reason": "Could not find key AccessControl inside struct at path /Resources/Artifacts/Properties[L:460,C:20]"
+                    },
+                    "comparison": [
+                      "Eq",
+                      true
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "not_applicable": [],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "S3_BUCKET_PUBLIC_WRITE_PROHIBITED"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "FAIL",
+  "not_compliant": [
+    {
+      "Rule": {
+        "name": "S3_BUCKET_REPLICATION_ENABLED",
+        "metadata": {},
+        "messages": {
+          "custom_message": null,
+          "error_message": null
+        },
+        "checks": [
+          {
+            "Clause": {
+              "Unary": {
+                "check": {
+                  "UnResolved": {
+                    "value": {
+                      "traversed_to": {
+                        "path": "/Resources/Artifacts/Properties",
+                        "value": {
+                          "PublicAccessBlockConfiguration": {
+                            "BlockPublicAcls": true,
+                            "IgnorePublicAcls": true,
+                            "BlockPublicPolicy": true,
+                            "RestrictPublicBuckets": true
+                          },
+                          "BucketEncryption": {
+                            "ServerSideEncryptionConfiguration": [
+                              {
+                                "ServerSideEncryptionByDefault": {
+                                  "SSEAlgorithm": "AES256"
+                                }
+                              }
+                            ]
+                          },
+                          "VersioningConfiguration": {
+                            "Status": "Enabled"
+                          },
+                          "OwnershipControls": {
+                            "Rules": [
+                              {
+                                "ObjectOwnership": "BucketOwnerEnforced"
+                              }
+                            ]
+                          },
+                          "Tags": [
+                            {
+                              "Key": "Project",
+                              "Value": "TrackMyRMC"
+                            },
+                            {
+                              "Key": "Environment",
+                              "Value": "staging"
+                            },
+                            {
+                              "Key": "ManagedBy",
+                              "Value": "CloudFormation"
+                            }
+                          ]
+                        }
+                      },
+                      "remaining_query": "ReplicationConfiguration",
+                      "reason": "Could not find key ReplicationConfiguration inside struct at path /Resources/Artifacts/Properties[L:460,C:20]"
+                    },
+                    "comparison": [
+                      "Exists",
+                      false
+                    ]
+                  }
+                },
+                "context": " %s3_buckets_replication_enabled[*].Properties.ReplicationConfiguration EXISTS  ",
+                "messages": {
+                  "custom_message": "\r\n    Violation: S3 Bucket replication should be enabled.\r\n    Fix: Set S3 Bucket ReplicationConfiguration to another S3 Bucket.\r\n  ",
+                  "error_message": "Check was not compliant as property [ReplicationConfiguration] is missing. Value traversed to [Path=/Resources/Artifacts/Properties[L:460,C:20] Value={\"PublicAccessBlockConfiguration\":{\"BlockPublicAcls\":true,\"IgnorePublicAcls\":true,\"BlockPublicPolicy\":true,\"RestrictPublicBuckets\":true},\"BucketEncryption\":{\"ServerSideEncryptionConfiguration\":[{\"ServerSideEncryptionByDefault\":{\"SSEAlgorithm\":\"AES256\"}}]},\"VersioningConfiguration\":{\"Status\":\"Enabled\"},\"OwnershipControls\":{\"Rules\":[{\"ObjectOwnership\":\"BucketOwnerEnforced\"}]},\"Tags\":[{\"Key\":\"Project\",\"Value\":\"TrackMyRMC\"},{\"Key\":\"Environment\",\"Value\":\"staging\"},{\"Key\":\"ManagedBy\",\"Value\":\"CloudFormation\"}]}]."
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "not_applicable": [],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "S3_BUCKET_SERVER_SIDE_ENCRYPTION_ENABLED"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "FAIL",
+  "not_compliant": [
+    {
+      "Rule": {
+        "name": "S3_BUCKET_SSL_REQUESTS_ONLY",
+        "metadata": {},
+        "messages": {
+          "custom_message": null,
+          "error_message": null
+        },
+        "checks": [
+          {
+            "Clause": {
+              "Unary": {
+                "check": {
+                  "UnResolvedContext": " %ssl_secure_bucket_policies not EMPTY  "
+                },
+                "context": " %ssl_secure_bucket_policies not EMPTY  ",
+                "messages": {
+                  "custom_message": "\r;    Violation: Bucket policies must feature a statement to enforce TLS usage.\r;    Fix: Set a bucket policy statement to '\"Action\":\"s3:*\",\"Effect\":\"Deny\",\"Principal\":\"*\",\"Resource\":\"*\",\"Condition\":{\"Bool\":{\"aws:SecureTransport\":false}}' .\r;  ",
+                  "error_message": "Check was not compliant as variable in context [ %ssl_secure_bucket_policies not EMPTY  ] was not empty"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "not_applicable": [],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "S3_BUCKET_VERSIONING_ENABLED"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "S3_BUCKETPOLICY_NO_ALLOW_PLUS_NOTPRINCIPAL"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "S3_DEFAULT_ENCRYPTION_KMS"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "SKIP",
+  "not_compliant": [],
+  "not_applicable": [
+    "IAM_MANAGEDPOLICY_NO_STATEMENTS_WITH_FULL_ACCESS"
+  ],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "FAIL",
+  "not_compliant": [
+    {
+      "Rule": {
+        "name": "IAM_NO_INLINE_POLICY_CHECK",
+        "metadata": {},
+        "messages": {
+          "custom_message": null,
+          "error_message": null
+        },
+        "checks": [
+          {
+            "Clause": {
+              "Unary": {
+                "check": {
+                  "Resolved": {
+                    "value": {
+                      "path": "/Resources/InstanceRole/Properties/Policies",
+                      "value": [
+                        {
+                          "PolicyName": "OnlyStagingRuntime",
+                          "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                              {
+                                "Effect": "Allow",
+                                "Action": [
+                                  "secretsmanager:GetSecretValue"
+                                ],
+                                "Resource": [
+                                  {
+                                    "Ref": "AppSecret"
+                                  },
+                                  {
+                                    "Ref": "OtpSecret"
+                                  },
+                                  {
+                                    "Ref": "ApplicationDatabaseSecret"
+                                  }
+                                ]
+                              },
+                              {
+                                "Effect": "Allow",
+                                "Action": [
+                                  "s3:GetObject"
+                                ],
+                                "Resource": {
+                                  "Fn::Sub": "${Artifacts.Arn}/releases/*"
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    "comparison": [
+                      "Empty",
+                      false
+                    ]
+                  }
+                },
+                "context": " %aws_iam_entities_no_inline_policy[*].Properties.Policies EMPTY  ",
+                "messages": {
+                  "custom_message": "\r\n    Violation: Inline policies are not allowed on IAM Users, Roles, or Groups.\r\n    Fix: Remove the Policies list property from any IAM Users, Roles, or Groups.\r\n  ",
+                  "error_message": "Check was not compliant as property [/Resources/InstanceRole/Properties/Policies[L:556,C:20]] was not empty."
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "not_applicable": [],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "SKIP",
+  "not_compliant": [],
+  "not_applicable": [
+    "IAM_NO_POLICY_ON_USER"
+  ],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "SKIP",
+  "not_compliant": [],
+  "not_applicable": [
+    "IAM_POLICY_NO_STATEMENTS_WITH_ADMIN_ACCESS"
+  ],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "SKIP",
+  "not_compliant": [],
+  "not_applicable": [
+    "IAM_POLICY_NO_STATEMENTS_WITH_FULL_ACCESS"
+  ],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "SKIP",
+  "not_compliant": [],
+  "not_applicable": [
+    "IAM_POLICY_NO_WILDCARD_RESOURCE_ON_PASSROLE"
+  ],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "IAM_POLICYDOCUMENT_NO_WILDCARD_RESOURCE"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "IAM_ROLE_ADMINISTRATOR_ACCESS_POLICY_RULE"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "IAM_ROLE_ELEVATED_MANAGED_POLICY_RULE"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "IAM_ROLE_NO_ALLOW_PLUS_NOT_ACTION_ON_TRUST_POLICY"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "IAM_ROLE_NO_ALLOW_PLUS_NOT_PRINCIPAL"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "IAM_ROLE_NO_FULL_ACCESS_ON_TRUST_POLICY"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "IAM_ROLE_NO_WILDCARD_ACTIONS_ON_PERMISSIONS"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "IAM_ROLE_NO_WILDCARD_RESOURCE_ON_PASSROLE"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "IAM_ROLE_OR_POLICY_NO_ALLOW_PLUS_NOT_ACTION"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "PASS",
+  "not_compliant": [],
+  "not_applicable": [],
+  "compliant": [
+    "IAM_ROLE_OR_POLICY_NO_ALLOW_PLUS_NOT_RESOURCE"
+  ]
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "SKIP",
+  "not_compliant": [],
+  "not_applicable": [
+    "IAM_USER_LOGIN_PROFILE_NO_PLAINTEXT_PASSWORD",
+    "IAM_USER_LOGIN_PROFILE_USES_SECURE_PARAMETER",
+    "IAM_USER_LOGIN_PROFILE_USES_SECURE_SERVICE"
+  ],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "SKIP",
+  "not_compliant": [],
+  "not_applicable": [
+    "IAM_USER_LOGIN_PROFILE_PASSWORD_RESET_RULE"
+  ],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "SKIP",
+  "not_compliant": [],
+  "not_applicable": [
+    "IAM_USER_MISSING_GROUP_RULE"
+  ],
+  "compliant": []
+}{
+  "name": "\\\\?\\C:\\Users\\kbade\\Documents\\Codex\\2026-10-15\\gi\\work\\Track-My-RMC\\ops\\staging\\foundation.json",
+  "metadata": {},
+  "status": "SKIP",
+  "not_compliant": [],
+  "not_applicable": [
+    "IAM_USER_NO_POLICIES_CHECK"
+  ],
+  "compliant": []
+}
