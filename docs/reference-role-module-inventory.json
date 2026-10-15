@@ -152,11 +152,66 @@
     {
       "id": "plant_owner",
       "label": "Plant Owner",
-      "referenceRoute": "plant_owner",
+      "referenceRoute": "owner",
       "targetRoute": "/owner",
       "surface": "mobile",
-      "screens": [],
-      "targetScreenCount": 0
+      "screens": [
+        {
+          "path": "frontend/app/owner/_layout.tsx",
+          "sourceToTarget": "identical",
+          "sourceSha": "2ff1cda9ec915104345be3099b8a8bdafa5d018e",
+          "targetSha": "2ff1cda9ec915104345be3099b8a8bdafa5d018e"
+        },
+        {
+          "path": "frontend/app/owner/billing-history.tsx",
+          "sourceToTarget": "identical",
+          "sourceSha": "4570375e7c4bde3fd5e39f48e8a9a4e5e0663b48",
+          "targetSha": "4570375e7c4bde3fd5e39f48e8a9a4e5e0663b48"
+        },
+        {
+          "path": "frontend/app/owner/billing.tsx",
+          "sourceToTarget": "identical",
+          "sourceSha": "f35b351907a4cda7fdb0d692b91f3df9611fe015",
+          "targetSha": "f35b351907a4cda7fdb0d692b91f3df9611fe015"
+        },
+        {
+          "path": "frontend/app/owner/incidents.tsx",
+          "sourceToTarget": "identical",
+          "sourceSha": "6df1c19e9e58965895013c78b9b6cff2a30aeba8",
+          "targetSha": "6df1c19e9e58965895013c78b9b6cff2a30aeba8"
+        },
+        {
+          "path": "frontend/app/owner/index.tsx",
+          "sourceToTarget": "identical",
+          "sourceSha": "ed52ddec6410b84a6f0eddc56262c5c6a1749e65",
+          "targetSha": "ed52ddec6410b84a6f0eddc56262c5c6a1749e65"
+        },
+        {
+          "path": "frontend/app/owner/more.tsx",
+          "sourceToTarget": "identical",
+          "sourceSha": "b31b02f939f2bff91f73436294a05149b2dae9c7",
+          "targetSha": "b31b02f939f2bff91f73436294a05149b2dae9c7"
+        },
+        {
+          "path": "frontend/app/owner/operations.tsx",
+          "sourceToTarget": "identical",
+          "sourceSha": "ed2bb2b125734182e95136975485a7b3a985fc96",
+          "targetSha": "ed2bb2b125734182e95136975485a7b3a985fc96"
+        },
+        {
+          "path": "frontend/app/owner/orders.tsx",
+          "sourceToTarget": "identical",
+          "sourceSha": "a242aec27e8070764aa07bf2c4a2f5c0c4fa1ceb",
+          "targetSha": "a242aec27e8070764aa07bf2c4a2f5c0c4fa1ceb"
+        },
+        {
+          "path": "frontend/app/owner/quotation-requests.tsx",
+          "sourceToTarget": "identical",
+          "sourceSha": "a58fddbad63e6b8e841013cb6158163f1ad584f7",
+          "targetSha": "a58fddbad63e6b8e841013cb6158163f1ad584f7"
+        }
+      ],
+      "targetScreenCount": 9
     },
     {
       "id": "admin",
@@ -546,42 +601,6 @@
     },
     {
       "path": "frontend/app/order/[id].tsx",
-      "sourceToTarget": "identical"
-    },
-    {
-      "path": "frontend/app/owner/_layout.tsx",
-      "sourceToTarget": "identical"
-    },
-    {
-      "path": "frontend/app/owner/billing-history.tsx",
-      "sourceToTarget": "identical"
-    },
-    {
-      "path": "frontend/app/owner/billing.tsx",
-      "sourceToTarget": "identical"
-    },
-    {
-      "path": "frontend/app/owner/incidents.tsx",
-      "sourceToTarget": "identical"
-    },
-    {
-      "path": "frontend/app/owner/index.tsx",
-      "sourceToTarget": "identical"
-    },
-    {
-      "path": "frontend/app/owner/more.tsx",
-      "sourceToTarget": "identical"
-    },
-    {
-      "path": "frontend/app/owner/operations.tsx",
-      "sourceToTarget": "identical"
-    },
-    {
-      "path": "frontend/app/owner/orders.tsx",
-      "sourceToTarget": "identical"
-    },
-    {
-      "path": "frontend/app/owner/quotation-requests.tsx",
       "sourceToTarget": "identical"
     },
     {
