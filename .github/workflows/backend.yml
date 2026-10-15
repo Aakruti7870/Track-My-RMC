@@ -94,6 +94,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+      - name: Verify staging template isolation
+        if: success() && matrix.postgres == 18
+        run: node ops/staging/verify-isolation.mjs
       - name: Verify admin browser against Rust and PostgreSQL
         if: success() && matrix.postgres == 18
         env:

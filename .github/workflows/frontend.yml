@@ -40,6 +40,8 @@ jobs:
         run: npm run check:play-policy
       - name: Validate Android responsive layouts
         run: npm run check:android-layout
+      - name: Expo Doctor
+        run: npm run doctor
       - name: Build production web bundle
         env:
           EXPO_PUBLIC_BACKEND_URL: https://trackmyrmc.com

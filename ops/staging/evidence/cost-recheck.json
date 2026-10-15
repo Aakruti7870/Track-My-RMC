@@ -1,0 +1,26 @@
+{
+  "region": "ap-south-1",
+  "price_observation_date": "2026-10-15",
+  "monthly_hours": 730,
+  "monthly_components_usd": {
+    "ec2": "16.3520",
+    "rds": "15.330",
+    "ebs": "2.7360",
+    "rds_storage": "2.620",
+    "ipv4": "3.650",
+    "secrets": "1.60",
+    "s3_assumed_5_gib": "0.125"
+  },
+  "running_baseline_usd": "42.4130",
+  "temporarily_stopped_storage_and_secrets_usd": "7.0810",
+  "budget_monitoring_usd": "0",
+  "excludes": [
+    "variable usage",
+    "tax",
+    "additional artifact versions",
+    "extra backups",
+    "RDS surplus CPU credits",
+    "optional monitoring"
+  ],
+  "note": "Stopped RDS automatically restarts after seven days. Retained resources keep charging."
+}

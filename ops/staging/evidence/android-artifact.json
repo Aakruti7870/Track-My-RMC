@@ -1,12 +1,18 @@
 {
-  "verified_commit": "deea5c352e2292f5e0a32b749ffbd5646ab4b729",
-  "run_id": 38777317672,
+  "verified_frontend_commit": "93c2bf1b61799b7e0027201ebf8f10305101db6d",
+  "compared_candidate": "27e94b9406507bd2732f31ce47e5d6fae57850ca",
+  "frontend_tree_equal": true,
+  "run_id": 38780262137,
   "status": "COMPLETE",
-  "artifact_id": 11995043488,
+  "artifact_id": 11996568756,
   "name": "trackmyrmc-v2.0.32-vc90-signed-aab",
-  "size_in_bytes": 70286018,
-  "digest": "sha256:0d7f51a273ce4bb45ac484d3429a6ecc4c8d51c81d9ed525b16930447faf13a2",
+  "size_in_bytes": 70285855,
+  "digest": "sha256:9408ad538c338d80cff5c8736c9a7862d20f87e2d5c26bf3e7320d338d572ba4",
   "package": "com.trackmyrmc.concreteking",
   "device_validation": "BLOCKED",
-  "latest_candidate_build": "PARTIAL"
+  "latest_whole_revision_build": "PARTIAL",
+  "note": "Historical artifact covers frontend only through27e94b94; subsequent login/support/dashboard fixes require the latest build. No device acceptance.",
+  "current_candidate": "3d913265180f214a981e98c2851b494d469fc86d",
+  "current_frontend_covered_by_historical_artifact": false,
+  "latest_run_id": 38791343104
 }

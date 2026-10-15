@@ -1,41 +1,28 @@
 # PostgreSQL migration validation
 
-Integration status: PARTIAL. Production application: BLOCKED. Historical migration: BLOCKED.
+Integration: PARTIAL. Production application and historical import: BLOCKED.
 
-## Migration ordering and preservation
+The embedded chain has29 files through 0032. Pending migration collision0019 was reconciled as delivery0019/0020 and Control Center0021. The <=0018 baseline is preserved. SQLx's applied checksums and legacy records are tested during upgrade; production _sqlx_migrations has not been read. The SHA-256 review manifest is a normalized-file inventory, not SQLx's checksum algorithm.
 
-The pending 0019 collision was reconciled by retaining delivery 0019/0020 and Control Center 0021. SQLx filenames are unique and chronological. No existing applied migration was edited to absorb new work. Local normalized SHA-256 review hashes are in migration-review-manifest.json; these are not a substitute for SQLx's recorded checksum algorithm or a comparison with the actual production _sqlx_migrations table.
+At3d913265, backend run 38791343034 passes on PostgreSQL16 and18: empty DB application, idempotent reapplication and baseline upgrade/checksum preservation. New production data was never loaded or overwritten. The upgrade fixture also preserves an old support case, backfills its case number and verifies inserts using the old writer contract remain valid.
 
-| New slice | Migration | Tables / behavior | Validation |
-|---|---|---|---|
-| Trip progress | 0019 | trip_status_history and guarded driver transitions | PostgreSQL lifecycle tests |
-| Evidence persistence | 0020 | stored_files bytes, delivery quantities and POD ownership | PostgreSQL file/POD tests |
-| Session step-up | 0021 | session-bound expiring step-up | PostgreSQL security tests |
-| Web approval/session provenance | 0022 | control_center_access, sessions, login limits | PostgreSQL 16/18 and real browser tests |
-| Production/stock | 0023 | production_batches and production_stock_movements; precise stock | Atomic rollback, concurrency, immutable retry and allocation tests |
-| Payment retry | 0024 | per-invoice request IDs | Concurrent payment/overpayment and idempotency tests |
-| Payroll snapshots | 0025 | expense posting, paid fields, closure versions, payslip_snapshots | Multi-employee approval/payment/closure/export tests |
-| Customer orders | 0026 | immutable request/pricing provenance, unique customer retries/quote linkage, inline site coordinates nullable, customer_order_intents | Mobile DTO, KYC, saved site, rate/quote and confirmation tests; PG16/18 run 38781457530 passed |
-| Staff replay | 0027 | last_login_totp_step; existing credentials retained | Separate-challenge TOTP replay and recovery tests; PG16/18 run 38781457530 passed |
+| Migration | Persisted behavior | Validation |
+|---|---|---|
+|0019/0020|Trip history, stored evidence bytes, POD quantities|Actual lifecycle, evidence, ownership and replay tests|
+|0021/0022|Session-bound step-up and explicit approved web sessions/grants|HTTP security tests and dedicated Admin browser|
+|0023|Quantity production batches and exact stock movements|Concurrent retries, recipe snapshots, insufficient-stock rollback and dispatch pool|
+|0024|Invoice payment request IDs|Invoice/payment locks, positive precision, overpayment denial and immutable retries|
+|0025|Recorded payroll payments, expenses and versioned payslip snapshots|Multi-employee approval/payment/closure/export|
+|0026|Customer order intent, request/price provenance and unique quote linkage|Actual mobile DTOs, own sites/KYC, repricing review and concurrent idempotency|
+|0027|Last staff login TOTP step|Separate-challenge replay denial, recovery and fresh logout/login boundary|
+|0028|RFQ pumping/decline and response provenance|Customer request to plant response, quote acceptance and order persistence|
+|0029|Site notes/defaults and wider address/contact fields|Concurrent defaults, optional coordinates and linked deletion protection|
+|0030|Payroll reopen reason/actor/time|Serialized owner reopen, immutable version1, reclosure version2 and no duplicate payment|
+|0031|Receiving sample IDs and result authors/update metadata|Owned records, chronology, due state, result updates and tenant isolation|
+|0032|Support case numbers, immutable escalation retry provenance and private notes|Concurrency/ownership/internal-note filtering, explicit web support grants, step-up and audit; old-writer insert compatibility|
 
-The embedded chain contains 24 SQL files; numbering gaps 0007–0009 are preserved. Empty-database application and upgrading through the <=0018 baseline without changing baseline checksums/legacy records are automated. The tests apply the chain twice to confirm recorded migrations are skipped. The latest passing baseline before new order/replay additions is de950c26a3442a5264212458e4a2bac53d1fd980 (backend run 38779224040). Candidate 276122c1d103eeb589d6eadc8e6909de58a65446 passed its full chain and tests in backend run 38781457530.
+Dashboard/project summary repairs add no extra schema. Aggregations are scoped by customer or active owned/assigned plant. Delivered quantities come from recorded POD values; missing historical delivery measurements are not replaced with planned quantities. Customer observations remain customer-recorded information, never official quality acceptance.
 
-## Financial and operational integrity
+Production PostgreSQL18.3 and seven automated snapshots were observed through authorized metadata only. Snapshot presence is not a restore test. No production SQL, secret-value retrieval, migration, SSM command or cloud staging application was performed.
 
-Production locks the parent order and material rows, records exact stock deltas and rolls back incomplete recipes or insufficient stock. Old physical batch measurements are accounted for without inventing historic consumption. Invoice and payment locks prevent duplicate financial posting and overpayment. Payroll closure serializes period changes and snapshots paid records rather than exporting mutable profiles. Order retries serialize per customer before any new site/order writes and accepted quotations can fund only one order.
-
-These tests use isolated PostgreSQL databases and synthetic records. Existing reviewer fixtures remain labelled reviewer data and are excluded from new fixture count assertions. They are never historical customer migrations.
-
-## Authorized infrastructure and data limits
-
-Read-only metadata identified production PostgreSQL 18.3 and seven automated snapshots in account 260234292958, Mumbai. Production SQL, _sqlx_migrations contents, credentials and secret values were not read. Snapshot availability does not prove restoration or rollback. No migration was run against production or cloud staging, and the existing database was not overwritten.
-
-The reference MongoDB configuration and development seed code do not establish historical production data. Approved Backup/DocumentDB inventories and artifact object metadata did not identify a MongoDB dump; no Atlas snapshot authorization/location exists. Do not import seeds as real records. Historical migration remains BLOCKED pending an authorized backup.
-
-## Required next gates
-
-1. After isolated staging provisioning is separately approved, create a restricted application DB role, verify the exact migration history, back up the staging database and apply the reviewed candidate.
-2. Rehearse a restore in an approved isolated environment and reconcile IDs, ownership, row counts, order quantities, financial totals and evidence relationships. Never restore production records into the synthetic fixture environment without separate authorization.
-3. Prepare a separately authorized MongoDB export/map/import process if a real historical backup is found. Keep privileged roles closed and preserve all source/destination records for reconciliation.
-4. Rehearse application rollback with the additive schema retained. Destructive schema rollback is not presumed safe.
-5. Obtain final explicit production approval only after functional, security, build, backup and restore gates pass.
+Historical MongoDB production records and an authorized backup remain unconfirmed. Development/reviewer seeds are excluded from migration acceptance. A real source export/map/import, count/financial/ownership reconciliation, isolated restore rehearsal and reviewed rollback are BLOCKED pending authorized source data and isolated infrastructure. Staging provisioning still requires separate explicit approval. Never overwrite the existing PostgreSQL database.

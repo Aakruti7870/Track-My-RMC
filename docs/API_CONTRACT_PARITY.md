@@ -4,7 +4,7 @@ Status: PARTIAL. Regenerate with `node ops/regenerate-parity-inventory.mjs`. Ref
 
 Critical contracts are exercised by authentication_delivery_tests, customer_order_tests, delivery_lifecycle_tests and integration_security_tests with real PostgreSQL and HTTP handlers. Provider transport is injected only in synthetic OTP tests. Older parity_workflow_tests/auth_tests contain mirrored helper assertions and are not proof of live endpoint behavior. Production deployment and live provider testing remain BLOCKED.
 
-Known cross-screen gaps include RFQ and plant quotation DTOs, workforce review wrappers, Authority functions, privileged recovery, public policy aliases, maps/discovery, account-deletion review and several master-data mutations. The generic dispatcher status endpoint no longer changes lifecycle states: dedicated approval, production, dispatch and POD handlers are required.
+Known cross-screen gaps include workforce review wrappers, Authority functions, privileged recovery, public policy aliases, maps/discovery, account-deletion review and several master-data mutations. The generic dispatcher status endpoint no longer changes lifecycle states: dedicated approval, production, dispatch and POD handlers are required.
 
 | Source module | Method | Reference path | Status | Classification | Evidence / remaining work |
 |---|---|---|---|---|---|

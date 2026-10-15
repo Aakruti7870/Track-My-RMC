@@ -118,5 +118,30 @@
     "version": 27,
     "file": "0027_staff_totp_replay.sql",
     "sha256": "2804a770bacafe7dd92ddc97dd82ba8bb98c539a7b7d9a99dffd2c799fd5352c"
+  },
+  {
+    "version": 28,
+    "file": "0028_rfq_responses.sql",
+    "sha256": "828c39eaae6c61619a802c0a276664eed2aaa196b99a889a778eb68f5906c81a"
+  },
+  {
+    "version": 29,
+    "file": "0029_customer_site_contract.sql",
+    "sha256": "8cbf6350250d5aaea999bdb61877bc0d6d2567664e185491896d860962dc7dbb"
+  },
+  {
+    "version": 30,
+    "file": "0030_payroll_reopen_audit.sql",
+    "sha256": "a165fb241ea0c7e19aaf937553e73e52d9515a07cf134ce0d9d2992bd06dbc6c"
+  },
+  {
+    "version": 31,
+    "file": "0031_customer_cube_observations.sql",
+    "sha256": "ec33f449694e382a7cfe89ab69b542e9adcdbd477a1728f5b5f95e36b58afe5d"
+  },
+  {
+    "version": 32,
+    "file": "0032_support_threads.sql",
+    "sha256": "f389098cc96f017ec0cb3a8c8066e34c864b8242a1c8cc8e3f4f8d32cd51811c"
   }
 ]

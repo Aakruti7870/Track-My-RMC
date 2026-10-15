@@ -1,6 +1,6 @@
 # TrackMyRMC isolated staging review
 
-Status: PARTIAL. AWS provisioning: BLOCKED. No stack, change set, EC2, RDS, secret, bucket, account or production configuration was created or changed.
+Status: PARTIAL. AWS provisioning: BLOCKED. No stack, change set, EC2, RDS, secret, bucket or production resource was created or changed. The separately authorized monitoring-only AWS budget was created and verified.
 
 ## Verified inventory
 
@@ -10,7 +10,7 @@ AWS Backup vault inventory and DocumentDB cluster/snapshot inventories were empt
 
 ## Proposed foundation
 
-Template: ops/staging/foundation.json. The stack would create a new 10.88.0.0/16 VPC, independent subnets and security groups, an SSM-only Amazon Linux 2023 t3.small host, a private PostgreSQL 18.3 db.t4g.micro instance with 20 GiB gp3 storage, a private versioned artifact bucket and staging-only secrets. EC2 has 30 GiB encrypted gp3 storage and standard CPU credits. It has no inbound security-group rules, requires IMDSv2, and can use outbound HTTPS/HTTP for SSM and packages. PostgreSQL accepts port 5432 only from the new application security group. There is no peering, production security-group reference or production secret permission.
+Template: ops/staging/foundation.json. The stack would create a new 10.88.0.0/16 VPC, independent subnets and security groups, an SSM-only Amazon Linux 2023 t3.small host, a private PostgreSQL 18.3 db.t4g.micro instance with 20 GiB gp3 storage, a private versioned artifact bucket and staging-only secrets. EC2 has 30 GiB encrypted gp3 storage and standard CPU credits. It has no inbound security-group rules, requires IMDSv2, and can use outbound HTTPS for SSM and packages. PostgreSQL accepts port 5432 only from the new application security group. There is no peering, production security-group reference or production secret permission.
 
 RDS manages its administrator password. The host cannot read that administrator secret. A separate generated application database credential is prepared; its PostgreSQL role and restricted grants must be established through a separately reviewed bootstrap before application deployment. JWT and OTP pepper are separate generated staging secrets. Secret values are never outputs. Databases, buckets and secrets have Retain policies; RDS also has deletion protection and seven-day backups. Retention means storage/secrets can continue costing money after compute is stopped or a stack is removed.
 
@@ -57,11 +57,25 @@ Budget approximately USD 42.41/month for this baseline, not a spending cap or a 
 
 Approved synthetic identities are listed in backend/tests/fixtures/staging_identities.json. They are mock-delivery and database-test inputs only. The example.invalid addresses and reserved synthetic phone numbers must never receive real email or WhatsApp requests. No live provider destination is authorized, so live OTP delivery is BLOCKED. The package under test is com.trackmyrmc.concreteking. No Authority or Central Admin staging identity is approved or automatically created. Code-designated privileged email addresses are not account approval.
 
+## Pre-approval review completed after the provisioning hold
+
+The revised template enforces account 260234292958, ap-south-1 and stack name trackmyrmc-staging, permits only t3.small, removes public TCP80 egress and adds explicit denial of non-staging secret/SSM parameter reads and infrastructure mutation/role assumption. Static isolation validation and IAM simulation pass for the tested boundaries; actual deployed enforcement remains untested. No production resource references or cross-VPC links are present. Internet egress still permits access to public URLs and is explicitly documented.
+
+All13 failing rule-file evaluations, including15 named branches, are individually documented in SECURITY_REVIEW.md with the actual properties, risks, mitigations and required decisions. None is silently suppressed or treated as an approved exception. Final cfn-lint is clean, AWS ValidateTemplate accepts the revision, and Guard remains42 PASS/13 FAIL/16 SKIP.
+
+A USD 100 MONTHLY COST budget named trackmyrmc-account-monthly-cost-guardrail is configured in account 260234292958, with an80% ACTUAL GREATER_THAN email notification to the user-approved recipient. DescribeBudget reports HEALTHY; the notification and subscriber were read back. This account-wide guard includes existing production costs. It is not a staging-only cost allocation, hard spending cap or automatic shutdown, and email receipt has not been independently tested. Monitoring and notifications are free; no paid Budget Reports or automatic Budget Actions were enabled. Recipient details are redacted from repository evidence.
+
+SHUTDOWN_AND_CLEANUP.md documents exact-stack inventory checks, temporary stopping, RDS seven-day auto-restart, retained-resource costs, versioned-object cleanup and separate destructive-cleanup authorization. It has not been executed or rehearsed because staging does not exist.
+
+Python Decimal reconfirmed USD 42.413/month running and approximately USD 7.081/month persistent costs while temporarily stopped, before variable usage/tax. IAM restrictions and budget monitoring add no modeled recurring charge. See evidence/cost-recheck.json.
+
 ## Remaining blockers before provisioning and live validation
 
-1. Review the cost and outstanding managed-rule findings; authorize a specific final foundation separately.
+1. Review the exact revised foundation, all 13 documented exceptions and cleanup procedure; explicitly authorize this foundation before creating any billable resource.
 2. Establish application build artifacts, safe runtime secret resolution, a non-administrator database role, migrations and staging health checks.
 3. Decide staging access/DNS/TLS and a real-device connection method; the foundation has no public application listener.
 4. Use only isolated synthetic operational fixtures. Live provider identities and dedicated privileged identities need separate explicit authorization.
 5. Obtain an authorized MongoDB backup if real historical data exists; do not restore production records into the synthetic staging test environment.
 6. Complete remaining module contracts and real-device journeys before any production release approval.
+
+Supporting review files: SECURITY_REVIEW.md, SHUTDOWN_AND_CLEANUP.md, evidence/budget.json, evidence/iam-isolation-simulation.json and evidence/cost-recheck.json under ops/staging. The only AWS configuration changed during this follow-up is the explicitly authorized free cost budget; production infrastructure and secrets remain unchanged.

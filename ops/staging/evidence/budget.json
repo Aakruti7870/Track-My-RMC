@@ -1,0 +1,95 @@
+{
+  "status": "success",
+  "stdout": "",
+  "return_value": {
+    "account_id": "260234292958",
+    "budget": {
+      "Budget": {
+        "BudgetName": "trackmyrmc-account-monthly-cost-guardrail",
+        "BudgetLimit": {
+          "Amount": "100.0",
+          "Unit": "USD"
+        },
+        "CostTypes": {
+          "IncludeTax": true,
+          "IncludeSubscription": true,
+          "UseBlended": false,
+          "IncludeRefund": false,
+          "IncludeCredit": false,
+          "IncludeUpfront": true,
+          "IncludeRecurring": true,
+          "IncludeOtherSubscription": true,
+          "IncludeSupport": true,
+          "IncludeDiscount": true,
+          "UseAmortized": false
+        },
+        "TimeUnit": "MONTHLY",
+        "TimePeriod": {
+          "Start": "2026-10-01T00:00:00+00:00",
+          "End": "2087-06-15T00:00:00+00:00"
+        },
+        "BudgetType": "COST",
+        "LastUpdatedTime": "2026-10-15T19:12:31.808000+00:00",
+        "HealthStatus": {
+          "Status": "HEALTHY",
+          "LastUpdatedTime": "2026-10-15T19:12:31.808000+00:00"
+        }
+      }
+    },
+    "notifications": {
+      "Notifications": [
+        {
+          "NotificationType": "ACTUAL",
+          "ComparisonOperator": "GREATER_THAN",
+          "Threshold": 80,
+          "NotificationState": "OK"
+        }
+      ]
+    },
+    "subscribers": {
+      "Subscribers": [
+        {
+          "SubscriptionType": "EMAIL",
+          "Address": "[user-approved email; kept out of repository]"
+        }
+      ]
+    },
+    "alert_amount_usd": 80,
+    "scope": "account-wide, includes existing production costs",
+    "actions_enabled": false,
+    "billable_infrastructure_provisioned": false
+  },
+  "api_calls": [
+    {
+      "service": "sts",
+      "operation": "GetCallerIdentity",
+      "status": "success"
+    },
+    {
+      "service": "budgets",
+      "operation": "CreateBudget",
+      "status": "success"
+    },
+    {
+      "service": "budgets",
+      "operation": "DescribeBudget",
+      "status": "success"
+    },
+    {
+      "service": "budgets",
+      "operation": "DescribeNotificationsForBudget",
+      "status": "success",
+      "n_items": {
+        "Notifications": 1
+      }
+    },
+    {
+      "service": "budgets",
+      "operation": "DescribeSubscribersForNotification",
+      "status": "success",
+      "n_items": {
+        "Subscribers": 1
+      }
+    }
+  ]
+}

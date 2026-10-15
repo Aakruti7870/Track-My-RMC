@@ -70,5 +70,39 @@
     "provisioning": "BLOCKED"
   },
   "change_set": "NOT IMPLEMENTED: no change set created",
-  "provisioning": "BLOCKED: no resource creation authorized"
+  "provisioning": "BLOCKED: no resource creation authorized",
+  "preapproval_recheck": {
+    "cfn_lint_exit_code": 0,
+    "aws_validate_template": {
+      "Parameters": [
+        {
+          "ParameterKey": "ComputeSize",
+          "DefaultValue": "t3.small",
+          "NoEcho": false,
+          "Description": "Stateless staging application host size"
+        },
+        {
+          "ParameterKey": "ImageId",
+          "DefaultValue": "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64",
+          "NoEcho": false,
+          "Description": "Amazon Linux 2023 x86_64 image"
+        }
+      ],
+      "Description": "Isolated TrackMyRMC staging foundation. No production resources, records, identities or secrets are referenced.",
+      "Capabilities": [
+        "CAPABILITY_IAM"
+      ],
+      "CapabilitiesReason": "The following resource(s) require capabilities: [AWS::IAM::ManagedPolicy]"
+    },
+    "required_capabilities": [
+      "CAPABILITY_IAM"
+    ],
+    "resource_count": 22,
+    "template_sha256": "f5e7fd20c59053ebae62840f5af805088a3216fa51147bc3fd61dc646e08368f",
+    "guard_summary": "guard-summary.json",
+    "iam_simulation": "iam-isolation-simulation.json",
+    "budget_evidence": "budget.json",
+    "provisioned": false,
+    "recorded_utc": "2026-10-15 19:21:11 UTC"
+  }
 }

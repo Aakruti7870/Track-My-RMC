@@ -11,8 +11,7 @@
       "Type": "String",
       "Default": "t3.small",
       "AllowedValues": [
-        "t3.small",
-        "t3.medium"
+        "t3.small"
       ],
       "Description": "Stateless staging application host size"
     }
@@ -30,6 +29,36 @@
             ]
           },
           "AssertDescription": "Deploy only in the authorized Mumbai region."
+        }
+      ]
+    },
+    "TrackMyRMCAccountOnly": {
+      "Assertions": [
+        {
+          "Assert": {
+            "Fn::Equals": [
+              {
+                "Ref": "AWS::AccountId"
+              },
+              "260234292958"
+            ]
+          },
+          "AssertDescription": "This foundation is authorized only for TrackmyRMC account 260234292958."
+        }
+      ]
+    },
+    "StagingStackNameOnly": {
+      "Assertions": [
+        {
+          "Assert": {
+            "Fn::Equals": [
+              {
+                "Ref": "AWS::StackName"
+              },
+              "trackmyrmc-staging"
+            ]
+          },
+          "AssertDescription": "Use the isolated trackmyrmc-staging stack name."
         }
       ]
     }
@@ -243,13 +272,6 @@
             "ToPort": 443,
             "CidrIp": "0.0.0.0/0",
             "Description": "AWS APIs, SSM and HTTPS package repositories"
-          },
-          {
-            "IpProtocol": "tcp",
-            "FromPort": 80,
-            "ToPort": 80,
-            "CidrIp": "0.0.0.0/0",
-            "Description": "OS package repositories"
           },
           {
             "IpProtocol": "tcp",
@@ -711,6 +733,67 @@
                 "s3:GetObject"
               ],
               "Resource": {
+                "Fn::Sub": "${Artifacts.Arn}/releases/*"
+              }
+            },
+            {
+              "Sid": "DenyOtherSecretReads",
+              "Effect": "Deny",
+              "Action": [
+                "secretsmanager:GetSecretValue",
+                "secretsmanager:BatchGetSecretValue"
+              ],
+              "NotResource": [
+                {
+                  "Ref": "AppSecret"
+                },
+                {
+                  "Ref": "OtpSecret"
+                },
+                {
+                  "Ref": "ApplicationDatabaseSecret"
+                }
+              ]
+            },
+            {
+              "Sid": "DenyNonStagingParameterReads",
+              "Effect": "Deny",
+              "Action": [
+                "ssm:GetParameter",
+                "ssm:GetParameters",
+                "ssm:GetParametersByPath"
+              ],
+              "NotResource": [
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/*"
+                },
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}::parameter/aws/service/ami-amazon-linux-latest/*"
+                }
+              ]
+            },
+            {
+              "Sid": "DenyInfrastructureMutationAndRoleAssumption",
+              "Effect": "Deny",
+              "Action": [
+                "ec2:*",
+                "rds:*",
+                "iam:*",
+                "cloudformation:*",
+                "sts:AssumeRole",
+                "ssm:SendCommand",
+                "ssm:StartAutomationExecution"
+              ],
+              "Resource": "*"
+            },
+            {
+              "Sid": "DenyOtherObjectReads",
+              "Effect": "Deny",
+              "Action": [
+                "s3:GetObject",
+                "s3:GetObjectVersion"
+              ],
+              "NotResource": {
                 "Fn::Sub": "${Artifacts.Arn}/releases/*"
               }
             }
