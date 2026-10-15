@@ -33,7 +33,10 @@ impl WhatsAppService {
         api_version: String,
     ) -> Self {
         Self {
-            client: Client::new(),
+            client: Client::builder()
+                .timeout(std::time::Duration::from_secs(15))
+                .build()
+                .expect("HTTP client"),
             token,
             phone_number_id,
             api_version,
@@ -124,8 +127,8 @@ impl WhatsAppService {
             .json(&payload)
             .send()
             .await
-            .map_err(|e| {
-                error!(error = ?e, "Failed to connect to Meta WhatsApp Cloud API");
+            .map_err(|_| {
+                error!("Failed to connect to Meta WhatsApp Cloud API");
                 AppError::InternalError(
                     "WhatsApp delivery service is temporarily unreachable".to_string(),
                 )
@@ -133,14 +136,13 @@ impl WhatsAppService {
 
         if !response.status().is_success() {
             let status = response.status();
-            let err_body = response.text().await.unwrap_or_default();
-            error!(status = %status, response = %err_body, "Meta WhatsApp Cloud API rejected message");
+            error!(status = %status, "Meta WhatsApp Cloud API rejected message");
             return Err(AppError::InternalError(
                 "Failed to send WhatsApp verification code. Please try again.".to_string(),
             ));
         }
 
-        info!(recipient = %recipient, "WhatsApp OTP successfully dispatched via Meta Cloud API");
+        info!("WhatsApp OTP accepted by Meta Cloud API");
         Ok(())
     }
 }

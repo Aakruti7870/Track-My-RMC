@@ -1,10 +1,6 @@
 use crate::{
-    auth::otp::OtpEngine,
-    auth::AuthUser,
-    error::AppError,
-    repositories::user_repo,
-    services::{email_service::EmailService, whatsapp_service::WhatsAppService},
-    state::AppState,
+    auth::otp::OtpEngine, auth::AuthUser, error::AppError, repositories::user_repo,
+    services::whatsapp_service::WhatsAppService, state::AppState,
 };
 use axum::{extract::State, response::IntoResponse, Json};
 use chrono::{DateTime, Utc};
@@ -200,6 +196,7 @@ pub async fn send_public_otp(
         Err(error) => return Err(error),
     }
 
+    state.otp_delivery.validate(channel)?;
     let (otp, salt, hashed_otp) = OtpEngine::generate_secure_otp(&state.config.otp_pepper);
     let session_id = OtpEngine::create_pending_session(
         &state.db,
@@ -215,22 +212,10 @@ pub async fn send_public_otp(
     )
     .await?;
 
-    let delivery = if channel == "email" {
-        EmailService::new(
-            state.config.email_api_key.clone(),
-            state.config.email_from_address.clone(),
-        )
-        .send_otp(&destination, &otp, "Account Deletion")
-        .await
-    } else {
-        WhatsAppService::new(
-            state.config.meta_whatsapp_token.clone(),
-            state.config.meta_whatsapp_phone_number_id.clone(),
-            state.config.meta_graph_api_version.clone(),
-        )
-        .send_otp(&destination, &otp)
-        .await
-    };
+    let delivery = state
+        .otp_delivery
+        .send(channel, &destination, &otp, "Account Deletion")
+        .await;
 
     if let Err(error) = delivery {
         let _ = OtpEngine::discard_pending_session(&state.db, session_id).await;

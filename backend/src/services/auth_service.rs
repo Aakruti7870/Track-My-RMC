@@ -8,7 +8,7 @@ use crate::{
     error::AppError,
     models::user::{AuthResponse, LoginRequest, RegisterRequest, UserProfile, UserResponse},
     repositories::user_repo,
-    services::{email_service::EmailService, whatsapp_service::WhatsAppService},
+    services::whatsapp_service::WhatsAppService,
     state::AppState,
 };
 use chrono::{Duration, Utc};
@@ -123,6 +123,10 @@ fn is_staff_role(role: &str) -> bool {
     )
 }
 
+fn is_email_login_role(role: &str) -> bool {
+    is_staff_role(role) && !matches!(role, "central_admin" | "authority")
+}
+
 pub async fn login(state: &AppState, req: LoginRequest) -> Result<AuthResponse, AppError> {
     let user = user_repo::find_by_phone_or_email(&state.db, &req.username_or_phone)
         .await?
@@ -203,12 +207,7 @@ pub async fn send_whatsapp_otp(
         ));
     }
 
-    let wa_service = WhatsAppService::new(
-        state.config.meta_whatsapp_token.clone(),
-        state.config.meta_whatsapp_phone_number_id.clone(),
-        state.config.meta_graph_api_version.clone(),
-    );
-    wa_service.validate_config()?;
+    state.otp_delivery.validate("whatsapp")?;
 
     // Check if user exists and verify role restrictions
     if let Some(user) = user_repo::find_by_phone_or_email(&state.db, &destination).await? {
@@ -251,7 +250,11 @@ pub async fn send_whatsapp_otp(
     .await?;
 
     // If delivery fails, discard the pending session and preserve the old OTP.
-    if let Err(send_error) = wa_service.send_otp(&destination, &plain_otp).await {
+    if let Err(send_error) = state
+        .otp_delivery
+        .send("whatsapp", &destination, &plain_otp, "Login")
+        .await
+    {
         let _ = OtpEngine::discard_pending_session(&state.db, session_id).await;
         return Err(send_error);
     }
@@ -411,11 +414,12 @@ pub async fn send_email_otp(state: &AppState, req: SendEmailOtpRequest) -> Resul
     }
 
     let _ = req.plant_code.as_deref();
+    state.otp_delivery.validate("email")?;
     OtpEngine::check_rate_limit(&state.db, &destination, state.config.otp_cooldown_seconds).await?;
 
     let (plain_otp, salt, hashed_otp) = OtpEngine::generate_secure_otp(&state.config.otp_pepper);
 
-    OtpEngine::create_session(
+    let session_id = OtpEngine::create_pending_session(
         &state.db,
         crate::auth::otp::OtpSessionInput {
             destination: &destination,
@@ -429,13 +433,21 @@ pub async fn send_email_otp(state: &AppState, req: SendEmailOtpRequest) -> Resul
     )
     .await?;
 
-    let email_service = EmailService::new(
-        state.config.email_api_key.clone(),
-        state.config.email_from_address.clone(),
-    );
-    email_service
-        .send_otp(&destination, &plain_otp, "Staff/Admin Portal")
-        .await?;
+    if let Err(error) = state
+        .otp_delivery
+        .send("email", &destination, &plain_otp, "Staff/Admin Portal")
+        .await
+    {
+        let _ = OtpEngine::discard_pending_session(&state.db, session_id).await;
+        return Err(error);
+    }
+    if let Err(error) =
+        OtpEngine::activate_pending_session(&state.db, session_id, &destination, "email", &purpose)
+            .await
+    {
+        let _ = OtpEngine::discard_pending_session(&state.db, session_id).await;
+        return Err(error);
+    }
 
     Ok(())
 }
@@ -595,7 +607,7 @@ pub async fn start_staff_mfa_enrollment(
     let user = user_repo::find_by_id(&state.db, user_id)
         .await?
         .ok_or_else(|| AppError::Unauthorized("Account not found".to_string()))?;
-    if !user.is_active || !is_staff_role(&user.role) {
+    if !user.is_active || !is_email_login_role(&user.role) {
         return Err(AppError::Forbidden(
             "Account is not authorized for staff enrollment.".to_string(),
         ));
@@ -630,6 +642,14 @@ pub async fn confirm_staff_mfa_enrollment(
     if purpose != "enrollment" {
         return Err(AppError::Forbidden(
             "This challenge is not valid for enrollment.".to_string(),
+        ));
+    }
+    let user = user_repo::find_by_id(&state.db, user_id)
+        .await?
+        .ok_or_else(|| AppError::Unauthorized("Account not found".into()))?;
+    if !user.is_active || !is_email_login_role(&user.role) {
+        return Err(AppError::Forbidden(
+            "Account is not authorized for staff enrollment.".into(),
         ));
     }
     if let Err(err) = crate::auth::totp::verify_and_enable_totp(&state.db, user_id, code).await {
@@ -682,7 +702,7 @@ pub async fn verify_staff_mfa(
     let user = user_repo::find_by_id(&state.db, user_id)
         .await?
         .ok_or_else(|| AppError::Unauthorized("Account not found".to_string()))?;
-    if !user.is_active || !is_staff_role(&user.role) {
+    if !user.is_active || !is_email_login_role(&user.role) {
         return Err(AppError::Forbidden(
             "Account is not authorized for staff login.".to_string(),
         ));
