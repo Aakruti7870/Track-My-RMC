@@ -17,6 +17,7 @@ import * as Linking from "expo-linking";
 
 import { useAuth } from "@/src/auth/AuthContext";
 import { roleRouteFor } from "@/src/auth/roleRoutes";
+import { loginPhone } from "@/src/auth/phone";
 import { OtpOrbitVerification, OtpVisualState } from "@/src/components/auth/OtpOrbitVerification";
 import { AppText } from "@/src/components/ui/AppText";
 import { Button } from "@/src/components/ui/Button";
@@ -150,11 +151,11 @@ export default function LoginScreen() {
 
   const handleSendUserOtp = async () => {
     setError(null);
-    if (mobile.length !== 10) {
-      setError("Enter a valid 10-digit mobile number");
+    const fullNumber = loginPhone(mobile);
+    if (!fullNumber) {
+      setError("Enter 10 digits or a full number with +country code");
       return;
     }
-    const fullNumber = `+91${mobile}`;
     setLoading(true);
     try {
       const response = await requestOtp(fullNumber);
@@ -320,7 +321,7 @@ export default function LoginScreen() {
     error: colors.error,
   };
 
-  const maskedPhone = identifier.length >= 4 ? `+91 •••••• ${identifier.slice(-4)}` : "+91 mobile";
+  const maskedPhone = identifier.length >= 4 ? `•••••••• ${identifier.slice(-4)}` : "your mobile";
 
   const renderForm = () => {
     if (phase === "user_otp") {
@@ -459,21 +460,21 @@ export default function LoginScreen() {
             <AppText variant="bodyMuted" center>Secure access to Track My RMC</AppText>
           </View>
           <View style={[styles.phoneInputWrap, { borderColor: error ? colors.error : colors.border, backgroundColor: colors.surface }]}> 
-            <View style={[styles.prefix, { borderRightColor: colors.border }]}><AppText style={styles.prefixText}>+91</AppText></View>
+            <View style={[styles.prefix, { borderRightColor: colors.border }]}><AppText style={styles.prefixText}>{mobile.startsWith("+") ? "INTL" : "+91"}</AppText></View>
             <TextInput
               testID="login-mobile-input"
               value={mobile}
-              onChangeText={(text) => { setMobile(text.replace(/\D/g, "").slice(0, 10)); setError(null); }}
-              placeholder="Enter 10-digit mobile number"
+              onChangeText={(text) => { setMobile((text.trimStart().startsWith("+") ? "+" : "") + text.replace(/\D/g, "").slice(0, 15)); setError(null); }}
+              placeholder="10 digits or +country code"
               placeholderTextColor={colors.onSurfaceTertiary}
-              keyboardType="number-pad"
-              inputMode="numeric"
-              maxLength={10}
+              keyboardType="phone-pad"
+              inputMode="tel"
+              maxLength={16}
               style={[styles.phoneInput, { color: colors.onSurface }]}
             />
           </View>
           {error ? <AppText variant="caption" color={colors.error}>{error}</AppText> : null}
-          <Button label="CONTINUE" onPress={handleSendUserOtp} loading={loading} disabled={mobile.length !== 10} icon={<Ionicons name="shield-checkmark-outline" size={19} color={colors.onBrand} />} />
+          <Button label="CONTINUE" onPress={handleSendUserOtp} loading={loading} disabled={!loginPhone(mobile)} icon={<Ionicons name="shield-checkmark-outline" size={19} color={colors.onBrand} />} />
           <View style={styles.securityNote}>
             <Ionicons name="lock-closed-outline" size={14} color={colors.onSurfaceTertiary} />
             <AppText variant="caption" color={colors.onSurfaceTertiary}>6-digit OTP verification</AppText>

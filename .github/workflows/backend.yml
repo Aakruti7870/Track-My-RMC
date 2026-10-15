@@ -5,6 +5,8 @@ on:
     branches: [ main, develop ]
     paths:
       - 'backend/**'
+      - 'frontend/**'
+      - 'admin-web/**'
       - 'ops/**'
       - '.github/workflows/backend.yml'
       - '.github/workflows/deploy-aws-production.yml'
@@ -14,6 +16,8 @@ on:
     branches: [ main, 'feat/**' ]
     paths:
       - 'backend/**'
+      - 'frontend/**'
+      - 'admin-web/**'
       - 'ops/**'
       - '.github/workflows/backend.yml'
       - '.github/workflows/deploy-aws-production.yml'
@@ -117,3 +121,15 @@ jobs:
             sleep 1
           done
           node admin-web/scripts/verify-control-center.mjs
+
+      - name: Verify actual Expo role journeys against Rust and PostgreSQL
+        if: success() && matrix.postgres == 18
+        timeout-minutes: 15
+        env:
+          DATABASE_URL: postgres://trackmyrmc_user:securepassword@localhost:5432/trackmyrmc_test
+          JWT_SECRET: isolated_ci_only_secret_that_exceeds_sixty_four_bytes_12345678901234567890
+          OTP_PEPPER: isolated_ci_only_otp_pepper_12345678901234567890
+          APP_ENV: test
+        run: |
+          npm ci --prefix frontend
+          node admin-web/scripts/verify-mobile-roles.mjs
