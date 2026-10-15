@@ -59,7 +59,13 @@ pub async fn advance(
         } else {
             "ready_to_dispatch"
         };
-        if load.status != expected {
+        if (action == "prepare"
+            && !matches!(
+                load.status.as_str(),
+                "planned" | "assigned" | "batching" | "batched"
+            ))
+            || (action == "dispatch" && load.status != expected)
+        {
             return Err(AppError::Conflict(format!(
                 "Load must be {expected} before {action}"
             )));
@@ -97,11 +103,20 @@ pub async fn advance(
             if !matches!(mstatus.as_str(), "idle" | "available" | "loading") {
                 return Err(AppError::Conflict("Mixer is unavailable".into()));
             }
-            let produced: bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM batch_production_records WHERE load_id=$1 AND status='COMPLETED')")
-                .bind(id).fetch_one(&mut *tx).await?;
-            if !produced {
+            let produced: f64 = sqlx::query_scalar(super::production_service::PRODUCED_SQL)
+                .bind(load.order_id)
+                .fetch_one(&mut *tx)
+                .await?;
+            let allocated:f64=sqlx::query_scalar("SELECT COALESCE(SUM(quantity_m3),0)::DOUBLE PRECISION FROM order_loads WHERE order_id=$1 AND id<>$2 AND status NOT IN ('planned','assigned','batching','batched','cancelled')")
+              .bind(load.order_id).bind(id).fetch_one(&mut *tx).await?;
+            use bigdecimal::ToPrimitive;
+            let quantity = load
+                .quantity_m3
+                .to_f64()
+                .ok_or_else(|| AppError::Conflict("Invalid load quantity".into()))?;
+            if allocated + quantity > produced + 0.001 {
                 return Err(AppError::Conflict(
-                    "Record the completed production batch first".into(),
+                    "Load exceeds unallocated produced quantity".into(),
                 ));
             }
             sqlx::query(

@@ -604,6 +604,22 @@ pub fn build_app_router(state: AppState) -> Router {
             get(owner_routes::get_billing_overview),
         )
         .route("/api/owner/home", get(owner_routes::get_owner_home))
+        .route(
+            "/api/owner/orders/:order_id/production",
+            get(staff_routes::get_production_status),
+        )
+        .route(
+            "/api/owner/orders/:order_id/production/start",
+            post(staff_routes::start_production),
+        )
+        .route(
+            "/api/owner/orders/:order_id/production/batch",
+            post(staff_routes::record_batch),
+        )
+        .route(
+            "/api/owner/orders/:order_id/production/complete",
+            post(staff_routes::complete_production),
+        )
         .route("/api/owner/orders", get(owner_routes::list_owner_orders))
         .route(
             "/api/owner/orders/:order_id/approve",

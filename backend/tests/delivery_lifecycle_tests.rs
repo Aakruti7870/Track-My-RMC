@@ -66,16 +66,22 @@ async fn produced_load_requires_challan_gate_pass_and_finishes_delivery(pool: Pg
     )
     .await
     .is_err());
+    sqlx::query("INSERT INTO plant_mix_designs (plant_id,grade,cement_kg) SELECT plant_id,concrete_grade,300 FROM orders WHERE id=$1").bind(order).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO plant_materials (plant_id,name,material_type,current_stock) VALUES ($1,'Cement','cement',5000)").bind(plant).execute(&pool).await.unwrap();
     staff_routes::record_batch(
         State(app.clone()),
         operator_user.clone(),
         Path(order),
-        Json(staff_routes::RecordBatchPayload {
-            load_id: load,
-            batch_number: Some(1),
-            actual_weights: serde_json::json!({"cement":300}),
-            target_weights: None,
-        }),
+        Json(
+            trackmyrmc_backend::services::production_service::BatchInput::Load(
+                staff_routes::RecordBatchPayload {
+                    load_id: load,
+                    batch_number: Some(1),
+                    actual_weights: serde_json::json!({"cement":300}),
+                    target_weights: None,
+                },
+            ),
+        ),
     )
     .await
     .unwrap();
@@ -494,4 +500,193 @@ fn mobile_pod_contract_deserializes() {
     );
     assert_eq!(request.notes.as_deref(), Some("Site note"));
     assert_eq!(request.delivered_quantity, 6.0);
+}
+
+fn quantity_batch(
+    quantity: f64,
+    request: &str,
+) -> trackmyrmc_backend::services::production_service::BatchInput {
+    use trackmyrmc_backend::services::production_service::{BatchInput, QuantityBatch};
+    BatchInput::Quantity(QuantityBatch {
+        quantity,
+        request_id: Some(request.into()),
+        batch_reference: Some("Batch report".into()),
+        remarks: None,
+        consume_materials: Some(true),
+    })
+}
+async fn production_fixture(pool: &PgPool) -> (Uuid, Uuid, Uuid) {
+    let (actor, order, _, _) = fixture(pool).await;
+    sqlx::query("UPDATE orders SET status='in_production',total_quantity_m3=6 WHERE id=$1")
+        .bind(order)
+        .execute(pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE order_loads SET status='planned' WHERE order_id=$1")
+        .bind(order)
+        .execute(pool)
+        .await
+        .unwrap();
+    let plant: Uuid = sqlx::query_scalar("SELECT plant_id FROM orders WHERE id=$1")
+        .bind(order)
+        .fetch_one(pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO plant_mix_designs (plant_id,grade,cement_kg,water_litre) VALUES ($1,'M25',300,150)").bind(plant).execute(pool).await.unwrap();
+    sqlx::query("INSERT INTO plant_materials (plant_id,name,material_type,unit,current_stock) VALUES ($1,'Cement','CEMENT','ton',5),($1,'Water','WATER','litre',2000)").bind(plant).execute(pool).await.unwrap();
+    (actor, order, plant)
+}
+#[sqlx::test]
+async fn production_retry_consumes_inventory_once_and_preserves_unit_conversion(pool: PgPool) {
+    use trackmyrmc_backend::services::production_service::record;
+    let (actor, order, plant) = production_fixture(&pool).await;
+    let (first, retry) = tokio::join!(
+        record(&pool, order, actor, quantity_batch(6.0, "same-request")),
+        record(&pool, order, actor, quantity_batch(6.0, "same-request"))
+    );
+    let first = first.unwrap();
+    assert_eq!(first["batch_id"], retry.unwrap()["batch_id"]);
+    assert_eq!(first["produced"], 6.0);
+    assert_eq!(first["material_consumption"][0]["stock_quantity"], 1.8);
+    let stock:f64=sqlx::query_scalar("SELECT current_stock::DOUBLE PRECISION FROM plant_materials WHERE plant_id=$1 AND material_type='CEMENT'").bind(plant).fetch_one(&pool).await.unwrap();
+    assert!((stock - 3.2).abs() < 1e-8);
+    assert!(matches!(
+        record(&pool, order, actor, quantity_batch(5.0, "same-request")).await,
+        Err(AppError::Conflict(_))
+    ));
+    let counts:(i64,i64)=sqlx::query_as("SELECT (SELECT COUNT(*) FROM production_batches),(SELECT COUNT(*) FROM production_stock_movements)").fetch_one(&pool).await.unwrap();
+    assert_eq!(counts, (1, 2));
+}
+#[sqlx::test]
+async fn production_failure_rolls_back_all_stock_and_concurrent_totals_are_bounded(pool: PgPool) {
+    use trackmyrmc_backend::services::production_service::record;
+    let (actor, order, plant) = production_fixture(&pool).await;
+    sqlx::query(
+        "UPDATE plant_materials SET current_stock=0 WHERE plant_id=$1 AND material_type='WATER'",
+    )
+    .bind(plant)
+    .execute(&pool)
+    .await
+    .unwrap();
+    assert!(matches!(
+        record(&pool, order, actor, quantity_batch(4.0, "failed-batch")).await,
+        Err(AppError::Conflict(_))
+    ));
+    let stock:f64=sqlx::query_scalar("SELECT current_stock::DOUBLE PRECISION FROM plant_materials WHERE plant_id=$1 AND material_type='CEMENT'").bind(plant).fetch_one(&pool).await.unwrap();
+    assert_eq!(stock, 5.0);
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM production_batches")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+    sqlx::query(
+        "UPDATE plant_materials SET current_stock=2000 WHERE plant_id=$1 AND material_type='WATER'",
+    )
+    .bind(plant)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let (a, b) = tokio::join!(
+        record(&pool, order, actor, quantity_batch(4.0, "concurrent-a")),
+        record(&pool, order, actor, quantity_batch(4.0, "concurrent-b"))
+    );
+    assert_ne!(a.is_ok(), b.is_ok());
+    let total: f64 =
+        sqlx::query_scalar("SELECT SUM(quantity)::DOUBLE PRECISION FROM production_batches")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(total, 4.0);
+}
+#[sqlx::test]
+async fn quantity_production_contract_is_scoped_and_can_allocate_delivery_after_completion(
+    pool: PgPool,
+) {
+    use axum::{
+        extract::{Path, State},
+        response::IntoResponse,
+        Json,
+    };
+    use trackmyrmc_backend::{
+        auth::AuthUser,
+        routes::staff_routes,
+        services::{load_lifecycle, production_service::record},
+    };
+    let (actor, order, plant) = production_fixture(&pool).await;
+    let owner = AuthUser {
+        user_id: actor,
+        role: "plant_owner".into(),
+        phone: "test-driver".into(),
+        email: None,
+    };
+    let mut intruder = owner.clone();
+    intruder.user_id = Uuid::new_v4();
+    assert!(matches!(
+        staff_routes::get_production_status(State(state(pool.clone())), intruder, Path(order))
+            .await,
+        Err(AppError::Forbidden(_))
+    ));
+    assert!(staff_routes::record_batch(
+        State(state(pool.clone())),
+        owner.clone(),
+        Path(order),
+        Json(quantity_batch(6.0, "owner-quantity"))
+    )
+    .await
+    .is_ok());
+    let response =
+        staff_routes::get_production_status(State(state(pool.clone())), owner.clone(), Path(order))
+            .await
+            .unwrap()
+            .into_response();
+    let data: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(response.into_body(), 10000)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(data["ordered_quantity"], 6.0);
+    assert_eq!(data["produced_quantity"], 6.0);
+    assert_eq!(data["remaining_quantity"], 0.0);
+    assert_eq!(data["batches"][0]["quantity"], 6.0);
+    staff_routes::complete_production(State(state(pool.clone())), owner, Path(order))
+        .await
+        .unwrap();
+    assert!(
+        record(&pool, order, actor, quantity_batch(1.0, "after-complete"))
+            .await
+            .is_err()
+    );
+    let mixer:Uuid=sqlx::query_scalar("INSERT INTO transit_mixers (plant_id,registration_number,driver_id,capacity_m3) VALUES ($1,'QTY-MIXER',$2,6) RETURNING id").bind(plant).bind(actor).fetch_one(&pool).await.unwrap();
+    let loads: Vec<Uuid> =
+        sqlx::query_scalar("SELECT id FROM order_loads WHERE order_id=$1 ORDER BY load_number")
+            .bind(order)
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    sqlx::query("UPDATE order_loads SET mixer_id=$2,status='assigned' WHERE id=$1")
+        .bind(loads[0])
+        .bind(mixer)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        load_lifecycle::advance(&pool, loads[0], actor, "prepare")
+            .await
+            .unwrap(),
+        "ready_to_dispatch"
+    );
+    // A second load cannot spend the same physical production pool with different resources.
+    let driver2:Uuid=sqlx::query_scalar("INSERT INTO users (phone,hashed_password,full_name,role) VALUES ('quantity-driver2','unused','Other Driver','driver') RETURNING id").fetch_one(&pool).await.unwrap();
+    let mixer2:Uuid=sqlx::query_scalar("INSERT INTO transit_mixers (plant_id,registration_number,driver_id,capacity_m3) VALUES ($1,'QTY-MIXER-2',$2,6) RETURNING id").bind(plant).bind(driver2).fetch_one(&pool).await.unwrap();
+    sqlx::query("UPDATE order_loads SET mixer_id=$2,driver_id=$3,status='assigned' WHERE id=$1")
+        .bind(loads[1])
+        .bind(mixer2)
+        .bind(driver2)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(
+        matches!(load_lifecycle::advance(&pool,loads[1],actor,"prepare").await,Err(AppError::Conflict(message)) if message.contains("produced quantity"))
+    );
 }

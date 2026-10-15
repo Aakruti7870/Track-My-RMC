@@ -34,6 +34,7 @@ type LoadResponse = {
   planned_quantity_m3: number;
   delivered_quantity_m3: number;
   remaining_quantity_m3: number;
+  production_ready: boolean;
   loads: Load[];
 };
 type Vehicle = { id: string; tm_number: string; capacity_m3: number; status: string };
@@ -169,7 +170,7 @@ export function LoadPlanner({ orderId, resourceBase, onChanged }: Props) {
           {["PLANNED", "ASSIGNED"].includes(load.status) ? (
             <Button label={load.status === "ASSIGNED" ? "Change Assignment" : "Assign TM + Driver"} variant="outline" onPress={() => openAssign(load)} />
           ) : null}
-          {load.status === "BATCHED" ? (
+          {data?.production_ready && ["PLANNED", "ASSIGNED", "BATCHING", "BATCHED"].includes(load.status) ? (
             <Button label="Prepare Trip + Challan" onPress={() => action(`/loads/${load.id}/prepare`, "Load prepared", {})} loading={busy} />
           ) : null}
           {load.status === "READY_TO_DISPATCH" && !load.gate_pass_number ? (

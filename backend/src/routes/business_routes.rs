@@ -18,9 +18,6 @@ pub(crate) async fn ensure_plant_staff_or_owner(
     auth_user: &AuthUser,
     plant_id: Uuid,
 ) -> Result<(), AppError> {
-    if auth_user.role == "admin" {
-        return Ok(());
-    }
     if auth_user.role == "owner" || auth_user.role == "plant_owner" {
         let is_owner: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM rmc_plants WHERE id = $1 AND owner_id = $2)",

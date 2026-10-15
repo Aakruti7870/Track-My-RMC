@@ -652,63 +652,18 @@ pub async fn get_production_status(
     )?;
 
     super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
-    let order_row = sqlx::query(
-        "SELECT id, order_number, concrete_grade, total_quantity_m3, status FROM orders WHERE id = $1",
-    )
-    .bind(order_id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Order not found".to_string()))?;
-
-    let loads = sqlx::query(
-        r#"
-        SELECT l.id, l.load_number, l.quantity_m3, l.status,
-               l.batch_started_at, l.batch_completed_at,
-               m.registration_number as mixer_number
-        FROM order_loads l
-        LEFT JOIN transit_mixers m ON m.id = l.mixer_id
-        WHERE l.order_id = $1
-        ORDER BY l.load_number
-        "#,
-    )
-    .bind(order_id)
-    .fetch_all(&state.db)
-    .await?;
-
-    let oid: Uuid = order_row.get("id");
-    let onum: String = order_row.get("order_number");
-    let ograde: String = order_row.get("concrete_grade");
-    let oqty: bigdecimal::BigDecimal = order_row.get("total_quantity_m3");
-    let ost: String = order_row.get("status");
-
-    Ok(Json(json!({
-        "success": true,
-        "order": {
-            "id": oid,
-            "order_number": onum,
-            "grade": ograde,
-            "total_quantity": oqty,
-            "status": ost
-        },
-        "batches": loads.into_iter().map(|l| {
-            let lid: Uuid = l.get("id");
-            let lnum: i32 = l.get("load_number");
-            let lqty: bigdecimal::BigDecimal = l.get("quantity_m3");
-            let lst: String = l.get("status");
-            let mixer: Option<String> = l.get("mixer_number");
-            let bstart: Option<chrono::DateTime<chrono::Utc>> = l.get("batch_started_at");
-            let bcomp: Option<chrono::DateTime<chrono::Utc>> = l.get("batch_completed_at");
-            json!({
-                "load_id": lid,
-                "load_number": lnum,
-                "quantity_m3": lqty,
-                "status": lst,
-                "mixer_number": mixer,
-                "batch_started_at": bstart,
-                "batch_completed_at": bcomp
-            })
-        }).collect::<Vec<_>>()
-    })))
+    let data:serde_json::Value=sqlx::query_scalar("SELECT jsonb_build_object('success',TRUE,'order_id',o.id,'order_number',o.order_number,'grade',o.concrete_grade,'status',UPPER(o.status),'ordered_quantity',o.total_quantity_m3::DOUBLE PRECISION,'required',o.total_quantity_m3::DOUBLE PRECISION,'batches',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',b.id,'quantity',b.quantity::DOUBLE PRECISION,'batch_reference',b.batch_reference,'remarks',b.remarks,'created_at',b.created_at,'mix_design_version',b.mix_design_version,'material_consumption',b.material_consumption) ORDER BY b.created_at) FROM production_batches b WHERE b.order_id=o.id),'[]'::jsonb)) FROM orders o WHERE id=$1")
+      .bind(order_id).fetch_one(&state.db).await?;
+    let produced: f64 = sqlx::query_scalar(crate::services::production_service::PRODUCED_SQL)
+        .bind(order_id)
+        .fetch_one(&state.db)
+        .await?;
+    let mut data = data;
+    let ordered = data["required"].as_f64().unwrap_or(0.0);
+    data["produced_quantity"] = json!(produced);
+    data["produced"] = json!(produced);
+    data["remaining_quantity"] = json!((ordered - produced).max(0.0));
+    Ok(Json(data))
 }
 
 pub async fn start_production(
@@ -755,72 +710,27 @@ pub async fn start_production(
     ))
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-pub struct RecordBatchPayload {
-    pub load_id: Uuid,
-    pub batch_number: Option<i32>,
-    pub actual_weights: serde_json::Value,
-    pub target_weights: Option<serde_json::Value>,
-}
+pub use crate::services::production_service::LoadBatch as RecordBatchPayload;
 
 pub async fn record_batch(
     State(state): State<AppState>,
     auth_user: AuthUser,
     Path(order_id): Path<Uuid>,
-    Json(payload): Json<RecordBatchPayload>,
+    Json(payload): Json<crate::services::production_service::BatchInput>,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(
         &auth_user,
         &["operator", "supervisor", "owner", "plant_owner", "admin"],
     )?;
-
     super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
-    let weights = payload
-        .actual_weights
-        .as_object()
-        .ok_or_else(|| AppError::BadRequest("Batch weights must be an object".into()))?;
-    if weights.is_empty()
-        || weights.values().any(|v| v.as_f64().is_none_or(|n| n < 0.0))
-        || payload.batch_number.is_some_and(|n| n <= 0)
-    {
-        return Err(AppError::BadRequest(
-            "Valid batch number and nonnegative material weights are required".into(),
-        ));
-    }
-    let mut tx = state.db.begin().await?;
-    let parent: String = sqlx::query_scalar("SELECT status FROM orders WHERE id=$1 FOR UPDATE")
-        .bind(order_id)
-        .fetch_one(&mut *tx)
-        .await?;
-    if parent != "in_production" {
-        return Err(AppError::Conflict(
-            "Start production before recording a batch".into(),
-        ));
-    }
-    let status: Option<String> =
-        sqlx::query_scalar("SELECT status FROM order_loads WHERE id=$1 AND order_id=$2 FOR UPDATE")
-            .bind(payload.load_id)
-            .bind(order_id)
-            .fetch_optional(&mut *tx)
-            .await?;
-    if status.as_deref() != Some("batching") {
-        return Err(AppError::Conflict(
-            "Load is not batching for this order".into(),
-        ));
-    }
-    let id:Uuid=sqlx::query_scalar(
-        "INSERT INTO batch_production_records (load_id,operator_id,batch_number,actual_weights,target_weights,status,completed_at)
-         VALUES ($1,$2,$3,$4,$5,'COMPLETED',NOW()) RETURNING id",
-    ).bind(payload.load_id).bind(auth_user.user_id).bind(payload.batch_number.unwrap_or(1))
-     .bind(payload.actual_weights).bind(payload.target_weights.unwrap_or(json!({}))).fetch_one(&mut *tx).await?;
-    sqlx::query("UPDATE order_loads SET batch_completed_at=NOW(),status='batched' WHERE id=$1")
-        .bind(payload.load_id)
-        .execute(&mut *tx)
-        .await?;
-    tx.commit().await?;
-
     Ok(Json(
-        json!({ "success": true, "batch_id": id, "message": "Batch weights recorded" }),
+        crate::services::production_service::record(
+            &state.db,
+            order_id,
+            auth_user.user_id,
+            payload,
+        )
+        .await?,
     ))
 }
 
@@ -850,15 +760,18 @@ pub async fn complete_production(
     if !matches!(current.as_str(), "in_production" | "produced") {
         return Err(AppError::Conflict("Order is not in production".into()));
     }
-    let ready:bool=sqlx::query_scalar(
-        "SELECT o.total_quantity_m3>0
-         AND NOT EXISTS(SELECT 1 FROM order_loads WHERE order_id=o.id AND status NOT IN ('batched','cancelled'))
-         AND COALESCE((SELECT SUM(quantity_m3) FROM order_loads WHERE order_id=o.id AND status='batched'),0)+0.001>=o.total_quantity_m3*0.98
-         FROM orders o WHERE o.id=$1",
-    ).bind(order_id).fetch_one(&mut *tx).await?;
-    if !ready {
+    let produced: f64 = sqlx::query_scalar(crate::services::production_service::PRODUCED_SQL)
+        .bind(order_id)
+        .fetch_one(&mut *tx)
+        .await?;
+    let required: f64 =
+        sqlx::query_scalar("SELECT total_quantity_m3::DOUBLE PRECISION FROM orders WHERE id=$1")
+            .bind(order_id)
+            .fetch_one(&mut *tx)
+            .await?;
+    if required <= 0.0 || produced + 0.001 < required * 0.98 {
         return Err(AppError::Conflict(
-            "Record all required load batches before completing production".into(),
+            "Record the required production quantity before completion".into(),
         ));
     }
     sqlx::query("UPDATE orders SET status='produced',updated_at=NOW() WHERE id=$1")

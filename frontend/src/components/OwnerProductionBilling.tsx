@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -45,6 +45,7 @@ export function OwnerProductionBilling({
   const toast = useToast();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const batchRequestId = useRef<string | null>(null);
   const [production, setProduction] = useState<Production | null>(null);
   const [showBatch, setShowBatch] = useState(false);
   const [quantity, setQuantity] = useState("");
@@ -78,20 +79,22 @@ export function OwnerProductionBilling({
       toast(message, "success");
       await loadProduction();
       onChanged();
-    } catch (error: unknown) { toast(apiErrorDetail(error, "Action failed"), "error"); }
+      return true;
+    } catch (error: unknown) { toast(apiErrorDetail(error, "Action failed"), "error"); return false; }
     finally { setBusy(false); }
   };
 
   const addBatch = async () => {
     const qty = Number(quantity);
     if (!qty || qty <= 0) return toast("Enter a valid batch quantity", "error");
-    await call(`/owner/orders/${orderId}/production/batch`, {
+    const saved = await call(`/owner/orders/${orderId}/production/batch`, {
       quantity: qty,
+      request_id: batchRequestId.current ||= `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       batch_reference: reference.trim() || null,
       remarks: remarks.trim() || null,
       consume_materials: true,
     }, "Batch posted and inventory consumed");
-    setQuantity(""); setReference(""); setRemarks(""); setShowBatch(false);
+    if (saved) { batchRequestId.current = null; setQuantity(""); setReference(""); setRemarks(""); setShowBatch(false); }
   };
 
   if (["DRAFT", "PENDING", "REJECTED", "CANCELLED"].includes(status)) return null;
@@ -121,14 +124,14 @@ export function OwnerProductionBilling({
 
           {showBatch ? (
             <View style={{ gap: spacing.sm }}>
-              <Input label="Batch quantity (m³)" value={quantity} onChangeText={(v) => setQuantity(v.replace(/[^0-9.]/g, ""))} keyboardType="numeric" />
-              <Input label="Batch reference" value={reference} onChangeText={setReference} placeholder="Optional batch/report reference" />
-              <Input label="Remarks" value={remarks} onChangeText={setRemarks} />
+              <Input label="Batch quantity (m³)" value={quantity} onChangeText={(v) => { batchRequestId.current = null; setQuantity(v.replace(/[^0-9.]/g, "")); }} keyboardType="numeric" />
+              <Input label="Batch reference" value={reference} onChangeText={(v) => { batchRequestId.current = null; setReference(v); }} placeholder="Optional batch/report reference" />
+              <Input label="Remarks" value={remarks} onChangeText={(v) => { batchRequestId.current = null; setRemarks(v); }} />
               <Button label="Post Batch + Consume Materials" onPress={addBatch} loading={busy} />
               <Button label="Cancel" variant="outline" onPress={() => setShowBatch(false)} />
             </View>
           ) : (
-            <Button label="Add Production Batch" variant="secondary" onPress={() => { setQuantity(String(production?.remaining || "")); setShowBatch(true); }} />
+            <Button label="Add Production Batch" variant="secondary" onPress={() => { batchRequestId.current = null; setQuantity(String(production?.remaining || "")); setShowBatch(true); }} />
           )}
           <Button label="Complete Production" loading={busy} onPress={() => call(`/owner/orders/${orderId}/production/complete`, {}, "Production complete")} />
         </Card>

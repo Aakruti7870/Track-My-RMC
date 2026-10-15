@@ -21,6 +21,7 @@ pub async fn list_order_loads(
     let data: serde_json::Value = sqlx::query_scalar(
         "SELECT jsonb_build_object('success',TRUE,'order_id',o.id,
           'ordered_quantity_m3',o.total_quantity_m3::DOUBLE PRECISION,
+          'production_ready',o.status IN ('produced','dispatched','in_transit'),
           'planned_quantity_m3',COALESCE(SUM(l.quantity_m3) FILTER(WHERE l.status<>'cancelled'),0)::DOUBLE PRECISION,
           'delivered_quantity_m3',COALESCE(SUM(pod.delivered_quantity),0)::DOUBLE PRECISION,
           'remaining_quantity_m3',GREATEST(0,o.total_quantity_m3-COALESCE(SUM(l.quantity_m3) FILTER(WHERE l.status<>'cancelled'),0))::DOUBLE PRECISION,
@@ -198,6 +199,7 @@ pub async fn prepare_load(
             "dispatcher",
             "operator",
             "supervisor",
+            "quality_engineer",
             "owner",
             "plant_owner",
             "admin",
