@@ -75,24 +75,31 @@ impl TotpEngine {
 
     /// Validates a submitted code with time skew window (-1, 0, +1 intervals)
     pub fn verify_code(secret: &str, submitted_code: &str) -> Result<bool, AppError> {
+        Ok(Self::verified_step(secret, submitted_code)?.is_some())
+    }
+
+    pub fn verified_step(secret: &str, submitted_code: &str) -> Result<Option<i64>, AppError> {
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
 
         let submitted = submitted_code.trim();
+        if submitted.len() != 6 || !submitted.bytes().all(|b| b.is_ascii_digit()) {
+            return Ok(None);
+        }
 
         // Check window: current, previous (T-30), and next (T+30)
         for offset in [-30i64, 0, 30] {
             let eval_time = ((current_time as i64) + offset).max(0) as u64;
             if let Ok(code) = Self::compute_code(secret, eval_time) {
                 if constant_time_eq(code.as_bytes(), submitted.as_bytes()) {
-                    return Ok(true);
+                    return Ok(Some((eval_time / 30) as i64));
                 }
             }
         }
 
-        Ok(false)
+        Ok(None)
     }
 
     /// Simple Base32 encoder
@@ -226,15 +233,33 @@ pub async fn verify_totp_login(
     user_id: Uuid,
     submitted_code: &str,
 ) -> Result<(), AppError> {
+    verify_login(pool, user_id, submitted_code, false).await
+}
+
+pub async fn verify_staff_totp_login(
+    pool: &PgPool,
+    user_id: Uuid,
+    submitted_code: &str,
+) -> Result<(), AppError> {
+    verify_login(pool, user_id, submitted_code, true).await
+}
+
+async fn verify_login(
+    pool: &PgPool,
+    user_id: Uuid,
+    submitted_code: &str,
+    prevent_replay: bool,
+) -> Result<(), AppError> {
+    let mut tx = pool.begin().await?;
     let rec = sqlx::query_as::<_, UserTotpRecord>(
         r#"
         SELECT id, user_id, secret_key, is_enabled, backup_codes
         FROM user_totp_credentials
-        WHERE user_id = $1
+        WHERE user_id = $1 FOR UPDATE
         "#,
     )
     .bind(user_id)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await?
     .ok_or_else(|| AppError::Unauthorized("Authenticator login is not enabled".to_string()))?;
 
@@ -244,7 +269,17 @@ pub async fn verify_totp_login(
         ));
     }
 
-    if TotpEngine::verify_code(&rec.secret_key, submitted_code)? {
+    if let Some(step) = TotpEngine::verified_step(&rec.secret_key, submitted_code)? {
+        if prevent_replay {
+            let accepted=sqlx::query("UPDATE user_totp_credentials SET last_login_totp_step=$2 WHERE user_id=$1 AND (last_login_totp_step IS NULL OR last_login_totp_step<$2)").bind(user_id).bind(step).execute(&mut *tx).await?;
+            if accepted.rows_affected() != 1 {
+                return Err(AppError::Unauthorized(
+                    "Authenticator code was already used; use the next code or a recovery code"
+                        .into(),
+                ));
+            }
+        }
+        tx.commit().await?;
         return Ok(());
     }
 
@@ -265,10 +300,11 @@ pub async fn verify_totp_login(
         )
         .bind(&attempted_hash)
         .bind(user_id)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
         if result.rows_affected() == 1 {
+            tx.commit().await?;
             return Ok(());
         }
     }

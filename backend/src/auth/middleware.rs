@@ -55,7 +55,13 @@ where
         }
 
         let revoked_at: Option<chrono::DateTime<chrono::Utc>> = row.get("auth_revoked_at");
-        if revoked_at.is_some_and(|ts| claims.iat as i64 <= ts.timestamp()) {
+        if revoked_at.is_some_and(|ts| {
+            claims
+                .issued_at_us
+                .map_or(claims.iat as i64 <= ts.timestamp(), |issued| {
+                    issued <= ts.timestamp_micros()
+                })
+        }) {
             return Err(AppError::Unauthorized("Session revoked".to_string()));
         }
 

@@ -232,6 +232,18 @@ async fn approved_staff_fixtures_complete_email_enrollment_mfa_recovery_and_logo
             .0,
             StatusCode::UNAUTHORIZED
         );
+        let replay = email_challenge(&app, &delivery, email).await;
+        assert_eq!(
+            call(
+                &app,
+                "/api/auth/staff/mfa/verify-totp",
+                Some(json!({"challenge_token":replay["challenge_token"],"code":code})),
+                None
+            )
+            .await
+            .0,
+            StatusCode::UNAUTHORIZED
+        );
         assert_eq!(
             call(&app, "/api/auth/logout", Some(json!({})), Some(token))
                 .await
@@ -246,16 +258,23 @@ async fn approved_staff_fixtures_complete_email_enrollment_mfa_recovery_and_logo
         let challenge = email_challenge(&app, &delivery, email).await;
         assert_eq!(challenge["status"], "MFA_REQUIRED");
         let recovery = &enrollment["recovery_codes"][0];
+        let (status, recovered) = call(
+            &app,
+            "/api/auth/staff/mfa/verify-recovery",
+            Some(json!({"challenge_token":challenge["challenge_token"],"code":recovery})),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
         assert_eq!(
-            call(
-                &app,
-                "/api/auth/staff/mfa/verify-recovery",
-                Some(json!({"challenge_token":challenge["challenge_token"],"code":recovery})),
-                None
-            )
-            .await
-            .0,
+            call(&app, "/api/me", None, recovered["token"].as_str())
+                .await
+                .0,
             StatusCode::OK
+        );
+        assert_eq!(
+            call(&app, "/api/me", None, Some(token)).await.0,
+            StatusCode::UNAUTHORIZED
         );
         let challenge = email_challenge(&app, &delivery, email).await;
         assert_eq!(

@@ -19,6 +19,8 @@ pub struct Claims {
     pub aud: String,
     pub exp: usize,
     pub iat: usize,
+    #[serde(default)]
+    pub issued_at_us: Option<i64>,
 }
 
 pub fn generate_token(
@@ -41,6 +43,7 @@ pub fn generate_token(
         aud: AUDIENCE.to_string(),
         exp: expiration.timestamp() as usize,
         iat: now.timestamp() as usize,
+        issued_at_us: Some(now.timestamp_micros()),
     };
     let mut header = Header::new(Algorithm::HS512);
     header.typ = Some("JWT".to_string());

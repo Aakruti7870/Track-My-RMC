@@ -687,7 +687,9 @@ pub async fn verify_staff_mfa(
             "Authenticator enrollment is required before login.".to_string(),
         ));
     }
-    if let Err(err) = crate::auth::totp::verify_totp_login(&state.db, user_id, &req.code).await {
+    if let Err(err) =
+        crate::auth::totp::verify_staff_totp_login(&state.db, user_id, &req.code).await
+    {
         let _ = sqlx::query("UPDATE staff_mfa_challenges SET attempts=attempts+1 WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>NOW()")
             .bind(&digest).execute(&state.db).await;
         return Err(err);
