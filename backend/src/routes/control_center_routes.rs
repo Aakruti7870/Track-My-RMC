@@ -60,7 +60,7 @@ fn session_token_hash(headers: &HeaderMap) -> Result<String, AppError> {
     Ok(format!("{:x}", Sha256::digest(bearer.as_bytes())))
 }
 
-async fn require_recent_step_up(
+pub(crate) async fn require_recent_step_up(
     state: &AppState,
     user: &AuthUser,
     headers: &HeaderMap,

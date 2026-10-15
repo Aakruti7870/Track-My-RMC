@@ -1122,3 +1122,222 @@ async fn project_hub_aggregates_owned_records_without_multiplying_counts_or_gues
     assert!(other["latest_order"].is_null());
     assert!(other["upcoming_delivery"].is_null());
 }
+
+#[sqlx::test]
+async fn support_threads_bind_orders_retries_messages_and_mutations_to_the_customer(db: PgPool) {
+    let (state, app, customer, plant, token) = fixture(&db).await;
+    let (_, placed) = call(
+        &app,
+        "/api/customer/orders",
+        Some(order(plant, "support-linked-order")),
+        &token,
+    )
+    .await;
+    let payload = json!({"category":"ORDER","message":"Delivery timing needs review","order_id":placed["id"],"escalate":true,"request_id":"support-synthetic-request-1"});
+    let foreign = identity(&db, "customer").await;
+    let foreign_token =
+        generate_token(foreign, "customer", "", None, &state.config.jwt_secret, 1).unwrap();
+    assert_eq!(
+        call(
+            &app,
+            "/api/assistant/support",
+            Some(payload.clone()),
+            &foreign_token
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    let mut help = payload.clone();
+    help["escalate"] = json!(false);
+    let (_, help) = call(&app, "/api/assistant/support", Some(help), &token).await;
+    assert!(help["case_id"].is_null());
+    assert_eq!(help["action"], "OPEN_ORDERS");
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM support_cases WHERE user_id=$1")
+            .bind(customer)
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+        0
+    );
+    let (a, b) = tokio::join!(
+        call(
+            &app,
+            "/api/assistant/support",
+            Some(payload.clone()),
+            &token
+        ),
+        call(
+            &app,
+            "/api/assistant/support",
+            Some(payload.clone()),
+            &token
+        )
+    );
+    assert_eq!(a.0, StatusCode::OK);
+    assert_eq!(b.0, StatusCode::OK);
+    assert_eq!(a.1["case_id"], b.1["case_id"]);
+    assert_eq!(a.1["case_status"], "OPEN");
+    let case = a.1["case_id"].as_str().unwrap().parse::<Uuid>().unwrap();
+    let detail = format!("/api/assistant/support/cases/{case}");
+    let replies = format!("{detail}/replies");
+    let mut changed = payload;
+    changed["message"] = json!("Changed request");
+    assert_eq!(
+        call(&app, "/api/assistant/support", Some(changed), &token)
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    let (_, listed) = call(&app, "/api/assistant/support/cases", None, &token).await;
+    assert_eq!(listed["cases"][0]["case_number"], a.1["case_number"]);
+    assert_eq!(
+        listed["cases"][0]["messages"][0]["message"],
+        "Delivery timing needs review"
+    );
+    assert_eq!(
+        call(&app, &detail, None, &foreign_token).await.0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        call(
+            &app,
+            &replies,
+            Some(json!({"message":"Unauthorized reply"})),
+            &foreign_token
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    for role in ["admin", "owner", "dispatcher", "authority", "central_admin"] {
+        let user = identity(&db, role).await;
+        let denied = generate_token(user, role, "", None, &state.config.jwt_secret, 1).unwrap();
+        assert_eq!(
+            call(&app, &detail, None, &denied).await.0,
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            call(
+                &app,
+                &replies,
+                Some(json!({"message":"Unauthorized reply"})),
+                &denied
+            )
+            .await
+            .0,
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            call(&app, "/api/assistant/support/staff/cases", None, &denied)
+                .await
+                .0,
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            call(
+                &app,
+                &format!("{detail}/status"),
+                Some(json!({"status":"CLOSED"})),
+                &denied
+            )
+            .await
+            .0,
+            StatusCode::FORBIDDEN
+        );
+    }
+    assert_eq!(
+        call(
+            &app,
+            &replies,
+            Some(json!({"message":"Private customer note","internal":true})),
+            &token
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        call(
+            &app,
+            &replies,
+            Some(json!({"message":"OTP is 123456"})),
+            &token
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        call(
+            &app,
+            &replies,
+            Some(json!({"message":"Please confirm the revised timing","internal":false})),
+            &token
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    sqlx::query("INSERT INTO support_case_replies(case_id,sender_id,is_staff,message,internal) VALUES($1,$2,TRUE,'Internal triage',TRUE)").bind(case).bind(customer).execute(&db).await.unwrap();
+    let (_, visible) = call(&app, &detail, None, &token).await;
+    assert_eq!(visible["case"]["messages"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        visible["case"]["latest_note"],
+        "Please confirm the revised timing"
+    );
+    assert_eq!(visible["case"]["messages"][1]["author"], "CUSTOMER");
+    sqlx::query("UPDATE support_cases SET status='CLOSED' WHERE id=$1")
+        .bind(case)
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        call(
+            &app,
+            &replies,
+            Some(json!({"message":"Cannot append after closure"})),
+            &token
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM support_cases WHERE user_id=$1")
+            .bind(customer)
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM support_case_replies WHERE case_id=$1")
+            .bind(case)
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+        3
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM audit_logs WHERE resource_id=$1 AND action='support.case.create'"
+        )
+        .bind(case.to_string())
+        .fetch_one(&db)
+        .await
+        .unwrap(),
+        1
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM audit_logs WHERE resource_id=$1 AND action='support.case.reply'"
+        )
+        .bind(case.to_string())
+        .fetch_one(&db)
+        .await
+        .unwrap(),
+        1
+    );
+}

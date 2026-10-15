@@ -61,6 +61,154 @@ fn app(state: AppState) -> Router {
         .with_state(state)
 }
 
+#[sqlx::test]
+async fn support_staff_requires_recorded_web_mfa_grants_and_fresh_status_step_up(db: PgPool) {
+    let state = state(db.clone());
+    let router = trackmyrmc_backend::routes::build_app_router(state.clone());
+    let customer:Uuid=sqlx::query_scalar("INSERT INTO users(phone,hashed_password,full_name,role) VALUES('support-ci-customer','unused','Synthetic support customer','customer') RETURNING id").fetch_one(&db).await.unwrap();
+    let customer_token =
+        generate_token(customer, "customer", "", None, &state.config.jwt_secret, 1).unwrap();
+    let (status,case)=request(&router,"/api/assistant/support",Some(&customer_token),Some(json!({"category":"GENERAL","message":"The application needs attention","escalate":true}))).await;
+    assert_eq!(status, StatusCode::OK);
+    let case_id = case["case_id"].as_str().unwrap();
+    let staff_path = format!("/api/assistant/support/staff/cases/{case_id}");
+    let (admin, email, secret) = identity(&db, "central_admin", true, vec!["support.view"]).await;
+    let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
+    let (status, login) = request(
+        &router,
+        "/api/admin/auth/login",
+        None,
+        Some(json!({"identifier":email,"code":code})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let token = login["token"].as_str().unwrap();
+    assert_eq!(
+        request(
+            &router,
+            "/api/assistant/support/staff/cases",
+            Some(token),
+            None
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let reply = json!({"message":"Internal triage requires follow-up","internal":true});
+    assert_eq!(
+        request(
+            &router,
+            &format!("{staff_path}/replies"),
+            Some(token),
+            Some(reply.clone())
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    let close = json!({"status":"CLOSED"});
+    assert_eq!(
+        request(
+            &router,
+            &format!("{staff_path}/status"),
+            Some(token),
+            Some(close.clone())
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    sqlx::query("UPDATE control_center_access SET permissions=ARRAY['support.view','support.reply','support.manage'] WHERE user_id=$1").bind(admin).execute(&db).await.unwrap();
+    assert_eq!(
+        request(
+            &router,
+            &format!("{staff_path}/replies"),
+            Some(token),
+            Some(reply)
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let (_, staff) = request(&router, &staff_path, Some(token), None).await;
+    assert_eq!(staff["case"]["messages"].as_array().unwrap().len(), 2);
+    let (_, public) = request(
+        &router,
+        &format!("/api/assistant/support/cases/{case_id}"),
+        Some(&customer_token),
+        None,
+    )
+    .await;
+    assert_eq!(public["case"]["messages"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        public["case"]["latest_note"],
+        "The application needs attention"
+    );
+    assert_eq!(
+        request(
+            &router,
+            &format!("{staff_path}/status"),
+            Some(token),
+            Some(close.clone())
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        request(
+            &router,
+            "/api/admin/auth/step-up",
+            Some(token),
+            Some(json!({"code":code}))
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let path = format!("{staff_path}/status");
+    let (a, b) = tokio::join!(
+        request(&router, &path, Some(token), Some(close.clone())),
+        request(&router, &path, Some(token), Some(close))
+    );
+    assert_eq!(a.0, StatusCode::OK);
+    assert_eq!(b.0, StatusCode::OK);
+    assert_eq!(
+        request(
+            &router,
+            &format!("/api/assistant/support/cases/{case_id}/replies"),
+            Some(&customer_token),
+            Some(json!({"message":"Closed reply"}))
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM audit_logs WHERE resource_id=$1 AND action='support.case.status'"
+        )
+        .bind(case_id)
+        .fetch_one(&db)
+        .await
+        .unwrap(),
+        1
+    );
+    sqlx::query(
+        "UPDATE control_center_step_ups SET expires_at=NOW()-INTERVAL '1 second' WHERE user_id=$1",
+    )
+    .bind(admin)
+    .execute(&db)
+    .await
+    .unwrap();
+    assert_eq!(
+        request(&router, &path, Some(token), Some(json!({"status":"OPEN"})))
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+}
+
 async fn request(
     app: &Router,
     path: &str,

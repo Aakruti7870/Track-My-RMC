@@ -764,8 +764,12 @@ pub fn build_app_router(state: AppState) -> Router {
             get(assistant_routes::list_staff_support_cases),
         )
         .route(
+            "/api/assistant/support/staff/cases/:case_id",
+            get(assistant_routes::get_staff_support_case),
+        )
+        .route(
             "/api/assistant/support/staff/cases/:case_id/replies",
-            post(assistant_routes::add_case_reply),
+            post(assistant_routes::add_staff_case_reply),
         )
         .route(
             "/api/assistant/support/staff/cases/:case_id/status",

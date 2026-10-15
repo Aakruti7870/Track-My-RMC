@@ -1,6 +1,6 @@
 # API contract parity
 
-Status: PARTIAL. Regenerate with `node ops/regenerate-parity-inventory.mjs`. Reference 51903571f110908c3f1ddcffa6e4171ed406888c; source inventory is preserved unchanged. Static comparison normalizes named and wildcard path parameters. There are 297 decorator entries, 288 unique source pairs, 308 target pairs, 200 matching source entries and 97 unmatched entries. These are method/path counts, not functional acceptance percentages.
+Status: PARTIAL. Regenerate with `node ops/regenerate-parity-inventory.mjs`. Reference 51903571f110908c3f1ddcffa6e4171ed406888c; source inventory is preserved unchanged. Static comparison normalizes named and wildcard path parameters. There are 297 decorator entries, 288 unique source pairs, 309 target pairs, 201 matching source entries and 96 unmatched entries. These are method/path counts, not functional acceptance percentages.
 
 Critical contracts are exercised by authentication_delivery_tests, customer_order_tests, delivery_lifecycle_tests and integration_security_tests with real PostgreSQL and HTTP handlers. Provider transport is injected only in synthetic OTP tests. Older parity_workflow_tests/auth_tests contain mirrored helper assertions and are not proof of live endpoint behavior. Production deployment and live provider testing remain BLOCKED.
 
@@ -35,7 +35,7 @@ Known cross-screen gaps include RFQ and plant quotation DTOs, workforce review w
 | assistant | GET | `/api/assistant/support/cases/{case_id}` | PARTIAL | Matching Rust endpoint | Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence. |
 | assistant | POST | `/api/assistant/support/cases/{case_id}/replies` | PARTIAL | Matching Rust endpoint | Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence. |
 | assistant | GET | `/api/assistant/support/staff/cases` | PARTIAL | Matching Rust endpoint | Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence. |
-| assistant | GET | `/api/assistant/support/staff/cases/{case_id}` | NOT IMPLEMENTED | Missing business logic | No equivalent complete Rust workflow has been established; implementation and regression tests remain. |
+| assistant | GET | `/api/assistant/support/staff/cases/{case_id}` | PARTIAL | Matching Rust endpoint | Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence. |
 | assistant | POST | `/api/assistant/support/staff/cases/{case_id}/replies` | PARTIAL | Matching Rust endpoint | Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence. |
 | assistant | PATCH | `/api/assistant/support/staff/cases/{case_id}/status` | PARTIAL | Matching Rust endpoint | Method/path matches; DTO, authorization and full workflow parity require endpoint-specific evidence. |
 | auth | POST | `/api/auth/demo-login` | NOT IMPLEMENTED | Intentionally retired for security | Use verified OTP/MFA and approved payroll lifecycle; insecure legacy authentication/direct payroll mutation is not restored. |
