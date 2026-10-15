@@ -1170,3 +1170,44 @@ async fn payroll_requires_separate_roles_and_posts_expense_once_before_immutable
         .unwrap();
     assert_eq!(snapshots, snapshots_after);
 }
+
+#[sqlx::test]
+async fn unavailable_external_providers_cannot_fabricate_kyc_or_paid_subscriptions(pool: PgPool) {
+    use axum::{extract::State, Json};
+    use trackmyrmc_backend::{
+        auth::AuthUser,
+        routes::{customer_routes, plant_plans_routes},
+    };
+    let (owner, order, _, _) = fixture(&pool).await;
+    let app = state(pool.clone());
+    let plant: Uuid = sqlx::query_scalar("SELECT plant_id FROM orders WHERE id=$1")
+        .bind(order)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let customer:Uuid=sqlx::query_scalar("INSERT INTO users(phone,hashed_password,full_name,role) VALUES('+12025550101','unused','Synthetic Customer','customer') RETURNING id").fetch_one(&pool).await.unwrap();
+    let c = AuthUser {
+        user_id: customer,
+        role: "customer".into(),
+        phone: "+12025550101".into(),
+        email: None,
+    };
+    assert!(matches!(
+        customer_routes::start_customer_kyc(State(app.clone()), c).await,
+        Err(AppError::Conflict(_))
+    ));
+    let u = AuthUser {
+        user_id: owner,
+        role: "plant_owner".into(),
+        phone: "test".into(),
+        email: None,
+    };
+    let payload: plant_plans_routes::ActivatePlanPayload =
+        serde_json::from_value(serde_json::json!({"plant_id":plant,"product":"PREMIUM"})).unwrap();
+    assert!(matches!(
+        plant_plans_routes::activate_plan(State(app), u, Json(payload)).await,
+        Err(AppError::Conflict(_))
+    ));
+    let counts:(i64,i64)=sqlx::query_as("SELECT (SELECT COUNT(*) FROM plant_plan_payments),(SELECT COUNT(*) FROM plant_plan_subscriptions)").fetch_one(&pool).await.unwrap();
+    assert_eq!(counts, (0, 0));
+}

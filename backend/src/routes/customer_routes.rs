@@ -904,21 +904,11 @@ pub async fn get_customer_kyc(
 }
 
 pub async fn start_customer_kyc(
-    State(state): State<AppState>,
+    State(_state): State<AppState>,
     auth_user: AuthUser,
-) -> Result<impl IntoResponse, AppError> {
-    let callback_url = "https://trackmyrmc.com/kyc/return";
-
-    sqlx::query(
-        "UPDATE user_profiles SET kyc_status = 'pending', updated_at = NOW() WHERE user_id = $1",
-    )
-    .bind(auth_user.user_id)
-    .execute(&state.db)
-    .await?;
-
-    Ok(Json(json!({
-        "success": true,
-        "status": "pending",
-        "authorization_url": callback_url
-    })))
+) -> Result<Json<serde_json::Value>, AppError> {
+    check_role(&auth_user, &["customer"])?;
+    Err(AppError::Conflict(
+        "KYC provider is not configured; no verification session was started".into(),
+    ))
 }
