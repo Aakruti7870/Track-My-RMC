@@ -710,3 +710,78 @@ async fn customer_rfq_owner_response_acceptance_and_order_use_exact_shared_contr
     assert_ne!(a.1["quotation_number"], b.1["quotation_number"]);
     assert_eq!(a.1["total_amount"], 2330.85);
 }
+
+#[sqlx::test]
+async fn saved_site_mobile_contract_serializes_default_and_preserves_linked_records(db: PgPool) {
+    let (state, app, customer, plant, token) = fixture(&db).await;
+    let body = json!({"name":"Site","address":"Customer supplied address","contact_person":null,"contact_mobile":null,"notes":"Gate 2","is_default":true});
+    let (a, b) = tokio::join!(
+        call(
+            &app,
+            "/api/master/customer/sites",
+            Some(body.clone()),
+            &token
+        ),
+        call(&app, "/api/master/customer/sites", Some(body), &token)
+    );
+    assert_eq!(a.0, StatusCode::OK);
+    assert_eq!(b.0, StatusCode::OK);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM customer_sites WHERE customer_id=$1 AND is_default"
+        )
+        .bind(customer)
+        .fetch_one(&db)
+        .await
+        .unwrap(),
+        1
+    );
+    let (status, sites) = call(&app, "/api/master/customer/sites", None, &token).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(sites["sites"][0]["address"], "Customer supplied address");
+    assert_eq!(sites["sites"][0]["notes"], "Gate 2");
+    assert!(sites["sites"][0]["lat"].is_null());
+    let id = a.1["id"].as_str().unwrap();
+    let foreign = identity(&db, "customer").await;
+    let foreign_token =
+        generate_token(foreign, "customer", "", None, &state.config.jwt_secret, 1).unwrap();
+    async fn remove(app: &Router, id: &str, token: &str) -> StatusCode {
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/api/master/customer/sites/{id}"))
+                    .method("DELETE")
+                    .header("Authorization", format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+            .status()
+    }
+    assert_eq!(
+        remove(&app, id, &foreign_token).await,
+        StatusCode::NOT_FOUND
+    );
+    let mut payload = order(plant, "saved-site-order-request");
+    payload["site_id"] = json!(id);
+    assert_eq!(
+        call(&app, "/api/customer/orders", Some(payload), &token)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(remove(&app, id, &token).await, StatusCode::CONFLICT);
+    assert_eq!(
+        remove(&app, b.1["id"].as_str().unwrap(), &token).await,
+        StatusCode::OK
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM customer_sites WHERE customer_id=$1")
+            .bind(customer)
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+        1
+    );
+}

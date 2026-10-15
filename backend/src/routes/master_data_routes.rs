@@ -625,17 +625,29 @@ pub async fn delete_customer_site(
     auth_user: AuthUser,
     Path(site_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    let result = sqlx::query("DELETE FROM customer_sites WHERE id = $1 AND customer_id = $2")
-        .bind(site_id)
-        .bind(auth_user.user_id)
-        .execute(&state.db)
-        .await?;
-
-    if result.rows_affected() == 0 {
-        return Err(AppError::NotFound(
-            "Site not found or unauthorized".to_string(),
+    check_role(&auth_user, &["customer"])?;
+    let mut tx = state.db.begin().await?;
+    let owned: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM customer_sites WHERE id=$1 AND customer_id=$2 FOR UPDATE",
+    )
+    .bind(site_id)
+    .bind(auth_user.user_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if owned.is_none() {
+        return Err(AppError::NotFound("Site not found".into()));
+    }
+    let linked:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM orders WHERE site_id=$1 UNION ALL SELECT 1 FROM customer_quotation_requests WHERE site_id=$1 UNION ALL SELECT 1 FROM customer_pour_plans WHERE site_id=$1 UNION ALL SELECT 1 FROM customer_receiving_records WHERE site_id=$1)").bind(site_id).fetch_one(&mut *tx).await?;
+    if linked {
+        return Err(AppError::Conflict(
+            "Site has linked operational records and cannot be removed".into(),
         ));
     }
-
-    Ok(Json(json!({ "success": true, "message": "Site deleted" })))
+    sqlx::query("DELETE FROM customer_sites WHERE id=$1")
+        .bind(site_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id) VALUES($1,'site.delete','site',$2)").bind(auth_user.user_id).bind(site_id.to_string()).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(Json(json!({"success":true,"status":"deleted"})))
 }

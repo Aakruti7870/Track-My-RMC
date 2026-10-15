@@ -100,7 +100,7 @@ pub async fn list_customer_sites(
 ) -> Result<Vec<CustomerSite>, AppError> {
     let sites = sqlx::query_as::<_, CustomerSite>(
         r#"
-        SELECT id, customer_id, name, address_line, city, state, pincode, latitude, longitude, contact_person, contact_phone, created_at
+        SELECT id, customer_id, name, address_line, city, state, pincode, latitude, longitude, contact_person, contact_phone, notes, is_default, created_at
         FROM customer_sites
         WHERE customer_id = $1
         ORDER BY created_at DESC

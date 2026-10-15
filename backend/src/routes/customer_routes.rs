@@ -199,8 +199,20 @@ pub async fn list_sites(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
+    check_role(&auth_user, &["customer"])?;
     let sites = plant_repo::list_customer_sites(&state.db, auth_user.user_id).await?;
-    Ok(Json(json!({ "success": true, "sites": sites })))
+    let rows = sites
+        .into_iter()
+        .map(|site| {
+            let mut value = json!(site);
+            value["address"] = value["address_line"].clone();
+            value["lat"] = value["latitude"].clone();
+            value["lng"] = value["longitude"].clone();
+            value["contact_mobile"] = value["contact_phone"].clone();
+            value
+        })
+        .collect::<Vec<_>>();
+    Ok(Json(json!({"success":true,"sites":rows})))
 }
 
 pub async fn create_site(
@@ -208,27 +220,56 @@ pub async fn create_site(
     auth_user: AuthUser,
     Json(req): Json<CreateSiteRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    let site = sqlx::query_as::<_, crate::models::plant::CustomerSite>(
-        r#"
-        INSERT INTO customer_sites (customer_id, name, address_line, city, state, pincode, latitude, longitude, contact_person, contact_phone)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        RETURNING id, customer_id, name, address_line, city, state, pincode, latitude, longitude, contact_person, contact_phone, created_at
-        "#,
-    )
-    .bind(auth_user.user_id)
-    .bind(&req.name)
-    .bind(&req.address_line)
-    .bind(&req.city)
-    .bind(&req.state)
-    .bind(&req.pincode)
-    .bind(req.latitude)
-    .bind(req.longitude)
-    .bind(&req.contact_person)
-    .bind(&req.contact_phone)
-    .fetch_one(&state.db)
-    .await?;
-
-    Ok(Json(json!({ "success": true, "site": site })))
+    check_role(&auth_user, &["customer"])?;
+    if req.name.trim().is_empty()
+        || req.name.len() > 180
+        || !(5..=1000).contains(&req.address_line.trim().len())
+        || req.city.len() > 100
+        || req.state.len() > 100
+        || req.pincode.len() > 20
+        || req.contact_person.as_ref().is_some_and(|s| s.len() > 160)
+        || req.contact_phone.as_ref().is_some_and(|s| s.len() > 20)
+        || req.notes.as_ref().is_some_and(|s| s.len() > 2000)
+    {
+        return Err(AppError::BadRequest(
+            "Invalid site details or field length".into(),
+        ));
+    }
+    if req.latitude.is_some() != req.longitude.is_some()
+        || req
+            .latitude
+            .is_some_and(|v| !v.is_finite() || !(-90.0..=90.0).contains(&v))
+        || req
+            .longitude
+            .is_some_and(|v| !v.is_finite() || !(-180.0..=180.0).contains(&v))
+    {
+        return Err(AppError::BadRequest(
+            "Provide both valid coordinates or neither".into(),
+        ));
+    }
+    let mut tx = state.db.begin().await?;
+    sqlx::query("SELECT id FROM users WHERE id=$1 FOR UPDATE")
+        .bind(auth_user.user_id)
+        .fetch_one(&mut *tx)
+        .await?;
+    if req.is_default {
+        sqlx::query(
+            "UPDATE customer_sites SET is_default=FALSE WHERE customer_id=$1 AND is_default",
+        )
+        .bind(auth_user.user_id)
+        .execute(&mut *tx)
+        .await?;
+    }
+    let site=sqlx::query_as::<_,crate::models::plant::CustomerSite>("INSERT INTO customer_sites(customer_id,name,address_line,city,state,pincode,latitude,longitude,contact_person,contact_phone,notes,is_default) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *")
+        .bind(auth_user.user_id).bind(req.name.trim()).bind(req.address_line.trim()).bind(req.city).bind(req.state).bind(req.pincode).bind(req.latitude).bind(req.longitude).bind(req.contact_person.unwrap_or_default()).bind(req.contact_phone.unwrap_or_default()).bind(req.notes).bind(req.is_default).fetch_one(&mut *tx).await?;
+    sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id) VALUES($1,'site.create','site',$2)").bind(auth_user.user_id).bind(site.id.to_string()).execute(&mut *tx).await?;
+    tx.commit().await?;
+    let mut value = json!(site);
+    value["address"] = value["address_line"].clone();
+    value["contact_mobile"] = value["contact_phone"].clone();
+    value["lat"] = value["latitude"].clone();
+    value["lng"] = value["longitude"].clone();
+    Ok(Json(json!({"success":true,"id":site.id,"site":value})))
 }
 
 pub async fn place_order(

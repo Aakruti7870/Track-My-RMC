@@ -51,18 +51,30 @@ pub struct CustomerSite {
     pub longitude: Option<f64>,
     pub contact_person: String,
     pub contact_phone: String,
+    pub notes: Option<String>,
+    pub is_default: bool,
     pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct CreateSiteRequest {
     pub name: String,
+    #[serde(alias = "address")]
     pub address_line: String,
+    #[serde(default)]
     pub city: String,
+    #[serde(default)]
     pub state: String,
+    #[serde(default)]
     pub pincode: String,
-    pub latitude: f64,
-    pub longitude: f64,
-    pub contact_person: String,
-    pub contact_phone: String,
+    #[serde(alias = "lat")]
+    pub latitude: Option<f64>,
+    #[serde(alias = "lng")]
+    pub longitude: Option<f64>,
+    pub contact_person: Option<String>,
+    #[serde(alias = "contact_mobile")]
+    pub contact_phone: Option<String>,
+    pub notes: Option<String>,
+    #[serde(default)]
+    pub is_default: bool,
 }
