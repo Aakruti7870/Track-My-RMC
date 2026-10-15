@@ -219,12 +219,17 @@ try {
       await expect(page.getByTestId('qt-history-' + inspectionId)).toContainText('Engineer assessment: FAIL');
       await expect(page.getByTestId('qt-slump')).toHaveValue('');
       await expect(page.getByTestId('qt-save')).toBeDisabled();
-      phase = 'quality persistence';
+      phase = 'quality persistence: reload';
       await page.reload();
+      phase = 'quality persistence: recorded strength';
       await expect(page.getByTestId('qt-history-' + inspectionId)).toContainText('22.35 MPa');
+      phase = 'quality persistence: recorded remarks';
       await expect(page.getByTestId('qt-history-' + inspectionId)).toContainText('Synthetic quality observation');
+      phase = 'quality persistence: single assessment';
       await expect(page.getByTestId('qt-history').getByText('Engineer assessment: FAIL', { exact: true })).toHaveCount(1);
+      phase = 'quality persistence: return to collection';
       await page.getByTestId('qt-back').click();
+      phase = 'quality persistence: collection status';
       await expect(page.getByText('Engineer FAIL', { exact: true })).toBeVisible();
     }
     phase = 'logout';
