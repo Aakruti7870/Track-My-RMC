@@ -359,3 +359,91 @@ async fn assistant_confirmation_requires_stored_customer_intent_and_reviewed_pri
         1
     );
 }
+
+#[sqlx::test]
+async fn automation_missing_credentials_expired_leases_and_unconfigured_delivery_fail_closed(
+    db: PgPool,
+) {
+    let (mut state, app, _, plant, token) = fixture(&db).await;
+    let (_, created) = call(
+        &app,
+        "/api/customer/orders",
+        Some(order(plant, "automation-order-test")),
+        &token,
+    )
+    .await;
+    let order: Uuid = created["id"].as_str().unwrap().parse().unwrap();
+    let lease = Uuid::new_v4().to_string();
+    let event:Uuid=sqlx::query_scalar("INSERT INTO order_automation_events(order_id,status,routing_key,worker_id,lease_token,lease_expires_at) VALUES($1,'PROCESSING','order.test','worker',$2,NOW()-INTERVAL '1 minute') RETURNING id").bind(order).bind(&lease).fetch_one(&db).await.unwrap();
+    state.automation_worker_token = None;
+    state.automation_callback_token = None;
+    let app = build_app_router(state.clone());
+    assert_eq!(
+        call(
+            &app,
+            "/api/automation/worker-health",
+            None,
+            "test_automation_worker_secret_token_min_32_chars"
+        )
+        .await
+        .0,
+        StatusCode::INTERNAL_SERVER_ERROR
+    );
+    let worker = Uuid::new_v4().to_string();
+    state.automation_worker_token = Some(worker.clone());
+    let app = build_app_router(state);
+    let payload = json!({"worker_id":"worker","lease_token":lease});
+    assert_eq!(
+        call(
+            &app,
+            &format!("/api/automation/events/{event}/ack"),
+            Some(payload.clone()),
+            &worker
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    sqlx::query("UPDATE order_automation_events SET lease_expires_at=NOW()+INTERVAL '5 minutes' WHERE id=$1").bind(event).execute(&db).await.unwrap();
+    assert_eq!(
+        call(
+            &app,
+            &format!("/api/automation/events/{event}/deliver"),
+            Some(payload.clone()),
+            &worker
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT status FROM order_automation_events WHERE id=$1")
+            .bind(event)
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+        "PROCESSING"
+    );
+    assert_eq!(
+        call(
+            &app,
+            &format!("/api/automation/events/{event}/ack"),
+            Some(payload.clone()),
+            &worker
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        call(
+            &app,
+            &format!("/api/automation/events/{event}/ack"),
+            Some(payload),
+            &worker
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+}

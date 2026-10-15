@@ -11,9 +11,16 @@ use uuid::Uuid;
 
 use crate::{error::AppError, state::AppState};
 
-fn authorize_worker(headers: &HeaderMap) -> Result<(), AppError> {
-    let secret = std::env::var("AUTOMATION_WORKER_TOKEN")
-        .unwrap_or_else(|_| "test_automation_worker_secret_token_min_32_chars".to_string());
+fn configured_secret(value: Option<&str>) -> Result<&str, AppError> {
+    value
+        .filter(|value| value.trim().len() >= 32 && !value.starts_with("test_automation_"))
+        .ok_or_else(|| {
+            AppError::InternalError("Automation authentication is not configured".into())
+        })
+}
+
+fn authorize_worker(headers: &HeaderMap, state: &AppState) -> Result<(), AppError> {
+    let secret = configured_secret(state.automation_worker_token.as_deref())?;
     let auth_header = headers
         .get("authorization")
         .and_then(|h| h.to_str().ok())
@@ -31,9 +38,8 @@ fn authorize_worker(headers: &HeaderMap) -> Result<(), AppError> {
     Ok(())
 }
 
-fn authorize_callback(headers: &HeaderMap) -> Result<(), AppError> {
-    let secret = std::env::var("AUTOMATION_CALLBACK_TOKEN")
-        .unwrap_or_else(|_| "test_automation_callback_secret_token_min_32_chars".to_string());
+fn authorize_callback(headers: &HeaderMap, state: &AppState) -> Result<(), AppError> {
+    let secret = configured_secret(state.automation_callback_token.as_deref())?;
     let token = headers
         .get("x-automation-callback-token")
         .and_then(|h| h.to_str().ok())
@@ -89,7 +95,7 @@ pub async fn claim_events(
     headers: HeaderMap,
     Json(body): Json<ClaimBody>,
 ) -> Result<impl IntoResponse, AppError> {
-    authorize_worker(&headers)?;
+    authorize_worker(&headers, &state)?;
 
     let limit = body.limit.unwrap_or(25).clamp(1, 100);
     let lease_seconds = body.lease_seconds.unwrap_or(120).clamp(30, 900);
@@ -158,25 +164,23 @@ pub async fn get_worker_health(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, AppError> {
-    authorize_worker(&headers)?;
+    authorize_worker(&headers, &state)?;
 
     let pending_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM order_automation_events WHERE status = 'PENDING' OR status = 'RETRY'",
     )
     .fetch_one(&state.db)
-    .await
-    .unwrap_or(0);
+    .await?;
 
     let processing_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM order_automation_events WHERE status = 'PROCESSING'",
     )
     .fetch_one(&state.db)
-    .await
-    .unwrap_or(0);
+    .await?;
 
     Ok(Json(json!({
         "worker_name": "order-automation-worker",
-        "status": "healthy",
+        "status": "queue_available",
         "queue_pending": pending_count,
         "queue_processing": processing_count,
         "timestamp": chrono::Utc::now().to_rfc3339()
@@ -189,14 +193,14 @@ pub async fn ack_event(
     Path(event_id): Path<Uuid>,
     Json(body): Json<AckBody>,
 ) -> Result<impl IntoResponse, AppError> {
-    authorize_worker(&headers)?;
+    authorize_worker(&headers, &state)?;
 
     let res = sqlx::query(
         r#"
         UPDATE order_automation_events
         SET status = 'COMPLETED',
             updated_at = NOW()
-        WHERE id = $1 AND worker_id = $2 AND lease_token = $3
+        WHERE id = $1 AND worker_id = $2 AND lease_token = $3 AND status='PROCESSING' AND lease_expires_at>NOW()
         "#,
     )
     .bind(event_id)
@@ -220,7 +224,7 @@ pub async fn fail_event(
     Path(event_id): Path<Uuid>,
     Json(body): Json<FailBody>,
 ) -> Result<impl IntoResponse, AppError> {
-    authorize_worker(&headers)?;
+    authorize_worker(&headers, &state)?;
 
     let retry_seconds = body.retry_after_seconds.unwrap_or(60).clamp(15, 3600);
 
@@ -232,7 +236,7 @@ pub async fn fail_event(
             status = CASE WHEN attempts + 1 >= max_attempts THEN 'DEAD_LETTER' ELSE 'RETRY' END,
             lease_expires_at = NOW() + ($2 * INTERVAL '1 second'),
             updated_at = NOW()
-        WHERE id = $3 AND worker_id = $4 AND lease_token = $5
+        WHERE id = $3 AND worker_id = $4 AND lease_token = $5 AND status='PROCESSING' AND lease_expires_at>NOW()
         "#,
     )
     .bind(&body.error)
@@ -258,42 +262,18 @@ pub async fn deliver_event(
     Path(event_id): Path<Uuid>,
     Json(body): Json<DeliverBody>,
 ) -> Result<impl IntoResponse, AppError> {
-    authorize_worker(&headers)?;
-
-    let channels = body.channels.unwrap_or_else(|| {
-        vec![
-            "push".to_string(),
-            "sms".to_string(),
-            "whatsapp".to_string(),
-        ]
-    });
-
-    let res = sqlx::query(
-        r#"
-        UPDATE order_automation_events
-        SET status = 'COMPLETED',
-            updated_at = NOW()
-        WHERE id = $1 AND worker_id = $2 AND lease_token = $3
-        "#,
-    )
-    .bind(event_id)
-    .bind(&body.worker_id)
-    .bind(&body.lease_token)
-    .execute(&state.db)
-    .await?;
-
-    if res.rows_affected() == 0 {
+    authorize_worker(&headers, &state)?;
+    let owned:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM order_automation_events WHERE id=$1 AND worker_id=$2 AND lease_token=$3 AND status='PROCESSING' AND lease_expires_at>NOW())")
+        .bind(event_id).bind(body.worker_id).bind(body.lease_token).fetch_one(&state.db).await?;
+    if !owned {
         return Err(AppError::Conflict(
-            "Event lease expired during provider delivery".to_string(),
+            "Event lease is stale or not owned by this worker".into(),
         ));
     }
-
-    Ok(Json(json!({
-        "status": "completed",
-        "result": {
-            "delivered_channels": channels
-        }
-    })))
+    // No provider adapter is wired here; never turn a lease into fabricated delivery.
+    Err::<Json<serde_json::Value>, _>(AppError::Conflict(
+        "Automation provider delivery is not configured".into(),
+    ))
 }
 
 pub async fn provider_callback(
@@ -301,7 +281,7 @@ pub async fn provider_callback(
     headers: HeaderMap,
     Json(body): Json<ProviderCallbackBody>,
 ) -> Result<impl IntoResponse, AppError> {
-    authorize_callback(&headers)?;
+    authorize_callback(&headers, &state)?;
 
     sqlx::query(
         r#"

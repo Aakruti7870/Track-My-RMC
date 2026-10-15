@@ -8,6 +8,8 @@ pub struct AppState {
     pub db: PgPool,
     pub config: Arc<AppConfig>,
     pub otp_delivery: Arc<dyn OtpDelivery>,
+    pub automation_worker_token: Option<String>,
+    pub automation_callback_token: Option<String>,
 }
 
 impl AppState {
@@ -17,6 +19,8 @@ impl AppState {
             db,
             config: Arc::new(config),
             otp_delivery,
+            automation_worker_token: std::env::var("AUTOMATION_WORKER_TOKEN").ok(),
+            automation_callback_token: std::env::var("AUTOMATION_CALLBACK_TOKEN").ok(),
         }
     }
 }
