@@ -30,7 +30,12 @@ Date: 15 October 2026
 - BLOCKED: cargo check on GNU (missing dlltool.exe) and MSVC (missing link.exe); cargo tests/clippy require a usable native toolchain.
 - BLOCKED: local PostgreSQL integration and migration execution; no PostgreSQL/Docker runtime.
 - BLOCKED: initial admin npm run build at Vite/esbuild ancestor access; tsc stage passed.
-- Expo preview export and remote backend CI: pending when this document was written.
+- PASS: Expo preview export produced the web routes in dist.
+- PASS: Backend CI run 38734294255 for ef35db7c07a0deb609146e6ca283a99e1469b386, including Cargo Check, Clippy and PostgreSQL tests. A follow-up revision adds trip-bound evidence and API/file-response regression tests and requires a fresh run.
 
 ## Next phases
 Run the new tests in PostgreSQL CI, repair compilation/runtime failures, validate migration upgrades, finish dispatch and GPS business rules, then work through unmatched contracts and all business/admin modules. The full request remains incomplete. Review docs/remaining-blockers.md before release decisions.
+
+## Review reference
+Draft PR: https://github.com/Aakruti7870/Track-My-RMC/pull/37
+Initial commit: ef35db7c07a0deb609146e6ca283a99e1469b386

@@ -105,7 +105,7 @@ export default function PodScreen() {
   const submit = async () => {
     setErr(null);
     if (!receiver.trim()) return setErr("Enter the receiver's name");
-    if (!qty || Number(qty) <= 0) return setErr("Enter the delivered quantity");
+    if (!qty || !Number.isFinite(Number(qty)) || Number(qty) <= 0) return setErr("Enter the delivered quantity");
     if (!photo) return setErr("Capture or select the site delivery photo");
     if (strokes.length === 0 && !current) return setErr("Capture the receiver's signature");
     if (!token) return setErr("Your session has expired. Sign in again.");

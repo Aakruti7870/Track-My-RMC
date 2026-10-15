@@ -17,6 +17,7 @@ pub async fn upload_file(
     let mut file_name: Option<String> = None;
     let mut content_type: String = "application/octet-stream".to_string();
     let mut purpose: String = "uploads".to_string();
+    let mut load_id: Option<Uuid> = None;
 
     while let Some(field) = multipart
         .next_field()
@@ -35,6 +36,16 @@ pub async fn upload_file(
                     .await
                     .map_err(|e| AppError::BadRequest(e.to_string()))?
                     .to_vec(),
+            );
+        } else if name == "trip_id" {
+            let value = field
+                .text()
+                .await
+                .map_err(|_| AppError::BadRequest("Invalid trip ID".to_string()))?;
+            load_id = Some(
+                value
+                    .parse()
+                    .map_err(|_| AppError::BadRequest("Invalid trip ID".to_string()))?,
             );
         } else if name == "purpose" {
             if let Ok(text) = field.text().await {
@@ -59,13 +70,30 @@ pub async fn upload_file(
     {
         return Err(AppError::BadRequest("Invalid upload purpose".to_string()));
     }
+    if purpose == "pod" {
+        let trip = load_id
+            .ok_or_else(|| AppError::BadRequest("POD upload requires a trip".to_string()))?;
+        let owns: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM order_loads WHERE id = $1 AND driver_id = $2
+             AND status IN ('en_route', 'arrived', 'pouring'))",
+        )
+        .bind(trip)
+        .bind(auth_user.user_id)
+        .fetch_one(&state.db)
+        .await?;
+        if !owns || !content_type.starts_with("image/") {
+            return Err(AppError::Forbidden(
+                "POD image requires an active assigned trip".to_string(),
+            ));
+        }
+    }
     let ext = orig_name.split('.').last().unwrap_or("bin");
     let stored_path = format!("trackmyrmc/{}/{}.{}", purpose, Uuid::new_v4().simple(), ext);
 
     sqlx::query(
         r#"
-        INSERT INTO stored_files (uploaded_by, file_path, file_name, content_type, file_size_bytes, storage_provider, file_data)
-        VALUES ($1, $2, $3, $4, $5, 'postgres', $6)
+        INSERT INTO stored_files (uploaded_by, file_path, file_name, content_type, file_size_bytes, storage_provider, file_data, load_id)
+        VALUES ($1, $2, $3, $4, $5, 'postgres', $6, $7)
         "#,
     )
     .bind(auth_user.user_id)
@@ -74,6 +102,7 @@ pub async fn upload_file(
     .bind(&content_type)
     .bind(data.len() as i64)
     .bind(&data)
+    .bind(load_id)
     .execute(&state.db)
     .await?;
 

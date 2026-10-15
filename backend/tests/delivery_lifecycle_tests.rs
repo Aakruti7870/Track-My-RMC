@@ -6,6 +6,88 @@ use trackmyrmc_backend::{
 };
 use uuid::Uuid;
 
+fn state(pool: PgPool) -> trackmyrmc_backend::state::AppState {
+    use trackmyrmc_backend::{config::AppConfig, state::AppState};
+    AppState::new(
+        pool,
+        AppConfig {
+            database_url: String::new(),
+            jwt_secret: "test-only".repeat(10),
+            jwt_expiration_hours: 1,
+            port: 8000,
+            host: "127.0.0.1".into(),
+            cors_allowed_origins: vec![],
+            environment: "test".into(),
+            meta_whatsapp_token: None,
+            meta_whatsapp_phone_number_id: None,
+            meta_whatsapp_waba_id: None,
+            meta_graph_api_version: "v26.0".into(),
+            email_api_key: None,
+            email_from_address: "test@example.invalid".into(),
+            otp_pepper: "test-only".repeat(8),
+            otp_expiration_minutes: 5,
+            otp_cooldown_seconds: 60,
+            otp_max_verification_attempts: 3,
+            play_signing_sha256: None,
+            play_review_access_code: None,
+            google_places_api_key: None,
+        },
+    )
+}
+
+fn driver_user(id: Uuid) -> trackmyrmc_backend::auth::AuthUser {
+    trackmyrmc_backend::auth::AuthUser {
+        user_id: id,
+        role: "driver".into(),
+        phone: "test-driver".into(),
+        email: None,
+    }
+}
+
+#[sqlx::test]
+async fn mobile_trip_response_and_persisted_file_are_authorized(pool: PgPool) {
+    use axum::{
+        extract::{Path, State},
+        response::IntoResponse,
+    };
+    use trackmyrmc_backend::routes::{driver_routes, storage_routes};
+    let (driver, _, load, _) = fixture(&pool).await;
+    let state = state(pool);
+    let response =
+        driver_routes::get_trip_details(State(state.clone()), driver_user(driver), Path(load))
+            .await
+            .unwrap()
+            .into_response();
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), 10000)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["trip"]["status"], "DISPATCHED");
+    assert_eq!(json["trip"]["quantity"], 6.0);
+    assert_eq!(json["trip"]["site_name"], "Test");
+    let response = storage_routes::get_file(
+        State(state.clone()),
+        driver_user(driver),
+        Path("trackmyrmc/pod/test.jpg".into()),
+    )
+    .await
+    .unwrap();
+    let body = axum::body::to_bytes(response.into_body(), 10000)
+        .await
+        .unwrap();
+    assert_eq!(&body[..], &[1_u8, 2, 3]);
+    assert!(matches!(
+        storage_routes::get_file(
+            State(state),
+            driver_user(Uuid::new_v4()),
+            Path("trackmyrmc/pod/test.jpg".into())
+        )
+        .await,
+        Err(AppError::NotFound(_))
+    ));
+}
+
 async fn fixture(pool: &PgPool) -> (Uuid, Uuid, Uuid, Uuid) {
     let driver: Uuid = sqlx::query_scalar("INSERT INTO users (phone, hashed_password, full_name, role) VALUES ('test-driver', 'unused', 'Test', 'driver') RETURNING id")
         .fetch_one(pool).await.unwrap();
@@ -19,8 +101,8 @@ async fn fixture(pool: &PgPool) -> (Uuid, Uuid, Uuid, Uuid) {
         .bind(order).bind(driver).fetch_one(pool).await.unwrap();
     let second: Uuid = sqlx::query_scalar("INSERT INTO order_loads (order_id, load_number, driver_id, quantity_m3, status) VALUES ($1, 2, $2, 6, 'arrived') RETURNING id")
         .bind(order).bind(driver).fetch_one(pool).await.unwrap();
-    sqlx::query("INSERT INTO stored_files (uploaded_by, file_path, file_name, content_type, file_size_bytes, file_data) VALUES ($1, 'trackmyrmc/pod/test.jpg', 'test.jpg', 'image/jpeg', 3, $2)")
-        .bind(driver).bind(vec![1_u8, 2, 3]).execute(pool).await.unwrap();
+    sqlx::query("INSERT INTO stored_files (uploaded_by, file_path, file_name, content_type, file_size_bytes, file_data, load_id) VALUES ($1, 'trackmyrmc/pod/test.jpg', 'test.jpg', 'image/jpeg', 3, $2, $3)")
+        .bind(driver).bind(vec![1_u8, 2, 3]).bind(first).execute(pool).await.unwrap();
     (driver, order, first, second)
 }
 
@@ -81,7 +163,14 @@ async fn multi_load_pod_reconciles_parent_and_prevents_overwrite(pool: PgPool) {
     advance(&pool, first, driver, TripAction::Arrive)
         .await
         .unwrap();
+    sqlx::query("INSERT INTO stored_files (uploaded_by, file_path, file_name, content_type, file_size_bytes, file_data, load_id) VALUES ($1, 'trackmyrmc/pod/second.jpg', 'test.jpg', 'image/jpeg', 3, $2, $3)")
+        .bind(driver).bind(vec![1_u8, 2, 3]).bind(second).execute(&pool).await.unwrap();
     for load in [first, second] {
+        let photo = if load == first {
+            "trackmyrmc/pod/test.jpg"
+        } else {
+            "trackmyrmc/pod/second.jpg"
+        };
         let pod = dispatch_repo::record_pod(
             &pool,
             load,
@@ -89,7 +178,7 @@ async fn multi_load_pod_reconciles_parent_and_prevents_overwrite(pool: PgPool) {
             "Receiver",
             "",
             Some("signature"),
-            Some("trackmyrmc/pod/test.jpg"),
+            Some(photo),
             None,
             6.0,
         )
@@ -102,7 +191,7 @@ async fn multi_load_pod_reconciles_parent_and_prevents_overwrite(pool: PgPool) {
             "Receiver",
             "",
             Some("signature"),
-            Some("trackmyrmc/pod/test.jpg"),
+            Some(photo),
             None,
             6.0,
         )

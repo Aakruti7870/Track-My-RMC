@@ -274,10 +274,11 @@ pub async fn record_pod(
     }
     let owns_photo: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM stored_files WHERE file_path = $1 AND uploaded_by = $2
-         AND file_data IS NOT NULL AND content_type LIKE 'image/%')",
+         AND load_id = $3 AND file_data IS NOT NULL AND content_type LIKE 'image/%')",
     )
     .bind(photo_url)
     .bind(driver_id)
+    .bind(load_id)
     .fetch_one(&mut *tx)
     .await?;
     if !owns_photo {
