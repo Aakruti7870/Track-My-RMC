@@ -27,7 +27,7 @@ pub async fn monthly_summary(
     auth_user: AuthUser,
     Query(query): Query<MonthlyReportQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["owner", "admin", "accountant", "supervisor"])?;
+    check_role(&auth_user, &["owner", "plant_owner", "admin", "accountant", "supervisor"])?;
 
     let month_start = NaiveDate::parse_from_str(&format!("{}-01", query.month), "%Y-%m-%d")
         .map_err(|_| AppError::BadRequest("month must use YYYY-MM format".to_string()))?;
@@ -44,7 +44,7 @@ pub async fn monthly_summary(
     }
     .ok_or_else(|| AppError::BadRequest("invalid month".to_string()))?;
 
-    if auth_user.role != "owner" && auth_user.role != "admin" {
+    if !matches!(auth_user.role.as_str(), "owner" | "plant_owner" | "admin") {
         let assigned: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM plant_staff WHERE plant_id=$1 AND user_id=$2 AND is_active=TRUE)",
         )
@@ -57,7 +57,7 @@ pub async fn monthly_summary(
                 "You are not assigned to this plant".to_string(),
             ));
         }
-    } else if auth_user.role == "owner" {
+    } else if matches!(auth_user.role.as_str(), "owner" | "plant_owner") {
         let owns_plant: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM rmc_plants WHERE id=$1 AND owner_id=$2)",
         )
