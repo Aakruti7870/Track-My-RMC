@@ -34,27 +34,35 @@ pub async fn complete_delivery_pod(
     driver_id: Uuid,
     req: SubmitPodRequest,
 ) -> Result<ProofOfDelivery, AppError> {
-    ensure_driver_owns_load(state, load_id, driver_id).await?;
-    let status: Option<String> = sqlx::query_scalar("SELECT status FROM order_loads WHERE id = $1")
-        .bind(load_id)
-        .fetch_optional(&state.db)
-        .await?;
-    if !matches!(status.as_deref(), Some("arrived") | Some("pouring")) {
+    if req.receiver_name.trim().is_empty()
+        || req.receiver_name.len() > 150
+        || !req.delivered_quantity.is_finite()
+        || req.delivered_quantity <= 0.0
+        || req
+            .signature_url
+            .as_deref()
+            .map_or(true, |s| s.trim().is_empty())
+        || req
+            .photo_url
+            .as_deref()
+            .map_or(true, |s| s.trim().is_empty())
+    {
         return Err(AppError::BadRequest(
-            "Proof of delivery can only be submitted after arrival".to_string(),
+            "Receiver, positive delivered quantity, photo and signature are required".to_string(),
         ));
     }
     let pod = dispatch_repo::record_pod(
         &state.db,
         load_id,
+        driver_id,
         &req.receiver_name,
         &req.receiver_phone,
         req.signature_url.as_deref(),
         req.photo_url.as_deref(),
         req.notes.as_deref(),
+        req.delivered_quantity,
     )
     .await?;
-
     Ok(pod)
 }
 
@@ -72,7 +80,7 @@ pub async fn sign_digital_challan(
             .await?;
     if !matches!(
         load_status.as_deref(),
-        Some("dispatched") | Some("arrived") | Some("pouring")
+        Some("dispatched") | Some("en_route") | Some("arrived") | Some("pouring")
     ) {
         return Err(AppError::BadRequest(
             "Challan can only be signed for an active delivery".to_string(),

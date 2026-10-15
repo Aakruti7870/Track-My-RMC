@@ -368,6 +368,10 @@ pub fn build_app_router(state: AppState) -> Router {
         .route("/api/driver/trips", get(driver_routes::get_driver_trips))
         .route("/api/driver/location", post(driver_routes::update_location))
         .route(
+            "/api/driver/trips/:trip_id/location",
+            post(driver_routes::update_trip_location),
+        )
+        .route(
             "/api/driver/trips/:load_id/sign",
             post(driver_routes::sign_challan),
         )

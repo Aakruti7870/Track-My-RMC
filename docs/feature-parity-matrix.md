@@ -1,0 +1,349 @@
+# Feature parity matrix
+
+Assessment: 15 October 2026. Target baseline fe13dac8369b7db0843918faf2ee14d57a42994b. Reference main backend snapshot fetched through authenticated GitHub connector.
+
+No module is marked COMPLETE: route presence does not prove matching schemas, permissions, persistence, navigation or business behavior. PARTIAL means a corresponding Rust path exists and requires contract/runtime verification; MISSING means no matching registered path was found (aliases may cover some cases). BLOCKED denotes unavailable validation or external integrations.
+
+## Operational repairs in this branch
+
+| Area | Status | Evidence / remaining gate |
+|---|---|---|
+| Driver trip lifecycle | PARTIAL | Guarded transitions, history and idempotent retries implemented; database tests pending |
+| Trip list/detail contracts | PARTIAL | Canonical statuses and mobile fields restored; HTTP regression gate pending |
+| GPS ingestion | PARTIAL | Trip-scoped endpoint added, assigned active-load validation; duplicate/offline timestamp semantics still require work |
+| POD and multi-load reconciliation | PARTIAL | Mobile payload accepted, actual quantity persisted, immutable retries and parent quantity tolerance; DB gate pending |
+| Evidence storage | PARTIAL | Bytes persisted in PostgreSQL and authorized retrieval; legacy uploads have no recoverable bytes |
+| Load and dispatcher plant isolation | PARTIAL | Customer ownership and plant staff/owner checks added; remaining state/assignment validation outstanding |
+| Authentication and MFA | PARTIAL | Existing routes retained; mobile routing guard passed; live providers and full security verification blocked |
+
+## Module-level acceptance
+
+| Module | Reference source | Status | Remaining acceptance work |
+|---|---|---|---|
+| Authentication | auth, staff_auth, staff_mfa, staff_passkeys, admin_auth | PARTIAL | OTP, MFA, passkeys, session and recovery; provider execution outstanding |
+| Plants | plant_onboarding, plant_discovery, master_data | PARTIAL | Registration, discovery, configuration and staff; contract verification outstanding |
+| Users and permissions | admin_portal, control_center, me | PARTIAL | Account lifecycle and approved role access; full security audit outstanding |
+| Customers and sites | customer, business_ui | PARTIAL | Customer identity, projects and sites; end-to-end data checks outstanding |
+| Orders | customer, owner, staff | PARTIAL | Creation, acceptance, scheduling and status; lifecycle integration incomplete |
+| Production | operator_ops, staff | PARTIAL | Production records and quantity; prepare/challan parity incomplete |
+| Fleet | master_data, loads | PARTIAL | Mixers, drivers, assignments; occupancy and capacity validation gaps |
+| GPS | driver, maps | PARTIAL | Trip ingestion repaired; history, duplicate/offline events and visibility outstanding |
+| Dispatch | loads | PARTIAL | Plant scopes repaired; preparation, gate pass and dispatch rules incomplete |
+| Challans | loads, customer | PARTIAL | Challan creation, signing, PDF/export verification outstanding |
+| POD | driver | PARTIAL | Mobile DTO, evidence persistence and multi-load reconciliation repaired; device flow outstanding |
+| Quality | staff, customer | PARTIAL | Quality/cube records and follow-ups; runtime verification outstanding |
+| Inventory | business_ui, master_data | PARTIAL | Stock and adjustments; consumption transaction tests outstanding |
+| Finance | finance_ops | PARTIAL | Invoices, billing, ledger, expenses and payments; reconciliation and workflow tests outstanding |
+| Workforce | workforce, workforce_roster, hr_master | PARTIAL | Attendance, shifts, leave and employee lifecycle; full role tests outstanding |
+| Payroll | payroll_closure, payroll_concurrency_hotfix, workforce_reports | PARTIAL | Calculation, locking, closure and export; reference concurrency policies need verification |
+| Notifications | notify, meta_whatsapp | PARTIAL | In-app, push, WhatsApp and automation; provider execution and delivery hooks outstanding |
+| Reports | workforce_reports, finance_ops | PARTIAL | Operational, workforce and finance exports; data assertions outstanding |
+| Admin | control_center, admin_portal | PARTIAL | Web controls, MFA and settings; browser and full permission tests outstanding |
+| Integrations | maps, permanent_access, automation | PARTIAL | KYC, maps, batching and external automation; credentials and behavior gates outstanding |
+| Support | assistant | PARTIAL | Support cases, replies and status; lifecycle execution outstanding |
+| Account deletion and policies | account_deletion, public_policy | PARTIAL | Deletion lifecycle and public policy pages; role and retention checks outstanding |
+| Plans and onboarding access | plant_plans, kyc_recovery, permanent_access | PARTIAL | Subscription, KYC recovery and provisioning; payment/provider execution outstanding |
+
+## Reference API inventory
+
+Every discovered decorator in the reference routers is listed below. Matching paths are an inventory aid only. Methods and response contracts still need endpoint-by-endpoint execution.
+
+| Reference module | Method | Path | Status |
+|---|---|---|---|
+| account_deletion | POST | `/api/account-deletion/cancel` | PARTIAL |
+| account_deletion | POST | `/api/account-deletion/public-request` | PARTIAL |
+| account_deletion | POST | `/api/account-deletion/request` | PARTIAL |
+| account_deletion | GET | `/api/account-deletion/requests` | MISSING |
+| account_deletion | POST | `/api/account-deletion/requests/{request_id}/complete` | MISSING |
+| account_deletion | GET | `/api/account-deletion/status` | PARTIAL |
+| admin_auth | POST | `/api/admin/auth/logout-all` | MISSING |
+| admin_auth | POST | `/api/admin/auth/method` | MISSING |
+| admin_auth | POST | `/api/admin/auth/recover` | MISSING |
+| admin_auth | POST | `/api/admin/auth/step-up` | MISSING |
+| admin_auth | POST | `/api/admin/auth/verify-totp` | MISSING |
+| admin_portal | GET | `/api/admin/portal/audit` | MISSING |
+| admin_portal | GET | `/api/admin/portal/kyc` | MISSING |
+| admin_portal | GET | `/api/admin/portal/orders` | MISSING |
+| admin_portal | GET | `/api/admin/portal/payments` | MISSING |
+| admin_portal | GET | `/api/admin/portal/plants` | MISSING |
+| admin_portal | GET | `/api/admin/portal/summary` | PARTIAL |
+| admin_portal | GET | `/api/admin/portal/support` | MISSING |
+| admin_portal | GET | `/api/admin/portal/system` | MISSING |
+| admin_portal | GET | `/api/admin/portal/users` | MISSING |
+| assistant | POST | `/api/assistant/orders/confirm` | PARTIAL |
+| assistant | POST | `/api/assistant/orders/prepare` | MISSING |
+| assistant | POST | `/api/assistant/support` | PARTIAL |
+| assistant | GET | `/api/assistant/support/cases` | PARTIAL |
+| assistant | GET | `/api/assistant/support/cases/{case_id}` | PARTIAL |
+| assistant | POST | `/api/assistant/support/cases/{case_id}/replies` | PARTIAL |
+| assistant | GET | `/api/assistant/support/staff/cases` | PARTIAL |
+| assistant | GET | `/api/assistant/support/staff/cases/{case_id}` | MISSING |
+| assistant | POST | `/api/assistant/support/staff/cases/{case_id}/replies` | PARTIAL |
+| assistant | PATCH | `/api/assistant/support/staff/cases/{case_id}/status` | PARTIAL |
+| auth | POST | `/api/auth/demo-login` | MISSING |
+| auth | GET | `/api/auth/google/callback` | MISSING |
+| auth | POST | `/api/auth/google/exchange` | MISSING |
+| auth | GET | `/api/auth/google/start` | MISSING |
+| auth | POST | `/api/auth/logout` | PARTIAL |
+| auth | POST | `/api/auth/request-otp` | MISSING |
+| auth | POST | `/api/auth/verify-otp` | MISSING |
+| automation | POST | `/api/automation/events/{event_id}/ack` | PARTIAL |
+| automation | POST | `/api/automation/events/{event_id}/deliver` | PARTIAL |
+| automation | POST | `/api/automation/events/{event_id}/fail` | PARTIAL |
+| automation | POST | `/api/automation/events/claim` | PARTIAL |
+| automation | POST | `/api/automation/provider-callback` | PARTIAL |
+| automation | GET | `/api/automation/worker-health` | PARTIAL |
+| business_ui | GET | `/api/business/plants/{plant_id}/customers` | PARTIAL |
+| business_ui | POST | `/api/business/plants/{plant_id}/materials` | PARTIAL |
+| business_ui | POST | `/api/business/plants/{plant_id}/materials/{material_id}/adjust` | PARTIAL |
+| business_ui | POST | `/api/business/plants/{plant_id}/people` | PARTIAL |
+| business_ui | POST | `/api/business/plants/{plant_id}/people/{user_id}/activate` | PARTIAL |
+| business_ui | POST | `/api/business/plants/{plant_id}/people/{user_id}/suspend` | PARTIAL |
+| business_ui | POST | `/api/business/plants/{plant_id}/vehicles` | PARTIAL |
+| business_ui | POST | `/api/business/plants/{plant_id}/vehicles/{vehicle_id}/status` | PARTIAL |
+| control_center | GET | `/api/control-center/admin-access` | PARTIAL |
+| control_center | POST | `/api/control-center/admin-access` | PARTIAL |
+| control_center | POST | `/api/control-center/ai/commands` | MISSING |
+| control_center | GET | `/api/control-center/capabilities` | PARTIAL |
+| control_center | POST | `/api/control-center/owners/plants/{plant_id}/assign` | MISSING |
+| control_center | GET | `/api/control-center/owners/requests` | MISSING |
+| control_center | POST | `/api/control-center/owners/requests/{request_id}/approve` | MISSING |
+| control_center | GET | `/api/control-center/owners/unowned-plants` | MISSING |
+| control_center | GET | `/api/control-center/reviewer-access` | PARTIAL |
+| control_center | POST | `/api/control-center/reviewer-access` | PARTIAL |
+| control_center | GET | `/api/control-center/sessions` | MISSING |
+| control_center | POST | `/api/control-center/sessions/{session_id}/revoke` | MISSING |
+| control_center | GET | `/api/control-center/support/cases` | MISSING |
+| control_center | GET | `/api/control-center/support/cases/{case_id}` | MISSING |
+| control_center | POST | `/api/control-center/support/cases/{case_id}/notes` | MISSING |
+| control_center | POST | `/api/control-center/support/cases/{case_id}/replies` | MISSING |
+| control_center | PATCH | `/api/control-center/support/cases/{case_id}/status` | MISSING |
+| customer | GET | `/api/customer/compare-plants` | PARTIAL |
+| customer | GET | `/api/customer/home` | PARTIAL |
+| customer | GET | `/api/customer/kyc` | PARTIAL |
+| customer | POST | `/api/customer/kyc/start` | PARTIAL |
+| customer | GET | `/api/customer/orders` | PARTIAL |
+| customer | POST | `/api/customer/orders` | PARTIAL |
+| customer | GET | `/api/customer/orders/{order_id}` | PARTIAL |
+| customer | POST | `/api/customer/orders/{order_id}/cancel` | PARTIAL |
+| customer | GET | `/api/customer/orders/{order_id}/challan` | PARTIAL |
+| customer | GET | `/api/customer/orders/{order_id}/tracking` | PARTIAL |
+| customer | GET | `/api/customer/plants` | PARTIAL |
+| customer | GET | `/api/customer/plants/{plant_id}` | MISSING |
+| customer | GET | `/api/customer/pour-plans` | PARTIAL |
+| customer | POST | `/api/customer/pour-plans` | PARTIAL |
+| customer | DELETE | `/api/customer/pour-plans/{plan_id}` | PARTIAL |
+| customer | GET | `/api/customer/project-sites` | MISSING |
+| customer | POST | `/api/customer/quotation-requests` | PARTIAL |
+| customer | GET | `/api/customer/quotation-requests` | PARTIAL |
+| customer | GET | `/api/customer/receiving-records` | PARTIAL |
+| customer | POST | `/api/customer/receiving-records` | PARTIAL |
+| customer | DELETE | `/api/customer/receiving-records/{record_id}` | PARTIAL |
+| customer | PATCH | `/api/customer/receiving-records/{record_id}/cube-results` | PARTIAL |
+| driver | GET | `/api/driver/attendance` | PARTIAL |
+| driver | POST | `/api/driver/attendance/checkin` | PARTIAL |
+| driver | POST | `/api/driver/attendance/checkout` | PARTIAL |
+| driver | GET | `/api/driver/home` | PARTIAL |
+| driver | POST | `/api/driver/sos` | PARTIAL |
+| driver | GET | `/api/driver/sos` | PARTIAL |
+| driver | GET | `/api/driver/trips` | PARTIAL |
+| driver | GET | `/api/driver/trips/{trip_id}` | PARTIAL |
+| driver | POST | `/api/driver/trips/{trip_id}/arrive` | PARTIAL |
+| driver | POST | `/api/driver/trips/{trip_id}/location` | PARTIAL |
+| driver | POST | `/api/driver/trips/{trip_id}/pod` | PARTIAL |
+| driver | POST | `/api/driver/trips/{trip_id}/start` | PARTIAL |
+| driver | POST | `/api/driver/trips/{trip_id}/unload` | PARTIAL |
+| finance_ops | GET | `/api/ops/customer/quotations` | MISSING |
+| finance_ops | POST | `/api/ops/customer/quotations/{quotation_id}/decision` | PARTIAL |
+| finance_ops | GET | `/api/ops/plants/{plant_id}/attendance/{date_key}` | MISSING |
+| finance_ops | POST | `/api/ops/plants/{plant_id}/attendance/checkin` | MISSING |
+| finance_ops | POST | `/api/ops/plants/{plant_id}/attendance/checkout` | MISSING |
+| finance_ops | GET | `/api/ops/plants/{plant_id}/diesel` | PARTIAL |
+| finance_ops | POST | `/api/ops/plants/{plant_id}/diesel` | PARTIAL |
+| finance_ops | GET | `/api/ops/plants/{plant_id}/expenses` | PARTIAL |
+| finance_ops | POST | `/api/ops/plants/{plant_id}/expenses` | PARTIAL |
+| finance_ops | PUT | `/api/ops/plants/{plant_id}/payroll` | MISSING |
+| finance_ops | GET | `/api/ops/plants/{plant_id}/payroll/{month}` | MISSING |
+| finance_ops | GET | `/api/ops/plants/{plant_id}/purchases` | PARTIAL |
+| finance_ops | POST | `/api/ops/plants/{plant_id}/purchases` | PARTIAL |
+| finance_ops | GET | `/api/ops/plants/{plant_id}/quotation-requests` | PARTIAL |
+| finance_ops | POST | `/api/ops/plants/{plant_id}/quotation-requests/{request_id}/respond` | PARTIAL |
+| finance_ops | GET | `/api/ops/plants/{plant_id}/quotations` | PARTIAL |
+| finance_ops | POST | `/api/ops/plants/{plant_id}/quotations` | PARTIAL |
+| hr_master | GET | `/api/hr/employees` | PARTIAL |
+| hr_master | GET | `/api/hr/plants/{plant_id}/employees/{user_id}` | PARTIAL |
+| hr_master | PUT | `/api/hr/plants/{plant_id}/employees/{user_id}/profile` | PARTIAL |
+| hr_master | PUT | `/api/hr/plants/{plant_id}/employees/{user_id}/salary` | PARTIAL |
+| hr_master | GET | `/api/hr/plants/{plant_id}/employees/{user_id}/salary-suggestion/{month}` | PARTIAL |
+| kyc_recovery | GET | `/api/staff/kyc-recovery` | MISSING |
+| kyc_recovery | POST | `/api/staff/kyc-recovery/{profile_id}/reset` | MISSING |
+| loads | PUT | `/api/loads/{load_id}/assignment` | PARTIAL |
+| loads | POST | `/api/loads/{load_id}/cancel` | PARTIAL |
+| loads | POST | `/api/loads/{load_id}/dispatch` | PARTIAL |
+| loads | POST | `/api/loads/{load_id}/prepare` | PARTIAL |
+| loads | POST | `/api/loads/gate-pass` | PARTIAL |
+| loads | GET | `/api/loads/orders/{order_id}` | PARTIAL |
+| loads | POST | `/api/loads/orders/{order_id}` | PARTIAL |
+| maps | GET | `/api/maps/authority/rmc-plants` | MISSING |
+| maps | GET | `/api/maps/autocomplete` | PARTIAL |
+| maps | GET | `/api/maps/geocode` | PARTIAL |
+| maps | GET | `/api/maps/place/{place_id}` | PARTIAL |
+| maps | GET | `/api/maps/rmc-plants` | MISSING |
+| maps | POST | `/api/maps/rmc-plants/{place_id}/request-listing` | MISSING |
+| maps | GET | `/api/maps/route` | PARTIAL |
+| maps | GET | `/api/maps/status` | PARTIAL |
+| master_data | GET | `/api/master/customer/sites` | PARTIAL |
+| master_data | POST | `/api/master/customer/sites` | PARTIAL |
+| master_data | DELETE | `/api/master/customer/sites/{site_id}` | PARTIAL |
+| master_data | GET | `/api/master/my-plants` | PARTIAL |
+| master_data | GET | `/api/master/plants/{plant_id}/mix-designs` | PARTIAL |
+| master_data | POST | `/api/master/plants/{plant_id}/mix-designs` | PARTIAL |
+| master_data | GET | `/api/master/plants/{plant_id}/people` | PARTIAL |
+| master_data | GET | `/api/master/plants/{plant_id}/profile` | PARTIAL |
+| master_data | PUT | `/api/master/plants/{plant_id}/profile` | PARTIAL |
+| master_data | GET | `/api/master/plants/{plant_id}/rate-cards` | PARTIAL |
+| master_data | POST | `/api/master/plants/{plant_id}/rate-cards` | PARTIAL |
+| master_data | GET | `/api/master/plants/{plant_id}/resources` | PARTIAL |
+| master_data | GET | `/api/master/plants/{plant_id}/summary` | MISSING |
+| master_data | GET | `/api/master/plants/{plant_id}/suppliers` | PARTIAL |
+| master_data | POST | `/api/master/plants/{plant_id}/suppliers` | PARTIAL |
+| me | GET | `/api/me` | PARTIAL |
+| meta_whatsapp | GET | `/api/meta/whatsapp/webhook` | MISSING |
+| meta_whatsapp | POST | `/api/meta/whatsapp/webhook` | MISSING |
+| notify | GET | `/api/notifications` | PARTIAL |
+| notify | POST | `/api/notifications/{notification_id}/read` | PARTIAL |
+| notify | POST | `/api/notifications/device/register` | PARTIAL |
+| notify | POST | `/api/notifications/device/unregister` | PARTIAL |
+| notify | POST | `/api/notifications/read-all` | PARTIAL |
+| operator_ops | GET | `/api/staff/orders/{order_id}/production` | PARTIAL |
+| operator_ops | POST | `/api/staff/orders/{order_id}/production/batch` | PARTIAL |
+| owner | GET | `/api/owner/drivers` | PARTIAL |
+| owner | GET | `/api/owner/fleet` | PARTIAL |
+| owner | GET | `/api/owner/home` | PARTIAL |
+| owner | GET | `/api/owner/incidents` | PARTIAL |
+| owner | POST | `/api/owner/incidents/{incident_id}/resolve` | PARTIAL |
+| owner | GET | `/api/owner/insights` | PARTIAL |
+| owner | GET | `/api/owner/invoices` | PARTIAL |
+| owner | POST | `/api/owner/invoices/{invoice_id}/payment` | PARTIAL |
+| owner | GET | `/api/owner/ledger` | PARTIAL |
+| owner | GET | `/api/owner/orders` | PARTIAL |
+| owner | GET | `/api/owner/orders/{order_id}` | MISSING |
+| owner | POST | `/api/owner/orders/{order_id}/approve` | PARTIAL |
+| owner | POST | `/api/owner/orders/{order_id}/assign-driver` | MISSING |
+| owner | POST | `/api/owner/orders/{order_id}/assign-tm` | MISSING |
+| owner | POST | `/api/owner/orders/{order_id}/challan` | MISSING |
+| owner | GET | `/api/owner/orders/{order_id}/challan` | MISSING |
+| owner | POST | `/api/owner/orders/{order_id}/dispatch` | MISSING |
+| owner | POST | `/api/owner/orders/{order_id}/invoice` | MISSING |
+| owner | GET | `/api/owner/orders/{order_id}/production` | MISSING |
+| owner | POST | `/api/owner/orders/{order_id}/production/batch` | MISSING |
+| owner | POST | `/api/owner/orders/{order_id}/production/complete` | MISSING |
+| owner | POST | `/api/owner/orders/{order_id}/production/start` | MISSING |
+| owner | POST | `/api/owner/orders/{order_id}/reject` | PARTIAL |
+| payroll_closure | GET | `/api/payroll-periods/{month}` | PARTIAL |
+| payroll_closure | GET | `/api/payroll-periods/me/{month}` | PARTIAL |
+| payroll_closure | POST | `/api/payroll-periods/plants/{plant_id}/{month}/close` | PARTIAL |
+| payroll_closure | GET | `/api/payroll-periods/plants/{plant_id}/{month}/export` | PARTIAL |
+| payroll_closure | GET | `/api/payroll-periods/plants/{plant_id}/{month}/payslips` | PARTIAL |
+| payroll_closure | POST | `/api/payroll-periods/plants/{plant_id}/{month}/reopen` | PARTIAL |
+| payroll_concurrency_hotfix | PUT | `/api/workforce-reports/plants/{plant_id}/payroll/{month}/{user_id}/draft` | PARTIAL |
+| payroll_concurrency_hotfix | POST | `/api/workforce-reports/plants/{plant_id}/payroll/{month}/{user_id}/mark-paid` | PARTIAL |
+| payroll_concurrency_hotfix | POST | `/api/workforce-reports/plants/{plant_id}/payroll/{month}/{user_id}/owner-decision` | PARTIAL |
+| payroll_guard | PUT | `/api/ops/plants/{plant_id}/payroll` | MISSING |
+| permanent_access | POST | `/api/auth/request-otp` | MISSING |
+| permanent_access | POST | `/api/auth/staff/request-otp` | MISSING |
+| permanent_access | POST | `/api/auth/staff/verify-otp` | MISSING |
+| permanent_access | POST | `/api/auth/verify-otp` | MISSING |
+| permanent_access | GET | `/api/customer/kyc` | PARTIAL |
+| plant_discovery | POST | `/api/plant-discovery/plants/{plant_id}/assign-owner` | MISSING |
+| plant_discovery | GET | `/api/plant-discovery/requests` | PARTIAL |
+| plant_discovery | POST | `/api/plant-discovery/requests/{request_id}/approve` | PARTIAL |
+| plant_discovery | POST | `/api/plant-discovery/requests/{request_id}/reject` | PARTIAL |
+| plant_discovery | POST | `/api/plant-discovery/requests/bulk-approve` | MISSING |
+| plant_discovery | POST | `/api/plant-discovery/requests/bulk-import` | MISSING |
+| plant_discovery | GET | `/api/plant-discovery/unowned-plants` | MISSING |
+| plant_onboarding | GET | `/api/plant-onboarding/places` | PARTIAL |
+| plant_onboarding | POST | `/api/plant-onboarding/requests` | PARTIAL |
+| plant_plans | POST | `/api/plant-plans/activate` | PARTIAL |
+| plant_plans | GET | `/api/plant-plans/authority-control` | MISSING |
+| plant_plans | GET | `/api/plant-plans/cashfree/return` | MISSING |
+| plant_plans | POST | `/api/plant-plans/cashfree/webhook` | MISSING |
+| plant_plans | GET | `/api/plant-plans/context` | PARTIAL |
+| plant_plans | GET | `/api/plant-plans/orders/{order_number}` | PARTIAL |
+| plant_plans | GET | `/api/plant-plans/payment-history` | PARTIAL |
+| plant_plans | POST | `/api/plant-plans/promo-codes` | MISSING |
+| plant_plans | POST | `/api/plant-plans/quote` | PARTIAL |
+| play_review | POST | `/api/auth/play-review` | PARTIAL |
+| play_review | GET | `/api/auth/play-review/status` | MISSING |
+| public_policy | GET | `/api/account-deletion` | MISSING |
+| public_policy | GET | `/api/delete-account` | MISSING |
+| public_policy | GET | `/api/privacy` | MISSING |
+| public_policy | GET | `/api/privacy_policy` | MISSING |
+| public_policy | GET | `/api/terms` | MISSING |
+| staff | GET | `/api/staff/collection/{kind}` | MISSING |
+| staff | GET | `/api/staff/drivers` | PARTIAL |
+| staff | GET | `/api/staff/fleet` | PARTIAL |
+| staff | GET | `/api/staff/home` | PARTIAL |
+| staff | POST | `/api/staff/invoices/{invoice_id}/payment` | PARTIAL |
+| staff | POST | `/api/staff/kyc/{profile_id}/approve` | MISSING |
+| staff | POST | `/api/staff/kyc/{profile_id}/reject` | MISSING |
+| staff | POST | `/api/staff/materials` | MISSING |
+| staff | POST | `/api/staff/materials/{material_id}/adjust` | MISSING |
+| staff | GET | `/api/staff/orders/{order_id}` | PARTIAL |
+| staff | POST | `/api/staff/orders/{order_id}/assign-driver` | PARTIAL |
+| staff | POST | `/api/staff/orders/{order_id}/assign-tm` | PARTIAL |
+| staff | POST | `/api/staff/orders/{order_id}/challan` | MISSING |
+| staff | POST | `/api/staff/orders/{order_id}/dispatch` | PARTIAL |
+| staff | POST | `/api/staff/orders/{order_id}/production/complete` | PARTIAL |
+| staff | POST | `/api/staff/orders/{order_id}/production/start` | PARTIAL |
+| staff | POST | `/api/staff/quality` | PARTIAL |
+| staff | GET | `/api/staff/quality/{order_id}` | PARTIAL |
+| staff | POST | `/api/staff/users/{user_id}/activate` | MISSING |
+| staff | POST | `/api/staff/users/{user_id}/suspend` | MISSING |
+| staff | POST | `/api/staff/vehicles` | MISSING |
+| staff | POST | `/api/staff/vehicles/{vehicle_id}/status` | MISSING |
+| staff_auth | POST | `/api/auth/staff/request-otp` | MISSING |
+| staff_auth | POST | `/api/auth/staff/verify-otp` | MISSING |
+| staff_mfa | POST | `/api/auth/staff/mfa/enroll/confirm` | PARTIAL |
+| staff_mfa | POST | `/api/auth/staff/mfa/enroll/start` | PARTIAL |
+| staff_mfa | POST | `/api/auth/staff/mfa/method` | PARTIAL |
+| staff_mfa | POST | `/api/auth/staff/mfa/reset-user` | MISSING |
+| staff_mfa | GET | `/api/auth/staff/mfa/status` | MISSING |
+| staff_mfa | POST | `/api/auth/staff/mfa/verify-recovery` | PARTIAL |
+| staff_mfa | POST | `/api/auth/staff/mfa/verify-totp` | PARTIAL |
+| staff_passkeys | POST | `/api/auth/staff/passkey/authenticate/options` | MISSING |
+| staff_passkeys | POST | `/api/auth/staff/passkey/authenticate/start` | MISSING |
+| staff_passkeys | POST | `/api/auth/staff/passkey/authenticate/verify` | MISSING |
+| staff_passkeys | POST | `/api/auth/staff/passkey/exchange` | MISSING |
+| staff_passkeys | POST | `/api/auth/staff/passkey/register/options` | MISSING |
+| staff_passkeys | POST | `/api/auth/staff/passkey/register/start` | MISSING |
+| staff_passkeys | POST | `/api/auth/staff/passkey/register/verify` | MISSING |
+| staff_passkeys | POST | `/api/auth/staff/passkey/remove` | MISSING |
+| staff_passkeys | GET | `/api/auth/staff/passkey/status` | MISSING |
+| storage | GET | `/api/files/{path:path}` | MISSING |
+| storage | POST | `/api/upload` | PARTIAL |
+| workforce | GET | `/api/workforce/accountant/expenses` | PARTIAL |
+| workforce | POST | `/api/workforce/accountant/expenses/{claim_id}/decision` | PARTIAL |
+| workforce | POST | `/api/workforce/attendance/punch-in` | PARTIAL |
+| workforce | POST | `/api/workforce/attendance/punch-out` | PARTIAL |
+| workforce | POST | `/api/workforce/expenses` | PARTIAL |
+| workforce | POST | `/api/workforce/leave` | PARTIAL |
+| workforce | GET | `/api/workforce/me` | PARTIAL |
+| workforce | GET | `/api/workforce/owner/control` | PARTIAL |
+| workforce | POST | `/api/workforce/owner/expenses/{claim_id}/decision` | MISSING |
+| workforce | POST | `/api/workforce/owner/leave/{request_id}/decision` | MISSING |
+| workforce | POST | `/api/workforce/owner/visits/{visit_id}/decision` | MISSING |
+| workforce | POST | `/api/workforce/visits` | PARTIAL |
+| workforce | POST | `/api/workforce/visits/{visit_id}/complete` | PARTIAL |
+| workforce | POST | `/api/workforce/visits/{visit_id}/start` | PARTIAL |
+| workforce_reports | GET | `/api/workforce-reports/monthly/{month}` | PARTIAL |
+| workforce_reports | PUT | `/api/workforce-reports/plants/{plant_id}/payroll/{month}/{user_id}/draft` | PARTIAL |
+| workforce_reports | POST | `/api/workforce-reports/plants/{plant_id}/payroll/{month}/{user_id}/mark-paid` | PARTIAL |
+| workforce_reports | POST | `/api/workforce-reports/plants/{plant_id}/payroll/{month}/{user_id}/owner-decision` | PARTIAL |
+| workforce_roster | GET | `/api/workforce-roster/me` | PARTIAL |
+| workforce_roster | GET | `/api/workforce-roster/overview/{date_key}` | PARTIAL |
+| workforce_roster | PUT | `/api/workforce-roster/plants/{plant_id}/attendance-config` | PARTIAL |
+| workforce_roster | POST | `/api/workforce-roster/plants/{plant_id}/attendance/{attendance_id}/override` | MISSING |
+| workforce_roster | PUT | `/api/workforce-roster/plants/{plant_id}/roster/{date_key}/{user_id}` | PARTIAL |
+| workforce_roster | POST | `/api/workforce-roster/plants/{plant_id}/shifts` | PARTIAL |
+| workforce_roster | PUT | `/api/workforce-roster/plants/{plant_id}/shifts/{shift_id}` | MISSING |

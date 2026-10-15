@@ -13,7 +13,7 @@ use serde_json::json;
 use sqlx::Row;
 use uuid::Uuid;
 
-async fn ensure_plant_staff_or_owner(
+pub(crate) async fn ensure_plant_staff_or_owner(
     state: &AppState,
     auth_user: &AuthUser,
     plant_id: Uuid,
