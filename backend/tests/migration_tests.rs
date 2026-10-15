@@ -12,6 +12,11 @@ async fn existing_installation_upgrades_without_changing_checksums_or_records(po
     let user:uuid::Uuid=sqlx::query_scalar("INSERT INTO users(phone,hashed_password,full_name,role) VALUES('migration-support','unused','Legacy fixture','customer') RETURNING id").fetch_one(&pool).await.unwrap();
     let case:uuid::Uuid=sqlx::query_scalar("INSERT INTO support_cases(user_id,subject) VALUES($1,'Legacy support fixture') RETURNING id").bind(user).fetch_one(&pool).await.unwrap();
     sqlx::query("INSERT INTO stored_files (file_path,file_name,content_type,file_size_bytes) VALUES ('legacy-photo','legacy.jpg','image/jpeg',42)").execute(&pool).await.unwrap();
+    let owner:uuid::Uuid=sqlx::query_scalar("INSERT INTO users(phone,hashed_password,full_name,role) VALUES('migration-owner','unused','Legacy owner','owner') RETURNING id").fetch_one(&pool).await.unwrap();
+    let plant:uuid::Uuid=sqlx::query_scalar("INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,address_line,city,state,pincode,contact_phone) VALUES($1,'Legacy','LEGACY-QC',19,73,'Legacy','Legacy','Legacy','0','0') RETURNING id").bind(owner).fetch_one(&pool).await.unwrap();
+    let site:uuid::Uuid=sqlx::query_scalar("INSERT INTO customer_sites(customer_id,name,address_line,city,state,pincode) VALUES($1,'Legacy','Legacy','Legacy','Legacy','0') RETURNING id").bind(user).fetch_one(&pool).await.unwrap();
+    let order:uuid::Uuid=sqlx::query_scalar("INSERT INTO orders(order_number,customer_id,plant_id,site_id,concrete_grade,total_quantity_m3,delivery_date,delivery_time_slot,total_amount) VALUES('LEGACY-QC',$1,$2,$3,'M25',6,CURRENT_DATE,'10:00',1) RETURNING id").bind(user).bind(plant).bind(site).fetch_one(&pool).await.unwrap();
+    let inspection:uuid::Uuid=sqlx::query_scalar("INSERT INTO cube_tests(order_id,sample_date,test_interval_days,test_date,expected_strength_mpa,actual_strength_mpa,passed) VALUES($1,CURRENT_DATE,28,CURRENT_DATE,30,0,TRUE) RETURNING id").bind(order).fetch_one(&pool).await.unwrap();
     let before: Vec<(i64, Vec<u8>)> =
         sqlx::query_as("SELECT version,checksum FROM _sqlx_migrations ORDER BY version")
             .fetch_all(&pool)
@@ -42,6 +47,17 @@ async fn existing_installation_upgrades_without_changing_checksums_or_records(po
     let compatible:String=sqlx::query_scalar("INSERT INTO support_cases(user_id,subject) VALUES($1,'Old writer compatibility') RETURNING case_number").bind(user).fetch_one(&pool).await.unwrap();
     assert!(compatible.starts_with("SUP-"));
     assert_ne!(number, compatible);
+    let preserved:(String,String,bigdecimal::BigDecimal,bigdecimal::BigDecimal,bool)=sqlx::query_as("SELECT result,record_source,expected_strength_mpa,actual_strength_mpa,passed FROM cube_tests WHERE id=$1").bind(inspection).fetch_one(&pool).await.unwrap();
+    assert_eq!(
+        preserved,
+        (
+            "PASS".into(),
+            "LEGACY_UNVERIFIED".into(),
+            30.into(),
+            0.into(),
+            true
+        )
+    );
     let versions: Vec<i64> = sqlx::query_scalar(
         "SELECT version FROM _sqlx_migrations WHERE version>18 ORDER BY version",
     )
@@ -50,7 +66,7 @@ async fn existing_installation_upgrades_without_changing_checksums_or_records(po
     .unwrap();
     assert_eq!(
         versions,
-        vec![19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]
+        vec![19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33]
     );
 }
 

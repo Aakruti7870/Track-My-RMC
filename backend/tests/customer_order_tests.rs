@@ -1429,3 +1429,240 @@ async fn actual_customer_and_owner_dashboards_return_the_mobile_contract_and_sco
         );
     }
 }
+
+async fn quality_fixture(db: &PgPool) -> (AppState, Router, Uuid, Uuid, Uuid, String) {
+    let (state, app, _, plant, customer_token) = fixture(db).await;
+    let created = call(
+        &app,
+        "/api/customer/orders",
+        Some(order(plant, "quality-order")),
+        &customer_token,
+    )
+    .await;
+    assert_eq!(created.0, StatusCode::OK);
+    let order = Uuid::parse_str(created.1["id"].as_str().unwrap()).unwrap();
+    let engineer = identity(db, "quality_engineer").await;
+    sqlx::query("INSERT INTO plant_staff(plant_id,user_id,role) VALUES($1,$2,'quality_engineer')")
+        .bind(plant)
+        .bind(engineer)
+        .execute(db)
+        .await
+        .unwrap();
+    let token = generate_token(
+        engineer,
+        "quality_engineer",
+        "",
+        None,
+        &state.config.jwt_secret,
+        1,
+    )
+    .unwrap();
+    (state, app, engineer, plant, order, token)
+}
+
+#[sqlx::test]
+async fn engineer_quality_keeps_explicit_evidence_and_atomic_retry_history(db: PgPool) {
+    let (_, app, engineer, _, order, token) = quality_fixture(&db).await;
+    let payload = json!({"order_id":order,"slump_mm":120,"cube_7d":22.35,"result":"FAIL","remarks":"Engineer review required","temperature_celsius":29.25,"visual_inspection":"Segregation observed","request_id":"inspection-retry"});
+    let (a, b) = tokio::join!(
+        call(&app, "/api/staff/quality", Some(payload.clone()), &token),
+        call(&app, "/api/staff/quality", Some(payload.clone()), &token)
+    );
+    assert_eq!(a.0, StatusCode::OK);
+    assert_eq!(b.0, StatusCode::OK);
+    assert_eq!(a.1["test_id"], b.1["test_id"]);
+    let legacy: (Option<BigDecimal>,Option<BigDecimal>,bool,Option<i32>,String)=sqlx::query_as("SELECT expected_strength_mpa,actual_strength_mpa,passed,test_interval_days,record_source FROM cube_tests WHERE order_id=$1").bind(order).fetch_one(&db).await.unwrap();
+    assert_eq!(
+        legacy,
+        (None, None, false, Some(7), "ENGINEER_INSPECTION".into())
+    );
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM audit_logs WHERE user_id=$1 AND action='quality.record'",
+    )
+    .bind(engineer)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(count, 1);
+    let mut changed = payload.clone();
+    changed["slump_mm"] = json!(125);
+    assert_eq!(
+        call(&app, "/api/staff/quality", Some(changed.clone()), &token)
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    changed["request_id"] = json!("inspection-new");
+    changed["cube_28d"] = json!(32.75);
+    changed["result"] = json!("PASS");
+    assert_eq!(
+        call(&app, "/api/staff/quality", Some(changed), &token)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let detail = call(&app, &format!("/api/staff/quality/{order}"), None, &token).await;
+    assert_eq!(detail.0, StatusCode::OK);
+    assert_eq!(detail.1["quality_tests"].as_array().unwrap().len(), 2);
+    assert_eq!(detail.1["test"]["cube_28d"], 32.75);
+    assert_eq!(detail.1["test"]["cube_7d"], 22.35);
+    assert_eq!(detail.1["test"]["temperature_celsius"], 29.25);
+    assert_eq!(
+        detail.1["test"]["visual_inspection"],
+        "Segregation observed"
+    );
+    assert_eq!(detail.1["quality_tests"][1]["result"], "FAIL");
+    assert!(detail.1["quality_tests"][1]["cube_28d"].is_null());
+}
+
+#[sqlx::test]
+async fn quality_rejects_blank_implicit_invalid_and_mismatched_measurements(db: PgPool) {
+    let (_, app, _, _, order, token) = quality_fixture(&db).await;
+    let cases = vec![
+        json!({"order_id":order,"result":"PASS"}),
+        json!({"order_id":order,"slump_mm":120}),
+        json!({"order_id":order,"slump_mm":120,"result":"APPROVED"}),
+        json!({"order_id":order,"slump_mm":-1,"result":"PASS"}),
+        json!({"order_id":order,"slump_mm":1001,"result":"PASS"}),
+        json!({"order_id":order,"slump_mm":120,"slump_tested_mm":130,"result":"PASS"}),
+        json!({"order_id":order,"cube_7d":-1,"result":"PASS"}),
+        json!({"order_id":order,"cube_28d":1001,"result":"PASS"}),
+        json!({"order_id":order,"cube_28d":25.123,"result":"PASS"}),
+        json!({"order_id":order,"actual_water":2001,"result":"PASS"}),
+        json!({"order_id":order,"temperature_celsius":101,"result":"PASS"}),
+        json!({"order_id":order,"slump_mm":120,"result":"PASS","remarks":"x".repeat(2001)}),
+        json!({"order_id":order,"slump_mm":120,"result":"PASS","sample_date":"2099-01-02","tested_on":"2099-01-01"}),
+        json!({"order_id":order,"slump_mm":120,"result":"PASS","sample_date":"2020-01-02","tested_on":"2020-01-01"}),
+        json!({"order_id":order,"slump_mm":120,"result":"PASS","request_id":""}),
+    ];
+    for payload in cases {
+        assert_eq!(
+            call(&app, "/api/staff/quality", Some(payload), &token)
+                .await
+                .0,
+            StatusCode::BAD_REQUEST
+        );
+    }
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM cube_tests WHERE order_id=$1")
+        .bind(order)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+    let valid = json!({"order_id":order,"slump_tested_mm":0,"result":"FAIL"});
+    assert_eq!(
+        call(&app, "/api/staff/quality", Some(valid), &token)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let detail = call(&app, &format!("/api/staff/quality/{order}"), None, &token)
+        .await
+        .1;
+    assert_eq!(detail["test"]["slump_mm"], 0);
+    assert!(detail["test"]["cube_7d"].is_null());
+    assert!(detail["test"]["cube_28d"].is_null());
+}
+
+#[sqlx::test]
+async fn quality_recording_requires_active_plant_engineer_and_matching_load(db: PgPool) {
+    let (state, app, engineer, plant, order, token) = quality_fixture(&db).await;
+    let payload = json!({"order_id":order,"slump_mm":120,"result":"PASS"});
+    for role in [
+        "owner",
+        "plant_owner",
+        "admin",
+        "supervisor",
+        "operator",
+        "customer",
+        "driver",
+        "dispatcher",
+        "accountant",
+        "fleet_manager",
+        "store_manager",
+        "authority",
+        "central_admin",
+    ] {
+        let id = identity(&db, role).await;
+        let other = generate_token(id, role, "", None, &state.config.jwt_secret, 1).unwrap();
+        assert_eq!(
+            call(&app, "/api/staff/quality", Some(payload.clone()), &other)
+                .await
+                .0,
+            StatusCode::FORBIDDEN
+        );
+    }
+    let outsider = identity(&db, "quality_engineer").await;
+    let other = generate_token(
+        outsider,
+        "quality_engineer",
+        "",
+        None,
+        &state.config.jwt_secret,
+        1,
+    )
+    .unwrap();
+    assert_eq!(
+        call(&app, "/api/staff/quality", Some(payload.clone()), &other)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    sqlx::query("UPDATE plant_staff SET is_active=FALSE WHERE user_id=$1")
+        .bind(engineer)
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        call(&app, "/api/staff/quality", Some(payload.clone()), &token)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    sqlx::query("UPDATE plant_staff SET is_active=TRUE WHERE user_id=$1")
+        .bind(engineer)
+        .execute(&db)
+        .await
+        .unwrap();
+    let other_order:Uuid=sqlx::query_scalar("INSERT INTO orders(order_number,customer_id,plant_id,site_id,concrete_grade,total_quantity_m3,delivery_date,delivery_time_slot,total_amount) SELECT 'OTHER-QUALITY',customer_id,plant_id,site_id,concrete_grade,6,delivery_date,delivery_time_slot,total_amount FROM orders WHERE id=$1 RETURNING id").bind(order).fetch_one(&db).await.unwrap();
+    let load: Uuid = sqlx::query_scalar(
+        "INSERT INTO order_loads(order_id,load_number,quantity_m3) VALUES($1,1,6) RETURNING id",
+    )
+    .bind(other_order)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    let mut mismatched = payload.clone();
+    mismatched["load_id"] = json!(load);
+    assert_eq!(
+        call(&app, "/api/staff/quality", Some(mismatched), &token)
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+    sqlx::query("UPDATE order_loads SET order_id=$1 WHERE id=$2")
+        .bind(order)
+        .bind(load)
+        .execute(&db)
+        .await
+        .unwrap();
+    let on_load =
+        json!({"load_id":load,"slump_mm":130,"result":"FAIL","request_id":"load-inspection"});
+    assert_eq!(
+        call(&app, "/api/staff/quality", Some(on_load), &token)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    sqlx::query("UPDATE rmc_plants SET is_active=FALSE WHERE id=$1")
+        .bind(plant)
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        call(&app, "/api/staff/quality", Some(payload), &token)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+}

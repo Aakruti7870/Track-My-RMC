@@ -209,6 +209,17 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         json!({"plant_id":plant,"site_id":site,"grade":"M25","quantity":6,"delivery_date":chrono::Utc::now().date_naive()+chrono::Duration::days(1),"delivery_time":"10:00","idempotency_key":"ci-mobile-seed-order"}),
     )?;
     customer_order::place(&state, customer, order).await?;
+    // A second isolated fixture order represents an existing produced batch for the quality UI.
+    // Production state transitions have separate real PostgreSQL lifecycle tests.
+    let inspection_order = serde_json::from_value(
+        json!({"plant_id":plant,"site_id":site,"grade":"M25","quantity":3,"delivery_date":chrono::Utc::now().date_naive()+chrono::Duration::days(1),"delivery_time":"11:00","idempotency_key":"ci-mobile-quality-order"}),
+    )?;
+    let inspection = customer_order::place(&state, customer, inspection_order).await?;
+    let inspection_id = inspection.id;
+    sqlx::query("UPDATE orders SET status='produced' WHERE id=$1")
+        .bind(inspection_id)
+        .execute(&state.db)
+        .await?;
     eprintln!("CI-FIXTURE: router");
     let cors = CorsLayer::new()
         .allow_origin("http://127.0.0.1:8081".parse::<axum::http::HeaderValue>()?)

@@ -762,6 +762,9 @@ pub struct QualityTestPayload {
     pub remarks: Option<String>,
     pub temperature_celsius: Option<f64>,
     pub visual_inspection: Option<String>,
+    pub sample_date: Option<chrono::NaiveDate>,
+    pub tested_on: Option<chrono::NaiveDate>,
+    pub request_id: Option<String>,
 }
 
 pub async fn record_quality_test(
@@ -769,99 +772,8 @@ pub async fn record_quality_test(
     auth_user: AuthUser,
     Json(payload): Json<QualityTestPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(
-        &auth_user,
-        &[
-            "quality_engineer",
-            "supervisor",
-            "owner",
-            "plant_owner",
-            "admin",
-        ],
-    )?;
-
-    let target_order_id = match payload.order_id {
-        Some(oid) => oid,
-        None => {
-            if let Some(lid) = payload.load_id {
-                let oid_opt: Option<Uuid> =
-                    sqlx::query_scalar("SELECT order_id FROM order_loads WHERE id = $1")
-                        .bind(lid)
-                        .fetch_optional(&state.db)
-                        .await?;
-                oid_opt.ok_or_else(|| AppError::BadRequest("Invalid load_id".to_string()))?
-            } else {
-                return Err(AppError::BadRequest(
-                    "order_id or load_id is required".to_string(),
-                ));
-            }
-        }
-    };
-
-    super::loads_routes::ensure_order_access(&state, &auth_user, target_order_id, false).await?;
-    if let Some(load) = payload.load_id {
-        let belongs: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM order_loads WHERE id=$1 AND order_id=$2)",
-        )
-        .bind(load)
-        .bind(target_order_id)
-        .fetch_one(&state.db)
-        .await?;
-        if !belongs {
-            return Err(AppError::BadRequest(
-                "Load does not belong to this order".into(),
-            ));
-        }
-    }
-    let slump = payload.slump_mm.or(payload.slump_tested_mm);
-    let s7 = payload
-        .cube_7d
-        .and_then(|v| format!("{:.2}", v).parse::<bigdecimal::BigDecimal>().ok());
-    let s28 = payload
-        .cube_28d
-        .and_then(|v| format!("{:.2}", v).parse::<bigdecimal::BigDecimal>().ok());
-    let actual_cement = payload
-        .actual_cement
-        .and_then(|v| format!("{:.2}", v).parse::<bigdecimal::BigDecimal>().ok());
-    let actual_water = payload
-        .actual_water
-        .and_then(|v| format!("{:.2}", v).parse::<bigdecimal::BigDecimal>().ok());
-    let result_str = payload.result.clone().unwrap_or_else(|| "PASS".to_string());
-    let remarks = payload.remarks.or(payload.visual_inspection);
-    let passed = result_str.to_uppercase() == "PASS";
-    let exp_strength: bigdecimal::BigDecimal = "30.00".parse().unwrap();
-    let act_strength: bigdecimal::BigDecimal =
-        s28.clone().unwrap_or_else(|| "0.00".parse().unwrap());
-
-    let id: Uuid = sqlx::query_scalar(
-        r#"
-        INSERT INTO cube_tests (
-            order_id, load_id, slump_mm, compressive_strength_7d_mpa, compressive_strength_28d_mpa,
-            actual_cement, actual_water, result, remarks, sample_date, test_interval_days,
-            test_date, testing_date, expected_strength_mpa, actual_strength_mpa, passed, tested_by
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_DATE, 28, CURRENT_DATE, CURRENT_DATE, $10, $11, $12, $13)
-        RETURNING id
-        "#,
-    )
-    .bind(target_order_id)
-    .bind(payload.load_id)
-    .bind(slump)
-    .bind(s7)
-    .bind(s28)
-    .bind(actual_cement)
-    .bind(actual_water)
-    .bind(&result_str)
-    .bind(&remarks)
-    .bind(exp_strength)
-    .bind(act_strength)
-    .bind(passed)
-    .bind(auth_user.user_id)
-    .fetch_one(&state.db)
-    .await?;
-
     Ok(Json(
-        json!({ "success": true, "test_id": id, "result": result_str, "message": "Quality inspection recorded" }),
+        crate::services::quality_service::record(&state, &auth_user, payload).await?,
     ))
 }
 
@@ -909,80 +821,20 @@ pub async fn get_quality_details(
     .fetch_optional(&state.db)
     .await?;
 
-    let latest_test = sqlx::query(
-        r#"
-        SELECT id, slump_mm,
-               CAST(compressive_strength_7d_mpa AS DOUBLE PRECISION) as c7,
-               CAST(compressive_strength_28d_mpa AS DOUBLE PRECISION) as c28,
-               CAST(actual_cement AS DOUBLE PRECISION) as act_cement,
-               CAST(actual_water AS DOUBLE PRECISION) as act_water,
-               result, remarks
-        FROM cube_tests
-        WHERE order_id = $1
-        ORDER BY created_at DESC
-        LIMIT 1
-        "#,
-    )
-    .bind(order_id)
-    .fetch_optional(&state.db)
-    .await?;
-
-    let tests = sqlx::query(
-        r#"
-        SELECT t.id, t.load_id, t.slump_mm, t.compressive_strength_7d_mpa,
-               t.compressive_strength_28d_mpa, t.testing_date,
-               u.full_name as tester_name
-        FROM cube_tests t
-        LEFT JOIN users u ON u.id = t.tested_by
-        WHERE t.order_id = $1
-        ORDER BY t.created_at DESC
-        "#,
-    )
-    .bind(order_id)
-    .fetch_all(&state.db)
-    .await?;
-
-    let results: Vec<_> = tests
-        .into_iter()
-        .map(|t| {
-            let id: Uuid = t.get("id");
-            let load_id: Option<Uuid> = t.get("load_id");
-            let slump: Option<i32> = t.get("slump_mm");
-            let s7: Option<bigdecimal::BigDecimal> = t.get("compressive_strength_7d_mpa");
-            let s28: Option<bigdecimal::BigDecimal> = t.get("compressive_strength_28d_mpa");
-            let tdate: Option<chrono::NaiveDate> = t.get("testing_date");
-            let tname: Option<String> = t.get("tester_name");
-            json!({
-                "id": id,
-                "load_id": load_id,
-                "slump_mm": slump,
-                "compressive_strength_7d_mpa": s7,
-                "compressive_strength_28d_mpa": s28,
-                "testing_date": tdate,
-                "tester_name": tname
-            })
-        })
-        .collect();
-
-    let test_json = latest_test.map(|t| {
-        let slump: Option<i32> = t.get("slump_mm");
-        let c7: Option<f64> = t.get("c7");
-        let c28: Option<f64> = t.get("c28");
-        let act_cement: Option<f64> = t.get("act_cement");
-        let act_water: Option<f64> = t.get("act_water");
-        let result: Option<String> = t.get("result");
-        let remarks: Option<String> = t.get("remarks");
-        json!({
-            "slump_mm": slump,
-            "cube_7d": c7,
-            "cube_28d": c28,
-            "actual_cement": act_cement,
-            "actual_water": act_water,
-            "result": result.unwrap_or_else(|| "PASS".to_string()),
-            "remarks": remarks
-        })
-    });
-
+    let tests: Vec<serde_json::Value> = sqlx::query_scalar(
+        "SELECT jsonb_build_object('id',t.id,'load_id',t.load_id,'slump_mm',t.slump_mm,
+          'cube_7d',t.compressive_strength_7d_mpa::DOUBLE PRECISION,
+          'cube_28d',t.compressive_strength_28d_mpa::DOUBLE PRECISION,
+          'compressive_strength_7d_mpa',t.compressive_strength_7d_mpa::DOUBLE PRECISION,
+          'compressive_strength_28d_mpa',t.compressive_strength_28d_mpa::DOUBLE PRECISION,
+          'actual_cement',t.actual_cement::DOUBLE PRECISION,'actual_water',t.actual_water::DOUBLE PRECISION,
+          'temperature_celsius',t.temperature_celsius::DOUBLE PRECISION,'visual_inspection',t.visual_inspection,
+          'result',t.result,'remarks',t.remarks,'sample_date',t.sample_date,'testing_date',t.testing_date,
+          'record_source',t.record_source,'recorded_at',t.created_at,'tester_name',u.full_name)
+         FROM cube_tests t LEFT JOIN users u ON u.id=t.tested_by WHERE t.order_id=$1
+         ORDER BY t.created_at DESC,t.id DESC LIMIT 500",
+    ).bind(order_id).fetch_all(&state.db).await?;
+    let test_json = tests.first().cloned();
     let order_json = order.map(|o| {
         let id: Uuid = o.get("id");
         let order_number: String = o.get("order_number");
@@ -1021,7 +873,7 @@ pub async fn get_quality_details(
         "quantity": qty_val,
         "site_name": site_val,
         "test": test_json,
-        "quality_tests": results
+        "quality_tests": tests
     })))
 }
 

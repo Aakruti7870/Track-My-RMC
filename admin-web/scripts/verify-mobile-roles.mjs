@@ -203,6 +203,30 @@ try {
       phase = 'authorized collection';
       await expect.poll(() => [...successfulPaths].some(path => path.startsWith('/api/staff/collection/'))).toBe(true);
     }
+    if (user.role === 'quality_engineer') {
+      phase = 'quality inspection';
+      await page.getByTestId(/^open-/).first().click();
+      await expect(page.getByTestId('qt-save')).toBeDisabled();
+      await page.getByTestId('qt-slump').fill('125');
+      await page.getByTestId('qt-cube7').fill('22.35');
+      await page.getByTestId('qt-remarks').fill('Synthetic quality observation');
+      await page.getByTestId('qt-result-FAIL').click();
+      const saved = page.waitForResponse(response => new URL(response.url()).pathname === '/api/staff/quality' && response.request().method() === 'POST');
+      await page.getByTestId('qt-save').click();
+      const recorded = await saved;
+      assert.equal(recorded.status(), 200);
+      const inspectionId = (await recorded.json()).test_id;
+      await expect(page.getByTestId('qt-history-' + inspectionId)).toContainText('Engineer assessment: FAIL');
+      await expect(page.getByTestId('qt-slump')).toHaveValue('');
+      await expect(page.getByTestId('qt-save')).toBeDisabled();
+      phase = 'quality persistence';
+      await page.reload();
+      await expect(page.getByTestId('qt-history-' + inspectionId)).toContainText('22.35 MPa');
+      await expect(page.getByTestId('qt-history-' + inspectionId)).toContainText('Synthetic quality observation');
+      await expect(page.getByTestId('qt-history').getByText('Engineer assessment: FAIL', { exact: true })).toHaveCount(1);
+      await page.getByTestId('qt-back').click();
+      await expect(page.getByText('Engineer FAIL', { exact: true })).toBeVisible();
+    }
     phase = 'logout';
     await page.getByText('More', { exact: true }).last().click();
     const logout = user.role === 'plant_owner' ? 'owner-logout' : user.role === 'driver' ? 'driver-logout' : 'logout-button';

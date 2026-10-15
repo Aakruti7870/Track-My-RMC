@@ -146,12 +146,16 @@ SELECT o.id::text id, 'flask-outline' icon,
        o.concrete_grade || ' · ' || o.order_number primary_text,
        o.total_quantity_m3::text || ' m³ — ' || COALESCE(s.name, '') secondary_text,
        o.status meta_text,
-       CASE WHEN EXISTS (SELECT 1 FROM cube_tests c WHERE c.order_id = o.id)
-            THEN 'QC Recorded' ELSE 'Pending QC' END badge,
-       CASE WHEN EXISTS (SELECT 1 FROM cube_tests c WHERE c.order_id = o.id)
-            THEN 'DELIVERED' ELSE 'PENDING' END badge_status
+       CASE WHEN qc.id IS NULL THEN 'Pending QC'
+            WHEN qc.record_source <> 'ENGINEER_INSPECTION' THEN 'Legacy QC (unverified)'
+            ELSE 'Engineer ' || COALESCE(qc.result, 'assessment pending') END badge,
+       CASE WHEN qc.record_source='ENGINEER_INSPECTION' AND qc.result='PASS' THEN 'DELIVERED'
+            WHEN qc.record_source='ENGINEER_INSPECTION' AND qc.result='FAIL' THEN 'REJECTED'
+            ELSE 'PENDING' END badge_status
 FROM orders o JOIN scope sc ON sc.id = o.plant_id
 LEFT JOIN customer_sites s ON s.id = o.site_id
+LEFT JOIN LATERAL (SELECT id,result,record_source FROM cube_tests c WHERE c.order_id=o.id
+    ORDER BY c.created_at DESC,c.id DESC LIMIT 1) qc ON TRUE
 WHERE lower(o.status) IN ('in_production','produced','production_complete',
    'dispatched','in_transit','delivered')
 ORDER BY o.updated_at DESC LIMIT 500
@@ -305,6 +309,8 @@ pub async fn get_staff_collection(
                 && !status.eq_ignore_ascii_case("delivered")
             {
                 Some(format!("/dispatch-order/{}", id))
+            } else if kind == "quality" {
+                Some(format!("/quality-test/{}", id))
             } else {
                 None
             };

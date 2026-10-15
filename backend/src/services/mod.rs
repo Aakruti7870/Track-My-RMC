@@ -20,3 +20,5 @@ pub mod billing_service;
 
 pub mod payroll_lifecycle;
 pub mod support_cases;
+
+pub mod quality_service;
