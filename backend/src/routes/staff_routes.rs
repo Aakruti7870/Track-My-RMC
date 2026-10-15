@@ -136,10 +136,11 @@ pub async fn get_staff_home(
             { "label": "Invoices", "value": billed.0, "icon": "document-text-outline" }
         ]);
     } else if role == "fleet_manager" {
-        let fleet_total: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM transit_mixers WHERE plant_id = $1",
-        )
-        .bind(plant_id).fetch_one(&state.db).await?;
+        let fleet_total: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM transit_mixers WHERE plant_id = $1")
+                .bind(plant_id)
+                .fetch_one(&state.db)
+                .await?;
         let drivers: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM plant_staff ps JOIN users u ON u.id = ps.user_id WHERE ps.plant_id = $1 AND ps.is_active = TRUE AND u.role = 'driver'",
         )
