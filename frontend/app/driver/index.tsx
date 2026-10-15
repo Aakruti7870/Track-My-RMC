@@ -12,6 +12,7 @@ import { Card } from "@/src/components/ui/Card";
 import { Badge } from "@/src/components/ui/Badge";
 import { Skeleton } from "@/src/components/ui/Skeleton";
 import { ErrorView } from "@/src/components/StateViews";
+import { RoleModuleDirectory } from "@/src/components/RoleModuleDirectory";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 
 type Trip = { id: string; order_number: string; status: string; grade: string; quantity: number; tm_number: string; site_name: string };
@@ -62,7 +63,7 @@ export default function DriverHome() {
       </View>
 
       {error && !data ? (
-        <ErrorView message={error} onRetry={reload} />
+        <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}><ErrorView message={error} onRetry={reload} /><RoleModuleDirectory role={user?.role} /></ScrollView>
       ) : (
         <ScrollView
           contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120, gap: spacing.lg }}
@@ -124,6 +125,8 @@ export default function DriverHome() {
                   </AppText>
                 </Card>
               ) : null}
+
+              <RoleModuleDirectory role={user?.role} />
 
               <AppText variant="heading">Current Trip</AppText>
               {data.active_trip ? (

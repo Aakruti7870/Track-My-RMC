@@ -44,8 +44,43 @@ pub async fn get_me(
 ) -> Result<impl IntoResponse, AppError> {
     let (user_resp, profile) =
         auth_service::get_current_user_profile(&state, auth_user.user_id).await?;
+    let plant_id:Option<uuid::Uuid>=sqlx::query_scalar("SELECT p.id FROM rmc_plants p WHERE p.owner_id=$1 OR EXISTS(SELECT 1 FROM plant_staff s WHERE s.plant_id=p.id AND s.user_id=$1 AND s.is_active) ORDER BY p.created_at,p.id LIMIT 1").bind(auth_user.user_id).fetch_optional(&state.db).await?;
+    let mfa_enabled: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM user_totp_credentials WHERE user_id=$1 AND is_enabled)",
+    )
+    .bind(auth_user.user_id)
+    .fetch_one(&state.db)
+    .await?;
+    let role_label = match user_resp.role.as_str() {
+        "owner" | "plant_owner" => "Plant Owner".to_string(),
+        other => other
+            .split('_')
+            .map(|s| {
+                let mut c = s.chars();
+                c.next()
+                    .map(|first| first.to_uppercase().collect::<String>() + c.as_str())
+                    .unwrap_or_default()
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
+    };
     Ok(Json(json!({
         "success": true,
+        "id":user_resp.id,
+        "name":user_resp.full_name,
+        "email":user_resp.email,
+        "phone":user_resp.phone,
+        "mobile":user_resp.phone,
+        "role":user_resp.role,
+        "role_label":role_label,
+        "roles":[user_resp.role],
+        "plant_id":plant_id,
+        "status":"active",
+        "kyc_status":if user_resp.kyc_status.eq_ignore_ascii_case("unverified") {"NOT_STARTED".to_string()} else {user_resp.kyc_status.to_uppercase()},
+        "mfa_enabled":mfa_enabled,
+        "mfa_configured":true,
+        "passkey_enabled":false,
+        "passkey_count":0,
         "user": user_resp,
         "profile": profile,
     })))

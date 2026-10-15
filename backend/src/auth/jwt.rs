@@ -10,6 +10,8 @@ const AUDIENCE: &str = "trackmyrmc-mobile";
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
     pub sub: Uuid,
+    #[serde(default)]
+    pub jti: Option<Uuid>,
     pub role: String,
     pub phone: String,
     pub email: Option<String>,
@@ -17,6 +19,8 @@ pub struct Claims {
     pub aud: String,
     pub exp: usize,
     pub iat: usize,
+    #[serde(default)]
+    pub issued_at_us: Option<i64>,
 }
 
 pub fn generate_token(
@@ -31,6 +35,7 @@ pub fn generate_token(
     let expiration = now + Duration::hours(expiration_hours.clamp(1, 24));
     let claims = Claims {
         sub: user_id,
+        jti: Some(Uuid::new_v4()),
         role: role.to_string(),
         phone: phone.to_string(),
         email: email.map(str::to_string),
@@ -38,6 +43,7 @@ pub fn generate_token(
         aud: AUDIENCE.to_string(),
         exp: expiration.timestamp() as usize,
         iat: now.timestamp() as usize,
+        issued_at_us: Some(now.timestamp_micros()),
     };
     let mut header = Header::new(Algorithm::HS512);
     header.typ = Some("JWT".to_string());

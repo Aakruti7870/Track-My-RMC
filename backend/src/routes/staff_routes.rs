@@ -317,6 +317,7 @@ pub async fn get_staff_order(
         ],
     )?;
 
+    super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
     let order_row = sqlx::query(
         r#"
         SELECT o.id, o.order_number, o.plant_id, o.customer_id, o.concrete_grade,
@@ -433,6 +434,7 @@ pub async fn assign_tm_to_order(
         ],
     )?;
 
+    super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
     let load_id: Uuid = match payload.load_id {
         Some(id) => id,
         None => {
@@ -446,15 +448,32 @@ pub async fn assign_tm_to_order(
         }
     };
 
-    sqlx::query("UPDATE order_loads SET mixer_id = $1 WHERE id = $2")
-        .bind(payload.mixer_id)
-        .bind(load_id)
-        .execute(&state.db)
-        .await?;
-
-    Ok(Json(
-        json!({ "success": true, "message": "Mixer assigned to load" }),
-    ))
+    let belongs: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM order_loads WHERE id=$1 AND order_id=$2)")
+            .bind(load_id)
+            .bind(order_id)
+            .fetch_one(&state.db)
+            .await?;
+    if !belongs {
+        return Err(AppError::NotFound("Load not found for this order".into()));
+    }
+    let driver:Option<Uuid>=sqlx::query_scalar("SELECT COALESCE(m.driver_id,l.driver_id) FROM transit_mixers m CROSS JOIN order_loads l WHERE m.id=$1 AND l.id=$2").bind(payload.mixer_id).bind(load_id).fetch_optional(&state.db).await?.flatten();
+    let mixer = payload.mixer_id;
+    let driver = driver.ok_or_else(|| {
+        AppError::Conflict("Select both mixer and driver through the load assignment form".into())
+    })?;
+    Ok(super::loads_routes::assign_load_mixer_driver(
+        State(state),
+        auth_user,
+        Path(load_id),
+        Json(super::loads_routes::AssignLoadPayload {
+            vehicle_id: None,
+            mixer_id: Some(mixer),
+            driver_id: Some(driver),
+        }),
+    )
+    .await?
+    .into_response())
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -480,6 +499,7 @@ pub async fn assign_driver_to_order(
         ],
     )?;
 
+    super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
     let load_id: Uuid = match payload.load_id {
         Some(id) => id,
         None => {
@@ -493,15 +513,35 @@ pub async fn assign_driver_to_order(
         }
     };
 
-    sqlx::query("UPDATE order_loads SET driver_id = $1 WHERE id = $2")
-        .bind(payload.driver_id)
+    let belongs: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM order_loads WHERE id=$1 AND order_id=$2)")
+            .bind(load_id)
+            .bind(order_id)
+            .fetch_one(&state.db)
+            .await?;
+    if !belongs {
+        return Err(AppError::NotFound("Load not found for this order".into()));
+    }
+    let mixer: Option<Uuid> = sqlx::query_scalar("SELECT mixer_id FROM order_loads WHERE id=$1")
         .bind(load_id)
-        .execute(&state.db)
+        .fetch_one(&state.db)
         .await?;
-
-    Ok(Json(
-        json!({ "success": true, "message": "Driver assigned to load" }),
-    ))
+    let mixer = mixer.ok_or_else(|| {
+        AppError::Conflict("Select a mixer and driver through the load assignment form".into())
+    })?;
+    let driver = payload.driver_id;
+    Ok(super::loads_routes::assign_load_mixer_driver(
+        State(state),
+        auth_user,
+        Path(load_id),
+        Json(super::loads_routes::AssignLoadPayload {
+            vehicle_id: None,
+            mixer_id: Some(mixer),
+            driver_id: Some(driver),
+        }),
+    )
+    .await?
+    .into_response())
 }
 
 pub async fn generate_order_challan(
@@ -521,89 +561,17 @@ pub async fn generate_order_challan(
         ],
     )?;
 
-    let order_row = sqlx::query(
-        r#"
-        SELECT o.id, o.order_number, o.concrete_grade, o.total_quantity_m3,
-               p.code as plant_code,
-               u.full_name as customer_name,
-               s.address_line as site_address
-        FROM orders o
-        INNER JOIN rmc_plants p ON p.id = o.plant_id
-        INNER JOIN users u ON u.id = o.customer_id
-        INNER JOIN customer_sites s ON s.id = o.site_id
-        WHERE o.id = $1
-        "#,
-    )
-    .bind(order_id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Order not found".to_string()))?;
-
-    let load_row = sqlx::query(
-        r#"
-        SELECT l.id, l.load_number, l.quantity_m3,
-               COALESCE(m.registration_number, 'TM-PENDING') as mixer_number,
-               COALESCE(u.full_name, 'Driver Pending') as driver_name
-        FROM order_loads l
-        LEFT JOIN transit_mixers m ON m.id = l.mixer_id
-        LEFT JOIN users u ON u.id = l.driver_id
-        WHERE l.order_id = $1
-        ORDER BY l.load_number
-        LIMIT 1
-        "#,
-    )
-    .bind(order_id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("No loads planned for this order".to_string()))?;
-
-    let plant_code: String = order_row.get("plant_code");
-    let customer_name: String = order_row.get("customer_name");
-    let site_address: String = order_row.get("site_address");
-    let concrete_grade: String = order_row.get("concrete_grade");
-
-    let load_id: Uuid = load_row.get("id");
-    let quantity_m3: bigdecimal::BigDecimal = load_row.get("quantity_m3");
-    let mixer_number: String = load_row.get("mixer_number");
-    let driver_name: String = load_row.get("driver_name");
-
-    let challan_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM challans")
-        .fetch_one(&state.db)
-        .await?;
-    let challan_number = format!("CH-{}-{:04}", plant_code, challan_count + 1);
-
-    let challan_id: Uuid = sqlx::query_scalar(
-        r#"
-        INSERT INTO challans (
-            load_id, challan_number, plant_code, customer_name, site_address,
-            concrete_grade, quantity_m3, slump_mm, water_cement_ratio, batch_time,
-            mixer_number, driver_name, status
-        )
-        VALUES (
-            $1, $2, $3, $4, $5, $6, $7, 120, 0.45, NOW(), $8, $9, 'generated'
-        )
-        ON CONFLICT (load_id) DO UPDATE SET challan_number = EXCLUDED.challan_number
-        RETURNING id
-        "#,
-    )
-    .bind(load_id)
-    .bind(&challan_number)
-    .bind(&plant_code)
-    .bind(&customer_name)
-    .bind(&site_address)
-    .bind(&concrete_grade)
-    .bind(quantity_m3)
-    .bind(&mixer_number)
-    .bind(&driver_name)
-    .fetch_one(&state.db)
-    .await?;
-
-    Ok(Json(json!({
-        "success": true,
-        "challan_id": challan_id,
-        "challan_number": challan_number,
-        "message": "Challan generated"
-    })))
+    super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
+    let load:Uuid=sqlx::query_scalar("SELECT id FROM order_loads WHERE order_id=$1 AND status<>'cancelled' ORDER BY load_number LIMIT 1").bind(order_id).fetch_optional(&state.db).await?.ok_or_else(||AppError::NotFound("No active load for this order".into()))?;
+    crate::services::load_lifecycle::advance(&state.db, load, auth_user.user_id, "prepare").await?;
+    let (id, number): (Uuid, String) =
+        sqlx::query_as("SELECT id,challan_number FROM challans WHERE load_id=$1")
+            .bind(load)
+            .fetch_one(&state.db)
+            .await?;
+    Ok(Json(
+        json!({"success":true,"challan_id":id,"challan_number":number}),
+    ))
 }
 
 pub async fn dispatch_order(
@@ -616,21 +584,16 @@ pub async fn dispatch_order(
         &["dispatcher", "supervisor", "owner", "plant_owner", "admin"],
     )?;
 
-    sqlx::query("UPDATE orders SET status = 'dispatched', updated_at = NOW() WHERE id = $1")
-        .bind(order_id)
-        .execute(&state.db)
+    super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
+    let loads:Vec<Uuid>=sqlx::query_scalar("SELECT id FROM order_loads WHERE order_id=$1 AND status NOT IN ('cancelled','completed','delivered') ORDER BY load_number").bind(order_id).fetch_all(&state.db).await?;
+    if loads.len() != 1 {
+        return Err(AppError::Conflict(
+            "Dispatch each delivery load through its individual dispatch action".into(),
+        ));
+    }
+    crate::services::load_lifecycle::advance(&state.db, loads[0], auth_user.user_id, "dispatch")
         .await?;
-
-    sqlx::query(
-        "UPDATE order_loads SET status = 'dispatched', dispatched_at = NOW() WHERE order_id = $1 AND status = 'planned'",
-    )
-    .bind(order_id)
-    .execute(&state.db)
-    .await?;
-
-    Ok(Json(
-        json!({ "success": true, "message": "Order loads dispatched" }),
-    ))
+    Ok(Json(json!({"success":true,"message":"Load dispatched"})))
 }
 
 pub async fn get_production_status(
@@ -651,63 +614,19 @@ pub async fn get_production_status(
         ],
     )?;
 
-    let order_row = sqlx::query(
-        "SELECT id, order_number, concrete_grade, total_quantity_m3, status FROM orders WHERE id = $1",
-    )
-    .bind(order_id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Order not found".to_string()))?;
-
-    let loads = sqlx::query(
-        r#"
-        SELECT l.id, l.load_number, l.quantity_m3, l.status,
-               l.batch_started_at, l.batch_completed_at,
-               m.registration_number as mixer_number
-        FROM order_loads l
-        LEFT JOIN transit_mixers m ON m.id = l.mixer_id
-        WHERE l.order_id = $1
-        ORDER BY l.load_number
-        "#,
-    )
-    .bind(order_id)
-    .fetch_all(&state.db)
-    .await?;
-
-    let oid: Uuid = order_row.get("id");
-    let onum: String = order_row.get("order_number");
-    let ograde: String = order_row.get("concrete_grade");
-    let oqty: bigdecimal::BigDecimal = order_row.get("total_quantity_m3");
-    let ost: String = order_row.get("status");
-
-    Ok(Json(json!({
-        "success": true,
-        "order": {
-            "id": oid,
-            "order_number": onum,
-            "grade": ograde,
-            "total_quantity": oqty,
-            "status": ost
-        },
-        "batches": loads.into_iter().map(|l| {
-            let lid: Uuid = l.get("id");
-            let lnum: i32 = l.get("load_number");
-            let lqty: bigdecimal::BigDecimal = l.get("quantity_m3");
-            let lst: String = l.get("status");
-            let mixer: Option<String> = l.get("mixer_number");
-            let bstart: Option<chrono::DateTime<chrono::Utc>> = l.get("batch_started_at");
-            let bcomp: Option<chrono::DateTime<chrono::Utc>> = l.get("batch_completed_at");
-            json!({
-                "load_id": lid,
-                "load_number": lnum,
-                "quantity_m3": lqty,
-                "status": lst,
-                "mixer_number": mixer,
-                "batch_started_at": bstart,
-                "batch_completed_at": bcomp
-            })
-        }).collect::<Vec<_>>()
-    })))
+    super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
+    let data:serde_json::Value=sqlx::query_scalar("SELECT jsonb_build_object('success',TRUE,'order_id',o.id,'order_number',o.order_number,'grade',o.concrete_grade,'status',UPPER(o.status),'ordered_quantity',o.total_quantity_m3::DOUBLE PRECISION,'required',o.total_quantity_m3::DOUBLE PRECISION,'batches',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',b.id,'quantity',b.quantity::DOUBLE PRECISION,'batch_reference',b.batch_reference,'remarks',b.remarks,'created_at',b.created_at,'mix_design_version',b.mix_design_version,'material_consumption',b.material_consumption) ORDER BY b.created_at) FROM production_batches b WHERE b.order_id=o.id),'[]'::jsonb)) FROM orders o WHERE id=$1")
+      .bind(order_id).fetch_one(&state.db).await?;
+    let produced: f64 = sqlx::query_scalar(crate::services::production_service::PRODUCED_SQL)
+        .bind(order_id)
+        .fetch_one(&state.db)
+        .await?;
+    let mut data = data;
+    let ordered = data["required"].as_f64().unwrap_or(0.0);
+    data["produced_quantity"] = json!(produced);
+    data["produced"] = json!(produced);
+    data["remaining_quantity"] = json!((ordered - produced).max(0.0));
+    Ok(Json(data))
 }
 
 pub async fn start_production(
@@ -727,69 +646,54 @@ pub async fn start_production(
         ],
     )?;
 
-    sqlx::query("UPDATE orders SET status = 'in_production', updated_at = NOW() WHERE id = $1")
+    super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
+    let mut tx = state.db.begin().await?;
+    let current: String = sqlx::query_scalar("SELECT status FROM orders WHERE id=$1 FOR UPDATE")
         .bind(order_id)
-        .execute(&state.db)
+        .fetch_one(&mut *tx)
         .await?;
-
-    sqlx::query(
-        "UPDATE order_loads SET status = 'batching', batch_started_at = NOW() WHERE order_id = $1 AND status = 'planned'",
-    )
-    .bind(order_id)
-    .execute(&state.db)
-    .await?;
+    if !matches!(
+        current.as_str(),
+        "confirmed" | "scheduled" | "in_production"
+    ) {
+        return Err(AppError::Conflict(
+            "Order must be approved before production".into(),
+        ));
+    }
+    sqlx::query("UPDATE orders SET status='in_production',updated_at=NOW() WHERE id=$1")
+        .bind(order_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("UPDATE order_loads SET status='batching',batch_started_at=COALESCE(batch_started_at,NOW()) WHERE order_id=$1 AND status IN ('planned','assigned')")
+        .bind(order_id).execute(&mut *tx).await?;
+    tx.commit().await?;
 
     Ok(Json(
         json!({ "success": true, "message": "Production started" }),
     ))
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-pub struct RecordBatchPayload {
-    pub load_id: Uuid,
-    pub batch_number: Option<i32>,
-    pub actual_weights: serde_json::Value,
-    pub target_weights: Option<serde_json::Value>,
-}
+pub use crate::services::production_service::LoadBatch as RecordBatchPayload;
 
 pub async fn record_batch(
     State(state): State<AppState>,
     auth_user: AuthUser,
-    Path(_order_id): Path<Uuid>,
-    Json(payload): Json<RecordBatchPayload>,
+    Path(order_id): Path<Uuid>,
+    Json(payload): Json<crate::services::production_service::BatchInput>,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(
         &auth_user,
         &["operator", "supervisor", "owner", "plant_owner", "admin"],
     )?;
-
-    let target = payload.target_weights.unwrap_or(json!({}));
-    let batch_num = payload.batch_number.unwrap_or(1);
-
-    let id: Uuid = sqlx::query_scalar(
-        r#"
-        INSERT INTO batch_production_records (load_id, operator_id, batch_number, actual_weights, target_weights, status, completed_at)
-        VALUES ($1, $2, $3, $4, $5, 'COMPLETED', NOW())
-        RETURNING id
-        "#,
-    )
-    .bind(payload.load_id)
-    .bind(auth_user.user_id)
-    .bind(batch_num)
-    .bind(payload.actual_weights)
-    .bind(target)
-    .fetch_one(&state.db)
-    .await?;
-
-    sqlx::query(
-        "UPDATE order_loads SET batch_completed_at = NOW(), status = 'batched' WHERE id = $1",
-    )
-    .bind(payload.load_id)
-    .execute(&state.db)
-    .await?;
-
+    super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
     Ok(Json(
-        json!({ "success": true, "batch_id": id, "message": "Batch weights recorded" }),
+        crate::services::production_service::record(
+            &state.db,
+            order_id,
+            auth_user.user_id,
+            payload,
+        )
+        .await?,
     ))
 }
 
@@ -810,10 +714,34 @@ pub async fn complete_production(
         ],
     )?;
 
-    sqlx::query("UPDATE orders SET status = 'produced', updated_at = NOW() WHERE id = $1")
+    super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
+    let mut tx = state.db.begin().await?;
+    let current: String = sqlx::query_scalar("SELECT status FROM orders WHERE id=$1 FOR UPDATE")
         .bind(order_id)
-        .execute(&state.db)
+        .fetch_one(&mut *tx)
         .await?;
+    if !matches!(current.as_str(), "in_production" | "produced") {
+        return Err(AppError::Conflict("Order is not in production".into()));
+    }
+    let produced: f64 = sqlx::query_scalar(crate::services::production_service::PRODUCED_SQL)
+        .bind(order_id)
+        .fetch_one(&mut *tx)
+        .await?;
+    let required: f64 =
+        sqlx::query_scalar("SELECT total_quantity_m3::DOUBLE PRECISION FROM orders WHERE id=$1")
+            .bind(order_id)
+            .fetch_one(&mut *tx)
+            .await?;
+    if required <= 0.0 || produced + 0.001 < required * 0.98 {
+        return Err(AppError::Conflict(
+            "Record the required production quantity before completion".into(),
+        ));
+    }
+    sqlx::query("UPDATE orders SET status='produced',updated_at=NOW() WHERE id=$1")
+        .bind(order_id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
 
     Ok(Json(
         json!({ "success": true, "message": "Production completed" }),
@@ -834,6 +762,9 @@ pub struct QualityTestPayload {
     pub remarks: Option<String>,
     pub temperature_celsius: Option<f64>,
     pub visual_inspection: Option<String>,
+    pub sample_date: Option<chrono::NaiveDate>,
+    pub tested_on: Option<chrono::NaiveDate>,
+    pub request_id: Option<String>,
 }
 
 pub async fn record_quality_test(
@@ -841,84 +772,8 @@ pub async fn record_quality_test(
     auth_user: AuthUser,
     Json(payload): Json<QualityTestPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(
-        &auth_user,
-        &[
-            "quality_engineer",
-            "supervisor",
-            "owner",
-            "plant_owner",
-            "admin",
-        ],
-    )?;
-
-    let target_order_id = match payload.order_id {
-        Some(oid) => oid,
-        None => {
-            if let Some(lid) = payload.load_id {
-                let oid_opt: Option<Uuid> =
-                    sqlx::query_scalar("SELECT order_id FROM order_loads WHERE id = $1")
-                        .bind(lid)
-                        .fetch_optional(&state.db)
-                        .await?;
-                oid_opt.ok_or_else(|| AppError::BadRequest("Invalid load_id".to_string()))?
-            } else {
-                return Err(AppError::BadRequest(
-                    "order_id or load_id is required".to_string(),
-                ));
-            }
-        }
-    };
-
-    let slump = payload.slump_mm.or(payload.slump_tested_mm);
-    let s7 = payload
-        .cube_7d
-        .and_then(|v| format!("{:.2}", v).parse::<bigdecimal::BigDecimal>().ok());
-    let s28 = payload
-        .cube_28d
-        .and_then(|v| format!("{:.2}", v).parse::<bigdecimal::BigDecimal>().ok());
-    let actual_cement = payload
-        .actual_cement
-        .and_then(|v| format!("{:.2}", v).parse::<bigdecimal::BigDecimal>().ok());
-    let actual_water = payload
-        .actual_water
-        .and_then(|v| format!("{:.2}", v).parse::<bigdecimal::BigDecimal>().ok());
-    let result_str = payload.result.clone().unwrap_or_else(|| "PASS".to_string());
-    let remarks = payload.remarks.or(payload.visual_inspection);
-    let passed = result_str.to_uppercase() == "PASS";
-    let exp_strength: bigdecimal::BigDecimal = "30.00".parse().unwrap();
-    let act_strength: bigdecimal::BigDecimal =
-        s28.clone().unwrap_or_else(|| "0.00".parse().unwrap());
-
-    let id: Uuid = sqlx::query_scalar(
-        r#"
-        INSERT INTO cube_tests (
-            order_id, load_id, slump_mm, compressive_strength_7d_mpa, compressive_strength_28d_mpa,
-            actual_cement, actual_water, result, remarks, sample_date, test_interval_days,
-            test_date, testing_date, expected_strength_mpa, actual_strength_mpa, passed, tested_by
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_DATE, 28, CURRENT_DATE, CURRENT_DATE, $10, $11, $12, $13)
-        RETURNING id
-        "#,
-    )
-    .bind(target_order_id)
-    .bind(payload.load_id)
-    .bind(slump)
-    .bind(s7)
-    .bind(s28)
-    .bind(actual_cement)
-    .bind(actual_water)
-    .bind(&result_str)
-    .bind(&remarks)
-    .bind(exp_strength)
-    .bind(act_strength)
-    .bind(passed)
-    .bind(auth_user.user_id)
-    .fetch_one(&state.db)
-    .await?;
-
     Ok(Json(
-        json!({ "success": true, "test_id": id, "result": result_str, "message": "Quality inspection recorded" }),
+        crate::services::quality_service::record(&state, &auth_user, payload).await?,
     ))
 }
 
@@ -950,6 +805,7 @@ pub async fn get_quality_details(
         ],
     )?;
 
+    super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
     let order = sqlx::query(
         r#"
         SELECT o.id, o.order_number, o.concrete_grade, CAST(o.total_quantity_m3 AS DOUBLE PRECISION) as quantity,
@@ -965,80 +821,20 @@ pub async fn get_quality_details(
     .fetch_optional(&state.db)
     .await?;
 
-    let latest_test = sqlx::query(
-        r#"
-        SELECT id, slump_mm,
-               CAST(compressive_strength_7d_mpa AS DOUBLE PRECISION) as c7,
-               CAST(compressive_strength_28d_mpa AS DOUBLE PRECISION) as c28,
-               CAST(actual_cement AS DOUBLE PRECISION) as act_cement,
-               CAST(actual_water AS DOUBLE PRECISION) as act_water,
-               result, remarks
-        FROM cube_tests
-        WHERE order_id = $1
-        ORDER BY created_at DESC
-        LIMIT 1
-        "#,
-    )
-    .bind(order_id)
-    .fetch_optional(&state.db)
-    .await?;
-
-    let tests = sqlx::query(
-        r#"
-        SELECT t.id, t.load_id, t.slump_mm, t.compressive_strength_7d_mpa,
-               t.compressive_strength_28d_mpa, t.testing_date,
-               u.full_name as tester_name
-        FROM cube_tests t
-        LEFT JOIN users u ON u.id = t.tested_by
-        WHERE t.order_id = $1
-        ORDER BY t.created_at DESC
-        "#,
-    )
-    .bind(order_id)
-    .fetch_all(&state.db)
-    .await?;
-
-    let results: Vec<_> = tests
-        .into_iter()
-        .map(|t| {
-            let id: Uuid = t.get("id");
-            let load_id: Option<Uuid> = t.get("load_id");
-            let slump: Option<i32> = t.get("slump_mm");
-            let s7: Option<bigdecimal::BigDecimal> = t.get("compressive_strength_7d_mpa");
-            let s28: Option<bigdecimal::BigDecimal> = t.get("compressive_strength_28d_mpa");
-            let tdate: Option<chrono::NaiveDate> = t.get("testing_date");
-            let tname: Option<String> = t.get("tester_name");
-            json!({
-                "id": id,
-                "load_id": load_id,
-                "slump_mm": slump,
-                "compressive_strength_7d_mpa": s7,
-                "compressive_strength_28d_mpa": s28,
-                "testing_date": tdate,
-                "tester_name": tname
-            })
-        })
-        .collect();
-
-    let test_json = latest_test.map(|t| {
-        let slump: Option<i32> = t.get("slump_mm");
-        let c7: Option<f64> = t.get("c7");
-        let c28: Option<f64> = t.get("c28");
-        let act_cement: Option<f64> = t.get("act_cement");
-        let act_water: Option<f64> = t.get("act_water");
-        let result: Option<String> = t.get("result");
-        let remarks: Option<String> = t.get("remarks");
-        json!({
-            "slump_mm": slump,
-            "cube_7d": c7,
-            "cube_28d": c28,
-            "actual_cement": act_cement,
-            "actual_water": act_water,
-            "result": result.unwrap_or_else(|| "PASS".to_string()),
-            "remarks": remarks
-        })
-    });
-
+    let tests: Vec<serde_json::Value> = sqlx::query_scalar(
+        "SELECT jsonb_build_object('id',t.id,'load_id',t.load_id,'slump_mm',t.slump_mm,
+          'cube_7d',t.compressive_strength_7d_mpa::DOUBLE PRECISION,
+          'cube_28d',t.compressive_strength_28d_mpa::DOUBLE PRECISION,
+          'compressive_strength_7d_mpa',t.compressive_strength_7d_mpa::DOUBLE PRECISION,
+          'compressive_strength_28d_mpa',t.compressive_strength_28d_mpa::DOUBLE PRECISION,
+          'actual_cement',t.actual_cement::DOUBLE PRECISION,'actual_water',t.actual_water::DOUBLE PRECISION,
+          'temperature_celsius',t.temperature_celsius::DOUBLE PRECISION,'visual_inspection',t.visual_inspection,
+          'result',t.result,'remarks',t.remarks,'sample_date',t.sample_date,'testing_date',t.testing_date,
+          'record_source',t.record_source,'recorded_at',t.created_at,'tester_name',u.full_name)
+         FROM cube_tests t LEFT JOIN users u ON u.id=t.tested_by WHERE t.order_id=$1
+         ORDER BY t.created_at DESC,t.id DESC LIMIT 500",
+    ).bind(order_id).fetch_all(&state.db).await?;
+    let test_json = tests.first().cloned();
     let order_json = order.map(|o| {
         let id: Uuid = o.get("id");
         let order_number: String = o.get("order_number");
@@ -1077,7 +873,7 @@ pub async fn get_quality_details(
         "quantity": qty_val,
         "site_name": site_val,
         "test": test_json,
-        "quality_tests": results
+        "quality_tests": tests
     })))
 }
 
@@ -1087,6 +883,7 @@ pub struct RecordInvoicePaymentPayload {
     pub payment_method: Option<String>,
     pub transaction_ref: Option<String>,
     pub notes: Option<String>,
+    pub request_id: Option<String>,
 }
 
 pub async fn record_invoice_payment(
@@ -1095,58 +892,30 @@ pub async fn record_invoice_payment(
     Path(invoice_id): Path<Uuid>,
     Json(payload): Json<RecordInvoicePaymentPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["accountant", "owner", "plant_owner", "admin"])?;
-
-    let inv_row =
-        sqlx::query("SELECT plant_id, order_id, total_amount FROM plant_invoices WHERE id = $1")
-            .bind(invoice_id)
-            .fetch_optional(&state.db)
-            .await?
-            .ok_or_else(|| AppError::NotFound("Invoice not found".to_string()))?;
-
-    let plant_id: Uuid = inv_row.get("plant_id");
-    let order_id: Option<Uuid> = inv_row.get("order_id");
-
-    let pay_id: Uuid = sqlx::query_scalar(
-        r#"
-        INSERT INTO plant_payments (invoice_id, order_id, plant_id, amount, payment_method, transaction_ref, notes)
-        VALUES ($1, $2, $3, $4::numeric, $5, $6, $7)
-        RETURNING id
-        "#,
-    )
-    .bind(invoice_id)
-    .bind(order_id)
-    .bind(plant_id)
-    .bind(bigdecimal::BigDecimal::try_from(payload.amount).unwrap_or_default())
-    .bind(payload.payment_method.unwrap_or_else(|| "bank_transfer".to_string()))
-    .bind(payload.transaction_ref)
-    .bind(payload.notes)
-    .fetch_one(&state.db)
-    .await?;
-
-    sqlx::query("UPDATE plant_invoices SET status = 'PAID' WHERE id = $1")
-        .bind(invoice_id)
-        .execute(&state.db)
-        .await?;
-
-    if let Some(oid) = order_id {
-        sqlx::query("UPDATE orders SET payment_status = 'paid', updated_at = NOW() WHERE id = $1")
-            .bind(oid)
-            .execute(&state.db)
-            .await?;
-    }
-
     Ok(Json(
-        json!({ "success": true, "payment_id": pay_id, "message": "Payment recorded" }),
+        crate::services::billing_service::payment(
+            &state,
+            &auth_user,
+            invoice_id,
+            crate::services::billing_service::PaymentInput {
+                amount: payload.amount,
+                payment_method: payload.payment_method,
+                transaction_ref: payload.transaction_ref,
+                notes: payload.notes,
+                request_id: payload.request_id,
+            },
+        )
+        .await?,
     ))
 }
 
 pub async fn approve_customer_kyc(
     State(state): State<AppState>,
     auth_user: AuthUser,
+    headers: axum::http::HeaderMap,
     Path(profile_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["admin", "owner", "plant_owner"])?;
+    ensure_authority_review_session(&state, &auth_user, &headers).await?;
 
     sqlx::query(
         "UPDATE user_profiles SET kyc_status = 'verified', updated_at = NOW() WHERE id = $1",
@@ -1163,9 +932,10 @@ pub async fn approve_customer_kyc(
 pub async fn reject_customer_kyc(
     State(state): State<AppState>,
     auth_user: AuthUser,
+    headers: axum::http::HeaderMap,
     Path(profile_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["admin", "owner", "plant_owner"])?;
+    ensure_authority_review_session(&state, &auth_user, &headers).await?;
 
     sqlx::query(
         "UPDATE user_profiles SET kyc_status = 'rejected', updated_at = NOW() WHERE id = $1",
@@ -1182,9 +952,10 @@ pub async fn reject_customer_kyc(
 pub async fn reset_customer_kyc(
     State(state): State<AppState>,
     auth_user: AuthUser,
+    headers: axum::http::HeaderMap,
     Path(profile_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["admin", "owner", "plant_owner"])?;
+    ensure_authority_review_session(&state, &auth_user, &headers).await?;
 
     sqlx::query(
         "UPDATE user_profiles SET kyc_status = 'unverified', updated_at = NOW() WHERE id = $1",
@@ -1196,4 +967,20 @@ pub async fn reset_customer_kyc(
     Ok(Json(
         json!({ "success": true, "message": "KYC profile reset for re-verification" }),
     ))
+}
+
+async fn ensure_authority_review_session(
+    state: &AppState,
+    user: &AuthUser,
+    headers: &axum::http::HeaderMap,
+) -> Result<(), AppError> {
+    check_role(user, &["authority"])?;
+    let hash = crate::auth::control_center::token_hash(headers)?;
+    let approved:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM control_center_sessions s JOIN control_center_access a ON a.user_id=s.user_id WHERE s.token_hash=$1 AND s.user_id=$2 AND s.revoked_at IS NULL AND s.expires_at>NOW() AND a.approved=TRUE AND 'kyc.review'=ANY(a.permissions))").bind(hash).bind(user.user_id).fetch_one(&state.db).await?;
+    if !approved {
+        return Err(AppError::Forbidden(
+            "Approved Authority review session is required".into(),
+        ));
+    }
+    Ok(())
 }

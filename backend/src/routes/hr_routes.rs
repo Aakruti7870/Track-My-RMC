@@ -17,12 +17,6 @@ async fn get_staff_plant_ids(
     state: &AppState,
     auth_user: &AuthUser,
 ) -> Result<Vec<Uuid>, AppError> {
-    if auth_user.role == "admin" {
-        let rows = sqlx::query("SELECT id FROM rmc_plants WHERE is_active = TRUE ORDER BY name")
-            .fetch_all(&state.db)
-            .await?;
-        return Ok(rows.into_iter().map(|r| r.get("id")).collect());
-    }
     if auth_user.role == "owner" || auth_user.role == "plant_owner" {
         let rows =
             sqlx::query("SELECT id FROM rmc_plants WHERE owner_id = $1 AND is_active = TRUE")
@@ -216,6 +210,7 @@ pub async fn update_employee_profile(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
 
+    ensure_employee_access(&state, &auth_user, plant_id, user_id).await?;
     let join_dt = payload
         .join_date
         .as_deref()
@@ -298,6 +293,7 @@ pub async fn update_employee_salary(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
 
+    ensure_employee_access(&state, &auth_user, plant_id, user_id).await?;
     let eff_dt = payload
         .effective_from
         .as_deref()
@@ -370,6 +366,7 @@ pub async fn get_salary_suggestion(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "accountant", "admin"])?;
 
+    ensure_employee_access(&state, &auth_user, plant_id, user_id).await?;
     let salary = sqlx::query(
         "SELECT basic_amount, allowances, deductions FROM employee_salary_profiles WHERE plant_id = $1 AND user_id = $2",
     )
@@ -434,6 +431,7 @@ pub async fn get_employee_hr_profile(
         &["owner", "plant_owner", "accountant", "supervisor", "admin"],
     )?;
 
+    ensure_employee_access(&state, &auth_user, plant_id, user_id).await?;
     let hr_row = sqlx::query(
         r#"
         SELECT u.full_name, u.email, u.phone, ps.role,
@@ -523,3 +521,25 @@ pub async fn get_employee_hr_profile(
 
 pub use update_employee_profile as update_hr_profile;
 pub use update_employee_salary as update_salary_profile;
+
+async fn ensure_employee_access(
+    state: &AppState,
+    user: &AuthUser,
+    plant: Uuid,
+    employee: Uuid,
+) -> Result<(), AppError> {
+    super::business_routes::ensure_plant_staff_or_owner(state, user, plant).await?;
+    let exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM plant_staff WHERE plant_id=$1 AND user_id=$2)",
+    )
+    .bind(plant)
+    .bind(employee)
+    .fetch_one(&state.db)
+    .await?;
+    if !exists {
+        return Err(AppError::NotFound(
+            "Employee not found in this plant".into(),
+        ));
+    }
+    Ok(())
+}

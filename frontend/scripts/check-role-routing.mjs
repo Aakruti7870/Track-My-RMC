@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..");
@@ -174,9 +175,13 @@ if (login.includes('testID="login-google-button"') || login.includes("Continue w
   failures.push("Direct Google/Gmail login must not be exposed on Plant Staff Login");
 }
 
-if (!login.includes('const fullNumber = `+91${mobile}`')) {
-  failures.push("User Login must normalize the fixed India prefix before OTP request");
+if (!login.includes('const fullNumber = loginPhone(mobile)')) {
+  failures.push("User Login must use the validated mobile identifier before OTP request");
 }
+const phoneModule=ts.transpileModule(read("src/auth/phone.ts"),{compilerOptions:{module:ts.ModuleKind.ES2022}}).outputText;
+const {loginPhone}=await import(`data:text/javascript;base64,${Buffer.from(phoneModule).toString("base64")}`);
+const phoneCases=[["1234567890","+911234567890"],["+12025550101","+12025550101"],["+12025550102","+12025550102"],["123",null],["+01234567890",null],["+1234567890123456",null],["not-a-phone",null]];
+phoneCases.forEach(([input,expected],index)=>{if(loginPhone(input)!==expected)failures.push(`Mobile normalization contract failed in case ${index+1}`);});
 
 if (login.includes("Dev mode — OTP auto-filled") || login.includes("One login for everyone")) {
   failures.push("Login must not expose development or legacy instruction text");

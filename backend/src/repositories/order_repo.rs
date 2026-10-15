@@ -1,28 +1,40 @@
-use crate::{
-    error::AppError,
-    models::order::{Order, OrderLoad},
-};
+use crate::{error::AppError, models::order::Order};
 use bigdecimal::BigDecimal;
 use bigdecimal::FromPrimitive;
 use chrono::NaiveDate;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-pub async fn create_order(
-    pool: &PgPool,
-    order_number: &str,
-    customer_id: Uuid,
-    plant_id: Uuid,
-    site_id: Uuid,
-    concrete_grade: &str,
-    quantity_m3: f64,
-    delivery_date: NaiveDate,
-    delivery_time_slot: &str,
-    pump_required: bool,
-    special_instructions: Option<&str>,
-    total_amount: f64,
-    tax_amount: f64,
-) -> Result<Order, AppError> {
+pub struct NewOrder<'a> {
+    pub order_number: &'a str,
+    pub customer_id: Uuid,
+    pub plant_id: Uuid,
+    pub site_id: Uuid,
+    pub concrete_grade: &'a str,
+    pub quantity_m3: f64,
+    pub delivery_date: NaiveDate,
+    pub delivery_time_slot: &'a str,
+    pub pump_required: bool,
+    pub special_instructions: Option<&'a str>,
+    pub total_amount: f64,
+    pub tax_amount: f64,
+}
+
+pub async fn create_order(pool: &PgPool, input: NewOrder<'_>) -> Result<Order, AppError> {
+    let NewOrder {
+        order_number,
+        customer_id,
+        plant_id,
+        site_id,
+        concrete_grade,
+        quantity_m3,
+        delivery_date,
+        delivery_time_slot,
+        pump_required,
+        special_instructions,
+        total_amount,
+        tax_amount,
+    } = input;
     let order = sqlx::query_as::<_, Order>(
         r#"
         INSERT INTO orders (
@@ -143,15 +155,17 @@ pub async fn update_order_status(
         return Ok(());
     }
 
-    let valid_transition = match (current.as_str(), status) {
-        ("pending", "confirmed" | "cancelled") => true,
-        ("confirmed", "scheduled" | "cancelled") => true,
-        ("scheduled", "dispatched" | "cancelled") => true,
-        ("dispatched", "in_transit" | "cancelled") => true,
-        ("in_transit", "delivered") => true,
-        ("delivered", "completed") => true,
-        _ => false,
-    };
+    let valid_transition = matches!(
+        (current.as_str(), status),
+        ("pending", "confirmed" | "cancelled")
+            | ("confirmed", "scheduled" | "in_production" | "cancelled")
+            | ("scheduled", "in_production" | "dispatched" | "cancelled")
+            | ("in_production", "produced")
+            | ("produced", "dispatched")
+            | ("dispatched", "in_transit" | "cancelled")
+            | ("in_transit", "delivered")
+            | ("delivered", "completed")
+    );
 
     if !valid_transition {
         return Err(AppError::BadRequest(format!(

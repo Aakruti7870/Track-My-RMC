@@ -34,6 +34,7 @@ type LoadResponse = {
   planned_quantity_m3: number;
   delivered_quantity_m3: number;
   remaining_quantity_m3: number;
+  production_ready: boolean;
   loads: Load[];
 };
 type Vehicle = { id: string; tm_number: string; capacity_m3: number; status: string };
@@ -66,11 +67,11 @@ export function LoadPlanner({ orderId, resourceBase, onChanged }: Props) {
     try {
       const [loads, fleet, driverList] = await Promise.all([
         apiGet<LoadResponse>(`/loads/orders/${orderId}`, token),
-        apiGet<{ vehicles: Vehicle[] }>(`${resourceBase}/fleet`, token),
+        apiGet<{ vehicles?: Vehicle[]; fleet?: Array<Vehicle & {registration_number?: string}> }>(`${resourceBase}/fleet`, token),
         apiGet<{ drivers: Driver[] }>(`${resourceBase}/drivers`, token),
       ]);
       setData(loads);
-      setVehicles(fleet.vehicles || []);
+      setVehicles((fleet.vehicles || fleet.fleet || []).map(v => ({...v, tm_number: v.tm_number || ('registration_number' in v ? String(v.registration_number || '') : ''), capacity_m3: Number(v.capacity_m3)})));
       setDrivers(driverList.drivers || []);
     } catch (error: unknown) {
       toast(apiErrorDetail(error, "Could not load delivery loads"), "error");
@@ -132,7 +133,7 @@ export function LoadPlanner({ orderId, resourceBase, onChanged }: Props) {
 
   if (loading && !data) return <><Skeleton height={90} style={{ borderRadius: radius.lg }} /><Skeleton height={130} style={{ borderRadius: radius.lg }} /></>;
 
-  const availableVehicles = vehicles.filter((v) => v.status === "available" || data?.loads.some((l) => l.vehicle_id === v.id && !["DELIVERED", "CANCELLED"].includes(l.status)));
+  const availableVehicles = vehicles.filter((v) => ["available", "idle"].includes(v.status) || data?.loads.some((l) => l.vehicle_id === v.id && !["DELIVERED", "CANCELLED"].includes(l.status)));
 
   return (
     <View style={{ gap: spacing.md }}>
@@ -166,10 +167,10 @@ export function LoadPlanner({ orderId, resourceBase, onChanged }: Props) {
           {load.challan_number ? <AppText variant="caption">Challan: {load.challan_number}</AppText> : null}
           {load.gate_pass_number ? <AppText variant="caption">Gate pass: {load.gate_pass_number}</AppText> : null}
 
-          {["PLANNED", "ASSIGNED"].includes(load.status) ? (
+          {["PLANNED", "ASSIGNED", "BATCHING", "BATCHED"].includes(load.status) ? (
             <Button label={load.status === "ASSIGNED" ? "Change Assignment" : "Assign TM + Driver"} variant="outline" onPress={() => openAssign(load)} />
           ) : null}
-          {load.status === "ASSIGNED" ? (
+          {data?.production_ready && ["PLANNED", "ASSIGNED", "BATCHING", "BATCHED"].includes(load.status) ? (
             <Button label="Prepare Trip + Challan" onPress={() => action(`/loads/${load.id}/prepare`, "Load prepared", {})} loading={busy} />
           ) : null}
           {load.status === "READY_TO_DISPATCH" && !load.gate_pass_number ? (

@@ -39,7 +39,7 @@ impl AppConfig {
         let environment = env::var("APP_ENV").unwrap_or_else(|_| "production".to_string());
 
         let jwt_secret = match env::var("JWT_SECRET") {
-            Ok(secret) if secret.as_bytes().len() >= 64 => secret,
+            Ok(secret) if secret.len() >= 64 => secret,
             Ok(_) if environment != "production" => {
                 "trackmyrmc_local_development_secret_change_me_please_64_chars_minimum_xxxxxxxxx"
                     .to_string()
@@ -55,7 +55,7 @@ impl AppConfig {
         };
 
         let otp_pepper = match env::var("OTP_PEPPER") {
-            Ok(value) if value.as_bytes().len() >= 32 => value,
+            Ok(value) if value.len() >= 32 => value,
             Ok(_) if environment != "production" => {
                 "trackmyrmc_local_otp_pepper_change_me_32_chars_xxxxxxxxx".to_string()
             }

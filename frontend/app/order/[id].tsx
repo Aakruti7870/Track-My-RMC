@@ -68,7 +68,7 @@ export default function OrderDetail() {
   const { token, user } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
 
-  const isOwner = user?.role === "plant_owner";
+  const isOwner = ["plant_owner", "owner"].includes(user?.role || "");
   const base = isOwner ? "/owner/orders/" : "/customer/orders/";
   const { data, loading, error, reload } = useGet<Detail>(`${base}${id}`);
 

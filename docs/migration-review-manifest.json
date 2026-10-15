@@ -1,0 +1,147 @@
+[
+  {
+    "version": 1,
+    "file": "0001_initial_schema.sql",
+    "sha256": "cd813856ce09db875396b59cb578883ec25138f85bbb2f17714765cbded4c68d"
+  },
+  {
+    "version": 2,
+    "file": "0002_orders_dispatch.sql",
+    "sha256": "5555dbb2f723a7194c22190d6f8d3b52537ab1d9a0dec309945417e5989b5981"
+  },
+  {
+    "version": 3,
+    "file": "0003_workforce_payroll.sql",
+    "sha256": "4ecbca6ee65549a147d6a0d83d401d9075f43d755545f9d8953294af129e5329"
+  },
+  {
+    "version": 4,
+    "file": "0004_telemetry_support.sql",
+    "sha256": "44ccb1eabfe229758850dc1c2dfaeb551bd99f470c8b9c6a6ae92e648d0c227c"
+  },
+  {
+    "version": 5,
+    "file": "0005_auth_multi_provider.sql",
+    "sha256": "60f34c35de0c53057cfb0bba5ddba88db0753f2958e0f039e5f739897d5ce30b"
+  },
+  {
+    "version": 6,
+    "file": "0006_otp_pending_delivery.sql",
+    "sha256": "9ef0a145efab2ca489c5d6ab3a657c65ea781b06102988b6a16b22b4ee0e71ad"
+  },
+  {
+    "version": 10,
+    "file": "0010_auth_hardening.sql",
+    "sha256": "4c19e575d4a5bc3be1de8e79ca0879528a050550787bdb527b140af3a61a342b"
+  },
+  {
+    "version": 11,
+    "file": "0011_admin_email_only.sql",
+    "sha256": "20bb3beb8eb6a2e6fed5085a15e2041d7a11a3d844af2c419fa0c79a0f032a0f"
+  },
+  {
+    "version": 12,
+    "file": "0012_staff_mfa_challenges.sql",
+    "sha256": "20df53c30bf9c67adee807eb8aff1a85e18109c75d41ee5c907fae006ec52795"
+  },
+  {
+    "version": 13,
+    "file": "0013_account_deletion_requests.sql",
+    "sha256": "30162384c66b687eb5cc5d0548fd009b6dd8efe7d86b04cd8ca6a8d4aea6d56f"
+  },
+  {
+    "version": 14,
+    "file": "0014_notification_device_tokens.sql",
+    "sha256": "4bdbe7693a6b19510d879ad9674a8b0207446f303f03aab8bc269bf197f74035"
+  },
+  {
+    "version": 15,
+    "file": "0015_plant_discovery_onboarding.sql",
+    "sha256": "09c723cd832ecd2c40e25ed2abf3c4accaa10d39795f876d86728a397e5114a7"
+  },
+  {
+    "version": 16,
+    "file": "0016_play_review_fixtures.sql",
+    "sha256": "55c414be20593036a0e0a95124dd9b9f3efbaa8d58dabeb16ba3998a841aea49"
+  },
+  {
+    "version": 17,
+    "file": "0017_complete_feature_parity.sql",
+    "sha256": "28477e46cf51ba91ba103ca07e0e591111c4633589092dd4952a7e4824c27180"
+  },
+  {
+    "version": 18,
+    "file": "0018_order_automation_queue.sql",
+    "sha256": "91622bbb6536c13d47acb51f45fa65759191c202e34c1789ca8671e244381dd0"
+  },
+  {
+    "version": 19,
+    "file": "0019_trip_status_history.sql",
+    "sha256": "216ef23290de940166d591170ac64609979dba2bc8f20e57bb4090bc38f326ca"
+  },
+  {
+    "version": 20,
+    "file": "0020_delivery_evidence.sql",
+    "sha256": "abf24808d7afe14f5f065ad0ac02b67a8a4b46a87a45d07b90046d35b39888e7"
+  },
+  {
+    "version": 21,
+    "file": "0021_control_center_step_ups.sql",
+    "sha256": "83de4309e6301d345b8e38d7c60b90135fc0ae9003f3c96ba10b6b78df243b52"
+  },
+  {
+    "version": 22,
+    "file": "0022_control_center_sessions.sql",
+    "sha256": "cf54c7eae809eb36f1d7486b61b7fc1dbd44883b61309e0d868ad0c1d1e0b7fd"
+  },
+  {
+    "version": 23,
+    "file": "0023_production_inventory_ledger.sql",
+    "sha256": "e0baad2b4bd7c25b02e9966793e7a8dc6758505fc8ebab80cbf997582b03e32b"
+  },
+  {
+    "version": 24,
+    "file": "0024_payment_retries.sql",
+    "sha256": "c6eabbc54511b2f1aeccae1bfe5e1b188b4d7b9dfabea617642c40cc6f5c2fff"
+  },
+  {
+    "version": 25,
+    "file": "0025_payroll_snapshots.sql",
+    "sha256": "d3c04e5411621f2e05bed5e976428839bb9fb5c2e12ad234b0ce16ec926db63b"
+  },
+  {
+    "version": 26,
+    "file": "0026_customer_order_intents.sql",
+    "sha256": "d91731b15900c271dc5eebe403508b783ddd4dd63e20c8a67e6ee83edd483547"
+  },
+  {
+    "version": 27,
+    "file": "0027_staff_totp_replay.sql",
+    "sha256": "2804a770bacafe7dd92ddc97dd82ba8bb98c539a7b7d9a99dffd2c799fd5352c"
+  },
+  {
+    "version": 28,
+    "file": "0028_rfq_responses.sql",
+    "sha256": "828c39eaae6c61619a802c0a276664eed2aaa196b99a889a778eb68f5906c81a"
+  },
+  {
+    "version": 29,
+    "file": "0029_customer_site_contract.sql",
+    "sha256": "8cbf6350250d5aaea999bdb61877bc0d6d2567664e185491896d860962dc7dbb"
+  },
+  {
+    "version": 30,
+    "file": "0030_payroll_reopen_audit.sql",
+    "sha256": "a165fb241ea0c7e19aaf937553e73e52d9515a07cf134ce0d9d2992bd06dbc6c"
+  },
+  {
+    "version": 31,
+    "file": "0031_customer_cube_observations.sql",
+    "sha256": "ec33f449694e382a7cfe89ab69b542e9adcdbd477a1728f5b5f95e36b58afe5d"
+  },
+  {
+    "version": 32,
+    "file": "0032_support_threads.sql",
+    "sha256": "f389098cc96f017ec0cb3a8c8066e34c864b8242a1c8cc8e3f4f8d32cd51811c"
+  }
+]

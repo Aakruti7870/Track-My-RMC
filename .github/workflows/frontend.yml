@@ -34,12 +34,16 @@ jobs:
         run: npm run typecheck
       - name: Validate role routing
         run: npm run check:auth-routing
+      - name: Validate all role module routes and menus
+        run: npm run check:modules
       - name: Validate Google Play privacy and permission readiness
         run: npm run check:android-permissions
       - name: Validate Play review, account deletion, and App Links contracts
         run: npm run check:play-policy
       - name: Validate Android responsive layouts
         run: npm run check:android-layout
+      - name: Expo Doctor
+        run: npm run doctor
       - name: Build production web bundle
         env:
           EXPO_PUBLIC_BACKEND_URL: https://trackmyrmc.com
@@ -59,7 +63,7 @@ jobs:
         with:
           node-version: 20
       - name: Install Dependencies
-        run: npm install
+        run: npm ci
       - name: Build Admin Dashboard
         env:
           VITE_API_URL: https://trackmyrmc.com

@@ -1,6 +1,6 @@
 use crate::{
     error::AppError,
-    models::user::{User, UserProfile, UserResponse},
+    models::user::{User, UserProfile},
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -98,16 +98,26 @@ pub async fn get_user_profile(
     Ok(profile)
 }
 
-pub async fn update_user_profile(
-    pool: &PgPool,
-    user_id: Uuid,
-    full_name: Option<&str>,
-    business_name: Option<&str>,
-    address_line: Option<&str>,
-    city: Option<&str>,
-    state: Option<&str>,
-    pincode: Option<&str>,
-) -> Result<(), AppError> {
+pub struct ProfileUpdate<'a> {
+    pub user_id: Uuid,
+    pub full_name: Option<&'a str>,
+    pub business_name: Option<&'a str>,
+    pub address_line: Option<&'a str>,
+    pub city: Option<&'a str>,
+    pub state: Option<&'a str>,
+    pub pincode: Option<&'a str>,
+}
+
+pub async fn update_user_profile(pool: &PgPool, input: ProfileUpdate<'_>) -> Result<(), AppError> {
+    let ProfileUpdate {
+        user_id,
+        full_name,
+        business_name,
+        address_line,
+        city,
+        state,
+        pincode,
+    } = input;
     let mut tx = pool.begin().await?;
 
     if let Some(name) = full_name {

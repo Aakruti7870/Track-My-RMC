@@ -15,37 +15,10 @@ use uuid::Uuid;
 
 async fn ensure_plant_staff_or_owner(
     state: &AppState,
-    auth_user: &AuthUser,
-    plant_id: Uuid,
+    user: &AuthUser,
+    plant: Uuid,
 ) -> Result<(), AppError> {
-    if auth_user.role == "admin" {
-        return Ok(());
-    }
-    if auth_user.role == "owner" || auth_user.role == "plant_owner" {
-        let is_owner: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM rmc_plants WHERE id = $1 AND owner_id = $2)",
-        )
-        .bind(plant_id)
-        .bind(auth_user.user_id)
-        .fetch_one(&state.db)
-        .await?;
-        if is_owner {
-            return Ok(());
-        }
-    }
-    let is_staff: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM plant_staff WHERE plant_id = $1 AND user_id = $2 AND is_active = TRUE)",
-    )
-    .bind(plant_id)
-    .bind(auth_user.user_id)
-    .fetch_one(&state.db)
-    .await?;
-    if !is_staff {
-        return Err(AppError::Forbidden(
-            "You are not authorized for this plant".to_string(),
-        ));
-    }
-    Ok(())
+    super::business_routes::ensure_plant_staff_or_owner(state, user, plant).await
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -652,17 +625,29 @@ pub async fn delete_customer_site(
     auth_user: AuthUser,
     Path(site_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    let result = sqlx::query("DELETE FROM customer_sites WHERE id = $1 AND customer_id = $2")
-        .bind(site_id)
-        .bind(auth_user.user_id)
-        .execute(&state.db)
-        .await?;
-
-    if result.rows_affected() == 0 {
-        return Err(AppError::NotFound(
-            "Site not found or unauthorized".to_string(),
+    check_role(&auth_user, &["customer"])?;
+    let mut tx = state.db.begin().await?;
+    let owned: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM customer_sites WHERE id=$1 AND customer_id=$2 FOR UPDATE",
+    )
+    .bind(site_id)
+    .bind(auth_user.user_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if owned.is_none() {
+        return Err(AppError::NotFound("Site not found".into()));
+    }
+    let linked:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM orders WHERE site_id=$1 UNION ALL SELECT 1 FROM customer_quotation_requests WHERE site_id=$1 UNION ALL SELECT 1 FROM customer_pour_plans WHERE site_id=$1 UNION ALL SELECT 1 FROM customer_receiving_records WHERE site_id=$1)").bind(site_id).fetch_one(&mut *tx).await?;
+    if linked {
+        return Err(AppError::Conflict(
+            "Site has linked operational records and cannot be removed".into(),
         ));
     }
-
-    Ok(Json(json!({ "success": true, "message": "Site deleted" })))
+    sqlx::query("DELETE FROM customer_sites WHERE id=$1")
+        .bind(site_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id) VALUES($1,'site.delete','site',$2)").bind(auth_user.user_id).bind(site_id.to_string()).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(Json(json!({"success":true,"status":"deleted"})))
 }

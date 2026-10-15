@@ -1,14 +1,12 @@
 use crate::{
     auth::{
-        jwt::generate_token,
-        otp::OtpEngine,
-        passkey::{PasskeyEngine, PasskeyLoginVerifyRequest},
-        password::{hash_password, verify_password},
+        jwt::generate_token, otp::OtpEngine, passkey::PasskeyLoginVerifyRequest,
+        password::hash_password,
     },
     error::AppError,
     models::user::{AuthResponse, LoginRequest, RegisterRequest, UserProfile, UserResponse},
     repositories::user_repo,
-    services::{email_service::EmailService, whatsapp_service::WhatsAppService},
+    services::whatsapp_service::WhatsAppService,
     state::AppState,
 };
 use chrono::{Duration, Utc};
@@ -48,61 +46,10 @@ pub struct VerifyTotpLoginRequest {
     pub totp_code: String,
 }
 
-pub async fn register(state: &AppState, req: RegisterRequest) -> Result<AuthResponse, AppError> {
-    if req.phone.trim().is_empty() {
-        return Err(AppError::BadRequest("Phone number is required".to_string()));
-    }
-    if req.password.len() < 6 {
-        return Err(AppError::BadRequest(
-            "Password must be at least 6 characters".to_string(),
-        ));
-    }
-
-    if let Some(existing) = user_repo::find_by_phone_or_email(&state.db, &req.phone).await? {
-        return Err(AppError::Conflict(format!(
-            "User with phone {} already exists",
-            existing.phone
-        )));
-    }
-
-    let hashed = hash_password(&req.password)?;
-    // Public registration may only create customer accounts. Privileged roles are provisioned by authorized staff/admin flows.
-    let role = "customer";
-
-    let user = user_repo::create_user(
-        &state.db,
-        &req.phone,
-        req.email.as_deref(),
-        &hashed,
-        &req.full_name,
-        role,
-        req.business_name.as_deref(),
-    )
-    .await?;
-
-    let token = generate_token(
-        user.id,
-        &user.role,
-        &user.phone,
-        user.email.as_deref(),
-        &state.config.jwt_secret,
-        state.config.jwt_expiration_hours,
-    )?;
-
-    Ok(AuthResponse {
-        success: true,
-        token,
-        role: user.role.clone(),
-        user: UserResponse {
-            id: user.id,
-            phone: user.phone,
-            email: user.email,
-            full_name: user.full_name,
-            role: user.role,
-            kyc_status: "unverified".to_string(),
-            verified_name: None,
-        },
-    })
+pub async fn register(_state: &AppState, _req: RegisterRequest) -> Result<AuthResponse, AppError> {
+    Err(AppError::Forbidden(
+        "Use verified WhatsApp OTP registration for customer accounts".into(),
+    ))
 }
 
 fn is_staff_role(role: &str) -> bool {
@@ -118,73 +65,19 @@ fn is_staff_role(role: &str) -> bool {
             | "owner"
             | "plant_owner"
             | "admin"
+            | "central_admin"
+            | "authority"
     )
 }
 
-pub async fn login(state: &AppState, req: LoginRequest) -> Result<AuthResponse, AppError> {
-    let user = user_repo::find_by_phone_or_email(&state.db, &req.username_or_phone)
-        .await?
-        .ok_or_else(|| AppError::Unauthorized("Invalid credentials".to_string()))?;
+fn is_email_login_role(role: &str) -> bool {
+    is_staff_role(role) && !matches!(role, "central_admin" | "authority")
+}
 
-    if !user.is_active {
-        return Err(AppError::Forbidden(
-            "Account is inactive. Contact support.".to_string(),
-        ));
-    }
-
-    if sqlx::query_scalar::<_, bool>(
-        "SELECT EXISTS(SELECT 1 FROM play_review_fixtures WHERE user_id = $1 AND enabled = TRUE)",
-    )
-    .bind(user.id)
-    .fetch_one(&state.db)
-    .await?
-    {
-        return Err(AppError::Forbidden(
-            "Play review accounts must use the dedicated reviewer access flow.".to_string(),
-        ));
-    }
-
-    if is_staff_role(&user.role) {
-        return Err(AppError::Forbidden(
-            "Staff password login is disabled. Sign in using email OTP followed by authenticator MFA.".to_string(),
-        ));
-    }
-
-    let is_valid = verify_password(&req.password, &user.hashed_password)?;
-    if !is_valid {
-        return Err(AppError::Unauthorized("Invalid credentials".to_string()));
-    }
-
-    let profile = user_repo::get_user_profile(&state.db, user.id).await?;
-    let kyc_status = profile
-        .as_ref()
-        .map(|p| p.kyc_status.clone())
-        .unwrap_or_else(|| "unverified".to_string());
-    let verified_name = profile.and_then(|p| p.verified_name);
-
-    let token = generate_token(
-        user.id,
-        &user.role,
-        &user.phone,
-        user.email.as_deref(),
-        &state.config.jwt_secret,
-        state.config.jwt_expiration_hours,
-    )?;
-
-    Ok(AuthResponse {
-        success: true,
-        token,
-        role: user.role.clone(),
-        user: UserResponse {
-            id: user.id,
-            phone: user.phone,
-            email: user.email,
-            full_name: user.full_name,
-            role: user.role,
-            kyc_status,
-            verified_name,
-        },
-    })
+pub async fn login(_state: &AppState, _req: LoginRequest) -> Result<AuthResponse, AppError> {
+    Err(AppError::Forbidden(
+        "Password login is disabled; use role-specific OTP and required MFA".into(),
+    ))
 }
 
 /// Dispatches WhatsApp OTP via Meta WhatsApp Cloud API exclusively for Customer and Driver roles
@@ -201,12 +94,7 @@ pub async fn send_whatsapp_otp(
         ));
     }
 
-    let wa_service = WhatsAppService::new(
-        state.config.meta_whatsapp_token.clone(),
-        state.config.meta_whatsapp_phone_number_id.clone(),
-        state.config.meta_graph_api_version.clone(),
-    );
-    wa_service.validate_config()?;
+    state.otp_delivery.validate("whatsapp")?;
 
     // Check if user exists and verify role restrictions
     if let Some(user) = user_repo::find_by_phone_or_email(&state.db, &destination).await? {
@@ -236,18 +124,24 @@ pub async fn send_whatsapp_otp(
     // Store as pending: this OTP cannot be verified until delivery is accepted.
     let session_id = OtpEngine::create_pending_session(
         &state.db,
-        &destination,
-        "whatsapp",
-        &purpose,
-        &salt,
-        &hashed_otp,
-        state.config.otp_expiration_minutes,
-        state.config.otp_max_verification_attempts,
+        crate::auth::otp::OtpSessionInput {
+            destination: &destination,
+            channel: "whatsapp",
+            purpose: &purpose,
+            salt: &salt,
+            hashed_otp: &hashed_otp,
+            expiration_minutes: state.config.otp_expiration_minutes,
+            max_attempts: state.config.otp_max_verification_attempts,
+        },
     )
     .await?;
 
     // If delivery fails, discard the pending session and preserve the old OTP.
-    if let Err(send_error) = wa_service.send_otp(&destination, &plain_otp).await {
+    if let Err(send_error) = state
+        .otp_delivery
+        .send("whatsapp", &destination, &plain_otp, "Login")
+        .await
+    {
         let _ = OtpEngine::discard_pending_session(&state.db, session_id).await;
         return Err(send_error);
     }
@@ -407,29 +301,40 @@ pub async fn send_email_otp(state: &AppState, req: SendEmailOtpRequest) -> Resul
     }
 
     let _ = req.plant_code.as_deref();
+    state.otp_delivery.validate("email")?;
     OtpEngine::check_rate_limit(&state.db, &destination, state.config.otp_cooldown_seconds).await?;
 
     let (plain_otp, salt, hashed_otp) = OtpEngine::generate_secure_otp(&state.config.otp_pepper);
 
-    OtpEngine::create_session(
+    let session_id = OtpEngine::create_pending_session(
         &state.db,
-        &destination,
-        "email",
-        &purpose,
-        &salt,
-        &hashed_otp,
-        state.config.otp_expiration_minutes,
-        state.config.otp_max_verification_attempts,
+        crate::auth::otp::OtpSessionInput {
+            destination: &destination,
+            channel: "email",
+            purpose: &purpose,
+            salt: &salt,
+            hashed_otp: &hashed_otp,
+            expiration_minutes: state.config.otp_expiration_minutes,
+            max_attempts: state.config.otp_max_verification_attempts,
+        },
     )
     .await?;
 
-    let email_service = EmailService::new(
-        state.config.email_api_key.clone(),
-        state.config.email_from_address.clone(),
-    );
-    email_service
-        .send_otp(&destination, &plain_otp, "Staff/Admin Portal")
-        .await?;
+    if let Err(error) = state
+        .otp_delivery
+        .send("email", &destination, &plain_otp, "Staff/Admin Portal")
+        .await
+    {
+        let _ = OtpEngine::discard_pending_session(&state.db, session_id).await;
+        return Err(error);
+    }
+    if let Err(error) =
+        OtpEngine::activate_pending_session(&state.db, session_id, &destination, "email", &purpose)
+            .await
+    {
+        let _ = OtpEngine::discard_pending_session(&state.db, session_id).await;
+        return Err(error);
+    }
 
     Ok(())
 }
@@ -589,7 +494,7 @@ pub async fn start_staff_mfa_enrollment(
     let user = user_repo::find_by_id(&state.db, user_id)
         .await?
         .ok_or_else(|| AppError::Unauthorized("Account not found".to_string()))?;
-    if !user.is_active || !is_staff_role(&user.role) {
+    if !user.is_active || !is_email_login_role(&user.role) {
         return Err(AppError::Forbidden(
             "Account is not authorized for staff enrollment.".to_string(),
         ));
@@ -624,6 +529,14 @@ pub async fn confirm_staff_mfa_enrollment(
     if purpose != "enrollment" {
         return Err(AppError::Forbidden(
             "This challenge is not valid for enrollment.".to_string(),
+        ));
+    }
+    let user = user_repo::find_by_id(&state.db, user_id)
+        .await?
+        .ok_or_else(|| AppError::Unauthorized("Account not found".into()))?;
+    if !user.is_active || !is_email_login_role(&user.role) {
+        return Err(AppError::Forbidden(
+            "Account is not authorized for staff enrollment.".into(),
         ));
     }
     if let Err(err) = crate::auth::totp::verify_and_enable_totp(&state.db, user_id, code).await {
@@ -661,7 +574,9 @@ pub async fn verify_staff_mfa(
             "Authenticator enrollment is required before login.".to_string(),
         ));
     }
-    if let Err(err) = crate::auth::totp::verify_totp_login(&state.db, user_id, &req.code).await {
+    if let Err(err) =
+        crate::auth::totp::verify_staff_totp_login(&state.db, user_id, &req.code).await
+    {
         let _ = sqlx::query("UPDATE staff_mfa_challenges SET attempts=attempts+1 WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>NOW()")
             .bind(&digest).execute(&state.db).await;
         return Err(err);
@@ -676,7 +591,7 @@ pub async fn verify_staff_mfa(
     let user = user_repo::find_by_id(&state.db, user_id)
         .await?
         .ok_or_else(|| AppError::Unauthorized("Account not found".to_string()))?;
-    if !user.is_active || !is_staff_role(&user.role) {
+    if !user.is_active || !is_email_login_role(&user.role) {
         return Err(AppError::Forbidden(
             "Account is not authorized for staff login.".to_string(),
         ));
@@ -713,110 +628,18 @@ pub async fn verify_staff_mfa(
 
 /// Verifies TOTP Authenticator code for second factor or primary passwordless staff login
 pub async fn verify_totp_login(
-    state: &AppState,
-    req: VerifyTotpLoginRequest,
+    _state: &AppState,
+    _req: VerifyTotpLoginRequest,
 ) -> Result<AuthResponse, AppError> {
-    let user = user_repo::find_by_phone_or_email(&state.db, &req.username_or_phone)
-        .await?
-        .ok_or_else(|| AppError::Unauthorized("Invalid credentials".to_string()))?;
-
-    if !user.is_active {
-        return Err(AppError::Forbidden(
-            "Account is inactive. Contact support.".to_string(),
-        ));
-    }
-
-    if is_staff_role(&user.role) {
-        return Err(AppError::Forbidden(
-            "Staff authenticator verification requires a valid, server-bound email OTP challenge. TOTP alone cannot issue an application JWT.".to_string(),
-        ));
-    }
-
-    crate::auth::totp::verify_totp_login(&state.db, user.id, &req.totp_code).await?;
-
-    let profile = user_repo::get_user_profile(&state.db, user.id).await?;
-    let kyc_status = profile
-        .as_ref()
-        .map(|p| p.kyc_status.clone())
-        .unwrap_or_else(|| "unverified".to_string());
-    let verified_name = profile.and_then(|p| p.verified_name);
-
-    let token = generate_token(
-        user.id,
-        &user.role,
-        &user.phone,
-        user.email.as_deref(),
-        &state.config.jwt_secret,
-        state.config.jwt_expiration_hours,
-    )?;
-
-    Ok(AuthResponse {
-        success: true,
-        token,
-        role: user.role.clone(),
-        user: UserResponse {
-            id: user.id,
-            phone: user.phone,
-            email: user.email,
-            full_name: user.full_name,
-            role: user.role,
-            kyc_status,
-            verified_name,
-        },
-    })
+    Err(AppError::Forbidden("Use WhatsApp OTP for customers/drivers or a server-bound email OTP challenge followed by staff MFA".into()))
 }
 
-/// Verifies WebAuthn Passkey assertion and returns authenticated session
+/// WebAuthn remains closed until complete server-side assertion verification.
 pub async fn verify_passkey_login(
-    state: &AppState,
-    req: PasskeyLoginVerifyRequest,
+    _state: &AppState,
+    _req: PasskeyLoginVerifyRequest,
 ) -> Result<AuthResponse, AppError> {
-    let cred = PasskeyEngine::find_credential(&state.db, &req.credential_id)
-        .await?
-        .ok_or_else(|| AppError::Unauthorized("Unrecognized passkey credential".to_string()))?;
-
-    let user = user_repo::find_by_id(&state.db, cred.user_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound("User associated with passkey not found".to_string()))?;
-
-    if is_staff_role(&user.role) {
-        return Err(AppError::Forbidden(
-            "Staff passkey login is disabled until full WebAuthn assertion verification and MFA policy enforcement are implemented.".to_string(),
-        ));
-    }
-
-    PasskeyEngine::update_usage(&state.db, &req.credential_id).await?;
-
-    let profile = user_repo::get_user_profile(&state.db, user.id).await?;
-    let kyc_status = profile
-        .as_ref()
-        .map(|p| p.kyc_status.clone())
-        .unwrap_or_else(|| "unverified".to_string());
-    let verified_name = profile.and_then(|p| p.verified_name);
-
-    let token = generate_token(
-        user.id,
-        &user.role,
-        &user.phone,
-        user.email.as_deref(),
-        &state.config.jwt_secret,
-        state.config.jwt_expiration_hours,
-    )?;
-
-    Ok(AuthResponse {
-        success: true,
-        token,
-        role: user.role.clone(),
-        user: UserResponse {
-            id: user.id,
-            phone: user.phone,
-            email: user.email,
-            full_name: user.full_name,
-            role: user.role,
-            kyc_status,
-            verified_name,
-        },
-    })
+    Err(AppError::Forbidden("Passkey login is not enabled".into()))
 }
 
 pub async fn get_current_user_profile(

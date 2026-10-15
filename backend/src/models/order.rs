@@ -42,17 +42,33 @@ pub struct OrderLoad {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct CreateOrderRequest {
     pub plant_id: Uuid,
-    pub site_id: Uuid,
+    pub site_id: Option<Uuid>,
+    #[serde(alias = "grade")]
     pub concrete_grade: String,
+    #[serde(alias = "quantity")]
     pub quantity_m3: f64,
     pub delivery_date: NaiveDate,
-    pub delivery_time_slot: String,
+    #[serde(alias = "delivery_time")]
+    pub delivery_time_slot: Option<String>,
     pub pump_required: Option<bool>,
+    #[serde(alias = "notes")]
     pub special_instructions: Option<String>,
     pub estimated_rate_per_m3: Option<f64>,
+    pub quotation_id: Option<Uuid>,
+    pub site_name: Option<String>,
+    pub site_address: Option<String>,
+    pub lat: Option<f64>,
+    pub lng: Option<f64>,
+    pub contact_person: Option<String>,
+    pub contact_mobile: Option<String>,
+    #[serde(default)]
+    pub save_draft: bool,
+    pub delivery_mode: Option<String>,
+    pub idempotency_key: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -38,13 +38,6 @@ pub async fn my_plants(
     )?;
 
     let rows: Vec<(uuid::Uuid, String, String)> = match auth_user.role.as_str() {
-        "admin" => {
-            sqlx::query_as(
-                "SELECT p.id, p.name, p.city FROM rmc_plants p WHERE p.is_active = TRUE AND NOT EXISTS (SELECT 1 FROM play_review_fixtures f WHERE f.plant_id = p.id) ORDER BY p.name",
-            )
-            .fetch_all(&state.db)
-            .await?
-        }
         "owner" | "plant_owner" => {
             sqlx::query_as(
                 "SELECT id, name, city FROM rmc_plants WHERE owner_id = $1 AND is_active = TRUE ORDER BY name",
@@ -81,21 +74,8 @@ pub async fn list_owner_plants(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
 
-    // Scope owners to their own plants; platform admins may view all plants.
-    let plants = if auth_user.role == "admin" {
-        sqlx::query_as::<_, crate::models::plant::RmcPlant>(
-            "SELECT p.id, p.owner_id, p.name, p.code, p.latitude, p.longitude, p.address_line, p.city, p.state, p.pincode, p.contact_phone, p.contact_email, p.capacity_m3_per_hr, p.rating, p.is_active, p.created_at, p.updated_at FROM rmc_plants p WHERE NOT EXISTS (SELECT 1 FROM play_review_fixtures f WHERE f.plant_id = p.id) ORDER BY p.created_at DESC",
-        )
-        .fetch_all(&state.db)
-        .await?
-    } else {
-        sqlx::query_as::<_, crate::models::plant::RmcPlant>(
-            "SELECT id, owner_id, name, code, latitude, longitude, address_line, city, state, pincode, contact_phone, contact_email, capacity_m3_per_hr, rating, is_active, created_at, updated_at FROM rmc_plants WHERE owner_id = $1 ORDER BY created_at DESC",
-        )
-        .bind(auth_user.user_id)
-        .fetch_all(&state.db)
-        .await?
-    };
+    let plants=sqlx::query_as::<_,crate::models::plant::RmcPlant>("SELECT p.* FROM rmc_plants p WHERE p.owner_id=$1 OR ($2='admin' AND EXISTS(SELECT 1 FROM plant_staff ps WHERE ps.plant_id=p.id AND ps.user_id=$1 AND ps.is_active=TRUE)) ORDER BY p.created_at DESC")
+      .bind(auth_user.user_id).bind(&auth_user.role).fetch_all(&state.db).await?;
 
     Ok(Json(json!({ "success": true, "plants": plants })))
 }
@@ -108,18 +88,20 @@ pub async fn create_plant(
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
     let plant = plant_repo::create_plant(
         &state.db,
-        auth_user.user_id,
-        &req.name,
-        &req.code,
-        req.latitude,
-        req.longitude,
-        &req.address_line,
-        &req.city,
-        &req.state,
-        &req.pincode,
-        &req.contact_phone,
-        req.contact_email.as_deref(),
-        req.capacity_m3_per_hr.unwrap_or(60.0),
+        crate::repositories::plant_repo::NewPlant {
+            owner_id: auth_user.user_id,
+            name: &req.name,
+            code: &req.code,
+            lat: req.latitude,
+            lng: req.longitude,
+            address_line: &req.address_line,
+            city: &req.city,
+            state: &req.state,
+            pincode: &req.pincode,
+            contact_phone: &req.contact_phone,
+            contact_email: req.contact_email.as_deref(),
+            capacity: req.capacity_m3_per_hr.unwrap_or(60.0),
+        },
     )
     .await?;
 
@@ -132,43 +114,8 @@ pub async fn get_billing_overview(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
 
-    let active_mixers: i64 = if auth_user.role == "admin" {
-        sqlx::query_scalar("SELECT COUNT(*) FROM transit_mixers tm WHERE tm.status <> 'inactive' AND NOT EXISTS (SELECT 1 FROM play_review_fixtures f WHERE f.mixer_id = tm.id)")
-            .fetch_one(&state.db)
-            .await?
-    } else {
-        sqlx::query_scalar(
-            "SELECT COUNT(*)
-             FROM transit_mixers tm
-             JOIN rmc_plants p ON p.id = tm.plant_id
-             WHERE p.owner_id = $1 AND tm.status <> 'inactive'",
-        )
-        .bind(auth_user.user_id)
-        .fetch_one(&state.db)
-        .await?
-    };
-
-    let monthly_volume_m3: f64 = if auth_user.role == "admin" {
-        sqlx::query_scalar(
-            "SELECT COALESCE(SUM(o.total_quantity_m3), 0)::double precision
-             FROM orders o
-             WHERE o.created_at >= date_trunc('month', CURRENT_DATE)
-               AND NOT EXISTS (SELECT 1 FROM play_review_fixtures f WHERE f.order_id = o.id)",
-        )
-        .fetch_one(&state.db)
-        .await?
-    } else {
-        sqlx::query_scalar(
-            "SELECT COALESCE(SUM(o.total_quantity_m3), 0)::double precision
-             FROM orders o
-             JOIN rmc_plants p ON p.id = o.plant_id
-             WHERE p.owner_id = $1
-               AND o.created_at >= date_trunc('month', CURRENT_DATE)",
-        )
-        .bind(auth_user.user_id)
-        .fetch_one(&state.db)
-        .await?
-    };
+    let active_mixers:i64=sqlx::query_scalar("SELECT COUNT(*) FROM transit_mixers tm JOIN rmc_plants p ON p.id=tm.plant_id WHERE tm.status<>'inactive' AND (p.owner_id=$1 OR ($2='admin' AND EXISTS(SELECT 1 FROM plant_staff ps WHERE ps.plant_id=p.id AND ps.user_id=$1 AND ps.is_active=TRUE)))").bind(auth_user.user_id).bind(&auth_user.role).fetch_one(&state.db).await?;
+    let monthly_volume_m3:f64=sqlx::query_scalar("SELECT COALESCE(SUM(o.total_quantity_m3),0)::DOUBLE PRECISION FROM orders o JOIN rmc_plants p ON p.id=o.plant_id WHERE o.created_at>=date_trunc('month',CURRENT_DATE) AND (p.owner_id=$1 OR ($2='admin' AND EXISTS(SELECT 1 FROM plant_staff ps WHERE ps.plant_id=p.id AND ps.user_id=$1 AND ps.is_active=TRUE)))").bind(auth_user.user_id).bind(&auth_user.role).fetch_one(&state.db).await?;
 
     Ok(Json(json!({
         "success": true,
@@ -179,55 +126,35 @@ pub async fn get_billing_overview(
     })))
 }
 
+async fn visible_plant_ids(state: &AppState, user: &AuthUser) -> Result<Vec<Uuid>, AppError> {
+    sqlx::query_scalar("SELECT p.id FROM rmc_plants p WHERE p.is_active AND (p.owner_id=$1 OR ($2='admin' AND EXISTS(SELECT 1 FROM plant_staff ps WHERE ps.plant_id=p.id AND ps.user_id=$1 AND ps.is_active))) ORDER BY p.id")
+        .bind(user.user_id).bind(&user.role).fetch_all(&state.db).await.map_err(AppError::from)
+}
+
 pub async fn get_owner_home(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
-
-    let plants_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM rmc_plants WHERE owner_id = $1 AND is_active = TRUE",
-    )
-    .bind(auth_user.user_id)
-    .fetch_one(&state.db)
-    .await?;
-
-    let pending_orders: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM orders o INNER JOIN rmc_plants p ON p.id = o.plant_id WHERE p.owner_id = $1 AND o.status = 'pending'"
-    )
-    .bind(auth_user.user_id)
-    .fetch_one(&state.db)
-    .await?;
-
-    let in_transit: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM transit_mixers m INNER JOIN rmc_plants p ON p.id = m.plant_id WHERE p.owner_id = $1 AND m.status IN ('dispatched', 'in_transit', 'pouring')"
-    )
-    .bind(auth_user.user_id)
-    .fetch_one(&state.db)
-    .await?;
-
-    let revenue_month: bigdecimal::BigDecimal = sqlx::query_scalar(
-        r#"
-        SELECT COALESCE(SUM(o.total_amount), 0)
-        FROM orders o
-        INNER JOIN rmc_plants p ON p.id = o.plant_id
-        WHERE p.owner_id = $1 AND o.payment_status = 'paid'
-          AND o.created_at >= date_trunc('month', CURRENT_DATE)
-        "#,
-    )
-    .bind(auth_user.user_id)
-    .fetch_one(&state.db)
-    .await?;
-
-    Ok(Json(json!({
-        "success": true,
-        "kpis": {
-            "total_plants": plants_count,
-            "pending_orders": pending_orders,
-            "in_transit_mixers": in_transit,
-            "month_revenue": revenue_month
-        }
-    })))
+    let ids = visible_plant_ids(&state, &auth_user).await?;
+    let plants:Vec<serde_json::Value>=sqlx::query_scalar("SELECT jsonb_build_object('id',id,'name',name) FROM rmc_plants WHERE id=ANY($1) ORDER BY name,id").bind(&ids).fetch_all(&state.db).await?;
+    let cards:serde_json::Value=sqlx::query_scalar(r#"SELECT jsonb_build_object(
+        'pending_approvals',(SELECT count(*) FROM orders WHERE plant_id=ANY($1) AND lower(status)='pending'),
+        'todays_orders',(SELECT count(*) FROM orders WHERE plant_id=ANY($1) AND delivery_date=CURRENT_DATE AND lower(status) NOT IN('draft','cancelled','rejected')),
+        'ordered_qty',(SELECT coalesce(sum(total_quantity_m3),0)::double precision FROM orders WHERE plant_id=ANY($1) AND delivery_date=CURRENT_DATE AND lower(status) NOT IN('draft','cancelled','rejected')),
+        'dispatched_qty',(SELECT coalesce(sum(l.quantity_m3),0)::double precision FROM order_loads l JOIN orders o ON o.id=l.order_id WHERE o.plant_id=ANY($1) AND l.dispatched_at::date=CURRENT_DATE),
+        'delivered_qty',(SELECT coalesce(sum(d.delivered_quantity),0)::double precision FROM proof_of_deliveries d JOIN order_loads l ON l.id=d.load_id JOIN orders o ON o.id=l.order_id WHERE o.plant_id=ANY($1) AND d.delivered_at::date=CURRENT_DATE),
+        'active_mixers',(SELECT count(*) FROM transit_mixers WHERE plant_id=ANY($1) AND status IN('dispatched','in_transit','pouring'))
+    )"#).bind(&ids).fetch_one(&state.db).await?;
+    let query=format!("{} WHERE o.plant_id=ANY($1) AND lower(o.status)='pending' ORDER BY o.created_at,o.id LIMIT 50",crate::services::order_service::MOBILE_ORDER_SELECT);
+    let pending: Vec<serde_json::Value> = sqlx::query_scalar(&query)
+        .bind(&ids)
+        .fetch_all(&state.db)
+        .await?;
+    let received:f64=sqlx::query_scalar("SELECT coalesce(sum(amount),0)::double precision FROM plant_payments WHERE plant_id=ANY($1) AND invoice_id IS NOT NULL AND payment_date>=date_trunc('month',CURRENT_DATE)::date").bind(&ids).fetch_one(&state.db).await?;
+    Ok(Json(
+        json!({"plant_count":plants.len(),"plants":plants,"cards":cards,"pending_orders":pending,"window_date":chrono::Utc::now().date_naive(),"kpis":{"total_plants":ids.len(),"pending_orders":cards["pending_approvals"],"in_transit_mixers":cards["active_mixers"],"month_revenue":received}}),
+    ))
 }
 
 pub async fn list_owner_orders(
@@ -236,58 +163,13 @@ pub async fn list_owner_orders(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
 
-    let rows = sqlx::query(
-        r#"
-        SELECT o.id, o.order_number, o.concrete_grade, o.total_quantity_m3, o.delivery_date,
-               o.total_amount, o.status, o.payment_status, o.created_at,
-               p.name as plant_name, u.full_name as customer_name, s.name as site_name
-        FROM orders o
-        INNER JOIN rmc_plants p ON p.id = o.plant_id
-        INNER JOIN users u ON u.id = o.customer_id
-        INNER JOIN customer_sites s ON s.id = o.site_id
-        WHERE p.owner_id = $1 OR $2 = 'admin'
-        ORDER BY o.created_at DESC
-        "#,
-    )
-    .bind(auth_user.user_id)
-    .bind(&auth_user.role)
-    .fetch_all(&state.db)
-    .await?;
-
-    let orders: Vec<_> = rows
-        .into_iter()
-        .map(|r| {
-            let id: Uuid = r.get("id");
-            let order_number: String = r.get("order_number");
-            let plant_name: String = r.get("plant_name");
-            let customer_name: String = r.get("customer_name");
-            let site_name: String = r.get("site_name");
-            let grade: String = r.get("concrete_grade");
-            let quantity_m3: bigdecimal::BigDecimal = r.get("total_quantity_m3");
-            let delivery_date: chrono::NaiveDate = r.get("delivery_date");
-            let total_amount: bigdecimal::BigDecimal = r.get("total_amount");
-            let status: String = r.get("status");
-            let payment_status: String = r.get("payment_status");
-            let created_at: chrono::DateTime<chrono::Utc> = r.get("created_at");
-
-            json!({
-                "id": id,
-                "order_number": order_number,
-                "plant_name": plant_name,
-                "customer_name": customer_name,
-                "site_name": site_name,
-                "grade": grade,
-                "quantity_m3": quantity_m3,
-                "delivery_date": delivery_date,
-                "total_amount": total_amount,
-                "status": status,
-                "payment_status": payment_status,
-                "created_at": created_at
-            })
-        })
-        .collect();
-
-    Ok(Json(json!({ "success": true, "orders": orders })))
+    let query=format!("{} WHERE p.owner_id=$1 OR ($2='admin' AND EXISTS(SELECT 1 FROM plant_staff ps WHERE ps.plant_id=p.id AND ps.user_id=$1 AND ps.is_active=TRUE)) ORDER BY o.created_at DESC LIMIT 500",crate::services::order_service::MOBILE_ORDER_SELECT);
+    let orders: Vec<serde_json::Value> = sqlx::query_scalar(&query)
+        .bind(auth_user.user_id)
+        .bind(&auth_user.role)
+        .fetch_all(&state.db)
+        .await?;
+    Ok(Json(json!({"success":true,"orders":orders})))
 }
 
 pub async fn approve_order(
@@ -297,10 +179,26 @@ pub async fn approve_order(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
 
-    sqlx::query("UPDATE orders SET status = 'confirmed', updated_at = NOW() WHERE id = $1")
+    super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
+    let mut tx = state.db.begin().await?;
+    let current: String = sqlx::query_scalar("SELECT status FROM orders WHERE id=$1 FOR UPDATE")
         .bind(order_id)
-        .execute(&state.db)
+        .fetch_one(&mut *tx)
         .await?;
+    if current != "confirmed" && current != "pending" {
+        return Err(AppError::Conflict(
+            "Only a pending order can be reviewed".into(),
+        ));
+    }
+    if current != "confirmed" {
+        sqlx::query("UPDATE orders SET status=$2,updated_at=NOW() WHERE id=$1")
+            .bind(order_id)
+            .bind("confirmed")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'order_review','order',$2,$3)").bind(auth_user.user_id).bind(order_id.to_string()).bind(json!({"from":current,"to":"confirmed"})).execute(&mut *tx).await?;
+    }
+    tx.commit().await?;
 
     Ok(Json(
         json!({ "success": true, "message": "Order approved" }),
@@ -314,10 +212,26 @@ pub async fn reject_order(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
 
-    sqlx::query("UPDATE orders SET status = 'rejected', updated_at = NOW() WHERE id = $1")
+    super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
+    let mut tx = state.db.begin().await?;
+    let current: String = sqlx::query_scalar("SELECT status FROM orders WHERE id=$1 FOR UPDATE")
         .bind(order_id)
-        .execute(&state.db)
+        .fetch_one(&mut *tx)
         .await?;
+    if current != "rejected" && current != "pending" {
+        return Err(AppError::Conflict(
+            "Only a pending order can be reviewed".into(),
+        ));
+    }
+    if current != "rejected" {
+        sqlx::query("UPDATE orders SET status=$2,updated_at=NOW() WHERE id=$1")
+            .bind(order_id)
+            .bind("rejected")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'order_review','order',$2,$3)").bind(auth_user.user_id).bind(order_id.to_string()).bind(json!({"from":current,"to":"rejected"})).execute(&mut *tx).await?;
+    }
+    tx.commit().await?;
 
     Ok(Json(
         json!({ "success": true, "message": "Order rejected" }),
@@ -338,7 +252,7 @@ pub async fn list_owner_fleet(
         FROM transit_mixers m
         INNER JOIN rmc_plants p ON p.id = m.plant_id
         LEFT JOIN users u ON u.id = m.driver_id
-        WHERE p.owner_id = $1 OR $2 = 'admin'
+        WHERE p.owner_id = $1 OR ($2='admin' AND EXISTS(SELECT 1 FROM plant_staff scope WHERE scope.plant_id=p.id AND scope.user_id=$1 AND scope.is_active=TRUE))
         ORDER BY p.name, m.registration_number
         "#,
     )
@@ -391,7 +305,7 @@ pub async fn list_owner_drivers(
         INNER JOIN rmc_plants p ON p.id = ps.plant_id
         INNER JOIN users u ON u.id = ps.user_id
         LEFT JOIN transit_mixers m ON m.driver_id = u.id AND m.plant_id = p.id
-        WHERE (p.owner_id = $1 OR $2 = 'admin') AND (ps.role = 'driver' OR u.role = 'driver')
+        WHERE (p.owner_id = $1 OR ($2='admin' AND EXISTS(SELECT 1 FROM plant_staff scope WHERE scope.plant_id=p.id AND scope.user_id=$1 AND scope.is_active=TRUE))) AND (ps.role = 'driver' OR u.role = 'driver')
         ORDER BY p.name, u.full_name
         "#,
     )
@@ -436,10 +350,12 @@ pub async fn list_owner_incidents(
                u.full_name as driver_name, u.phone as driver_phone
         FROM driver_sos_alerts s
         INNER JOIN users u ON u.id = s.driver_id
+        WHERE EXISTS(SELECT 1 FROM rmc_plants p WHERE (p.owner_id=$1 OR ($2='admin' AND EXISTS(SELECT 1 FROM plant_staff a WHERE a.plant_id=p.id AND a.user_id=$1 AND a.is_active=TRUE))) AND (EXISTS(SELECT 1 FROM order_loads l JOIN orders o ON o.id=l.order_id WHERE l.id=s.load_id AND o.plant_id=p.id) OR (s.load_id IS NULL AND EXISTS(SELECT 1 FROM plant_staff d WHERE d.plant_id=p.id AND d.user_id=s.driver_id AND d.is_active=TRUE))))
         ORDER BY s.created_at DESC
         LIMIT 50
         "#,
     )
+    .bind(auth_user.user_id).bind(&auth_user.role)
     .fetch_all(&state.db)
     .await?;
 
@@ -482,13 +398,12 @@ pub async fn resolve_incident(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
 
-    sqlx::query(
-        "UPDATE driver_sos_alerts SET status = 'RESOLVED', resolved_by = $1, resolved_at = NOW() WHERE id = $2",
-    )
-    .bind(auth_user.user_id)
-    .bind(incident_id)
-    .execute(&state.db)
-    .await?;
+    let updated=sqlx::query("UPDATE driver_sos_alerts s SET status='RESOLVED',resolved_by=$1,resolved_at=COALESCE(resolved_at,NOW()) WHERE s.id=$3 AND EXISTS(SELECT 1 FROM rmc_plants p WHERE (p.owner_id=$1 OR ($2='admin' AND EXISTS(SELECT 1 FROM plant_staff a WHERE a.plant_id=p.id AND a.user_id=$1 AND a.is_active=TRUE))) AND (EXISTS(SELECT 1 FROM order_loads l JOIN orders o ON o.id=l.order_id WHERE l.id=s.load_id AND o.plant_id=p.id) OR (s.load_id IS NULL AND EXISTS(SELECT 1 FROM plant_staff d WHERE d.plant_id=p.id AND d.user_id=s.driver_id AND d.is_active=TRUE))))").bind(auth_user.user_id).bind(&auth_user.role).bind(incident_id).execute(&state.db).await?;
+    if updated.rows_affected() != 1 {
+        return Err(AppError::NotFound(
+            "Incident not found in your plants".into(),
+        ));
+    }
 
     Ok(Json(
         json!({ "success": true, "message": "Incident resolved" }),
@@ -501,53 +416,19 @@ pub async fn list_owner_invoices(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
 
-    let rows = sqlx::query(
-        r#"
-        SELECT i.id, i.invoice_number, i.invoice_date, i.subtotal_amount, i.tax_amount,
-               i.total_amount, i.status, i.created_at,
-               p.name as plant_name, u.full_name as customer_name
-        FROM plant_invoices i
-        INNER JOIN rmc_plants p ON p.id = i.plant_id
-        LEFT JOIN users u ON u.id = i.customer_id
-        WHERE p.owner_id = $1 OR $2 = 'admin'
-        ORDER BY i.created_at DESC
-        "#,
-    )
-    .bind(auth_user.user_id)
-    .bind(&auth_user.role)
-    .fetch_all(&state.db)
-    .await?;
-
-    let invoices: Vec<_> = rows
-        .into_iter()
-        .map(|r| {
-            let id: Uuid = r.get("id");
-            let inv_num: String = r.get("invoice_number");
-            let inv_date: chrono::NaiveDate = r.get("invoice_date");
-            let subtotal: bigdecimal::BigDecimal = r.get("subtotal_amount");
-            let tax: bigdecimal::BigDecimal = r.get("tax_amount");
-            let total: bigdecimal::BigDecimal = r.get("total_amount");
-            let status: String = r.get("status");
-            let plant_name: String = r.get("plant_name");
-            let customer_name: Option<String> = r.get("customer_name");
-            let created_at: chrono::DateTime<chrono::Utc> = r.get("created_at");
-
-            json!({
-                "id": id,
-                "invoice_number": inv_num,
-                "invoice_date": inv_date,
-                "subtotal_amount": subtotal,
-                "tax_amount": tax,
-                "total_amount": total,
-                "status": status,
-                "plant_name": plant_name,
-                "customer_name": customer_name,
-                "created_at": created_at
-            })
-        })
-        .collect();
-
-    Ok(Json(json!({ "success": true, "invoices": invoices })))
+    let invoices:Vec<serde_json::Value>=sqlx::query_scalar("SELECT jsonb_build_object('id',i.id,'invoice_number',i.invoice_number,'invoice_date',i.invoice_date,'order_number',o.order_number,'customer_name',u.full_name,'grade',o.concrete_grade,'quantity',o.total_quantity_m3::DOUBLE PRECISION,'subtotal_amount',i.subtotal_amount::DOUBLE PRECISION,'tax_amount',i.tax_amount::DOUBLE PRECISION,'total_amount',i.total_amount::DOUBLE PRECISION,'total',i.total_amount::DOUBLE PRECISION,'paid',COALESCE(pay.paid,0)::DOUBLE PRECISION,'balance',(i.total_amount-COALESCE(pay.paid,0))::DOUBLE PRECISION,'status',i.status,'plant_name',p.name) FROM plant_invoices i JOIN rmc_plants p ON p.id=i.plant_id LEFT JOIN orders o ON o.id=i.order_id LEFT JOIN users u ON u.id=i.customer_id LEFT JOIN LATERAL(SELECT SUM(amount) paid FROM plant_payments WHERE invoice_id=i.id) pay ON TRUE WHERE p.owner_id=$1 OR ($2='admin' AND EXISTS(SELECT 1 FROM plant_staff s WHERE s.plant_id=p.id AND s.user_id=$1 AND s.is_active=TRUE)) ORDER BY i.created_at DESC")
+ .bind(auth_user.user_id).bind(&auth_user.role).fetch_all(&state.db).await?;
+    let billed: f64 = invoices
+        .iter()
+        .map(|v| v["total"].as_f64().unwrap_or(0.0))
+        .sum();
+    let received: f64 = invoices
+        .iter()
+        .map(|v| v["paid"].as_f64().unwrap_or(0.0))
+        .sum();
+    Ok(Json(
+        json!({"success":true,"invoices":invoices,"summary":{"billed":billed,"received":received,"outstanding":billed-received}}),
+    ))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -556,6 +437,7 @@ pub struct OwnerPaymentPayload {
     pub amount: f64,
     pub payment_method: Option<String>,
     pub transaction_ref: Option<String>,
+    pub request_id: Option<String>,
 }
 
 pub async fn record_owner_invoice_payment(
@@ -584,42 +466,20 @@ async fn record_owner_payment_internal(
     invoice_id: Uuid,
     payload: OwnerPaymentPayload,
 ) -> Result<axum::response::Response, AppError> {
-    check_role(auth_user, &["owner", "plant_owner", "admin"])?;
-
-    let inv_row = sqlx::query("SELECT plant_id, order_id FROM plant_invoices WHERE id = $1")
-        .bind(invoice_id)
-        .fetch_optional(&state.db)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Invoice not found".to_string()))?;
-
-    let plant_id: Uuid = inv_row.get("plant_id");
-    let order_id: Option<Uuid> = inv_row.get("order_id");
-
-    let id: Uuid = sqlx::query_scalar(
-        r#"
-        INSERT INTO plant_payments (invoice_id, order_id, plant_id, amount, payment_method, transaction_ref)
-        VALUES ($1, $2, $3, $4::numeric, $5, $6)
-        RETURNING id
-        "#,
+    let result = crate::services::billing_service::payment(
+        state,
+        auth_user,
+        invoice_id,
+        crate::services::billing_service::PaymentInput {
+            amount: payload.amount,
+            payment_method: payload.payment_method,
+            transaction_ref: payload.transaction_ref,
+            notes: None,
+            request_id: payload.request_id,
+        },
     )
-    .bind(invoice_id)
-    .bind(order_id)
-    .bind(plant_id)
-    .bind(bigdecimal::BigDecimal::try_from(payload.amount).unwrap_or_default())
-    .bind(payload.payment_method.unwrap_or_else(|| "bank_transfer".to_string()))
-    .bind(payload.transaction_ref)
-    .fetch_one(&state.db)
     .await?;
-
-    sqlx::query("UPDATE plant_invoices SET status = 'PAID' WHERE id = $1")
-        .bind(invoice_id)
-        .execute(&state.db)
-        .await?;
-
-    Ok(
-        Json(json!({ "success": true, "payment_id": id, "message": "Payment recorded" }))
-            .into_response(),
-    )
+    Ok(Json(result).into_response())
 }
 
 pub async fn get_owner_ledger(
@@ -635,7 +495,7 @@ pub async fn get_owner_ledger(
         FROM plant_payments p
         INNER JOIN rmc_plants pl ON pl.id = p.plant_id
         LEFT JOIN plant_invoices i ON i.id = p.invoice_id
-        WHERE pl.owner_id = $1 OR $2 = 'admin'
+        WHERE pl.owner_id = $1 OR ($2='admin' AND EXISTS(SELECT 1 FROM plant_staff scope WHERE scope.plant_id=pl.id AND scope.user_id=$1 AND scope.is_active=TRUE))
         ORDER BY p.payment_date DESC, p.created_at DESC
         LIMIT 50
         "#,
@@ -651,7 +511,7 @@ pub async fn get_owner_ledger(
                pl.name as plant_name
         FROM plant_expenses e
         INNER JOIN rmc_plants pl ON pl.id = e.plant_id
-        WHERE pl.owner_id = $1 OR $2 = 'admin'
+        WHERE pl.owner_id = $1 OR ($2='admin' AND EXISTS(SELECT 1 FROM plant_staff scope WHERE scope.plant_id=pl.id AND scope.user_id=$1 AND scope.is_active=TRUE))
         ORDER BY e.expense_date DESC, e.created_at DESC
         LIMIT 50
         "#,
@@ -668,7 +528,7 @@ pub async fn get_owner_ledger(
             let amount: bigdecimal::BigDecimal = p.get("amount");
             let method: String = p.get("payment_method");
             let reference: Option<String> = p.get("transaction_ref");
-            let date: chrono::DateTime<chrono::Utc> = p.get("payment_date");
+            let date: chrono::NaiveDate = p.get("payment_date");
             let plant_name: String = p.get("plant_name");
             let invoice_number: Option<String> = p.get("invoice_number");
             json!({
@@ -707,35 +567,29 @@ pub async fn get_owner_insights(
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
+    let ids = visible_plant_ids(&state, &auth_user).await?;
+    let days:Vec<(chrono::NaiveDate,f64,f64,f64)>=sqlx::query_as(r#"
+        SELECT day::date,
+            (SELECT coalesce(sum(total_quantity_m3),0)::double precision FROM orders WHERE plant_id=ANY($1) AND delivery_date=day::date AND lower(status) NOT IN('draft','cancelled','rejected')),
+            (SELECT coalesce(sum(d.delivered_quantity),0)::double precision FROM proof_of_deliveries d JOIN order_loads l ON l.id=d.load_id JOIN orders o ON o.id=l.order_id WHERE o.plant_id=ANY($1) AND d.delivered_at::date=day::date),
+            (SELECT coalesce(sum(amount),0)::double precision FROM plant_payments WHERE plant_id=ANY($1) AND invoice_id IS NOT NULL AND payment_date=day::date)
+        FROM generate_series(CURRENT_DATE-6,CURRENT_DATE,INTERVAL '1 day') day ORDER BY day
+    "#).bind(&ids).fetch_all(&state.db).await?;
+    let labels: Vec<String> = days.iter().map(|d| d.0.format("%a").to_string()).collect();
+    let ordered: Vec<f64> = days.iter().map(|d| d.1).collect();
+    let delivered: Vec<f64> = days.iter().map(|d| d.2).collect();
+    let payments: Vec<f64> = days.iter().map(|d| d.3).collect();
+    Ok(Json(
+        json!({"labels":labels,"dates":days.iter().map(|d|d.0).collect::<Vec<_>>(),"ordered":ordered,"delivered":delivered,"payments":payments,"totals":{"ordered":ordered.iter().sum::<f64>(),"delivered":delivered.iter().sum::<f64>(),"payments":payments.iter().sum::<f64>()},"quantity_source":"RECORDED_POD","payment_source":"RECORDED_INVOICE_PAYMENTS"}),
+    ))
+}
 
-    let grade_distribution = sqlx::query(
-        r#"
-        SELECT o.concrete_grade, COUNT(o.id) as order_count, SUM(o.total_quantity_m3) as total_m3
-        FROM orders o
-        INNER JOIN rmc_plants p ON p.id = o.plant_id
-        WHERE p.owner_id = $1 OR $2 = 'admin'
-        GROUP BY o.concrete_grade
-        ORDER BY total_m3 DESC
-        "#,
-    )
-    .bind(auth_user.user_id)
-    .bind(&auth_user.role)
-    .fetch_all(&state.db)
-    .await?;
-
-    Ok(Json(json!({
-        "success": true,
-        "insights": {
-            "top_grades": grade_distribution.into_iter().map(|g| {
-                let grade: String = g.get("concrete_grade");
-                let count: i64 = g.get("order_count");
-                let volume: Option<bigdecimal::BigDecimal> = g.get("total_m3");
-                json!({
-                    "grade": grade,
-                    "orders": count,
-                    "volume_m3": volume
-                })
-            }).collect::<Vec<_>>()
-        }
-    })))
+pub async fn create_order_invoice(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(order): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    Ok(Json(
+        crate::services::billing_service::create_invoice(&state, &user, order).await?,
+    ))
 }

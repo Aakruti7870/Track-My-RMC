@@ -1,7 +1,7 @@
 import React from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter, type Href } from "expo-router";
+import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/src/auth/AuthContext";
@@ -10,27 +10,7 @@ import { AppText } from "@/src/components/ui/AppText";
 import { Card } from "@/src/components/ui/Card";
 import { Badge } from "@/src/components/ui/Badge";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
-
-const ITEMS = [
-  { key: "workforce", label: "Workforce Control", icon: "people-circle-outline", route: "/workforce" },
-  { key: "shift_roster", label: "Shifts, Roster & Attendance", icon: "calendar-outline", route: "/shift-roster" },
-  { key: "workforce_reports", label: "Workforce Reports & Payroll", icon: "stats-chart-outline", route: "/workforce-reports" },
-  { key: "employee_master", label: "Employee Master & Salary", icon: "id-card-outline", route: "/employee-master" },
-  { key: "payroll_closure", label: "Payroll Closure & Payslips", icon: "document-attach-outline", route: "/payroll-closure" },
-  { key: "plans", label: "Premium & Promotions", icon: "diamond-outline", route: "/plans-promotions" },
-  { key: "billing", label: "Billing & Payment History", icon: "receipt-outline", route: "/owner/billing-history" },
-  { key: "quote_requests", label: "Quotation Requests", icon: "document-text-outline", route: "/owner/quotation-requests" },
-  { key: "plant", label: "Plant Profile", icon: "business-outline", route: "/business/profile" },
-  { key: "kyc", label: "Plant KYC", icon: "shield-checkmark-outline", route: "/kyc" },
-  { key: "staff", label: "Staff", icon: "people-outline", route: "/business/staff" },
-  { key: "customers", label: "Customers", icon: "person-outline", route: "/business/customers" },
-  { key: "reports", label: "Reports", icon: "bar-chart-outline", route: "/business/reports" },
-] as const satisfies readonly {
-  key: string;
-  label: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  route: Href;
-}[];
+import { RoleModuleDirectory } from "@/src/components/RoleModuleDirectory";
 
 const MODES: { key: "system" | "light" | "dark"; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { key: "light", label: "Light", icon: "sunny-outline" },
@@ -82,16 +62,7 @@ export default function OwnerMore() {
             })}
           </View>
         </View>
-
-        <Card padded={false}>
-          {ITEMS.map((item, i) => (
-            <Pressable key={item.key} testID={`owner-more-${item.key}`} onPress={() => router.push(item.route)} style={[styles.item, i < ITEMS.length - 1 && { borderBottomColor: colors.divider, borderBottomWidth: StyleSheet.hairlineWidth }]}>
-              <Ionicons name={item.icon} size={20} color={colors.onSurfaceSecondary} />
-              <AppText style={{ flex: 1, fontFamily: fonts.medium, fontSize: fontSize.base, color: colors.onSurface }}>{item.label}</AppText>
-              <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceTertiary} />
-            </Pressable>
-          ))}
-        </Card>
+        <RoleModuleDirectory role={user?.role} title="All Plant Modules" />
 
         <Card style={{ gap: 4 }}>
           <AppText variant="label">Application</AppText>

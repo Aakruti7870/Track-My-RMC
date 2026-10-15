@@ -40,7 +40,7 @@ async fn get_staff_plant_id(state: &AppState, auth_user: &AuthUser) -> Result<Uu
 
 fn roster_access_allowed(role: &str, owns_requested_plant: bool, is_active_staff: bool) -> bool {
     match role {
-        "admin" => true,
+        "admin" => is_active_staff,
         "owner" | "plant_owner" => owns_requested_plant,
         "supervisor" | "accountant" | "store_manager" | "fleet_manager" | "dispatcher"
         | "operator" | "quality_engineer" => is_active_staff,
@@ -56,7 +56,6 @@ async fn ensure_plant_access(
 ) -> Result<(), AppError> {
     let role = auth_user.role.as_str();
     let (owns_requested_plant, is_active_staff) = match role {
-        "admin" => (false, false),
         "owner" | "plant_owner" => (
             sqlx::query_scalar(
                 "SELECT EXISTS(SELECT 1 FROM rmc_plants WHERE id = $1 AND owner_id = $2 AND is_active = TRUE)",
@@ -659,6 +658,18 @@ pub async fn owner_leave_decision(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
 
+    let plant: Uuid =
+        sqlx::query_scalar("SELECT plant_id FROM workforce_leave_requests WHERE id=$1")
+            .bind(request_id)
+            .fetch_optional(&state.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Request not found".into()))?;
+    ensure_plant_access(&state, &auth_user, plant).await?;
+    if !["APPROVE", "REJECT"].contains(&payload.action.to_uppercase().as_str()) {
+        return Err(AppError::BadRequest(
+            "Decision must be APPROVE or REJECT".into(),
+        ));
+    }
     let status = if payload.action.to_uppercase() == "APPROVE" {
         "APPROVED"
     } else {
@@ -697,6 +708,18 @@ pub async fn owner_expense_decision(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
 
+    let plant: Uuid =
+        sqlx::query_scalar("SELECT plant_id FROM workforce_expense_claims WHERE id=$1")
+            .bind(claim_id)
+            .fetch_optional(&state.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Request not found".into()))?;
+    ensure_plant_access(&state, &auth_user, plant).await?;
+    if !["APPROVE", "REJECT"].contains(&payload.action.to_uppercase().as_str()) {
+        return Err(AppError::BadRequest(
+            "Decision must be APPROVE or REJECT".into(),
+        ));
+    }
     let status = if payload.action.to_uppercase() == "APPROVE" {
         "APPROVED"
     } else {
@@ -879,6 +902,23 @@ pub async fn owner_unified_decision(
     Json(payload): Json<OwnerUnifiedDecisionPayload>,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
+    let query = match kind.to_lowercase().as_str() {
+        "leave" | "leaves" => "SELECT plant_id FROM workforce_leave_requests WHERE id=$1",
+        "expense" | "expenses" => "SELECT plant_id FROM workforce_expense_claims WHERE id=$1",
+        "visit" | "visits" => "SELECT plant_id FROM workforce_client_visits WHERE id=$1",
+        _ => return Err(AppError::BadRequest("Unsupported decision kind".into())),
+    };
+    let plant: Uuid = sqlx::query_scalar(query)
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Request not found".into()))?;
+    ensure_plant_access(&state, &auth_user, plant).await?;
+    if !["APPROVE", "REJECT"].contains(&payload.action.to_uppercase().as_str()) {
+        return Err(AppError::BadRequest(
+            "Decision must be APPROVE or REJECT".into(),
+        ));
+    }
     let action = payload.action.to_uppercase();
     let status = if action == "APPROVE" {
         "APPROVED"
@@ -989,13 +1029,6 @@ pub async fn get_roster_overview(
     {
         sqlx::query("SELECT id, name FROM rmc_plants WHERE owner_id = $1 AND is_active = TRUE ORDER BY name")
             .bind(auth_user.user_id)
-            .fetch_all(&state.db)
-            .await?
-            .into_iter()
-            .map(|r| (r.get("id"), r.get("name")))
-            .collect()
-    } else if auth_user.role == "admin" {
-        sqlx::query("SELECT id, name FROM rmc_plants WHERE is_active = TRUE ORDER BY name")
             .fetch_all(&state.db)
             .await?
             .into_iter()
@@ -1209,7 +1242,8 @@ mod roster_access_tests {
 
     #[test]
     fn roster_access_requires_exact_ownership_or_active_membership() {
-        assert!(roster_access_allowed("admin", false, false));
+        assert!(!roster_access_allowed("admin", false, false));
+        assert!(roster_access_allowed("admin", false, true));
         assert!(roster_access_allowed("owner", true, false));
         assert!(roster_access_allowed("plant_owner", true, false));
         assert!(!roster_access_allowed("owner", false, true));

@@ -25,6 +25,16 @@ pub struct OtpVerificationRecord {
 
 pub struct OtpEngine;
 
+pub struct OtpSessionInput<'a> {
+    pub destination: &'a str,
+    pub channel: &'a str,
+    pub purpose: &'a str,
+    pub salt: &'a str,
+    pub hashed_otp: &'a str,
+    pub expiration_minutes: i64,
+    pub max_attempts: i32,
+}
+
 impl OtpEngine {
     pub fn generate_secure_otp(pepper: &str) -> (String, String, String) {
         let mut rng = rand::thread_rng();
@@ -84,14 +94,17 @@ impl OtpEngine {
 
     pub async fn create_session(
         pool: &PgPool,
-        destination: &str,
-        channel: &str,
-        purpose: &str,
-        salt: &str,
-        hashed_otp: &str,
-        expiration_minutes: i64,
-        max_attempts: i32,
+        input: OtpSessionInput<'_>,
     ) -> Result<Uuid, AppError> {
+        let OtpSessionInput {
+            destination,
+            channel,
+            purpose,
+            salt,
+            hashed_otp,
+            expiration_minutes,
+            max_attempts,
+        } = input;
         let expires_at = Utc::now() + Duration::minutes(expiration_minutes);
 
         sqlx::query(
@@ -109,14 +122,17 @@ impl OtpEngine {
 
     pub async fn create_pending_session(
         pool: &PgPool,
-        destination: &str,
-        channel: &str,
-        purpose: &str,
-        salt: &str,
-        hashed_otp: &str,
-        expiration_minutes: i64,
-        max_attempts: i32,
+        input: OtpSessionInput<'_>,
     ) -> Result<Uuid, AppError> {
+        let OtpSessionInput {
+            destination,
+            channel,
+            purpose,
+            salt,
+            hashed_otp,
+            expiration_minutes,
+            max_attempts,
+        } = input;
         let expires_at = Utc::now() + Duration::minutes(expiration_minutes);
         let rec: (Uuid,) = sqlx::query_as(
             "INSERT INTO otp_verifications

@@ -1,9 +1,6 @@
 use crate::{
     error::AppError,
-    models::{
-        challan::{Challan, ProofOfDelivery, SignChallanRequest, SubmitPodRequest},
-        order::OrderLoad,
-    },
+    models::challan::{ProofOfDelivery, SignChallanRequest, SubmitPodRequest},
     repositories::dispatch_repo,
     state::AppState,
 };
@@ -41,11 +38,8 @@ pub async fn complete_delivery_pod(
         || req
             .signature_url
             .as_deref()
-            .map_or(true, |s| s.trim().is_empty())
-        || req
-            .photo_url
-            .as_deref()
-            .map_or(true, |s| s.trim().is_empty())
+            .is_none_or(|s| s.trim().is_empty())
+        || req.photo_url.as_deref().is_none_or(|s| s.trim().is_empty())
     {
         return Err(AppError::BadRequest(
             "Receiver, positive delivered quantity, photo and signature are required".to_string(),
@@ -53,14 +47,16 @@ pub async fn complete_delivery_pod(
     }
     let pod = dispatch_repo::record_pod(
         &state.db,
-        load_id,
-        driver_id,
-        &req.receiver_name,
-        &req.receiver_phone,
-        req.signature_url.as_deref(),
-        req.photo_url.as_deref(),
-        req.notes.as_deref(),
-        req.delivered_quantity,
+        crate::repositories::dispatch_repo::PodEvidence {
+            load_id,
+            driver_id,
+            receiver_name: &req.receiver_name,
+            receiver_phone: &req.receiver_phone,
+            signature_url: req.signature_url.as_deref(),
+            photo_url: req.photo_url.as_deref(),
+            notes: req.notes.as_deref(),
+            delivered_quantity: req.delivered_quantity,
+        },
     )
     .await?;
     Ok(pod)

@@ -10,9 +10,26 @@ pub struct EmailService {
 }
 
 impl EmailService {
+    pub fn validate_config(&self) -> Result<(), AppError> {
+        if self
+            .api_key
+            .as_ref()
+            .is_some_and(|key| !key.trim().is_empty())
+            && !self.from_address.trim().is_empty()
+        {
+            Ok(())
+        } else {
+            Err(AppError::InternalError(
+                "Email OTP service is not configured".into(),
+            ))
+        }
+    }
     pub fn new(api_key: Option<String>, from_address: String) -> Self {
         Self {
-            client: Client::new(),
+            client: Client::builder()
+                .timeout(std::time::Duration::from_secs(15))
+                .build()
+                .expect("HTTP client"),
             api_key,
             from_address,
         }
@@ -25,24 +42,18 @@ impl EmailService {
         otp: &str,
         role_display: &str,
     ) -> Result<(), AppError> {
-        let api_key = match &self.api_key {
-            Some(key) if !key.is_empty() => key,
-            _ => {
-                info!(
-                    recipient = %recipient_email,
-                    role = %role_display,
-                    "Email API key not configured. Mocking Email OTP dispatch in development mode"
-                );
-                return Ok(());
-            }
-        };
+        self.validate_config()?;
+        let api_key = self
+            .api_key
+            .as_deref()
+            .expect("validated email configuration");
 
         // Standard transactional email dispatch endpoint
         let payload = json!({
-            "from": self.from_address,
-            "to": recipient_email,
-            "subject": format!("Your TrackMyRMC {} Verification Code", role_display),
-            "text": format!(
+            "From": self.from_address,
+            "To": recipient_email,
+            "Subject": format!("Your TrackMyRMC {} Verification Code", role_display),
+            "TextBody": format!(
                 "Hello,\n\nYour TrackMyRMC verification code is: {}\n\nThis code will expire in 5 minutes. Do not share this code with anyone.\n\nTrackMyRMC Security Team",
                 otp
             ),
@@ -52,11 +63,12 @@ impl EmailService {
             .client
             .post("https://api.postmarkapp.com/email")
             .header("X-Postmark-Server-Token", api_key)
+            .header("Accept", "application/json")
             .json(&payload)
             .send()
             .await
-            .map_err(|e| {
-                error!(error = ?e, "Failed to connect to email provider");
+            .map_err(|_| {
+                error!("Failed to connect to email provider");
                 AppError::InternalError(
                     "Email delivery service is temporarily unreachable".to_string(),
                 )
@@ -64,14 +76,25 @@ impl EmailService {
 
         if !response.status().is_success() {
             let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            error!(status = %status, response = %body, "Email provider rejected OTP message");
+            error!(status = %status, "Email provider rejected OTP message");
             return Err(AppError::InternalError(
                 "Failed to send email verification code. Please try again.".to_string(),
             ));
         }
 
-        info!(recipient = %recipient_email, "Email OTP successfully dispatched");
+        let receipt: serde_json::Value = response.json().await.map_err(|_| {
+            AppError::InternalError("Email provider returned an invalid delivery receipt".into())
+        })?;
+        if receipt["ErrorCode"].as_i64() != Some(0)
+            || receipt["MessageID"]
+                .as_str()
+                .is_none_or(|id| id.trim().is_empty())
+        {
+            return Err(AppError::InternalError(
+                "Email provider did not accept the verification code".into(),
+            ));
+        }
+        info!("Email OTP accepted by provider");
         Ok(())
     }
 }

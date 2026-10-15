@@ -206,17 +206,31 @@ pub async fn get_challan_by_load(
     Ok(challan)
 }
 
+pub struct PodEvidence<'a> {
+    pub load_id: Uuid,
+    pub driver_id: Uuid,
+    pub receiver_name: &'a str,
+    pub receiver_phone: &'a str,
+    pub signature_url: Option<&'a str>,
+    pub photo_url: Option<&'a str>,
+    pub notes: Option<&'a str>,
+    pub delivered_quantity: f64,
+}
+
 pub async fn record_pod(
     pool: &PgPool,
-    load_id: Uuid,
-    driver_id: Uuid,
-    receiver_name: &str,
-    receiver_phone: &str,
-    signature_url: Option<&str>,
-    photo_url: Option<&str>,
-    notes: Option<&str>,
-    delivered_quantity: f64,
+    input: PodEvidence<'_>,
 ) -> Result<ProofOfDelivery, AppError> {
+    let PodEvidence {
+        load_id,
+        driver_id,
+        receiver_name,
+        receiver_phone,
+        signature_url,
+        photo_url,
+        notes,
+        delivered_quantity,
+    } = input;
     let mut tx = pool.begin().await?;
     // Lock the parent before any sibling load to serialize quantity reconciliation.
     let order_id: Uuid =
@@ -305,16 +319,27 @@ pub async fn record_pod(
     .bind(status)
     .execute(&mut *tx)
     .await?;
-    // Match the reference 98% quantity tolerance; cancelled loads do not block completion.
-    sqlx::query(
-        "UPDATE orders o SET status = 'delivered', updated_at = NOW()
-         WHERE o.id = $1
-         AND NOT EXISTS(SELECT 1 FROM order_loads l WHERE l.order_id = o.id AND l.status NOT IN ('completed', 'cancelled'))
-         AND o.total_quantity_m3 > 0
-         AND (SELECT COALESCE(SUM(COALESCE(p.delivered_quantity, l.quantity_m3)), 0)
-              FROM proof_of_deliveries p JOIN order_loads l ON l.id = p.load_id
-              WHERE l.order_id = o.id AND l.status = 'completed') + 0.001 >= o.total_quantity_m3 * 0.98",
-    ).bind(order_id).execute(&mut *tx).await?;
+    sqlx::query("UPDATE transit_mixers m SET status='idle'
+        WHERE m.id=(SELECT mixer_id FROM order_loads WHERE id=$1)
+        AND NOT EXISTS(SELECT 1 FROM order_loads l WHERE l.mixer_id=m.id AND l.status IN ('ready_to_dispatch','dispatched','en_route','arrived','pouring'))")
+        .bind(load_id).execute(&mut *tx).await?;
+    // Reconcile, audit and notify within the same parent/load transaction.
+    let completed:Option<(Uuid,String)>=sqlx::query_as(
+        "UPDATE orders o SET status='delivered',updated_at=NOW()
+         WHERE o.id=$1 AND o.status IN ('dispatched','in_transit')
+         AND NOT EXISTS(SELECT 1 FROM order_loads l WHERE l.order_id=o.id AND l.status NOT IN ('completed','cancelled'))
+         AND o.total_quantity_m3>0
+         AND (SELECT COALESCE(SUM(COALESCE(p.delivered_quantity,l.quantity_m3)),0)
+              FROM proof_of_deliveries p JOIN order_loads l ON l.id=p.load_id
+              WHERE l.order_id=o.id AND l.status='completed')+0.001>=o.total_quantity_m3*0.98
+         RETURNING customer_id,order_number",
+    ).bind(order_id).fetch_optional(&mut *tx).await?;
+    if let Some((customer, number)) = completed {
+        sqlx::query("INSERT INTO notifications (user_id,title,body,notification_type,reference_id) VALUES ($1,$2,$3,'delivered',$4)")
+            .bind(customer).bind(format!("Order {number} delivered")).bind("All required loads have been received.").bind(order_id.to_string()).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO audit_logs (user_id,action,resource_type,resource_id,metadata) VALUES ($1,'order.delivered','order',$2,'{}')")
+            .bind(driver_id).bind(order_id.to_string()).execute(&mut *tx).await?;
+    }
     tx.commit().await?;
     Ok(pod)
 }

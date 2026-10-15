@@ -1,0 +1,48 @@
+{
+  "environment": "synthetic-tests-only",
+  "live_provider_delivery_allowed": false,
+  "persistent_privileged_accounts_allowed": false,
+  "users": [
+    {
+      "role": "plant_owner",
+      "alias": "owner",
+      "email": "staging-owner@example.invalid"
+    },
+    {
+      "role": "dispatcher",
+      "email": "staging-dispatcher@example.invalid"
+    },
+    {
+      "role": "operator",
+      "email": "staging-operator@example.invalid"
+    },
+    {
+      "role": "supervisor",
+      "email": "staging-supervisor@example.invalid"
+    },
+    {
+      "role": "accountant",
+      "email": "staging-accountant@example.invalid"
+    },
+    {
+      "role": "quality_engineer",
+      "email": "staging-quality@example.invalid"
+    },
+    {
+      "role": "fleet_manager",
+      "email": "staging-fleet@example.invalid"
+    },
+    {
+      "role": "store_manager",
+      "email": "staging-store@example.invalid"
+    },
+    {
+      "role": "customer",
+      "phone": "+12025550101"
+    },
+    {
+      "role": "driver",
+      "phone": "+12025550102"
+    }
+  ]
+}

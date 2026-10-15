@@ -38,21 +38,36 @@ pub async fn find_plant_by_id(pool: &PgPool, plant_id: Uuid) -> Result<Option<Rm
     Ok(plant)
 }
 
-pub async fn create_plant(
-    pool: &PgPool,
-    owner_id: Uuid,
-    name: &str,
-    code: &str,
-    lat: f64,
-    lng: f64,
-    address_line: &str,
-    city: &str,
-    state: &str,
-    pincode: &str,
-    contact_phone: &str,
-    contact_email: Option<&str>,
-    capacity: f64,
-) -> Result<RmcPlant, AppError> {
+pub struct NewPlant<'a> {
+    pub owner_id: Uuid,
+    pub name: &'a str,
+    pub code: &'a str,
+    pub lat: f64,
+    pub lng: f64,
+    pub address_line: &'a str,
+    pub city: &'a str,
+    pub state: &'a str,
+    pub pincode: &'a str,
+    pub contact_phone: &'a str,
+    pub contact_email: Option<&'a str>,
+    pub capacity: f64,
+}
+
+pub async fn create_plant(pool: &PgPool, input: NewPlant<'_>) -> Result<RmcPlant, AppError> {
+    let NewPlant {
+        owner_id,
+        name,
+        code,
+        lat,
+        lng,
+        address_line,
+        city,
+        state,
+        pincode,
+        contact_phone,
+        contact_email,
+        capacity,
+    } = input;
     let plant = sqlx::query_as::<_, RmcPlant>(
         r#"
         INSERT INTO rmc_plants (owner_id, name, code, latitude, longitude, address_line, city, state, pincode, contact_phone, contact_email, capacity_m3_per_hr)
@@ -85,7 +100,7 @@ pub async fn list_customer_sites(
 ) -> Result<Vec<CustomerSite>, AppError> {
     let sites = sqlx::query_as::<_, CustomerSite>(
         r#"
-        SELECT id, customer_id, name, address_line, city, state, pincode, latitude, longitude, contact_person, contact_phone, created_at
+        SELECT id, customer_id, name, address_line, city, state, pincode, latitude, longitude, contact_person, contact_phone, notes, is_default, created_at
         FROM customer_sites
         WHERE customer_id = $1
         ORDER BY created_at DESC

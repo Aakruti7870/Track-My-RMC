@@ -35,6 +35,31 @@ use axum::{
 
 pub fn build_app_router(state: AppState) -> Router {
     Router::new()
+        .route(
+            "/api/admin/auth/logout",
+            post(crate::auth::control_center::logout),
+        )
+        .route(
+            "/api/control-center/collections/:kind",
+            get(control_center_routes::collection),
+        )
+        .route(
+            "/api/admin/auth/method",
+            post(crate::auth::control_center::method),
+        )
+        .route(
+            "/api/admin/auth/verify-totp",
+            post(crate::auth::control_center::login),
+        )
+        .route("/api/admin/auth/me", get(crate::auth::control_center::me))
+        .route(
+            "/api/admin/auth/step-up",
+            post(control_center_routes::admin_step_up),
+        )
+        .route(
+            "/api/admin/auth/logout-all",
+            post(control_center_routes::admin_logout_all),
+        )
         // Health check (monitoring & probes)
         .route("/health", get(health::health_check))
         // Android Digital Asset Links and KYC return page
@@ -268,6 +293,10 @@ pub fn build_app_router(state: AppState) -> Router {
         )
         .route("/api/customer/grades", get(customer_routes::get_grades))
         .route(
+            "/api/customer/project-sites",
+            get(customer_routes::project_sites),
+        )
+        .route(
             "/api/customer/sites",
             get(customer_routes::list_sites).post(customer_routes::create_site),
         )
@@ -316,6 +345,10 @@ pub fn build_app_router(state: AppState) -> Router {
         .route(
             "/api/customer/quotations/:quotation_id/decide",
             post(finance_ops_routes::decide_customer_quotation),
+        )
+        .route(
+            "/api/ops/customer/quotations",
+            get(finance_ops_routes::list_customer_quotations),
         )
         .route(
             "/api/ops/customer/quotations/:quotation_id/decision",
@@ -579,6 +612,34 @@ pub fn build_app_router(state: AppState) -> Router {
             get(owner_routes::get_billing_overview),
         )
         .route("/api/owner/home", get(owner_routes::get_owner_home))
+        .route(
+            "/api/owner/orders/:order_id/production",
+            get(staff_routes::get_production_status),
+        )
+        .route(
+            "/api/owner/orders/:order_id/production/start",
+            post(staff_routes::start_production),
+        )
+        .route(
+            "/api/owner/orders/:order_id/production/batch",
+            post(staff_routes::record_batch),
+        )
+        .route(
+            "/api/owner/orders/:order_id/production/complete",
+            post(staff_routes::complete_production),
+        )
+        .route(
+            "/api/owner/orders/:order_id/invoice",
+            post(owner_routes::create_order_invoice),
+        )
+        .route(
+            "/api/staff/orders/:order_id/invoice",
+            post(owner_routes::create_order_invoice),
+        )
+        .route(
+            "/api/owner/orders/:order_id",
+            get(customer_routes::get_order_details),
+        )
         .route("/api/owner/orders", get(owner_routes::list_owner_orders))
         .route(
             "/api/owner/orders/:order_id/approve",
@@ -663,6 +724,10 @@ pub fn build_app_router(state: AppState) -> Router {
         .route("/api/maps/route", get(maps_routes::calculate_route))
         // --- Conversational Assistant & Support Cases ---
         .route(
+            "/api/assistant/orders/prepare",
+            post(assistant_routes::prepare_order_intent),
+        )
+        .route(
             "/api/assistant/orders/intent",
             post(assistant_routes::prepare_order_intent),
         )
@@ -699,8 +764,12 @@ pub fn build_app_router(state: AppState) -> Router {
             get(assistant_routes::list_staff_support_cases),
         )
         .route(
+            "/api/assistant/support/staff/cases/:case_id",
+            get(assistant_routes::get_staff_support_case),
+        )
+        .route(
             "/api/assistant/support/staff/cases/:case_id/replies",
-            post(assistant_routes::add_case_reply),
+            post(assistant_routes::add_staff_case_reply),
         )
         .route(
             "/api/assistant/support/staff/cases/:case_id/status",

@@ -56,7 +56,7 @@ export default function NewOrder() {
   const [submitting, setSubmitting] = useState<null | "order" | "draft">(null);
   const [error, setError] = useState<string | null>(null);
   const assistantMode = params.assistant === "1";
-  const assistantIdempotencyKey = useRef(`assistant-order-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const orderRequest = useRef<{ signature: string; key: string } | null>(null);
   const [prepared, setPrepared] = useState<{ intent_token: string; summary: Record<string, unknown> } | null>(null);
 
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -95,7 +95,7 @@ export default function NewOrder() {
   const plants = plantsData?.plants || [];
   const selectedPlant = plants.find((p) => p.id === plantId) || null;
   const grades = selectedPlant?.grades || [];
-  const kycOk = user?.kyc_status === "VERIFIED";
+  const kycOk = user?.kyc_status?.toUpperCase() === "VERIFIED";
 
   const submit = async (draft: boolean) => {
     setError(null);
@@ -126,14 +126,18 @@ export default function NewOrder() {
         contact_mobile: mobile.trim() || null,
         notes: notes.trim() || null,
         save_draft: draft,
-        idempotency_key: assistantMode && !draft ? assistantIdempotencyKey.current : undefined,
       };
+      const signature = JSON.stringify(order);
+      if (orderRequest.current?.signature !== signature) {
+        orderRequest.current = { signature, key: `customer-order-${Date.now()}-${Math.random().toString(36).slice(2)}` };
+      }
+      const request = { ...order, idempotency_key: orderRequest.current!.key };
       if (assistantMode && !draft) {
-        const intent = await apiPost<{ intent_token: string; summary: Record<string, unknown> }>("/assistant/orders/prepare", token!, { order });
+        const intent = await apiPost<{ intent_token: string; summary: Record<string, unknown> }>("/assistant/orders/prepare", token!, { order: request });
         setPrepared(intent);
         return;
       }
-      const res: any = await apiPost("/customer/orders", token!, order);
+      const res: any = await apiPost("/customer/orders", token!, request);
       toast(draft ? "Draft saved" : "Order placed!", "success");
       router.replace(`/order/${res.id}` as any);
     } catch (e: any) {

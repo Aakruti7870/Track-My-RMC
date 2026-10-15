@@ -41,28 +41,7 @@ pub async fn get_plan_context(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
 
-    // Fetch plants owned by or accessible to this user
-    let plant_rows = if auth_user.role == "admin" {
-        sqlx::query(
-            "SELECT id, name, address, city, taluka, district, state FROM rmc_plants WHERE is_active = TRUE ORDER BY name ASC",
-        )
-        .fetch_all(&state.db)
-        .await?
-    } else {
-        sqlx::query(
-            r#"
-            SELECT p.id, p.name, p.address, p.city, p.taluka, p.district, p.state
-            FROM rmc_plants p
-            WHERE (p.owner_id = $1 OR p.id IN (SELECT plant_id FROM plant_staff WHERE user_id = $1 AND is_active = TRUE))
-              AND p.is_active = TRUE
-            ORDER BY p.name ASC
-            "#,
-        )
-        .bind(auth_user.user_id)
-        .fetch_all(&state.db)
-        .await?
-    };
-
+    let plant_rows=sqlx::query("SELECT p.id,p.name,p.address_line AS address,p.city,NULL::text AS taluka,p.district,p.state FROM rmc_plants p WHERE p.is_active=TRUE AND ((p.owner_id=$1 AND $2 IN ('owner','plant_owner')) OR EXISTS(SELECT 1 FROM plant_staff ps WHERE ps.plant_id=p.id AND ps.user_id=$1 AND ps.is_active=TRUE)) ORDER BY p.name").bind(auth_user.user_id).bind(&auth_user.role).fetch_all(&state.db).await?;
     let mut plants_json = Vec::new();
     for p in plant_rows {
         let pid: Uuid = p.get("id");
@@ -233,107 +212,14 @@ pub async fn activate_plan(
     State(state): State<AppState>,
     auth_user: AuthUser,
     Json(payload): Json<ActivatePlanPayload>,
-) -> Result<impl IntoResponse, AppError> {
+) -> Result<Json<serde_json::Value>, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
-
-    let plant_id = match payload.plant_id {
+    let plant = match payload.plant_id {
         Some(id) => id,
         None => get_user_plant_id(&state, &auth_user).await?,
     };
-
-    let product = payload
-        .product
-        .unwrap_or_else(|| "PREMIUM".to_string())
-        .to_uppercase();
-    let (payable, plan_code, duration_days) = if product == "PROMOTION" {
-        let days = payload.duration_days.unwrap_or(30);
-        let p = match days {
-            7 => 499.0,
-            15 => 899.0,
-            90 => 3999.0,
-            _ => 1499.0,
-        };
-        (p, format!("PROMOTION_{}D", days), days)
-    } else {
-        let plan = payload
-            .premium_plan
-            .unwrap_or_else(|| "GROWTH".to_string())
-            .to_uppercase();
-        let p = match plan.as_str() {
-            "ENTERPRISE" => 9999.0,
-            "STARTER" => 1999.0,
-            _ => 4999.0,
-        };
-        (p, plan, 30)
-    };
-
-    let plan_id: Uuid = match sqlx::query_scalar::<_, Uuid>(
-        "SELECT id FROM plant_subscription_plans WHERE plan_code = $1",
-    )
-    .bind(&plan_code)
-    .fetch_optional(&state.db)
-    .await?
-    {
-        Some(id) => id,
-        None => {
-            sqlx::query_scalar::<_, Uuid>(
-                r#"
-                INSERT INTO plant_subscription_plans (plan_code, name, monthly_price)
-                VALUES ($1, $2, $3::numeric)
-                RETURNING id
-                "#,
-            )
-            .bind(&plan_code)
-            .bind(format!("Plan {}", plan_code))
-            .bind(payable)
-            .fetch_one(&state.db)
-            .await?
-        }
-    };
-
-    let end_time = chrono::Utc::now() + chrono::Duration::days(duration_days as i64);
-    let order_number = format!("SUB-ORD-{:06}", rand::random::<u32>() % 1_000_000);
-
-    let mut tx = state.db.begin().await?;
-
-    let sub_id: Uuid = sqlx::query_scalar(
-        r#"
-        INSERT INTO plant_plan_subscriptions (plant_id, plan_id, status, current_period_start, current_period_end)
-        VALUES ($1, $2, 'ACTIVE', NOW(), $3)
-        RETURNING id
-        "#,
-    )
-    .bind(plant_id)
-    .bind(plan_id)
-    .bind(end_time)
-    .fetch_one(&mut *tx)
-    .await?;
-
-    let payment_id: Uuid = sqlx::query_scalar(
-        r#"
-        INSERT INTO plant_plan_payments (plant_id, order_number, amount, payment_status, paid_at)
-        VALUES ($1, $2, $3::numeric, 'PAID', NOW())
-        RETURNING id
-        "#,
-    )
-    .bind(plant_id)
-    .bind(&order_number)
-    .bind(payable)
-    .fetch_one(&mut *tx)
-    .await?;
-
-    tx.commit().await?;
-
-    Ok(Json(json!({
-        "status": "PAID",
-        "order_number": order_number,
-        "payable": payable,
-        "subscription_id": sub_id,
-        "payment_id": payment_id,
-        "product": product,
-        "plan": plan_code,
-        "message": "Plan activated successfully"
-    })))
+    super::business_routes::ensure_plant_staff_or_owner(&state, &auth_user, plant).await?;
+    Err(AppError::Conflict("Verified payment-provider checkout is not configured; no payment or subscription was activated".into()))
 }
 
 #[derive(Debug, Deserialize)]
@@ -353,6 +239,7 @@ pub async fn list_payment_history(
         None => get_user_plant_id(&state, &auth_user).await?,
     };
 
+    super::business_routes::ensure_plant_staff_or_owner(&state, &auth_user, target_plant).await?;
     let rows = sqlx::query(
         r#"
         SELECT id, order_number, amount, gateway_order_id, payment_status, paid_at, created_at
@@ -392,17 +279,19 @@ pub async fn list_payment_history(
 
 pub async fn get_payment_order_status(
     State(state): State<AppState>,
-    _auth_user: AuthUser,
+    auth_user: AuthUser,
     Path(order_number): Path<String>,
 ) -> Result<impl IntoResponse, AppError> {
     let pay = sqlx::query(
-        "SELECT id, order_number, amount, payment_status, paid_at FROM plant_plan_payments WHERE order_number = $1",
+        "SELECT id, plant_id, order_number, amount, payment_status, paid_at FROM plant_plan_payments WHERE order_number = $1",
     )
     .bind(&order_number)
     .fetch_optional(&state.db)
     .await?
     .ok_or_else(|| AppError::NotFound("Payment order not found".to_string()))?;
 
+    super::business_routes::ensure_plant_staff_or_owner(&state, &auth_user, pay.get("plant_id"))
+        .await?;
     let id: Uuid = pay.get("id");
     let ord_num: String = pay.get("order_number");
     let amount: bigdecimal::BigDecimal = pay.get("amount");
@@ -411,8 +300,8 @@ pub async fn get_payment_order_status(
     Ok(Json(json!({
         "order_number": ord_num,
         "status": payment_status,
-        "product": "PREMIUM",
-        "plan": "GROWTH",
+        "product": null,
+        "plan": null,
         "payable": amount,
         "activation_id": id
     })))

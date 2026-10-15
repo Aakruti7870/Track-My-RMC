@@ -1,0 +1,381 @@
+{
+  "retrieved": "2026-10-15",
+  "region": "ap-south-1",
+  "products": {
+    "ec2_compute": [
+      {
+        "sku": "QYQXSB5RHTECU8TP",
+        "attributes": {
+          "enhancedNetworkingSupported": "No",
+          "intelTurboAvailable": "Yes",
+          "memory": "2 GiB",
+          "dedicatedEbsThroughput": "Up to 2085 Mbps",
+          "vcpu": "2",
+          "classicnetworkingsupport": "false",
+          "capacitystatus": "Used",
+          "locationType": "AWS Region",
+          "storage": "EBS only",
+          "instanceFamily": "General purpose",
+          "operatingSystem": "Linux",
+          "intelAvx2Available": "Yes",
+          "instanceFamilyCategory": "General Purpose",
+          "regionCode": "ap-south-1",
+          "physicalProcessor": "Intel Skylake E5 2686 v5",
+          "clockSpeed": "3.1 GHz",
+          "ecu": "NA",
+          "networkPerformance": "Up to 5 Gigabit",
+          "servicename": "Amazon Elastic Compute Cloud",
+          "gpuMemory": "NA",
+          "dedicatedEbsThroughputDescription": "174 Mbps",
+          "vpcnetworkingsupport": "true",
+          "instanceType": "t3.small",
+          "tenancy": "Shared",
+          "usagetype": "APS3-BoxUsage:t3.small",
+          "normalizationSizeFactor": "1",
+          "intelAvxAvailable": "Yes",
+          "processorFeatures": "AVX; AVX2; Intel AVX; Intel AVX2; Intel AVX512; Intel Turbo",
+          "servicecode": "AmazonEC2",
+          "licenseModel": "No License required",
+          "currentGeneration": "Yes",
+          "preInstalledSw": "NA",
+          "location": "Asia Pacific (Mumbai)",
+          "processorArchitecture": "64-bit",
+          "marketoption": "OnDemand",
+          "operation": "RunInstances",
+          "availabilityzone": "NA"
+        },
+        "ondemand": [
+          {
+            "effectiveDate": "2026-10-01T00:00:00Z",
+            "dimensions": [
+              {
+                "unit": "Hrs",
+                "description": "$0.0224 per On Demand Linux t3.small Instance Hour",
+                "beginRange": "0",
+                "endRange": "Inf",
+                "pricePerUnit": {
+                  "USD": "0.0224000000"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "rds_compute": [
+      {
+        "sku": "GUT9JVEQBEMZ2FC7",
+        "attributes": {
+          "engineCode": "14",
+          "instanceTypeFamily": "T4G",
+          "memory": "1 GiB",
+          "vcpu": "2",
+          "instanceType": "db.t4g.micro",
+          "unbundledLicensing": "FALSE",
+          "usagetype": "APS3-InstanceUsage:db.t4g.micro",
+          "locationType": "AWS Region",
+          "storage": "EBS Only",
+          "normalizationSizeFactor": "0.5",
+          "instanceFamily": "General purpose",
+          "databaseEngine": "PostgreSQL",
+          "regionCode": "ap-south-1",
+          "servicecode": "AmazonRDS",
+          "physicalProcessor": "AWS Graviton2",
+          "licenseModel": "No license required",
+          "currentGeneration": "Yes",
+          "networkPerformance": "Up to 5 Gigabit",
+          "deploymentOption": "Single-AZ",
+          "location": "Asia Pacific (Mumbai)",
+          "servicename": "Amazon Relational Database Service",
+          "processorArchitecture": "64-bit",
+          "operation": "CreateDBInstance:0014"
+        },
+        "ondemand": [
+          {
+            "effectiveDate": "2026-10-01T00:00:00Z",
+            "dimensions": [
+              {
+                "unit": "Hrs",
+                "description": "$ 0.021 per RDS db.t4g.micro Single-AZ instance hour (or partial hour) running PostgreSQL",
+                "beginRange": "0",
+                "endRange": "Inf",
+                "pricePerUnit": {
+                  "USD": "0.0210000000"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "ebs_gp3": [
+      {
+        "sku": "D7RMW443YWTMZ4V5",
+        "attributes": {
+          "maxThroughputvolume": "2000 MiB/s",
+          "volumeType": "General Purpose",
+          "maxIopsvolume": "80000",
+          "usagetype": "APS3-EBS:VolumeUsage.gp3",
+          "locationType": "AWS Region",
+          "maxVolumeSize": "64 TiB",
+          "storageMedia": "SSD-backed",
+          "regionCode": "ap-south-1",
+          "servicecode": "AmazonEC2",
+          "volumeApiName": "gp3",
+          "location": "Asia Pacific (Mumbai)",
+          "servicename": "Amazon Elastic Compute Cloud",
+          "operation": ""
+        },
+        "ondemand": [
+          {
+            "effectiveDate": "2026-10-01T00:00:00Z",
+            "dimensions": [
+              {
+                "unit": "GB-Mo",
+                "description": "$0.0912 per GB-month of General Purpose (gp3) provisioned storage - Asia Pacific (Mumbai)",
+                "beginRange": "0",
+                "endRange": "Inf",
+                "pricePerUnit": {
+                  "USD": "0.0912000000"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "rds_storage": [
+      {
+        "sku": "7Z4F2SQPHDHNHDBP",
+        "attributes": {
+          "volumeType": "General Purpose-GP3",
+          "engineCode": "14",
+          "usagetype": "APS3-RDS:GP3-Storage",
+          "locationType": "AWS Region",
+          "maxVolumeSize": "16 TB",
+          "databaseEngine": "PostgreSQL",
+          "storageMedia": "SSD",
+          "regionCode": "ap-south-1",
+          "servicecode": "AmazonRDS",
+          "deploymentOption": "Single-AZ",
+          "location": "Asia Pacific (Mumbai)",
+          "servicename": "Amazon Relational Database Service",
+          "operation": "CreateDBInstance:0014",
+          "minVolumeSize": "5 GB"
+        },
+        "ondemand": [
+          {
+            "effectiveDate": "2026-10-01T00:00:00Z",
+            "dimensions": [
+              {
+                "unit": "GB-Mo",
+                "description": "$0.131 per GB-month of provisioned GP3 storage running PostgreSQL",
+                "beginRange": "0",
+                "endRange": "Inf",
+                "pricePerUnit": {
+                  "USD": "0.1310000000"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "secrets": [
+      {
+        "sku": "AET58EC77HZBS8AB",
+        "attributes": {
+          "regionCode": "ap-south-1",
+          "servicecode": "AWSSecretsManager",
+          "usagetype": "APS3-AWSSecretsManager-Secrets",
+          "locationType": "AWS Region",
+          "location": "Asia Pacific (Mumbai)",
+          "servicename": "AWS Secrets Manager",
+          "operation": "",
+          "group": "AWSSecretsManager-Secret"
+        },
+        "ondemand": [
+          {
+            "effectiveDate": "2025-07-01T00:00:00Z",
+            "dimensions": [
+              {
+                "unit": "Secrets",
+                "description": "$0.40 per Secret",
+                "beginRange": "0",
+                "endRange": "Inf",
+                "pricePerUnit": {
+                  "USD": "0.4000000000"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "sku": "MU5JA4VMFRFD3S2W",
+        "attributes": {
+          "regionCode": "ap-south-1",
+          "servicecode": "AWSSecretsManager",
+          "usagetype": "APS3-AWSSecretsManagerAPIRequest",
+          "locationType": "AWS Region",
+          "location": "Asia Pacific (Mumbai)",
+          "servicename": "AWS Secrets Manager",
+          "operation": "",
+          "group": "AWSSecretsManager-APIRequest"
+        },
+        "ondemand": [
+          {
+            "effectiveDate": "2025-07-01T00:00:00Z",
+            "dimensions": [
+              {
+                "unit": "API Requests",
+                "description": "$0.05 per 10000 API Requests",
+                "beginRange": "0",
+                "endRange": "Inf",
+                "pricePerUnit": {
+                  "USD": "0.0000050000"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "s3": [
+      {
+        "sku": "USGUTP2JY23N9GH2",
+        "attributes": {
+          "volumeType": "Standard",
+          "storageClass": "General Purpose",
+          "regionCode": "ap-south-1",
+          "servicecode": "AmazonS3",
+          "durability": "99.999999999%",
+          "usagetype": "APS3-TimedStorage-ByteHrs",
+          "locationType": "AWS Region",
+          "location": "Asia Pacific (Mumbai)",
+          "servicename": "Amazon Simple Storage Service",
+          "availability": "99.99%",
+          "operation": ""
+        },
+        "ondemand": [
+          {
+            "effectiveDate": "2026-10-01T00:00:00Z",
+            "dimensions": [
+              {
+                "unit": "GB-Mo",
+                "description": "$0.024 per GB - next 450 TB / month of storage used",
+                "beginRange": "51200",
+                "endRange": "512000",
+                "pricePerUnit": {
+                  "USD": "0.0240000000"
+                }
+              },
+              {
+                "unit": "GB-Mo",
+                "description": "$0.023 per GB - storage used / month over 500 TB",
+                "beginRange": "512000",
+                "endRange": "Inf",
+                "pricePerUnit": {
+                  "USD": "0.0230000000"
+                }
+              },
+              {
+                "unit": "GB-Mo",
+                "description": "$0.025 per GB - first 50 TB / month of storage used",
+                "beginRange": "0",
+                "endRange": "51200",
+                "pricePerUnit": {
+                  "USD": "0.0250000000"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "ipv4": []
+  },
+  "ipv4": [
+    {
+      "sku": "AVY8BN54EJG5Y7K8",
+      "attributes": {
+        "regionCode": "ap-south-1",
+        "servicecode": "AmazonVPC",
+        "groupDescription": "Hourly charge for IPv4 address in a contiguous block of IPv4 address",
+        "usagetype": "APS3-PublicIPv4:ContiguousBlock",
+        "locationType": "AWS Region",
+        "location": "Asia Pacific (Mumbai)",
+        "servicename": "Amazon Virtual Private Cloud",
+        "operation": "ProvisionIpamPoolCidr",
+        "group": "VPCIPv4ContiguousBlocks"
+      },
+      "rates": [
+        {
+          "unit": "Hrs",
+          "endRange": "Inf",
+          "description": "$0.008 per hour per IPv4 address in contiguous IPv4 block",
+          "appliesTo": [],
+          "rateCode": "AVY8BN54EJG5Y7K8.JRTCKXETXF.6YS6EN2CT7",
+          "beginRange": "0",
+          "pricePerUnit": {
+            "USD": "0.0080000000"
+          }
+        }
+      ]
+    },
+    {
+      "sku": "CSRJTKHMAVNJSJAK",
+      "attributes": {
+        "regionCode": "ap-south-1",
+        "servicecode": "AmazonVPC",
+        "groupDescription": "Hourly charge for Idle Public IPv4 Addresses",
+        "usagetype": "APS3-PublicIPv4:IdleAddress",
+        "locationType": "AWS Region",
+        "location": "Asia Pacific (Mumbai)",
+        "servicename": "Amazon Virtual Private Cloud",
+        "operation": "",
+        "group": "VPCPublicIPv4Address"
+      },
+      "rates": [
+        {
+          "unit": "Hrs",
+          "endRange": "Inf",
+          "description": "$0.005 per Idle public IPv4 address per hour",
+          "appliesTo": [],
+          "rateCode": "CSRJTKHMAVNJSJAK.JRTCKXETXF.6YS6EN2CT7",
+          "beginRange": "0",
+          "pricePerUnit": {
+            "USD": "0.0050000000"
+          }
+        }
+      ]
+    },
+    {
+      "sku": "H6SHSM3KDNNZRM9E",
+      "attributes": {
+        "regionCode": "ap-south-1",
+        "servicecode": "AmazonVPC",
+        "groupDescription": "Hourly charge for In-use Public IPv4 Addresses",
+        "usagetype": "APS3-PublicIPv4:InUseAddress",
+        "locationType": "AWS Region",
+        "location": "Asia Pacific (Mumbai)",
+        "servicename": "Amazon Virtual Private Cloud",
+        "operation": "",
+        "group": "VPCPublicIPv4Address"
+      },
+      "rates": [
+        {
+          "unit": "Hrs",
+          "endRange": "Inf",
+          "description": "$0.005 per In-use public IPv4 address per hour",
+          "appliesTo": [],
+          "rateCode": "H6SHSM3KDNNZRM9E.JRTCKXETXF.6YS6EN2CT7",
+          "beginRange": "0",
+          "pricePerUnit": {
+            "USD": "0.0050000000"
+          }
+        }
+      ]
+    }
+  ]
+}

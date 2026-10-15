@@ -2,7 +2,7 @@ use crate::{
     auth::{middleware::check_role, AuthUser},
     error::AppError,
     models::{order::CreateOrderRequest, plant::CreateSiteRequest},
-    repositories::{order_repo, plant_repo},
+    repositories::plant_repo,
     services::order_service,
     state::AppState,
 };
@@ -20,7 +20,8 @@ use uuid::Uuid;
 pub async fn list_plants(
     State(state): State<AppState>,
     auth_user: AuthUser,
-) -> Result<impl IntoResponse, AppError> {
+) -> Result<Json<serde_json::Value>, AppError> {
+    check_role(&auth_user, &["customer"])?;
     let review_customer: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM play_review_fixtures WHERE user_id = $1 AND role = 'customer' AND enabled = TRUE)",
     )
@@ -30,7 +31,6 @@ pub async fn list_plants(
     let review_plant_ids: Vec<Uuid> = sqlx::query_scalar(
         "SELECT plant_id FROM play_review_fixtures WHERE role = 'customer' AND enabled = TRUE AND plant_id IS NOT NULL",
     )
-    .bind(auth_user.user_id)
     .fetch_all(&state.db)
     .await?;
     let mut plants = plant_repo::list_plants(&state.db).await?;
@@ -42,7 +42,27 @@ pub async fn list_plants(
             !is_review_plant
         }
     });
-    Ok(Json(json!({ "success": true, "plants": plants })))
+    let mut result = Vec::new();
+    for plant in plants {
+        let grades:Vec<String>=sqlx::query_scalar("SELECT DISTINCT grade FROM plant_rate_cards WHERE plant_id=$1 AND active AND effective_from<=CURRENT_DATE AND (effective_to IS NULL OR effective_to>=CURRENT_DATE) ORDER BY grade")
+            .bind(plant.id).fetch_all(&state.db).await?;
+        let verified:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM plant_listing_requests WHERE plant_id=$1 AND status='APPROVED')").bind(plant.id).fetch_one(&state.db).await?;
+        let mut value = serde_json::to_value(&plant)
+            .map_err(|_| AppError::InternalError("Plant serialization failed".into()))?;
+        value["grades"] = json!(grades);
+        value["verified"] = json!(verified);
+        value["order_enabled"] = json!(plant.is_active && verified);
+        value["status"] = json!(if plant.is_active {
+            "active"
+        } else {
+            "inactive"
+        });
+        value["address"] = json!(plant.address_line);
+        value["lat"] = json!(plant.latitude);
+        value["lng"] = json!(plant.longitude);
+        result.push(value);
+    }
+    Ok(Json(json!({ "success": true, "plants": result })))
 }
 
 #[derive(Debug, Deserialize)]
@@ -179,8 +199,93 @@ pub async fn list_sites(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
+    check_role(&auth_user, &["customer"])?;
     let sites = plant_repo::list_customer_sites(&state.db, auth_user.user_id).await?;
-    Ok(Json(json!({ "success": true, "sites": sites })))
+    let rows = sites
+        .into_iter()
+        .map(|site| {
+            let mut value = json!(site);
+            value["address"] = value["address_line"].clone();
+            value["lat"] = value["latitude"].clone();
+            value["lng"] = value["longitude"].clone();
+            value["contact_mobile"] = value["contact_phone"].clone();
+            value
+        })
+        .collect::<Vec<_>>();
+    Ok(Json(json!({"success":true,"sites":rows})))
+}
+
+/// One statement gives a consistent persisted summary without joining child
+/// collections together (which would multiply quantities and counts).
+pub async fn project_sites(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+) -> Result<impl IntoResponse, AppError> {
+    check_role(&auth_user, &["customer"])?;
+    let sites: Vec<serde_json::Value> = sqlx::query_scalar(
+        r#"
+        WITH own_sites AS (
+            SELECT s.*, lower(regexp_replace(trim(s.name || ' ' || s.address_line), '\s+', ' ', 'g')) AS site_key,
+                count(*) OVER (PARTITION BY lower(regexp_replace(trim(s.name || ' ' || s.address_line), '\s+', ' ', 'g'))) AS key_count
+            FROM customer_sites s WHERE s.customer_id=$1
+        )
+        SELECT jsonb_build_object(
+            'id',s.id,'name',s.name,'address',s.address_line,'lat',s.latitude,'lng',s.longitude,
+            'contact_person',s.contact_person,'contact_mobile',s.contact_phone,'is_default',s.is_default,
+            'orders_count',o.total,'active_orders',o.active,'delivered_orders',o.delivered,
+            'ordered_m3',o.quantity,'delivered_m3',p.quantity,'delivery_quantity_source','RECORDED_POD',
+            'pour_plans',(SELECT count(*) FROM customer_pour_plans pp WHERE pp.customer_id=$1 AND pp.site_id=s.id),
+            'receiving_records',(SELECT count(*) FROM customer_receiving_records rr WHERE rr.customer_id=$1 AND rr.site_id=s.id),
+            'pending_cube_tests',c.pending,'overdue_cube_tests',c.overdue,
+            'quotation_requests',(SELECT count(*) FROM customer_quotation_requests r WHERE r.customer_id=$1 AND r.site_id=s.id),
+            'official_quotations',q.total,'open_quotations',q.open,
+            'upcoming_delivery',(SELECT jsonb_build_object('order_id',n.id,'order_number',n.order_number,
+                'delivery_date',n.delivery_date,'delivery_time',n.delivery_time_slot,'grade',n.concrete_grade,
+                'quantity',n.total_quantity_m3::double precision,'status',upper(n.status))
+                FROM orders n WHERE n.customer_id=$1 AND n.site_id=s.id
+                AND lower(n.status) NOT IN ('draft','delivered','rejected','cancelled')
+                ORDER BY n.delivery_date,n.delivery_time_slot,n.created_at,n.id LIMIT 1),
+            'latest_order',(SELECT jsonb_build_object('id',n.id,'order_number',n.order_number,'status',upper(n.status))
+                FROM orders n WHERE n.customer_id=$1 AND n.site_id=s.id ORDER BY n.created_at DESC,n.id DESC LIMIT 1)
+        )
+        FROM own_sites s
+        CROSS JOIN LATERAL (
+            SELECT count(*) total,
+                count(*) FILTER (WHERE lower(status) NOT IN ('draft','delivered','rejected','cancelled')) active,
+                count(*) FILTER (WHERE lower(status)='delivered') delivered,
+                coalesce(sum(total_quantity_m3),0)::double precision quantity
+            FROM orders WHERE customer_id=$1 AND site_id=s.id
+        ) o
+        CROSS JOIN LATERAL (
+            SELECT coalesce(sum(d.delivered_quantity),0)::double precision quantity
+            FROM orders n JOIN order_loads l ON l.order_id=n.id JOIN proof_of_deliveries d ON d.load_id=l.id
+            WHERE n.customer_id=$1 AND n.site_id=s.id
+        ) p
+        CROSS JOIN LATERAL (
+            SELECT count(*) pending, count(*) FILTER (WHERE r.sample_cast_date + a.days < $2::date) overdue
+            FROM customer_receiving_records r CROSS JOIN LATERAL unnest(r.cube_sample_ids) sample(id)
+            CROSS JOIN (VALUES(7),(28)) a(days)
+            WHERE r.customer_id=$1 AND r.site_id=s.id AND r.sample_cast_date IS NOT NULL
+            AND NOT EXISTS(SELECT 1 FROM cube_test_results t WHERE t.record_id=r.id
+                AND lower(t.sample_id)=lower(sample.id) AND t.age_days=a.days)
+        ) c
+        CROSS JOIN LATERAL (
+            SELECT count(*) total, count(*) FILTER (WHERE upper(q.status) IN ('SENT','OPEN','ACCEPTED') AND q.valid_until >= $2::date) open
+            FROM plant_quotations q LEFT JOIN customer_quotation_requests r ON r.id=q.request_id AND r.customer_id=$1
+            WHERE q.customer_id=$1 AND (
+                r.site_id=s.id OR (r.site_id IS NULL AND EXISTS(SELECT 1 FROM orders n WHERE n.quotation_id=q.id AND n.customer_id=$1 AND n.site_id=s.id))
+                OR (r.site_id IS NULL AND NOT EXISTS(SELECT 1 FROM orders n WHERE n.quotation_id=q.id AND n.customer_id=$1)
+                    AND s.key_count=1 AND lower(regexp_replace(trim(q.site_name || ' ' || q.site_address), '\s+', ' ', 'g'))=s.site_key)
+            )
+        ) q
+        ORDER BY s.is_default DESC,s.created_at DESC,s.id LIMIT 500
+        "#,
+    )
+    .bind(auth_user.user_id)
+    .bind(chrono::Utc::now().date_naive())
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(json!({"sites":sites,"count":sites.len()})))
 }
 
 pub async fn create_site(
@@ -188,27 +293,56 @@ pub async fn create_site(
     auth_user: AuthUser,
     Json(req): Json<CreateSiteRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    let site = sqlx::query_as::<_, crate::models::plant::CustomerSite>(
-        r#"
-        INSERT INTO customer_sites (customer_id, name, address_line, city, state, pincode, latitude, longitude, contact_person, contact_phone)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        RETURNING id, customer_id, name, address_line, city, state, pincode, latitude, longitude, contact_person, contact_phone, created_at
-        "#,
-    )
-    .bind(auth_user.user_id)
-    .bind(&req.name)
-    .bind(&req.address_line)
-    .bind(&req.city)
-    .bind(&req.state)
-    .bind(&req.pincode)
-    .bind(req.latitude)
-    .bind(req.longitude)
-    .bind(&req.contact_person)
-    .bind(&req.contact_phone)
-    .fetch_one(&state.db)
-    .await?;
-
-    Ok(Json(json!({ "success": true, "site": site })))
+    check_role(&auth_user, &["customer"])?;
+    if req.name.trim().is_empty()
+        || req.name.len() > 180
+        || !(5..=1000).contains(&req.address_line.trim().len())
+        || req.city.len() > 100
+        || req.state.len() > 100
+        || req.pincode.len() > 20
+        || req.contact_person.as_ref().is_some_and(|s| s.len() > 160)
+        || req.contact_phone.as_ref().is_some_and(|s| s.len() > 20)
+        || req.notes.as_ref().is_some_and(|s| s.len() > 2000)
+    {
+        return Err(AppError::BadRequest(
+            "Invalid site details or field length".into(),
+        ));
+    }
+    if req.latitude.is_some() != req.longitude.is_some()
+        || req
+            .latitude
+            .is_some_and(|v| !v.is_finite() || !(-90.0..=90.0).contains(&v))
+        || req
+            .longitude
+            .is_some_and(|v| !v.is_finite() || !(-180.0..=180.0).contains(&v))
+    {
+        return Err(AppError::BadRequest(
+            "Provide both valid coordinates or neither".into(),
+        ));
+    }
+    let mut tx = state.db.begin().await?;
+    sqlx::query("SELECT id FROM users WHERE id=$1 FOR UPDATE")
+        .bind(auth_user.user_id)
+        .fetch_one(&mut *tx)
+        .await?;
+    if req.is_default {
+        sqlx::query(
+            "UPDATE customer_sites SET is_default=FALSE WHERE customer_id=$1 AND is_default",
+        )
+        .bind(auth_user.user_id)
+        .execute(&mut *tx)
+        .await?;
+    }
+    let site=sqlx::query_as::<_,crate::models::plant::CustomerSite>("INSERT INTO customer_sites(customer_id,name,address_line,city,state,pincode,latitude,longitude,contact_person,contact_phone,notes,is_default) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *")
+        .bind(auth_user.user_id).bind(req.name.trim()).bind(req.address_line.trim()).bind(req.city).bind(req.state).bind(req.pincode).bind(req.latitude).bind(req.longitude).bind(req.contact_person.unwrap_or_default()).bind(req.contact_phone.unwrap_or_default()).bind(req.notes).bind(req.is_default).fetch_one(&mut *tx).await?;
+    sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id) VALUES($1,'site.create','site',$2)").bind(auth_user.user_id).bind(site.id.to_string()).execute(&mut *tx).await?;
+    tx.commit().await?;
+    let mut value = json!(site);
+    value["address"] = value["address_line"].clone();
+    value["contact_mobile"] = value["contact_phone"].clone();
+    value["lat"] = value["latitude"].clone();
+    value["lng"] = value["longitude"].clone();
+    Ok(Json(json!({"success":true,"id":site.id,"site":value})))
 }
 
 pub async fn place_order(
@@ -216,10 +350,11 @@ pub async fn place_order(
     auth_user: AuthUser,
     Json(req): Json<CreateOrderRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["customer", "owner", "admin"])?;
+    check_role(&auth_user, &["customer"])?;
     let order = order_service::place_order(&state, auth_user.user_id, req).await?;
     Ok(Json(json!({
         "success": true,
+        "id": order.id,
         "order_id": order.id,
         "order_number": order.order_number,
         "order": order,
@@ -230,8 +365,15 @@ pub async fn list_orders(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
-    let orders = order_repo::list_customer_orders(&state.db, auth_user.user_id).await?;
-    Ok(Json(json!({ "success": true, "orders": orders })))
+    let query = format!(
+        "{} WHERE o.customer_id=$1 ORDER BY o.created_at DESC LIMIT 500",
+        order_service::MOBILE_ORDER_SELECT
+    );
+    let orders: Vec<serde_json::Value> = sqlx::query_scalar(&query)
+        .bind(auth_user.user_id)
+        .fetch_all(&state.db)
+        .await?;
+    Ok(Json(json!({"success":true,"orders":orders})))
 }
 
 pub async fn get_order_details(
@@ -239,72 +381,52 @@ pub async fn get_order_details(
     auth_user: AuthUser,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["customer", "owner", "admin"])?;
-    let customer_id: Option<Uuid> =
-        sqlx::query_scalar("SELECT customer_id FROM orders WHERE id = $1")
-            .bind(id)
-            .fetch_optional(&state.db)
-            .await?;
-    if customer_id.is_none() {
-        return Err(AppError::NotFound("Order not found".to_string()));
-    }
-    if auth_user.role == "customer" && customer_id != Some(auth_user.user_id) {
-        return Err(AppError::Forbidden(
-            "You are not authorized to view this order".to_string(),
-        ));
-    }
-    let (order, loads) = order_service::get_order_with_loads(&state, id).await?;
-    Ok(Json(json!({
-        "success": true,
-        "order": order,
-        "loads": loads,
-    })))
+    Ok(Json(
+        order_service::mobile_detail(&state, &auth_user, id).await?,
+    ))
 }
 
 pub async fn get_customer_home(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
-    let active_orders: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM orders WHERE customer_id = $1 AND status NOT IN ('delivered', 'cancelled')",
-    )
-    .bind(auth_user.user_id)
-    .fetch_one(&state.db)
-    .await?;
-
-    let completed_orders: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM orders WHERE customer_id = $1 AND status = 'delivered'",
-    )
-    .bind(auth_user.user_id)
-    .fetch_one(&state.db)
-    .await?;
-
-    let total_spent: bigdecimal::BigDecimal = sqlx::query_scalar(
-        "SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE customer_id = $1 AND payment_status = 'paid'",
-    )
-    .bind(auth_user.user_id)
-    .fetch_one(&state.db)
-    .await?;
-
-    let profile = sqlx::query("SELECT kyc_status FROM user_profiles WHERE user_id = $1")
+    check_role(&auth_user, &["customer"])?;
+    let profile:(String,String)=sqlx::query_as("SELECT u.full_name,coalesce(p.kyc_status,'unverified') FROM users u LEFT JOIN user_profiles p ON p.user_id=u.id WHERE u.id=$1").bind(auth_user.user_id).fetch_one(&state.db).await?;
+    let query = format!(
+        "{} WHERE o.customer_id=$1 ORDER BY o.created_at DESC,o.id LIMIT 5",
+        order_service::MOBILE_ORDER_SELECT
+    );
+    let recent: Vec<serde_json::Value> = sqlx::query_scalar(&query)
+        .bind(auth_user.user_id)
+        .fetch_all(&state.db)
+        .await?;
+    let query=format!("{} WHERE o.customer_id=$1 AND lower(o.status) IN('dispatched','in_transit','en_route','at_site','pouring','unloading','pod_pending') ORDER BY o.delivery_date,o.created_at,o.id LIMIT 1",order_service::MOBILE_ORDER_SELECT);
+    let active: Option<serde_json::Value> = sqlx::query_scalar(&query)
         .bind(auth_user.user_id)
         .fetch_optional(&state.db)
         .await?;
-
-    let kyc_status: String = profile
-        .as_ref()
-        .and_then(|p| p.get("kyc_status"))
-        .unwrap_or_else(|| "unverified".to_string());
-
-    Ok(Json(json!({
-        "success": true,
-        "metrics": {
-            "active_orders": active_orders,
-            "completed_orders": completed_orders,
-            "total_spent": total_spent,
-            "kyc_status": kyc_status
-        }
-    })))
+    let unread: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM notifications WHERE user_id=$1 AND NOT is_read")
+            .bind(auth_user.user_id)
+            .fetch_one(&state.db)
+            .await?;
+    let Json(discovery) = list_plants(State(state.clone()), auth_user).await?;
+    let plants: Vec<serde_json::Value> = discovery["plants"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|p| p["order_enabled"] == true)
+        .take(6)
+        .cloned()
+        .collect();
+    let kyc = if profile.1.eq_ignore_ascii_case("unverified") {
+        "NOT_STARTED".to_string()
+    } else {
+        profile.1.to_uppercase()
+    };
+    Ok(Json(
+        json!({"name":profile.0,"kyc_status":kyc,"active_order":active,"recent_orders":recent,"nearby_plants":plants,"unread_notifications":unread}),
+    ))
 }
 
 pub async fn cancel_order(
@@ -312,34 +434,43 @@ pub async fn cancel_order(
     auth_user: AuthUser,
     Path(order_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    let order = sqlx::query("SELECT customer_id, status FROM orders WHERE id = $1")
+    check_role(&auth_user, &["customer"])?;
+    let mut tx = state.db.begin().await?;
+    let order = sqlx::query("SELECT customer_id, status FROM orders WHERE id = $1 FOR UPDATE")
         .bind(order_id)
-        .fetch_optional(&state.db)
+        .fetch_optional(&mut *tx)
         .await?
         .ok_or_else(|| AppError::NotFound("Order not found".to_string()))?;
 
     let cid: Uuid = order.get("customer_id");
     let status: String = order.get("status");
 
-    if cid != auth_user.user_id && auth_user.role != "admin" {
+    if cid != auth_user.user_id {
         return Err(AppError::Forbidden("Unauthorized".to_string()));
     }
 
-    if !matches!(status.to_lowercase().as_str(), "pending" | "confirmed") {
+    if !matches!(
+        status.as_str(),
+        "draft" | "pending" | "confirmed" | "cancelled"
+    ) {
         return Err(AppError::BadRequest(
             "Cannot cancel order once production or dispatch has begun".to_string(),
         ));
     }
 
-    sqlx::query("UPDATE orders SET status = 'cancelled', updated_at = NOW() WHERE id = $1")
-        .bind(order_id)
-        .execute(&state.db)
-        .await?;
+    if status != "cancelled" {
+        sqlx::query("UPDATE orders SET status = 'cancelled', updated_at = NOW() WHERE id = $1")
+            .bind(order_id)
+            .execute(&mut *tx)
+            .await?;
 
-    sqlx::query("UPDATE order_loads SET status = 'cancelled' WHERE order_id = $1")
-        .bind(order_id)
-        .execute(&state.db)
-        .await?;
+        sqlx::query("UPDATE order_loads SET status = 'cancelled' WHERE order_id = $1")
+            .bind(order_id)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'order.cancel','order',$2,$3)").bind(auth_user.user_id).bind(order_id.to_string()).bind(json!({"from":status,"to":"cancelled"})).execute(&mut *tx).await?;
+    }
+    tx.commit().await?;
 
     Ok(Json(
         json!({ "success": true, "message": "Order cancelled successfully" }),
@@ -499,92 +630,20 @@ pub async fn create_quotation_request(
     auth_user: AuthUser,
     Json(payload): Json<CustomerRfqPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    let req_date = match &payload.required_date {
-        Some(d) => NaiveDate::parse_from_str(d, "%Y-%m-%d").map_err(|_| {
-            AppError::BadRequest("Invalid required_date, expected YYYY-MM-DD".to_string())
-        })?,
-        None => chrono::Utc::now().date_naive() + chrono::Duration::days(1),
-    };
-
-    let quantity = payload.quantity_m3.or(payload.quantity).unwrap_or(6.0);
-    if quantity <= 0.0 {
-        return Err(AppError::BadRequest(
-            "Quantity must be greater than zero".to_string(),
-        ));
-    }
-
-    let id: Uuid = sqlx::query_scalar(
-        r#"
-        INSERT INTO customer_quotation_requests (
-            customer_id, plant_id, site_id, grade, quantity_m3, required_date, notes, status
-        )
-        VALUES ($1, $2, $3, $4, $5::numeric, $6, $7, 'PENDING')
-        RETURNING id
-        "#,
-    )
-    .bind(auth_user.user_id)
-    .bind(payload.plant_id)
-    .bind(payload.site_id)
-    .bind(&payload.grade)
-    .bind(quantity)
-    .bind(req_date)
-    .bind(&payload.notes)
-    .fetch_one(&state.db)
-    .await?;
-
-    Ok(Json(
-        json!({ "success": true, "id": id, "message": "Quotation request submitted" }),
-    ))
+    check_role(&auth_user, &["customer"])?;
+    let id =
+        crate::services::commercial_service::request(&state, auth_user.user_id, payload).await?;
+    Ok(Json(json!({"success":true,"id":id,"status":"REQUESTED"})))
 }
 
 pub async fn list_customer_rfqs(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
-    let rows = sqlx::query(
-        r#"
-        SELECT r.id, r.plant_id, r.grade, r.quantity_m3, r.required_date, r.status, r.notes, r.created_at,
-               p.name as plant_name, p.contact_phone as plant_phone
-        FROM customer_quotation_requests r
-        INNER JOIN rmc_plants p ON p.id = r.plant_id
-        WHERE r.customer_id = $1
-        ORDER BY r.created_at DESC
-        "#,
-    )
-    .bind(auth_user.user_id)
-    .fetch_all(&state.db)
-    .await?;
-
-    let rfqs: Vec<_> = rows
-        .into_iter()
-        .map(|r| {
-            let id: Uuid = r.get("id");
-            let plant_id: Uuid = r.get("plant_id");
-            let grade: String = r.get("grade");
-            let quantity_m3: bigdecimal::BigDecimal = r.get("quantity_m3");
-            let required_date: chrono::NaiveDate = r.get("required_date");
-            let status: String = r.get("status");
-            let notes: Option<String> = r.get("notes");
-            let created_at: chrono::DateTime<chrono::Utc> = r.get("created_at");
-            let plant_name: String = r.get("plant_name");
-            let plant_phone: Option<String> = r.get("plant_phone");
-
-            json!({
-                "id": id,
-                "plant_id": plant_id,
-                "plant_name": plant_name,
-                "plant_phone": plant_phone,
-                "grade": grade,
-                "quantity_m3": quantity_m3,
-                "required_date": required_date,
-                "status": status,
-                "notes": notes,
-                "created_at": created_at
-            })
-        })
-        .collect();
-
-    Ok(Json(json!({ "success": true, "requests": rfqs })))
+    check_role(&auth_user, &["customer"])?;
+    let rows:Vec<serde_json::Value>=sqlx::query_scalar("SELECT to_jsonb(r)-'response_payload'||jsonb_build_object('plant_name',p.name,'site_name',s.name,'site_address',s.address_line,'quantity',r.quantity_m3::DOUBLE PRECISION,'quantity_m3',r.quantity_m3::DOUBLE PRECISION,'status',CASE r.status WHEN 'PENDING' THEN 'REQUESTED' ELSE r.status END,'quotation_number',q.quotation_number,'quoted_total',q.total_amount::DOUBLE PRECISION) FROM customer_quotation_requests r JOIN rmc_plants p ON p.id=r.plant_id LEFT JOIN customer_sites s ON s.id=r.site_id AND s.customer_id=r.customer_id LEFT JOIN LATERAL(SELECT quotation_number,total_amount FROM plant_quotations WHERE request_id=r.id ORDER BY created_at LIMIT 1) q ON TRUE WHERE r.customer_id=$1 ORDER BY r.created_at DESC LIMIT 500")
+        .bind(auth_user.user_id).fetch_all(&state.db).await?;
+    Ok(Json(json!({"success":true,"requests":rows})))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -600,119 +659,149 @@ pub struct CreatePourPlanPayload {
     pub notes: Option<String>,
 }
 
+fn pour_plan_dto(mut plan: serde_json::Value) -> Result<serde_json::Value, AppError> {
+    let quantity = (plan["total_quantity_m3"].as_f64().unwrap_or(0.0) * 100.0).round() as i64;
+    let capacity = (plan["mixer_capacity_m3"].as_f64().unwrap_or(0.0) * 100.0).round() as i64;
+    let interval = plan["unload_minutes"].as_i64().unwrap_or(0);
+    if quantity <= 0
+        || quantity > 1_000_000
+        || capacity <= 0
+        || capacity > 2000
+        || !(5..=180).contains(&interval)
+        || (quantity + capacity - 1) / capacity > 500
+    {
+        return Err(AppError::Conflict(
+            "Stored pour plan requires reconciliation".into(),
+        ));
+    }
+    let date = NaiveDate::parse_from_str(plan["pour_date"].as_str().unwrap_or(""), "%Y-%m-%d")
+        .map_err(|_| AppError::Conflict("Stored pour date requires correction".into()))?;
+    let time =
+        crate::services::customer_observations::clock(plan["start_time"].as_str().unwrap_or(""))?;
+    let start = date.and_time(time);
+    let count = (quantity + capacity - 1) / capacity;
+    let mut loads = Vec::new();
+    for i in 0..count {
+        let arrival = start
+            .checked_add_signed(chrono::Duration::minutes(i * interval))
+            .ok_or_else(|| {
+                AppError::BadRequest("Pour schedule exceeds the supported date range".into())
+            })?;
+        loads.push(json!({"load_number":i+1,"quantity_m3":(quantity-i*capacity).min(capacity) as f64/100.0,"suggested_arrival":arrival.format("%H:%M").to_string(),"suggested_arrival_date":arrival.date().to_string()}));
+    }
+    let end = start
+        .checked_add_signed(chrono::Duration::minutes(count * interval))
+        .ok_or_else(|| {
+            AppError::BadRequest("Pour schedule exceeds the supported date range".into())
+        })?;
+    plan["loads_count"] = json!(count);
+    plan["loads"] = json!(loads);
+    plan["estimated_end_time"] = json!(end.format("%H:%M").to_string());
+    plan["estimated_end_date"] = json!(end.date());
+    plan["status"] = json!("PLANNED");
+    Ok(plan)
+}
+
 pub async fn create_pour_plan(
     State(state): State<AppState>,
     auth_user: AuthUser,
     Json(payload): Json<CreatePourPlanPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    let p_date = NaiveDate::parse_from_str(&payload.pour_date, "%Y-%m-%d")
-        .map_err(|_| AppError::BadRequest("Invalid pour_date format".to_string()))?;
-
-    let cap = payload.mixer_capacity_m3.unwrap_or(6.0);
-    let unload = payload.unload_minutes.unwrap_or(30);
-    let mode = payload.discharge_mode.unwrap_or_else(|| "PUMP".to_string());
-
-    let id: Uuid = sqlx::query_scalar(
-        r#"
-        INSERT INTO customer_pour_plans (
-            customer_id, site_id, grade, total_quantity_m3, mixer_capacity_m3,
-            pour_date, start_time, unload_minutes, discharge_mode, notes
-        )
-        VALUES ($1, $2, $3, $4::numeric, $5::numeric, $6, $7, $8, $9, $10)
-        RETURNING id
-        "#,
+    check_role(&auth_user, &["customer"])?;
+    let date = NaiveDate::parse_from_str(&payload.pour_date, "%Y-%m-%d")
+        .map_err(|_| AppError::BadRequest("Invalid pour date".into()))?;
+    crate::services::customer_observations::clock(&payload.start_time)?;
+    let capacity = payload.mixer_capacity_m3.unwrap_or(6.0);
+    let interval = payload.unload_minutes.unwrap_or(30);
+    let mode = payload.discharge_mode.as_deref().unwrap_or("PUMP");
+    if !crate::services::customer_observations::valid_grade(&payload.grade)
+        || !payload.total_quantity_m3.is_finite()
+        || payload.total_quantity_m3 <= 0.0
+        || payload.total_quantity_m3 > 10000.0
+        || !capacity.is_finite()
+        || capacity <= 0.0
+        || capacity > 20.0
+        || !(5..=180).contains(&interval)
+        || !matches!(mode, "PUMP" | "DIRECT")
+        || date < chrono::Utc::now().date_naive()
+        || payload.notes.as_ref().is_some_and(|s| s.len() > 2000)
+    {
+        return Err(AppError::BadRequest(
+            "Invalid pour quantity, capacity, schedule or mode".into(),
+        ));
+    }
+    if (payload.total_quantity_m3 * 100.0 - (payload.total_quantity_m3 * 100.0).round()).abs()
+        > 0.00001
+        || (capacity * 100.0 - (capacity * 100.0).round()).abs() > 0.00001
+    {
+        return Err(AppError::BadRequest(
+            "Planning quantities support at most two decimal places".into(),
+        ));
+    }
+    let quantity_cents = (payload.total_quantity_m3 * 100.0).round() as i64;
+    let capacity_cents = (capacity * 100.0).round() as i64;
+    if quantity_cents <= 0
+        || capacity_cents <= 0
+        || (quantity_cents + capacity_cents - 1) / capacity_cents > 500
+    {
+        return Err(AppError::BadRequest(
+            "Pour plan exceeds supported load count".into(),
+        ));
+    }
+    let mut tx = state.db.begin().await?;
+    let site = sqlx::query(
+        "SELECT name,address_line FROM customer_sites WHERE id=$1 AND customer_id=$2 FOR SHARE",
     )
-    .bind(auth_user.user_id)
     .bind(payload.site_id)
-    .bind(&payload.grade)
-    .bind(payload.total_quantity_m3)
-    .bind(cap)
-    .bind(p_date)
-    .bind(&payload.start_time)
-    .bind(unload)
-    .bind(&mode)
-    .bind(&payload.notes)
-    .fetch_one(&state.db)
-    .await?;
-
-    Ok(Json(
-        json!({ "success": true, "id": id, "message": "Pour plan created" }),
-    ))
+    .bind(auth_user.user_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| AppError::Forbidden("Saved site does not belong to this customer".into()))?;
+    let id:Uuid=sqlx::query_scalar("INSERT INTO customer_pour_plans(customer_id,site_id,grade,total_quantity_m3,mixer_capacity_m3,pour_date,start_time,unload_minutes,discharge_mode,notes) VALUES($1,$2,$3,$4::DOUBLE PRECISION::NUMERIC,$5::DOUBLE PRECISION::NUMERIC,$6,$7,$8,$9,$10) RETURNING id")
+        .bind(auth_user.user_id).bind(payload.site_id).bind(&payload.grade).bind(payload.total_quantity_m3).bind(capacity).bind(date).bind(&payload.start_time).bind(interval).bind(mode).bind(&payload.notes).fetch_one(&mut *tx).await?;
+    let plan = pour_plan_dto(
+        json!({"id":id,"site_id":payload.site_id,"site_name":site.get::<String,_>("name"),"site_address":site.get::<String,_>("address_line"),"grade":payload.grade,"total_quantity_m3":payload.total_quantity_m3,"mixer_capacity_m3":capacity,"pour_date":date,"start_time":payload.start_time,"unload_minutes":interval,"discharge_mode":mode,"notes":payload.notes}),
+    )?;
+    sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'pour_plan.create','pour_plan',$2,$3)").bind(auth_user.user_id).bind(id.to_string()).bind(json!({"site_id":payload.site_id,"loads":plan["loads_count"]})).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(Json(json!({"success":true,"id":id,"plan":plan})))
 }
 
 pub async fn list_pour_plans(
     State(state): State<AppState>,
     auth_user: AuthUser,
+    Query(filter): Query<CustomerSiteFilter>,
 ) -> Result<impl IntoResponse, AppError> {
-    let rows = sqlx::query(
-        r#"
-        SELECT p.id, p.site_id, p.grade, p.total_quantity_m3, p.mixer_capacity_m3,
-               p.pour_date, p.start_time, p.unload_minutes, p.discharge_mode, p.notes, p.created_at,
-               s.name as site_name, s.address_line as site_address
-        FROM customer_pour_plans p
-        INNER JOIN customer_sites s ON s.id = p.site_id
-        WHERE p.customer_id = $1
-        ORDER BY p.pour_date DESC
-        "#,
-    )
-    .bind(auth_user.user_id)
-    .fetch_all(&state.db)
-    .await?;
-
-    let plans: Vec<_> = rows
+    check_role(&auth_user, &["customer"])?;
+    let rows:Vec<serde_json::Value>=sqlx::query_scalar("SELECT to_jsonb(p)||jsonb_build_object('site_name',s.name,'site_address',s.address_line,'total_quantity_m3',p.total_quantity_m3::DOUBLE PRECISION,'mixer_capacity_m3',p.mixer_capacity_m3::DOUBLE PRECISION) FROM customer_pour_plans p JOIN customer_sites s ON s.id=p.site_id AND s.customer_id=p.customer_id WHERE p.customer_id=$1 AND($2::UUID IS NULL OR p.site_id=$2) ORDER BY p.pour_date DESC,p.created_at DESC LIMIT 500")
+        .bind(auth_user.user_id).bind(filter.site_id).fetch_all(&state.db).await?;
+    let plans = rows
         .into_iter()
-        .map(|r| {
-            let id: Uuid = r.get("id");
-            let site_id: Uuid = r.get("site_id");
-            let site_name: String = r.get("site_name");
-            let site_address: String = r.get("site_address");
-            let grade: String = r.get("grade");
-            let total_quantity_m3: bigdecimal::BigDecimal = r.get("total_quantity_m3");
-            let mixer_capacity_m3: bigdecimal::BigDecimal = r.get("mixer_capacity_m3");
-            let pour_date: chrono::NaiveDate = r.get("pour_date");
-            let start_time: String = r.get("start_time");
-            let unload_minutes: i32 = r.get("unload_minutes");
-            let discharge_mode: String = r.get("discharge_mode");
-            let notes: Option<String> = r.get("notes");
-
-            json!({
-                "id": id,
-                "site_id": site_id,
-                "site_name": site_name,
-                "site_address": site_address,
-                "grade": grade,
-                "total_quantity_m3": total_quantity_m3,
-                "mixer_capacity_m3": mixer_capacity_m3,
-                "pour_date": pour_date,
-                "start_time": start_time,
-                "unload_minutes": unload_minutes,
-                "discharge_mode": discharge_mode,
-                "notes": notes
-            })
-        })
-        .collect();
-
-    Ok(Json(json!({ "success": true, "pour_plans": plans })))
+        .map(pour_plan_dto)
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Json(
+        json!({"success":true,"plans":plans,"pour_plans":plans}),
+    ))
 }
 
 pub async fn delete_pour_plan(
     State(state): State<AppState>,
     auth_user: AuthUser,
-    Path(plan_id): Path<Uuid>,
+    Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    let res = sqlx::query("DELETE FROM customer_pour_plans WHERE id = $1 AND customer_id = $2")
-        .bind(plan_id)
+    check_role(&auth_user, &["customer"])?;
+    let mut tx = state.db.begin().await?;
+    let deleted = sqlx::query("DELETE FROM customer_pour_plans WHERE id=$1 AND customer_id=$2")
+        .bind(id)
         .bind(auth_user.user_id)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await?;
-
-    if res.rows_affected() == 0 {
-        return Err(AppError::NotFound("Plan not found".to_string()));
+    if deleted.rows_affected() != 1 {
+        return Err(AppError::NotFound("Pour plan not found".into()));
     }
-
-    Ok(Json(
-        json!({ "success": true, "message": "Pour plan deleted" }),
-    ))
+    sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id) VALUES($1,'pour_plan.delete','pour_plan',$2)").bind(auth_user.user_id).bind(id.to_string()).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(Json(json!({"success":true,"status":"deleted"})))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -724,6 +813,14 @@ pub struct CreateReceivingRecordPayload {
     pub challan_number: Option<String>,
     pub tm_number: Option<String>,
     pub observed_slump_mm: Option<f64>,
+    pub arrival_time: Option<String>,
+    pub unloading_start_time: Option<String>,
+    pub unloading_end_time: Option<String>,
+    #[serde(default)]
+    pub cube_sample_ids: Vec<String>,
+    pub sample_cast_date: Option<NaiveDate>,
+    #[serde(default)]
+    pub checklist: std::collections::BTreeMap<String, bool>,
     pub notes: Option<String>,
 }
 
@@ -732,84 +829,26 @@ pub async fn create_receiving_record(
     auth_user: AuthUser,
     Json(payload): Json<CreateReceivingRecordPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    let id: Uuid = sqlx::query_scalar(
-        r#"
-        INSERT INTO customer_receiving_records (
-            customer_id, site_id, order_id, grade, received_quantity_m3,
-            challan_number, tm_number, observed_slump_mm, notes
-        )
-        VALUES ($1, $2, $3, $4, $5::numeric, $6, $7, $8::numeric, $9)
-        RETURNING id
-        "#,
-    )
-    .bind(auth_user.user_id)
-    .bind(payload.site_id)
-    .bind(payload.order_id)
-    .bind(&payload.grade)
-    .bind(payload.received_quantity_m3)
-    .bind(&payload.challan_number)
-    .bind(&payload.tm_number)
-    .bind(payload.observed_slump_mm)
-    .bind(&payload.notes)
-    .fetch_one(&state.db)
-    .await?;
-
+    check_role(&auth_user, &["customer"])?;
     Ok(Json(
-        json!({ "success": true, "id": id, "message": "Receiving record logged" }),
+        crate::services::customer_observations::create(&state, auth_user.user_id, payload).await?,
     ))
+}
+
+#[derive(Deserialize, Default)]
+pub struct CustomerSiteFilter {
+    pub site_id: Option<Uuid>,
 }
 
 pub async fn list_receiving_records(
     State(state): State<AppState>,
     auth_user: AuthUser,
+    Query(filter): Query<CustomerSiteFilter>,
 ) -> Result<impl IntoResponse, AppError> {
-    let rows = sqlx::query(
-        r#"
-        SELECT r.id, r.site_id, r.order_id, r.grade, r.received_quantity_m3,
-               r.challan_number, r.tm_number, r.observed_slump_mm, r.notes, r.created_at,
-               s.name as site_name
-        FROM customer_receiving_records r
-        INNER JOIN customer_sites s ON s.id = r.site_id
-        WHERE r.customer_id = $1
-        ORDER BY r.created_at DESC
-        "#,
-    )
-    .bind(auth_user.user_id)
-    .fetch_all(&state.db)
-    .await?;
-
-    let records: Vec<_> = rows
-        .into_iter()
-        .map(|r| {
-            let id: Uuid = r.get("id");
-            let site_id: Uuid = r.get("site_id");
-            let site_name: String = r.get("site_name");
-            let order_id: Option<Uuid> = r.get("order_id");
-            let grade: String = r.get("grade");
-            let received_quantity_m3: bigdecimal::BigDecimal = r.get("received_quantity_m3");
-            let challan_number: Option<String> = r.get("challan_number");
-            let tm_number: Option<String> = r.get("tm_number");
-            let observed_slump_mm: Option<bigdecimal::BigDecimal> = r.get("observed_slump_mm");
-            let notes: Option<String> = r.get("notes");
-            let created_at: chrono::DateTime<chrono::Utc> = r.get("created_at");
-
-            json!({
-                "id": id,
-                "site_id": site_id,
-                "site_name": site_name,
-                "order_id": order_id,
-                "grade": grade,
-                "received_quantity_m3": received_quantity_m3,
-                "challan_number": challan_number,
-                "tm_number": tm_number,
-                "observed_slump_mm": observed_slump_mm,
-                "notes": notes,
-                "created_at": created_at
-            })
-        })
-        .collect();
-
-    Ok(Json(json!({ "success": true, "records": records })))
+    check_role(&auth_user, &["customer"])?;
+    Ok(Json(
+        json!({"success":true,"records":crate::services::customer_observations::list(&state,auth_user.user_id,None,filter.site_id).await?}),
+    ))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -820,71 +859,41 @@ pub struct CubeResultPayload {
     pub result_mpa: f64,
     pub lab_name: Option<String>,
     pub report_reference: Option<String>,
+    pub notes: Option<String>,
 }
 
 pub async fn add_cube_test_result(
     State(state): State<AppState>,
     auth_user: AuthUser,
-    Path(record_id): Path<Uuid>,
+    Path(record): Path<Uuid>,
     Json(payload): Json<CubeResultPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    let rec_cust: Uuid =
-        sqlx::query_scalar("SELECT customer_id FROM customer_receiving_records WHERE id = $1")
-            .bind(record_id)
-            .fetch_optional(&state.db)
-            .await?
-            .ok_or_else(|| AppError::NotFound("Receiving record not found".to_string()))?;
-
-    if rec_cust != auth_user.user_id && auth_user.role != "admin" {
-        return Err(AppError::Forbidden("Unauthorized".to_string()));
-    }
-
-    let t_date = NaiveDate::parse_from_str(&payload.tested_on, "%Y-%m-%d")
-        .map_err(|_| AppError::BadRequest("Invalid tested_on date".to_string()))?;
-
-    let id: Uuid = sqlx::query_scalar(
-        r#"
-        INSERT INTO cube_test_results (
-            record_id, sample_id, age_days, tested_on, result_mpa, lab_name, report_reference
-        )
-        VALUES ($1, $2, $3, $4, $5::numeric, $6, $7)
-        RETURNING id
-        "#,
-    )
-    .bind(record_id)
-    .bind(&payload.sample_id)
-    .bind(payload.age_days)
-    .bind(t_date)
-    .bind(payload.result_mpa)
-    .bind(&payload.lab_name)
-    .bind(&payload.report_reference)
-    .fetch_one(&state.db)
-    .await?;
-
+    check_role(&auth_user, &["customer"])?;
     Ok(Json(
-        json!({ "success": true, "id": id, "message": "Cube test result recorded" }),
+        crate::services::customer_observations::cube(&state, auth_user.user_id, record, payload)
+            .await?,
     ))
 }
 
 pub async fn delete_receiving_record(
     State(state): State<AppState>,
     auth_user: AuthUser,
-    Path(record_id): Path<Uuid>,
+    Path(record): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    let res =
-        sqlx::query("DELETE FROM customer_receiving_records WHERE id = $1 AND customer_id = $2")
-            .bind(record_id)
+    check_role(&auth_user, &["customer"])?;
+    let mut tx = state.db.begin().await?;
+    let deleted =
+        sqlx::query("DELETE FROM customer_receiving_records WHERE id=$1 AND customer_id=$2")
+            .bind(record)
             .bind(auth_user.user_id)
-            .execute(&state.db)
+            .execute(&mut *tx)
             .await?;
-
-    if res.rows_affected() == 0 {
-        return Err(AppError::NotFound("Record not found".to_string()));
+    if deleted.rows_affected() != 1 {
+        return Err(AppError::NotFound("Receiving record not found".into()));
     }
-
-    Ok(Json(
-        json!({ "success": true, "message": "Record deleted" }),
-    ))
+    sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id) VALUES($1,'receiving_record.delete','receiving_record',$2)").bind(auth_user.user_id).bind(record.to_string()).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(Json(json!({"success":true,"status":"deleted"})))
 }
 
 pub async fn get_customer_kyc(
@@ -914,21 +923,11 @@ pub async fn get_customer_kyc(
 }
 
 pub async fn start_customer_kyc(
-    State(state): State<AppState>,
+    State(_state): State<AppState>,
     auth_user: AuthUser,
-) -> Result<impl IntoResponse, AppError> {
-    let callback_url = "https://trackmyrmc.com/kyc/return";
-
-    sqlx::query(
-        "UPDATE user_profiles SET kyc_status = 'pending', updated_at = NOW() WHERE user_id = $1",
-    )
-    .bind(auth_user.user_id)
-    .execute(&state.db)
-    .await?;
-
-    Ok(Json(json!({
-        "success": true,
-        "status": "pending",
-        "authorization_url": callback_url
-    })))
+) -> Result<Json<serde_json::Value>, AppError> {
+    check_role(&auth_user, &["customer"])?;
+    Err(AppError::Conflict(
+        "KYC provider is not configured; no verification session was started".into(),
+    ))
 }

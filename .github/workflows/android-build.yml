@@ -8,7 +8,7 @@ on:
       - "frontend/**"
       - ".github/workflows/android-build.yml"
   pull_request:
-    branches: [main]
+    branches: [main, 'integration/**']
     paths:
       - "frontend/**"
       - ".github/workflows/android-build.yml"
@@ -70,7 +70,7 @@ jobs:
           fi
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Validate Google Play privacy and permission readiness
         run: npm run check:android-permissions

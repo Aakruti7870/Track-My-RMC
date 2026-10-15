@@ -1,0 +1,562 @@
+{
+  "status": "success",
+  "stdout": "",
+  "return_value": {
+    "simulation": {
+      "EvaluationResults": [
+        {
+          "EvalActionName": "secretsmanager:GetSecretValue",
+          "EvalResourceName": "arn:aws:secretsmanager:${Region}:${Account}:secret:${SecretId}",
+          "EvalDecision": "explicitDeny",
+          "MatchedStatements": [
+            {
+              "SourcePolicyId": "PolicyInputList.2",
+              "SourcePolicyType": "IAM Policy",
+              "StartPosition": {
+                "Line": 1,
+                "Column": 41
+              },
+              "EndPosition": {
+                "Line": 1,
+                "Column": 400
+              }
+            },
+            {
+              "SourcePolicyId": "PolicyInputList.2",
+              "SourcePolicyType": "IAM Policy",
+              "StartPosition": {
+                "Line": 1,
+                "Column": 515
+              },
+              "EndPosition": {
+                "Line": 1,
+                "Column": 947
+              }
+            }
+          ],
+          "MissingContextValues": [],
+          "EvalDecisionDetails": {},
+          "ResourceSpecificResults": [
+            {
+              "EvalResourceName": "arn:aws:secretsmanager:ap-south-1:260234292958:secret:trackmyrmc-staging/jwt-fixture",
+              "EvalResourceDecision": "allowed",
+              "MatchedStatements": [
+                {
+                  "SourcePolicyId": "PolicyInputList.2",
+                  "SourcePolicyType": "IAM Policy",
+                  "StartPosition": {
+                    "Line": 1,
+                    "Column": 41
+                  },
+                  "EndPosition": {
+                    "Line": 1,
+                    "Column": 400
+                  }
+                }
+              ]
+            },
+            {
+              "EvalResourceName": "arn:aws:secretsmanager:ap-south-1:260234292958:secret:trackmyrmc-staging/otp-fixture",
+              "EvalResourceDecision": "allowed",
+              "MatchedStatements": [
+                {
+                  "SourcePolicyId": "PolicyInputList.2",
+                  "SourcePolicyType": "IAM Policy",
+                  "StartPosition": {
+                    "Line": 1,
+                    "Column": 41
+                  },
+                  "EndPosition": {
+                    "Line": 1,
+                    "Column": 400
+                  }
+                }
+              ]
+            },
+            {
+              "EvalResourceName": "arn:aws:secretsmanager:ap-south-1:260234292958:secret:trackmyrmc-staging/application-database-fixture",
+              "EvalResourceDecision": "allowed",
+              "MatchedStatements": [
+                {
+                  "SourcePolicyId": "PolicyInputList.2",
+                  "SourcePolicyType": "IAM Policy",
+                  "StartPosition": {
+                    "Line": 1,
+                    "Column": 41
+                  },
+                  "EndPosition": {
+                    "Line": 1,
+                    "Column": 400
+                  }
+                }
+              ]
+            },
+            {
+              "EvalResourceName": "arn:aws:secretsmanager:ap-south-1:260234292958:secret:production-placeholder-fixture",
+              "EvalResourceDecision": "explicitDeny",
+              "MatchedStatements": [
+                {
+                  "SourcePolicyId": "PolicyInputList.2",
+                  "SourcePolicyType": "IAM Policy",
+                  "StartPosition": {
+                    "Line": 1,
+                    "Column": 515
+                  },
+                  "EndPosition": {
+                    "Line": 1,
+                    "Column": 947
+                  }
+                }
+              ]
+            },
+            {
+              "EvalResourceName": "arn:aws:secretsmanager:ap-south-1:260234292958:secret:staging-managed-admin-fixture",
+              "EvalResourceDecision": "explicitDeny",
+              "MatchedStatements": [
+                {
+                  "SourcePolicyId": "PolicyInputList.2",
+                  "SourcePolicyType": "IAM Policy",
+                  "StartPosition": {
+                    "Line": 1,
+                    "Column": 515
+                  },
+                  "EndPosition": {
+                    "Line": 1,
+                    "Column": 947
+                  }
+                }
+              ]
+            },
+            {
+              "EvalResourceName": "arn:aws:ssm:ap-south-1:260234292958:parameter/trackmyrmc-staging/config",
+              "EvalResourceDecision": "implicitDeny"
+            },
+            {
+              "EvalResourceName": "arn:aws:ssm:ap-south-1:260234292958:parameter/production-placeholder",
+              "EvalResourceDecision": "implicitDeny"
+            },
+            {
+              "EvalResourceName": "arn:aws:s3:::trackmyrmc-staging-fixture/releases/test",
+              "EvalResourceDecision": "implicitDeny"
+            },
+            {
+              "EvalResourceName": "arn:aws:s3:::production-placeholder/test",
+              "EvalResourceDecision": "implicitDeny"
+            },
+            {
+              "EvalResourceName": "arn:aws:iam::260234292958:role/production-placeholder",
+              "EvalResourceDecision": "implicitDeny"
+            }
+          ]
+        },
+        {
+          "EvalActionName": "ssm:GetParameter",
+          "EvalResourceName": "arn:aws:ssm:${Region}:${Account}:${RelativeId}",
+          "EvalDecision": "explicitDeny",
+          "MatchedStatements": [
+            {
+              "SourcePolicyId": "PolicyInputList.1",
+              "SourcePolicyType": "IAM Policy",
+              "StartPosition": {
+                "Line": 1,
+                "Column": 41
+              },
+              "EndPosition": {
+                "Line": 1,
+                "Column": 502
+              }
+            },
+            {
+              "SourcePolicyId": "PolicyInputList.2",
+              "SourcePolicyType": "IAM Policy",
+              "StartPosition": {
+                "Line": 1,
+                "Column": 947
+              },
+              "EndPosition": {
+                "Line": 1,
+                "Column": 1248
+              }
+            }
+          ],
+          "MissingContextValues": [],
+          "EvalDecisionDetails": {},
+          "ResourceSpecificResults": [
+            {
+              "EvalResourceName": "arn:aws:secretsmanager:ap-south-1:260234292958:secret:trackmyrmc-staging/jwt-fixture",
+              "EvalResourceDecision": "implicitDeny"
+            },
+            {
+              "EvalResourceName": "arn:aws:secretsmanager:ap-south-1:260234292958:secret:trackmyrmc-staging/otp-fixture",
+              "EvalResourceDecision": "implicitDeny"
+            },
+            {
+              "EvalResourceName": "arn:aws:secretsmanager:ap-south-1:260234292958:secret:trackmyrmc-staging/application-database-fixture",
+              "EvalResourceDecision": "implicitDeny"
+            },
+            {
+              "EvalResourceName": "arn:aws:secretsmanager:ap-south-1:260234292958:secret:production-placeholder-fixture",
+              "EvalResourceDecision": "implicitDeny"
+            },
+            {
+              "EvalResourceName": "arn:aws:secretsmanager:ap-south-1:260234292958:secret:staging-managed-admin-fixture",
+              "EvalResourceDecision": "implicitDeny"
+            },
+            {
+              "EvalResourceName": "arn:aws:ssm:ap-south-1:260234292958:parameter/trackmyrmc-staging/config",
+              "EvalResourceDecision": "allowed",
+              "MatchedStatements": [
+                {
+                  "SourcePolicyId": "PolicyInputList.1",
+                  "SourcePolicyType": "IAM Policy",
+                  "StartPosition": {
+                    "Line": 1,
+                    "Column": 41
+                  },
+                  "EndPosition": {
+                    "Line": 1,
+                    "Column": 502
+                  }
+                }
+              ]
+            },
+            {
+              "EvalResourceName": "arn:aws:ssm:ap-south-1:260234292958:parameter/production-placeholder",
+              "EvalResourceDecision": "explicitDeny",
+              "MatchedStatements": [
+                {
+                  "SourcePolicyId": "PolicyInputList.2",
+                  "SourcePolicyType": "IAM Policy",
+                  "StartPosition": {
+                    "Line": 1,
+                    "Column": 947
+                  },
+                  "EndPosition": {
+                    "Line": 1,
+                    "Column": 1248
+                  }
+                }
+              ]
+            },
+            {
+              "EvalResourceName": "arn:aws:s3:::trackmyrmc-staging-fixture/releases/test",
+              "EvalResourceDecision": "implicitDeny"
+            },
+            {
+              "EvalResourceName": "arn:aws:s3:::production-placeholder/test",
+              "EvalResourceDecision": "implicitDeny"
+            },
+            {
+              "EvalResourceName": "arn:aws:iam::260234292958:role/production-placeholder",
+              "EvalResourceDecision": "implicitDeny"
+            }
+          ]
+        },
+        {
+          "EvalActionName": "s3:GetObject",
+          "EvalResourceName": "arn:aws:s3:::${BucketName}/${KeyName}",
+          "EvalDecision": "explicitDeny",
+          "MatchedStatements": [
+            {
+              "SourcePolicyId": "PolicyInputList.2",
+              "SourcePolicyType": "IAM Policy",
+              "StartPosition": {
+                "Line": 1,
+                "Column": 400
+              },
+              "EndPosition": {
+                "Line": 1,
+                "Column": 515
+              }
+            },
+            {
+              "SourcePolicyId": "PolicyInputList.2",
+              "SourcePolicyType": "IAM Policy",
+              "StartPosition": {
+                "Line": 1,
+                "Column": 1467
+              },
+              "EndPosition": {
+                "Line": 1,
+                "Column": 1638
+              }
+            }
+          ],
+          "MissingContextValues": [],
+          "EvalDecisionDetails": {},
+          "ResourceSpecificResults": [
+            {
+              "EvalResourceName": "arn:aws:secretsmanager:ap-south-1:260234292958:secret:trackmyrmc-staging/jwt-fixture",
+              "EvalResourceDecision": "implicitDeny"
+            },
+            {
+              "EvalResourceName": "arn:aws:secretsmanager:ap-south-1:260234292958:secret:trackmyrmc-staging/otp-fixture",
+              "EvalResourceDecision": "implicitDeny"
+            },
+            {
+              "EvalResourceName": "arn:aws:secretsmanager:ap-south-1:260234292958:secret:trackmyrmc-staging/application-database-fixture",
+              "EvalResourceDecision": "implicitDeny"
+            },
+            {
+              "EvalResourceName": "arn:aws:secretsmanager:ap-south-1:260234292958:secret:production-placeholder-fixture",
+              "EvalResourceDecision": "implicitDeny"
+            },
+            {
+              "EvalResourceName": "arn:aws:secretsmanager:ap-south-1:260234292958:secret:staging-managed-admin-fixture",
+              "EvalResourceDecision": "implicitDeny"
+            },
+            {
+              "EvalResourceName": "arn:aws:ssm:ap-south-1:260234292958:parameter/trackmyrmc-staging/config",
+              "EvalResourceDecision": "implicitDeny"
+            },
+            {
+              "EvalResourceName": "arn:aws:ssm:ap-south-1:260234292958:parameter/production-placeholder",
+              "EvalResourceDecision": "implicitDeny"
+            },
+            {
+              "EvalResourceName": "arn:aws:s3:::trackmyrmc-staging-fixture/releases/test",
+              "EvalResourceDecision": "allowed",
+              "MatchedStatements": [
+                {
+                  "SourcePolicyId": "PolicyInputList.2",
+                  "SourcePolicyType": "IAM Policy",
+                  "StartPosition": {
+                    "Line": 1,
+                    "Column": 400
+                  },
+                  "EndPosition": {
+                    "Line": 1,
+                    "Column": 515
+                  }
+                }
+              ]
+            },
+            {
+              "EvalResourceName": "arn:aws:s3:::production-placeholder/test",
+              "EvalResourceDecision": "explicitDeny",
+              "MatchedStatements": [
+                {
+                  "SourcePolicyId": "PolicyInputList.2",
+                  "SourcePolicyType": "IAM Policy",
+                  "StartPosition": {
+                    "Line": 1,
+                    "Column": 1467
+                  },
+                  "EndPosition": {
+                    "Line": 1,
+                    "Column": 1638
+                  }
+                }
+              ]
+            },
+            {
+              "EvalResourceName": "arn:aws:iam::260234292958:role/production-placeholder",
+              "EvalResourceDecision": "implicitDeny"
+            }
+          ]
+        },
+        {
+          "EvalActionName": "iam:PassRole",
+          "EvalResourceName": "arn:aws:iam::${Account}:${ResourceType}/${ResourceName}",
+          "EvalDecision": "explicitDeny",
+          "MatchedStatements": [
+            {
+              "SourcePolicyId": "PolicyInputList.2",
+              "SourcePolicyType": "IAM Policy",
+              "StartPosition": {
+                "Line": 1,
+                "Column": 1248
+              },
+              "EndPosition": {
+                "Line": 1,
+                "Column": 1467
+              }
+            }
+          ],
+          "MissingContextValues": [],
+          "EvalDecisionDetails": {},
+          "ResourceSpecificResults": [
+            {
+              "EvalResourceName": "arn:aws:secretsmanager:ap-south-1:260234292958:secret:trackmyrmc-staging/jwt-fixture",
+              "EvalResourceDecision": "implicitDeny"
+            },
+            {
+              "EvalResourceName": "arn:aws:secretsmanager:ap-south-1:260234292958:secret:trackmyrmc-staging/otp-fixture",
+              "EvalResourceDecision": "implicitDeny"
+            },
+            {
+              "EvalResourceName": "arn:aws:secretsmanager:ap-south-1:260234292958:secret:trackmyrmc-staging/application-database-fixture",
+              "EvalResourceDecision": "implicitDeny"
+            },
+            {
+              "EvalResourceName": "arn:aws:secretsmanager:ap-south-1:260234292958:secret:production-placeholder-fixture",
+              "EvalResourceDecision": "implicitDeny"
+            },
+            {
+              "EvalResourceName": "arn:aws:secretsmanager:ap-south-1:260234292958:secret:staging-managed-admin-fixture",
+              "EvalResourceDecision": "implicitDeny"
+            },
+            {
+              "EvalResourceName": "arn:aws:ssm:ap-south-1:260234292958:parameter/trackmyrmc-staging/config",
+              "EvalResourceDecision": "implicitDeny"
+            },
+            {
+              "EvalResourceName": "arn:aws:ssm:ap-south-1:260234292958:parameter/production-placeholder",
+              "EvalResourceDecision": "implicitDeny"
+            },
+            {
+              "EvalResourceName": "arn:aws:s3:::trackmyrmc-staging-fixture/releases/test",
+              "EvalResourceDecision": "implicitDeny"
+            },
+            {
+              "EvalResourceName": "arn:aws:s3:::production-placeholder/test",
+              "EvalResourceDecision": "implicitDeny"
+            },
+            {
+              "EvalResourceName": "arn:aws:iam::260234292958:role/production-placeholder",
+              "EvalResourceDecision": "explicitDeny",
+              "MatchedStatements": [
+                {
+                  "SourcePolicyId": "PolicyInputList.2",
+                  "SourcePolicyType": "IAM Policy",
+                  "StartPosition": {
+                    "Line": 1,
+                    "Column": 1248
+                  },
+                  "EndPosition": {
+                    "Line": 1,
+                    "Column": 1467
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "template_validation": {
+      "Parameters": [
+        {
+          "ParameterKey": "ComputeSize",
+          "DefaultValue": "t3.small",
+          "NoEcho": false,
+          "Description": "Stateless staging application host size"
+        },
+        {
+          "ParameterKey": "ImageId",
+          "DefaultValue": "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64",
+          "NoEcho": false,
+          "Description": "Amazon Linux 2023 x86_64 image"
+        }
+      ],
+      "Description": "Isolated TrackMyRMC staging foundation. No production resources, records, identities or secrets are referenced.",
+      "Capabilities": [
+        "CAPABILITY_IAM"
+      ],
+      "CapabilitiesReason": "The following resource(s) require capabilities: [AWS::IAM::ManagedPolicy]"
+    },
+    "synthetic_resource_arns_only": true,
+    "resources_created": false,
+    "policy": {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Action": [
+            "secretsmanager:GetSecretValue"
+          ],
+          "Resource": [
+            "arn:aws:secretsmanager:ap-south-1:260234292958:secret:trackmyrmc-staging/jwt-fixture",
+            "arn:aws:secretsmanager:ap-south-1:260234292958:secret:trackmyrmc-staging/otp-fixture",
+            "arn:aws:secretsmanager:ap-south-1:260234292958:secret:trackmyrmc-staging/application-database-fixture"
+          ]
+        },
+        {
+          "Effect": "Allow",
+          "Action": [
+            "s3:GetObject"
+          ],
+          "Resource": "arn:aws:s3:::trackmyrmc-staging-fixture/releases/*"
+        },
+        {
+          "Sid": "DenyOtherSecretReads",
+          "Effect": "Deny",
+          "Action": [
+            "secretsmanager:GetSecretValue",
+            "secretsmanager:BatchGetSecretValue"
+          ],
+          "NotResource": [
+            "arn:aws:secretsmanager:ap-south-1:260234292958:secret:trackmyrmc-staging/jwt-fixture",
+            "arn:aws:secretsmanager:ap-south-1:260234292958:secret:trackmyrmc-staging/otp-fixture",
+            "arn:aws:secretsmanager:ap-south-1:260234292958:secret:trackmyrmc-staging/application-database-fixture"
+          ]
+        },
+        {
+          "Sid": "DenyNonStagingParameterReads",
+          "Effect": "Deny",
+          "Action": [
+            "ssm:GetParameter",
+            "ssm:GetParameters",
+            "ssm:GetParametersByPath"
+          ],
+          "NotResource": [
+            "arn:aws:ssm:ap-south-1:260234292958:parameter/trackmyrmc-staging/*",
+            "arn:aws:ssm:ap-south-1::parameter/aws/service/ami-amazon-linux-latest/*"
+          ]
+        },
+        {
+          "Sid": "DenyInfrastructureMutationAndRoleAssumption",
+          "Effect": "Deny",
+          "Action": [
+            "ec2:*",
+            "rds:*",
+            "iam:*",
+            "cloudformation:*",
+            "sts:AssumeRole",
+            "ssm:SendCommand",
+            "ssm:StartAutomationExecution"
+          ],
+          "Resource": "*"
+        },
+        {
+          "Sid": "DenyOtherObjectReads",
+          "Effect": "Deny",
+          "Action": [
+            "s3:GetObject",
+            "s3:GetObjectVersion"
+          ],
+          "NotResource": "arn:aws:s3:::trackmyrmc-staging-fixture/releases/*"
+        }
+      ]
+    }
+  },
+  "api_calls": [
+    {
+      "service": "sts",
+      "operation": "GetCallerIdentity",
+      "status": "success"
+    },
+    {
+      "service": "iam",
+      "operation": "GetPolicyVersion",
+      "status": "success"
+    },
+    {
+      "service": "iam",
+      "operation": "SimulateCustomPolicy",
+      "status": "success",
+      "n_items": {
+        "EvaluationResults": 4
+      }
+    },
+    {
+      "service": "cloudformation",
+      "operation": "ValidateTemplate",
+      "status": "success",
+      "n_items": {
+        "Parameters": 2,
+        "Capabilities": 1
+      }
+    }
+  ]
+}

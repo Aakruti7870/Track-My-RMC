@@ -5,15 +5,19 @@ on:
     branches: [ main, develop ]
     paths:
       - 'backend/**'
+      - 'frontend/**'
+      - 'admin-web/**'
       - 'ops/**'
       - '.github/workflows/backend.yml'
       - '.github/workflows/deploy-aws-production.yml'
   # Include stacked feature PRs so dependent slices are tested before retargeting
   # to main; otherwise their base branch would silently skip required CI.
   pull_request:
-    branches: [ main, 'feat/**' ]
+    branches: [ main, 'feat/**', 'integration/**' ]
     paths:
       - 'backend/**'
+      - 'frontend/**'
+      - 'admin-web/**'
       - 'ops/**'
       - '.github/workflows/backend.yml'
       - '.github/workflows/deploy-aws-production.yml'
@@ -23,12 +27,16 @@ env:
 
 jobs:
   check-and-test:
-    name: Rust Check, Clippy & Test
+    name: Rust Check, Clippy & Test (PostgreSQL ${{ matrix.postgres }})
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: [16, 18]
     runs-on: ubuntu-latest
 
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:${{ matrix.postgres }}-alpine
         env:
           POSTGRES_USER: trackmyrmc_user
           POSTGRES_PASSWORD: securepassword
@@ -70,12 +78,61 @@ jobs:
       - name: Clippy Linter
         run: |
           cd backend
-          cargo clippy --all-targets
+          cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Run Tests
+        if: success() || failure()
         env:
           DATABASE_URL: postgres://trackmyrmc_user:securepassword@localhost:5432/trackmyrmc_test
           JWT_SECRET: test_jwt_secret_key_at_least_32_characters_long
         run: |
           cd backend
           cargo test --verbose
+
+      - name: Setup Node for actual admin browser regression
+        if: success() && matrix.postgres == 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Verify staging template isolation
+        if: success() && matrix.postgres == 18
+        run: node ops/staging/verify-isolation.mjs
+      - name: Verify admin browser against Rust and PostgreSQL
+        if: success() && matrix.postgres == 18
+        env:
+          DATABASE_URL: postgres://trackmyrmc_user:securepassword@localhost:5432/trackmyrmc_test
+          JWT_SECRET: isolated_ci_only_secret_that_exceeds_sixty_four_bytes_12345678901234567890
+          OTP_PEPPER: isolated_ci_only_otp_pepper_12345678901234567890
+          APP_ENV: test
+          HOST: 127.0.0.1
+          PORT: 8000
+          CORS_ORIGIN: http://127.0.0.1:4173
+          VITE_API_URL: http://127.0.0.1:8000
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/tests/fixtures/control_center_browser.sql
+          npm ci --prefix admin-web
+          cd admin-web
+          npx playwright install --with-deps chromium
+          cd ..
+          cargo run --manifest-path backend/Cargo.toml > "$RUNNER_TEMP/trackmyrmc-api.log" 2>&1 &
+          API_PID=$!
+          npm run dev --prefix admin-web -- --host 127.0.0.1 --port 4173 > "$RUNNER_TEMP/trackmyrmc-admin.log" 2>&1 &
+          WEB_PID=$!
+          trap 'kill "$API_PID" "$WEB_PID" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:8000/health > /dev/null && curl -fsS http://127.0.0.1:4173 > /dev/null; then break; fi
+            sleep 1
+          done
+          node admin-web/scripts/verify-control-center.mjs
+
+      - name: Verify actual Expo role journeys against Rust and PostgreSQL
+        if: success() && matrix.postgres == 18
+        timeout-minutes: 15
+        env:
+          DATABASE_URL: postgres://trackmyrmc_user:securepassword@localhost:5432/trackmyrmc_test
+          JWT_SECRET: isolated_ci_only_secret_that_exceeds_sixty_four_bytes_12345678901234567890
+          OTP_PEPPER: isolated_ci_only_otp_pepper_12345678901234567890
+          APP_ENV: test
+        run: |
+          npm ci --prefix frontend
+          node admin-web/scripts/verify-mobile-roles.mjs

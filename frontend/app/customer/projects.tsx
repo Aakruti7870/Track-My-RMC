@@ -53,13 +53,13 @@ export default function CustomerProjects() {
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
       <View style={{ height: insets.top }} />
       <View style={[styles.header, { backgroundColor: colors.surfaceSecondary, borderBottomColor: colors.divider }]}>
-        <Pressable onPress={() => router.back()}><Ionicons name="arrow-back" size={24} color={colors.onSurface} /></Pressable>
-        <View style={{ flex: 1 }}><AppText style={[styles.headerTitle, { color: colors.onSurface }]}>Project & Site Hub</AppText><AppText style={[styles.headerSub, { color: colors.onSurfaceTertiary }]}>Everything for each concrete delivery site</AppText></View>
+        <Pressable testID="project-hub-back" accessibilityRole="button" accessibilityLabel="Back" onPress={() => router.back()}><Ionicons name="arrow-back" size={24} color={colors.onSurface} /></Pressable>
+        <View style={{ flex: 1 }}><AppText testID="project-hub-heading" style={[styles.headerTitle, { color: colors.onSurface }]}>Project & Site Hub</AppText><AppText style={[styles.headerSub, { color: colors.onSurfaceTertiary }]}>Everything for each concrete delivery site</AppText></View>
         <Ionicons name="briefcase-outline" size={25} color={colors.brand} />
       </View>
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 110, gap: spacing.lg }} refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={colors.brand} />}>
         <Card style={{ gap: spacing.sm }}>
-          <View style={styles.notice}><Ionicons name="information-circle-outline" size={19} color={colors.brand} /><AppText variant="caption" style={{ flex: 1 }}>Orders and quotations are linked by saved site. Older records are safely matched by the same site name and address.</AppText></View>
+          <View style={styles.notice}><Ionicons name="information-circle-outline" size={19} color={colors.brand} /><AppText variant="caption" style={{ flex: 1 }}>Orders and quotations are linked by saved site. Older quotations match only when the site name and address identify one saved site. Delivered quantity comes from recorded delivery receipts.</AppText></View>
         </Card>
         {loading && !data ? <><Skeleton height={210} /><Skeleton height={210} /></> : null}
         {error && !data ? <Card style={{ gap: spacing.md }}><AppText color={colors.error}>{error}</AppText><Button label="Retry" onPress={reload} /></Card> : null}

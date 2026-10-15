@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import apiClient from './api';
 
-type Stage = 'email' | 'otp' | 'mfa-enroll' | 'mfa-login' | 'authenticated';
+type Stage = 'central-login' | 'email' | 'otp' | 'mfa-enroll' | 'mfa-login' | 'authenticated';
 
 type StaffUser = {
   id?: string;
@@ -18,6 +18,8 @@ type Health = {
   environment?: string;
   timestamp?: string;
 };
+
+type PortalKpi = { label: string; value: string | number };
 
 type Enrollment = {
   account: string;
@@ -38,7 +40,7 @@ function errorMessage(error: unknown): string {
 }
 
 function CommandCenter() {
-  const [stage, setStage] = useState<Stage>('email');
+  const [stage, setStage] = useState<Stage>('central-login');
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
   const [mfaCode, setMfaCode] = useState('');
@@ -47,6 +49,12 @@ function CommandCenter() {
   const [recoveryCodesSaved, setRecoveryCodesSaved] = useState(false);
   const [user, setUser] = useState<StaffUser | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
+  const [adminKpis, setAdminKpis] = useState<PortalKpi[]>([]);
+  const [adminOverviewError, setAdminOverviewError] = useState('');
+  const [permissions,setPermissions]=useState<string[]>([]);
+  const [workspace,setWorkspace]=useState('');
+  const [records,setRecords]=useState<Array<Record<string,unknown>>>([]);
+  const [workspaceOffset,setWorkspaceOffset]=useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -57,9 +65,13 @@ function CommandCenter() {
 
     let active = true;
     apiClient.get('/api/me')
-      .then((response) => {
+      .then(async (response) => {
         const currentUser = response.data?.user as StaffUser | undefined;
         if (!active || !currentUser?.role) return;
+        if (currentUser.role === 'central_admin') {
+          const session=await apiClient.get('/api/admin/auth/me');
+          setPermissions(session.data?.permissions || []);
+        }
         setUser(currentUser);
         setStage('authenticated');
       })
@@ -78,6 +90,53 @@ function CommandCenter() {
       .catch(() => { if (active) setHealth(null); });
     return () => { active = false; };
   }, [stage]);
+
+  useEffect(() => {
+    if (stage !== 'authenticated' || user?.role !== 'central_admin') {
+      setAdminKpis([]);
+      setAdminOverviewError('');
+      return;
+    }
+    let active = true;
+    apiClient.get('/api/control-center/summary')
+      .then((response) => {
+        if (!active) return;
+        const kpis: unknown = response.data?.kpis;
+        setAdminKpis(Array.isArray(kpis) ? kpis.filter((item): item is PortalKpi =>
+          typeof item?.label === 'string' &&
+          (typeof item?.value === 'number' || typeof item?.value === 'string')
+        ) : []);
+        setAdminOverviewError('');
+      })
+      .catch((requestError) => {
+        if (!active) return;
+        setAdminKpis([]);
+        setAdminOverviewError(errorMessage(requestError));
+      });
+    return () => { active = false; };
+  }, [stage, user?.role]);
+
+  async function loadWorkspace(kind:string,offset=0) {
+    setBusy(true);setError('');setWorkspace(kind);
+    try {
+      const response=await apiClient.get('/api/control-center/collections/'+kind,{params:{limit:25,offset}});
+      setRecords(response.data.items || []);setWorkspaceOffset(offset);
+    } catch(error) {setRecords([]);setError(errorMessage(error));}
+    finally {setBusy(false);}
+  }
+
+  async function centralLogin(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setError('');
+    try {
+      const response = await apiClient.post('/api/admin/auth/verify-totp', { identifier: email.trim(), code: mfaCode.trim() });
+      if (!response.data?.token || response.data?.user?.role !== 'central_admin') throw new Error('Administrator session was not established.');
+      window.sessionStorage.setItem('trackmyrmc_admin_token', response.data.token);
+      const session=await apiClient.get('/api/admin/auth/me');
+      setPermissions(session.data?.permissions || []);
+      setUser(response.data.user); setMfaCode(''); setStage('authenticated');
+    } catch (error) { setError(errorMessage(error)); }
+    finally { setBusy(false); }
+  }
 
   async function sendEmailOtp(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -170,7 +229,7 @@ function CommandCenter() {
       if (!auth?.token || !signedInUser?.role) {
         throw new Error('The server response did not contain a valid authenticated session.');
       }
-      const allowedRoles = ['dispatcher', 'operator', 'supervisor', 'quality_engineer', 'store_manager', 'accountant', 'fleet_manager', 'owner', 'admin'];
+      const allowedRoles = ['plant_owner','dispatcher', 'operator', 'supervisor', 'quality_engineer', 'store_manager', 'accountant', 'fleet_manager', 'owner', 'admin'];
       if (!allowedRoles.includes(signedInUser.role)) {
         throw new Error('This account is not authorized for staff portal access.');
       }
@@ -189,18 +248,20 @@ function CommandCenter() {
   async function logout() {
     setBusy(true);
     try {
-      await apiClient.post('/api/auth/logout');
+      await apiClient.post(user?.role === 'central_admin' ? '/api/admin/auth/logout' : '/api/auth/logout');
     } catch {
       // Always clear this browser session, even if the server is temporarily unreachable.
     } finally {
       window.sessionStorage.removeItem('trackmyrmc_admin_token');
-      setUser(null);
+      setUser(null);setPermissions([]);setRecords([]);setWorkspace('');
       setHealth(null);
+      setAdminKpis([]);
+      setAdminOverviewError('');
       setEnrollment(null);
       setChallengeToken('');
       setOtp('');
       setMfaCode('');
-      setStage('email');
+      setStage('central-login');
       setNotice('Signed out of this browser session.');
       setError('');
       setBusy(false);
@@ -236,16 +297,27 @@ function CommandCenter() {
           TrackMyRMC · Secure Access
         </div>
         <h1 id="portal-title" style={{ margin: '10px 0 6px', fontSize: 30, lineHeight: 1.2 }}>
-          {stage === 'authenticated' ? 'Command Center' : 'Staff sign in'}
+          {stage === 'authenticated' ? 'Command Center' : stage === 'central-login' ? 'Central Admin sign in' : 'Plant staff sign in'}
         </h1>
         <p style={{ color: '#cbd5e1', lineHeight: 1.6, marginTop: 0 }}>
           {stage === 'authenticated'
-            ? 'Your staff session is authenticated using email verification and multi-factor authentication.'
-            : 'Staff, plant owners, and administrators sign in with registered email OTP followed by an authenticator factor.'}
+            ? 'Your access is restricted to the permissions assigned to your account.'
+            : stage === 'central-login' ? 'Approved Central Admin accounts use the enrolled authenticator. Staff sessions do not grant Control Center access.' : 'Plant staff use email verification followed by authenticator MFA.'}
         </p>
 
         {error && <div role="alert" style={{ padding: 12, borderRadius: 8, background: '#451a1a', border: '1px solid #b91c1c', color: '#fecaca', margin: '16px 0' }}>{error}</div>}
         {notice && <div role="status" style={{ padding: 12, borderRadius: 8, background: '#172554', border: '1px solid #3730a3', color: '#dbeafe', margin: '16px 0' }}>{notice}</div>}
+
+        {stage === 'central-login' && (
+          <form onSubmit={centralLogin}>
+            <label htmlFor="central-email">Approved administrator email</label>
+            <input id="central-email" type="email" autoComplete="username" required value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} disabled={busy} />
+            <label htmlFor="central-code" style={{display:'block',marginTop:18}}>Authenticator code</label>
+            <input id="central-code" inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" maxLength={6} value={mfaCode} onChange={e => setMfaCode(e.target.value)} style={inputStyle} disabled={busy} />
+            <button type="submit" disabled={busy} style={buttonStyle}>{busy ? 'Verifying…' : 'Sign in with authenticator'}</button>
+            <button type="button" onClick={() => {setStage('email');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Plant staff sign in</button>
+          </form>
+        )}
 
         {stage === 'email' && (
           <form onSubmit={sendEmailOtp}>
@@ -313,15 +385,46 @@ function CommandCenter() {
             <div style={{ marginTop: 20, padding: 16, border: '1px solid #334155', borderRadius: 10, background: '#111827' }}>
               <p style={{ margin: '0 0 8px' }}><strong>Signed in as</strong> {user.full_name || user.email || user.phone || 'Staff user'}</p>
               <p style={{ margin: '0 0 8px' }}><strong>Role</strong> {user.role}</p>
-              <p style={{ margin: 0 }}><strong>Session</strong> Email OTP + MFA verified</p>
+              <p style={{ margin: 0 }}><strong>Session</strong> {user.role === 'central_admin' ? 'Dedicated web authenticator session' : 'Email OTP + MFA verified'}</p>
             </div>
             <div style={{ marginTop: 14, padding: 16, border: '1px solid #334155', borderRadius: 10 }}>
               <h2 style={{ marginTop: 0, fontSize: 18 }}>Service health</h2>
               <p><strong>API:</strong> {health?.status || 'Unavailable'}</p>
               <p><strong>Database:</strong> {health?.database || 'Not confirmed'}</p>
               <p><strong>Environment:</strong> {health?.environment || 'Unknown'}</p>
-              <p style={{ color: '#94a3b8', fontSize: 12 }}>Operational management modules are not connected to this portal yet.</p>
+              <p style={{ color: '#94a3b8', fontSize: 12 }}>This portal is being connected incrementally to secured Rust APIs. Privileged actions require recent authenticator verification.</p>
             </div>
+            {user.role === 'central_admin' && (
+              <section aria-label="Platform overview" style={{ marginTop: 14, padding: 16, border: '1px solid #334155', borderRadius: 10 }}>
+                <h2 style={{ marginTop: 0, fontSize: 18 }}>Live platform overview</h2>
+                {adminOverviewError && <p role="alert" style={{ color: '#fecaca' }}>Unable to load overview: {adminOverviewError}</p>}
+                {!adminOverviewError && adminKpis.length === 0 && <p style={{ color: '#94a3b8' }}>No overview data available.</p>}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(175px, 1fr))', gap: 10 }}>
+                  {adminKpis.map((item) => (
+                    <div key={item.label} style={{ padding: 12, border: '1px solid #475569', borderRadius: 8, background: '#111827' }}>
+                      <div style={{ color: '#cbd5e1', fontSize: 12 }}>{item.label}</div>
+                      <strong style={{ fontSize: 22 }}>{String(item.value)}</strong>
+                    </div>
+                  ))}
+                </div>
+                <p style={{ color: '#94a3b8', fontSize: 12 }}>Read-only statistics from the Rust API. This is not the complete reference Control Center.</p>
+              </section>
+            )}
+            {user.role === 'central_admin' && <section aria-label="Authorized workspaces" style={{marginTop:18}}>
+              <nav style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                {['users','plants','orders','support','audit','sessions'].filter(kind=>permissions.includes(({users:'user.view',plants:'plant.view',orders:'order.view',support:'support.view',audit:'audit.view',sessions:'session.view'} as Record<string,string>)[kind])).map(kind=>
+                  <button key={kind} disabled={busy} onClick={()=>void loadWorkspace(kind)} style={{...buttonStyle,width:'auto',textTransform:'capitalize'}}>{kind}</button>)}
+              </nav>
+              {workspace && <><h2 style={{textTransform:'capitalize'}}>{workspace}</h2>
+                {!busy && records.length===0 && <p>No records on this page.</p>}
+                <div style={{overflowX:'auto'}}><table style={{width:'100%',fontSize:13,borderCollapse:'collapse'}}>
+                  <thead><tr>{Object.keys(records[0]||{}).map(key=><th key={key} style={{textAlign:'left',padding:8}}>{key.replace(/_/g,' ')}</th>)}</tr></thead>
+                  <tbody>{records.map((row,index)=><tr key={String(row.id||index)}>{Object.entries(row).map(([key,value])=><td key={key} style={{padding:8,borderTop:'1px solid #334155'}}>{value===null?'—':String(value)}</td>)}</tr>)}</tbody>
+                </table></div>
+                <button disabled={busy||workspaceOffset===0} onClick={()=>void loadWorkspace(workspace,Math.max(0,workspaceOffset-25))}>Previous</button>
+                <button disabled={busy||records.length<25} onClick={()=>void loadWorkspace(workspace,workspaceOffset+25)}>Next</button>
+              </>}
+            </section>}
             <button type="button" onClick={logout} disabled={busy} style={buttonStyle}>{busy ? 'Signing out…' : 'Sign out and revoke session'}</button>
           </div>
         )}

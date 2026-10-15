@@ -40,6 +40,7 @@ export default function Support() {
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null); const [caseReply, setCaseReply] = useState("");
   const [replying, setReplying] = useState(false); const [caseError, setCaseError] = useState<string | null>(null);
   const escalationId = useRef(newEscalationId());
+  const escalationBody = useRef("");
   const orders = useGet<{ orders: OrderData[] }>(token && (category === "ORDER" || category === "TRACKING") ? "/customer/orders" : null);
   const cases = useGet<{ cases: SupportCase[] }>(token ? "/assistant/support/cases" : null);
   const caseDetail = useGet<{ case: SupportCase }>(token && selectedCaseId ? `/assistant/support/cases/${selectedCaseId}` : null);
@@ -72,13 +73,18 @@ export default function Support() {
     if ((category === "ORDER" || category === "TRACKING") && !orderId) return setError("Choose one of your orders first.");
     setBusy(true); setError(null);
     try {
-      const result = await apiPost<Reply>("/assistant/support", token, {
+      const body = {
         category,
         message: generatedSupportMessage(),
         order_id: orderId,
         escalate: true,
-        request_id: escalationId.current,
-      });
+      };
+      const fingerprint = JSON.stringify(body);
+      if (escalationBody.current !== fingerprint) {
+        escalationId.current = newEscalationId();
+        escalationBody.current = fingerprint;
+      }
+      const result = await apiPost<Reply>("/assistant/support", token, { ...body, request_id: escalationId.current });
       setReply(result);
       escalationId.current = newEscalationId();
       await cases.refetch();

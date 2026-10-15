@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { Modal, RefreshControl, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -40,6 +40,7 @@ export default function OperatorProduction() {
   const [reference, setReference] = useState("");
   const [remarks, setRemarks] = useState("");
   const [busy, setBusy] = useState(false);
+  const batchRequestId = useRef<string | null>(null);
 
   const start = async (item: Item) => {
     if (!token) return;
@@ -57,6 +58,7 @@ export default function OperatorProduction() {
     setBusy(true);
     try {
       const p = await apiGet<Progress>(`/staff/orders/${item.id}/production`, token);
+      batchRequestId.current = null;
       setSelected(item); setProgress(p); setQuantity(String(p.remaining_quantity || "")); setReference(""); setRemarks("");
     } catch (e: any) { toast(e.detail || "Could not load production", "error"); }
     finally { setBusy(false); }
@@ -70,12 +72,14 @@ export default function OperatorProduction() {
     try {
       await apiPost(`/staff/orders/${selected.id}/production/batch`, token, {
         quantity: qty,
+        request_id: batchRequestId.current ||= `${Date.now()}-${Math.random().toString(36).slice(2)}`,
         batch_reference: reference.trim() || null,
         remarks: remarks.trim() || null,
         consume_materials: true,
       });
       const p = await apiGet<Progress>(`/staff/orders/${selected.id}/production`, token);
       setProgress(p); setQuantity(String(p.remaining_quantity || "")); setReference(""); setRemarks("");
+      batchRequestId.current = null;
       toast("Batch posted and inventory consumed", "success");
       refetch();
     } catch (e: any) { toast(e.detail || "Could not post batch", "error"); }
@@ -141,9 +145,9 @@ export default function OperatorProduction() {
                   {b.remarks ? <AppText variant="caption">{b.remarks}</AppText> : null}
                 </Card>
               ))}
-              <Input label="Batch quantity (m³)" value={quantity} onChangeText={(v) => setQuantity(v.replace(/[^0-9.]/g, ""))} keyboardType="numeric" />
-              <Input label="Batch reference (optional)" value={reference} onChangeText={setReference} placeholder="Batch plant / report reference" />
-              <Input label="Remarks (optional)" value={remarks} onChangeText={setRemarks} />
+              <Input label="Batch quantity (m³)" value={quantity} onChangeText={(v) => { batchRequestId.current = null; setQuantity(v.replace(/[^0-9.]/g, "")); }} keyboardType="numeric" />
+              <Input label="Batch reference (optional)" value={reference} onChangeText={(v) => { batchRequestId.current = null; setReference(v); }} placeholder="Batch plant / report reference" />
+              <Input label="Remarks (optional)" value={remarks} onChangeText={(v) => { batchRequestId.current = null; setRemarks(v); }} />
               <Button label="Post Batch + Consume Materials" onPress={addBatch} loading={busy} />
               {progress && progress.remaining_quantity <= 0.001 ? <Button label="Complete Production" variant="outline" onPress={() => selected && complete(selected)} /> : null}
               <Button label="Close" variant="outline" onPress={() => setSelected(null)} />

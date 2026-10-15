@@ -19,34 +19,7 @@ async fn ensure_plant_staff_or_owner(
     auth_user: &AuthUser,
     plant_id: Uuid,
 ) -> Result<(), AppError> {
-    if auth_user.role == "admin" {
-        return Ok(());
-    }
-    if auth_user.role == "owner" || auth_user.role == "plant_owner" {
-        let is_owner: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM rmc_plants WHERE id = $1 AND owner_id = $2)",
-        )
-        .bind(plant_id)
-        .bind(auth_user.user_id)
-        .fetch_one(&state.db)
-        .await?;
-        if is_owner {
-            return Ok(());
-        }
-    }
-    let is_staff: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM plant_staff WHERE plant_id = $1 AND user_id = $2 AND is_active = TRUE)",
-    )
-    .bind(plant_id)
-    .bind(auth_user.user_id)
-    .fetch_one(&state.db)
-    .await?;
-    if !is_staff {
-        return Err(AppError::Forbidden(
-            "You are not authorized for this plant".to_string(),
-        ));
-    }
-    Ok(())
+    super::business_routes::ensure_plant_staff_or_owner(state, auth_user, plant_id).await
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -72,64 +45,11 @@ pub async fn list_plant_quotations(
     auth_user: AuthUser,
     Path(plant_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
+    check_role(&auth_user, &["owner", "plant_owner", "admin", "accountant"])?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
-
-    let rows = sqlx::query(
-        r#"
-        SELECT id, quotation_number, customer_name, customer_mobile, site_name, site_address,
-               grade, quantity_m3, rate_per_m3, gst_rate, transport_amount, pumping_amount,
-               total_amount, valid_until, status, notes, created_at
-        FROM plant_quotations WHERE plant_id = $1 ORDER BY created_at DESC
-        "#,
-    )
-    .bind(plant_id)
-    .fetch_all(&state.db)
-    .await?;
-
-    let quotations: Vec<_> = rows
-        .into_iter()
-        .map(|r| {
-            let id: Uuid = r.get("id");
-            let quotation_number: String = r.get("quotation_number");
-            let customer_name: String = r.get("customer_name");
-            let customer_mobile: Option<String> = r.get("customer_mobile");
-            let site_name: String = r.get("site_name");
-            let site_address: String = r.get("site_address");
-            let grade: String = r.get("grade");
-            let quantity_m3: bigdecimal::BigDecimal = r.get("quantity_m3");
-            let rate_per_m3: bigdecimal::BigDecimal = r.get("rate_per_m3");
-            let gst_rate: bigdecimal::BigDecimal = r.get("gst_rate");
-            let transport_amount: bigdecimal::BigDecimal = r.get("transport_amount");
-            let pumping_amount: bigdecimal::BigDecimal = r.get("pumping_amount");
-            let total_amount: bigdecimal::BigDecimal = r.get("total_amount");
-            let valid_until: chrono::NaiveDate = r.get("valid_until");
-            let status: String = r.get("status");
-            let notes: Option<String> = r.get("notes");
-            let created_at: chrono::DateTime<chrono::Utc> = r.get("created_at");
-
-            json!({
-                "id": id,
-                "quotation_number": quotation_number,
-                "customer_name": customer_name,
-                "customer_mobile": customer_mobile,
-                "site_name": site_name,
-                "site_address": site_address,
-                "grade": grade,
-                "quantity_m3": quantity_m3,
-                "rate_per_m3": rate_per_m3,
-                "gst_rate": gst_rate,
-                "transport_amount": transport_amount,
-                "pumping_amount": pumping_amount,
-                "total_amount": total_amount,
-                "valid_until": valid_until,
-                "status": status,
-                "notes": notes,
-                "created_at": created_at
-            })
-        })
-        .collect();
-
-    Ok(Json(json!({ "success": true, "quotations": quotations })))
+    let rows:Vec<serde_json::Value>=sqlx::query_scalar("SELECT to_jsonb(q)||jsonb_build_object('quantity_m3',q.quantity_m3::DOUBLE PRECISION,'rate_per_m3',q.rate_per_m3::DOUBLE PRECISION,'gst_rate',q.gst_rate::DOUBLE PRECISION,'transport_amount',q.transport_amount::DOUBLE PRECISION,'pumping_amount',q.pumping_amount::DOUBLE PRECISION,'total',q.total_amount::DOUBLE PRECISION,'total_amount',q.total_amount::DOUBLE PRECISION,'customer_response_reason',q.decline_reason,'order_number',o.order_number) FROM plant_quotations q LEFT JOIN orders o ON o.quotation_id=q.id WHERE q.plant_id=$1 ORDER BY q.created_at DESC LIMIT 500")
+        .bind(plant_id).fetch_all(&state.db).await?;
+    Ok(Json(json!({"success":true,"quotations":rows})))
 }
 
 pub async fn create_plant_quotation(
@@ -140,72 +60,10 @@ pub async fn create_plant_quotation(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin", "accountant"])?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
-
-    let valid_date = NaiveDate::parse_from_str(&payload.valid_until, "%Y-%m-%d").map_err(|_| {
-        AppError::BadRequest("Invalid valid_until date, format must be YYYY-MM-DD".to_string())
-    })?;
-
-    let gst_rate = payload.gst_rate.unwrap_or(18.0);
-    let transport = payload.transport_amount.unwrap_or(0.0);
-    let pumping = payload.pumping_amount.unwrap_or(0.0);
-    let subtotal = payload.quantity_m3 * payload.rate_per_m3 + transport + pumping;
-    let total = subtotal * (1.0 + (gst_rate / 100.0));
-
-    let quotation_count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM plant_quotations WHERE plant_id = $1")
-            .bind(plant_id)
-            .fetch_one(&state.db)
-            .await?;
-
-    let quotation_number = format!("QT-{:04}", quotation_count + 1);
-
-    let id: Uuid = sqlx::query_scalar(
-        r#"
-        INSERT INTO plant_quotations (
-            plant_id, quotation_number, request_id, customer_id, customer_name, customer_mobile,
-            site_name, site_address, grade, quantity_m3, rate_per_m3, gst_rate,
-            transport_amount, pumping_amount, total_amount, valid_until, status, notes
-        )
-        VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::numeric, $11::numeric, $12::numeric,
-            $13::numeric, $14::numeric, $15::numeric, $16, 'SENT', $17
-        )
-        RETURNING id
-        "#,
-    )
-    .bind(plant_id)
-    .bind(&quotation_number)
-    .bind(payload.request_id)
-    .bind(payload.customer_id)
-    .bind(&payload.customer_name)
-    .bind(&payload.customer_mobile)
-    .bind(&payload.site_name)
-    .bind(&payload.site_address)
-    .bind(&payload.grade)
-    .bind(payload.quantity_m3)
-    .bind(payload.rate_per_m3)
-    .bind(gst_rate)
-    .bind(transport)
-    .bind(pumping)
-    .bind(total)
-    .bind(valid_date)
-    .bind(&payload.notes)
-    .fetch_one(&state.db)
-    .await?;
-
-    if let Some(req_id) = payload.request_id {
-        let _ = sqlx::query("UPDATE customer_quotation_requests SET status = 'QUOTED', updated_at = NOW() WHERE id = $1")
-            .bind(req_id)
-            .execute(&state.db)
-            .await;
-    }
-
-    Ok(Json(json!({
-        "success": true,
-        "id": id,
-        "quotation_number": quotation_number,
-        "total_amount": total
-    })))
+    Ok(Json(
+        crate::services::commercial_service::issue(&state, auth_user.user_id, plant_id, payload)
+            .await?,
+    ))
 }
 
 pub async fn list_plant_quotation_requests(
@@ -213,58 +71,11 @@ pub async fn list_plant_quotation_requests(
     auth_user: AuthUser,
     Path(plant_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
+    check_role(&auth_user, &["owner", "plant_owner", "admin", "accountant"])?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
-
-    let rows = sqlx::query(
-        r#"
-        SELECT r.id, r.customer_id, r.grade, r.quantity_m3, r.required_date, r.status, r.notes, r.created_at,
-               u.full_name as customer_name, u.phone as customer_phone,
-               s.name as site_name, s.address_line as site_address
-        FROM customer_quotation_requests r
-        INNER JOIN users u ON u.id = r.customer_id
-        LEFT JOIN customer_sites s ON s.id = r.site_id
-        WHERE r.plant_id = $1
-        ORDER BY r.created_at DESC
-        "#,
-    )
-    .bind(plant_id)
-    .fetch_all(&state.db)
-    .await?;
-
-    let requests: Vec<_> = rows
-        .into_iter()
-        .map(|r| {
-            let id: Uuid = r.get("id");
-            let customer_id: Uuid = r.get("customer_id");
-            let customer_name: String = r.get("customer_name");
-            let customer_phone: Option<String> = r.get("customer_phone");
-            let site_name: Option<String> = r.get("site_name");
-            let site_address: Option<String> = r.get("site_address");
-            let grade: String = r.get("grade");
-            let quantity_m3: bigdecimal::BigDecimal = r.get("quantity_m3");
-            let required_date: chrono::NaiveDate = r.get("required_date");
-            let status: String = r.get("status");
-            let notes: Option<String> = r.get("notes");
-            let created_at: chrono::DateTime<chrono::Utc> = r.get("created_at");
-
-            json!({
-                "id": id,
-                "customer_id": customer_id,
-                "customer_name": customer_name,
-                "customer_phone": customer_phone,
-                "site_name": site_name,
-                "site_address": site_address,
-                "grade": grade,
-                "quantity_m3": quantity_m3,
-                "required_date": required_date,
-                "status": status,
-                "notes": notes,
-                "created_at": created_at
-            })
-        })
-        .collect();
-
-    Ok(Json(json!({ "success": true, "requests": requests })))
+    let rows:Vec<serde_json::Value>=sqlx::query_scalar("SELECT to_jsonb(r)-'response_payload'||jsonb_build_object('customer_name',u.full_name,'customer_mobile',u.phone,'site_name',s.name,'site_address',s.address_line,'quantity',r.quantity_m3::DOUBLE PRECISION,'quantity_m3',r.quantity_m3::DOUBLE PRECISION,'status',CASE r.status WHEN 'PENDING' THEN 'REQUESTED' ELSE r.status END,'quotation_number',q.quotation_number,'quoted_total',q.total_amount::DOUBLE PRECISION) FROM customer_quotation_requests r JOIN users u ON u.id=r.customer_id LEFT JOIN customer_sites s ON s.id=r.site_id AND s.customer_id=r.customer_id LEFT JOIN LATERAL(SELECT quotation_number,total_amount FROM plant_quotations WHERE request_id=r.id ORDER BY created_at LIMIT 1) q ON TRUE WHERE r.plant_id=$1 ORDER BY r.created_at DESC LIMIT 500")
+        .bind(plant_id).fetch_all(&state.db).await?;
+    Ok(Json(json!({"success":true,"requests":rows})))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -287,170 +98,26 @@ pub async fn respond_quotation_request(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin", "accountant"])?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
-
-    let rfq = sqlx::query(
-        r#"
-        SELECT r.id, r.customer_id, r.grade, r.quantity_m3,
-               u.full_name as customer_name, u.phone as customer_phone,
-               s.name as site_name, s.address_line as site_address
-        FROM customer_quotation_requests r
-        INNER JOIN users u ON u.id = r.customer_id
-        LEFT JOIN customer_sites s ON s.id = r.site_id
-        WHERE r.id = $1 AND r.plant_id = $2
-        "#,
-    )
-    .bind(request_id)
-    .bind(plant_id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("RFQ not found".to_string()))?;
-
-    if payload.action.to_uppercase() == "DECLINE" {
-        sqlx::query("UPDATE customer_quotation_requests SET status = 'DECLINED', updated_at = NOW() WHERE id = $1")
-            .bind(request_id)
-            .execute(&state.db)
-            .await?;
-
-        return Ok(Json(json!({ "success": true, "message": "RFQ declined" })));
-    }
-
-    let rate = payload.rate_per_m3.ok_or_else(|| {
-        AppError::BadRequest("rate_per_m3 required when sending quote".to_string())
-    })?;
-    let valid_str = payload.valid_until.unwrap_or_else(|| {
-        chrono::Utc::now()
-            .naive_utc()
-            .date()
-            .succ_opt()
-            .unwrap()
-            .to_string()
-    });
-    let valid_date = NaiveDate::parse_from_str(&valid_str, "%Y-%m-%d").map_err(|_| {
-        AppError::BadRequest("Invalid valid_until date, format must be YYYY-MM-DD".to_string())
-    })?;
-
-    let q_m3_dec: bigdecimal::BigDecimal = rfq.get("quantity_m3");
-    let q_m3: f64 = q_m3_dec.to_string().parse().unwrap_or(0.0);
-    let gst = payload.gst_rate.unwrap_or(18.0);
-    let transport = payload.transport_amount.unwrap_or(0.0);
-    let pumping = payload.pumping_amount.unwrap_or(0.0);
-    let subtotal = q_m3 * rate + transport + pumping;
-    let total = subtotal * (1.0 + (gst / 100.0));
-
-    let quotation_count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM plant_quotations WHERE plant_id = $1")
-            .bind(plant_id)
-            .fetch_one(&state.db)
-            .await?;
-    let quotation_number = format!("QT-{:04}", quotation_count + 1);
-
-    let customer_id: Uuid = rfq.get("customer_id");
-    let customer_name: String = rfq.get("customer_name");
-    let customer_phone: Option<String> = rfq.get("customer_phone");
-    let site_name: Option<String> = rfq.get("site_name");
-    let site_address: Option<String> = rfq.get("site_address");
-    let grade: String = rfq.get("grade");
-
-    sqlx::query(
-        r#"
-        INSERT INTO plant_quotations (
-            plant_id, quotation_number, request_id, customer_id, customer_name, customer_mobile,
-            site_name, site_address, grade, quantity_m3, rate_per_m3, gst_rate,
-            transport_amount, pumping_amount, total_amount, valid_until, status, notes
+    Ok(Json(
+        crate::services::commercial_service::respond(
+            &state,
+            auth_user.user_id,
+            plant_id,
+            request_id,
+            payload,
         )
-        VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::numeric, $11::numeric, $12::numeric,
-            $13::numeric, $14::numeric, $15::numeric, $16, 'SENT', $17
-        )
-        "#,
-    )
-    .bind(plant_id)
-    .bind(&quotation_number)
-    .bind(request_id)
-    .bind(customer_id)
-    .bind(&customer_name)
-    .bind(customer_phone)
-    .bind(site_name.unwrap_or_else(|| "Site".to_string()))
-    .bind(site_address.unwrap_or_else(|| "Site Address".to_string()))
-    .bind(&grade)
-    .bind(q_m3)
-    .bind(rate)
-    .bind(gst)
-    .bind(transport)
-    .bind(pumping)
-    .bind(total)
-    .bind(valid_date)
-    .bind(&payload.notes)
-    .execute(&state.db)
-    .await?;
-
-    sqlx::query("UPDATE customer_quotation_requests SET status = 'QUOTED', updated_at = NOW() WHERE id = $1")
-        .bind(request_id)
-        .execute(&state.db)
-        .await?;
-
-    Ok(Json(json!({
-        "success": true,
-        "quotation_number": quotation_number,
-        "total_amount": total,
-        "message": "Quotation sent to customer"
-    })))
+        .await?,
+    ))
 }
 
 pub async fn list_customer_quotations(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
-    let rows = sqlx::query(
-        r#"
-        SELECT q.id, q.quotation_number, q.plant_id, q.grade, q.quantity_m3, q.rate_per_m3,
-               q.gst_rate, q.transport_amount, q.pumping_amount, q.total_amount,
-               q.valid_until, q.status, q.notes, q.created_at,
-               p.name as plant_name, p.contact_phone as plant_phone
-        FROM plant_quotations q
-        INNER JOIN rmc_plants p ON p.id = q.plant_id
-        WHERE q.customer_id = $1
-        ORDER BY q.created_at DESC
-        "#,
-    )
-    .bind(auth_user.user_id)
-    .fetch_all(&state.db)
-    .await?;
-
-    let quotations: Vec<_> = rows
-        .into_iter()
-        .map(|r| {
-            let id: Uuid = r.get("id");
-            let quotation_number: String = r.get("quotation_number");
-            let plant_id: Uuid = r.get("plant_id");
-            let plant_name: String = r.get("plant_name");
-            let plant_phone: Option<String> = r.get("plant_phone");
-            let grade: String = r.get("grade");
-            let quantity_m3: bigdecimal::BigDecimal = r.get("quantity_m3");
-            let rate_per_m3: bigdecimal::BigDecimal = r.get("rate_per_m3");
-            let total_amount: bigdecimal::BigDecimal = r.get("total_amount");
-            let valid_until: chrono::NaiveDate = r.get("valid_until");
-            let status: String = r.get("status");
-            let created_at: chrono::DateTime<chrono::Utc> = r.get("created_at");
-
-            json!({
-                "id": id,
-                "quotation_number": quotation_number,
-                "plant_id": plant_id,
-                "plant_name": plant_name,
-                "plant_phone": plant_phone,
-                "grade": grade,
-                "quantity_m3": quantity_m3,
-                "rate_per_m3": rate_per_m3,
-                "total_amount": total_amount,
-                "valid_until": valid_until,
-                "status": status,
-                "created_at": created_at
-            })
-        })
-        .collect();
-
-    Ok(Json(json!({ "success": true, "quotations": quotations })))
+    check_role(&auth_user, &["customer"])?;
+    let quotes:Vec<serde_json::Value>=sqlx::query_scalar("SELECT to_jsonb(q)||jsonb_build_object('plant_name',p.name,'plant_phone',p.contact_phone,'site_id',r.site_id,'quantity_m3',q.quantity_m3::DOUBLE PRECISION,'rate_per_m3',q.rate_per_m3::DOUBLE PRECISION,'gst_rate',q.gst_rate::DOUBLE PRECISION,'transport_amount',q.transport_amount::DOUBLE PRECISION,'pumping_amount',q.pumping_amount::DOUBLE PRECISION,'total',q.total_amount::DOUBLE PRECISION,'total_amount',q.total_amount::DOUBLE PRECISION,'gst_amount',ROUND((q.quantity_m3*q.rate_per_m3+q.transport_amount+q.pumping_amount)*q.gst_rate/100,2)::DOUBLE PRECISION,'order_id',o.id,'order_number',o.order_number) FROM plant_quotations q JOIN rmc_plants p ON p.id=q.plant_id LEFT JOIN customer_quotation_requests r ON r.id=q.request_id AND r.customer_id=q.customer_id LEFT JOIN orders o ON o.quotation_id=q.id WHERE q.customer_id=$1 ORDER BY q.created_at DESC LIMIT 500")
+        .bind(auth_user.user_id).fetch_all(&state.db).await?;
+    Ok(Json(json!({"success":true,"quotations":quotes})))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -465,37 +132,49 @@ pub async fn decide_customer_quotation(
     Path(quotation_id): Path<Uuid>,
     Json(payload): Json<CustomerQuotationDecisionPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    let new_status = if payload.action.to_uppercase() == "ACCEPT" {
-        "ACCEPTED"
-    } else {
-        "DECLINED"
+    check_role(&auth_user, &["customer"])?;
+    let new_status = match payload.action.as_str() {
+        "ACCEPT" => "ACCEPTED",
+        "DECLINE" => "DECLINED",
+        _ => {
+            return Err(AppError::BadRequest(
+                "Action must be ACCEPT or DECLINE".into(),
+            ))
+        }
     };
-
-    let result = sqlx::query(
-        r#"
-        UPDATE plant_quotations
-        SET status = $1, decline_reason = $2, updated_at = NOW()
-        WHERE id = $3 AND customer_id = $4
-        "#,
+    if payload.reason.as_ref().is_some_and(|s| s.len() > 2000) {
+        return Err(AppError::BadRequest("Reason is too long".into()));
+    }
+    let mut tx = state.db.begin().await?;
+    let row = sqlx::query(
+        "SELECT status,valid_until FROM plant_quotations WHERE id=$1 AND customer_id=$2 FOR UPDATE",
     )
-    .bind(new_status)
-    .bind(payload.reason)
     .bind(quotation_id)
     .bind(auth_user.user_id)
-    .execute(&state.db)
-    .await?;
-
-    if result.rows_affected() == 0 {
-        return Err(AppError::NotFound(
-            "Quotation not found or unauthorized".to_string(),
-        ));
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Quotation not found".into()))?;
+    let status: String = row.get("status");
+    if status != new_status {
+        if status != "SENT"
+            || row.get::<chrono::NaiveDate, _>("valid_until") < chrono::Utc::now().date_naive()
+        {
+            return Err(AppError::Conflict(
+                "Only an unexpired sent quotation can be decided".into(),
+            ));
+        }
+        sqlx::query(
+            "UPDATE plant_quotations SET status=$1,decline_reason=$2,updated_at=NOW() WHERE id=$3",
+        )
+        .bind(new_status)
+        .bind(payload.reason)
+        .bind(quotation_id)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'quotation.decision','quotation',$2,$3)").bind(auth_user.user_id).bind(quotation_id.to_string()).bind(json!({"from":status,"to":new_status})).execute(&mut *tx).await?;
     }
-
-    Ok(Json(json!({
-        "success": true,
-        "status": new_status,
-        "message": format!("Quotation {}", new_status.to_lowercase())
-    })))
+    tx.commit().await?;
+    Ok(Json(json!({"success":true,"status":new_status})))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
