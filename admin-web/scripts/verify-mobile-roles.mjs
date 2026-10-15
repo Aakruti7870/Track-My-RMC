@@ -206,7 +206,7 @@ try {
       phase = 'project hub: return to More';
       // The native header back button uses expo-router's history, which is
       // not necessarily equivalent to browser history in Expo web tests.
-      await page.getByRole('button', { name: 'Back' }).first().click();
+      await page.getByTestId('project-hub-back').click();
       await expect(page.getByTestId('role-module-directory')).toBeVisible();
       phase = 'support create';
       await page.getByTestId('customer-support-widget').click();
