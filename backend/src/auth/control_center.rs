@@ -178,3 +178,26 @@ pub async fn me(admin: WebAdmin) -> Json<Value> {
         json!({"user":{"id":admin.user_id,"email":admin.email,"role":admin.role},"permissions":admin.permissions}),
     )
 }
+
+pub async fn logout(
+    State(state): State<AppState>,
+    admin: WebAdmin,
+) -> Result<Json<Value>, AppError> {
+    let mut tx = state.db.begin().await?;
+    sqlx::query(
+        "UPDATE control_center_sessions SET revoked_at=NOW() WHERE user_id=$1 AND token_hash=$2",
+    )
+    .bind(admin.user_id)
+    .bind(&admin.token_hash)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query("DELETE FROM control_center_step_ups WHERE user_id=$1 AND token_hash=$2")
+        .bind(admin.user_id)
+        .bind(&admin.token_hash)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("INSERT INTO audit_logs (user_id,action,resource_type,metadata) VALUES ($1,'admin.session.logout','admin_session','{}')")
+        .bind(admin.user_id).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(Json(json!({"success":true})))
+}

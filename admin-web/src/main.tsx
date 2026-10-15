@@ -248,7 +248,7 @@ function CommandCenter() {
   async function logout() {
     setBusy(true);
     try {
-      await apiClient.post('/api/auth/logout');
+      await apiClient.post(user?.role === 'central_admin' ? '/api/admin/auth/logout' : '/api/auth/logout');
     } catch {
       // Always clear this browser session, even if the server is temporarily unreachable.
     } finally {

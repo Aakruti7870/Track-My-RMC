@@ -48,6 +48,7 @@ fn app(state: AppState) -> Router {
     Router::new()
         .route("/login", post(control_center::login))
         .route("/me", get(control_center::me))
+        .route("/logout", post(control_center::logout))
         .route("/capabilities", get(cc::get_capabilities))
         .route("/collections/:kind", get(cc::collection))
         .route(
@@ -389,5 +390,46 @@ async fn read_workspaces_execute_and_enforce_individual_permissions(db: PgPool) 
             .await
             .0,
         StatusCode::FORBIDDEN
+    );
+}
+
+#[sqlx::test]
+async fn central_logout_revokes_only_the_current_web_session(db: PgPool) {
+    let state = state(db.clone());
+    let router = app(state.clone());
+    let (id, email, secret) = identity(&db, "central_admin", true, vec![]).await;
+    let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
+    let (_, result) = request(
+        &router,
+        "/login",
+        None,
+        Some(json!({"identifier":email,"code":code})),
+    )
+    .await;
+    let first = result["token"].as_str().unwrap();
+    let second = generate_token(
+        id,
+        "central_admin",
+        "",
+        Some(&email),
+        &state.config.jwt_secret,
+        1,
+    )
+    .unwrap();
+    sqlx::query("INSERT INTO control_center_sessions (user_id,token_hash,expires_at) VALUES ($1,$2,NOW()+INTERVAL '1 hour')")
+        .bind(id).bind(format!("{:x}",Sha256::digest(second.as_bytes()))).execute(&db).await.unwrap();
+    assert_eq!(
+        request(&router, "/logout", Some(first), Some(json!({})))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        request(&router, "/me", Some(first), None).await.0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        request(&router, "/me", Some(&second), None).await.0,
+        StatusCode::OK
     );
 }

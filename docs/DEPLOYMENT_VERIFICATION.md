@@ -6,6 +6,6 @@ Read-only AWS metadata on 15 October 2026 confirmed account 260234292958, EC2 i-
 
 Secrets Manager DescribeSecret confirmed the runtime secret metadata. No GetSecretValue or credential output was requested. The connector can access this account; local AWS CLI reports NoCredentials.
 
-The existing workflow is manual-only and requires an explicit confirmation input. It was not triggered. Public HTTPS health, production migration checksums, role logins, application data, new Central Admin provisioning, and post-release operations have not been verified in this phase.
+The existing workflow is manual-only and requires an explicit confirmation input. It was not triggered. The direct public HTTPS health read failed with a local fetch error; production migration checksums, role logins, application data, new Central Admin provisioning, and post-release operations have not been verified in this phase.
 
 Before deployment: establish a restored staging copy, validate migration history, exercise approved seeded provider accounts and device/browser journeys, confirm all business modules, review release SHA and rollback compatibility, then request the final explicit approval. After approved deployment, verify HTTPS, API/database health, permitted records and workflows, monitoring and rollback criteria.

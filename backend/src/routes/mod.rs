@@ -36,6 +36,10 @@ use axum::{
 pub fn build_app_router(state: AppState) -> Router {
     Router::new()
         .route(
+            "/api/admin/auth/logout",
+            post(crate::auth::control_center::logout),
+        )
+        .route(
             "/api/control-center/collections/:kind",
             get(control_center_routes::collection),
         )

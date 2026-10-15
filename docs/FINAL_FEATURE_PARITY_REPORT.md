@@ -35,8 +35,12 @@ PR #37 delivery is included through PR #39 staff collections; PR #36 Control Cen
 
 ## Validation boundaries
 
-Source commit ec62a3392a5ad47247a84fc945f4a2d29a88410f passed strict Clippy, security HTTP tests, delivery tests and migration upgrade tests. Combined run remained failing because the inherited staff ledger used MIN(uuid); this is fixed on the current branch and requires a fresh run. The latest production/LoadPlanner assertions are also awaiting that run.
+Source commit ec62a3392a5ad47247a84fc945f4a2d29a88410f passed strict Clippy, security HTTP tests, delivery tests and migration upgrade tests. Combined run remained failing because the inherited staff ledger used MIN(uuid); this was fixed and passed in run 38744178308. The production/LoadPlanner assertions and repaired ledger passed the full backend run 38744178308 at commit 8fa1b271423a2146cd617ca26f611be6db916100.
 
 External provider-backed logins, production migration history, representative restored-data upgrades, full financial/payroll/stock workflows, real-device checks and complete Control Center workspaces are outstanding. AAB success in PR #37 is historical evidence, not validation of every later change.
 
 See API_CONTRACT_PARITY.md, DATABASE_MIGRATION_VALIDATION.md, PRODUCTION_RELEASE_CHECKLIST.md and DEPLOYMENT_VERIFICATION.md.
+
+## Additional secured web workspace coverage
+
+Six paginated read workspaces now use explicit per-workspace grants: users, plants, orders, support, audit and Central Admin sessions. The legacy overview is protected by the same dedicated session boundary. Account suspension and current-session logout record revocation and audit changes transactionally. New PostgreSQL 16/18 matrix and real Rust/PostgreSQL browser regression are pending for this revision. No recovery/enrollment or permission-provisioning bypass was introduced.
