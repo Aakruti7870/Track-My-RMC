@@ -167,7 +167,7 @@ export function LoadPlanner({ orderId, resourceBase, onChanged }: Props) {
           {load.challan_number ? <AppText variant="caption">Challan: {load.challan_number}</AppText> : null}
           {load.gate_pass_number ? <AppText variant="caption">Gate pass: {load.gate_pass_number}</AppText> : null}
 
-          {["PLANNED", "ASSIGNED"].includes(load.status) ? (
+          {["PLANNED", "ASSIGNED", "BATCHING", "BATCHED"].includes(load.status) ? (
             <Button label={load.status === "ASSIGNED" ? "Change Assignment" : "Assign TM + Driver"} variant="outline" onPress={() => openAssign(load)} />
           ) : null}
           {data?.production_ready && ["PLANNED", "ASSIGNED", "BATCHING", "BATCHED"].includes(load.status) ? (

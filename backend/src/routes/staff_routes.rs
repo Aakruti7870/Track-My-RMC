@@ -317,6 +317,7 @@ pub async fn get_staff_order(
         ],
     )?;
 
+    super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
     let order_row = sqlx::query(
         r#"
         SELECT o.id, o.order_number, o.plant_id, o.customer_id, o.concrete_grade,
@@ -433,6 +434,7 @@ pub async fn assign_tm_to_order(
         ],
     )?;
 
+    super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
     let load_id: Uuid = match payload.load_id {
         Some(id) => id,
         None => {
@@ -446,15 +448,32 @@ pub async fn assign_tm_to_order(
         }
     };
 
-    sqlx::query("UPDATE order_loads SET mixer_id = $1 WHERE id = $2")
-        .bind(payload.mixer_id)
-        .bind(load_id)
-        .execute(&state.db)
-        .await?;
-
-    Ok(Json(
-        json!({ "success": true, "message": "Mixer assigned to load" }),
-    ))
+    let belongs: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM order_loads WHERE id=$1 AND order_id=$2)")
+            .bind(load_id)
+            .bind(order_id)
+            .fetch_one(&state.db)
+            .await?;
+    if !belongs {
+        return Err(AppError::NotFound("Load not found for this order".into()));
+    }
+    let driver:Option<Uuid>=sqlx::query_scalar("SELECT COALESCE(m.driver_id,l.driver_id) FROM transit_mixers m CROSS JOIN order_loads l WHERE m.id=$1 AND l.id=$2").bind(payload.mixer_id).bind(load_id).fetch_optional(&state.db).await?.flatten();
+    let mixer = payload.mixer_id;
+    let driver = driver.ok_or_else(|| {
+        AppError::Conflict("Select both mixer and driver through the load assignment form".into())
+    })?;
+    Ok(super::loads_routes::assign_load_mixer_driver(
+        State(state),
+        auth_user,
+        Path(load_id),
+        Json(super::loads_routes::AssignLoadPayload {
+            vehicle_id: None,
+            mixer_id: Some(mixer),
+            driver_id: Some(driver),
+        }),
+    )
+    .await?
+    .into_response())
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -480,6 +499,7 @@ pub async fn assign_driver_to_order(
         ],
     )?;
 
+    super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
     let load_id: Uuid = match payload.load_id {
         Some(id) => id,
         None => {
@@ -493,15 +513,35 @@ pub async fn assign_driver_to_order(
         }
     };
 
-    sqlx::query("UPDATE order_loads SET driver_id = $1 WHERE id = $2")
-        .bind(payload.driver_id)
+    let belongs: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM order_loads WHERE id=$1 AND order_id=$2)")
+            .bind(load_id)
+            .bind(order_id)
+            .fetch_one(&state.db)
+            .await?;
+    if !belongs {
+        return Err(AppError::NotFound("Load not found for this order".into()));
+    }
+    let mixer: Option<Uuid> = sqlx::query_scalar("SELECT mixer_id FROM order_loads WHERE id=$1")
         .bind(load_id)
-        .execute(&state.db)
+        .fetch_one(&state.db)
         .await?;
-
-    Ok(Json(
-        json!({ "success": true, "message": "Driver assigned to load" }),
-    ))
+    let mixer = mixer.ok_or_else(|| {
+        AppError::Conflict("Select a mixer and driver through the load assignment form".into())
+    })?;
+    let driver = payload.driver_id;
+    Ok(super::loads_routes::assign_load_mixer_driver(
+        State(state),
+        auth_user,
+        Path(load_id),
+        Json(super::loads_routes::AssignLoadPayload {
+            vehicle_id: None,
+            mixer_id: Some(mixer),
+            driver_id: Some(driver),
+        }),
+    )
+    .await?
+    .into_response())
 }
 
 pub async fn generate_order_challan(
@@ -521,89 +561,17 @@ pub async fn generate_order_challan(
         ],
     )?;
 
-    let order_row = sqlx::query(
-        r#"
-        SELECT o.id, o.order_number, o.concrete_grade, o.total_quantity_m3,
-               p.code as plant_code,
-               u.full_name as customer_name,
-               s.address_line as site_address
-        FROM orders o
-        INNER JOIN rmc_plants p ON p.id = o.plant_id
-        INNER JOIN users u ON u.id = o.customer_id
-        INNER JOIN customer_sites s ON s.id = o.site_id
-        WHERE o.id = $1
-        "#,
-    )
-    .bind(order_id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Order not found".to_string()))?;
-
-    let load_row = sqlx::query(
-        r#"
-        SELECT l.id, l.load_number, l.quantity_m3,
-               COALESCE(m.registration_number, 'TM-PENDING') as mixer_number,
-               COALESCE(u.full_name, 'Driver Pending') as driver_name
-        FROM order_loads l
-        LEFT JOIN transit_mixers m ON m.id = l.mixer_id
-        LEFT JOIN users u ON u.id = l.driver_id
-        WHERE l.order_id = $1
-        ORDER BY l.load_number
-        LIMIT 1
-        "#,
-    )
-    .bind(order_id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("No loads planned for this order".to_string()))?;
-
-    let plant_code: String = order_row.get("plant_code");
-    let customer_name: String = order_row.get("customer_name");
-    let site_address: String = order_row.get("site_address");
-    let concrete_grade: String = order_row.get("concrete_grade");
-
-    let load_id: Uuid = load_row.get("id");
-    let quantity_m3: bigdecimal::BigDecimal = load_row.get("quantity_m3");
-    let mixer_number: String = load_row.get("mixer_number");
-    let driver_name: String = load_row.get("driver_name");
-
-    let challan_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM challans")
-        .fetch_one(&state.db)
-        .await?;
-    let challan_number = format!("CH-{}-{:04}", plant_code, challan_count + 1);
-
-    let challan_id: Uuid = sqlx::query_scalar(
-        r#"
-        INSERT INTO challans (
-            load_id, challan_number, plant_code, customer_name, site_address,
-            concrete_grade, quantity_m3, slump_mm, water_cement_ratio, batch_time,
-            mixer_number, driver_name, status
-        )
-        VALUES (
-            $1, $2, $3, $4, $5, $6, $7, 120, 0.45, NOW(), $8, $9, 'generated'
-        )
-        ON CONFLICT (load_id) DO UPDATE SET challan_number = EXCLUDED.challan_number
-        RETURNING id
-        "#,
-    )
-    .bind(load_id)
-    .bind(&challan_number)
-    .bind(&plant_code)
-    .bind(&customer_name)
-    .bind(&site_address)
-    .bind(&concrete_grade)
-    .bind(quantity_m3)
-    .bind(&mixer_number)
-    .bind(&driver_name)
-    .fetch_one(&state.db)
-    .await?;
-
-    Ok(Json(json!({
-        "success": true,
-        "challan_id": challan_id,
-        "challan_number": challan_number,
-        "message": "Challan generated"
-    })))
+    super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
+    let load:Uuid=sqlx::query_scalar("SELECT id FROM order_loads WHERE order_id=$1 AND status<>'cancelled' ORDER BY load_number LIMIT 1").bind(order_id).fetch_optional(&state.db).await?.ok_or_else(||AppError::NotFound("No active load for this order".into()))?;
+    crate::services::load_lifecycle::advance(&state.db, load, auth_user.user_id, "prepare").await?;
+    let (id, number): (Uuid, String) =
+        sqlx::query_as("SELECT id,challan_number FROM challans WHERE load_id=$1")
+            .bind(load)
+            .fetch_one(&state.db)
+            .await?;
+    Ok(Json(
+        json!({"success":true,"challan_id":id,"challan_number":number}),
+    ))
 }
 
 pub async fn dispatch_order(
@@ -616,21 +584,16 @@ pub async fn dispatch_order(
         &["dispatcher", "supervisor", "owner", "plant_owner", "admin"],
     )?;
 
-    sqlx::query("UPDATE orders SET status = 'dispatched', updated_at = NOW() WHERE id = $1")
-        .bind(order_id)
-        .execute(&state.db)
+    super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
+    let loads:Vec<Uuid>=sqlx::query_scalar("SELECT id FROM order_loads WHERE order_id=$1 AND status NOT IN ('cancelled','completed','delivered') ORDER BY load_number").bind(order_id).fetch_all(&state.db).await?;
+    if loads.len() != 1 {
+        return Err(AppError::Conflict(
+            "Dispatch each delivery load through its individual dispatch action".into(),
+        ));
+    }
+    crate::services::load_lifecycle::advance(&state.db, loads[0], auth_user.user_id, "dispatch")
         .await?;
-
-    sqlx::query(
-        "UPDATE order_loads SET status = 'dispatched', dispatched_at = NOW() WHERE order_id = $1 AND status = 'planned'",
-    )
-    .bind(order_id)
-    .execute(&state.db)
-    .await?;
-
-    Ok(Json(
-        json!({ "success": true, "message": "Order loads dispatched" }),
-    ))
+    Ok(Json(json!({"success":true,"message":"Load dispatched"})))
 }
 
 pub async fn get_production_status(
@@ -835,6 +798,21 @@ pub async fn record_quality_test(
         }
     };
 
+    super::loads_routes::ensure_order_access(&state, &auth_user, target_order_id, false).await?;
+    if let Some(load) = payload.load_id {
+        let belongs: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM order_loads WHERE id=$1 AND order_id=$2)",
+        )
+        .bind(load)
+        .bind(target_order_id)
+        .fetch_one(&state.db)
+        .await?;
+        if !belongs {
+            return Err(AppError::BadRequest(
+                "Load does not belong to this order".into(),
+            ));
+        }
+    }
     let slump = payload.slump_mm.or(payload.slump_tested_mm);
     let s7 = payload
         .cube_7d
@@ -915,6 +893,7 @@ pub async fn get_quality_details(
         ],
     )?;
 
+    super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
     let order = sqlx::query(
         r#"
         SELECT o.id, o.order_number, o.concrete_grade, CAST(o.total_quantity_m3 AS DOUBLE PRECISION) as quantity,
@@ -1052,6 +1031,7 @@ pub struct RecordInvoicePaymentPayload {
     pub payment_method: Option<String>,
     pub transaction_ref: Option<String>,
     pub notes: Option<String>,
+    pub request_id: Option<String>,
 }
 
 pub async fn record_invoice_payment(
@@ -1060,58 +1040,30 @@ pub async fn record_invoice_payment(
     Path(invoice_id): Path<Uuid>,
     Json(payload): Json<RecordInvoicePaymentPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["accountant", "owner", "plant_owner", "admin"])?;
-
-    let inv_row =
-        sqlx::query("SELECT plant_id, order_id, total_amount FROM plant_invoices WHERE id = $1")
-            .bind(invoice_id)
-            .fetch_optional(&state.db)
-            .await?
-            .ok_or_else(|| AppError::NotFound("Invoice not found".to_string()))?;
-
-    let plant_id: Uuid = inv_row.get("plant_id");
-    let order_id: Option<Uuid> = inv_row.get("order_id");
-
-    let pay_id: Uuid = sqlx::query_scalar(
-        r#"
-        INSERT INTO plant_payments (invoice_id, order_id, plant_id, amount, payment_method, transaction_ref, notes)
-        VALUES ($1, $2, $3, $4::numeric, $5, $6, $7)
-        RETURNING id
-        "#,
-    )
-    .bind(invoice_id)
-    .bind(order_id)
-    .bind(plant_id)
-    .bind(bigdecimal::BigDecimal::try_from(payload.amount).unwrap_or_default())
-    .bind(payload.payment_method.unwrap_or_else(|| "bank_transfer".to_string()))
-    .bind(payload.transaction_ref)
-    .bind(payload.notes)
-    .fetch_one(&state.db)
-    .await?;
-
-    sqlx::query("UPDATE plant_invoices SET status = 'PAID' WHERE id = $1")
-        .bind(invoice_id)
-        .execute(&state.db)
-        .await?;
-
-    if let Some(oid) = order_id {
-        sqlx::query("UPDATE orders SET payment_status = 'paid', updated_at = NOW() WHERE id = $1")
-            .bind(oid)
-            .execute(&state.db)
-            .await?;
-    }
-
     Ok(Json(
-        json!({ "success": true, "payment_id": pay_id, "message": "Payment recorded" }),
+        crate::services::billing_service::payment(
+            &state,
+            &auth_user,
+            invoice_id,
+            crate::services::billing_service::PaymentInput {
+                amount: payload.amount,
+                payment_method: payload.payment_method,
+                transaction_ref: payload.transaction_ref,
+                notes: payload.notes,
+                request_id: payload.request_id,
+            },
+        )
+        .await?,
     ))
 }
 
 pub async fn approve_customer_kyc(
     State(state): State<AppState>,
     auth_user: AuthUser,
+    headers: axum::http::HeaderMap,
     Path(profile_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["admin", "owner", "plant_owner"])?;
+    ensure_authority_review_session(&state, &auth_user, &headers).await?;
 
     sqlx::query(
         "UPDATE user_profiles SET kyc_status = 'verified', updated_at = NOW() WHERE id = $1",
@@ -1128,9 +1080,10 @@ pub async fn approve_customer_kyc(
 pub async fn reject_customer_kyc(
     State(state): State<AppState>,
     auth_user: AuthUser,
+    headers: axum::http::HeaderMap,
     Path(profile_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["admin", "owner", "plant_owner"])?;
+    ensure_authority_review_session(&state, &auth_user, &headers).await?;
 
     sqlx::query(
         "UPDATE user_profiles SET kyc_status = 'rejected', updated_at = NOW() WHERE id = $1",
@@ -1147,9 +1100,10 @@ pub async fn reject_customer_kyc(
 pub async fn reset_customer_kyc(
     State(state): State<AppState>,
     auth_user: AuthUser,
+    headers: axum::http::HeaderMap,
     Path(profile_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["admin", "owner", "plant_owner"])?;
+    ensure_authority_review_session(&state, &auth_user, &headers).await?;
 
     sqlx::query(
         "UPDATE user_profiles SET kyc_status = 'unverified', updated_at = NOW() WHERE id = $1",
@@ -1161,4 +1115,20 @@ pub async fn reset_customer_kyc(
     Ok(Json(
         json!({ "success": true, "message": "KYC profile reset for re-verification" }),
     ))
+}
+
+async fn ensure_authority_review_session(
+    state: &AppState,
+    user: &AuthUser,
+    headers: &axum::http::HeaderMap,
+) -> Result<(), AppError> {
+    check_role(user, &["authority"])?;
+    let hash = crate::auth::control_center::token_hash(headers)?;
+    let approved:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM control_center_sessions s JOIN control_center_access a ON a.user_id=s.user_id WHERE s.token_hash=$1 AND s.user_id=$2 AND s.revoked_at IS NULL AND s.expires_at>NOW() AND a.approved=TRUE AND 'kyc.review'=ANY(a.permissions))").bind(hash).bind(user.user_id).fetch_one(&state.db).await?;
+    if !approved {
+        return Err(AppError::Forbidden(
+            "Approved Authority review session is required".into(),
+        ));
+    }
+    Ok(())
 }

@@ -620,6 +620,18 @@ pub fn build_app_router(state: AppState) -> Router {
             "/api/owner/orders/:order_id/production/complete",
             post(staff_routes::complete_production),
         )
+        .route(
+            "/api/owner/orders/:order_id/invoice",
+            post(owner_routes::create_order_invoice),
+        )
+        .route(
+            "/api/staff/orders/:order_id/invoice",
+            post(owner_routes::create_order_invoice),
+        )
+        .route(
+            "/api/owner/orders/:order_id",
+            get(customer_routes::get_order_details),
+        )
         .route("/api/owner/orders", get(owner_routes::list_owner_orders))
         .route(
             "/api/owner/orders/:order_id/approve",

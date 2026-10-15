@@ -690,3 +690,238 @@ async fn quantity_production_contract_is_scoped_and_can_allocate_delivery_after_
         matches!(load_lifecycle::advance(&pool,loads[1],actor,"prepare").await,Err(AppError::Conflict(message)) if message.contains("produced quantity"))
     );
 }
+
+fn payment_input(
+    amount: f64,
+    key: &str,
+) -> trackmyrmc_backend::services::billing_service::PaymentInput {
+    trackmyrmc_backend::services::billing_service::PaymentInput {
+        amount,
+        payment_method: None,
+        transaction_ref: None,
+        notes: None,
+        request_id: Some(key.into()),
+    }
+}
+#[sqlx::test]
+async fn delivered_invoice_is_idempotent_and_partial_payments_reconcile(pool: PgPool) {
+    use axum::{extract::State, response::IntoResponse};
+    use trackmyrmc_backend::{auth::AuthUser, routes::owner_routes, services::billing_service};
+    let (actor, order, _, _) = fixture(&pool).await;
+    let app = state(pool.clone());
+    let user = AuthUser {
+        user_id: actor,
+        role: "plant_owner".into(),
+        phone: "test".into(),
+        email: None,
+    };
+    assert!(billing_service::create_invoice(&app, &user, order)
+        .await
+        .is_err());
+    sqlx::query("UPDATE orders SET status='delivered',total_amount=118,tax_amount=18 WHERE id=$1")
+        .bind(order)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (first, retry) = tokio::join!(
+        billing_service::create_invoice(&app, &user, order),
+        billing_service::create_invoice(&app, &user, order)
+    );
+    let first = first.unwrap();
+    assert_eq!(first["invoice_id"], retry.unwrap()["invoice_id"]);
+    let invoice: Uuid = serde_json::from_value(first["invoice_id"].clone()).unwrap();
+    let (one, two) = tokio::join!(
+        billing_service::payment(&app, &user, invoice, payment_input(18.0, "same-payment")),
+        billing_service::payment(&app, &user, invoice, payment_input(18.0, "same-payment"))
+    );
+    let one = one.unwrap();
+    assert_eq!(one["payment_id"], two.unwrap()["payment_id"]);
+    assert_eq!(one["status"], "PARTIALLY_PAID");
+    let response = owner_routes::list_owner_invoices(State(app.clone()), user.clone())
+        .await
+        .unwrap()
+        .into_response();
+    let data: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(response.into_body(), 10000)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(data["summary"]["billed"], 118.0);
+    assert_eq!(data["summary"]["received"], 18.0);
+    assert_eq!(data["invoices"][0]["balance"], 100.0);
+    assert!(
+        billing_service::payment(&app, &user, invoice, payment_input(19.0, "same-payment"))
+            .await
+            .is_err()
+    );
+    assert!(
+        billing_service::payment(&app, &user, invoice, payment_input(101.0, "over-payment"))
+            .await
+            .is_err()
+    );
+    assert!(
+        billing_service::payment(&app, &user, invoice, payment_input(-1.0, "negative-pay"))
+            .await
+            .is_err()
+    );
+    assert!(
+        billing_service::payment(&app, &user, invoice, payment_input(0.005, "fraction-pay"))
+            .await
+            .is_err()
+    );
+    let result =
+        billing_service::payment(&app, &user, invoice, payment_input(100.0, "final-payment"))
+            .await
+            .unwrap();
+    assert_eq!(result["status"], "PAID");
+    let status: String = sqlx::query_scalar("SELECT payment_status FROM orders WHERE id=$1")
+        .bind(order)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(status, "paid");
+    let totals: (i64, f64) = sqlx::query_as(
+        "SELECT COUNT(*),SUM(amount)::DOUBLE PRECISION FROM plant_payments WHERE invoice_id=$1",
+    )
+    .bind(invoice)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(totals, (2, 118.0));
+}
+#[sqlx::test]
+async fn concurrent_payments_cannot_exceed_balance_and_foreign_admin_is_denied(pool: PgPool) {
+    use trackmyrmc_backend::{auth::AuthUser, services::billing_service};
+    let (actor, order, _, _) = fixture(&pool).await;
+    let app = state(pool.clone());
+    let owner = AuthUser {
+        user_id: actor,
+        role: "owner".into(),
+        phone: "test".into(),
+        email: None,
+    };
+    sqlx::query("UPDATE orders SET status='delivered',total_amount=100,tax_amount=0 WHERE id=$1")
+        .bind(order)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let invoice = billing_service::create_invoice(&app, &owner, order)
+        .await
+        .unwrap();
+    let id: Uuid = serde_json::from_value(invoice["invoice_id"].clone()).unwrap();
+    let mut foreign = owner.clone();
+    foreign.role = "admin".into();
+    foreign.user_id = Uuid::new_v4();
+    assert!(matches!(
+        billing_service::payment(&app, &foreign, id, payment_input(50.0, "foreign-pay")).await,
+        Err(AppError::Forbidden(_))
+    ));
+    let (one, two) = tokio::join!(
+        billing_service::payment(&app, &owner, id, payment_input(60.0, "concurrent-pay-a")),
+        billing_service::payment(&app, &owner, id, payment_input(60.0, "concurrent-pay-b"))
+    );
+    assert_ne!(one.is_ok(), two.is_ok());
+    let total: f64 = sqlx::query_scalar(
+        "SELECT SUM(amount)::DOUBLE PRECISION FROM plant_payments WHERE invoice_id=$1",
+    )
+    .bind(id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(total, 60.0);
+}
+#[sqlx::test]
+async fn legacy_order_routes_enforce_tenancy_and_lifecycle(pool: PgPool) {
+    use axum::{
+        extract::{Path, State},
+        Json,
+    };
+    use trackmyrmc_backend::{
+        auth::AuthUser,
+        routes::{owner_routes, staff_routes},
+    };
+    let (actor, order, load, _) = fixture(&pool).await;
+    let app = state(pool.clone());
+    let owner = AuthUser {
+        user_id: actor,
+        role: "owner".into(),
+        phone: "test".into(),
+        email: None,
+    };
+    let mut foreign = owner.clone();
+    foreign.user_id = Uuid::new_v4();
+    foreign.role = "admin".into();
+    assert!(matches!(
+        staff_routes::get_staff_order(State(app.clone()), foreign.clone(), Path(order)).await,
+        Err(AppError::Forbidden(_))
+    ));
+    assert!(matches!(
+        owner_routes::approve_order(State(app.clone()), foreign.clone(), Path(order)).await,
+        Err(AppError::Forbidden(_))
+    ));
+    assert!(matches!(
+        owner_routes::approve_order(State(app.clone()), owner.clone(), Path(order)).await,
+        Err(AppError::Conflict(_))
+    ));
+    assert!(matches!(
+        staff_routes::assign_tm_to_order(
+            State(app.clone()),
+            foreign.clone(),
+            Path(order),
+            Json(staff_routes::AssignTmPayload {
+                mixer_id: Uuid::new_v4(),
+                load_id: Some(load)
+            })
+        )
+        .await,
+        Err(AppError::Forbidden(_))
+    ));
+    assert!(
+        staff_routes::dispatch_order(State(app.clone()), owner.clone(), Path(order))
+            .await
+            .is_err()
+    );
+    assert!(matches!(
+        staff_routes::approve_customer_kyc(
+            State(app.clone()),
+            foreign,
+            axum::http::HeaderMap::new(),
+            Path(Uuid::new_v4())
+        )
+        .await,
+        Err(AppError::Forbidden(_))
+    ));
+    assert!(matches!(
+        staff_routes::approve_customer_kyc(
+            State(app.clone()),
+            owner,
+            axum::http::HeaderMap::new(),
+            Path(Uuid::new_v4())
+        )
+        .await,
+        Err(AppError::Forbidden(_))
+    ));
+    let data = trackmyrmc_backend::services::order_service::mobile_detail(
+        &app,
+        &trackmyrmc_backend::auth::AuthUser {
+            user_id: actor,
+            role: "plant_owner".into(),
+            phone: "test".into(),
+            email: None,
+        },
+        order,
+    )
+    .await
+    .unwrap();
+    assert_eq!(data["order"]["quantity"], 12.0);
+    assert_eq!(data["order"]["grade"], "M25");
+    assert_eq!(data["order"]["status"], "DISPATCHED");
+    assert!(data["history"].is_array());
+    let status: String = sqlx::query_scalar("SELECT status FROM orders WHERE id=$1")
+        .bind(order)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(status, "dispatched");
+}

@@ -2,7 +2,7 @@ use crate::{
     auth::{middleware::check_role, AuthUser},
     error::AppError,
     models::{order::CreateOrderRequest, plant::CreateSiteRequest},
-    repositories::{order_repo, plant_repo},
+    repositories::plant_repo,
     services::order_service,
     state::AppState,
 };
@@ -230,8 +230,15 @@ pub async fn list_orders(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
-    let orders = order_repo::list_customer_orders(&state.db, auth_user.user_id).await?;
-    Ok(Json(json!({ "success": true, "orders": orders })))
+    let query = format!(
+        "{} WHERE o.customer_id=$1 ORDER BY o.created_at DESC LIMIT 500",
+        order_service::MOBILE_ORDER_SELECT
+    );
+    let orders: Vec<serde_json::Value> = sqlx::query_scalar(&query)
+        .bind(auth_user.user_id)
+        .fetch_all(&state.db)
+        .await?;
+    Ok(Json(json!({"success":true,"orders":orders})))
 }
 
 pub async fn get_order_details(
@@ -239,26 +246,9 @@ pub async fn get_order_details(
     auth_user: AuthUser,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["customer", "owner", "admin"])?;
-    let customer_id: Option<Uuid> =
-        sqlx::query_scalar("SELECT customer_id FROM orders WHERE id = $1")
-            .bind(id)
-            .fetch_optional(&state.db)
-            .await?;
-    if customer_id.is_none() {
-        return Err(AppError::NotFound("Order not found".to_string()));
-    }
-    if auth_user.role == "customer" && customer_id != Some(auth_user.user_id) {
-        return Err(AppError::Forbidden(
-            "You are not authorized to view this order".to_string(),
-        ));
-    }
-    let (order, loads) = order_service::get_order_with_loads(&state, id).await?;
-    Ok(Json(json!({
-        "success": true,
-        "order": order,
-        "loads": loads,
-    })))
+    Ok(Json(
+        order_service::mobile_detail(&state, &auth_user, id).await?,
+    ))
 }
 
 pub async fn get_customer_home(

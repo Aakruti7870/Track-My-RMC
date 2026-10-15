@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -33,13 +33,15 @@ export default function Billing() {
   const [payFor, setPayFor] = useState<string | null>(null);
   const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState(false);
+  const paymentRequestId = useRef<string | null>(null);
 
   const pay = async (id: string) => {
     if (!amount || Number(amount) <= 0) return toast("Enter an amount", "error");
     setBusy(true);
     try {
-      await apiPost(`/owner/invoices/${id}/payment`, token!, { amount: Number(amount) });
+      await apiPost(`/owner/invoices/${id}/payment`, token!, { amount: Number(amount), request_id: paymentRequestId.current ||= `${Date.now()}-${Math.random().toString(36).slice(2)}` });
       toast("Payment recorded", "success");
+      paymentRequestId.current = null;
       setPayFor(null); setAmount("");
       reload();
     } catch (e: any) {
@@ -96,14 +98,14 @@ export default function Billing() {
                 {inv.balance > 0 ? (
                   payFor === inv.id ? (
                     <View style={{ gap: spacing.sm }}>
-                      <Input testID={`pay-amount-${inv.id}`} value={amount} onChangeText={(t) => setAmount(t.replace(/[^0-9.]/g, ""))} keyboardType="numeric" placeholder={`Amount (max ${inv.balance})`} />
+                      <Input testID={`pay-amount-${inv.id}`} value={amount} onChangeText={(t) => { paymentRequestId.current = null; setAmount(t.replace(/[^0-9.]/g, "")); }} keyboardType="numeric" placeholder={`Amount (max ${inv.balance})`} />
                       <View style={{ flexDirection: "row", gap: spacing.sm }}>
                         <View style={{ flex: 1 }}><Button testID={`pay-cancel-${inv.id}`} label="Cancel" variant="secondary" onPress={() => { setPayFor(null); setAmount(""); }} /></View>
                         <View style={{ flex: 1 }}><Button testID={`pay-confirm-${inv.id}`} label="Record" loading={busy} onPress={() => pay(inv.id)} /></View>
                       </View>
                     </View>
                   ) : (
-                    <Button testID={`record-payment-${inv.id}`} label="Record Payment" variant="outline" onPress={() => { setPayFor(inv.id); setAmount(String(inv.balance)); }} />
+                    <Button testID={`record-payment-${inv.id}`} label="Record Payment" variant="outline" onPress={() => { paymentRequestId.current = null; setPayFor(inv.id); setAmount(String(inv.balance)); }} />
                   )
                 ) : null}
               </Card>
