@@ -37,7 +37,7 @@ async fn existing_installation_upgrades_without_changing_checksums_or_records(po
     .fetch_all(&pool)
     .await
     .unwrap();
-    assert_eq!(versions, vec![19, 20, 21, 22, 23, 24, 25]);
+    assert_eq!(versions, vec![19, 20, 21, 22, 23, 24, 25, 26]);
 }
 
 #[tokio::test]

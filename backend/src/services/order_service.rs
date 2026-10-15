@@ -1,10 +1,9 @@
 use crate::{
     error::AppError,
     models::order::{CreateOrderRequest, Order, OrderLoad},
-    repositories::{order_repo, plant_repo},
+    repositories::order_repo,
     state::AppState,
 };
-use rand::Rng;
 use uuid::Uuid;
 
 pub async fn place_order(
@@ -12,50 +11,7 @@ pub async fn place_order(
     customer_id: Uuid,
     req: CreateOrderRequest,
 ) -> Result<Order, AppError> {
-    if req.quantity_m3 <= 0.0 {
-        return Err(AppError::BadRequest(
-            "Order quantity must be greater than zero".to_string(),
-        ));
-    }
-
-    let plant = plant_repo::find_plant_by_id(&state.db, req.plant_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Selected RMC plant does not exist".to_string()))?;
-
-    if !plant.is_active {
-        return Err(AppError::BadRequest(
-            "Plant is currently not accepting orders".to_string(),
-        ));
-    }
-
-    let random_num: u32 = rand::thread_rng().gen_range(100000..999999);
-    let order_number = format!("RMC-{}-{}-{}", plant.code, req.concrete_grade, random_num);
-
-    let rate = req.estimated_rate_per_m3.unwrap_or(4200.0);
-    let subtotal = rate * req.quantity_m3;
-    let tax = subtotal * 0.18;
-    let total = subtotal + tax;
-
-    let order = order_repo::create_order(
-        &state.db,
-        crate::repositories::order_repo::NewOrder {
-            order_number: &order_number,
-            customer_id,
-            plant_id: req.plant_id,
-            site_id: req.site_id,
-            concrete_grade: &req.concrete_grade,
-            quantity_m3: req.quantity_m3,
-            delivery_date: req.delivery_date,
-            delivery_time_slot: &req.delivery_time_slot,
-            pump_required: req.pump_required.unwrap_or(false),
-            special_instructions: req.special_instructions.as_deref(),
-            total_amount: total,
-            tax_amount: tax,
-        },
-    )
-    .await?;
-
-    Ok(order)
+    super::customer_order::place(state, customer_id, req).await
 }
 
 pub async fn get_order_with_loads(

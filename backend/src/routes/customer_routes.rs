@@ -42,7 +42,27 @@ pub async fn list_plants(
             !is_review_plant
         }
     });
-    Ok(Json(json!({ "success": true, "plants": plants })))
+    let mut result = Vec::new();
+    for plant in plants {
+        let grades:Vec<String>=sqlx::query_scalar("SELECT DISTINCT grade FROM plant_rate_cards WHERE plant_id=$1 AND active AND effective_from<=CURRENT_DATE AND (effective_to IS NULL OR effective_to>=CURRENT_DATE) ORDER BY grade")
+            .bind(plant.id).fetch_all(&state.db).await?;
+        let verified:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM plant_listing_requests WHERE plant_id=$1 AND status='APPROVED')").bind(plant.id).fetch_one(&state.db).await?;
+        let mut value = serde_json::to_value(&plant)
+            .map_err(|_| AppError::InternalError("Plant serialization failed".into()))?;
+        value["grades"] = json!(grades);
+        value["verified"] = json!(verified);
+        value["order_enabled"] = json!(plant.is_active && verified);
+        value["status"] = json!(if plant.is_active {
+            "active"
+        } else {
+            "inactive"
+        });
+        value["address"] = json!(plant.address_line);
+        value["lat"] = json!(plant.latitude);
+        value["lng"] = json!(plant.longitude);
+        result.push(value);
+    }
+    Ok(Json(json!({ "success": true, "plants": result })))
 }
 
 #[derive(Debug, Deserialize)]
@@ -216,10 +236,11 @@ pub async fn place_order(
     auth_user: AuthUser,
     Json(req): Json<CreateOrderRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["customer", "owner", "admin"])?;
+    check_role(&auth_user, &["customer"])?;
     let order = order_service::place_order(&state, auth_user.user_id, req).await?;
     Ok(Json(json!({
         "success": true,
+        "id": order.id,
         "order_id": order.id,
         "order_number": order.order_number,
         "order": order,

@@ -716,6 +716,10 @@ pub fn build_app_router(state: AppState) -> Router {
         .route("/api/maps/route", get(maps_routes::calculate_route))
         // --- Conversational Assistant & Support Cases ---
         .route(
+            "/api/assistant/orders/prepare",
+            post(assistant_routes::prepare_order_intent),
+        )
+        .route(
             "/api/assistant/orders/intent",
             post(assistant_routes::prepare_order_intent),
         )

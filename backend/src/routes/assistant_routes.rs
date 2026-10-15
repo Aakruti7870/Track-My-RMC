@@ -13,102 +13,48 @@ use serde_json::json;
 use sqlx::Row;
 use uuid::Uuid;
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PrepareOrderIntentPayload {
-    pub prompt: String,
-    pub customer_id: Option<Uuid>,
+    pub order: crate::models::order::CreateOrderRequest,
 }
 
 pub async fn prepare_order_intent(
     State(state): State<AppState>,
     auth_user: AuthUser,
-    Json(payload): Json<PrepareOrderIntentPayload>,
+    Json(mut payload): Json<PrepareOrderIntentPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    let prompt_lower = payload.prompt.to_lowercase();
-
-    // Extract grade if mentioned, default to M-25
-    let grade = if prompt_lower.contains("m-10") || prompt_lower.contains("m10") {
-        "M-10"
-    } else if prompt_lower.contains("m-15") || prompt_lower.contains("m15") {
-        "M-15"
-    } else if prompt_lower.contains("m-20") || prompt_lower.contains("m20") {
-        "M-20"
-    } else if prompt_lower.contains("m-30") || prompt_lower.contains("m30") {
-        "M-30"
-    } else if prompt_lower.contains("m-35") || prompt_lower.contains("m35") {
-        "M-35"
-    } else if prompt_lower.contains("m-40") || prompt_lower.contains("m40") {
-        "M-40"
-    } else {
-        "M-25"
-    };
-
-    // Extract quantity if numeric token found, default to 6.0 m3
-    let mut quantity = 6.0;
-    for token in prompt_lower.split_whitespace() {
-        if let Ok(val) = token.parse::<f64>() {
-            if val > 0.0 && val <= 500.0 {
-                quantity = val;
-                break;
-            }
-        }
+    check_role(&auth_user, &["customer"])?;
+    if payload.order.save_draft {
+        return Err(AppError::BadRequest(
+            "Assistant confirmation is for orders, not drafts".into(),
+        ));
     }
-
-    let default_site = sqlx::query(
-        "SELECT id, name, address_line FROM customer_sites WHERE customer_id = $1 ORDER BY created_at DESC LIMIT 1",
-    )
-    .bind(auth_user.user_id)
-    .fetch_optional(&state.db)
-    .await?;
-
-    let default_plant = sqlx::query(
-        "SELECT id, name FROM rmc_plants WHERE is_active = TRUE ORDER BY rating DESC LIMIT 1",
-    )
-    .fetch_optional(&state.db)
-    .await?;
-
-    let estimated_rate = 3800.0;
-    let subtotal = quantity * estimated_rate;
-    let tax = subtotal * 0.18;
-    let total = subtotal + tax;
-
-    let token = format!("intent-tok-{}", Uuid::new_v4());
-
-    let site_id: Option<Uuid> = default_site.as_ref().map(|s| s.get("id"));
-    let site_name: String = default_site
-        .as_ref()
-        .map(|s| s.get("name"))
-        .unwrap_or_else(|| "Default Site".to_string());
-    let plant_id: Option<Uuid> = default_plant.as_ref().map(|p| p.get("id"));
-    let plant_name: String = default_plant
-        .as_ref()
-        .map(|p| p.get("name"))
-        .unwrap_or_else(|| "Nearby Plant".to_string());
-
-    Ok(Json(json!({
-        "success": true,
-        "token": token,
-        "draft_order": {
-            "grade": grade,
-            "quantity_m3": quantity,
-            "plant_id": plant_id,
-            "plant_name": plant_name,
-            "site_id": site_id,
-            "site_name": site_name,
-            "estimated_rate_per_m3": estimated_rate,
-            "estimated_total_amount": total
-        }
-    })))
+    let summary =
+        crate::services::customer_order::preview(&state, auth_user.user_id, &payload.order).await?;
+    let token = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
+    let hash = intent_hash(&token);
+    // The stored request, not confirmation input, is the authoritative payload.
+    if payload.order.idempotency_key.is_none() {
+        payload.order.idempotency_key = Some(format!("assistant-{hash}"));
+    }
+    sqlx::query("INSERT INTO customer_order_intents(token_hash,customer_id,request_payload,preview,expires_at) VALUES($1,$2,$3,$4,NOW()+INTERVAL '5 minutes')")
+        .bind(hash).bind(auth_user.user_id).bind(serde_json::to_value(payload.order).map_err(|_|AppError::BadRequest("Invalid order".into()))?).bind(&summary).execute(&state.db).await?;
+    Ok(Json(
+        json!({"intent_token":token,"summary":summary,"expires_in":300}),
+    ))
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+fn intent_hash(token: &str) -> String {
+    use sha2::{Digest, Sha256};
+    hex::encode(Sha256::digest(token.as_bytes()))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ConfirmOrderIntentPayload {
-    pub token: String,
-    pub plant_id: Uuid,
-    pub site_id: Uuid,
-    pub concrete_grade: String,
-    pub quantity_m3: f64,
-    pub delivery_date: Option<String>,
+    pub intent_token: String,
+    pub confirmed: bool,
 }
 
 pub async fn confirm_order_intent(
@@ -116,67 +62,45 @@ pub async fn confirm_order_intent(
     auth_user: AuthUser,
     Json(payload): Json<ConfirmOrderIntentPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    let order_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM orders")
-        .fetch_one(&state.db)
+    check_role(&auth_user, &["customer"])?;
+    if !payload.confirmed {
+        return Err(AppError::BadRequest(
+            "Explicit order confirmation is required".into(),
+        ));
+    }
+    let hash = intent_hash(&payload.intent_token);
+    let row=sqlx::query("SELECT request_payload,preview,expires_at,confirmed_order_id FROM customer_order_intents WHERE token_hash=$1 AND customer_id=$2")
+        .bind(&hash).bind(auth_user.user_id).fetch_optional(&state.db).await?
+        .ok_or_else(||AppError::Unauthorized("Order intent is invalid or expired".into()))?;
+    let existing: Option<Uuid> = row.get("confirmed_order_id");
+    let order = if let Some(id) = existing {
+        crate::repositories::order_repo::find_order_by_id(&state.db, id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Order not found".into()))?
+    } else {
+        let expiry: chrono::DateTime<chrono::Utc> = row.get("expires_at");
+        if expiry <= chrono::Utc::now() {
+            return Err(AppError::Unauthorized(
+                "Order intent is invalid or expired".into(),
+            ));
+        }
+        let req = serde_json::from_value(row.get("request_payload")).map_err(|_| {
+            AppError::Conflict("Stored order intent requires reconciliation".into())
+        })?;
+        let order = crate::services::customer_order::place_with_preview(
+            &state,
+            auth_user.user_id,
+            req,
+            Some(row.get("preview")),
+        )
         .await?;
-    let order_number = format!("ORD-{:06}", order_count + 1);
-
-    let rate = 3800.0;
-    let subtotal = payload.quantity_m3 * rate;
-    let tax = subtotal * 0.18;
-    let total = subtotal + tax;
-
-    let dt = match payload.delivery_date {
-        Some(s) => chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d")
-            .unwrap_or_else(|_| chrono::Utc::now().naive_utc().date()),
-        None => chrono::Utc::now().naive_utc().date(),
+        sqlx::query("UPDATE customer_order_intents SET confirmed_order_id=$2 WHERE token_hash=$1 AND confirmed_order_id IS NULL")
+            .bind(hash).bind(order.id).execute(&state.db).await?;
+        order
     };
-
-    let order_id: Uuid = sqlx::query_scalar(
-        r#"
-        INSERT INTO orders (
-            order_number, customer_id, plant_id, site_id, concrete_grade,
-            total_quantity_m3, delivery_date, delivery_time_slot, pump_required,
-            total_amount, tax_amount, status, payment_status
-        )
-        VALUES (
-            $1, $2, $3, $4, $5, $6::numeric, $7, 'Morning (09:00 - 13:00)', FALSE,
-            $8::numeric, $9::numeric, 'pending', 'unpaid'
-        )
-        RETURNING id
-        "#,
-    )
-    .bind(&order_number)
-    .bind(auth_user.user_id)
-    .bind(payload.plant_id)
-    .bind(payload.site_id)
-    .bind(&payload.concrete_grade)
-    .bind(payload.quantity_m3)
-    .bind(dt)
-    .bind(total)
-    .bind(tax)
-    .fetch_one(&state.db)
-    .await?;
-
-    // Create primary load
-    sqlx::query(
-        r#"
-        INSERT INTO order_loads (order_id, load_number, quantity_m3, status)
-        VALUES ($1, 1, $2::numeric, 'planned')
-        "#,
-    )
-    .bind(order_id)
-    .bind(payload.quantity_m3.min(6.0))
-    .execute(&state.db)
-    .await?;
-
-    Ok(Json(json!({
-        "success": true,
-        "order_id": order_id,
-        "order_number": order_number,
-        "total_amount": total,
-        "message": "Order successfully created"
-    })))
+    Ok(Json(
+        json!({"success":true,"id":order.id,"order_id":order.id,"order_number":order.order_number,"order":order}),
+    ))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
