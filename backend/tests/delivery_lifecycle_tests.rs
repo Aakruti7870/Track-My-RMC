@@ -1169,6 +1169,96 @@ async fn payroll_requires_separate_roles_and_posts_expense_once_before_immutable
         .await
         .unwrap();
     assert_eq!(snapshots, snapshots_after);
+    assert!(matches!(
+        payroll::reopen(
+            &app,
+            &accountant_user,
+            period(),
+            "Corrections requested".into()
+        )
+        .await,
+        Err(AppError::Forbidden(_))
+    ));
+    assert!(matches!(
+        payroll::reopen(&app, &owner, period(), "no".into()).await,
+        Err(AppError::BadRequest(_))
+    ));
+    let (a, b) = tokio::join!(
+        payroll::reopen(&app, &owner, period(), "Corrections requested".into()),
+        payroll::reopen(&app, &owner, period(), "Corrections requested".into())
+    );
+    assert!(a.is_ok());
+    assert!(b.is_ok());
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM audit_logs WHERE action='payroll_reopened'"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap(),
+        1
+    );
+    assert!(
+        payroll::draft(&app, &accountant_user, period(), employee, payroll_draft())
+            .await
+            .is_err()
+    );
+    let second = payroll::close(&app, &owner, period(), None).await.unwrap();
+    assert_eq!(second["closure_version"], 2);
+    let first: serde_json::Value = sqlx::query_scalar(
+        "SELECT snapshot FROM payroll_payslip_snapshots WHERE user_id=$1 AND closure_version=1",
+    )
+    .bind(employee)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(first["employee_name"], "Original Employee");
+    let current: serde_json::Value = sqlx::query_scalar(
+        "SELECT snapshot FROM payroll_payslip_snapshots WHERE user_id=$1 AND closure_version=2",
+    )
+    .bind(employee)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(current["employee_name"], "Changed Employee");
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM plant_expenses WHERE payroll_record_id IS NOT NULL"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap(),
+        2
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM notifications WHERE notification_type='payroll_payslip_issued'"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap(),
+        4
+    );
+    let summary = payroll_routes::get_payroll_period_summary(
+        State(app.clone()),
+        owner,
+        Path("2026-10".into()),
+    )
+    .await
+    .unwrap()
+    .into_response();
+    let summary: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(summary.into_body(), 20000)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(summary["periods"][0]["version"], 2);
+    assert_eq!(summary["periods"][0]["payslip_count"], 2);
+    assert_eq!(
+        summary["periods"][0]["reopen_reason"],
+        "Corrections requested"
+    );
 }
 
 #[sqlx::test]

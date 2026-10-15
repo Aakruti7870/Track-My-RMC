@@ -269,6 +269,8 @@ pub async fn close(
     let version:i32=sqlx::query_scalar("UPDATE payroll_closures c SET is_closed=TRUE,closed_at=NOW(),closed_by=$2,override_reason=$3,closure_version=closure_version+1,total_gross=(SELECT COALESCE(SUM(basic_pay+allowances+COALESCE(overtime_amount,0)),0) FROM payroll_records WHERE closure_id=c.id),total_net=(SELECT COALESCE(SUM(net_pay),0) FROM payroll_records WHERE closure_id=c.id),employee_count=(SELECT COUNT(*)::INT FROM payroll_records WHERE closure_id=c.id) WHERE id=$1 RETURNING closure_version").bind(closure).bind(user.user_id).bind(note).fetch_one(&mut *tx).await?;
     sqlx::query("INSERT INTO payroll_payslip_snapshots(closure_id,closure_version,user_id,snapshot) SELECT $1,$2,r.user_id,jsonb_build_object('id',r.id,'payslip_number','PS-'||$3::text||'-'||r.id::text,'month',$3,'employee_name',u.full_name,'employee_code',h.employee_code,'role',ps.role,'closure_version',$2,'payroll_snapshot',jsonb_build_object('basic_amount',r.basic_pay::DOUBLE PRECISION,'allowances',r.allowances::DOUBLE PRECISION,'overtime_amount',r.overtime_amount::DOUBLE PRECISION,'deductions',r.deductions::DOUBLE PRECISION,'paid_days',r.paid_days::DOUBLE PRECISION,'net_amount',r.net_pay::DOUBLE PRECISION,'payment_method',r.payment_method,'payment_reference',r.transaction_ref,'paid_on',r.paid_on)) FROM payroll_records r JOIN users u ON u.id=r.user_id LEFT JOIN plant_staff ps ON ps.user_id=r.user_id AND ps.plant_id=$4 LEFT JOIN employee_hr_profiles h ON h.user_id=r.user_id AND h.plant_id=$4 WHERE r.closure_id=$1")
   .bind(closure).bind(version).bind(format!("{}-{:02}",p.year,p.month)).bind(p.plant).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO notifications(user_id,title,body,notification_type,reference_id) SELECT user_id,'Payslip available',$2,'payroll_payslip_issued',$3 FROM payroll_records WHERE closure_id=$1")
+        .bind(closure).bind(format!("Your payslip for {}-{:02} is available",p.year,p.month)).bind(format!("payroll:{closure}:{version}")).execute(&mut *tx).await?;
     audit(
         &mut tx,
         user.user_id,
@@ -279,4 +281,50 @@ pub async fn close(
     .await?;
     tx.commit().await?;
     Ok(json!({"success":true,"closure_id":closure,"closure_version":version}))
+}
+
+pub async fn reopen(
+    state: &AppState,
+    user: &AuthUser,
+    p: Period,
+    reason: String,
+) -> Result<Value, AppError> {
+    check_role(user, &["owner", "plant_owner"])?;
+    crate::routes::business_routes::ensure_plant_staff_or_owner(state, user, p.plant).await?;
+    let reason = reason.trim();
+    if !(5..=1000).contains(&reason.len()) {
+        return Err(AppError::BadRequest(
+            "Reopen reason must contain 5 to 1000 characters".into(),
+        ));
+    }
+    let mut tx = state.db.begin().await?;
+    let (closure, closed) = lock(&mut tx, &p).await?;
+    let row = sqlx::query(
+        "SELECT closure_version,reopened_at,reopen_reason FROM payroll_closures WHERE id=$1",
+    )
+    .bind(closure)
+    .fetch_one(&mut *tx)
+    .await?;
+    let version: i32 = row.get("closure_version");
+    if !closed {
+        if row
+            .get::<Option<chrono::DateTime<chrono::Utc>>, _>("reopened_at")
+            .is_none()
+        {
+            return Err(AppError::Conflict(
+                "Only a closed payroll period can be reopened".into(),
+            ));
+        }
+        let prior: Option<String> = row.get("reopen_reason");
+        tx.commit().await?;
+        return Ok(
+            json!({"success":true,"closure_id":closure,"status":"REOPENED","closure_version":version,"reason":prior,"idempotent_replay":true}),
+        );
+    }
+    sqlx::query("UPDATE payroll_closures SET is_closed=FALSE,reopened_at=NOW(),reopened_by=$2,reopen_reason=$3 WHERE id=$1").bind(closure).bind(user.user_id).bind(reason).execute(&mut *tx).await?;
+    audit(&mut tx,user.user_id,closure,"payroll_reopened",json!({"plant_id":p.plant,"month":format!("{}-{:02}",p.year,p.month),"reason":reason,"version":version})).await?;
+    tx.commit().await?;
+    Ok(
+        json!({"success":true,"closure_id":closure,"status":"REOPENED","closure_version":version,"reason":reason}),
+    )
 }

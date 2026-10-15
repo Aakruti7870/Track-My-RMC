@@ -70,7 +70,7 @@ pub async fn get_payroll_period_summary(
     for (plant_id, plant_name) in plants {
         let closure = sqlx::query(
             r#"
-            SELECT id, total_gross, total_net, employee_count, is_closed, closed_at, override_reason
+            SELECT id, total_gross, total_net, employee_count, is_closed, closed_at, reopen_reason, reopened_at, closure_version
             FROM payroll_closures
             WHERE plant_id = $1 AND month = $2 AND year = $3
             "#,
@@ -85,7 +85,7 @@ pub async fn get_payroll_period_summary(
             Some(ref c) => {
                 let cl: bool = c.get("is_closed");
                 let ca: Option<chrono::DateTime<chrono::Utc>> = c.get("closed_at");
-                let or: Option<String> = c.get("override_reason");
+                let or: Option<String> = c.get("reopen_reason");
                 let id: Uuid = c.get("id");
                 (cl, ca, or, Some(id))
             }
@@ -93,7 +93,7 @@ pub async fn get_payroll_period_summary(
         };
 
         let payslip_count: i64 = if let Some(id) = cid {
-            sqlx::query_scalar("SELECT COUNT(*) FROM payroll_records WHERE closure_id = $1")
+            sqlx::query_scalar("SELECT COUNT(*) FROM payroll_payslip_snapshots s JOIN payroll_closures c ON c.id=s.closure_id WHERE s.closure_id=$1 AND s.closure_version=c.closure_version")
                 .bind(id)
                 .fetch_one(&state.db)
                 .await?
@@ -106,8 +106,9 @@ pub async fn get_payroll_period_summary(
             "plant_id": plant_id,
             "plant_name": plant_name,
             "month": month_str,
-            "status": if is_closed { "CLOSED" } else { "OPEN" },
-            "version": if is_closed { 1 } else { 0 },
+            "status": if is_closed { "CLOSED" } else if closure.as_ref().is_some_and(|c|c.get::<Option<chrono::DateTime<chrono::Utc>>,_>("reopened_at").is_some()) {"REOPENED"} else { "OPEN" },
+            "version": closure.as_ref().map(|c|c.get::<i32,_>("closure_version")).unwrap_or(0),
+            "reopened_at":closure.as_ref().and_then(|c|c.get::<Option<chrono::DateTime<chrono::Utc>>,_>("reopened_at")),
             "closed_at": closed_at,
             "reopen_reason": reopen_reason,
             "payslip_count": payslip_count,
@@ -144,32 +145,22 @@ pub async fn close_payroll_period(
     ))
 }
 
+#[derive(Deserialize)]
+pub struct ReopenPeriodPayload {
+    pub reason: String,
+}
+
 pub async fn reopen_payroll_period(
     State(state): State<AppState>,
     auth_user: AuthUser,
-    Path((plant_id, month_str)): Path<(Uuid, String)>,
+    Path((plant_id, month)): Path<(Uuid, String)>,
+    Json(payload): Json<ReopenPeriodPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["owner", "plant_owner"])?;
-    super::business_routes::ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
-    let (year, month) = parse_year_month(&month_str)?;
-
-    sqlx::query(
-        r#"
-        UPDATE payroll_closures
-        SET is_closed = FALSE, closed_at = NULL, closed_by = NULL
-        WHERE plant_id = $1 AND month = $2 AND year = $3
-        "#,
-    )
-    .bind(plant_id)
-    .bind(month)
-    .bind(year)
-    .execute(&state.db)
-    .await?;
-
-    Ok(Json(json!({
-        "success": true,
-        "message": format!("Payroll period {} reopened for mutations", month_str)
-    })))
+    let period = crate::services::payroll_lifecycle::Period::parse(plant_id, &month)?;
+    Ok(Json(
+        crate::services::payroll_lifecycle::reopen(&state, &auth_user, period, payload.reason)
+            .await?,
+    ))
 }
 
 pub async fn list_period_payslips(
