@@ -199,8 +199,10 @@ try {
       await page.getByText('More', { exact: true }).last().click();
       phase = 'project hub: open module';
       await page.getByTestId('role-module-projects').click();
+      phase = 'project hub: route navigation';
+      await page.waitForURL(url => url.pathname === '/customer/projects' || url.pathname === '/customer/projects/');
       phase = 'project hub: route heading';
-      await expect(page.getByText('Project & Site Hub', { exact: true })).toBeVisible();
+      await expect(page.getByTestId('project-hub-heading')).toBeVisible();
       phase = 'project hub: authorized API';
       await expect.poll(() => successfulPaths.has('/api/customer/project-sites')).toBe(true);
       phase = 'project hub: return to More';
