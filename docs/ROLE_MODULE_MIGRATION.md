@@ -33,11 +33,18 @@ For the actual original files, their target counterparts, and content hashes, se
 
 ## Confirmed differences and safeguards
 
-1. **Plant Owner alias mismatch:** The target login router recognizes both `owner` and `plant_owner`, but the previous owner-layout guard rejected `owner`. Fixed on this feature branch.
+1. **Plant Owner alias mismatch:** Target storage historically uses `owner`, while the reference names the same role `plant_owner`. This branch fixes owner-layout fallback, Rust owner plant selectors, owner-scoped finance/monthly workforce report access, staff email OTP/MFA eligibility, and `UserRole::from` alias conversion. Both names select the same owner-scoped rows. Neither becomes platform administrator. Rust unit tests assert equivalence and lack of admin promotion.
 2. **Admin Control Center:** Original admin web includes dedicated role/permission and governance workspaces that are mostly absent from target. The separate admin security implementation remains an ongoing task; PR #36 covers only initial remediation. Never copy the original admin UI and claim it works without Rust API, login provenance and per-permission enforcement.
 3. **Unsupported passkeys:** The reference has passkey setup/ceremony screens that intentionally are not exposed by the target because cryptographic backend verification is incomplete. Do not restore them merely for route parity.
 4. **Data migration:** Repository content provides schemas, business rules and UI source. Actual historical users, trips, orders, GPS points, invoices, payroll and documents are stored in databases/object storage, **not in source code**. Migrating historical records requires read-only source access, data inventory, safe ETL mapping, backup and staged reconciliation. Do not run blind writes to production or copy secrets to GitHub.
 5. **Tenancy:** Each customer, driver, owner and staff member must access only authorized customer IDs, trip assignments and plant IDs. Neither a role label nor visible screen is sufficient authorization.
+
+## Parallel delivery work and migration sequencing
+
+- Codex draft PR #37 implements additional delivery, GPS, POD, evidence, and dispatch changes and reserves PostgreSQL migrations `0019_trip_status_history.sql` and `0020_delivery_evidence.sql`.
+- Control Center draft PR #36 has been revised to reserve `0021_control_center_step_ups.sql`, avoiding the two unrelated `0019` migrations that initially conflicted.
+- Verify migration order and checksum history on a PostgreSQL 16 copy before combining these feature branches.
+- Frontend/backend role alias changes on this branch have independent CI gates and need isolated Plant Owner account permission tests before merge.
 
 ## Acceptance gate
 
