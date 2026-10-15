@@ -174,7 +174,7 @@ pub async fn find_driver_active_trips(
                batch_started_at, batch_completed_at, dispatched_at, arrived_at,
                pour_started_at, pour_completed_at, returned_at, created_at
         FROM order_loads
-        WHERE driver_id = $1 AND status IN ('dispatched', 'arrived', 'pouring')
+        WHERE driver_id = $1 AND status IN ('dispatched', 'en_route', 'arrived', 'pouring')
         ORDER BY dispatched_at DESC
         "#,
     )
@@ -209,44 +209,114 @@ pub async fn get_challan_by_load(
 pub async fn record_pod(
     pool: &PgPool,
     load_id: Uuid,
+    driver_id: Uuid,
     receiver_name: &str,
     receiver_phone: &str,
     signature_url: Option<&str>,
     photo_url: Option<&str>,
     notes: Option<&str>,
+    delivered_quantity: f64,
 ) -> Result<ProofOfDelivery, AppError> {
     let mut tx = pool.begin().await?;
-
-    let pod = sqlx::query_as::<_, ProofOfDelivery>(
-        r#"
-        INSERT INTO proof_of_deliveries (load_id, receiver_name, receiver_phone, signature_url, photo_url, notes)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        ON CONFLICT (load_id) DO UPDATE
-        SET receiver_name = EXCLUDED.receiver_name,
-            receiver_phone = EXCLUDED.receiver_phone,
-            signature_url = EXCLUDED.signature_url,
-            photo_url = EXCLUDED.photo_url,
-            notes = EXCLUDED.notes,
-            delivered_at = NOW()
-        RETURNING id, load_id, receiver_name, receiver_phone, signature_url, photo_url, notes, delivered_at
-        "#,
+    // Lock the parent before any sibling load to serialize quantity reconciliation.
+    let order_id: Uuid =
+        sqlx::query_scalar("SELECT order_id FROM order_loads WHERE id = $1 AND driver_id = $2")
+            .bind(load_id)
+            .bind(driver_id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Assigned trip not found".to_string()))?;
+    let parent_status: String =
+        sqlx::query_scalar("SELECT status FROM orders WHERE id = $1 FOR UPDATE")
+            .bind(order_id)
+            .fetch_one(&mut *tx)
+            .await?;
+    let (status, planned): (String, BigDecimal) = sqlx::query_as(
+        "SELECT status, quantity_m3 FROM order_loads WHERE id = $1 AND driver_id = $2 FOR UPDATE",
     )
     .bind(load_id)
-    .bind(receiver_name)
-    .bind(receiver_phone)
-    .bind(signature_url)
+    .bind(driver_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Assigned trip not found".to_string()))?;
+    let quantity = BigDecimal::from_f64(delivered_quantity)
+        .ok_or_else(|| AppError::BadRequest("Invalid delivered quantity".to_string()))?;
+    if quantity <= BigDecimal::from(0) || quantity > planned {
+        return Err(AppError::BadRequest(
+            "Delivered quantity must be positive and cannot exceed the load".to_string(),
+        ));
+    }
+    if status == "completed" {
+        let existing = sqlx::query_as::<_, ProofOfDelivery>(
+            "SELECT id, load_id, receiver_name, receiver_phone, signature_url, photo_url, notes, delivered_at
+             FROM proof_of_deliveries WHERE load_id = $1 AND receiver_name = $2
+             AND receiver_phone = $3 AND signature_url IS NOT DISTINCT FROM $4
+             AND photo_url IS NOT DISTINCT FROM $5 AND notes IS NOT DISTINCT FROM $6
+             AND delivered_quantity = $7",
+        ).bind(load_id).bind(receiver_name).bind(receiver_phone).bind(signature_url)
+         .bind(photo_url).bind(notes).bind(&quantity).fetch_optional(&mut *tx).await?;
+        return existing.ok_or_else(|| {
+            AppError::Conflict("Delivered proof cannot be overwritten".to_string())
+        });
+    }
+    if !matches!(status.as_str(), "arrived" | "pouring") {
+        return Err(AppError::Conflict(
+            "Proof of delivery requires arrival or unloading".to_string(),
+        ));
+    }
+    if matches!(
+        parent_status.as_str(),
+        "cancelled" | "rejected" | "completed" | "delivered"
+    ) {
+        return Err(AppError::Conflict(
+            "Parent order cannot accept delivery".to_string(),
+        ));
+    }
+    let owns_photo: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM stored_files WHERE file_path = $1 AND uploaded_by = $2
+         AND file_data IS NOT NULL AND content_type LIKE 'image/%')",
+    )
     .bind(photo_url)
-    .bind(notes)
+    .bind(driver_id)
     .fetch_one(&mut *tx)
     .await?;
-
+    if !owns_photo {
+        return Err(AppError::BadRequest(
+            "Upload a delivery photo owned by this driver".to_string(),
+        ));
+    }
+    let pod = sqlx::query_as::<_, ProofOfDelivery>(
+        "INSERT INTO proof_of_deliveries
+         (load_id, receiver_name, receiver_phone, signature_url, photo_url, notes, delivered_quantity)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING id, load_id, receiver_name, receiver_phone, signature_url, photo_url, notes, delivered_at",
+    ).bind(load_id).bind(receiver_name).bind(receiver_phone).bind(signature_url)
+     .bind(photo_url).bind(notes).bind(&quantity).fetch_one(&mut *tx).await?;
     sqlx::query(
         "UPDATE order_loads SET status = 'completed', pour_completed_at = NOW() WHERE id = $1",
     )
     .bind(load_id)
     .execute(&mut *tx)
     .await?;
-
+    sqlx::query(
+        "INSERT INTO trip_status_history (load_id, actor_id, from_status, to_status)
+                 VALUES ($1, $2, $3, 'completed')",
+    )
+    .bind(load_id)
+    .bind(driver_id)
+    .bind(status)
+    .execute(&mut *tx)
+    .await?;
+    // Match the reference 98% quantity tolerance; cancelled loads do not block completion.
+    sqlx::query(
+        "UPDATE orders o SET status = 'delivered', updated_at = NOW()
+         WHERE o.id = $1
+         AND NOT EXISTS(SELECT 1 FROM order_loads l WHERE l.order_id = o.id AND l.status NOT IN ('completed', 'cancelled'))
+         AND o.total_quantity_m3 > 0
+         AND (SELECT COALESCE(SUM(COALESCE(p.delivered_quantity, l.quantity_m3)), 0)
+              FROM proof_of_deliveries p JOIN order_loads l ON l.id = p.load_id
+              WHERE l.order_id = o.id AND l.status = 'completed') + 0.001 >= o.total_quantity_m3 * 0.98",
+    ).bind(order_id).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(pod)
 }

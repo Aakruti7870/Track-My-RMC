@@ -5,7 +5,6 @@ use crate::{
         challan::{SignChallanRequest, SubmitPodRequest},
         telemetry::LocationUpdateRequest,
     },
-    repositories::dispatch_repo,
     services::{dispatch_service, tracking_service},
     state::AppState,
 };
@@ -25,7 +24,17 @@ pub async fn get_driver_trips(
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["driver"])?;
-    let trips = dispatch_repo::find_driver_active_trips(&state.db, auth_user.user_id).await?;
+    let trips: Vec<Value> = sqlx::query_scalar(
+        "SELECT jsonb_build_object(
+            'id', l.id, 'order_number', o.order_number,
+            'status', CASE l.status WHEN 'completed' THEN 'DELIVERED' WHEN 'pouring' THEN 'UNLOADING' ELSE UPPER(l.status) END,
+            'grade', o.concrete_grade, 'quantity', l.quantity_m3::DOUBLE PRECISION,
+            'tm_number', COALESCE(m.registration_number, ''), 'site_name', s.name)
+         FROM order_loads l JOIN orders o ON o.id = l.order_id
+         JOIN customer_sites s ON s.id = o.site_id
+         LEFT JOIN transit_mixers m ON m.id = l.mixer_id
+         WHERE l.driver_id = $1 ORDER BY l.created_at DESC LIMIT 500",
+    ).bind(auth_user.user_id).fetch_all(&state.db).await?;
     Ok(Json(json!({ "success": true, "trips": trips })))
 }
 
@@ -57,7 +66,7 @@ async fn resolve_driver_plant(state: &AppState, driver_id: Uuid) -> Result<Uuid,
             FROM order_loads ol
             JOIN orders o ON o.id = ol.order_id
             WHERE ol.driver_id = $1
-              AND ol.status IN ('dispatched', 'arrived', 'pouring')
+              AND ol.status IN ('dispatched', 'en_route', 'arrived', 'pouring')
             UNION
             SELECT plant_id
             FROM transit_mixers
@@ -103,7 +112,7 @@ pub async fn get_driver_home(
                 SELECT jsonb_build_object(
                     'id', ol.id,
                     'order_number', o.order_number,
-                    'status', ol.status,
+                    'status', CASE ol.status WHEN 'pouring' THEN 'UNLOADING' ELSE UPPER(ol.status) END,
                     'grade', o.concrete_grade,
                     'quantity', ol.quantity_m3::DOUBLE PRECISION,
                     'tm_number', COALESCE(tm.registration_number, ''),
@@ -114,7 +123,7 @@ pub async fn get_driver_home(
                 LEFT JOIN customer_sites cs ON cs.id = o.site_id
                 LEFT JOIN transit_mixers tm ON tm.id = ol.mixer_id
                 WHERE ol.driver_id = u.id
-                  AND ol.status IN ('dispatched', 'arrived', 'pouring')
+                  AND ol.status IN ('dispatched', 'en_route', 'arrived', 'pouring')
                 ORDER BY ol.dispatched_at DESC NULLS LAST, ol.created_at DESC
                 LIMIT 1
             ) AS active_trip,
@@ -337,12 +346,14 @@ pub async fn get_trip_details(
         r#"
         SELECT l.id, l.load_number, l.quantity_m3, l.status,
                o.order_number, o.concrete_grade,
+               COALESCE(tm.registration_number, '') AS tm_number,
                p.name as plant_name, p.address_line as plant_address,
                s.name as site_name, s.address_line as site_address,
                s.latitude as site_lat, s.longitude as site_lng,
                s.contact_person, s.contact_phone
         FROM order_loads l
         INNER JOIN orders o ON o.id = l.order_id
+        LEFT JOIN transit_mixers tm ON tm.id = l.mixer_id
         INNER JOIN rmc_plants p ON p.id = o.plant_id
         INNER JOIN customer_sites s ON s.id = o.site_id
         WHERE l.id = $1 AND l.driver_id = $2
@@ -377,7 +388,15 @@ pub async fn get_trip_details(
             "order_number": onum,
             "grade": grade,
             "quantity_m3": lqty,
-            "status": lstatus,
+            "quantity": lqty.to_string().parse::<f64>().unwrap_or_default(),
+            "tm_number": row.get::<String, _>("tm_number"),
+            "site_name": sname,
+            "site_address": saddr,
+            "status": match lstatus.as_str() {
+                "completed" => "DELIVERED".to_string(),
+                "pouring" => "UNLOADING".to_string(),
+                other => other.to_uppercase(),
+            },
             "plant": {
                 "name": pname,
                 "address": paddr
@@ -401,16 +420,16 @@ pub async fn start_trip(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["driver"])?;
 
-    sqlx::query(
-        "UPDATE order_loads SET status = 'dispatched', dispatched_at = NOW() WHERE id = $1 AND driver_id = $2",
+    crate::services::trip_lifecycle::advance(
+        &state.db,
+        trip_id,
+        auth_user.user_id,
+        crate::services::trip_lifecycle::TripAction::Start,
     )
-    .bind(trip_id)
-    .bind(auth_user.user_id)
-    .execute(&state.db)
     .await?;
 
     Ok(Json(
-        json!({ "success": true, "status": "dispatched", "message": "Trip started" }),
+        json!({ "success": true, "status": "EN_ROUTE", "message": "Trip started" }),
     ))
 }
 
@@ -421,16 +440,16 @@ pub async fn arrive_trip(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["driver"])?;
 
-    sqlx::query(
-        "UPDATE order_loads SET status = 'arrived', arrived_at = NOW() WHERE id = $1 AND driver_id = $2",
+    crate::services::trip_lifecycle::advance(
+        &state.db,
+        trip_id,
+        auth_user.user_id,
+        crate::services::trip_lifecycle::TripAction::Arrive,
     )
-    .bind(trip_id)
-    .bind(auth_user.user_id)
-    .execute(&state.db)
     .await?;
 
     Ok(Json(
-        json!({ "success": true, "status": "arrived", "message": "Arrived at delivery site" }),
+        json!({ "success": true, "status": "ARRIVED", "message": "Arrived at delivery site" }),
     ))
 }
 
@@ -441,16 +460,16 @@ pub async fn unload_trip(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["driver"])?;
 
-    sqlx::query(
-        "UPDATE order_loads SET status = 'pouring', pour_started_at = NOW() WHERE id = $1 AND driver_id = $2",
+    crate::services::trip_lifecycle::advance(
+        &state.db,
+        trip_id,
+        auth_user.user_id,
+        crate::services::trip_lifecycle::TripAction::Unload,
     )
-    .bind(trip_id)
-    .bind(auth_user.user_id)
-    .execute(&state.db)
     .await?;
 
     Ok(Json(
-        json!({ "success": true, "status": "pouring", "message": "Pouring commenced" }),
+        json!({ "success": true, "status": "UNLOADING", "message": "Pouring commenced" }),
     ))
 }
 
@@ -534,4 +553,44 @@ pub async fn get_driver_sos_status(
         "success": true,
         "active_sos": active_sos
     })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TripLocationPayload {
+    pub lat: f64,
+    pub lng: f64,
+}
+
+pub async fn update_trip_location(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Path(trip_id): Path<Uuid>,
+    Json(payload): Json<TripLocationPayload>,
+) -> Result<impl IntoResponse, AppError> {
+    check_role(&auth_user, &["driver"])?;
+    let mixer_id: Option<Uuid> = sqlx::query_scalar(
+        "SELECT mixer_id FROM order_loads WHERE id = $1 AND driver_id = $2
+         AND status IN ('en_route', 'arrived', 'pouring')",
+    )
+    .bind(trip_id)
+    .bind(auth_user.user_id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Active assigned trip not found".to_string()))?;
+    let mixer_id = mixer_id.ok_or_else(|| AppError::Conflict("Trip has no mixer".to_string()))?;
+    tracking_service::record_driver_location(
+        &state,
+        auth_user.user_id,
+        LocationUpdateRequest {
+            mixer_id,
+            load_id: Some(trip_id),
+            latitude: payload.lat,
+            longitude: payload.lng,
+            speed: None,
+            heading: None,
+            timestamp: None,
+        },
+    )
+    .await?;
+    Ok(Json(json!({"success": true})))
 }

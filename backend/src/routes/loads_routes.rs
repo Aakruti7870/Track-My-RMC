@@ -15,9 +15,10 @@ use uuid::Uuid;
 
 pub async fn list_order_loads(
     State(state): State<AppState>,
-    _auth_user: AuthUser,
+    auth_user: AuthUser,
     Path(order_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
+    ensure_order_access(&state, &auth_user, order_id, true).await?;
     let loads = sqlx::query(
         r#"
         SELECT l.id, l.order_id, l.load_number, l.quantity_m3, l.status,
@@ -93,6 +94,7 @@ pub async fn create_order_load(
         &["dispatcher", "supervisor", "owner", "plant_owner", "admin"],
     )?;
 
+    ensure_order_access(&state, &auth_user, order_id, false).await?;
     let max_load: Option<i32> =
         sqlx::query_scalar("SELECT MAX(load_number) FROM order_loads WHERE order_id = $1")
             .bind(order_id)
@@ -148,6 +150,7 @@ pub async fn assign_load_mixer_driver(
         ],
     )?;
 
+    ensure_load_access(&state, &auth_user, load_id).await?;
     let target_mixer = payload.mixer_id.or(payload.vehicle_id);
 
     sqlx::query(
@@ -181,6 +184,7 @@ pub async fn prepare_load(
         ],
     )?;
 
+    ensure_load_access(&state, &auth_user, load_id).await?;
     sqlx::query("UPDATE order_loads SET status = 'batching' WHERE id = $1")
         .bind(load_id)
         .execute(&state.db)
@@ -201,6 +205,7 @@ pub async fn dispatch_load(
         &["dispatcher", "supervisor", "owner", "plant_owner", "admin"],
     )?;
 
+    ensure_load_access(&state, &auth_user, load_id).await?;
     sqlx::query(
         "UPDATE order_loads SET status = 'dispatched', dispatched_at = NOW() WHERE id = $1",
     )
@@ -223,6 +228,7 @@ pub async fn cancel_load(
         &["dispatcher", "supervisor", "owner", "plant_owner", "admin"],
     )?;
 
+    ensure_load_access(&state, &auth_user, load_id).await?;
     sqlx::query("UPDATE order_loads SET status = 'cancelled' WHERE id = $1")
         .bind(load_id)
         .execute(&state.db)
@@ -250,6 +256,7 @@ pub async fn issue_gate_pass(
         &["dispatcher", "supervisor", "owner", "plant_owner", "admin"],
     )?;
 
+    ensure_load_access(&state, &auth_user, payload.load_id).await?;
     let pass_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM gate_passes")
         .fetch_one(&state.db)
         .await?;
@@ -276,4 +283,47 @@ pub async fn issue_gate_pass(
         "pass_number": pass_number,
         "message": "Gate pass issued"
     })))
+}
+
+async fn ensure_order_access(
+    state: &AppState,
+    user: &AuthUser,
+    order_id: Uuid,
+    allow_customer: bool,
+) -> Result<(), AppError> {
+    let (plant_id, customer_id): (Uuid, Uuid) =
+        sqlx::query_as("SELECT plant_id, customer_id FROM orders WHERE id = $1")
+            .bind(order_id)
+            .fetch_optional(&state.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Order not found".to_string()))?;
+    if allow_customer && user.role == "customer" && user.user_id == customer_id {
+        return Ok(());
+    }
+    check_role(
+        user,
+        &[
+            "dispatcher",
+            "fleet_manager",
+            "operator",
+            "supervisor",
+            "owner",
+            "plant_owner",
+            "admin",
+        ],
+    )?;
+    super::business_routes::ensure_plant_staff_or_owner(state, user, plant_id).await
+}
+
+async fn ensure_load_access(
+    state: &AppState,
+    user: &AuthUser,
+    load_id: Uuid,
+) -> Result<(), AppError> {
+    let order_id: Uuid = sqlx::query_scalar("SELECT order_id FROM order_loads WHERE id = $1")
+        .bind(load_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Load not found".to_string()))?;
+    ensure_order_access(state, user, order_id, false).await
 }

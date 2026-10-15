@@ -47,8 +47,13 @@ pub struct SignChallanRequest {
 #[derive(Debug, Deserialize)]
 pub struct SubmitPodRequest {
     pub receiver_name: String,
+    #[serde(default)]
     pub receiver_phone: String,
+    #[serde(alias = "signature")]
     pub signature_url: Option<String>,
+    #[serde(alias = "photo_path")]
     pub photo_url: Option<String>,
+    #[serde(alias = "remarks")]
     pub notes: Option<String>,
+    pub delivered_quantity: f64,
 }
