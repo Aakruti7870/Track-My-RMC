@@ -87,9 +87,13 @@ try {
   api.stdin.end(JSON.stringify({ capture_token: captureToken, totp_secrets: Object.fromEntries([...authenticators].map(([role, bytes]) => [role, base32(bytes)])) }));
   await ready('http://127.0.0.1:8301/health', api);
   phase = 'Expo startup';
-  const web = start(process.execPath, ['node_modules/expo/bin/cli', 'start', '--web', '--localhost', '--offline', '--port', '8081', '--max-workers', '2'], {
+  const web = start(process.execPath, ['node_modules/expo/bin/cli', 'start', '--web', '--localhost', '--port', '8081', '--max-workers', '2'], {
     cwd: fileURLToPath(new URL('../../frontend/', import.meta.url)),
-    env: { ...process.env, CI: 'true', EXPO_PUBLIC_BACKEND_URL: 'http://127.0.0.1:8301' },
+    env: {
+      PATH: process.env.PATH, HOME: process.env.HOME, TMPDIR: process.env.TMPDIR,
+      CI: 'true', EXPO_OFFLINE: '1', EXPO_NO_TELEMETRY: '1',
+      EXPO_PUBLIC_BACKEND_URL: 'http://127.0.0.1:8301',
+    },
   });
   await ready('http://127.0.0.1:8081', web);
   browser = await chromium.launch();
