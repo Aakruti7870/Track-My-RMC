@@ -58,28 +58,28 @@ pub async fn get_staff_home(
     )?;
 
     let plant_id = get_staff_plant_id(&state, &auth_user).await?;
-
+    let display_name: String = sqlx::query_scalar("SELECT full_name FROM users WHERE id = $1")
+        .bind(auth_user.user_id)
+        .fetch_one(&state.db)
+        .await?;
     let pending_orders: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM orders WHERE plant_id = $1 AND status IN ('pending', 'confirmed')",
     )
     .bind(plant_id)
     .fetch_one(&state.db)
     .await?;
-
     let in_transit_mixers: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM transit_mixers WHERE plant_id = $1 AND status IN ('dispatched', 'in_transit', 'pouring')",
     )
     .bind(plant_id)
     .fetch_one(&state.db)
     .await?;
-
     let available_mixers: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM transit_mixers WHERE plant_id = $1 AND status = 'idle'",
+        "SELECT COUNT(*) FROM transit_mixers WHERE plant_id = $1 AND status IN ('idle','available')",
     )
     .bind(plant_id)
     .fetch_one(&state.db)
     .await?;
-
     let today_attendance: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM workforce_attendance WHERE plant_id = $1 AND attendance_date = CURRENT_DATE AND status = 'present'",
     )
@@ -87,8 +87,90 @@ pub async fn get_staff_home(
     .fetch_one(&state.db)
     .await?;
 
+    // The mobile StaffHome screen expects role/name/kpis/primary. The previous Rust
+    // endpoint returned only metrics, so every operational role rendered an empty home.
+    let role = auth_user.role.as_str();
+    let (role_label, title, kind) = match role {
+        "dispatcher" => ("Dispatcher", "Dispatch Queue", "dispatch"),
+        "operator" => ("Plant Operator", "Production Queue", "production"),
+        "supervisor" => ("Supervisor", "Open Incidents", "incidents"),
+        "accountant" => ("Accountant", "Invoices", "invoices"),
+        "quality_engineer" => ("Quality Engineer", "Quality Register", "quality"),
+        "fleet_manager" => ("Fleet Manager", "Fleet", "fleet"),
+        "store_manager" => ("Store Manager", "Stock Levels", "inventory"),
+        "owner" | "plant_owner" => ("Plant Owner", "Recent Orders", "orders"),
+        _ => ("Admin", "Recent Orders", "orders"),
+    };
+
+    let mut kpis = json!([
+        { "label": "Pending Orders", "value": pending_orders, "icon": "hourglass-outline" },
+        { "label": "In Transit TMs", "value": in_transit_mixers, "icon": "navigate-outline" },
+        { "label": "Available TMs", "value": available_mixers, "icon": "bus-outline" },
+        { "label": "Staff Present Today", "value": today_attendance, "icon": "people-outline" }
+    ]);
+
+    if role == "store_manager" {
+        let stock: (i64, i64) = sqlx::query_as(
+            "SELECT COUNT(*), COUNT(*) FILTER (WHERE current_stock <= minimum_stock) FROM plant_materials WHERE plant_id = $1",
+        )
+        .bind(plant_id).fetch_one(&state.db).await?;
+        kpis = json!([
+            { "label": "Materials", "value": stock.0, "icon": "cube-outline" },
+            { "label": "Low Stock", "value": stock.1, "icon": "alert-circle-outline" },
+            { "label": "Items OK", "value": stock.0 - stock.1, "icon": "checkmark-circle-outline" },
+            { "label": "Staff Present Today", "value": today_attendance, "icon": "people-outline" }
+        ]);
+    } else if role == "accountant" {
+        let billed: (i64, f64) = sqlx::query_as(
+            "SELECT COUNT(*), COALESCE(SUM(total_amount), 0)::double precision FROM plant_invoices WHERE plant_id = $1",
+        )
+        .bind(plant_id).fetch_one(&state.db).await?;
+        let received: f64 = sqlx::query_scalar(
+            "SELECT COALESCE(SUM(amount),0)::double precision FROM plant_payments WHERE plant_id = $1 AND invoice_id IS NOT NULL",
+        )
+        .bind(plant_id).fetch_one(&state.db).await?;
+        kpis = json!([
+            { "label": "Billed", "value": billed.1, "icon": "receipt-outline", "unit": "₹" },
+            { "label": "Received", "value": received, "icon": "cash-outline", "unit": "₹" },
+            { "label": "Outstanding", "value": (billed.1 - received).max(0.0), "icon": "alert-circle-outline", "unit": "₹" },
+            { "label": "Invoices", "value": billed.0, "icon": "document-text-outline" }
+        ]);
+    } else if role == "fleet_manager" {
+        let fleet_total: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM transit_mixers WHERE plant_id = $1")
+                .bind(plant_id)
+                .fetch_one(&state.db)
+                .await?;
+        let drivers: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM plant_staff ps JOIN users u ON u.id = ps.user_id WHERE ps.plant_id = $1 AND ps.is_active = TRUE AND u.role = 'driver'",
+        )
+        .bind(plant_id).fetch_one(&state.db).await?;
+        kpis = json!([
+            { "label": "Total TMs", "value": fleet_total, "icon": "bus-outline" },
+            { "label": "Available", "value": available_mixers, "icon": "checkmark-circle-outline" },
+            { "label": "On Trip", "value": in_transit_mixers, "icon": "navigate-outline" },
+            { "label": "Drivers", "value": drivers, "icon": "people-outline" }
+        ]);
+    } else if role == "supervisor" {
+        let open_incidents: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM driver_sos_alerts a JOIN order_loads l ON l.id = a.load_id JOIN orders o ON o.id = l.order_id WHERE o.plant_id = $1 AND upper(a.status) <> 'RESOLVED'",
+        )
+        .bind(plant_id).fetch_one(&state.db).await?;
+        kpis = json!([
+            { "label": "Open Incidents", "value": open_incidents, "icon": "warning-outline" },
+            { "label": "In Transit TMs", "value": in_transit_mixers, "icon": "navigate-outline" },
+            { "label": "Pending Orders", "value": pending_orders, "icon": "hourglass-outline" },
+            { "label": "Staff Present Today", "value": today_attendance, "icon": "people-outline" }
+        ]);
+    }
+
     Ok(Json(json!({
         "success": true,
+        "role": auth_user.role,
+        "role_label": role_label,
+        "name": display_name,
+        "primary": { "title": title, "kind": kind },
+        "kpis": kpis,
         "plant_id": plant_id,
         "metrics": {
             "pending_orders": pending_orders,

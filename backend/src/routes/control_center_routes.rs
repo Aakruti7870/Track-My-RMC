@@ -1,17 +1,50 @@
 use crate::{
-    auth::{middleware::check_role, AuthUser},
+    auth::{middleware::check_role, totp::verify_totp_login, AuthUser},
     error::AppError,
     state::AppState,
 };
 use axum::{
-    extract::{Path, State},
+    extract::State,
+    http::{header::AUTHORIZATION, HeaderMap},
     response::IntoResponse,
     Json,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use sqlx::Row;
 use uuid::Uuid;
+
+fn session_token_hash(headers: &HeaderMap) -> Result<String, AppError> {
+    let bearer = headers
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| AppError::Unauthorized("Missing bearer session".to_string()))?;
+    Ok(format!("{:x}", Sha256::digest(bearer.as_bytes())))
+}
+
+async fn require_recent_step_up(
+    state: &AppState,
+    user: &AuthUser,
+    headers: &HeaderMap,
+) -> Result<(), AppError> {
+    let token_hash = session_token_hash(headers)?;
+    let verified: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM control_center_step_ups WHERE user_id = $1 AND token_hash = $2 AND expires_at > NOW())",
+    )
+    .bind(user.user_id)
+    .bind(token_hash)
+    .fetch_one(&state.db)
+    .await?;
+    if !verified {
+        return Err(AppError::Forbidden(
+            "Recent authenticator verification is required for this action".to_string(),
+        ));
+    }
+    Ok(())
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct AiCommandPayload {
@@ -152,9 +185,16 @@ pub struct ReviewerAccessPayload {
 pub async fn set_reviewer_access(
     State(state): State<AppState>,
     auth_user: AuthUser,
+    headers: HeaderMap,
     Json(payload): Json<ReviewerAccessPayload>,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["admin"])?;
+    require_recent_step_up(&state, &auth_user, &headers).await?;
+    if payload.reason.trim().len() < 10 {
+        return Err(AppError::BadRequest(
+            "A reason of at least 10 characters is required".to_string(),
+        ));
+    }
 
     sqlx::query("UPDATE play_review_fixtures SET enabled = $1")
         .bind(payload.enabled)
@@ -226,11 +266,27 @@ pub struct AdminAccessUpdatePayload {
 pub async fn update_admin_access(
     State(state): State<AppState>,
     auth_user: AuthUser,
+    headers: HeaderMap,
     Json(payload): Json<AdminAccessUpdatePayload>,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["admin"])?;
-
+    require_recent_step_up(&state, &auth_user, &headers).await?;
+    if payload.reason.trim().len() < 10 {
+        return Err(AppError::BadRequest(
+            "A reason of at least 10 characters is required".to_string(),
+        ));
+    }
     let email_lower = payload.email.trim().to_lowercase();
+    if !payload.enabled
+        && auth_user
+            .email
+            .as_deref()
+            .is_some_and(|email| email.eq_ignore_ascii_case(&email_lower))
+    {
+        return Err(AppError::Forbidden(
+            "An administrator cannot disable their own account".to_string(),
+        ));
+    }
     sqlx::query(
         "UPDATE users SET is_active = $1, updated_at = NOW() WHERE email = $2 AND role = 'admin'",
     )
@@ -299,27 +355,57 @@ pub async fn list_unowned_plants(
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct AssignOwnerPayload {
+    pub plant_id: Uuid,
     pub owner_user_id: Uuid,
+    pub reason: String,
 }
 
 pub async fn assign_plant_owner(
     State(state): State<AppState>,
     auth_user: AuthUser,
-    Path(plant_id): Path<Uuid>,
+    headers: HeaderMap,
     Json(payload): Json<AssignOwnerPayload>,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["admin"])?;
+    require_recent_step_up(&state, &auth_user, &headers).await?;
+    if payload.reason.trim().len() < 10 {
+        return Err(AppError::BadRequest(
+            "A reason of at least 10 characters is required".to_string(),
+        ));
+    }
 
-    sqlx::query("UPDATE rmc_plants SET owner_id = $1, updated_at = NOW() WHERE id = $2")
-        .bind(payload.owner_user_id)
-        .bind(plant_id)
-        .execute(&state.db)
-        .await?;
+    // Assignment must not silently promote staff, customers or administrators.
+    let eligible: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM users WHERE id = $1 AND role IN ('owner', 'plant_owner') AND is_active = TRUE)",
+    )
+    .bind(payload.owner_user_id)
+    .fetch_one(&state.db)
+    .await?;
+    if !eligible {
+        return Err(AppError::Forbidden(
+            "The nominated user must already be an active plant owner".to_string(),
+        ));
+    }
 
-    sqlx::query("UPDATE users SET role = 'owner', updated_at = NOW() WHERE id = $1")
-        .bind(payload.owner_user_id)
-        .execute(&state.db)
-        .await?;
+    let mut tx = state.db.begin().await?;
+    let updated =
+        sqlx::query("UPDATE rmc_plants SET owner_id = $1, updated_at = NOW() WHERE id = $2")
+            .bind(payload.owner_user_id)
+            .bind(payload.plant_id)
+            .execute(&mut *tx)
+            .await?;
+    if updated.rows_affected() != 1 {
+        return Err(AppError::NotFound("Plant not found".to_string()));
+    }
+    sqlx::query(
+        "INSERT INTO audit_logs (user_id, action, resource_type, resource_id, metadata) VALUES ($1, 'control_center.assign_plant_owner', 'rmc_plant', $2, $3)",
+    )
+    .bind(auth_user.user_id)
+    .bind(payload.plant_id.to_string())
+    .bind(json!({"owner_user_id": payload.owner_user_id, "reason": payload.reason}))
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
 
     Ok(Json(
         json!({ "success": true, "message": "Owner assigned to plant" }),
@@ -332,34 +418,59 @@ pub struct StepUpPayload {
 }
 
 pub async fn admin_step_up(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     auth_user: AuthUser,
-    Json(_payload): Json<StepUpPayload>,
+    headers: HeaderMap,
+    Json(payload): Json<StepUpPayload>,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["admin"])?;
+    let code = payload.code.trim();
+    if code.len() != 6 || !code.bytes().all(|c| c.is_ascii_digit()) {
+        return Err(AppError::Unauthorized(
+            "A six-digit authenticator code is required".to_string(),
+        ));
+    }
+    // Verify the actual enrolled credential; never treat a supplied code as proof by itself.
+    verify_totp_login(&state.db, auth_user.user_id, code).await?;
+    let token_hash = session_token_hash(&headers)?;
+    sqlx::query(
+        "INSERT INTO control_center_step_ups (user_id, token_hash, expires_at) VALUES ($1, $2, NOW() + INTERVAL '5 minutes') ON CONFLICT (user_id, token_hash) DO UPDATE SET expires_at = EXCLUDED.expires_at",
+    )
+    .bind(auth_user.user_id)
+    .bind(token_hash)
+    .execute(&state.db)
+    .await?;
     Ok(Json(
-        json!({ "success": true, "verified": true, "step_up_fresh": true }),
+        json!({ "success": true, "verified": true, "step_up_fresh": true, "expires_in_seconds": 300 }),
     ))
 }
 
 pub async fn admin_logout_all(
     State(state): State<AppState>,
     auth_user: AuthUser,
+    headers: HeaderMap,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["admin"])?;
+    require_recent_step_up(&state, &auth_user, &headers).await?;
 
+    let mut tx = state.db.begin().await?;
+    sqlx::query("UPDATE users SET auth_revoked_at = NOW(), updated_at = NOW() WHERE id = $1")
+        .bind(auth_user.user_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM control_center_step_ups WHERE user_id = $1")
+        .bind(auth_user.user_id)
+        .execute(&mut *tx)
+        .await?;
     sqlx::query(
-        r#"
-        INSERT INTO audit_logs (user_id, action, resource_type, metadata)
-        VALUES ($1, 'control_center.session.logout_all', 'session', '{}')
-        "#,
+        "INSERT INTO audit_logs (user_id, action, resource_type, metadata) VALUES ($1, 'control_center.session.logout_all', 'session', '{}')",
     )
     .bind(auth_user.user_id)
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await?;
-
+    tx.commit().await?;
     Ok(Json(
-        json!({ "success": true, "message": "All sessions revoked" }),
+        json!({ "success": true, "message": "All account sessions revoked" }),
     ))
 }
 
@@ -403,4 +514,35 @@ pub async fn get_portal_summary(
             { "label": "Pending KYC Verifications", "value": pending_kyc }
         ]
     })))
+}
+
+#[cfg(test)]
+mod security_tests {
+    use super::*;
+    use axum::http::HeaderValue;
+
+    #[test]
+    fn step_up_requires_bearer_session() {
+        let headers = HeaderMap::new();
+        assert!(session_token_hash(&headers).is_err());
+    }
+
+    #[test]
+    fn step_up_hash_is_session_specific_and_does_not_store_bearer() {
+        let mut first = HeaderMap::new();
+        first.insert(
+            AUTHORIZATION,
+            HeaderValue::from_static("Bearer session-one"),
+        );
+        let mut second = HeaderMap::new();
+        second.insert(
+            AUTHORIZATION,
+            HeaderValue::from_static("Bearer session-two"),
+        );
+        let first_hash = session_token_hash(&first).expect("valid bearer");
+        let second_hash = session_token_hash(&second).expect("valid bearer");
+        assert_eq!(first_hash.len(), 64);
+        assert_ne!(first_hash, second_hash);
+        assert!(!first_hash.contains("session-one"));
+    }
 }

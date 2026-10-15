@@ -1,0 +1,1784 @@
+[
+  {
+    "module": "account_deletion",
+    "method": "POST",
+    "path": "/api/account-deletion/cancel",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "account_deletion",
+    "method": "POST",
+    "path": "/api/account-deletion/public-request",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "account_deletion",
+    "method": "POST",
+    "path": "/api/account-deletion/request",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "account_deletion",
+    "method": "GET",
+    "path": "/api/account-deletion/requests",
+    "status": "MISSING"
+  },
+  {
+    "module": "account_deletion",
+    "method": "POST",
+    "path": "/api/account-deletion/requests/{request_id}/complete",
+    "status": "MISSING"
+  },
+  {
+    "module": "account_deletion",
+    "method": "GET",
+    "path": "/api/account-deletion/status",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "admin_auth",
+    "method": "POST",
+    "path": "/api/admin/auth/logout-all",
+    "status": "MISSING"
+  },
+  {
+    "module": "admin_auth",
+    "method": "POST",
+    "path": "/api/admin/auth/method",
+    "status": "MISSING"
+  },
+  {
+    "module": "admin_auth",
+    "method": "POST",
+    "path": "/api/admin/auth/recover",
+    "status": "MISSING"
+  },
+  {
+    "module": "admin_auth",
+    "method": "POST",
+    "path": "/api/admin/auth/step-up",
+    "status": "MISSING"
+  },
+  {
+    "module": "admin_auth",
+    "method": "POST",
+    "path": "/api/admin/auth/verify-totp",
+    "status": "MISSING"
+  },
+  {
+    "module": "admin_portal",
+    "method": "GET",
+    "path": "/api/admin/portal/audit",
+    "status": "MISSING"
+  },
+  {
+    "module": "admin_portal",
+    "method": "GET",
+    "path": "/api/admin/portal/kyc",
+    "status": "MISSING"
+  },
+  {
+    "module": "admin_portal",
+    "method": "GET",
+    "path": "/api/admin/portal/orders",
+    "status": "MISSING"
+  },
+  {
+    "module": "admin_portal",
+    "method": "GET",
+    "path": "/api/admin/portal/payments",
+    "status": "MISSING"
+  },
+  {
+    "module": "admin_portal",
+    "method": "GET",
+    "path": "/api/admin/portal/plants",
+    "status": "MISSING"
+  },
+  {
+    "module": "admin_portal",
+    "method": "GET",
+    "path": "/api/admin/portal/summary",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "admin_portal",
+    "method": "GET",
+    "path": "/api/admin/portal/support",
+    "status": "MISSING"
+  },
+  {
+    "module": "admin_portal",
+    "method": "GET",
+    "path": "/api/admin/portal/system",
+    "status": "MISSING"
+  },
+  {
+    "module": "admin_portal",
+    "method": "GET",
+    "path": "/api/admin/portal/users",
+    "status": "MISSING"
+  },
+  {
+    "module": "assistant",
+    "method": "POST",
+    "path": "/api/assistant/orders/confirm",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "assistant",
+    "method": "POST",
+    "path": "/api/assistant/orders/prepare",
+    "status": "MISSING"
+  },
+  {
+    "module": "assistant",
+    "method": "POST",
+    "path": "/api/assistant/support",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "assistant",
+    "method": "GET",
+    "path": "/api/assistant/support/cases",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "assistant",
+    "method": "GET",
+    "path": "/api/assistant/support/cases/{case_id}",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "assistant",
+    "method": "POST",
+    "path": "/api/assistant/support/cases/{case_id}/replies",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "assistant",
+    "method": "GET",
+    "path": "/api/assistant/support/staff/cases",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "assistant",
+    "method": "GET",
+    "path": "/api/assistant/support/staff/cases/{case_id}",
+    "status": "MISSING"
+  },
+  {
+    "module": "assistant",
+    "method": "POST",
+    "path": "/api/assistant/support/staff/cases/{case_id}/replies",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "assistant",
+    "method": "PATCH",
+    "path": "/api/assistant/support/staff/cases/{case_id}/status",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "auth",
+    "method": "POST",
+    "path": "/api/auth/demo-login",
+    "status": "MISSING"
+  },
+  {
+    "module": "auth",
+    "method": "GET",
+    "path": "/api/auth/google/callback",
+    "status": "MISSING"
+  },
+  {
+    "module": "auth",
+    "method": "POST",
+    "path": "/api/auth/google/exchange",
+    "status": "MISSING"
+  },
+  {
+    "module": "auth",
+    "method": "GET",
+    "path": "/api/auth/google/start",
+    "status": "MISSING"
+  },
+  {
+    "module": "auth",
+    "method": "POST",
+    "path": "/api/auth/logout",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "auth",
+    "method": "POST",
+    "path": "/api/auth/request-otp",
+    "status": "MISSING"
+  },
+  {
+    "module": "auth",
+    "method": "POST",
+    "path": "/api/auth/verify-otp",
+    "status": "MISSING"
+  },
+  {
+    "module": "automation",
+    "method": "POST",
+    "path": "/api/automation/events/{event_id}/ack",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "automation",
+    "method": "POST",
+    "path": "/api/automation/events/{event_id}/deliver",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "automation",
+    "method": "POST",
+    "path": "/api/automation/events/{event_id}/fail",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "automation",
+    "method": "POST",
+    "path": "/api/automation/events/claim",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "automation",
+    "method": "POST",
+    "path": "/api/automation/provider-callback",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "automation",
+    "method": "GET",
+    "path": "/api/automation/worker-health",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "business_ui",
+    "method": "GET",
+    "path": "/api/business/plants/{plant_id}/customers",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "business_ui",
+    "method": "POST",
+    "path": "/api/business/plants/{plant_id}/materials",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "business_ui",
+    "method": "POST",
+    "path": "/api/business/plants/{plant_id}/materials/{material_id}/adjust",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "business_ui",
+    "method": "POST",
+    "path": "/api/business/plants/{plant_id}/people",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "business_ui",
+    "method": "POST",
+    "path": "/api/business/plants/{plant_id}/people/{user_id}/activate",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "business_ui",
+    "method": "POST",
+    "path": "/api/business/plants/{plant_id}/people/{user_id}/suspend",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "business_ui",
+    "method": "POST",
+    "path": "/api/business/plants/{plant_id}/vehicles",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "business_ui",
+    "method": "POST",
+    "path": "/api/business/plants/{plant_id}/vehicles/{vehicle_id}/status",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "control_center",
+    "method": "GET",
+    "path": "/api/control-center/admin-access",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "control_center",
+    "method": "POST",
+    "path": "/api/control-center/admin-access",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "control_center",
+    "method": "POST",
+    "path": "/api/control-center/ai/commands",
+    "status": "MISSING"
+  },
+  {
+    "module": "control_center",
+    "method": "GET",
+    "path": "/api/control-center/capabilities",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "control_center",
+    "method": "POST",
+    "path": "/api/control-center/owners/plants/{plant_id}/assign",
+    "status": "MISSING"
+  },
+  {
+    "module": "control_center",
+    "method": "GET",
+    "path": "/api/control-center/owners/requests",
+    "status": "MISSING"
+  },
+  {
+    "module": "control_center",
+    "method": "POST",
+    "path": "/api/control-center/owners/requests/{request_id}/approve",
+    "status": "MISSING"
+  },
+  {
+    "module": "control_center",
+    "method": "GET",
+    "path": "/api/control-center/owners/unowned-plants",
+    "status": "MISSING"
+  },
+  {
+    "module": "control_center",
+    "method": "GET",
+    "path": "/api/control-center/reviewer-access",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "control_center",
+    "method": "POST",
+    "path": "/api/control-center/reviewer-access",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "control_center",
+    "method": "GET",
+    "path": "/api/control-center/sessions",
+    "status": "MISSING"
+  },
+  {
+    "module": "control_center",
+    "method": "POST",
+    "path": "/api/control-center/sessions/{session_id}/revoke",
+    "status": "MISSING"
+  },
+  {
+    "module": "control_center",
+    "method": "GET",
+    "path": "/api/control-center/support/cases",
+    "status": "MISSING"
+  },
+  {
+    "module": "control_center",
+    "method": "GET",
+    "path": "/api/control-center/support/cases/{case_id}",
+    "status": "MISSING"
+  },
+  {
+    "module": "control_center",
+    "method": "POST",
+    "path": "/api/control-center/support/cases/{case_id}/notes",
+    "status": "MISSING"
+  },
+  {
+    "module": "control_center",
+    "method": "POST",
+    "path": "/api/control-center/support/cases/{case_id}/replies",
+    "status": "MISSING"
+  },
+  {
+    "module": "control_center",
+    "method": "PATCH",
+    "path": "/api/control-center/support/cases/{case_id}/status",
+    "status": "MISSING"
+  },
+  {
+    "module": "customer",
+    "method": "GET",
+    "path": "/api/customer/compare-plants",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "customer",
+    "method": "GET",
+    "path": "/api/customer/home",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "customer",
+    "method": "GET",
+    "path": "/api/customer/kyc",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "customer",
+    "method": "POST",
+    "path": "/api/customer/kyc/start",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "customer",
+    "method": "GET",
+    "path": "/api/customer/orders",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "customer",
+    "method": "POST",
+    "path": "/api/customer/orders",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "customer",
+    "method": "GET",
+    "path": "/api/customer/orders/{order_id}",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "customer",
+    "method": "POST",
+    "path": "/api/customer/orders/{order_id}/cancel",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "customer",
+    "method": "GET",
+    "path": "/api/customer/orders/{order_id}/challan",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "customer",
+    "method": "GET",
+    "path": "/api/customer/orders/{order_id}/tracking",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "customer",
+    "method": "GET",
+    "path": "/api/customer/plants",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "customer",
+    "method": "GET",
+    "path": "/api/customer/plants/{plant_id}",
+    "status": "MISSING"
+  },
+  {
+    "module": "customer",
+    "method": "GET",
+    "path": "/api/customer/pour-plans",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "customer",
+    "method": "POST",
+    "path": "/api/customer/pour-plans",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "customer",
+    "method": "DELETE",
+    "path": "/api/customer/pour-plans/{plan_id}",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "customer",
+    "method": "GET",
+    "path": "/api/customer/project-sites",
+    "status": "MISSING"
+  },
+  {
+    "module": "customer",
+    "method": "POST",
+    "path": "/api/customer/quotation-requests",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "customer",
+    "method": "GET",
+    "path": "/api/customer/quotation-requests",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "customer",
+    "method": "GET",
+    "path": "/api/customer/receiving-records",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "customer",
+    "method": "POST",
+    "path": "/api/customer/receiving-records",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "customer",
+    "method": "DELETE",
+    "path": "/api/customer/receiving-records/{record_id}",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "customer",
+    "method": "PATCH",
+    "path": "/api/customer/receiving-records/{record_id}/cube-results",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "driver",
+    "method": "GET",
+    "path": "/api/driver/attendance",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "driver",
+    "method": "POST",
+    "path": "/api/driver/attendance/checkin",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "driver",
+    "method": "POST",
+    "path": "/api/driver/attendance/checkout",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "driver",
+    "method": "GET",
+    "path": "/api/driver/home",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "driver",
+    "method": "POST",
+    "path": "/api/driver/sos",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "driver",
+    "method": "GET",
+    "path": "/api/driver/sos",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "driver",
+    "method": "GET",
+    "path": "/api/driver/trips",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "driver",
+    "method": "GET",
+    "path": "/api/driver/trips/{trip_id}",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "driver",
+    "method": "POST",
+    "path": "/api/driver/trips/{trip_id}/arrive",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "driver",
+    "method": "POST",
+    "path": "/api/driver/trips/{trip_id}/location",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "driver",
+    "method": "POST",
+    "path": "/api/driver/trips/{trip_id}/pod",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "driver",
+    "method": "POST",
+    "path": "/api/driver/trips/{trip_id}/start",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "driver",
+    "method": "POST",
+    "path": "/api/driver/trips/{trip_id}/unload",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "finance_ops",
+    "method": "GET",
+    "path": "/api/ops/customer/quotations",
+    "status": "MISSING"
+  },
+  {
+    "module": "finance_ops",
+    "method": "POST",
+    "path": "/api/ops/customer/quotations/{quotation_id}/decision",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "finance_ops",
+    "method": "GET",
+    "path": "/api/ops/plants/{plant_id}/attendance/{date_key}",
+    "status": "MISSING"
+  },
+  {
+    "module": "finance_ops",
+    "method": "POST",
+    "path": "/api/ops/plants/{plant_id}/attendance/checkin",
+    "status": "MISSING"
+  },
+  {
+    "module": "finance_ops",
+    "method": "POST",
+    "path": "/api/ops/plants/{plant_id}/attendance/checkout",
+    "status": "MISSING"
+  },
+  {
+    "module": "finance_ops",
+    "method": "GET",
+    "path": "/api/ops/plants/{plant_id}/diesel",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "finance_ops",
+    "method": "POST",
+    "path": "/api/ops/plants/{plant_id}/diesel",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "finance_ops",
+    "method": "GET",
+    "path": "/api/ops/plants/{plant_id}/expenses",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "finance_ops",
+    "method": "POST",
+    "path": "/api/ops/plants/{plant_id}/expenses",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "finance_ops",
+    "method": "PUT",
+    "path": "/api/ops/plants/{plant_id}/payroll",
+    "status": "MISSING"
+  },
+  {
+    "module": "finance_ops",
+    "method": "GET",
+    "path": "/api/ops/plants/{plant_id}/payroll/{month}",
+    "status": "MISSING"
+  },
+  {
+    "module": "finance_ops",
+    "method": "GET",
+    "path": "/api/ops/plants/{plant_id}/purchases",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "finance_ops",
+    "method": "POST",
+    "path": "/api/ops/plants/{plant_id}/purchases",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "finance_ops",
+    "method": "GET",
+    "path": "/api/ops/plants/{plant_id}/quotation-requests",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "finance_ops",
+    "method": "POST",
+    "path": "/api/ops/plants/{plant_id}/quotation-requests/{request_id}/respond",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "finance_ops",
+    "method": "GET",
+    "path": "/api/ops/plants/{plant_id}/quotations",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "finance_ops",
+    "method": "POST",
+    "path": "/api/ops/plants/{plant_id}/quotations",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "hr_master",
+    "method": "GET",
+    "path": "/api/hr/employees",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "hr_master",
+    "method": "GET",
+    "path": "/api/hr/plants/{plant_id}/employees/{user_id}",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "hr_master",
+    "method": "PUT",
+    "path": "/api/hr/plants/{plant_id}/employees/{user_id}/profile",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "hr_master",
+    "method": "PUT",
+    "path": "/api/hr/plants/{plant_id}/employees/{user_id}/salary",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "hr_master",
+    "method": "GET",
+    "path": "/api/hr/plants/{plant_id}/employees/{user_id}/salary-suggestion/{month}",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "kyc_recovery",
+    "method": "GET",
+    "path": "/api/staff/kyc-recovery",
+    "status": "MISSING"
+  },
+  {
+    "module": "kyc_recovery",
+    "method": "POST",
+    "path": "/api/staff/kyc-recovery/{profile_id}/reset",
+    "status": "MISSING"
+  },
+  {
+    "module": "loads",
+    "method": "PUT",
+    "path": "/api/loads/{load_id}/assignment",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "loads",
+    "method": "POST",
+    "path": "/api/loads/{load_id}/cancel",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "loads",
+    "method": "POST",
+    "path": "/api/loads/{load_id}/dispatch",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "loads",
+    "method": "POST",
+    "path": "/api/loads/{load_id}/prepare",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "loads",
+    "method": "POST",
+    "path": "/api/loads/gate-pass",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "loads",
+    "method": "GET",
+    "path": "/api/loads/orders/{order_id}",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "loads",
+    "method": "POST",
+    "path": "/api/loads/orders/{order_id}",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "maps",
+    "method": "GET",
+    "path": "/api/maps/authority/rmc-plants",
+    "status": "MISSING"
+  },
+  {
+    "module": "maps",
+    "method": "GET",
+    "path": "/api/maps/autocomplete",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "maps",
+    "method": "GET",
+    "path": "/api/maps/geocode",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "maps",
+    "method": "GET",
+    "path": "/api/maps/place/{place_id}",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "maps",
+    "method": "GET",
+    "path": "/api/maps/rmc-plants",
+    "status": "MISSING"
+  },
+  {
+    "module": "maps",
+    "method": "POST",
+    "path": "/api/maps/rmc-plants/{place_id}/request-listing",
+    "status": "MISSING"
+  },
+  {
+    "module": "maps",
+    "method": "GET",
+    "path": "/api/maps/route",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "maps",
+    "method": "GET",
+    "path": "/api/maps/status",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "master_data",
+    "method": "GET",
+    "path": "/api/master/customer/sites",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "master_data",
+    "method": "POST",
+    "path": "/api/master/customer/sites",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "master_data",
+    "method": "DELETE",
+    "path": "/api/master/customer/sites/{site_id}",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "master_data",
+    "method": "GET",
+    "path": "/api/master/my-plants",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "master_data",
+    "method": "GET",
+    "path": "/api/master/plants/{plant_id}/mix-designs",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "master_data",
+    "method": "POST",
+    "path": "/api/master/plants/{plant_id}/mix-designs",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "master_data",
+    "method": "GET",
+    "path": "/api/master/plants/{plant_id}/people",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "master_data",
+    "method": "GET",
+    "path": "/api/master/plants/{plant_id}/profile",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "master_data",
+    "method": "PUT",
+    "path": "/api/master/plants/{plant_id}/profile",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "master_data",
+    "method": "GET",
+    "path": "/api/master/plants/{plant_id}/rate-cards",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "master_data",
+    "method": "POST",
+    "path": "/api/master/plants/{plant_id}/rate-cards",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "master_data",
+    "method": "GET",
+    "path": "/api/master/plants/{plant_id}/resources",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "master_data",
+    "method": "GET",
+    "path": "/api/master/plants/{plant_id}/summary",
+    "status": "MISSING"
+  },
+  {
+    "module": "master_data",
+    "method": "GET",
+    "path": "/api/master/plants/{plant_id}/suppliers",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "master_data",
+    "method": "POST",
+    "path": "/api/master/plants/{plant_id}/suppliers",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "me",
+    "method": "GET",
+    "path": "/api/me",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "meta_whatsapp",
+    "method": "GET",
+    "path": "/api/meta/whatsapp/webhook",
+    "status": "MISSING"
+  },
+  {
+    "module": "meta_whatsapp",
+    "method": "POST",
+    "path": "/api/meta/whatsapp/webhook",
+    "status": "MISSING"
+  },
+  {
+    "module": "notify",
+    "method": "GET",
+    "path": "/api/notifications",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "notify",
+    "method": "POST",
+    "path": "/api/notifications/{notification_id}/read",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "notify",
+    "method": "POST",
+    "path": "/api/notifications/device/register",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "notify",
+    "method": "POST",
+    "path": "/api/notifications/device/unregister",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "notify",
+    "method": "POST",
+    "path": "/api/notifications/read-all",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "operator_ops",
+    "method": "GET",
+    "path": "/api/staff/orders/{order_id}/production",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "operator_ops",
+    "method": "POST",
+    "path": "/api/staff/orders/{order_id}/production/batch",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "owner",
+    "method": "GET",
+    "path": "/api/owner/drivers",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "owner",
+    "method": "GET",
+    "path": "/api/owner/fleet",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "owner",
+    "method": "GET",
+    "path": "/api/owner/home",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "owner",
+    "method": "GET",
+    "path": "/api/owner/incidents",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "owner",
+    "method": "POST",
+    "path": "/api/owner/incidents/{incident_id}/resolve",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "owner",
+    "method": "GET",
+    "path": "/api/owner/insights",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "owner",
+    "method": "GET",
+    "path": "/api/owner/invoices",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "owner",
+    "method": "POST",
+    "path": "/api/owner/invoices/{invoice_id}/payment",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "owner",
+    "method": "GET",
+    "path": "/api/owner/ledger",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "owner",
+    "method": "GET",
+    "path": "/api/owner/orders",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "owner",
+    "method": "GET",
+    "path": "/api/owner/orders/{order_id}",
+    "status": "MISSING"
+  },
+  {
+    "module": "owner",
+    "method": "POST",
+    "path": "/api/owner/orders/{order_id}/approve",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "owner",
+    "method": "POST",
+    "path": "/api/owner/orders/{order_id}/assign-driver",
+    "status": "MISSING"
+  },
+  {
+    "module": "owner",
+    "method": "POST",
+    "path": "/api/owner/orders/{order_id}/assign-tm",
+    "status": "MISSING"
+  },
+  {
+    "module": "owner",
+    "method": "POST",
+    "path": "/api/owner/orders/{order_id}/challan",
+    "status": "MISSING"
+  },
+  {
+    "module": "owner",
+    "method": "GET",
+    "path": "/api/owner/orders/{order_id}/challan",
+    "status": "MISSING"
+  },
+  {
+    "module": "owner",
+    "method": "POST",
+    "path": "/api/owner/orders/{order_id}/dispatch",
+    "status": "MISSING"
+  },
+  {
+    "module": "owner",
+    "method": "POST",
+    "path": "/api/owner/orders/{order_id}/invoice",
+    "status": "MISSING"
+  },
+  {
+    "module": "owner",
+    "method": "GET",
+    "path": "/api/owner/orders/{order_id}/production",
+    "status": "MISSING"
+  },
+  {
+    "module": "owner",
+    "method": "POST",
+    "path": "/api/owner/orders/{order_id}/production/batch",
+    "status": "MISSING"
+  },
+  {
+    "module": "owner",
+    "method": "POST",
+    "path": "/api/owner/orders/{order_id}/production/complete",
+    "status": "MISSING"
+  },
+  {
+    "module": "owner",
+    "method": "POST",
+    "path": "/api/owner/orders/{order_id}/production/start",
+    "status": "MISSING"
+  },
+  {
+    "module": "owner",
+    "method": "POST",
+    "path": "/api/owner/orders/{order_id}/reject",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "payroll_closure",
+    "method": "GET",
+    "path": "/api/payroll-periods/{month}",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "payroll_closure",
+    "method": "GET",
+    "path": "/api/payroll-periods/me/{month}",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "payroll_closure",
+    "method": "POST",
+    "path": "/api/payroll-periods/plants/{plant_id}/{month}/close",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "payroll_closure",
+    "method": "GET",
+    "path": "/api/payroll-periods/plants/{plant_id}/{month}/export",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "payroll_closure",
+    "method": "GET",
+    "path": "/api/payroll-periods/plants/{plant_id}/{month}/payslips",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "payroll_closure",
+    "method": "POST",
+    "path": "/api/payroll-periods/plants/{plant_id}/{month}/reopen",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "payroll_concurrency_hotfix",
+    "method": "PUT",
+    "path": "/api/workforce-reports/plants/{plant_id}/payroll/{month}/{user_id}/draft",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "payroll_concurrency_hotfix",
+    "method": "POST",
+    "path": "/api/workforce-reports/plants/{plant_id}/payroll/{month}/{user_id}/mark-paid",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "payroll_concurrency_hotfix",
+    "method": "POST",
+    "path": "/api/workforce-reports/plants/{plant_id}/payroll/{month}/{user_id}/owner-decision",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "payroll_guard",
+    "method": "PUT",
+    "path": "/api/ops/plants/{plant_id}/payroll",
+    "status": "MISSING"
+  },
+  {
+    "module": "permanent_access",
+    "method": "POST",
+    "path": "/api/auth/request-otp",
+    "status": "MISSING"
+  },
+  {
+    "module": "permanent_access",
+    "method": "POST",
+    "path": "/api/auth/staff/request-otp",
+    "status": "MISSING"
+  },
+  {
+    "module": "permanent_access",
+    "method": "POST",
+    "path": "/api/auth/staff/verify-otp",
+    "status": "MISSING"
+  },
+  {
+    "module": "permanent_access",
+    "method": "POST",
+    "path": "/api/auth/verify-otp",
+    "status": "MISSING"
+  },
+  {
+    "module": "permanent_access",
+    "method": "GET",
+    "path": "/api/customer/kyc",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "plant_discovery",
+    "method": "POST",
+    "path": "/api/plant-discovery/plants/{plant_id}/assign-owner",
+    "status": "MISSING"
+  },
+  {
+    "module": "plant_discovery",
+    "method": "GET",
+    "path": "/api/plant-discovery/requests",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "plant_discovery",
+    "method": "POST",
+    "path": "/api/plant-discovery/requests/{request_id}/approve",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "plant_discovery",
+    "method": "POST",
+    "path": "/api/plant-discovery/requests/{request_id}/reject",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "plant_discovery",
+    "method": "POST",
+    "path": "/api/plant-discovery/requests/bulk-approve",
+    "status": "MISSING"
+  },
+  {
+    "module": "plant_discovery",
+    "method": "POST",
+    "path": "/api/plant-discovery/requests/bulk-import",
+    "status": "MISSING"
+  },
+  {
+    "module": "plant_discovery",
+    "method": "GET",
+    "path": "/api/plant-discovery/unowned-plants",
+    "status": "MISSING"
+  },
+  {
+    "module": "plant_onboarding",
+    "method": "GET",
+    "path": "/api/plant-onboarding/places",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "plant_onboarding",
+    "method": "POST",
+    "path": "/api/plant-onboarding/requests",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "plant_plans",
+    "method": "POST",
+    "path": "/api/plant-plans/activate",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "plant_plans",
+    "method": "GET",
+    "path": "/api/plant-plans/authority-control",
+    "status": "MISSING"
+  },
+  {
+    "module": "plant_plans",
+    "method": "GET",
+    "path": "/api/plant-plans/cashfree/return",
+    "status": "MISSING"
+  },
+  {
+    "module": "plant_plans",
+    "method": "POST",
+    "path": "/api/plant-plans/cashfree/webhook",
+    "status": "MISSING"
+  },
+  {
+    "module": "plant_plans",
+    "method": "GET",
+    "path": "/api/plant-plans/context",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "plant_plans",
+    "method": "GET",
+    "path": "/api/plant-plans/orders/{order_number}",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "plant_plans",
+    "method": "GET",
+    "path": "/api/plant-plans/payment-history",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "plant_plans",
+    "method": "POST",
+    "path": "/api/plant-plans/promo-codes",
+    "status": "MISSING"
+  },
+  {
+    "module": "plant_plans",
+    "method": "POST",
+    "path": "/api/plant-plans/quote",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "play_review",
+    "method": "POST",
+    "path": "/api/auth/play-review",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "play_review",
+    "method": "GET",
+    "path": "/api/auth/play-review/status",
+    "status": "MISSING"
+  },
+  {
+    "module": "public_policy",
+    "method": "GET",
+    "path": "/api/account-deletion",
+    "status": "MISSING"
+  },
+  {
+    "module": "public_policy",
+    "method": "GET",
+    "path": "/api/delete-account",
+    "status": "MISSING"
+  },
+  {
+    "module": "public_policy",
+    "method": "GET",
+    "path": "/api/privacy",
+    "status": "MISSING"
+  },
+  {
+    "module": "public_policy",
+    "method": "GET",
+    "path": "/api/privacy_policy",
+    "status": "MISSING"
+  },
+  {
+    "module": "public_policy",
+    "method": "GET",
+    "path": "/api/terms",
+    "status": "MISSING"
+  },
+  {
+    "module": "staff",
+    "method": "GET",
+    "path": "/api/staff/collection/{kind}",
+    "status": "MISSING"
+  },
+  {
+    "module": "staff",
+    "method": "GET",
+    "path": "/api/staff/drivers",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "staff",
+    "method": "GET",
+    "path": "/api/staff/fleet",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "staff",
+    "method": "GET",
+    "path": "/api/staff/home",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "staff",
+    "method": "POST",
+    "path": "/api/staff/invoices/{invoice_id}/payment",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "staff",
+    "method": "POST",
+    "path": "/api/staff/kyc/{profile_id}/approve",
+    "status": "MISSING"
+  },
+  {
+    "module": "staff",
+    "method": "POST",
+    "path": "/api/staff/kyc/{profile_id}/reject",
+    "status": "MISSING"
+  },
+  {
+    "module": "staff",
+    "method": "POST",
+    "path": "/api/staff/materials",
+    "status": "MISSING"
+  },
+  {
+    "module": "staff",
+    "method": "POST",
+    "path": "/api/staff/materials/{material_id}/adjust",
+    "status": "MISSING"
+  },
+  {
+    "module": "staff",
+    "method": "GET",
+    "path": "/api/staff/orders/{order_id}",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "staff",
+    "method": "POST",
+    "path": "/api/staff/orders/{order_id}/assign-driver",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "staff",
+    "method": "POST",
+    "path": "/api/staff/orders/{order_id}/assign-tm",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "staff",
+    "method": "POST",
+    "path": "/api/staff/orders/{order_id}/challan",
+    "status": "MISSING"
+  },
+  {
+    "module": "staff",
+    "method": "POST",
+    "path": "/api/staff/orders/{order_id}/dispatch",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "staff",
+    "method": "POST",
+    "path": "/api/staff/orders/{order_id}/production/complete",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "staff",
+    "method": "POST",
+    "path": "/api/staff/orders/{order_id}/production/start",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "staff",
+    "method": "POST",
+    "path": "/api/staff/quality",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "staff",
+    "method": "GET",
+    "path": "/api/staff/quality/{order_id}",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "staff",
+    "method": "POST",
+    "path": "/api/staff/users/{user_id}/activate",
+    "status": "MISSING"
+  },
+  {
+    "module": "staff",
+    "method": "POST",
+    "path": "/api/staff/users/{user_id}/suspend",
+    "status": "MISSING"
+  },
+  {
+    "module": "staff",
+    "method": "POST",
+    "path": "/api/staff/vehicles",
+    "status": "MISSING"
+  },
+  {
+    "module": "staff",
+    "method": "POST",
+    "path": "/api/staff/vehicles/{vehicle_id}/status",
+    "status": "MISSING"
+  },
+  {
+    "module": "staff_auth",
+    "method": "POST",
+    "path": "/api/auth/staff/request-otp",
+    "status": "MISSING"
+  },
+  {
+    "module": "staff_auth",
+    "method": "POST",
+    "path": "/api/auth/staff/verify-otp",
+    "status": "MISSING"
+  },
+  {
+    "module": "staff_mfa",
+    "method": "POST",
+    "path": "/api/auth/staff/mfa/enroll/confirm",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "staff_mfa",
+    "method": "POST",
+    "path": "/api/auth/staff/mfa/enroll/start",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "staff_mfa",
+    "method": "POST",
+    "path": "/api/auth/staff/mfa/method",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "staff_mfa",
+    "method": "POST",
+    "path": "/api/auth/staff/mfa/reset-user",
+    "status": "MISSING"
+  },
+  {
+    "module": "staff_mfa",
+    "method": "GET",
+    "path": "/api/auth/staff/mfa/status",
+    "status": "MISSING"
+  },
+  {
+    "module": "staff_mfa",
+    "method": "POST",
+    "path": "/api/auth/staff/mfa/verify-recovery",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "staff_mfa",
+    "method": "POST",
+    "path": "/api/auth/staff/mfa/verify-totp",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "staff_passkeys",
+    "method": "POST",
+    "path": "/api/auth/staff/passkey/authenticate/options",
+    "status": "MISSING"
+  },
+  {
+    "module": "staff_passkeys",
+    "method": "POST",
+    "path": "/api/auth/staff/passkey/authenticate/start",
+    "status": "MISSING"
+  },
+  {
+    "module": "staff_passkeys",
+    "method": "POST",
+    "path": "/api/auth/staff/passkey/authenticate/verify",
+    "status": "MISSING"
+  },
+  {
+    "module": "staff_passkeys",
+    "method": "POST",
+    "path": "/api/auth/staff/passkey/exchange",
+    "status": "MISSING"
+  },
+  {
+    "module": "staff_passkeys",
+    "method": "POST",
+    "path": "/api/auth/staff/passkey/register/options",
+    "status": "MISSING"
+  },
+  {
+    "module": "staff_passkeys",
+    "method": "POST",
+    "path": "/api/auth/staff/passkey/register/start",
+    "status": "MISSING"
+  },
+  {
+    "module": "staff_passkeys",
+    "method": "POST",
+    "path": "/api/auth/staff/passkey/register/verify",
+    "status": "MISSING"
+  },
+  {
+    "module": "staff_passkeys",
+    "method": "POST",
+    "path": "/api/auth/staff/passkey/remove",
+    "status": "MISSING"
+  },
+  {
+    "module": "staff_passkeys",
+    "method": "GET",
+    "path": "/api/auth/staff/passkey/status",
+    "status": "MISSING"
+  },
+  {
+    "module": "storage",
+    "method": "GET",
+    "path": "/api/files/{path:path}",
+    "status": "MISSING"
+  },
+  {
+    "module": "storage",
+    "method": "POST",
+    "path": "/api/upload",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "workforce",
+    "method": "GET",
+    "path": "/api/workforce/accountant/expenses",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "workforce",
+    "method": "POST",
+    "path": "/api/workforce/accountant/expenses/{claim_id}/decision",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "workforce",
+    "method": "POST",
+    "path": "/api/workforce/attendance/punch-in",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "workforce",
+    "method": "POST",
+    "path": "/api/workforce/attendance/punch-out",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "workforce",
+    "method": "POST",
+    "path": "/api/workforce/expenses",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "workforce",
+    "method": "POST",
+    "path": "/api/workforce/leave",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "workforce",
+    "method": "GET",
+    "path": "/api/workforce/me",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "workforce",
+    "method": "GET",
+    "path": "/api/workforce/owner/control",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "workforce",
+    "method": "POST",
+    "path": "/api/workforce/owner/expenses/{claim_id}/decision",
+    "status": "MISSING"
+  },
+  {
+    "module": "workforce",
+    "method": "POST",
+    "path": "/api/workforce/owner/leave/{request_id}/decision",
+    "status": "MISSING"
+  },
+  {
+    "module": "workforce",
+    "method": "POST",
+    "path": "/api/workforce/owner/visits/{visit_id}/decision",
+    "status": "MISSING"
+  },
+  {
+    "module": "workforce",
+    "method": "POST",
+    "path": "/api/workforce/visits",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "workforce",
+    "method": "POST",
+    "path": "/api/workforce/visits/{visit_id}/complete",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "workforce",
+    "method": "POST",
+    "path": "/api/workforce/visits/{visit_id}/start",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "workforce_reports",
+    "method": "GET",
+    "path": "/api/workforce-reports/monthly/{month}",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "workforce_reports",
+    "method": "PUT",
+    "path": "/api/workforce-reports/plants/{plant_id}/payroll/{month}/{user_id}/draft",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "workforce_reports",
+    "method": "POST",
+    "path": "/api/workforce-reports/plants/{plant_id}/payroll/{month}/{user_id}/mark-paid",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "workforce_reports",
+    "method": "POST",
+    "path": "/api/workforce-reports/plants/{plant_id}/payroll/{month}/{user_id}/owner-decision",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "workforce_roster",
+    "method": "GET",
+    "path": "/api/workforce-roster/me",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "workforce_roster",
+    "method": "GET",
+    "path": "/api/workforce-roster/overview/{date_key}",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "workforce_roster",
+    "method": "PUT",
+    "path": "/api/workforce-roster/plants/{plant_id}/attendance-config",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "workforce_roster",
+    "method": "POST",
+    "path": "/api/workforce-roster/plants/{plant_id}/attendance/{attendance_id}/override",
+    "status": "MISSING"
+  },
+  {
+    "module": "workforce_roster",
+    "method": "PUT",
+    "path": "/api/workforce-roster/plants/{plant_id}/roster/{date_key}/{user_id}",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "workforce_roster",
+    "method": "POST",
+    "path": "/api/workforce-roster/plants/{plant_id}/shifts",
+    "status": "PARTIAL"
+  },
+  {
+    "module": "workforce_roster",
+    "method": "PUT",
+    "path": "/api/workforce-roster/plants/{plant_id}/shifts/{shift_id}",
+    "status": "MISSING"
+  }
+]

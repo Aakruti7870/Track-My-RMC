@@ -18,22 +18,7 @@ async fn ensure_plant_access(
     auth_user: &AuthUser,
     plant_id: Uuid,
 ) -> Result<(), AppError> {
-    if matches!(auth_user.role.as_str(), "owner" | "admin") {
-        return Ok(());
-    }
-    let allowed: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM plant_staff WHERE plant_id = $1 AND user_id = $2 AND is_active = TRUE)",
-    )
-    .bind(plant_id)
-    .bind(auth_user.user_id)
-    .fetch_one(&state.db)
-    .await?;
-    if !allowed {
-        return Err(AppError::Forbidden(
-            "You are not assigned to this plant".to_string(),
-        ));
-    }
-    Ok(())
+    super::business_routes::ensure_plant_staff_or_owner(state, auth_user, plant_id).await
 }
 
 pub async fn get_plant_fleet(

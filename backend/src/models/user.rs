@@ -58,7 +58,7 @@ impl From<&str> for UserRole {
             "store_manager" => UserRole::StoreManager,
             "accountant" => UserRole::Accountant,
             "fleet_manager" => UserRole::FleetManager,
-            "owner" => UserRole::Owner,
+            "owner" | "plant_owner" => UserRole::Owner,
             "admin" | "super_admin" => UserRole::Admin,
             _ => UserRole::Customer,
         }
@@ -129,4 +129,23 @@ pub struct UserResponse {
     pub role: String,
     pub kyc_status: String,
     pub verified_name: Option<String>,
+}
+
+#[cfg(test)]
+mod role_alias_tests {
+    use super::UserRole;
+
+    #[test]
+    fn owner_and_plant_owner_are_the_same_business_role() {
+        assert_eq!(UserRole::from("owner"), UserRole::Owner);
+        assert_eq!(UserRole::from("plant_owner"), UserRole::Owner);
+        assert_eq!(UserRole::from("PLANT_OWNER"), UserRole::Owner);
+        assert_eq!(UserRole::Owner.to_string(), "owner");
+    }
+
+    #[test]
+    fn role_alias_never_maps_into_admin() {
+        assert_ne!(UserRole::from("plant_owner"), UserRole::Admin);
+        assert_ne!(UserRole::from("owner"), UserRole::Admin);
+    }
 }

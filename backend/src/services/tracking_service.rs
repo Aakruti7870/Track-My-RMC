@@ -58,6 +58,7 @@ pub async fn record_driver_location(
                 WHERE id = $1
                   AND driver_id = $2
                   AND mixer_id = $3
+                  AND status IN ('en_route', 'arrived', 'pouring')
             )
             "#,
         )

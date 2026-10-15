@@ -1,0 +1,737 @@
+{
+  "source": "Aakruti7870/Tracking-project",
+  "referenceGitTree": "51903571f110908c3f1ddcffa6e4171ed406888c",
+  "target": "Aakruti7870/Track-My-RMC",
+  "targetBaselineGitTree": "fe13dac8369b7db0843918faf2ee14d57a42994b",
+  "generatedOn": "2026-10-15",
+  "scope": "Source-controlled route/screens, not live operational PostgreSQL or MongoDB data. Identical files are code parity only; functionality remains unverified until staging API and role tests.",
+  "legacyAliases": {
+    "owner": "plant_owner"
+  },
+  "securityNotes": [
+    "authority is an existing reference role but is not assigned a mobile route",
+    "central_admin is a separate reference web-only privileged role; do not silently alias admin without approved governance",
+    "target admin-web is not at reference feature parity; original advanced modules require permissioned Rust APIs",
+    "WebAuthn/passkeys are intentionally unexposed until cryptographic verification is implemented"
+  ],
+  "roles": [
+    {
+      "id": "customer",
+      "label": "Customer",
+      "referenceRoute": "customer",
+      "targetRoute": "/customer",
+      "surface": "mobile",
+      "screens": [
+        {
+          "path": "frontend/app/customer/_layout.tsx",
+          "sourceSha": "f2bb03599228b23a0be6e0ff99097c416fa10e5e",
+          "targetSha": "f2bb03599228b23a0be6e0ff99097c416fa10e5e",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/customer/compare-plants.tsx",
+          "sourceSha": "93c7c49fd143729f6d8f8f46f6a2bc0bcf51b329",
+          "targetSha": "93c7c49fd143729f6d8f8f46f6a2bc0bcf51b329",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/customer/cube-test-follow-up.tsx",
+          "sourceSha": "ee2b125d03b72f036c55867e3ef9a0e059b70a0f",
+          "targetSha": "ee2b125d03b72f036c55867e3ef9a0e059b70a0f",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/customer/documents.tsx",
+          "sourceSha": "7763fb757803a88014e6f707688a97aa400d8a06",
+          "targetSha": "7763fb757803a88014e6f707688a97aa400d8a06",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/customer/free-tools.tsx",
+          "sourceSha": "3711758dd6ad87af6061c46db43b4a655bd0e75a",
+          "targetSha": "3711758dd6ad87af6061c46db43b4a655bd0e75a",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/customer/index.tsx",
+          "sourceSha": "55424d6cb6eea76184257a71d533acd051371b16",
+          "targetSha": "3ae41825b13ce77311ac93ab4101974d1698fcbc",
+          "sourceToTarget": "modified"
+        },
+        {
+          "path": "frontend/app/customer/more.tsx",
+          "sourceSha": "a644edd647395bbca20877d92b6d2daf9a5b7d7b",
+          "targetSha": "a644edd647395bbca20877d92b6d2daf9a5b7d7b",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/customer/orders.tsx",
+          "sourceSha": "2a4882d20a3b4b6c6d5eb17281162553f3a2e0d7",
+          "targetSha": "2a4882d20a3b4b6c6d5eb17281162553f3a2e0d7",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/customer/plants.tsx",
+          "sourceSha": "e5b13900caba7dfeee078d55e1fd59cb4ed9746a",
+          "targetSha": "e5b13900caba7dfeee078d55e1fd59cb4ed9746a",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/customer/pour-planner.tsx",
+          "sourceSha": "b10a3c9fedea71051a426125400e351fea5154eb",
+          "targetSha": "b10a3c9fedea71051a426125400e351fea5154eb",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/customer/projects.tsx",
+          "sourceSha": "173bdd074ab71c03c0b65d1a4138aeb08f47db74",
+          "targetSha": "173bdd074ab71c03c0b65d1a4138aeb08f47db74",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/customer/quotations.tsx",
+          "sourceSha": "36c569d9c9b24ec78dc00fa332cc0d8c521b03f7",
+          "targetSha": "36c569d9c9b24ec78dc00fa332cc0d8c521b03f7",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/customer/receiving-guide.tsx",
+          "sourceSha": "7db20922f02b6207cde088d460d7bd9bc0cbadf2",
+          "targetSha": "7db20922f02b6207cde088d460d7bd9bc0cbadf2",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/customer/sites.tsx",
+          "sourceSha": "77527be072ab49f7f1e76d79bb91b777d3a3fdd6",
+          "targetSha": "77527be072ab49f7f1e76d79bb91b777d3a3fdd6",
+          "sourceToTarget": "identical"
+        }
+      ],
+      "targetScreenCount": 14
+    },
+    {
+      "id": "driver",
+      "label": "Driver",
+      "referenceRoute": "driver",
+      "targetRoute": "/driver",
+      "surface": "mobile",
+      "screens": [
+        {
+          "path": "frontend/app/driver/_layout.tsx",
+          "sourceSha": "a14d5b6ef21e37496bdab2f1c7523be1052205bf",
+          "targetSha": "a14d5b6ef21e37496bdab2f1c7523be1052205bf",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/driver/attendance.tsx",
+          "sourceSha": "6a02696cb9935269e2a8a522fcd88d759b6bf332",
+          "targetSha": "1d96a9eb080f5ec1e50c59103147f66b31c76232",
+          "sourceToTarget": "modified"
+        },
+        {
+          "path": "frontend/app/driver/index.tsx",
+          "sourceSha": "9c97d7c3518e828aaa522570f06ff637c9fcdf03",
+          "targetSha": "9c97d7c3518e828aaa522570f06ff637c9fcdf03",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/driver/more.tsx",
+          "sourceSha": "6b2eb4a74731c7cca5ae8187f664f0ef38bec7a4",
+          "targetSha": "6b2eb4a74731c7cca5ae8187f664f0ef38bec7a4",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/driver/trips.tsx",
+          "sourceSha": "1cd6648cdfa28674b9bda2d1bd59265e4a57cda9",
+          "targetSha": "1cd6648cdfa28674b9bda2d1bd59265e4a57cda9",
+          "sourceToTarget": "identical"
+        }
+      ],
+      "targetScreenCount": 5
+    },
+    {
+      "id": "plant_owner",
+      "label": "Plant Owner",
+      "referenceRoute": "owner",
+      "targetRoute": "/owner",
+      "surface": "mobile",
+      "screens": [
+        {
+          "path": "frontend/app/owner/_layout.tsx",
+          "sourceToTarget": "identical",
+          "sourceSha": "2ff1cda9ec915104345be3099b8a8bdafa5d018e",
+          "targetSha": "2ff1cda9ec915104345be3099b8a8bdafa5d018e"
+        },
+        {
+          "path": "frontend/app/owner/billing-history.tsx",
+          "sourceToTarget": "identical",
+          "sourceSha": "4570375e7c4bde3fd5e39f48e8a9a4e5e0663b48",
+          "targetSha": "4570375e7c4bde3fd5e39f48e8a9a4e5e0663b48"
+        },
+        {
+          "path": "frontend/app/owner/billing.tsx",
+          "sourceToTarget": "identical",
+          "sourceSha": "f35b351907a4cda7fdb0d692b91f3df9611fe015",
+          "targetSha": "f35b351907a4cda7fdb0d692b91f3df9611fe015"
+        },
+        {
+          "path": "frontend/app/owner/incidents.tsx",
+          "sourceToTarget": "identical",
+          "sourceSha": "6df1c19e9e58965895013c78b9b6cff2a30aeba8",
+          "targetSha": "6df1c19e9e58965895013c78b9b6cff2a30aeba8"
+        },
+        {
+          "path": "frontend/app/owner/index.tsx",
+          "sourceToTarget": "identical",
+          "sourceSha": "ed52ddec6410b84a6f0eddc56262c5c6a1749e65",
+          "targetSha": "ed52ddec6410b84a6f0eddc56262c5c6a1749e65"
+        },
+        {
+          "path": "frontend/app/owner/more.tsx",
+          "sourceToTarget": "identical",
+          "sourceSha": "b31b02f939f2bff91f73436294a05149b2dae9c7",
+          "targetSha": "b31b02f939f2bff91f73436294a05149b2dae9c7"
+        },
+        {
+          "path": "frontend/app/owner/operations.tsx",
+          "sourceToTarget": "identical",
+          "sourceSha": "ed2bb2b125734182e95136975485a7b3a985fc96",
+          "targetSha": "ed2bb2b125734182e95136975485a7b3a985fc96"
+        },
+        {
+          "path": "frontend/app/owner/orders.tsx",
+          "sourceToTarget": "identical",
+          "sourceSha": "a242aec27e8070764aa07bf2c4a2f5c0c4fa1ceb",
+          "targetSha": "a242aec27e8070764aa07bf2c4a2f5c0c4fa1ceb"
+        },
+        {
+          "path": "frontend/app/owner/quotation-requests.tsx",
+          "sourceToTarget": "identical",
+          "sourceSha": "a58fddbad63e6b8e841013cb6158163f1ad584f7",
+          "targetSha": "a58fddbad63e6b8e841013cb6158163f1ad584f7"
+        }
+      ],
+      "targetScreenCount": 9
+    },
+    {
+      "id": "admin",
+      "label": "Legacy Operations Admin",
+      "referenceRoute": "admin",
+      "targetRoute": "/admin",
+      "surface": "mobile_legacy_review",
+      "screens": [
+        {
+          "path": "frontend/app/admin/_layout.tsx",
+          "sourceSha": "51335a0bbe8295d25a41f910a8f74c7e04c48c14",
+          "targetSha": "51335a0bbe8295d25a41f910a8f74c7e04c48c14",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/admin/fleet.tsx",
+          "sourceSha": "91190d5e5a919a6d4b2864ec6dfdb817b036f222",
+          "targetSha": "91190d5e5a919a6d4b2864ec6dfdb817b036f222",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/admin/index.tsx",
+          "sourceSha": "e75ef6af99f73de63e0e0fb20ffe5986855a20bd",
+          "targetSha": "e75ef6af99f73de63e0e0fb20ffe5986855a20bd",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/admin/more.tsx",
+          "sourceSha": "f48b33e2e25512006ce350491833556da2887af1",
+          "targetSha": "f48b33e2e25512006ce350491833556da2887af1",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/admin/orders.tsx",
+          "sourceSha": "fb115208f2f5541fde9d42ca2d8318b9ab4291e9",
+          "targetSha": "fb115208f2f5541fde9d42ca2d8318b9ab4291e9",
+          "sourceToTarget": "identical"
+        }
+      ],
+      "targetScreenCount": 5
+    },
+    {
+      "id": "dispatcher",
+      "label": "Dispatcher",
+      "referenceRoute": "dispatcher",
+      "targetRoute": "/dispatcher",
+      "surface": "mobile",
+      "screens": [
+        {
+          "path": "frontend/app/dispatcher/_layout.tsx",
+          "sourceSha": "560cd64d2ba09b808aa5c9922fd4c61a2d891eae",
+          "targetSha": "560cd64d2ba09b808aa5c9922fd4c61a2d891eae",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/dispatcher/dispatch.tsx",
+          "sourceSha": "1db0b4b9be161716b2978813bcf7ecc0943fefd4",
+          "targetSha": "1db0b4b9be161716b2978813bcf7ecc0943fefd4",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/dispatcher/fleet.tsx",
+          "sourceSha": "91190d5e5a919a6d4b2864ec6dfdb817b036f222",
+          "targetSha": "91190d5e5a919a6d4b2864ec6dfdb817b036f222",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/dispatcher/index.tsx",
+          "sourceSha": "e75ef6af99f73de63e0e0fb20ffe5986855a20bd",
+          "targetSha": "e75ef6af99f73de63e0e0fb20ffe5986855a20bd",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/dispatcher/more.tsx",
+          "sourceSha": "f48b33e2e25512006ce350491833556da2887af1",
+          "targetSha": "f48b33e2e25512006ce350491833556da2887af1",
+          "sourceToTarget": "identical"
+        }
+      ],
+      "targetScreenCount": 5
+    },
+    {
+      "id": "operator",
+      "label": "Plant Operator",
+      "referenceRoute": "operator",
+      "targetRoute": "/operator",
+      "surface": "mobile",
+      "screens": [
+        {
+          "path": "frontend/app/operator/_layout.tsx",
+          "sourceSha": "6c2bc3b5ec3f9d04908a800067d22194f9475c34",
+          "targetSha": "6c2bc3b5ec3f9d04908a800067d22194f9475c34",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/operator/index.tsx",
+          "sourceSha": "e75ef6af99f73de63e0e0fb20ffe5986855a20bd",
+          "targetSha": "e75ef6af99f73de63e0e0fb20ffe5986855a20bd",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/operator/more.tsx",
+          "sourceSha": "f48b33e2e25512006ce350491833556da2887af1",
+          "targetSha": "f48b33e2e25512006ce350491833556da2887af1",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/operator/production.tsx",
+          "sourceSha": "e3e5fd2d43abdd37c87660c1bb997084d29c2c08",
+          "targetSha": "e3e5fd2d43abdd37c87660c1bb997084d29c2c08",
+          "sourceToTarget": "identical"
+        }
+      ],
+      "targetScreenCount": 4
+    },
+    {
+      "id": "supervisor",
+      "label": "Supervisor",
+      "referenceRoute": "supervisor",
+      "targetRoute": "/supervisor",
+      "surface": "mobile",
+      "screens": [
+        {
+          "path": "frontend/app/supervisor/_layout.tsx",
+          "sourceSha": "2e302dcb7265d1d9e50642e99aed3d9947a068d7",
+          "targetSha": "2e302dcb7265d1d9e50642e99aed3d9947a068d7",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/supervisor/incidents.tsx",
+          "sourceSha": "c302cfdf0dbe457d77e87066d5e92c0170428619",
+          "targetSha": "c302cfdf0dbe457d77e87066d5e92c0170428619",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/supervisor/index.tsx",
+          "sourceSha": "e75ef6af99f73de63e0e0fb20ffe5986855a20bd",
+          "targetSha": "e75ef6af99f73de63e0e0fb20ffe5986855a20bd",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/supervisor/more.tsx",
+          "sourceSha": "f48b33e2e25512006ce350491833556da2887af1",
+          "targetSha": "f48b33e2e25512006ce350491833556da2887af1",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/supervisor/operations.tsx",
+          "sourceSha": "fb115208f2f5541fde9d42ca2d8318b9ab4291e9",
+          "targetSha": "fb115208f2f5541fde9d42ca2d8318b9ab4291e9",
+          "sourceToTarget": "identical"
+        }
+      ],
+      "targetScreenCount": 5
+    },
+    {
+      "id": "accountant",
+      "label": "Accountant",
+      "referenceRoute": "accountant",
+      "targetRoute": "/accountant",
+      "surface": "mobile",
+      "screens": [
+        {
+          "path": "frontend/app/accountant/_layout.tsx",
+          "sourceSha": "5b841a7d96476fbb6f141e983cfa855e7d66feb0",
+          "targetSha": "5b841a7d96476fbb6f141e983cfa855e7d66feb0",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/accountant/billing.tsx",
+          "sourceSha": "6b09ec2e380372e29f89e93bd382aefdd785bc60",
+          "targetSha": "6b09ec2e380372e29f89e93bd382aefdd785bc60",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/accountant/index.tsx",
+          "sourceSha": "e75ef6af99f73de63e0e0fb20ffe5986855a20bd",
+          "targetSha": "e75ef6af99f73de63e0e0fb20ffe5986855a20bd",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/accountant/ledger.tsx",
+          "sourceSha": "faa70edeaa2388727de6b6e6d8bfa77361ba8350",
+          "targetSha": "faa70edeaa2388727de6b6e6d8bfa77361ba8350",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/accountant/more.tsx",
+          "sourceSha": "f48b33e2e25512006ce350491833556da2887af1",
+          "targetSha": "f48b33e2e25512006ce350491833556da2887af1",
+          "sourceToTarget": "identical"
+        }
+      ],
+      "targetScreenCount": 5
+    },
+    {
+      "id": "quality_engineer",
+      "label": "Quality Engineer",
+      "referenceRoute": "quality_engineer",
+      "targetRoute": "/quality_engineer",
+      "surface": "mobile",
+      "screens": [
+        {
+          "path": "frontend/app/quality_engineer/_layout.tsx",
+          "sourceSha": "a2f687f816ac6fcb9d8f146d9bb5ac192c3f0f6b",
+          "targetSha": "a2f687f816ac6fcb9d8f146d9bb5ac192c3f0f6b",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/quality_engineer/index.tsx",
+          "sourceSha": "e75ef6af99f73de63e0e0fb20ffe5986855a20bd",
+          "targetSha": "e75ef6af99f73de63e0e0fb20ffe5986855a20bd",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/quality_engineer/more.tsx",
+          "sourceSha": "f48b33e2e25512006ce350491833556da2887af1",
+          "targetSha": "f48b33e2e25512006ce350491833556da2887af1",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/quality_engineer/quality.tsx",
+          "sourceSha": "0210bc7ca40e3e6f41cb95307ab154e6a3853691",
+          "targetSha": "0210bc7ca40e3e6f41cb95307ab154e6a3853691",
+          "sourceToTarget": "identical"
+        }
+      ],
+      "targetScreenCount": 4
+    },
+    {
+      "id": "fleet_manager",
+      "label": "Fleet Manager",
+      "referenceRoute": "fleet_manager",
+      "targetRoute": "/fleet_manager",
+      "surface": "mobile",
+      "screens": [
+        {
+          "path": "frontend/app/fleet_manager/_layout.tsx",
+          "sourceSha": "8191c959aea07940f05ad28c39568132b88192c0",
+          "targetSha": "8191c959aea07940f05ad28c39568132b88192c0",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/fleet_manager/drivers.tsx",
+          "sourceSha": "d5dd78585acf83989b1edecf8e9ae95f7ef57a73",
+          "targetSha": "d5dd78585acf83989b1edecf8e9ae95f7ef57a73",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/fleet_manager/fleet.tsx",
+          "sourceSha": "91190d5e5a919a6d4b2864ec6dfdb817b036f222",
+          "targetSha": "91190d5e5a919a6d4b2864ec6dfdb817b036f222",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/fleet_manager/index.tsx",
+          "sourceSha": "e75ef6af99f73de63e0e0fb20ffe5986855a20bd",
+          "targetSha": "e75ef6af99f73de63e0e0fb20ffe5986855a20bd",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/fleet_manager/more.tsx",
+          "sourceSha": "f48b33e2e25512006ce350491833556da2887af1",
+          "targetSha": "f48b33e2e25512006ce350491833556da2887af1",
+          "sourceToTarget": "identical"
+        }
+      ],
+      "targetScreenCount": 5
+    },
+    {
+      "id": "store_manager",
+      "label": "Store Manager",
+      "referenceRoute": "store_manager",
+      "targetRoute": "/store_manager",
+      "surface": "mobile",
+      "screens": [
+        {
+          "path": "frontend/app/store_manager/_layout.tsx",
+          "sourceSha": "97997d85efe69e16682ebea2c27b135a38bd6c7a",
+          "targetSha": "97997d85efe69e16682ebea2c27b135a38bd6c7a",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/store_manager/index.tsx",
+          "sourceSha": "e75ef6af99f73de63e0e0fb20ffe5986855a20bd",
+          "targetSha": "e75ef6af99f73de63e0e0fb20ffe5986855a20bd",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/store_manager/more.tsx",
+          "sourceSha": "f48b33e2e25512006ce350491833556da2887af1",
+          "targetSha": "f48b33e2e25512006ce350491833556da2887af1",
+          "sourceToTarget": "identical"
+        },
+        {
+          "path": "frontend/app/store_manager/stock.tsx",
+          "sourceSha": "141673590a1da435ccf402c6a133ef73b3c19542",
+          "targetSha": "141673590a1da435ccf402c6a133ef73b3c19542",
+          "sourceToTarget": "identical"
+        }
+      ],
+      "targetScreenCount": 4
+    },
+    {
+      "id": "authority",
+      "label": "Authority",
+      "referenceRoute": "authority",
+      "targetRoute": null,
+      "surface": "restricted_operational_no_mobile_route",
+      "screens": [],
+      "targetScreenCount": 0
+    },
+    {
+      "id": "central_admin",
+      "label": "Central Admin",
+      "referenceRoute": "central_admin",
+      "targetRoute": null,
+      "surface": "dedicated_web_only_missing_target_equivalence",
+      "screens": [],
+      "targetScreenCount": 0
+    }
+  ],
+  "sharedScreens": [
+    {
+      "path": "frontend/app/+html.tsx",
+      "sourceToTarget": "identical"
+    },
+    {
+      "path": "frontend/app/_layout.tsx",
+      "sourceToTarget": "identical"
+    },
+    {
+      "path": "frontend/app/account-deletion-public.tsx",
+      "sourceToTarget": "identical"
+    },
+    {
+      "path": "frontend/app/account-deletion.tsx",
+      "sourceToTarget": "identical"
+    },
+    {
+      "path": "frontend/app/business/[kind].tsx",
+      "sourceToTarget": "modified"
+    },
+    {
+      "path": "frontend/app/challan/[id].tsx",
+      "sourceToTarget": "identical"
+    },
+    {
+      "path": "frontend/app/dispatch-order/[id].tsx",
+      "sourceToTarget": "identical"
+    },
+    {
+      "path": "frontend/app/employee-master.tsx",
+      "sourceToTarget": "identical"
+    },
+    {
+      "path": "frontend/app/index.tsx",
+      "sourceToTarget": "identical"
+    },
+    {
+      "path": "frontend/app/kyc.tsx",
+      "sourceToTarget": "identical"
+    },
+    {
+      "path": "frontend/app/kyc/return.tsx",
+      "sourceToTarget": "identical"
+    },
+    {
+      "path": "frontend/app/login.tsx",
+      "sourceToTarget": "identical"
+    },
+    {
+      "path": "frontend/app/mfa-setup.tsx",
+      "sourceToTarget": "modified"
+    },
+    {
+      "path": "frontend/app/my-payslip.tsx",
+      "sourceToTarget": "identical"
+    },
+    {
+      "path": "frontend/app/new-order.tsx",
+      "sourceToTarget": "identical"
+    },
+    {
+      "path": "frontend/app/notifications.tsx",
+      "sourceToTarget": "identical"
+    },
+    {
+      "path": "frontend/app/order/[id].tsx",
+      "sourceToTarget": "identical"
+    },
+    {
+      "path": "frontend/app/passkey-ceremony.tsx",
+      "sourceToTarget": "missing"
+    },
+    {
+      "path": "frontend/app/passkey-setup.tsx",
+      "sourceToTarget": "missing"
+    },
+    {
+      "path": "frontend/app/payroll-closure.tsx",
+      "sourceToTarget": "identical"
+    },
+    {
+      "path": "frontend/app/plans-promotions.tsx",
+      "sourceToTarget": "identical"
+    },
+    {
+      "path": "frontend/app/plant-onboarding.tsx",
+      "sourceToTarget": "modified"
+    },
+    {
+      "path": "frontend/app/pod/[id].tsx",
+      "sourceToTarget": "modified"
+    },
+    {
+      "path": "frontend/app/privacy.tsx",
+      "sourceToTarget": "identical"
+    },
+    {
+      "path": "frontend/app/privacy_policy.tsx",
+      "sourceToTarget": "identical"
+    },
+    {
+      "path": "frontend/app/quality-test/[id].tsx",
+      "sourceToTarget": "identical"
+    },
+    {
+      "path": "frontend/app/review-access.tsx",
+      "sourceToTarget": "modified"
+    },
+    {
+      "path": "frontend/app/role-home.tsx",
+      "sourceToTarget": "modified"
+    },
+    {
+      "path": "frontend/app/shift-roster.tsx",
+      "sourceToTarget": "identical"
+    },
+    {
+      "path": "frontend/app/sos.tsx",
+      "sourceToTarget": "modified"
+    },
+    {
+      "path": "frontend/app/support-cases.tsx",
+      "sourceToTarget": "identical"
+    },
+    {
+      "path": "frontend/app/support.tsx",
+      "sourceToTarget": "identical"
+    },
+    {
+      "path": "frontend/app/terms.tsx",
+      "sourceToTarget": "identical"
+    },
+    {
+      "path": "frontend/app/track/[id].tsx",
+      "sourceToTarget": "identical"
+    },
+    {
+      "path": "frontend/app/trip/[id].tsx",
+      "sourceToTarget": "identical"
+    },
+    {
+      "path": "frontend/app/workforce-reports.tsx",
+      "sourceToTarget": "identical"
+    },
+    {
+      "path": "frontend/app/workforce.tsx",
+      "sourceToTarget": "modified"
+    }
+  ],
+  "referenceAdminWorkspaceFiles": [
+    {
+      "path": "admin-web/public/recovery.html",
+      "sourceToTarget": "missing"
+    },
+    {
+      "path": "admin-web/src/access-control-center.tsx",
+      "sourceToTarget": "missing"
+    },
+    {
+      "path": "admin-web/src/ai-command-center.tsx",
+      "sourceToTarget": "missing"
+    },
+    {
+      "path": "admin-web/src/api.ts",
+      "sourceToTarget": "modified"
+    },
+    {
+      "path": "admin-web/src/command-center.css",
+      "sourceToTarget": "missing"
+    },
+    {
+      "path": "admin-web/src/command-center.tsx",
+      "sourceToTarget": "missing"
+    },
+    {
+      "path": "admin-web/src/env.d.ts",
+      "sourceToTarget": "missing"
+    },
+    {
+      "path": "admin-web/src/main.tsx",
+      "sourceToTarget": "modified"
+    },
+    {
+      "path": "admin-web/src/security-workspaces.tsx",
+      "sourceToTarget": "missing"
+    },
+    {
+      "path": "admin-web/src/styles.css",
+      "sourceToTarget": "missing"
+    },
+    {
+      "path": "admin-web/src/workspaces.css",
+      "sourceToTarget": "missing"
+    },
+    {
+      "path": "admin-web/src/workspaces.tsx",
+      "sourceToTarget": "missing"
+    }
+  ]
+}

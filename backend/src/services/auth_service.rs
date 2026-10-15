@@ -116,6 +116,7 @@ fn is_staff_role(role: &str) -> bool {
             | "accountant"
             | "fleet_manager"
             | "owner"
+            | "plant_owner"
             | "admin"
     )
 }
@@ -396,6 +397,7 @@ pub async fn send_email_otp(state: &AppState, req: SendEmailOtpRequest) -> Resul
         "accountant",
         "fleet_manager",
         "owner",
+        "plant_owner",
         "admin",
     ];
     if !STAFF_ROLES.contains(&user.role.as_str()) {
@@ -513,6 +515,7 @@ pub async fn verify_email_otp(
         "accountant",
         "fleet_manager",
         "owner",
+        "plant_owner",
         "admin",
     ];
     if !STAFF_ROLES.contains(&user.role.as_str()) {
