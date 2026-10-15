@@ -85,7 +85,12 @@ export default function QualityTest() {
       <StatusBar style={scheme === "dark" ? "light" : "dark"} />
       <View style={{ height: insets.top }} />
       <View style={[styles.header, { borderBottomColor: colors.divider }]}>
-        <Pressable testID="qt-back" accessibilityRole="button" accessibilityLabel="Back" onPress={() => router.back()} style={[styles.iconBtn, { borderColor: colors.border }]}>
+        <Pressable testID="qt-back" accessibilityRole="button" accessibilityLabel="Back" onPress={() => {
+          // A hard reload can lose the in-memory navigation stack. Re-open the
+          // engineer's register so its latest persisted assessment is refetched.
+          if (user?.role === "quality_engineer") router.replace("/quality_engineer/quality");
+          else router.back();
+        }} style={[styles.iconBtn, { borderColor: colors.border }]}>
           <Ionicons name="chevron-back" size={22} color={colors.onSurface} />
         </Pressable>
         <AppText variant="title">Quality Records</AppText>
