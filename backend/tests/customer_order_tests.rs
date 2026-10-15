@@ -691,4 +691,22 @@ async fn customer_rfq_owner_response_acceptance_and_order_use_exact_shared_contr
             .unwrap(),
         1
     );
+    let direct_path = format!("/api/ops/plants/{plant}/quotations");
+    let direct = json!({"customer_name":"Customer","site_name":"Site","site_address":"Address","grade":"M25","quantity_m3":2,"rate_per_m3":987.65,"valid_until":(chrono::Utc::now().date_naive()+chrono::Duration::days(7)).to_string()});
+    let mut invalid = direct.clone();
+    invalid["rate_per_m3"] = json!(-1);
+    assert_eq!(
+        call(&app, &direct_path, Some(invalid), &owner_token)
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+    let (a, b) = tokio::join!(
+        call(&app, &direct_path, Some(direct.clone()), &owner_token),
+        call(&app, &direct_path, Some(direct), &owner_token)
+    );
+    assert_eq!(a.0, StatusCode::OK);
+    assert_eq!(b.0, StatusCode::OK);
+    assert_ne!(a.1["quotation_number"], b.1["quotation_number"]);
+    assert_eq!(a.1["total_amount"], 2330.85);
 }

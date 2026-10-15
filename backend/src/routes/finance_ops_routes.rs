@@ -60,72 +60,10 @@ pub async fn create_plant_quotation(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin", "accountant"])?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
-
-    let valid_date = NaiveDate::parse_from_str(&payload.valid_until, "%Y-%m-%d").map_err(|_| {
-        AppError::BadRequest("Invalid valid_until date, format must be YYYY-MM-DD".to_string())
-    })?;
-
-    let gst_rate = payload.gst_rate.unwrap_or(18.0);
-    let transport = payload.transport_amount.unwrap_or(0.0);
-    let pumping = payload.pumping_amount.unwrap_or(0.0);
-    let subtotal = payload.quantity_m3 * payload.rate_per_m3 + transport + pumping;
-    let total = subtotal * (1.0 + (gst_rate / 100.0));
-
-    let quotation_count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM plant_quotations WHERE plant_id = $1")
-            .bind(plant_id)
-            .fetch_one(&state.db)
-            .await?;
-
-    let quotation_number = format!("QT-{:04}", quotation_count + 1);
-
-    let id: Uuid = sqlx::query_scalar(
-        r#"
-        INSERT INTO plant_quotations (
-            plant_id, quotation_number, request_id, customer_id, customer_name, customer_mobile,
-            site_name, site_address, grade, quantity_m3, rate_per_m3, gst_rate,
-            transport_amount, pumping_amount, total_amount, valid_until, status, notes
-        )
-        VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::numeric, $11::numeric, $12::numeric,
-            $13::numeric, $14::numeric, $15::numeric, $16, 'SENT', $17
-        )
-        RETURNING id
-        "#,
-    )
-    .bind(plant_id)
-    .bind(&quotation_number)
-    .bind(payload.request_id)
-    .bind(payload.customer_id)
-    .bind(&payload.customer_name)
-    .bind(&payload.customer_mobile)
-    .bind(&payload.site_name)
-    .bind(&payload.site_address)
-    .bind(&payload.grade)
-    .bind(payload.quantity_m3)
-    .bind(payload.rate_per_m3)
-    .bind(gst_rate)
-    .bind(transport)
-    .bind(pumping)
-    .bind(total)
-    .bind(valid_date)
-    .bind(&payload.notes)
-    .fetch_one(&state.db)
-    .await?;
-
-    if let Some(req_id) = payload.request_id {
-        let _ = sqlx::query("UPDATE customer_quotation_requests SET status = 'QUOTED', updated_at = NOW() WHERE id = $1")
-            .bind(req_id)
-            .execute(&state.db)
-            .await;
-    }
-
-    Ok(Json(json!({
-        "success": true,
-        "id": id,
-        "quotation_number": quotation_number,
-        "total_amount": total
-    })))
+    Ok(Json(
+        crate::services::commercial_service::issue(&state, auth_user.user_id, plant_id, payload)
+            .await?,
+    ))
 }
 
 pub async fn list_plant_quotation_requests(
