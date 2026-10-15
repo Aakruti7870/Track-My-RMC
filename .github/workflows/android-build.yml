@@ -70,7 +70,7 @@ jobs:
           fi
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Validate Google Play privacy and permission readiness
         run: npm run check:android-permissions

@@ -32,7 +32,7 @@ type HomeData = {
 const ACTIONS: { key: "new" | "track" | "plants" | "orders"; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { key: "new", label: "New Order", icon: "add" },
   { key: "track", label: "Track Order", icon: "navigate" },
-  { key: "plants", label: "Nearby Plants", icon: "location" },
+  { key: "plants", label: "Available Plants", icon: "location" },
   { key: "orders", label: "My Orders", icon: "document-text" },
 ];
 
@@ -258,7 +258,7 @@ export default function CustomerHome() {
 
               {data.nearby_plants.length > 0 ? (
                 <View style={styles.section}>
-                  <View style={styles.rowBetween}><AppText style={[styles.sectionTitle, { color: colors.onSurface }]}>Nearby Plants</AppText><Pressable onPress={() => router.push("/customer/plants")}><AppText variant="label" color={colors.brand}>See all</AppText></Pressable></View>
+                  <View style={styles.rowBetween}><AppText style={[styles.sectionTitle, { color: colors.onSurface }]}>Available Plants</AppText><Pressable onPress={() => router.push("/customer/plants")}><AppText variant="label" color={colors.brand}>See all</AppText></Pressable></View>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>
                     {data.nearby_plants.map((p) => (
                       <Pressable key={p.id} onPress={() => router.push("/customer/plants")} style={[styles.plantChip, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}> 

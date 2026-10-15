@@ -20,7 +20,8 @@ use uuid::Uuid;
 pub async fn list_plants(
     State(state): State<AppState>,
     auth_user: AuthUser,
-) -> Result<impl IntoResponse, AppError> {
+) -> Result<Json<serde_json::Value>, AppError> {
+    check_role(&auth_user, &["customer"])?;
     let review_customer: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM play_review_fixtures WHERE user_id = $1 AND role = 'customer' AND enabled = TRUE)",
     )
@@ -30,7 +31,6 @@ pub async fn list_plants(
     let review_plant_ids: Vec<Uuid> = sqlx::query_scalar(
         "SELECT plant_id FROM play_review_fixtures WHERE role = 'customer' AND enabled = TRUE AND plant_id IS NOT NULL",
     )
-    .bind(auth_user.user_id)
     .fetch_all(&state.db)
     .await?;
     let mut plants = plant_repo::list_plants(&state.db).await?;
@@ -390,46 +390,43 @@ pub async fn get_customer_home(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
-    let active_orders: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM orders WHERE customer_id = $1 AND status NOT IN ('delivered', 'cancelled')",
-    )
-    .bind(auth_user.user_id)
-    .fetch_one(&state.db)
-    .await?;
-
-    let completed_orders: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM orders WHERE customer_id = $1 AND status = 'delivered'",
-    )
-    .bind(auth_user.user_id)
-    .fetch_one(&state.db)
-    .await?;
-
-    let total_spent: bigdecimal::BigDecimal = sqlx::query_scalar(
-        "SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE customer_id = $1 AND payment_status = 'paid'",
-    )
-    .bind(auth_user.user_id)
-    .fetch_one(&state.db)
-    .await?;
-
-    let profile = sqlx::query("SELECT kyc_status FROM user_profiles WHERE user_id = $1")
+    check_role(&auth_user, &["customer"])?;
+    let profile:(String,String)=sqlx::query_as("SELECT u.full_name,coalesce(p.kyc_status,'unverified') FROM users u LEFT JOIN user_profiles p ON p.user_id=u.id WHERE u.id=$1").bind(auth_user.user_id).fetch_one(&state.db).await?;
+    let query = format!(
+        "{} WHERE o.customer_id=$1 ORDER BY o.created_at DESC,o.id LIMIT 5",
+        order_service::MOBILE_ORDER_SELECT
+    );
+    let recent: Vec<serde_json::Value> = sqlx::query_scalar(&query)
+        .bind(auth_user.user_id)
+        .fetch_all(&state.db)
+        .await?;
+    let query=format!("{} WHERE o.customer_id=$1 AND lower(o.status) IN('dispatched','in_transit','en_route','at_site','pouring','unloading','pod_pending') ORDER BY o.delivery_date,o.created_at,o.id LIMIT 1",order_service::MOBILE_ORDER_SELECT);
+    let active: Option<serde_json::Value> = sqlx::query_scalar(&query)
         .bind(auth_user.user_id)
         .fetch_optional(&state.db)
         .await?;
-
-    let kyc_status: String = profile
-        .as_ref()
-        .and_then(|p| p.get("kyc_status"))
-        .unwrap_or_else(|| "unverified".to_string());
-
-    Ok(Json(json!({
-        "success": true,
-        "metrics": {
-            "active_orders": active_orders,
-            "completed_orders": completed_orders,
-            "total_spent": total_spent,
-            "kyc_status": kyc_status
-        }
-    })))
+    let unread: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM notifications WHERE user_id=$1 AND NOT is_read")
+            .bind(auth_user.user_id)
+            .fetch_one(&state.db)
+            .await?;
+    let Json(discovery) = list_plants(State(state.clone()), auth_user).await?;
+    let plants: Vec<serde_json::Value> = discovery["plants"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|p| p["order_enabled"] == true)
+        .take(6)
+        .cloned()
+        .collect();
+    let kyc = if profile.1.eq_ignore_ascii_case("unverified") {
+        "NOT_STARTED".to_string()
+    } else {
+        profile.1.to_uppercase()
+    };
+    Ok(Json(
+        json!({"name":profile.0,"kyc_status":kyc,"active_order":active,"recent_orders":recent,"nearby_plants":plants,"unread_notifications":unread}),
+    ))
 }
 
 pub async fn cancel_order(

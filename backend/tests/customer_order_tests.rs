@@ -1341,3 +1341,91 @@ async fn support_threads_bind_orders_retries_messages_and_mutations_to_the_custo
         1
     );
 }
+
+#[sqlx::test]
+async fn actual_customer_and_owner_dashboards_return_the_mobile_contract_and_scoped_quantities(
+    db: PgPool,
+) {
+    let (state, app, _, plant, token) = fixture(&db).await;
+    let (_, placed) = call(
+        &app,
+        "/api/customer/orders",
+        Some(order(plant, "dashboard-real-order")),
+        &token,
+    )
+    .await;
+    let id = placed["id"].as_str().unwrap().parse::<Uuid>().unwrap();
+    sqlx::query("UPDATE orders SET delivery_date=CURRENT_DATE WHERE id=$1")
+        .bind(id)
+        .execute(&db)
+        .await
+        .unwrap();
+    let (status, home) = call(&app, "/api/customer/home", None, &token).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(home["name"], "Customer");
+    assert_eq!(home["kyc_status"], "VERIFIED");
+    assert_eq!(home["recent_orders"][0]["quantity"], 6.0);
+    assert_eq!(home["recent_orders"][0]["id"], placed["id"]);
+    assert!(home["active_order"].is_null());
+    assert_eq!(home["unread_notifications"], 0);
+    assert!(home["nearby_plants"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|p| p["id"] == json!(plant) && p["order_enabled"] == true));
+    let owner: Uuid = sqlx::query_scalar("SELECT owner_id FROM rmc_plants WHERE id=$1")
+        .bind(plant)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    let owner_token =
+        generate_token(owner, "owner", "", None, &state.config.jwt_secret, 1).unwrap();
+    let (status, home) = call(&app, "/api/owner/home", None, &owner_token).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(home["plant_count"], 1);
+    assert_eq!(home["plants"][0]["id"], json!(plant));
+    assert_eq!(home["cards"]["pending_approvals"], 1);
+    assert_eq!(home["cards"]["todays_orders"], 1);
+    assert_eq!(home["cards"]["ordered_qty"], 6.0);
+    assert_eq!(home["cards"]["delivered_qty"], 0.0);
+    assert_eq!(home["pending_orders"][0]["quantity"], 6.0);
+    assert_eq!(home["pending_orders"][0]["status"], "PENDING");
+    let load:Uuid=sqlx::query_scalar("INSERT INTO order_loads(order_id,load_number,quantity_m3,status,dispatched_at) VALUES($1,1,6,'delivered',NOW()) RETURNING id").bind(id).fetch_one(&db).await.unwrap();
+    sqlx::query("INSERT INTO proof_of_deliveries(load_id,receiver_name,receiver_phone,delivered_quantity) VALUES($1,'Synthetic receiver','0',5.5)").bind(load).execute(&db).await.unwrap();
+    let (_, home) = call(&app, "/api/owner/home", None, &owner_token).await;
+    assert_eq!(home["cards"]["dispatched_qty"], 6.0);
+    assert_eq!(home["cards"]["delivered_qty"], 5.5);
+    let (status, insights) = call(&app, "/api/owner/insights", None, &owner_token).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(insights["labels"].as_array().unwrap().len(), 7);
+    assert_eq!(insights["ordered"][6], 6.0);
+    assert_eq!(insights["delivered"][6], 5.5);
+    assert_eq!(insights["totals"]["payments"], 0.0);
+    for role in ["owner", "admin"] {
+        let other = identity(&db, role).await;
+        let other_token =
+            generate_token(other, role, "", None, &state.config.jwt_secret, 1).unwrap();
+        let (_, home) = call(&app, "/api/owner/home", None, &other_token).await;
+        assert_eq!(home["plant_count"], 0);
+        assert_eq!(home["cards"]["ordered_qty"], 0.0);
+        assert!(home["pending_orders"].as_array().unwrap().is_empty());
+        let (_, insights) = call(&app, "/api/owner/insights", None, &other_token).await;
+        assert_eq!(insights["totals"]["delivered"], 0.0);
+        if role == "admin" {
+            sqlx::query("INSERT INTO plant_staff(plant_id,user_id,role) VALUES($1,$2,'admin')")
+                .bind(plant)
+                .bind(other)
+                .execute(&db)
+                .await
+                .unwrap();
+            assert_eq!(
+                call(&app, "/api/owner/home", None, &other_token).await.1["plant_count"],
+                1
+            );
+        }
+        assert_eq!(
+            call(&app, "/api/customer/home", None, &other_token).await.0,
+            StatusCode::FORBIDDEN
+        );
+    }
+}

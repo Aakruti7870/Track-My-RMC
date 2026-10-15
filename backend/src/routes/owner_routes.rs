@@ -126,55 +126,35 @@ pub async fn get_billing_overview(
     })))
 }
 
+async fn visible_plant_ids(state: &AppState, user: &AuthUser) -> Result<Vec<Uuid>, AppError> {
+    sqlx::query_scalar("SELECT p.id FROM rmc_plants p WHERE p.is_active AND (p.owner_id=$1 OR ($2='admin' AND EXISTS(SELECT 1 FROM plant_staff ps WHERE ps.plant_id=p.id AND ps.user_id=$1 AND ps.is_active))) ORDER BY p.id")
+        .bind(user.user_id).bind(&user.role).fetch_all(&state.db).await.map_err(AppError::from)
+}
+
 pub async fn get_owner_home(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
-
-    let plants_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM rmc_plants WHERE owner_id = $1 AND is_active = TRUE",
-    )
-    .bind(auth_user.user_id)
-    .fetch_one(&state.db)
-    .await?;
-
-    let pending_orders: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM orders o INNER JOIN rmc_plants p ON p.id = o.plant_id WHERE p.owner_id = $1 AND o.status = 'pending'"
-    )
-    .bind(auth_user.user_id)
-    .fetch_one(&state.db)
-    .await?;
-
-    let in_transit: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM transit_mixers m INNER JOIN rmc_plants p ON p.id = m.plant_id WHERE p.owner_id = $1 AND m.status IN ('dispatched', 'in_transit', 'pouring')"
-    )
-    .bind(auth_user.user_id)
-    .fetch_one(&state.db)
-    .await?;
-
-    let revenue_month: bigdecimal::BigDecimal = sqlx::query_scalar(
-        r#"
-        SELECT COALESCE(SUM(o.total_amount), 0)
-        FROM orders o
-        INNER JOIN rmc_plants p ON p.id = o.plant_id
-        WHERE p.owner_id = $1 AND o.payment_status = 'paid'
-          AND o.created_at >= date_trunc('month', CURRENT_DATE)
-        "#,
-    )
-    .bind(auth_user.user_id)
-    .fetch_one(&state.db)
-    .await?;
-
-    Ok(Json(json!({
-        "success": true,
-        "kpis": {
-            "total_plants": plants_count,
-            "pending_orders": pending_orders,
-            "in_transit_mixers": in_transit,
-            "month_revenue": revenue_month
-        }
-    })))
+    let ids = visible_plant_ids(&state, &auth_user).await?;
+    let plants:Vec<serde_json::Value>=sqlx::query_scalar("SELECT jsonb_build_object('id',id,'name',name) FROM rmc_plants WHERE id=ANY($1) ORDER BY name,id").bind(&ids).fetch_all(&state.db).await?;
+    let cards:serde_json::Value=sqlx::query_scalar(r#"SELECT jsonb_build_object(
+        'pending_approvals',(SELECT count(*) FROM orders WHERE plant_id=ANY($1) AND lower(status)='pending'),
+        'todays_orders',(SELECT count(*) FROM orders WHERE plant_id=ANY($1) AND delivery_date=CURRENT_DATE AND lower(status) NOT IN('draft','cancelled','rejected')),
+        'ordered_qty',(SELECT coalesce(sum(total_quantity_m3),0)::double precision FROM orders WHERE plant_id=ANY($1) AND delivery_date=CURRENT_DATE AND lower(status) NOT IN('draft','cancelled','rejected')),
+        'dispatched_qty',(SELECT coalesce(sum(l.quantity_m3),0)::double precision FROM order_loads l JOIN orders o ON o.id=l.order_id WHERE o.plant_id=ANY($1) AND l.dispatched_at::date=CURRENT_DATE),
+        'delivered_qty',(SELECT coalesce(sum(d.delivered_quantity),0)::double precision FROM proof_of_deliveries d JOIN order_loads l ON l.id=d.load_id JOIN orders o ON o.id=l.order_id WHERE o.plant_id=ANY($1) AND d.delivered_at::date=CURRENT_DATE),
+        'active_mixers',(SELECT count(*) FROM transit_mixers WHERE plant_id=ANY($1) AND status IN('dispatched','in_transit','pouring'))
+    )"#).bind(&ids).fetch_one(&state.db).await?;
+    let query=format!("{} WHERE o.plant_id=ANY($1) AND lower(o.status)='pending' ORDER BY o.created_at,o.id LIMIT 50",crate::services::order_service::MOBILE_ORDER_SELECT);
+    let pending: Vec<serde_json::Value> = sqlx::query_scalar(&query)
+        .bind(&ids)
+        .fetch_all(&state.db)
+        .await?;
+    let received:f64=sqlx::query_scalar("SELECT coalesce(sum(amount),0)::double precision FROM plant_payments WHERE plant_id=ANY($1) AND invoice_id IS NOT NULL AND payment_date>=date_trunc('month',CURRENT_DATE)::date").bind(&ids).fetch_one(&state.db).await?;
+    Ok(Json(
+        json!({"plant_count":plants.len(),"plants":plants,"cards":cards,"pending_orders":pending,"window_date":chrono::Utc::now().date_naive(),"kpis":{"total_plants":ids.len(),"pending_orders":cards["pending_approvals"],"in_transit_mixers":cards["active_mixers"],"month_revenue":received}}),
+    ))
 }
 
 pub async fn list_owner_orders(
@@ -587,37 +567,21 @@ pub async fn get_owner_insights(
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
-
-    let grade_distribution = sqlx::query(
-        r#"
-        SELECT o.concrete_grade, COUNT(o.id) as order_count, SUM(o.total_quantity_m3) as total_m3
-        FROM orders o
-        INNER JOIN rmc_plants p ON p.id = o.plant_id
-        WHERE p.owner_id = $1 OR ($2='admin' AND EXISTS(SELECT 1 FROM plant_staff scope WHERE scope.plant_id=p.id AND scope.user_id=$1 AND scope.is_active=TRUE))
-        GROUP BY o.concrete_grade
-        ORDER BY total_m3 DESC
-        "#,
-    )
-    .bind(auth_user.user_id)
-    .bind(&auth_user.role)
-    .fetch_all(&state.db)
-    .await?;
-
-    Ok(Json(json!({
-        "success": true,
-        "insights": {
-            "top_grades": grade_distribution.into_iter().map(|g| {
-                let grade: String = g.get("concrete_grade");
-                let count: i64 = g.get("order_count");
-                let volume: Option<bigdecimal::BigDecimal> = g.get("total_m3");
-                json!({
-                    "grade": grade,
-                    "orders": count,
-                    "volume_m3": volume
-                })
-            }).collect::<Vec<_>>()
-        }
-    })))
+    let ids = visible_plant_ids(&state, &auth_user).await?;
+    let days:Vec<(chrono::NaiveDate,f64,f64,f64)>=sqlx::query_as(r#"
+        SELECT day::date,
+            (SELECT coalesce(sum(total_quantity_m3),0)::double precision FROM orders WHERE plant_id=ANY($1) AND delivery_date=day::date AND lower(status) NOT IN('draft','cancelled','rejected')),
+            (SELECT coalesce(sum(d.delivered_quantity),0)::double precision FROM proof_of_deliveries d JOIN order_loads l ON l.id=d.load_id JOIN orders o ON o.id=l.order_id WHERE o.plant_id=ANY($1) AND d.delivered_at::date=day::date),
+            (SELECT coalesce(sum(amount),0)::double precision FROM plant_payments WHERE plant_id=ANY($1) AND invoice_id IS NOT NULL AND payment_date=day::date)
+        FROM generate_series(CURRENT_DATE-6,CURRENT_DATE,INTERVAL '1 day') day ORDER BY day
+    "#).bind(&ids).fetch_all(&state.db).await?;
+    let labels: Vec<String> = days.iter().map(|d| d.0.format("%a").to_string()).collect();
+    let ordered: Vec<f64> = days.iter().map(|d| d.1).collect();
+    let delivered: Vec<f64> = days.iter().map(|d| d.2).collect();
+    let payments: Vec<f64> = days.iter().map(|d| d.3).collect();
+    Ok(Json(
+        json!({"labels":labels,"dates":days.iter().map(|d|d.0).collect::<Vec<_>>(),"ordered":ordered,"delivered":delivered,"payments":payments,"totals":{"ordered":ordered.iter().sum::<f64>(),"delivered":delivered.iter().sum::<f64>(),"payments":payments.iter().sum::<f64>()},"quantity_source":"RECORDED_POD","payment_source":"RECORDED_INVOICE_PAYMENTS"}),
+    ))
 }
 
 pub async fn create_order_invoice(

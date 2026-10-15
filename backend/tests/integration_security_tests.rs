@@ -76,7 +76,7 @@ async fn support_staff_requires_recorded_web_mfa_grants_and_fresh_status_step_up
     let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
     let (status, login) = request(
         &router,
-        "/api/admin/auth/login",
+        "/api/admin/auth/verify-totp",
         None,
         Some(json!({"identifier":email,"code":code})),
     )

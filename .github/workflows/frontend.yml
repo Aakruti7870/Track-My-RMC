@@ -59,7 +59,7 @@ jobs:
         with:
           node-version: 20
       - name: Install Dependencies
-        run: npm install
+        run: npm ci
       - name: Build Admin Dashboard
         env:
           VITE_API_URL: https://trackmyrmc.com

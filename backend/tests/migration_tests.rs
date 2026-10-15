@@ -9,6 +9,8 @@ async fn existing_installation_upgrades_without_changing_checksums_or_records(po
         ..sqlx::migrate!("./migrations")
     };
     baseline.run(&pool).await.unwrap();
+    let user:uuid::Uuid=sqlx::query_scalar("INSERT INTO users(phone,hashed_password,full_name,role) VALUES('migration-support','unused','Legacy fixture','customer') RETURNING id").fetch_one(&pool).await.unwrap();
+    let case:uuid::Uuid=sqlx::query_scalar("INSERT INTO support_cases(user_id,subject) VALUES($1,'Legacy support fixture') RETURNING id").bind(user).fetch_one(&pool).await.unwrap();
     sqlx::query("INSERT INTO stored_files (file_path,file_name,content_type,file_size_bytes) VALUES ('legacy-photo','legacy.jpg','image/jpeg',42)").execute(&pool).await.unwrap();
     let before: Vec<(i64, Vec<u8>)> =
         sqlx::query_as("SELECT version,checksum FROM _sqlx_migrations ORDER BY version")
@@ -31,6 +33,15 @@ async fn existing_installation_upgrades_without_changing_checksums_or_records(po
     .await
     .unwrap();
     assert_eq!(legacy, (42, None));
+    let number: String = sqlx::query_scalar("SELECT case_number FROM support_cases WHERE id=$1")
+        .bind(case)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(number, format!("SUP-{}", case.simple()));
+    let compatible:String=sqlx::query_scalar("INSERT INTO support_cases(user_id,subject) VALUES($1,'Old writer compatibility') RETURNING case_number").bind(user).fetch_one(&pool).await.unwrap();
+    assert!(compatible.starts_with("SUP-"));
+    assert_ne!(number, compatible);
     let versions: Vec<i64> = sqlx::query_scalar(
         "SELECT version FROM _sqlx_migrations WHERE version>18 ORDER BY version",
     )
