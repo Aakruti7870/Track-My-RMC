@@ -49,6 +49,11 @@ fn app(state: AppState) -> Router {
         .route("/login", post(control_center::login))
         .route("/me", get(control_center::me))
         .route("/capabilities", get(cc::get_capabilities))
+        .route("/collections/:kind", get(cc::collection))
+        .route(
+            "/legacy-overview",
+            get(trackmyrmc_backend::routes::admin_routes::portal_overview),
+        )
         .route("/reviewer", post(cc::set_reviewer_access))
         .route("/step-up", post(cc::admin_step_up))
         .route("/logout-all", post(cc::admin_logout_all))
@@ -325,5 +330,64 @@ async fn stale_role_claims_are_rejected_and_otp_replay_does_not_mint_session(db:
     assert_eq!(
         request(&router, "/me", Some(token), None).await.0,
         StatusCode::UNAUTHORIZED
+    );
+}
+
+#[sqlx::test]
+async fn read_workspaces_execute_and_enforce_individual_permissions(db: PgPool) {
+    let state = state(db.clone());
+    let router = app(state);
+    let (_, email, secret) = identity(
+        &db,
+        "central_admin",
+        true,
+        vec![
+            "user.view",
+            "plant.view",
+            "order.view",
+            "support.view",
+            "audit.view",
+            "session.view",
+        ],
+    )
+    .await;
+    let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
+    let (status, result) = request(
+        &router,
+        "/login",
+        None,
+        Some(json!({"identifier":email,"code":code})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let token = result["token"].as_str().unwrap();
+    for kind in ["users", "plants", "orders", "support", "audit", "sessions"] {
+        let (status, data) = request(
+            &router,
+            &format!("/collections/{kind}?limit=1"),
+            Some(token),
+            None,
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "{kind} must execute against PostgreSQL"
+        );
+        assert!(data["items"].is_array());
+        assert!(data["items"].as_array().unwrap().len() <= 1);
+    }
+    assert_eq!(
+        request(&router, "/legacy-overview", Some(token), None)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    sqlx::query("UPDATE control_center_access SET permissions='{}' WHERE user_id=(SELECT id FROM users WHERE email=$1)").bind(email).execute(&db).await.unwrap();
+    assert_eq!(
+        request(&router, "/collections/users", Some(token), None)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
     );
 }

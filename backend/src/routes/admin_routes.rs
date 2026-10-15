@@ -1,8 +1,4 @@
-use crate::{
-    auth::{middleware::check_role, AuthUser},
-    error::AppError,
-    state::AppState,
-};
+use crate::{auth::control_center::WebAdmin, error::AppError, state::AppState};
 use axum::{extract::State, response::IntoResponse, Json};
 use serde_json::json;
 
@@ -26,9 +22,11 @@ pub async fn admin_login(
 
 pub async fn portal_overview(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    auth_user: WebAdmin,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["admin"])?;
+    for permission in ["system.view", "user.view", "plant.view", "order.view"] {
+        auth_user.require(permission)?;
+    }
 
     let user_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users u WHERE NOT EXISTS (SELECT 1 FROM play_review_fixtures f WHERE f.user_id = u.id)")
         .fetch_one(&state.db)

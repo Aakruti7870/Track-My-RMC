@@ -15,6 +15,41 @@ use sha2::{Digest, Sha256};
 use sqlx::Row;
 use uuid::Uuid;
 
+#[derive(Debug, Deserialize)]
+pub struct CollectionPage {
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+pub async fn collection(
+    State(state): State<AppState>,
+    admin: WebAdmin,
+    axum::extract::Path(kind): axum::extract::Path<String>,
+    axum::extract::Query(page): axum::extract::Query<CollectionPage>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let (permission,query)=match kind.as_str() {
+        "users"=>("user.view","SELECT jsonb_build_object('id',id,'name',full_name,'email',email,'role',role,'active',is_active) FROM users ORDER BY id LIMIT $1 OFFSET $2"),
+        "plants"=>("plant.view","SELECT jsonb_build_object('id',id,'name',name,'city',city,'owner_id',owner_id,'active',is_active) FROM rmc_plants ORDER BY id LIMIT $1 OFFSET $2"),
+        "orders"=>("order.view","SELECT jsonb_build_object('id',id,'number',order_number,'plant_id',plant_id,'quantity',total_quantity_m3::DOUBLE PRECISION,'status',status) FROM orders ORDER BY id LIMIT $1 OFFSET $2"),
+        "support"=>("support.view","SELECT jsonb_build_object('id',id,'subject',subject,'status',status,'created_at',created_at) FROM support_cases ORDER BY id LIMIT $1 OFFSET $2"),
+        "audit"=>("audit.view","SELECT jsonb_build_object('id',id,'action',action,'resource_type',resource_type,'resource_id',resource_id,'created_at',created_at) FROM audit_logs ORDER BY id LIMIT $1 OFFSET $2"),
+        "sessions"=>("session.view","SELECT jsonb_build_object('user_id',user_id,'created_at',created_at,'expires_at',expires_at,'revoked',revoked_at IS NOT NULL) FROM control_center_sessions ORDER BY created_at,token_hash LIMIT $1 OFFSET $2"),
+        _=>return Err(AppError::NotFound("Control Center workspace not found".into())),
+    };
+    admin.require(permission)?;
+    let limit = page.limit.unwrap_or(50).clamp(1, 100);
+    let offset = page.offset.unwrap_or(0);
+    if !(0..=10000).contains(&offset) {
+        return Err(AppError::BadRequest("Invalid page offset".into()));
+    }
+    let rows: Vec<serde_json::Value> = sqlx::query_scalar(query)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&state.db)
+        .await?;
+    Ok(Json(json!({"items":rows,"limit":limit,"offset":offset})))
+}
+
 fn session_token_hash(headers: &HeaderMap) -> Result<String, AppError> {
     let bearer = headers
         .get(AUTHORIZATION)
@@ -257,24 +292,32 @@ pub async fn update_admin_access(
             "An administrator cannot disable their own account".to_string(),
         ));
     }
-    sqlx::query(
-        "UPDATE users SET is_active = $1, updated_at = NOW() WHERE email = $2 AND role = 'central_admin'",
+    let mut tx = state.db.begin().await?;
+    let target: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM users WHERE LOWER(email)=$1 AND role='central_admin' FOR UPDATE",
     )
-    .bind(payload.enabled)
     .bind(&email_lower)
-    .execute(&state.db)
+    .fetch_optional(&mut *tx)
     .await?;
-
-    sqlx::query(
-        r#"
-        INSERT INTO audit_logs (user_id, action, resource_type, metadata)
-        VALUES ($1, 'control_center.admin_access', 'user', $2)
-        "#,
-    )
-    .bind(auth_user.user_id)
-    .bind(json!({ "email": email_lower, "enabled": payload.enabled, "reason": payload.reason }))
-    .execute(&state.db)
-    .await?;
+    let target =
+        target.ok_or_else(|| AppError::NotFound("Central Admin account not found".into()))?;
+    if target == auth_user.user_id && !payload.enabled {
+        return Err(AppError::Forbidden(
+            "Cannot disable your own account".into(),
+        ));
+    }
+    sqlx::query("UPDATE users SET is_active=$1,updated_at=NOW(),auth_revoked_at=CASE WHEN $1=FALSE THEN NOW() ELSE auth_revoked_at END WHERE id=$2")
+        .bind(payload.enabled).bind(target).execute(&mut *tx).await?;
+    if !payload.enabled {
+        sqlx::query("UPDATE control_center_sessions SET revoked_at=NOW() WHERE user_id=$1 AND revoked_at IS NULL").bind(target).execute(&mut *tx).await?;
+        sqlx::query("DELETE FROM control_center_step_ups WHERE user_id=$1")
+            .bind(target)
+            .execute(&mut *tx)
+            .await?;
+    }
+    sqlx::query("INSERT INTO audit_logs (user_id,action,resource_type,resource_id,metadata) VALUES ($1,'control_center.admin_access','user',$2,$3)")
+        .bind(auth_user.user_id).bind(target.to_string()).bind(json!({"enabled":payload.enabled,"reason":payload.reason})).execute(&mut *tx).await?;
+    tx.commit().await?;
 
     Ok(Json(
         json!({ "success": true, "message": "Admin access updated" }),

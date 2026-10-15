@@ -51,6 +51,10 @@ function CommandCenter() {
   const [health, setHealth] = useState<Health | null>(null);
   const [adminKpis, setAdminKpis] = useState<PortalKpi[]>([]);
   const [adminOverviewError, setAdminOverviewError] = useState('');
+  const [permissions,setPermissions]=useState<string[]>([]);
+  const [workspace,setWorkspace]=useState('');
+  const [records,setRecords]=useState<Array<Record<string,unknown>>>([]);
+  const [workspaceOffset,setWorkspaceOffset]=useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -64,7 +68,10 @@ function CommandCenter() {
       .then(async (response) => {
         const currentUser = response.data?.user as StaffUser | undefined;
         if (!active || !currentUser?.role) return;
-        if (currentUser.role === 'central_admin') await apiClient.get('/api/admin/auth/me');
+        if (currentUser.role === 'central_admin') {
+          const session=await apiClient.get('/api/admin/auth/me');
+          setPermissions(session.data?.permissions || []);
+        }
         setUser(currentUser);
         setStage('authenticated');
       })
@@ -109,12 +116,23 @@ function CommandCenter() {
     return () => { active = false; };
   }, [stage, user?.role]);
 
+  async function loadWorkspace(kind:string,offset=0) {
+    setBusy(true);setError('');setWorkspace(kind);
+    try {
+      const response=await apiClient.get('/api/control-center/collections/'+kind,{params:{limit:25,offset}});
+      setRecords(response.data.items || []);setWorkspaceOffset(offset);
+    } catch(error) {setRecords([]);setError(errorMessage(error));}
+    finally {setBusy(false);}
+  }
+
   async function centralLogin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError('');
     try {
       const response = await apiClient.post('/api/admin/auth/verify-totp', { identifier: email.trim(), code: mfaCode.trim() });
       if (!response.data?.token || response.data?.user?.role !== 'central_admin') throw new Error('Administrator session was not established.');
       window.sessionStorage.setItem('trackmyrmc_admin_token', response.data.token);
+      const session=await apiClient.get('/api/admin/auth/me');
+      setPermissions(session.data?.permissions || []);
       setUser(response.data.user); setMfaCode(''); setStage('authenticated');
     } catch (error) { setError(errorMessage(error)); }
     finally { setBusy(false); }
@@ -235,7 +253,7 @@ function CommandCenter() {
       // Always clear this browser session, even if the server is temporarily unreachable.
     } finally {
       window.sessionStorage.removeItem('trackmyrmc_admin_token');
-      setUser(null);
+      setUser(null);setPermissions([]);setRecords([]);setWorkspace('');
       setHealth(null);
       setAdminKpis([]);
       setAdminOverviewError('');
@@ -392,6 +410,21 @@ function CommandCenter() {
                 <p style={{ color: '#94a3b8', fontSize: 12 }}>Read-only statistics from the Rust API. This is not the complete reference Control Center.</p>
               </section>
             )}
+            {user.role === 'central_admin' && <section aria-label="Authorized workspaces" style={{marginTop:18}}>
+              <nav style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                {['users','plants','orders','support','audit','sessions'].filter(kind=>permissions.includes(({users:'user.view',plants:'plant.view',orders:'order.view',support:'support.view',audit:'audit.view',sessions:'session.view'} as Record<string,string>)[kind])).map(kind=>
+                  <button key={kind} disabled={busy} onClick={()=>void loadWorkspace(kind)} style={{...buttonStyle,width:'auto',textTransform:'capitalize'}}>{kind}</button>)}
+              </nav>
+              {workspace && <><h2 style={{textTransform:'capitalize'}}>{workspace}</h2>
+                {!busy && records.length===0 && <p>No records on this page.</p>}
+                <div style={{overflowX:'auto'}}><table style={{width:'100%',fontSize:13,borderCollapse:'collapse'}}>
+                  <thead><tr>{Object.keys(records[0]||{}).map(key=><th key={key} style={{textAlign:'left',padding:8}}>{key.replace(/_/g,' ')}</th>)}</tr></thead>
+                  <tbody>{records.map((row,index)=><tr key={String(row.id||index)}>{Object.entries(row).map(([key,value])=><td key={key} style={{padding:8,borderTop:'1px solid #334155'}}>{value===null?'—':String(value)}</td>)}</tr>)}</tbody>
+                </table></div>
+                <button disabled={busy||workspaceOffset===0} onClick={()=>void loadWorkspace(workspace,Math.max(0,workspaceOffset-25))}>Previous</button>
+                <button disabled={busy||records.length<25} onClick={()=>void loadWorkspace(workspace,workspaceOffset+25)}>Next</button>
+              </>}
+            </section>}
             <button type="button" onClick={logout} disabled={busy} style={buttonStyle}>{busy ? 'Signing out…' : 'Sign out and revoke session'}</button>
           </div>
         )}
