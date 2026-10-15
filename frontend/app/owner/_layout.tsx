@@ -15,7 +15,9 @@ export default function OwnerLayout() {
   const { hydrating, token, user } = useAuth();
   if (hydrating) return null;
   if (!token || !user) return <Redirect href="/login" />;
-  if (user.role !== "plant_owner") return <Redirect href="/role-home" />;
+  // The Rust API still persists the legacy "owner" alias for plant_owner.
+  // Both identities have the same owner workspace; no other role may enter.
+  if (user.role !== "plant_owner" && user.role !== "owner") return <Redirect href="/role-home" />;
 
   return (
     <Tabs screenOptions={{ headerShown: false }} tabBar={(props) => <GlassTabBar {...props} tabs={TABS} />}>

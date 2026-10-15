@@ -30,6 +30,7 @@ const index = read("app/index.tsx");
 const expectedRoutes = {
   customer: "/customer",
   plant_owner: "/owner",
+  owner: "/owner",
   driver: "/driver",
   admin: "/admin",
   dispatcher: "/dispatcher",
@@ -47,6 +48,64 @@ for (const [role, route] of Object.entries(expectedRoutes)) {
   const expected = `${role}: \"${route}\"`;
   if (!roleRoutes.includes(expected)) {
     failures.push(`Missing role route: ${role} -> ${route}`);
+  }
+}
+
+const ownerLayout = read("app/owner/_layout.tsx");
+const roleHome = read("app/role-home.tsx");
+const navBlueprint = read("src/constants/roles.ts");
+if (!ownerLayout.includes('user.role !== "plant_owner" && user.role !== "owner"')) {
+  failures.push("Owner workspace must recognize both canonical plant_owner and legacy owner role");
+}
+if (!roleHome.includes('owner: "/owner"')) {
+  failures.push("Role-home fallback must route existing owner aliases to the owner workspace");
+}
+for (const role of ["customer", "driver", "plant_owner", "admin", "dispatcher", "operator", "supervisor", "accountant", "quality_engineer", "fleet_manager", "store_manager"]) {
+  if (!navBlueprint.includes(`${role}: [`)) {
+    failures.push(`Missing declared role tab inventory for ${role}`);
+  }
+}
+for (const privilegedRole of ["central_admin", "authority"]) {
+  if (navBlueprint.includes(`${privilegedRole}: [`)) {
+    failures.push(`Privileged role ${privilegedRole} must not receive public mobile tabs`);
+  }
+}
+// Machine-readable snapshot of all original role screens. This inventory is
+// compared with the source repository using Git SHAs; GitHub CI only validates
+// the target's checked-in local files (the source repository is private).
+const inventoryPath = path.resolve(root, "../docs/reference-role-module-inventory.json");
+if (!fs.existsSync(inventoryPath)) {
+  failures.push("Missing source-to-target role module inventory");
+} else {
+  const inventory = JSON.parse(fs.readFileSync(inventoryPath, "utf8"));
+  const ids = new Set(inventory.roles.map((role) => role.id));
+  for (const role of [
+    "customer", "driver", "plant_owner", "admin", "dispatcher", "operator",
+    "supervisor", "accountant", "quality_engineer", "fleet_manager",
+    "store_manager", "authority", "central_admin"
+  ]) {
+    if (!ids.has(role)) failures.push(`Missing reference role from role inventory: ${role}`);
+  }
+  for (const role of inventory.roles) {
+    const expectedPresent = role.screens.filter((screen) => screen.sourceToTarget !== "missing");
+    if (role.targetScreenCount !== expectedPresent.length) {
+      failures.push(`Invalid target screen count for role ${role.id}`);
+    }
+    for (const screen of expectedPresent) {
+      const relativeToFrontend = screen.path.replace(/^frontend\//, "");
+      if (!fs.existsSync(path.join(root, relativeToFrontend))) {
+        failures.push(`Ported role screen absent: ${screen.path}`);
+      }
+    }
+  }
+  for (const restricted of ["authority", "central_admin"]) {
+    const role = inventory.roles.find((candidate) => candidate.id === restricted);
+    if (role?.targetRoute) failures.push(`Restricted ${restricted} unexpectedly has a mobile route`);
+  }
+  for (const screen of inventory.sharedScreens.filter((item) => item.sourceToTarget === "missing")) {
+    if (!["frontend/app/passkey-ceremony.tsx", "frontend/app/passkey-setup.tsx"].includes(screen.path)) {
+      failures.push(`Missing shared reference screen requires review: ${screen.path}`);
+    }
   }
 }
 

@@ -25,6 +25,7 @@ pub async fn my_plants(
         &auth_user,
         &[
             "owner",
+            "plant_owner",
             "admin",
             "dispatcher",
             "operator",
@@ -44,7 +45,7 @@ pub async fn my_plants(
             .fetch_all(&state.db)
             .await?
         }
-        "owner" => {
+        "owner" | "plant_owner" => {
             sqlx::query_as(
                 "SELECT id, name, city FROM rmc_plants WHERE owner_id = $1 AND is_active = TRUE ORDER BY name",
             )
@@ -78,7 +79,7 @@ pub async fn list_owner_plants(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["owner", "admin"])?;
+    check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
 
     // Scope owners to their own plants; platform admins may view all plants.
     let plants = if auth_user.role == "admin" {
@@ -104,7 +105,7 @@ pub async fn create_plant(
     auth_user: AuthUser,
     Json(req): Json<CreatePlantRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["owner", "admin"])?;
+    check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
     let plant = plant_repo::create_plant(
         &state.db,
         auth_user.user_id,
@@ -129,7 +130,7 @@ pub async fn get_billing_overview(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["owner", "admin"])?;
+    check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
 
     let active_mixers: i64 = if auth_user.role == "admin" {
         sqlx::query_scalar("SELECT COUNT(*) FROM transit_mixers tm WHERE tm.status <> 'inactive' AND NOT EXISTS (SELECT 1 FROM play_review_fixtures f WHERE f.mixer_id = tm.id)")

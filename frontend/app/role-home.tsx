@@ -41,6 +41,7 @@ export default function RoleHome() {
     customer: "/customer",
     driver: "/driver",
     plant_owner: "/owner",
+    owner: "/owner",
     admin: "/admin",
     dispatcher: "/dispatcher",
     operator: "/operator",
