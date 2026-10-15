@@ -82,6 +82,7 @@ async function ready(url, child) {
 let browser;
 let activeRole = 'startup', phase = 'fixture';
 let safeDiagnostics = [];
+let safeSuccessfulPaths = new Set();
 try {
   const api = start('cargo', ['run', '--manifest-path', 'backend/Cargo.toml', '--example', 'mobile_browser_fixture']);
   api.stdin.end(JSON.stringify({ capture_token: captureToken, totp_secrets: Object.fromEntries([...authenticators].map(([role, bytes]) => [role, base32(bytes)])) }));
@@ -107,6 +108,7 @@ try {
     const failures = [], runtimeErrors = [];
     safeDiagnostics = failures;
     const successfulPaths = new Set();
+    safeSuccessfulPaths = successfulPaths;
     let token;
     let currentIdentity;
     page.on('request', request => {
@@ -190,6 +192,7 @@ try {
   // Playwright errors can contain fill values. Never print the original error.
   console.error(`FAIL: synthetic mobile browser role=${activeRole} phase=${phase}. No credential-bearing diagnostics retained.`);
   for (const diagnostic of safeDiagnostics) console.error(diagnostic);
+  console.error(`Completed API paths: ${[...safeSuccessfulPaths].join(', ')}`);
   for (const diagnostic of startupDiagnostics) console.error(diagnostic);
   process.exitCode = 1;
 } finally {

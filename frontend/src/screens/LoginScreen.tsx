@@ -232,6 +232,7 @@ export default function LoginScreen() {
       const challenge = await verifyStaff(identifier, otp);
       clearTimer();
       setCode("");
+      setOtpVisual("idle");
       if (challenge.mfa_setup_required || challenge.status === "MFA_ENROLLMENT_REQUIRED") {
         const enrollment = await startStaffMfaEnrollment(challenge.challenge_token);
         setMfaEnrollment(enrollment);
@@ -253,6 +254,7 @@ export default function LoginScreen() {
       await confirmStaffMfaEnrollment(otp);
       setMfaEnrollment(null);
       setCode("");
+      setOtpVisual("idle");
       setPhase("staff_totp");
       toast("Authenticator enabled. Save your recovery codes, then enter the current code to finish login.", "success");
     } catch (e: any) {

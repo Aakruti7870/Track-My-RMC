@@ -91,8 +91,13 @@ export function OtpOrbitVerification({
   const shake = useRef(new Animated.Value(0)).current;
   const successScale = useRef(new Animated.Value(0.82)).current;
   const lastCompleted = useRef("");
+  const completeRef = useRef(onComplete);
   const animationRef = useRef<Animated.CompositeAnimation | null>(null);
   const [animating, setAnimating] = useState(false);
+
+  // A parent countdown can replace callbacks while the orbit is in flight.
+  // Keep the latest handler without cancelling a completed six-digit entry.
+  useEffect(() => { completeRef.current = onComplete; }, [onComplete]);
 
   const digits = useMemo(
     () => Array.from({ length: OTP_LENGTH }, (_, index) => value[index] || ""),
@@ -196,14 +201,14 @@ export function OtpOrbitVerification({
     animation.start(({ finished }) => {
       animationRef.current = null;
       setAnimating(false);
-      if (finished) onComplete(value);
+      if (finished) completeRef.current(value);
     });
 
     return () => {
       animationRef.current?.stop();
       animationRef.current = null;
     };
-  }, [assembly, collapse, onComplete, state, turn, value]);
+  }, [assembly, collapse, state, turn, value]);
 
   const sanitize = (text: string) => text.replace(/\D/g, "").slice(0, OTP_LENGTH);
   const canvasRotate = turn.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
