@@ -39,3 +39,9 @@ Run the new tests in PostgreSQL CI, repair compilation/runtime failures, validat
 ## Review reference
 Draft PR: https://github.com/Aakruti7870/Track-My-RMC/pull/37
 Initial commit: ef35db7c07a0deb609146e6ca283a99e1469b386
+
+## Follow-up verification
+- Commit a1c00066dd7b9ea1fb11108c5946044a0a5aae7f passed Backend CI run 38734684240, including the added API response and actual file-byte/authorization tests.
+- Frontend CI run 38734684220 passed both jobs for that commit.
+- Final follow-up additionally asserts over-delivery rejection, foreign-trip photo rejection, and persisted receiver/quantity in delivered trip responses.
+- Release/rollback requirements are in docs/delivery-release-plan.md.

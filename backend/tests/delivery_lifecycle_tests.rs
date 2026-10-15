@@ -165,6 +165,36 @@ async fn multi_load_pod_reconciles_parent_and_prevents_overwrite(pool: PgPool) {
         .unwrap();
     sqlx::query("INSERT INTO stored_files (uploaded_by, file_path, file_name, content_type, file_size_bytes, file_data, load_id) VALUES ($1, 'trackmyrmc/pod/second.jpg', 'test.jpg', 'image/jpeg', 3, $2, $3)")
         .bind(driver).bind(vec![1_u8, 2, 3]).bind(second).execute(&pool).await.unwrap();
+    assert!(matches!(
+        dispatch_repo::record_pod(
+            &pool,
+            first,
+            driver,
+            "Receiver",
+            "",
+            Some("signature"),
+            Some("trackmyrmc/pod/test.jpg"),
+            None,
+            7.0
+        )
+        .await,
+        Err(AppError::BadRequest(_))
+    ));
+    assert!(matches!(
+        dispatch_repo::record_pod(
+            &pool,
+            first,
+            driver,
+            "Receiver",
+            "",
+            Some("signature"),
+            Some("trackmyrmc/pod/second.jpg"),
+            None,
+            6.0
+        )
+        .await,
+        Err(AppError::BadRequest(_))
+    ));
     for load in [first, second] {
         let photo = if load == first {
             "trackmyrmc/pod/test.jpg"
@@ -228,6 +258,25 @@ async fn multi_load_pod_reconciles_parent_and_prevents_overwrite(pool: PgPool) {
         .await,
         Err(AppError::Conflict(_))
     ));
+    use axum::{
+        extract::{Path, State},
+        response::IntoResponse,
+    };
+    let response = trackmyrmc_backend::routes::driver_routes::get_trip_details(
+        State(state(pool.clone())),
+        driver_user(driver),
+        Path(first),
+    )
+    .await
+    .unwrap()
+    .into_response();
+    let body = axum::body::to_bytes(response.into_body(), 10000)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["trip"]["status"], "DELIVERED");
+    assert_eq!(json["pod"]["receiver_name"], "Receiver");
+    assert_eq!(json["pod"]["delivered_quantity"], 6.0);
     assert!(advance(&pool, first, driver, TripAction::Start)
         .await
         .is_err());

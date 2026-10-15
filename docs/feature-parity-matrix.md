@@ -16,6 +16,34 @@ No module is marked COMPLETE: route presence does not prove matching schemas, pe
 | Load and dispatcher plant isolation | PARTIAL | Customer ownership and plant staff/owner checks added; remaining state/assignment validation outstanding |
 | Authentication and MFA | PARTIAL | Existing routes retained; mobile routing guard passed; live providers and full security verification blocked |
 
+## Module-level acceptance
+
+| Module | Reference source | Status | Remaining acceptance work |
+|---|---|---|---|
+| Authentication | auth, staff_auth, staff_mfa, staff_passkeys, admin_auth | PARTIAL | OTP, MFA, passkeys, session and recovery; provider execution outstanding |
+| Plants | plant_onboarding, plant_discovery, master_data | PARTIAL | Registration, discovery, configuration and staff; contract verification outstanding |
+| Users and permissions | admin_portal, control_center, me | PARTIAL | Account lifecycle and approved role access; full security audit outstanding |
+| Customers and sites | customer, business_ui | PARTIAL | Customer identity, projects and sites; end-to-end data checks outstanding |
+| Orders | customer, owner, staff | PARTIAL | Creation, acceptance, scheduling and status; lifecycle integration incomplete |
+| Production | operator_ops, staff | PARTIAL | Production records and quantity; prepare/challan parity incomplete |
+| Fleet | master_data, loads | PARTIAL | Mixers, drivers, assignments; occupancy and capacity validation gaps |
+| GPS | driver, maps | PARTIAL | Trip ingestion repaired; history, duplicate/offline events and visibility outstanding |
+| Dispatch | loads | PARTIAL | Plant scopes repaired; preparation, gate pass and dispatch rules incomplete |
+| Challans | loads, customer | PARTIAL | Challan creation, signing, PDF/export verification outstanding |
+| POD | driver | PARTIAL | Mobile DTO, evidence persistence and multi-load reconciliation repaired; device flow outstanding |
+| Quality | staff, customer | PARTIAL | Quality/cube records and follow-ups; runtime verification outstanding |
+| Inventory | business_ui, master_data | PARTIAL | Stock and adjustments; consumption transaction tests outstanding |
+| Finance | finance_ops | PARTIAL | Invoices, billing, ledger, expenses and payments; reconciliation and workflow tests outstanding |
+| Workforce | workforce, workforce_roster, hr_master | PARTIAL | Attendance, shifts, leave and employee lifecycle; full role tests outstanding |
+| Payroll | payroll_closure, payroll_concurrency_hotfix, workforce_reports | PARTIAL | Calculation, locking, closure and export; reference concurrency policies need verification |
+| Notifications | notify, meta_whatsapp | PARTIAL | In-app, push, WhatsApp and automation; provider execution and delivery hooks outstanding |
+| Reports | workforce_reports, finance_ops | PARTIAL | Operational, workforce and finance exports; data assertions outstanding |
+| Admin | control_center, admin_portal | PARTIAL | Web controls, MFA and settings; browser and full permission tests outstanding |
+| Integrations | maps, permanent_access, automation | PARTIAL | KYC, maps, batching and external automation; credentials and behavior gates outstanding |
+| Support | assistant | PARTIAL | Support cases, replies and status; lifecycle execution outstanding |
+| Account deletion and policies | account_deletion, public_policy | PARTIAL | Deletion lifecycle and public policy pages; role and retention checks outstanding |
+| Plans and onboarding access | plant_plans, kyc_recovery, permanent_access | PARTIAL | Subscription, KYC recovery and provisioning; payment/provider execution outstanding |
+
 ## Reference API inventory
 
 Every discovered decorator in the reference routers is listed below. Matching paths are an inventory aid only. Methods and response contracts still need endpoint-by-endpoint execution.

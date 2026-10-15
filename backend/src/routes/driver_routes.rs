@@ -350,7 +350,10 @@ pub async fn get_trip_details(
                p.name as plant_name, p.address_line as plant_address,
                s.name as site_name, s.address_line as site_address,
                s.latitude as site_lat, s.longitude as site_lng,
-               s.contact_person, s.contact_phone
+               s.contact_person, s.contact_phone,
+               (SELECT jsonb_build_object('receiver_name', pod.receiver_name,
+                    'delivered_quantity', COALESCE(pod.delivered_quantity, l.quantity_m3)::DOUBLE PRECISION)
+                FROM proof_of_deliveries pod WHERE pod.load_id = l.id) AS pod
         FROM order_loads l
         INNER JOIN orders o ON o.id = l.order_id
         LEFT JOIN transit_mixers tm ON tm.id = l.mixer_id
@@ -382,6 +385,8 @@ pub async fn get_trip_details(
 
     Ok(Json(json!({
         "success": true,
+        "pod": row.get::<Option<Value>, _>("pod"),
+        "site_address": saddr,
         "trip": {
             "id": lid,
             "load_number": lnum,
