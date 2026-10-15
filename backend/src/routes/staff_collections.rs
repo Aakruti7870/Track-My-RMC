@@ -222,7 +222,7 @@ ORDER BY i.created_at DESC LIMIT 500
         }
         "ledger" => {
             r#"
-SELECT MIN(i.id)::text id, 'person-circle-outline' icon,
+SELECT MIN(i.id::text) id, 'person-circle-outline' icon,
        COALESCE(u.full_name, 'Customer') primary_text,
        'Billed ₹' || SUM(i.total_amount)::text || ' · Paid ₹' ||
          SUM(COALESCE(p.paid, 0))::text secondary_text,
