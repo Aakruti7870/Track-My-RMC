@@ -15,7 +15,6 @@ use sha2::{Digest, Sha256};
 use sqlx::Row;
 use uuid::Uuid;
 
-
 fn session_token_hash(headers: &HeaderMap) -> Result<String, AppError> {
     let bearer = headers
         .get(AUTHORIZATION)
@@ -192,7 +191,9 @@ pub async fn set_reviewer_access(
     check_role(&auth_user, &["admin"])?;
     require_recent_step_up(&state, &auth_user, &headers).await?;
     if payload.reason.trim().len() < 10 {
-        return Err(AppError::BadRequest("A reason of at least 10 characters is required".to_string()));
+        return Err(AppError::BadRequest(
+            "A reason of at least 10 characters is required".to_string(),
+        ));
     }
 
     sqlx::query("UPDATE play_review_fixtures SET enabled = $1")
@@ -271,11 +272,20 @@ pub async fn update_admin_access(
     check_role(&auth_user, &["admin"])?;
     require_recent_step_up(&state, &auth_user, &headers).await?;
     if payload.reason.trim().len() < 10 {
-        return Err(AppError::BadRequest("A reason of at least 10 characters is required".to_string()));
+        return Err(AppError::BadRequest(
+            "A reason of at least 10 characters is required".to_string(),
+        ));
     }
     let email_lower = payload.email.trim().to_lowercase();
-    if !payload.enabled && auth_user.email.as_deref().is_some_and(|email| email.eq_ignore_ascii_case(&email_lower)) {
-        return Err(AppError::Forbidden("An administrator cannot disable their own account".to_string()));
+    if !payload.enabled
+        && auth_user
+            .email
+            .as_deref()
+            .is_some_and(|email| email.eq_ignore_ascii_case(&email_lower))
+    {
+        return Err(AppError::Forbidden(
+            "An administrator cannot disable their own account".to_string(),
+        ));
     }
     sqlx::query(
         "UPDATE users SET is_active = $1, updated_at = NOW() WHERE email = $2 AND role = 'admin'",
@@ -359,7 +369,9 @@ pub async fn assign_plant_owner(
     check_role(&auth_user, &["admin"])?;
     require_recent_step_up(&state, &auth_user, &headers).await?;
     if payload.reason.trim().len() < 10 {
-        return Err(AppError::BadRequest("A reason of at least 10 characters is required".to_string()));
+        return Err(AppError::BadRequest(
+            "A reason of at least 10 characters is required".to_string(),
+        ));
     }
 
     // Assignment must not silently promote staff, customers or administrators.
@@ -376,13 +388,12 @@ pub async fn assign_plant_owner(
     }
 
     let mut tx = state.db.begin().await?;
-    let updated = sqlx::query(
-        "UPDATE rmc_plants SET owner_id = $1, updated_at = NOW() WHERE id = $2",
-    )
-    .bind(payload.owner_user_id)
-    .bind(payload.plant_id)
-    .execute(&mut *tx)
-    .await?;
+    let updated =
+        sqlx::query("UPDATE rmc_plants SET owner_id = $1, updated_at = NOW() WHERE id = $2")
+            .bind(payload.owner_user_id)
+            .bind(payload.plant_id)
+            .execute(&mut *tx)
+            .await?;
     if updated.rows_affected() != 1 {
         return Err(AppError::NotFound("Plant not found".to_string()));
     }
@@ -396,7 +407,9 @@ pub async fn assign_plant_owner(
     .await?;
     tx.commit().await?;
 
-    Ok(Json(json!({ "success": true, "message": "Owner assigned to plant" })))
+    Ok(Json(
+        json!({ "success": true, "message": "Owner assigned to plant" }),
+    ))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -413,7 +426,9 @@ pub async fn admin_step_up(
     check_role(&auth_user, &["admin"])?;
     let code = payload.code.trim();
     if code.len() != 6 || !code.bytes().all(|c| c.is_ascii_digit()) {
-        return Err(AppError::Unauthorized("A six-digit authenticator code is required".to_string()));
+        return Err(AppError::Unauthorized(
+            "A six-digit authenticator code is required".to_string(),
+        ));
     }
     // Verify the actual enrolled credential; never treat a supplied code as proof by itself.
     verify_totp_login(&state.db, auth_user.user_id, code).await?;
@@ -425,7 +440,9 @@ pub async fn admin_step_up(
     .bind(token_hash)
     .execute(&state.db)
     .await?;
-    Ok(Json(json!({ "success": true, "verified": true, "step_up_fresh": true, "expires_in_seconds": 300 })))
+    Ok(Json(
+        json!({ "success": true, "verified": true, "step_up_fresh": true, "expires_in_seconds": 300 }),
+    ))
 }
 
 pub async fn admin_logout_all(
@@ -452,7 +469,9 @@ pub async fn admin_logout_all(
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
-    Ok(Json(json!({ "success": true, "message": "All account sessions revoked" })))
+    Ok(Json(
+        json!({ "success": true, "message": "All account sessions revoked" }),
+    ))
 }
 
 pub async fn get_portal_summary(
