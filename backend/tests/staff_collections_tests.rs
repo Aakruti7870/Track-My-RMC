@@ -1,25 +1,52 @@
-use axum::{extract::{Path, State}, response::IntoResponse};
+use axum::{
+    extract::{Path, State},
+    response::IntoResponse,
+};
 use sqlx::PgPool;
-use trackmyrmc_backend::{auth::AuthUser, config::AppConfig, error::AppError, routes::{staff_collections, staff_routes}, state::AppState};
+use trackmyrmc_backend::{
+    auth::AuthUser,
+    config::AppConfig,
+    error::AppError,
+    routes::{staff_collections, staff_routes},
+    state::AppState,
+};
 use uuid::Uuid;
 
 fn state(db: PgPool) -> AppState {
-    AppState::new(db, AppConfig {
-        database_url: String::new(),
-        jwt_secret: "test-only".repeat(10),
-        jwt_expiration_hours: 1, port: 8000, host: "127.0.0.1".into(),
-        cors_allowed_origins: vec![], environment: "test".into(),
-        meta_whatsapp_token: None, meta_whatsapp_phone_number_id: None, meta_whatsapp_waba_id: None,
-        meta_graph_api_version: "v26.0".into(), email_api_key: None,
-        email_from_address: "test@example.invalid".into(),
-        otp_pepper: "test-only".repeat(8),
-        otp_expiration_minutes: 5, otp_cooldown_seconds: 60, otp_max_verification_attempts: 3,
-        play_signing_sha256: None, play_review_access_code: None, google_places_api_key: None,
-    })
+    AppState::new(
+        db,
+        AppConfig {
+            database_url: String::new(),
+            jwt_secret: "test-only".repeat(10),
+            jwt_expiration_hours: 1,
+            port: 8000,
+            host: "127.0.0.1".into(),
+            cors_allowed_origins: vec![],
+            environment: "test".into(),
+            meta_whatsapp_token: None,
+            meta_whatsapp_phone_number_id: None,
+            meta_whatsapp_waba_id: None,
+            meta_graph_api_version: "v26.0".into(),
+            email_api_key: None,
+            email_from_address: "test@example.invalid".into(),
+            otp_pepper: "test-only".repeat(8),
+            otp_expiration_minutes: 5,
+            otp_cooldown_seconds: 60,
+            otp_max_verification_attempts: 3,
+            play_signing_sha256: None,
+            play_review_access_code: None,
+            google_places_api_key: None,
+        },
+    )
 }
 
 fn user(id: Uuid, role: &str) -> AuthUser {
-    AuthUser { user_id: id, role: role.to_string(), phone: "".to_string(), email: None }
+    AuthUser {
+        user_id: id,
+        role: role.to_string(),
+        phone: "".to_string(),
+        email: None,
+    }
 }
 
 async fn create_user(db: &PgPool, role: &str) -> Uuid {
@@ -58,37 +85,70 @@ async fn collection_is_real_scoped_and_matches_mobile_contract(db: PgPool) {
         .bind(plant).bind(dispatcher).execute(&db).await.unwrap();
     let app = state(db);
     let resp = staff_collections::get_staff_collection(
-        State(app.clone()), user(dispatcher, "dispatcher"), Path("dispatch".to_string()),
-    ).await.unwrap().0;
+        State(app.clone()),
+        user(dispatcher, "dispatcher"),
+        Path("dispatch".to_string()),
+    )
+    .await
+    .unwrap()
+    .0;
     assert_eq!(resp["title"], "Dispatch Queue");
     assert_eq!(resp["items"].as_array().unwrap().len(), 1);
-    assert!(resp["items"][0]["primary"].as_str().unwrap().contains("M25"));
-    assert!(resp["items"][0]["nav"].as_str().unwrap().starts_with("/dispatch-order/"));
+    assert!(resp["items"][0]["primary"]
+        .as_str()
+        .unwrap()
+        .contains("M25"));
+    assert!(resp["items"][0]["nav"]
+        .as_str()
+        .unwrap()
+        .starts_with("/dispatch-order/"));
 
     let home = staff_routes::get_staff_home(State(app.clone()), user(dispatcher, "dispatcher"))
-        .await.unwrap().into_response();
-    let data: serde_json::Value = serde_json::from_slice(
-        &axum::body::to_bytes(home.into_body(), 10000).await.unwrap(),
-    ).unwrap();
+        .await
+        .unwrap()
+        .into_response();
+    let data: serde_json::Value =
+        serde_json::from_slice(&axum::body::to_bytes(home.into_body(), 10000).await.unwrap())
+            .unwrap();
     assert_eq!(data["role"], "dispatcher");
     assert_eq!(data["primary"]["kind"], "dispatch");
     assert_eq!(data["kpis"].as_array().unwrap().len(), 4);
 
     assert!(matches!(
-        staff_collections::get_staff_collection(State(app.clone()), user(outside, "dispatcher"), Path("orders".to_owned())).await,
+        staff_collections::get_staff_collection(
+            State(app.clone()),
+            user(outside, "dispatcher"),
+            Path("orders".to_owned())
+        )
+        .await,
         Err(AppError::Forbidden(_))
     ));
     assert!(matches!(
-        staff_collections::get_staff_collection(State(app.clone()), user(customer, "customer"), Path("orders".to_owned())).await,
+        staff_collections::get_staff_collection(
+            State(app.clone()),
+            user(customer, "customer"),
+            Path("orders".to_owned())
+        )
+        .await,
         Err(AppError::Forbidden(_))
     ));
     assert!(matches!(
-        staff_collections::get_staff_collection(State(app.clone()), user(dispatcher, "dispatcher"), Path("invoices".to_owned())).await,
+        staff_collections::get_staff_collection(
+            State(app.clone()),
+            user(dispatcher, "dispatcher"),
+            Path("invoices".to_owned())
+        )
+        .await,
         Err(AppError::Forbidden(_))
     ));
     let owner_view = staff_collections::get_staff_collection(
-        State(app), user(owner, "owner"), Path("orders".to_owned())
-    ).await.unwrap().0;
+        State(app),
+        user(owner, "owner"),
+        Path("orders".to_owned()),
+    )
+    .await
+    .unwrap()
+    .0;
     assert_eq!(owner_view["items"].as_array().unwrap().len(), 1);
 }
 
@@ -107,21 +167,50 @@ async fn multi_plant_owner_sees_only_owned_plants_and_orders(db: PgPool) {
     let app = state(db);
     // Force PostgreSQL to parse and execute every registered collection query,
     // including empty invoice, ledger, inventory and incident data sets.
-    for kind in ["orders", "dispatch", "production", "quality", "incidents",
-                 "fleet", "drivers", "invoices", "ledger", "inventory", "plants"] {
+    for kind in [
+        "orders",
+        "dispatch",
+        "production",
+        "quality",
+        "incidents",
+        "fleet",
+        "drivers",
+        "invoices",
+        "ledger",
+        "inventory",
+        "plants",
+    ] {
         let collection = staff_collections::get_staff_collection(
-            State(app.clone()), user(owner, "plant_owner"), Path(kind.to_string())
-        ).await.expect("all reference collections should execute").0;
-        assert!(collection["items"].is_array(), "invalid contract for {kind}");
+            State(app.clone()),
+            user(owner, "plant_owner"),
+            Path(kind.to_string()),
+        )
+        .await
+        .expect("all reference collections should execute")
+        .0;
+        assert!(
+            collection["items"].is_array(),
+            "invalid contract for {kind}"
+        );
     }
 
     let result = staff_collections::get_staff_collection(
-        State(app.clone()), user(owner, "plant_owner"), Path("orders".into())
-    ).await.unwrap().0;
+        State(app.clone()),
+        user(owner, "plant_owner"),
+        Path("orders".into()),
+    )
+    .await
+    .unwrap()
+    .0;
     assert_eq!(result["items"].as_array().unwrap().len(), 2);
 
     let plants = staff_collections::get_staff_collection(
-        State(app), user(owner, "plant_owner"), Path("plants".into())
-    ).await.unwrap().0;
+        State(app),
+        user(owner, "plant_owner"),
+        Path("plants".into()),
+    )
+    .await
+    .unwrap()
+    .0;
     assert_eq!(plants["items"].as_array().unwrap().len(), 2);
 }
