@@ -1580,8 +1580,6 @@ async fn quality_recording_requires_active_plant_engineer_and_matching_load(db: 
         "accountant",
         "fleet_manager",
         "store_manager",
-        "authority",
-        "central_admin",
     ] {
         let id = identity(&db, role).await;
         let other = generate_token(id, role, "", None, &state.config.jwt_secret, 1).unwrap();
@@ -1589,6 +1587,22 @@ async fn quality_recording_requires_active_plant_engineer_and_matching_load(db: 
             call(&app, "/api/staff/quality", Some(payload.clone()), &other)
                 .await
                 .0,
+            StatusCode::FORBIDDEN
+        );
+    }
+    // Deny mismatched privileged claims without creating or elevating privileged identities.
+    for role in ["authority", "central_admin"] {
+        let mismatched =
+            generate_token(engineer, role, "", None, &state.config.jwt_secret, 1).unwrap();
+        assert_eq!(
+            call(
+                &app,
+                "/api/staff/quality",
+                Some(payload.clone()),
+                &mismatched
+            )
+            .await
+            .0,
             StatusCode::FORBIDDEN
         );
     }
