@@ -105,6 +105,16 @@ async fn multi_plant_owner_sees_only_owned_plants_and_orders(db: PgPool) {
     create_order(&db, customer, p3).await;
 
     let app = state(db);
+    // Force PostgreSQL to parse and execute every registered collection query,
+    // including empty invoice, ledger, inventory and incident data sets.
+    for kind in ["orders", "dispatch", "production", "quality", "incidents",
+                 "fleet", "drivers", "invoices", "ledger", "inventory", "plants"] {
+        let collection = staff_collections::get_staff_collection(
+            State(app.clone()), user(owner, "plant_owner"), Path(kind.to_string())
+        ).await.expect("all reference collections should execute").0;
+        assert!(collection["items"].is_array(), "invalid contract for {kind}");
+    }
+
     let result = staff_collections::get_staff_collection(
         State(app.clone()), user(owner, "plant_owner"), Path("orders".into())
     ).await.unwrap().0;
