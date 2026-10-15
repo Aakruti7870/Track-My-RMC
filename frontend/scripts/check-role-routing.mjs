@@ -30,6 +30,7 @@ const index = read("app/index.tsx");
 const expectedRoutes = {
   customer: "/customer",
   plant_owner: "/owner",
+  owner: "/owner",
   driver: "/driver",
   admin: "/admin",
   dispatcher: "/dispatcher",
@@ -50,6 +51,25 @@ for (const [role, route] of Object.entries(expectedRoutes)) {
   }
 }
 
+const ownerLayout = read("app/owner/_layout.tsx");
+const roleHome = read("app/role-home.tsx");
+const navBlueprint = read("src/constants/roles.ts");
+if (!ownerLayout.includes('user.role !== "plant_owner" && user.role !== "owner"')) {
+  failures.push("Owner workspace must recognize both canonical plant_owner and legacy owner role");
+}
+if (!roleHome.includes('owner: "/owner"')) {
+  failures.push("Role-home fallback must route existing owner aliases to the owner workspace");
+}
+for (const role of ["customer", "driver", "plant_owner", "admin", "dispatcher", "operator", "supervisor", "accountant", "quality_engineer", "fleet_manager", "store_manager"]) {
+  if (!navBlueprint.includes(`${role}: [`)) {
+    failures.push(`Missing declared role tab inventory for ${role}`);
+  }
+}
+for (const privilegedRole of ["central_admin", "authority"]) {
+  if (navBlueprint.includes(`${privilegedRole}: [`)) {
+    failures.push(`Privileged role ${privilegedRole} must not receive public mobile tabs`);
+  }
+}
 for (const forbiddenRole of ["authority", "central_admin", "super_admin"]) {
   if (roleRoutes.includes(`${forbiddenRole}:`)) {
     failures.push(`Privileged role must not have a public mobile route: ${forbiddenRole}`);
