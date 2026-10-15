@@ -198,7 +198,10 @@ try {
       phase = 'project hub';
       await page.getByText('More', { exact: true }).last().click();
       await page.getByTestId('role-module-projects').click();
-      await expect(page.getByText('Browser site', { exact: true }).first()).toBeVisible();
+      // The Project & Site Hub is the route-level contract; a site card is
+      // conditional on the authorized project-sites response and must not be
+      // assumed to exist merely because the Orders fixture contains a site.
+      await expect(page.getByText('Project & Site Hub', { exact: true })).toBeVisible();
       await expect.poll(() => successfulPaths.has('/api/customer/project-sites')).toBe(true);
       await page.goBack();
       phase = 'support create';
