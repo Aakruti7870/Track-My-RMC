@@ -174,7 +174,7 @@ jobs:
       - name: Confirm live database parity before any release mutation
         run: |
           set -euo pipefail
-          REMOTE="set -o pipefail; curl -fsSL https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$RELEASE_SHA/ops/aws-production-preflight.sh | bash"
+          REMOTE="set -eu; curl -fsSL https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$RELEASE_SHA/ops/aws-production-preflight.sh -o /tmp/trackmyrmc-preflight-$RELEASE_SHA.sh; bash /tmp/trackmyrmc-preflight-$RELEASE_SHA.sh"
           PARAMS="$(jq -cn --arg cmd "$REMOTE" '{commands:[$cmd]}')"
           ID="$(aws ssm send-command --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript \
             --comment "TrackMyRMC production read-only DB preflight" --parameters "$PARAMS" \
@@ -225,7 +225,7 @@ jobs:
         id: deploy_release
         run: |
           set -euo pipefail
-          REMOTE="set -o pipefail; curl -fsSL https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$RELEASE_SHA/ops/aws-deploy-ec2.sh | RELEASE_SHA=$RELEASE_SHA bash"
+          REMOTE="set -eu; curl -fsSL https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$RELEASE_SHA/ops/aws-deploy-ec2.sh -o /tmp/trackmyrmc-deploy-$RELEASE_SHA.sh; RELEASE_SHA=$RELEASE_SHA bash /tmp/trackmyrmc-deploy-$RELEASE_SHA.sh"
           PARAMS="$(jq -cn --arg cmd "$REMOTE" '{commands:[$cmd]}')"
           COMMAND_ID="$(aws ssm send-command --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript \
             --comment "TrackMyRMC gated release $RELEASE_SHA" --parameters "$PARAMS" \
@@ -258,7 +258,7 @@ jobs:
         if: ${{ failure() && steps.deploy_release.outcome == 'success' && steps.public_smoke.outcome == 'failure' }}
         run: |
           set -euo pipefail
-          REMOTE="set -o pipefail; curl -fsSL https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$RELEASE_SHA/ops/aws-rollback-ec2.sh | RELEASE_SHA=$RELEASE_SHA bash"
+          REMOTE="set -eu; curl -fsSL https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$RELEASE_SHA/ops/aws-rollback-ec2.sh -o /tmp/trackmyrmc-rollback-$RELEASE_SHA.sh; RELEASE_SHA=$RELEASE_SHA bash /tmp/trackmyrmc-rollback-$RELEASE_SHA.sh"
           PARAMS="$(jq -cn --arg cmd "$REMOTE" '{commands:[$cmd]}')"
           COMMAND_ID="$(aws ssm send-command --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript \
             --comment "TrackMyRMC failed external smoke rollback $RELEASE_SHA" --parameters "$PARAMS" \
