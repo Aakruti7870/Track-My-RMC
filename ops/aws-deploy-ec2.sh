@@ -2,6 +2,78 @@
 set -euo pipefail
 
 : "${RELEASE_SHA:?RELEASE_SHA is required}"
+if [[ ! "$RELEASE_SHA" =~ ^[a-f0-9]{40}$ ]]; then
+  echo "BLOCKED: deployment requires a pinned 40-character git SHA." >&2
+  exit 1
+fi
+
+# Fail before ANY package, Nginx, file, systemd or database mutation. The
+# currently running database must match the approved production database.
+PREFLIGHT_SCRIPT="$(mktemp)"
+trap 'rm -f "$PREFLIGHT_SCRIPT"' EXIT
+curl --fail --silent --show-error --location \
+  "https://raw.githubusercontent.com/Aakruti7870/Track-My-RMC/$RELEASE_SHA/ops/aws-production-preflight.sh" \
+  -o "$PREFLIGHT_SCRIPT"
+bash "$PREFLIGHT_SCRIPT"
+rm -f "$PREFLIGHT_SCRIPT"
+trap - EXIT
+
+# Application rollback is separate from database restoration. The database
+# compatibility/restore-rehearsal gate is required BEFORE this script is run.
+umask 077
+ROLLBACK_DIR="/var/lib/trackmyrmc/release-backups/$RELEASE_SHA"
+ROLLBACK_ARMED=0
+mkdir -p "$ROLLBACK_DIR"
+for item in frontend admin-web source; do
+  if [ -d "/opt/trackmyrmc/$item" ]; then
+    cp -a "/opt/trackmyrmc/$item" "$ROLLBACK_DIR/$item"
+  fi
+done
+for pair in \
+  "/etc/trackmyrmc/app.env:app.env" \
+  "/etc/systemd/system/trackmyrmc-backend.service:backend.service" \
+  "/etc/nginx/sites-available/trackmyrmc:nginx.conf" \
+  "/opt/trackmyrmc/DEPLOYED_RELEASE_SHA:deployed_sha"; do
+  from="${pair%%:*}"
+  to="${pair#*:}"
+  if [ -f "$from" ]; then cp -a "$from" "$ROLLBACK_DIR/$to"; fi
+done
+
+rollback_on_error() {
+  rc=$?
+  trap - ERR
+  if [ "$ROLLBACK_ARMED" -eq 1 ]; then
+    echo "DEPLOY FAILED: restoring previous application files and services." >&2
+    set +e
+    for item in frontend admin-web source; do
+      if [ -d "$ROLLBACK_DIR/$item" ]; then
+        rm -rf "/opt/trackmyrmc/$item"
+        cp -a "$ROLLBACK_DIR/$item" "/opt/trackmyrmc/$item"
+      fi
+    done
+    for pair in \
+      "app.env:/etc/trackmyrmc/app.env" \
+      "backend.service:/etc/systemd/system/trackmyrmc-backend.service" \
+      "nginx.conf:/etc/nginx/sites-available/trackmyrmc" \
+      "deployed_sha:/opt/trackmyrmc/DEPLOYED_RELEASE_SHA"; do
+      from="${pair%%:*}"
+      to="${pair#*:}"
+      if [ -f "$ROLLBACK_DIR/$from" ]; then cp -a "$ROLLBACK_DIR/$from" "$to"; fi
+    done
+    systemctl daemon-reload
+    nginx -t && systemctl restart nginx
+    systemctl restart trackmyrmc-backend
+    if curl -fsS --max-time 10 http://127.0.0.1:8000/health >/dev/null; then
+      echo "Application rollback recovered backend health." >&2
+    else
+      echo "ALERT: application rollback attempted, backend health still failed." >&2
+    fi
+  fi
+  exit "$rc"
+}
+ROLLBACK_ARMED=1
+trap rollback_on_error ERR
+
 REGION="ap-south-1"
 BUCKET="trackmyrmc-prod-artifacts-260234292958-ap-south-1"
 RDS_SECRET="arn:aws:secretsmanager:ap-south-1:260234292958:secret:rds!db-725487fe-ba11-4b7a-acdd-6c60010aa20f-CdtJlW"
@@ -226,18 +298,8 @@ if [[ ! "$DB_NAME" =~ ^[A-Za-z0-9_]+$ ]]; then
   exit 1
 fi
 
-# Do not cut production data over to a different database as a side effect of
-# a web/backend release. Until the database parity/backup gate is completed,
-# preserve the database already configured by the running release.
-CURRENT_DB_NAME=""
-if [ -r /etc/trackmyrmc/app.env ]; then
-  CURRENT_DB_NAME="$(python3 -c 'from urllib.parse import urlparse; import sys; print(urlparse(next(x.split("=",1)[1].strip() for x in open(sys.argv[1]) if x.startswith("DATABASE_URL="))).path.lstrip("/"))' /etc/trackmyrmc/app.env)"
-fi
-if [[ -n "$CURRENT_DB_NAME" && "$CURRENT_DB_NAME" != "$DB_NAME" && "${ALLOW_DATABASE_CUTOVER:-false}" != "true" ]]; then
-  echo "Database cutover is blocked: runtime currently uses '$CURRENT_DB_NAME' while secret DB_NAME is '$DB_NAME'. Preserving '$CURRENT_DB_NAME' until a verified backup and data/migration parity check authorizes cutover."
-  DB_NAME="$CURRENT_DB_NAME"
-fi
-
+# The preflight already verified current DB, secret DB_NAME and RDS host.
+# Never silently fall back to a different database or permit a cutover flag.
 DB_JSON="$(aws secretsmanager get-secret-value --secret-id "$RDS_SECRET" --query SecretString --output text)"
 DATABASE_URL="$(printf '%s' "$DB_JSON" | TRACKMYRMC_DB_NAME="$DB_NAME" python3 -c 'import json,sys,urllib.parse as u,os; x=json.load(sys.stdin); db=os.environ["TRACKMYRMC_DB_NAME"]; print("postgres://%s:%s@trackmyrmc-postgres.cf8mmcwuuinx.ap-south-1.rds.amazonaws.com:5432/%s?sslmode=require"%(u.quote(x["username"],safe=""),u.quote(x["password"],safe=""),u.quote(db,safe="")))')"
 
@@ -382,4 +444,6 @@ ADMIN_JS="$(printf '%s' "$ADMIN_HTML" | grep -Eo 'src="/admin/assets/[^"]+\.js"'
 test -n "$ADMIN_JS"
 curl --resolve trackmyrmc.com:443:127.0.0.1 --fail --silent --show-error "https://trackmyrmc.com$ADMIN_JS" >/dev/null
 
+ROLLBACK_ARMED=0
+trap - ERR
 echo "TrackMyRMC deployment successful: $RELEASE_SHA"
