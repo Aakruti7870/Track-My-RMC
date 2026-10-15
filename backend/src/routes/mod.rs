@@ -21,6 +21,7 @@ pub mod plant_onboarding;
 pub mod plant_plans_routes;
 pub mod play_review;
 pub mod staff_routes;
+pub mod staff_collections;
 pub mod storage_routes;
 pub mod well_known;
 pub mod workforce_reports;
@@ -447,6 +448,7 @@ pub fn build_app_router(state: AppState) -> Router {
         .route("/api/loads/gate-pass", post(loads_routes::issue_gate_pass))
         // --- Staff Operations Domain ---
         .route("/api/staff/home", get(staff_routes::get_staff_home))
+        .route("/api/staff/collection/:kind", get(staff_collections::get_staff_collection))
         .route("/api/staff/fleet", get(staff_routes::list_staff_fleet))
         .route("/api/staff/drivers", get(staff_routes::list_staff_drivers))
         .route(
