@@ -40,7 +40,7 @@ pub async fn place_order(
         &state.db,
         crate::repositories::order_repo::NewOrder {
             order_number: &order_number,
-            customer_id: customer_id,
+            customer_id,
             plant_id: req.plant_id,
             site_id: req.site_id,
             concrete_grade: &req.concrete_grade,

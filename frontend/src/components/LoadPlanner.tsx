@@ -66,11 +66,11 @@ export function LoadPlanner({ orderId, resourceBase, onChanged }: Props) {
     try {
       const [loads, fleet, driverList] = await Promise.all([
         apiGet<LoadResponse>(`/loads/orders/${orderId}`, token),
-        apiGet<{ vehicles: Vehicle[] }>(`${resourceBase}/fleet`, token),
+        apiGet<{ vehicles?: Vehicle[]; fleet?: Array<Vehicle & {registration_number?: string}> }>(`${resourceBase}/fleet`, token),
         apiGet<{ drivers: Driver[] }>(`${resourceBase}/drivers`, token),
       ]);
       setData(loads);
-      setVehicles(fleet.vehicles || []);
+      setVehicles((fleet.vehicles || fleet.fleet || []).map(v => ({...v, tm_number: v.tm_number || ('registration_number' in v ? String(v.registration_number || '') : ''), capacity_m3: Number(v.capacity_m3)})));
       setDrivers(driverList.drivers || []);
     } catch (error: unknown) {
       toast(apiErrorDetail(error, "Could not load delivery loads"), "error");
@@ -132,7 +132,7 @@ export function LoadPlanner({ orderId, resourceBase, onChanged }: Props) {
 
   if (loading && !data) return <><Skeleton height={90} style={{ borderRadius: radius.lg }} /><Skeleton height={130} style={{ borderRadius: radius.lg }} /></>;
 
-  const availableVehicles = vehicles.filter((v) => v.status === "available" || data?.loads.some((l) => l.vehicle_id === v.id && !["DELIVERED", "CANCELLED"].includes(l.status)));
+  const availableVehicles = vehicles.filter((v) => ["available", "idle"].includes(v.status) || data?.loads.some((l) => l.vehicle_id === v.id && !["DELIVERED", "CANCELLED"].includes(l.status)));
 
   return (
     <View style={{ gap: spacing.md }}>
@@ -169,7 +169,7 @@ export function LoadPlanner({ orderId, resourceBase, onChanged }: Props) {
           {["PLANNED", "ASSIGNED"].includes(load.status) ? (
             <Button label={load.status === "ASSIGNED" ? "Change Assignment" : "Assign TM + Driver"} variant="outline" onPress={() => openAssign(load)} />
           ) : null}
-          {load.status === "ASSIGNED" ? (
+          {load.status === "BATCHED" ? (
             <Button label="Prepare Trip + Challan" onPress={() => action(`/loads/${load.id}/prepare`, "Load prepared", {})} loading={busy} />
           ) : null}
           {load.status === "READY_TO_DISPATCH" && !load.gate_pass_number ? (

@@ -10,7 +10,6 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sqlx::Row;
 use uuid::Uuid;
 
 pub async fn list_order_loads(
@@ -19,61 +18,28 @@ pub async fn list_order_loads(
     Path(order_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     ensure_order_access(&state, &auth_user, order_id, true).await?;
-    let loads = sqlx::query(
-        r#"
-        SELECT l.id, l.order_id, l.load_number, l.quantity_m3, l.status,
-               l.mixer_id, l.driver_id, l.batch_started_at, l.batch_completed_at,
-               l.dispatched_at, l.arrived_at, l.pour_started_at, l.pour_completed_at,
-               l.returned_at, l.created_at,
-               m.registration_number as mixer_number,
-               u.full_name as driver_name, u.phone as driver_phone
-        FROM order_loads l
-        LEFT JOIN transit_mixers m ON m.id = l.mixer_id
-        LEFT JOIN users u ON u.id = l.driver_id
-        WHERE l.order_id = $1
-        ORDER BY l.load_number
-        "#,
-    )
-    .bind(order_id)
-    .fetch_all(&state.db)
-    .await?;
-
-    let result: Vec<_> = loads
-        .into_iter()
-        .map(|l| {
-            let id: Uuid = l.get("id");
-            let order_id: Uuid = l.get("order_id");
-            let load_number: i32 = l.get("load_number");
-            let quantity_m3: bigdecimal::BigDecimal = l.get("quantity_m3");
-            let status: String = l.get("status");
-            let mixer_id: Option<Uuid> = l.get("mixer_id");
-            let mixer_number: Option<String> = l.get("mixer_number");
-            let driver_id: Option<Uuid> = l.get("driver_id");
-            let driver_name: Option<String> = l.get("driver_name");
-            let driver_phone: Option<String> = l.get("driver_phone");
-            let dispatched_at: Option<chrono::DateTime<chrono::Utc>> = l.get("dispatched_at");
-            let arrived_at: Option<chrono::DateTime<chrono::Utc>> = l.get("arrived_at");
-            let created_at: chrono::DateTime<chrono::Utc> = l.get("created_at");
-
-            json!({
-                "id": id,
-                "order_id": order_id,
-                "load_number": load_number,
-                "quantity_m3": quantity_m3,
-                "status": status,
-                "mixer_id": mixer_id,
-                "mixer_number": mixer_number,
-                "driver_id": driver_id,
-                "driver_name": driver_name,
-                "driver_phone": driver_phone,
-                "dispatched_at": dispatched_at,
-                "arrived_at": arrived_at,
-                "created_at": created_at
-            })
-        })
-        .collect();
-
-    Ok(Json(json!({ "success": true, "loads": result })))
+    let data: serde_json::Value = sqlx::query_scalar(
+        "SELECT jsonb_build_object('success',TRUE,'order_id',o.id,
+          'ordered_quantity_m3',o.total_quantity_m3::DOUBLE PRECISION,
+          'planned_quantity_m3',COALESCE(SUM(l.quantity_m3) FILTER(WHERE l.status<>'cancelled'),0)::DOUBLE PRECISION,
+          'delivered_quantity_m3',COALESCE(SUM(pod.delivered_quantity),0)::DOUBLE PRECISION,
+          'remaining_quantity_m3',GREATEST(0,o.total_quantity_m3-COALESCE(SUM(l.quantity_m3) FILTER(WHERE l.status<>'cancelled'),0))::DOUBLE PRECISION,
+          'loads',COALESCE(jsonb_agg(jsonb_build_object(
+             'id',l.id,'order_id',o.id,'load_number',l.load_number,'load_code',o.order_number||'-L'||l.load_number,
+             'quantity_m3',l.quantity_m3::DOUBLE PRECISION,
+             'status',CASE l.status WHEN 'completed' THEN 'DELIVERED' WHEN 'pouring' THEN 'UNLOADING' ELSE UPPER(l.status) END,
+             'vehicle_id',l.mixer_id,'mixer_id',l.mixer_id,'tm_number',m.registration_number,
+             'driver_id',l.driver_id,'driver_name',u.full_name,'driver_phone',u.phone,
+             'challan_number',c.challan_number,'gate_pass_number',g.pass_number,
+             'delivered_quantity',pod.delivered_quantity::DOUBLE PRECISION
+          ) ORDER BY l.load_number) FILTER(WHERE l.id IS NOT NULL),'[]'::jsonb))
+         FROM orders o LEFT JOIN order_loads l ON l.order_id=o.id
+         LEFT JOIN transit_mixers m ON m.id=l.mixer_id LEFT JOIN users u ON u.id=l.driver_id
+         LEFT JOIN challans c ON c.load_id=l.id LEFT JOIN gate_passes g ON g.load_id=l.id
+         LEFT JOIN proof_of_deliveries pod ON pod.load_id=l.id
+         WHERE o.id=$1 GROUP BY o.id",
+    ).bind(order_id).fetch_one(&state.db).await?;
+    Ok(Json(data))
 }
 
 #[derive(Debug, Deserialize, Serialize)]

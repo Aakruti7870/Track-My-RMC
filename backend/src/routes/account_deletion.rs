@@ -205,7 +205,7 @@ pub async fn send_public_otp(
         &state.db,
         crate::auth::otp::OtpSessionInput {
             destination: &destination,
-            channel: channel,
+            channel,
             purpose: DELETION_OTP_PURPOSE,
             salt: &salt,
             hashed_otp: &hashed_otp,

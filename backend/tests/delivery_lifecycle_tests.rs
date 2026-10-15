@@ -22,12 +22,12 @@ async fn produced_load_requires_challan_gate_pass_and_finishes_delivery(pool: Pg
         .execute(&pool)
         .await
         .unwrap();
-    sqlx::query("UPDATE orders SET total_quantity_m3=6,status='produced' WHERE id=$1")
+    sqlx::query("UPDATE orders SET total_quantity_m3=6,status='confirmed' WHERE id=$1")
         .bind(order)
         .execute(&pool)
         .await
         .unwrap();
-    sqlx::query("UPDATE order_loads SET mixer_id=$2,status='batched' WHERE id=$1")
+    sqlx::query("UPDATE order_loads SET mixer_id=$2,status='assigned' WHERE id=$1")
         .bind(load)
         .bind(mixer)
         .execute(&pool)
@@ -36,8 +36,64 @@ async fn produced_load_requires_challan_gate_pass_and_finishes_delivery(pool: Pg
     assert!(load_lifecycle::advance(&pool, load, driver, "prepare")
         .await
         .is_err());
-    sqlx::query("INSERT INTO batch_production_records (load_id,operator_id,actual_weights) VALUES ($1,$2,'{\"cement\":300}')")
-        .bind(load).bind(driver).execute(&pool).await.unwrap();
+    use axum::{
+        extract::{Path, State},
+        response::IntoResponse,
+        Json,
+    };
+    use trackmyrmc_backend::routes::{loads_routes, staff_routes};
+    let operator:Uuid=sqlx::query_scalar("INSERT INTO users (phone,hashed_password,full_name,role) VALUES ('test-operator','unused','Operator','operator') RETURNING id").fetch_one(&pool).await.unwrap();
+    sqlx::query("INSERT INTO plant_staff (plant_id,user_id,role) VALUES ($1,$2,'operator')")
+        .bind(plant)
+        .bind(operator)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let operator_user = trackmyrmc_backend::auth::AuthUser {
+        user_id: operator,
+        role: "operator".into(),
+        phone: "test-operator".into(),
+        email: None,
+    };
+    let app = state(pool.clone());
+    staff_routes::start_production(State(app.clone()), operator_user.clone(), Path(order))
+        .await
+        .unwrap();
+    assert!(staff_routes::complete_production(
+        State(app.clone()),
+        operator_user.clone(),
+        Path(order)
+    )
+    .await
+    .is_err());
+    staff_routes::record_batch(
+        State(app.clone()),
+        operator_user.clone(),
+        Path(order),
+        Json(staff_routes::RecordBatchPayload {
+            load_id: load,
+            batch_number: Some(1),
+            actual_weights: serde_json::json!({"cement":300}),
+            target_weights: None,
+        }),
+    )
+    .await
+    .unwrap();
+    staff_routes::complete_production(State(app.clone()), operator_user.clone(), Path(order))
+        .await
+        .unwrap();
+    let response = loads_routes::list_order_loads(State(app), operator_user, Path(order))
+        .await
+        .unwrap()
+        .into_response();
+    let json: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(response.into_body(), 10000)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(json["ordered_quantity_m3"], 6.0);
+    assert_eq!(json["loads"][0]["status"], "BATCHED");
     assert_eq!(
         load_lifecycle::advance(&pool, load, driver, "prepare")
             .await
@@ -84,9 +140,9 @@ async fn produced_load_requires_challan_gate_pass_and_finishes_delivery(pool: Pg
         .unwrap();
     dispatch_repo::record_pod(
         &pool,
-        load,
-        driver,
         dispatch_repo::PodEvidence {
+            load_id: load,
+            driver_id: driver,
             receiver_name: "Receiver",
             receiver_phone: "",
             signature_url: Some("signature"),
@@ -103,6 +159,14 @@ async fn produced_load_requires_challan_gate_pass_and_finishes_delivery(pool: Pg
         .await
         .unwrap();
     assert_eq!(status, "delivered");
+    let available: String = sqlx::query_scalar("SELECT status FROM transit_mixers WHERE id=$1")
+        .bind(mixer)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(available, "idle");
+    let notifications:i64=sqlx::query_scalar("SELECT COUNT(*) FROM notifications WHERE reference_id=$1 AND notification_type='delivered'").bind(order.to_string()).fetch_one(&pool).await.unwrap();
+    assert_eq!(notifications, 1);
 }
 
 fn state(pool: PgPool) -> trackmyrmc_backend::state::AppState {

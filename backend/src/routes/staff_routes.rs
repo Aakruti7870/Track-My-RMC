@@ -651,6 +651,7 @@ pub async fn get_production_status(
         ],
     )?;
 
+    super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
     let order_row = sqlx::query(
         "SELECT id, order_number, concrete_grade, total_quantity_m3, status FROM orders WHERE id = $1",
     )
@@ -727,17 +728,27 @@ pub async fn start_production(
         ],
     )?;
 
-    sqlx::query("UPDATE orders SET status = 'in_production', updated_at = NOW() WHERE id = $1")
+    super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
+    let mut tx = state.db.begin().await?;
+    let current: String = sqlx::query_scalar("SELECT status FROM orders WHERE id=$1 FOR UPDATE")
         .bind(order_id)
-        .execute(&state.db)
+        .fetch_one(&mut *tx)
         .await?;
-
-    sqlx::query(
-        "UPDATE order_loads SET status = 'batching', batch_started_at = NOW() WHERE order_id = $1 AND status = 'planned'",
-    )
-    .bind(order_id)
-    .execute(&state.db)
-    .await?;
+    if !matches!(
+        current.as_str(),
+        "confirmed" | "scheduled" | "in_production"
+    ) {
+        return Err(AppError::Conflict(
+            "Order must be approved before production".into(),
+        ));
+    }
+    sqlx::query("UPDATE orders SET status='in_production',updated_at=NOW() WHERE id=$1")
+        .bind(order_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("UPDATE order_loads SET status='batching',batch_started_at=COALESCE(batch_started_at,NOW()) WHERE order_id=$1 AND status IN ('planned','assigned')")
+        .bind(order_id).execute(&mut *tx).await?;
+    tx.commit().await?;
 
     Ok(Json(
         json!({ "success": true, "message": "Production started" }),
@@ -755,7 +766,7 @@ pub struct RecordBatchPayload {
 pub async fn record_batch(
     State(state): State<AppState>,
     auth_user: AuthUser,
-    Path(_order_id): Path<Uuid>,
+    Path(order_id): Path<Uuid>,
     Json(payload): Json<RecordBatchPayload>,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(
@@ -763,30 +774,50 @@ pub async fn record_batch(
         &["operator", "supervisor", "owner", "plant_owner", "admin"],
     )?;
 
-    let target = payload.target_weights.unwrap_or(json!({}));
-    let batch_num = payload.batch_number.unwrap_or(1);
-
-    let id: Uuid = sqlx::query_scalar(
-        r#"
-        INSERT INTO batch_production_records (load_id, operator_id, batch_number, actual_weights, target_weights, status, completed_at)
-        VALUES ($1, $2, $3, $4, $5, 'COMPLETED', NOW())
-        RETURNING id
-        "#,
-    )
-    .bind(payload.load_id)
-    .bind(auth_user.user_id)
-    .bind(batch_num)
-    .bind(payload.actual_weights)
-    .bind(target)
-    .fetch_one(&state.db)
-    .await?;
-
-    sqlx::query(
-        "UPDATE order_loads SET batch_completed_at = NOW(), status = 'batched' WHERE id = $1",
-    )
-    .bind(payload.load_id)
-    .execute(&state.db)
-    .await?;
+    super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
+    let weights = payload
+        .actual_weights
+        .as_object()
+        .ok_or_else(|| AppError::BadRequest("Batch weights must be an object".into()))?;
+    if weights.is_empty()
+        || weights.values().any(|v| v.as_f64().is_none_or(|n| n < 0.0))
+        || payload.batch_number.is_some_and(|n| n <= 0)
+    {
+        return Err(AppError::BadRequest(
+            "Valid batch number and nonnegative material weights are required".into(),
+        ));
+    }
+    let mut tx = state.db.begin().await?;
+    let parent: String = sqlx::query_scalar("SELECT status FROM orders WHERE id=$1 FOR UPDATE")
+        .bind(order_id)
+        .fetch_one(&mut *tx)
+        .await?;
+    if parent != "in_production" {
+        return Err(AppError::Conflict(
+            "Start production before recording a batch".into(),
+        ));
+    }
+    let status: Option<String> =
+        sqlx::query_scalar("SELECT status FROM order_loads WHERE id=$1 AND order_id=$2 FOR UPDATE")
+            .bind(payload.load_id)
+            .bind(order_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+    if status.as_deref() != Some("batching") {
+        return Err(AppError::Conflict(
+            "Load is not batching for this order".into(),
+        ));
+    }
+    let id:Uuid=sqlx::query_scalar(
+        "INSERT INTO batch_production_records (load_id,operator_id,batch_number,actual_weights,target_weights,status,completed_at)
+         VALUES ($1,$2,$3,$4,$5,'COMPLETED',NOW()) RETURNING id",
+    ).bind(payload.load_id).bind(auth_user.user_id).bind(payload.batch_number.unwrap_or(1))
+     .bind(payload.actual_weights).bind(payload.target_weights.unwrap_or(json!({}))).fetch_one(&mut *tx).await?;
+    sqlx::query("UPDATE order_loads SET batch_completed_at=NOW(),status='batched' WHERE id=$1")
+        .bind(payload.load_id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
 
     Ok(Json(
         json!({ "success": true, "batch_id": id, "message": "Batch weights recorded" }),
@@ -810,10 +841,31 @@ pub async fn complete_production(
         ],
     )?;
 
-    sqlx::query("UPDATE orders SET status = 'produced', updated_at = NOW() WHERE id = $1")
+    super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
+    let mut tx = state.db.begin().await?;
+    let current: String = sqlx::query_scalar("SELECT status FROM orders WHERE id=$1 FOR UPDATE")
         .bind(order_id)
-        .execute(&state.db)
+        .fetch_one(&mut *tx)
         .await?;
+    if !matches!(current.as_str(), "in_production" | "produced") {
+        return Err(AppError::Conflict("Order is not in production".into()));
+    }
+    let ready:bool=sqlx::query_scalar(
+        "SELECT o.total_quantity_m3>0
+         AND NOT EXISTS(SELECT 1 FROM order_loads WHERE order_id=o.id AND status NOT IN ('batched','cancelled'))
+         AND COALESCE((SELECT SUM(quantity_m3) FROM order_loads WHERE order_id=o.id AND status='batched'),0)+0.001>=o.total_quantity_m3*0.98
+         FROM orders o WHERE o.id=$1",
+    ).bind(order_id).fetch_one(&mut *tx).await?;
+    if !ready {
+        return Err(AppError::Conflict(
+            "Record all required load batches before completing production".into(),
+        ));
+    }
+    sqlx::query("UPDATE orders SET status='produced',updated_at=NOW() WHERE id=$1")
+        .bind(order_id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
 
     Ok(Json(
         json!({ "success": true, "message": "Production completed" }),

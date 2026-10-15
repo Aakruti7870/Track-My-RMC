@@ -48,8 +48,8 @@ pub async fn complete_delivery_pod(
     let pod = dispatch_repo::record_pod(
         &state.db,
         crate::repositories::dispatch_repo::PodEvidence {
-            load_id: load_id,
-            driver_id: driver_id,
+            load_id,
+            driver_id,
             receiver_name: &req.receiver_name,
             receiver_phone: &req.receiver_phone,
             signature_url: req.signature_url.as_deref(),
