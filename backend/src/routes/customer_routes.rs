@@ -713,6 +713,14 @@ pub struct CreateReceivingRecordPayload {
     pub challan_number: Option<String>,
     pub tm_number: Option<String>,
     pub observed_slump_mm: Option<f64>,
+    pub arrival_time: Option<String>,
+    pub unloading_start_time: Option<String>,
+    pub unloading_end_time: Option<String>,
+    #[serde(default)]
+    pub cube_sample_ids: Vec<String>,
+    pub sample_cast_date: Option<NaiveDate>,
+    #[serde(default)]
+    pub checklist: std::collections::BTreeMap<String, bool>,
     pub notes: Option<String>,
 }
 
@@ -721,84 +729,26 @@ pub async fn create_receiving_record(
     auth_user: AuthUser,
     Json(payload): Json<CreateReceivingRecordPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    let id: Uuid = sqlx::query_scalar(
-        r#"
-        INSERT INTO customer_receiving_records (
-            customer_id, site_id, order_id, grade, received_quantity_m3,
-            challan_number, tm_number, observed_slump_mm, notes
-        )
-        VALUES ($1, $2, $3, $4, $5::numeric, $6, $7, $8::numeric, $9)
-        RETURNING id
-        "#,
-    )
-    .bind(auth_user.user_id)
-    .bind(payload.site_id)
-    .bind(payload.order_id)
-    .bind(&payload.grade)
-    .bind(payload.received_quantity_m3)
-    .bind(&payload.challan_number)
-    .bind(&payload.tm_number)
-    .bind(payload.observed_slump_mm)
-    .bind(&payload.notes)
-    .fetch_one(&state.db)
-    .await?;
-
+    check_role(&auth_user, &["customer"])?;
     Ok(Json(
-        json!({ "success": true, "id": id, "message": "Receiving record logged" }),
+        crate::services::customer_observations::create(&state, auth_user.user_id, payload).await?,
     ))
+}
+
+#[derive(Deserialize, Default)]
+pub struct CustomerSiteFilter {
+    pub site_id: Option<Uuid>,
 }
 
 pub async fn list_receiving_records(
     State(state): State<AppState>,
     auth_user: AuthUser,
+    Query(filter): Query<CustomerSiteFilter>,
 ) -> Result<impl IntoResponse, AppError> {
-    let rows = sqlx::query(
-        r#"
-        SELECT r.id, r.site_id, r.order_id, r.grade, r.received_quantity_m3,
-               r.challan_number, r.tm_number, r.observed_slump_mm, r.notes, r.created_at,
-               s.name as site_name
-        FROM customer_receiving_records r
-        INNER JOIN customer_sites s ON s.id = r.site_id
-        WHERE r.customer_id = $1
-        ORDER BY r.created_at DESC
-        "#,
-    )
-    .bind(auth_user.user_id)
-    .fetch_all(&state.db)
-    .await?;
-
-    let records: Vec<_> = rows
-        .into_iter()
-        .map(|r| {
-            let id: Uuid = r.get("id");
-            let site_id: Uuid = r.get("site_id");
-            let site_name: String = r.get("site_name");
-            let order_id: Option<Uuid> = r.get("order_id");
-            let grade: String = r.get("grade");
-            let received_quantity_m3: bigdecimal::BigDecimal = r.get("received_quantity_m3");
-            let challan_number: Option<String> = r.get("challan_number");
-            let tm_number: Option<String> = r.get("tm_number");
-            let observed_slump_mm: Option<bigdecimal::BigDecimal> = r.get("observed_slump_mm");
-            let notes: Option<String> = r.get("notes");
-            let created_at: chrono::DateTime<chrono::Utc> = r.get("created_at");
-
-            json!({
-                "id": id,
-                "site_id": site_id,
-                "site_name": site_name,
-                "order_id": order_id,
-                "grade": grade,
-                "received_quantity_m3": received_quantity_m3,
-                "challan_number": challan_number,
-                "tm_number": tm_number,
-                "observed_slump_mm": observed_slump_mm,
-                "notes": notes,
-                "created_at": created_at
-            })
-        })
-        .collect();
-
-    Ok(Json(json!({ "success": true, "records": records })))
+    check_role(&auth_user, &["customer"])?;
+    Ok(Json(
+        json!({"success":true,"records":crate::services::customer_observations::list(&state,auth_user.user_id,None,filter.site_id).await?}),
+    ))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -809,71 +759,41 @@ pub struct CubeResultPayload {
     pub result_mpa: f64,
     pub lab_name: Option<String>,
     pub report_reference: Option<String>,
+    pub notes: Option<String>,
 }
 
 pub async fn add_cube_test_result(
     State(state): State<AppState>,
     auth_user: AuthUser,
-    Path(record_id): Path<Uuid>,
+    Path(record): Path<Uuid>,
     Json(payload): Json<CubeResultPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    let rec_cust: Uuid =
-        sqlx::query_scalar("SELECT customer_id FROM customer_receiving_records WHERE id = $1")
-            .bind(record_id)
-            .fetch_optional(&state.db)
-            .await?
-            .ok_or_else(|| AppError::NotFound("Receiving record not found".to_string()))?;
-
-    if rec_cust != auth_user.user_id && auth_user.role != "admin" {
-        return Err(AppError::Forbidden("Unauthorized".to_string()));
-    }
-
-    let t_date = NaiveDate::parse_from_str(&payload.tested_on, "%Y-%m-%d")
-        .map_err(|_| AppError::BadRequest("Invalid tested_on date".to_string()))?;
-
-    let id: Uuid = sqlx::query_scalar(
-        r#"
-        INSERT INTO cube_test_results (
-            record_id, sample_id, age_days, tested_on, result_mpa, lab_name, report_reference
-        )
-        VALUES ($1, $2, $3, $4, $5::numeric, $6, $7)
-        RETURNING id
-        "#,
-    )
-    .bind(record_id)
-    .bind(&payload.sample_id)
-    .bind(payload.age_days)
-    .bind(t_date)
-    .bind(payload.result_mpa)
-    .bind(&payload.lab_name)
-    .bind(&payload.report_reference)
-    .fetch_one(&state.db)
-    .await?;
-
+    check_role(&auth_user, &["customer"])?;
     Ok(Json(
-        json!({ "success": true, "id": id, "message": "Cube test result recorded" }),
+        crate::services::customer_observations::cube(&state, auth_user.user_id, record, payload)
+            .await?,
     ))
 }
 
 pub async fn delete_receiving_record(
     State(state): State<AppState>,
     auth_user: AuthUser,
-    Path(record_id): Path<Uuid>,
+    Path(record): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    let res =
-        sqlx::query("DELETE FROM customer_receiving_records WHERE id = $1 AND customer_id = $2")
-            .bind(record_id)
+    check_role(&auth_user, &["customer"])?;
+    let mut tx = state.db.begin().await?;
+    let deleted =
+        sqlx::query("DELETE FROM customer_receiving_records WHERE id=$1 AND customer_id=$2")
+            .bind(record)
             .bind(auth_user.user_id)
-            .execute(&state.db)
+            .execute(&mut *tx)
             .await?;
-
-    if res.rows_affected() == 0 {
-        return Err(AppError::NotFound("Record not found".to_string()));
+    if deleted.rows_affected() != 1 {
+        return Err(AppError::NotFound("Receiving record not found".into()));
     }
-
-    Ok(Json(
-        json!({ "success": true, "message": "Record deleted" }),
-    ))
+    sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id) VALUES($1,'receiving_record.delete','receiving_record',$2)").bind(auth_user.user_id).bind(record.to_string()).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(Json(json!({"success":true,"status":"deleted"})))
 }
 
 pub async fn get_customer_kyc(

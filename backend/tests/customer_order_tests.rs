@@ -785,3 +785,163 @@ async fn saved_site_mobile_contract_serializes_default_and_preserves_linked_reco
         1
     );
 }
+
+#[sqlx::test]
+async fn customer_receiving_and_cube_follow_up_persist_observations_with_tenant_isolation(
+    db: PgPool,
+) {
+    let (state, app, _, plant, token) = fixture(&db).await;
+    let (_, order) = call(
+        &app,
+        "/api/customer/orders",
+        Some(order(plant, "receiving-order-test")),
+        &token,
+    )
+    .await;
+    let cast = chrono::Utc::now().date_naive() - chrono::Duration::days(29);
+    let payload = json!({"site_id":order["order"]["site_id"],"order_id":order["id"],"grade":"M25","received_quantity_m3":6,"arrival_time":"10:00","unloading_start_time":"10:10","unloading_end_time":"10:40","observed_slump_mm":120,"cube_sample_ids":["S-1"],"sample_cast_date":cast,"checklist":{"challan":true,"unknown":true},"notes":"Customer observation"});
+    let foreign = identity(&db, "customer").await;
+    let foreign_token =
+        generate_token(foreign, "customer", "", None, &state.config.jwt_secret, 1).unwrap();
+    assert_eq!(
+        call(
+            &app,
+            "/api/customer/receiving-records",
+            Some(payload.clone()),
+            &foreign_token
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    let mut invalid = payload.clone();
+    invalid["grade"] = json!("M30");
+    assert_eq!(
+        call(
+            &app,
+            "/api/customer/receiving-records",
+            Some(invalid),
+            &token
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    let mut invalid = payload.clone();
+    invalid["unloading_start_time"] = json!("09:50");
+    assert_eq!(
+        call(
+            &app,
+            "/api/customer/receiving-records",
+            Some(invalid),
+            &token
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    let mut invalid = payload.clone();
+    invalid["cube_sample_ids"] = json!(["S-1", "s-1"]);
+    assert_eq!(
+        call(
+            &app,
+            "/api/customer/receiving-records",
+            Some(invalid),
+            &token
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    let (status, record) = call(
+        &app,
+        "/api/customer/receiving-records",
+        Some(payload),
+        &token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(record["record"]["received_quantity_m3"], 6.0);
+    assert_eq!(record["record"]["record_type"], "CUSTOMER_OBSERVATION");
+    assert_eq!(record["record"]["pending_cube_tests"], 2);
+    assert_eq!(record["record"]["overdue_cube_tests"], 2);
+    assert_eq!(record["record"]["unloading_end_time"], "10:40");
+    assert!(record["record"]["checklist"].get("unknown").is_none());
+    let id = record["id"].as_str().unwrap();
+    async fn patch(app: &Router, path: &str, payload: Value, token: &str) -> (StatusCode, Value) {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(path)
+                    .method("PATCH")
+                    .header("Content-Type", "application/json")
+                    .header("Authorization", format!("Bearer {token}"))
+                    .body(Body::from(payload.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = response.status();
+        let body = to_bytes(response.into_body(), 100000).await.unwrap();
+        (status, serde_json::from_slice(&body).unwrap())
+    }
+    let path = format!("/api/customer/receiving-records/{id}/cube-results");
+    let result = json!({"sample_id":"s-1","age_days":7,"tested_on":(cast+chrono::Duration::days(7)).to_string(),"result_mpa":31.5,"notes":"As reported by customer"});
+    let admin = identity(&db, "admin").await;
+    let admin_token =
+        generate_token(admin, "admin", "", None, &state.config.jwt_secret, 1).unwrap();
+    assert_eq!(
+        patch(&app, &path, result.clone(), &admin_token).await.0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        patch(&app, &path, result.clone(), &foreign_token).await.0,
+        StatusCode::NOT_FOUND
+    );
+    let mut invalid = result.clone();
+    invalid["sample_id"] = json!("unknown");
+    assert_eq!(
+        patch(&app, &path, invalid, &token).await.0,
+        StatusCode::BAD_REQUEST
+    );
+    let (a, b) = tokio::join!(
+        patch(&app, &path, result.clone(), &token),
+        patch(&app, &path, result, &token)
+    );
+    assert_eq!(a.0, StatusCode::OK);
+    assert_eq!(b.0, StatusCode::OK);
+    assert_eq!(a.1["id"], b.1["id"]);
+    assert_eq!(a.1["record"]["pending_cube_tests"], 1);
+    assert_eq!(a.1["record"]["cube_test_results"][0]["result_mpa"], 31.5);
+    assert!(a.1["record"]["cube_test_results"][0]["acceptance_status"].is_null());
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM cube_test_results WHERE record_id=$1")
+            .bind(id.parse::<Uuid>().unwrap())
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+        1
+    );
+    let second = json!({"sample_id":"S-1","age_days":28,"tested_on":chrono::Utc::now().date_naive().to_string(),"result_mpa":42});
+    assert_eq!(
+        patch(&app, &path, second, &token).await.1["record"]["pending_cube_tests"],
+        0
+    );
+    let (_, rows) = call(
+        &app,
+        "/api/customer/receiving-records",
+        None,
+        &foreign_token,
+    )
+    .await;
+    assert_eq!(rows["records"].as_array().unwrap().len(), 0);
+    let (_, rows) = call(&app, "/api/customer/receiving-records", None, &token).await;
+    assert_eq!(
+        rows["records"][0]["cube_test_results"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+}
