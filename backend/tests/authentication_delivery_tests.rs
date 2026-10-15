@@ -217,6 +217,12 @@ async fn approved_staff_fixtures_complete_email_enrollment_mfa_recovery_and_logo
         assert_eq!(status, StatusCode::OK);
         assert_eq!(auth["role"].as_str(), Some(role));
         let token = auth["token"].as_str().unwrap();
+        let (status, me) = call(&app, "/api/me", None, Some(token)).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(me["role"].as_str(), Some(role));
+        assert_eq!(me["name"], "Synthetic Test");
+        assert_eq!(me["id"], auth["user"]["id"]);
+        assert_eq!(me["mfa_enabled"], true);
         assert_eq!(
             call(&app, "/api/me", None, Some(token)).await.0,
             StatusCode::OK
@@ -445,4 +451,50 @@ async fn staff_challenges_cannot_be_reused_after_role_becomes_privileged(db: PgP
         .0,
         StatusCode::FORBIDDEN
     );
+}
+
+#[sqlx::test]
+async fn legacy_password_registration_and_unbound_totp_cannot_issue_sessions(db: PgPool) {
+    let state = state(db.clone());
+    let id = identity(&db, "customer", None, Some("12025550101")).await;
+    let secret = TotpEngine::generate_secret();
+    sqlx::query(
+        "INSERT INTO user_totp_credentials(user_id,secret_key,is_enabled) VALUES($1,$2,TRUE)",
+    )
+    .bind(id)
+    .bind(&secret)
+    .execute(&db)
+    .await
+    .unwrap();
+    let app = build_app_router(state);
+    assert_eq!(call(&app,"/api/auth/register",Some(json!({"phone":"12025550102","password":"unused-synthetic-value","full_name":"Synthetic Test","role":"admin"})),None).await.0,StatusCode::FORBIDDEN);
+    assert_eq!(
+        call(
+            &app,
+            "/api/auth/login",
+            Some(json!({"username_or_phone":"12025550101","password":"unused-synthetic-value"})),
+            None
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
+    assert_eq!(
+        call(
+            &app,
+            "/api/auth/totp/login",
+            Some(json!({"username_or_phone":"12025550101","totp_code":code})),
+            None
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert!(!sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM users WHERE phone='12025550102')"
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap());
 }
