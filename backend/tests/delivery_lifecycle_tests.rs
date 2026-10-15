@@ -987,3 +987,186 @@ async fn ordinary_admin_cannot_read_foreign_hr_master_or_payroll_records(pool: P
         Err(AppError::Forbidden(_))
     ));
 }
+
+fn payroll_draft() -> trackmyrmc_backend::routes::workforce_reports::PayrollDraftPayload {
+    trackmyrmc_backend::routes::workforce_reports::PayrollDraftPayload {
+        basic_amount: 1000.0,
+        allowances: Some(100.0),
+        overtime_amount: Some(50.0),
+        deductions: Some(25.0),
+        paid_days: Some(20.0),
+        notes: Some("Verified attendance".into()),
+    }
+}
+#[sqlx::test]
+async fn payroll_requires_separate_roles_and_posts_expense_once_before_immutable_close(
+    pool: PgPool,
+) {
+    use axum::{
+        extract::{Path, State},
+        response::IntoResponse,
+    };
+    use trackmyrmc_backend::{
+        auth::AuthUser,
+        routes::payroll_routes,
+        services::payroll_lifecycle::{self as payroll, Period},
+    };
+    let (owner_id, order, _, _) = fixture(&pool).await;
+    let plant: Uuid = sqlx::query_scalar("SELECT plant_id FROM orders WHERE id=$1")
+        .bind(order)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE users SET role='plant_owner' WHERE id=$1")
+        .bind(owner_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let accountant:Uuid=sqlx::query_scalar("INSERT INTO users(phone,hashed_password,full_name,role) VALUES('pay-accountant','unused','Payroll Accountant','accountant') RETURNING id").fetch_one(&pool).await.unwrap();
+    let employee:Uuid=sqlx::query_scalar("INSERT INTO users(phone,hashed_password,full_name,role) VALUES('pay-driver','unused','Original Employee','driver') RETURNING id").fetch_one(&pool).await.unwrap();
+    sqlx::query("INSERT INTO plant_staff(plant_id,user_id,role) VALUES($1,$2,'accountant'),($1,$3,'driver')").bind(plant).bind(accountant).bind(employee).execute(&pool).await.unwrap();
+    let app = state(pool.clone());
+    let owner = AuthUser {
+        user_id: owner_id,
+        role: "plant_owner".into(),
+        phone: "test".into(),
+        email: None,
+    };
+    let accountant_user = AuthUser {
+        user_id: accountant,
+        role: "accountant".into(),
+        phone: "pay-accountant".into(),
+        email: None,
+    };
+    let period = || Period::parse(plant, "2026-10").unwrap();
+    assert!(matches!(
+        payroll::draft(&app, &owner, period(), employee, payroll_draft()).await,
+        Err(AppError::Forbidden(_))
+    ));
+    assert!(payroll::close(&app, &owner, period(), None).await.is_err());
+    for target in [accountant, employee] {
+        payroll::draft(&app, &accountant_user, period(), target, payroll_draft())
+            .await
+            .unwrap();
+        // Repeated drafts update a single record under the period lock.
+        payroll::draft(&app, &accountant_user, period(), target, payroll_draft())
+            .await
+            .unwrap();
+        assert!(payroll::pay(
+            &app,
+            &accountant_user,
+            period(),
+            target,
+            "bank_transfer",
+            "before-approval"
+        )
+        .await
+        .is_err());
+        assert!(matches!(
+            payroll::decide(&app, &accountant_user, period(), target, "APPROVE", None).await,
+            Err(AppError::Forbidden(_))
+        ));
+        payroll::decide(&app, &owner, period(), target, "APPROVE", None)
+            .await
+            .unwrap();
+        let reference = format!("salary-{target}");
+        let (first, retry) = tokio::join!(
+            payroll::pay(
+                &app,
+                &accountant_user,
+                period(),
+                target,
+                "bank_transfer",
+                &reference
+            ),
+            payroll::pay(
+                &app,
+                &accountant_user,
+                period(),
+                target,
+                "bank_transfer",
+                &reference
+            )
+        );
+        assert_eq!(first.unwrap()["payment_status"], "PAID");
+        assert!(retry.is_ok());
+        assert!(payroll::pay(
+            &app,
+            &accountant_user,
+            period(),
+            target,
+            "bank_transfer",
+            "changed-reference"
+        )
+        .await
+        .is_err());
+        assert!(
+            payroll::draft(&app, &accountant_user, period(), target, payroll_draft())
+                .await
+                .is_err()
+        );
+        assert!(
+            payroll::decide(&app, &owner, period(), target, "RETURN", None)
+                .await
+                .is_err()
+        );
+    }
+    let expenses:(i64,f64)=sqlx::query_as("SELECT COUNT(*),SUM(amount)::DOUBLE PRECISION FROM plant_expenses WHERE payroll_record_id IS NOT NULL").fetch_one(&pool).await.unwrap();
+    assert_eq!(expenses, (2, 2250.0));
+    let records: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM payroll_records")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(records, 2);
+    let close = payroll::close(&app, &owner, period(), None).await.unwrap();
+    assert_eq!(close["closure_version"], 1);
+    let totals:(i32,f64,f64)=sqlx::query_as("SELECT employee_count,total_gross::DOUBLE PRECISION,total_net::DOUBLE PRECISION FROM payroll_closures WHERE plant_id=$1").bind(plant).fetch_one(&pool).await.unwrap();
+    assert_eq!(totals, (2, 2300.0, 2250.0));
+    assert!(
+        payroll::draft(&app, &accountant_user, period(), employee, payroll_draft())
+            .await
+            .is_err()
+    );
+    sqlx::query("UPDATE users SET full_name='Changed Employee' WHERE id=$1")
+        .bind(employee)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let response = payroll_routes::export_payroll_csv(
+        State(app.clone()),
+        owner.clone(),
+        Path((plant, "2026-10".into())),
+    )
+    .await
+    .unwrap()
+    .into_response();
+    let data: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(response.into_body(), 20000)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let csv = data["csv"].as_str().unwrap();
+    assert!(csv.contains("Original Employee"));
+    assert!(!csv.contains("Changed Employee"));
+    assert!(csv.contains("1125"));
+    let snapshot: serde_json::Value =
+        sqlx::query_scalar("SELECT snapshot FROM payroll_payslip_snapshots WHERE user_id=$1")
+            .bind(employee)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(snapshot["payroll_snapshot"]["paid_days"], 20.0);
+    assert_eq!(snapshot["payroll_snapshot"]["overtime_amount"], 50.0);
+    let snapshots: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM payroll_payslip_snapshots")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(snapshots, 2);
+    payroll::close(&app, &owner, period(), None).await.unwrap();
+    let snapshots_after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM payroll_payslip_snapshots")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(snapshots, snapshots_after);
+}

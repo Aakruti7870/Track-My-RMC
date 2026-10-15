@@ -13,3 +13,5 @@ pub mod load_lifecycle;
 pub mod production_service;
 
 pub mod billing_service;
+
+pub mod payroll_lifecycle;
