@@ -2,7 +2,7 @@ use crate::{
     error::AppError,
     models::workforce::{PayrollClosure, WorkforceAttendance},
 };
-use chrono::{Datelike, NaiveDate, Utc};
+use chrono::{NaiveDate, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 

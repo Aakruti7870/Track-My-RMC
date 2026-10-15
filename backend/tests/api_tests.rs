@@ -1,6 +1,5 @@
 #[cfg(test)]
 mod tests {
-    use reqwest::StatusCode;
     use serde_json::json;
 
     #[test]

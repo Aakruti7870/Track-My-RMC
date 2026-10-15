@@ -4,16 +4,26 @@ use bigdecimal::FromPrimitive;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-pub async fn insert_telemetry(
-    pool: &PgPool,
-    mixer_id: Uuid,
-    driver_id: Option<Uuid>,
-    load_id: Option<Uuid>,
-    lat: f64,
-    lng: f64,
-    speed: f64,
-    heading: f64,
-) -> Result<(), AppError> {
+pub struct TelemetryInput {
+    pub mixer_id: Uuid,
+    pub driver_id: Option<Uuid>,
+    pub load_id: Option<Uuid>,
+    pub lat: f64,
+    pub lng: f64,
+    pub speed: f64,
+    pub heading: f64,
+}
+
+pub async fn insert_telemetry(pool: &PgPool, input: TelemetryInput) -> Result<(), AppError> {
+    let TelemetryInput {
+        mixer_id,
+        driver_id,
+        load_id,
+        lat,
+        lng,
+        speed,
+        heading,
+    } = input;
     let mut tx = pool.begin().await?;
 
     sqlx::query(

@@ -38,18 +38,20 @@ pub async fn place_order(
 
     let order = order_repo::create_order(
         &state.db,
-        &order_number,
-        customer_id,
-        req.plant_id,
-        req.site_id,
-        &req.concrete_grade,
-        req.quantity_m3,
-        req.delivery_date,
-        &req.delivery_time_slot,
-        req.pump_required.unwrap_or(false),
-        req.special_instructions.as_deref(),
-        total,
-        tax,
+        crate::repositories::order_repo::NewOrder {
+            order_number: &order_number,
+            customer_id: customer_id,
+            plant_id: req.plant_id,
+            site_id: req.site_id,
+            concrete_grade: &req.concrete_grade,
+            quantity_m3: req.quantity_m3,
+            delivery_date: req.delivery_date,
+            delivery_time_slot: &req.delivery_time_slot,
+            pump_required: req.pump_required.unwrap_or(false),
+            special_instructions: req.special_instructions.as_deref(),
+            total_amount: total,
+            tax_amount: tax,
+        },
     )
     .await?;
 

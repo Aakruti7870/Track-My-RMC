@@ -238,13 +238,15 @@ pub async fn send_whatsapp_otp(
     // Store as pending: this OTP cannot be verified until delivery is accepted.
     let session_id = OtpEngine::create_pending_session(
         &state.db,
-        &destination,
-        "whatsapp",
-        &purpose,
-        &salt,
-        &hashed_otp,
-        state.config.otp_expiration_minutes,
-        state.config.otp_max_verification_attempts,
+        crate::auth::otp::OtpSessionInput {
+            destination: &destination,
+            channel: "whatsapp",
+            purpose: &purpose,
+            salt: &salt,
+            hashed_otp: &hashed_otp,
+            expiration_minutes: state.config.otp_expiration_minutes,
+            max_attempts: state.config.otp_max_verification_attempts,
+        },
     )
     .await?;
 
@@ -415,13 +417,15 @@ pub async fn send_email_otp(state: &AppState, req: SendEmailOtpRequest) -> Resul
 
     OtpEngine::create_session(
         &state.db,
-        &destination,
-        "email",
-        &purpose,
-        &salt,
-        &hashed_otp,
-        state.config.otp_expiration_minutes,
-        state.config.otp_max_verification_attempts,
+        crate::auth::otp::OtpSessionInput {
+            destination: &destination,
+            channel: "email",
+            purpose: &purpose,
+            salt: &salt,
+            hashed_otp: &hashed_otp,
+            expiration_minutes: state.config.otp_expiration_minutes,
+            max_attempts: state.config.otp_max_verification_attempts,
+        },
     )
     .await?;
 

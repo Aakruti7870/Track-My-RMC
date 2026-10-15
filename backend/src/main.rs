@@ -1,16 +1,3 @@
-mod auth;
-mod config;
-mod db;
-mod error;
-mod middleware;
-mod models;
-mod repositories;
-mod routes;
-mod schemas;
-mod services;
-mod state;
-mod utils;
-
 use axum::http::HeaderValue;
 use config::AppConfig;
 use state::AppState;
@@ -21,6 +8,7 @@ use tower_http::{
     trace::TraceLayer,
 };
 use tracing::info;
+use trackmyrmc_backend::{config, db, routes, state};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

@@ -6,6 +6,105 @@ use trackmyrmc_backend::{
 };
 use uuid::Uuid;
 
+#[sqlx::test]
+async fn produced_load_requires_challan_gate_pass_and_finishes_delivery(pool: PgPool) {
+    use trackmyrmc_backend::services::load_lifecycle;
+    let (driver, order, load, second) = fixture(&pool).await;
+    let plant: Uuid = sqlx::query_scalar("SELECT plant_id FROM orders WHERE id=$1")
+        .bind(order)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let mixer:Uuid=sqlx::query_scalar("INSERT INTO transit_mixers (plant_id,registration_number,driver_id,capacity_m3) VALUES ($1,'TEST-MIXER',$2,6) RETURNING id")
+        .bind(plant).bind(driver).fetch_one(&pool).await.unwrap();
+    sqlx::query("UPDATE order_loads SET status='cancelled' WHERE id=$1")
+        .bind(second)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE orders SET total_quantity_m3=6,status='produced' WHERE id=$1")
+        .bind(order)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE order_loads SET mixer_id=$2,status='batched' WHERE id=$1")
+        .bind(load)
+        .bind(mixer)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(load_lifecycle::advance(&pool, load, driver, "prepare")
+        .await
+        .is_err());
+    sqlx::query("INSERT INTO batch_production_records (load_id,operator_id,actual_weights) VALUES ($1,$2,'{\"cement\":300}')")
+        .bind(load).bind(driver).execute(&pool).await.unwrap();
+    assert_eq!(
+        load_lifecycle::advance(&pool, load, driver, "prepare")
+            .await
+            .unwrap(),
+        "ready_to_dispatch"
+    );
+    load_lifecycle::advance(&pool, load, driver, "prepare")
+        .await
+        .unwrap();
+    let challans: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM challans WHERE load_id=$1")
+        .bind(load)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(challans, 1);
+    assert!(load_lifecycle::advance(&pool, load, driver, "dispatch")
+        .await
+        .is_err());
+    let status: String = sqlx::query_scalar("SELECT status FROM order_loads WHERE id=$1")
+        .bind(load)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(status, "ready_to_dispatch");
+    sqlx::query("INSERT INTO gate_passes (load_id,pass_number) VALUES ($1,'GP-TEST')")
+        .bind(load)
+        .execute(&pool)
+        .await
+        .unwrap();
+    load_lifecycle::advance(&pool, load, driver, "dispatch")
+        .await
+        .unwrap();
+    assert!(load_lifecycle::advance(&pool, load, driver, "cancel")
+        .await
+        .is_err());
+    advance(&pool, load, driver, TripAction::Start)
+        .await
+        .unwrap();
+    advance(&pool, load, driver, TripAction::Arrive)
+        .await
+        .unwrap();
+    advance(&pool, load, driver, TripAction::Unload)
+        .await
+        .unwrap();
+    dispatch_repo::record_pod(
+        &pool,
+        load,
+        driver,
+        dispatch_repo::PodEvidence {
+            receiver_name: "Receiver",
+            receiver_phone: "",
+            signature_url: Some("signature"),
+            photo_url: Some("trackmyrmc/pod/test.jpg"),
+            notes: None,
+            delivered_quantity: 6.0,
+        },
+    )
+    .await
+    .unwrap();
+    let status: String = sqlx::query_scalar("SELECT status FROM orders WHERE id=$1")
+        .bind(order)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(status, "delivered");
+}
+
 fn state(pool: PgPool) -> trackmyrmc_backend::state::AppState {
     use trackmyrmc_backend::{config::AppConfig, state::AppState};
     AppState::new(
@@ -168,14 +267,16 @@ async fn multi_load_pod_reconciles_parent_and_prevents_overwrite(pool: PgPool) {
     assert!(matches!(
         dispatch_repo::record_pod(
             &pool,
-            first,
-            driver,
-            "Receiver",
-            "",
-            Some("signature"),
-            Some("trackmyrmc/pod/test.jpg"),
-            None,
-            7.0
+            trackmyrmc_backend::repositories::dispatch_repo::PodEvidence {
+                load_id: first,
+                driver_id: driver,
+                receiver_name: "Receiver",
+                receiver_phone: "",
+                signature_url: Some("signature"),
+                photo_url: Some("trackmyrmc/pod/test.jpg"),
+                notes: None,
+                delivered_quantity: 7.0
+            }
         )
         .await,
         Err(AppError::BadRequest(_))
@@ -183,14 +284,16 @@ async fn multi_load_pod_reconciles_parent_and_prevents_overwrite(pool: PgPool) {
     assert!(matches!(
         dispatch_repo::record_pod(
             &pool,
-            first,
-            driver,
-            "Receiver",
-            "",
-            Some("signature"),
-            Some("trackmyrmc/pod/second.jpg"),
-            None,
-            6.0
+            trackmyrmc_backend::repositories::dispatch_repo::PodEvidence {
+                load_id: first,
+                driver_id: driver,
+                receiver_name: "Receiver",
+                receiver_phone: "",
+                signature_url: Some("signature"),
+                photo_url: Some("trackmyrmc/pod/second.jpg"),
+                notes: None,
+                delivered_quantity: 6.0
+            }
         )
         .await,
         Err(AppError::BadRequest(_))
@@ -203,14 +306,16 @@ async fn multi_load_pod_reconciles_parent_and_prevents_overwrite(pool: PgPool) {
     assert!(matches!(
         dispatch_repo::record_pod(
             &pool,
-            first,
-            driver,
-            "Receiver",
-            "",
-            Some("signature"),
-            Some("trackmyrmc/pod/test.jpg"),
-            None,
-            6.0
+            trackmyrmc_backend::repositories::dispatch_repo::PodEvidence {
+                load_id: first,
+                driver_id: driver,
+                receiver_name: "Receiver",
+                receiver_phone: "",
+                signature_url: Some("signature"),
+                photo_url: Some("trackmyrmc/pod/test.jpg"),
+                notes: None,
+                delivered_quantity: 6.0
+            }
         )
         .await,
         Err(AppError::Conflict(_))
@@ -228,27 +333,31 @@ async fn multi_load_pod_reconciles_parent_and_prevents_overwrite(pool: PgPool) {
         };
         let pod = dispatch_repo::record_pod(
             &pool,
-            load,
-            driver,
-            "Receiver",
-            "",
-            Some("signature"),
-            Some(photo),
-            None,
-            6.0,
+            trackmyrmc_backend::repositories::dispatch_repo::PodEvidence {
+                load_id: load,
+                driver_id: driver,
+                receiver_name: "Receiver",
+                receiver_phone: "",
+                signature_url: Some("signature"),
+                photo_url: Some(photo),
+                notes: None,
+                delivered_quantity: 6.0,
+            },
         )
         .await
         .unwrap();
         let retry = dispatch_repo::record_pod(
             &pool,
-            load,
-            driver,
-            "Receiver",
-            "",
-            Some("signature"),
-            Some(photo),
-            None,
-            6.0,
+            trackmyrmc_backend::repositories::dispatch_repo::PodEvidence {
+                load_id: load,
+                driver_id: driver,
+                receiver_name: "Receiver",
+                receiver_phone: "",
+                signature_url: Some("signature"),
+                photo_url: Some(photo),
+                notes: None,
+                delivered_quantity: 6.0,
+            },
         )
         .await
         .unwrap();
@@ -271,14 +380,16 @@ async fn multi_load_pod_reconciles_parent_and_prevents_overwrite(pool: PgPool) {
     assert!(matches!(
         dispatch_repo::record_pod(
             &pool,
-            first,
-            driver,
-            "Changed",
-            "",
-            Some("signature"),
-            Some("trackmyrmc/pod/test.jpg"),
-            None,
-            6.0
+            trackmyrmc_backend::repositories::dispatch_repo::PodEvidence {
+                load_id: first,
+                driver_id: driver,
+                receiver_name: "Changed",
+                receiver_phone: "",
+                signature_url: Some("signature"),
+                photo_url: Some("trackmyrmc/pod/test.jpg"),
+                notes: None,
+                delivered_quantity: 6.0
+            }
         )
         .await,
         Err(AppError::Conflict(_))

@@ -278,7 +278,7 @@ pub async fn list_period_payslips(
                 let allowances: bigdecimal::BigDecimal = r.get("allowances");
                 let deductions: bigdecimal::BigDecimal = r.get("deductions");
                 let net_pay: bigdecimal::BigDecimal = r.get("net_pay");
-                let payment_status: String = r.get("payment_status");
+                let _payment_status: String = r.get("payment_status");
                 let transaction_ref: Option<String> = r.get("transaction_ref");
 
                 json!({

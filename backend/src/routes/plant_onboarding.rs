@@ -82,7 +82,6 @@ struct ApprovalSource {
     address: String,
     lat: f64,
     lng: f64,
-    contact_phone: Option<String>,
     applicant_owner_name: Option<String>,
     applicant_email: Option<String>,
     applicant_mobile: Option<String>,

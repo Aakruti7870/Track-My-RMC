@@ -139,7 +139,7 @@ pub async fn login(
             .into_iter()
             .map(|offset| now.timestamp() / 30 + offset)
             .find(|step| {
-                last_step.map_or(true, |last| *step > last)
+                last_step.is_none_or(|last| *step > last)
                     && TotpEngine::compute_code(&i.4, (*step * 30) as u64)
                         .is_ok_and(|code| code == body.code)
             })

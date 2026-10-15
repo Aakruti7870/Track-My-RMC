@@ -19,6 +19,8 @@ use serde_json::{json, Value};
 use sqlx::Row;
 use uuid::Uuid;
 
+type AttendanceTimes = (Option<DateTime<Utc>>, Option<DateTime<Utc>>);
+
 pub async fn get_driver_trips(
     State(state): State<AppState>,
     auth_user: AuthUser,
@@ -269,7 +271,7 @@ pub async fn check_out_driver(
     .await?;
 
     if updated.rows_affected() == 0 {
-        let existing: Option<(Option<DateTime<Utc>>, Option<DateTime<Utc>>)> = sqlx::query_as(
+        let existing: Option<AttendanceTimes> = sqlx::query_as(
             r#"
             SELECT check_in_time, check_out_time
             FROM workforce_attendance

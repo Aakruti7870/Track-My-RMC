@@ -7,3 +7,5 @@ pub mod play_review;
 pub mod tracking_service;
 pub mod trip_lifecycle;
 pub mod whatsapp_service;
+
+pub mod load_lifecycle;

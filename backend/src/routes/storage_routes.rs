@@ -87,7 +87,7 @@ pub async fn upload_file(
             ));
         }
     }
-    let ext = orig_name.split('.').last().unwrap_or("bin");
+    let ext = orig_name.split('.').next_back().unwrap_or("bin");
     let stored_path = format!("trackmyrmc/{}/{}.{}", purpose, Uuid::new_v4().simple(), ext);
 
     sqlx::query(

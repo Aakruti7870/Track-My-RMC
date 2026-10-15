@@ -77,13 +77,15 @@ pub async fn record_driver_location(
 
     telemetry_repo::insert_telemetry(
         &state.db,
-        req.mixer_id,
-        Some(driver_id),
-        req.load_id,
-        req.latitude,
-        req.longitude,
-        req.speed.unwrap_or(0.0),
-        req.heading.unwrap_or(0.0),
+        crate::repositories::telemetry_repo::TelemetryInput {
+            mixer_id: req.mixer_id,
+            driver_id: Some(driver_id),
+            load_id: req.load_id,
+            lat: req.latitude,
+            lng: req.longitude,
+            speed: req.speed.unwrap_or(0.0),
+            heading: req.heading.unwrap_or(0.0),
+        },
     )
     .await?;
 

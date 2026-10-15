@@ -206,17 +206,31 @@ pub async fn get_challan_by_load(
     Ok(challan)
 }
 
+pub struct PodEvidence<'a> {
+    pub load_id: Uuid,
+    pub driver_id: Uuid,
+    pub receiver_name: &'a str,
+    pub receiver_phone: &'a str,
+    pub signature_url: Option<&'a str>,
+    pub photo_url: Option<&'a str>,
+    pub notes: Option<&'a str>,
+    pub delivered_quantity: f64,
+}
+
 pub async fn record_pod(
     pool: &PgPool,
-    load_id: Uuid,
-    driver_id: Uuid,
-    receiver_name: &str,
-    receiver_phone: &str,
-    signature_url: Option<&str>,
-    photo_url: Option<&str>,
-    notes: Option<&str>,
-    delivered_quantity: f64,
+    input: PodEvidence<'_>,
 ) -> Result<ProofOfDelivery, AppError> {
+    let PodEvidence {
+        load_id,
+        driver_id,
+        receiver_name,
+        receiver_phone,
+        signature_url,
+        photo_url,
+        notes,
+        delivered_quantity,
+    } = input;
     let mut tx = pool.begin().await?;
     // Lock the parent before any sibling load to serialize quantity reconciliation.
     let order_id: Uuid =

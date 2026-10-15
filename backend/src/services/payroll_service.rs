@@ -1,6 +1,6 @@
 use crate::{
     error::AppError,
-    models::workforce::{MarkAttendanceRequest, PayrollClosure, WorkforceAttendance},
+    models::workforce::{MarkAttendanceRequest, WorkforceAttendance},
     repositories::workforce_repo,
     state::AppState,
 };

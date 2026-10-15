@@ -34,8 +34,8 @@ where
             .and_then(|h| h.to_str().ok())
             .ok_or_else(|| AppError::Unauthorized("Missing Authorization header".to_string()))?;
 
-        let token = if auth_header.starts_with("Bearer ") {
-            &auth_header[7..]
+        let token = if let Some(token) = auth_header.strip_prefix("Bearer ") {
+            token
         } else {
             return Err(AppError::Unauthorized(
                 "Invalid Authorization format. Must be Bearer <token>".to_string(),

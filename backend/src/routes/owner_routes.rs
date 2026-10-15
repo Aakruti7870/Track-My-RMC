@@ -108,18 +108,20 @@ pub async fn create_plant(
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
     let plant = plant_repo::create_plant(
         &state.db,
-        auth_user.user_id,
-        &req.name,
-        &req.code,
-        req.latitude,
-        req.longitude,
-        &req.address_line,
-        &req.city,
-        &req.state,
-        &req.pincode,
-        &req.contact_phone,
-        req.contact_email.as_deref(),
-        req.capacity_m3_per_hr.unwrap_or(60.0),
+        crate::repositories::plant_repo::NewPlant {
+            owner_id: auth_user.user_id,
+            name: &req.name,
+            code: &req.code,
+            lat: req.latitude,
+            lng: req.longitude,
+            address_line: &req.address_line,
+            city: &req.city,
+            state: &req.state,
+            pincode: &req.pincode,
+            contact_phone: &req.contact_phone,
+            contact_email: req.contact_email.as_deref(),
+            capacity: req.capacity_m3_per_hr.unwrap_or(60.0),
+        },
     )
     .await?;
 

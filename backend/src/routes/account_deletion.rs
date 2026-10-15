@@ -203,13 +203,15 @@ pub async fn send_public_otp(
     let (otp, salt, hashed_otp) = OtpEngine::generate_secure_otp(&state.config.otp_pepper);
     let session_id = OtpEngine::create_pending_session(
         &state.db,
-        &destination,
-        channel,
-        DELETION_OTP_PURPOSE,
-        &salt,
-        &hashed_otp,
-        state.config.otp_expiration_minutes,
-        state.config.otp_max_verification_attempts,
+        crate::auth::otp::OtpSessionInput {
+            destination: &destination,
+            channel: channel,
+            purpose: DELETION_OTP_PURPOSE,
+            salt: &salt,
+            hashed_otp: &hashed_otp,
+            expiration_minutes: state.config.otp_expiration_minutes,
+            max_attempts: state.config.otp_max_verification_attempts,
+        },
     )
     .await?;
 
