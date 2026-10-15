@@ -1,9 +1,14 @@
 name: Deploy TrackMyRMC AWS Production
 
-# Production deployment is manual-only until the database-name mismatch and
-# prior 502 incident have been reconciled. A merge to main must not redeploy
-# production as a side effect.
+# Automatic deployment runs only after ALL 3 main-branch CI workflows are
+# successful and the independent recovery readiness flags have been approved.
+# Both flags default to false. Live DB parity, snapshot, and rollback checks
+# still reject unsafe releases. Merging main cannot implicitly bypass the gate.
 on:
+  workflow_run:
+    workflows: ["Backend CI", "Frontend CI", "Android Build Validation"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       confirm_production_deploy:
@@ -17,6 +22,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
   id-token: write
 
 concurrency:
@@ -32,8 +38,17 @@ env:
 
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' && inputs.confirm_production_deploy == 'yes'
+    if: >-
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       vars.TRACKMYRMC_AUTO_PRODUCTION_ENABLED == 'true' &&
+       vars.TRACKMYRMC_RECOVERY_VERIFIED == 'true') ||
+      (github.event_name == 'workflow_dispatch' &&
+       inputs.confirm_production_deploy == 'yes' &&
+       vars.TRACKMYRMC_RECOVERY_VERIFIED == 'true')
     runs-on: ubuntu-latest
+    environment: production
     timeout-minutes: 60
     services:
       postgres:
@@ -51,7 +66,31 @@ jobs:
           --health-retries 5
 
     steps:
+      - name: Verify exact main SHA and three successful main CI workflows
+        id: release_gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRIGGER_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          SHA="$TRIGGER_SHA"
+          CURRENT_SHA="$(gh api "repos/$GITHUB_REPOSITORY/branches/main" --jq '.commit.sha')"
+          test "$SHA" = "$CURRENT_SHA" || { echo "Refusing stale/non-main release."; exit 1; }
+          RUNS="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?branch=main&per_page=100")"
+          for required in "Backend CI" "Frontend CI" "Android Build Validation"; do
+            conclusion="$(jq -r --arg sha "$SHA" --arg wf "$required" \
+              '[.workflow_runs[] | select(.head_sha == $sha and .name == $wf and .event == "push")] | sort_by(.created_at) | last | .conclusion // empty' <<<"$RUNS")"
+            if [ "$conclusion" != "success" ]; then
+              echo "Release blocked: $required on $SHA is ${conclusion:-missing}."
+              exit 1
+            fi
+          done
+          echo "RELEASE_SHA=$SHA" >> "$GITHUB_ENV"
+          echo "release_sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "All three main CI workflows passed for $SHA."
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release_gate.outputs.release_sha }}
 
       - name: Build Rust backend
         uses: dtolnay/rust-toolchain@stable
@@ -104,10 +143,10 @@ jobs:
       - name: Package complete source and admin dashboard
         run: |
           set -euo pipefail
-          git archive --format=tar.gz --output="/tmp/source-${GITHUB_SHA}.tgz" "${GITHUB_SHA}"
-          tar -C admin-web/dist -czf "/tmp/admin-web-${GITHUB_SHA}.tgz" .
-          test -s "/tmp/source-${GITHUB_SHA}.tgz"
-          test -s "/tmp/admin-web-${GITHUB_SHA}.tgz"
+          git archive --format=tar.gz --output="/tmp/source-${RELEASE_SHA}.tgz" "${RELEASE_SHA}"
+          tar -C admin-web/dist -czf "/tmp/admin-web-${RELEASE_SHA}.tgz" .
+          test -s "/tmp/source-${RELEASE_SHA}.tgz"
+          test -s "/tmp/admin-web-${RELEASE_SHA}.tgz"
 
       - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v4
@@ -115,6 +154,56 @@ jobs:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Fail closed on RDS data protection and backup state
+        run: |
+          set -euo pipefail
+          DETAILS="$(aws rds describe-db-instances --db-instance-identifier trackmyrmc-postgres --output json)"
+          jq -e '
+            .DBInstances | length == 1 and
+            .[0].DBName == "trackmyrmc" and
+            .[0].DBInstanceStatus == "available" and
+            .[0].Engine == "postgres" and
+            .[0].StorageEncrypted == true and
+            .[0].DeletionProtection == true and
+            .[0].BackupRetentionPeriod >= 7 and
+            (.[0].LatestRestorableTime != null)
+          ' <<<"$DETAILS" >/dev/null || {
+            echo "BLOCKED: production RDS settings or restore point do not meet the release gate."
+            exit 1
+          }
+      - name: Confirm live database parity before any release mutation
+        run: |
+          set -euo pipefail
+          REMOTE="set -o pipefail; curl -fsSL https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$RELEASE_SHA/ops/aws-production-preflight.sh | bash"
+          PARAMS="$(jq -cn --arg cmd "$REMOTE" '{commands:[$cmd]}')"
+          ID="$(aws ssm send-command --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript \
+            --comment "TrackMyRMC production read-only DB preflight" --parameters "$PARAMS" \
+            --query 'Command.CommandId' --output text)"
+          for attempt in $(seq 1 40); do
+            status="$(aws ssm get-command-invocation --command-id "$ID" --instance-id "$INSTANCE_ID" --query Status --output text 2>/dev/null || true)"
+            case "$status" in
+              Success)
+                echo "Production DB and app service preflight passed."
+                break
+                ;;
+              Failed|Cancelled|TimedOut|Cancelling)
+                echo "BLOCKED: production database/service preflight failed; refusing deployment."
+                exit 1
+                ;;
+            esac
+            [ "$attempt" -lt 40 ] || exit 1
+            sleep 3
+          done
+      - name: Create a pre-deployment RDS recovery snapshot
+        run: |
+          set -euo pipefail
+          SNAPSHOT_ID="trackmyrmc-release-${RELEASE_SHA:0:20}"
+          if ! aws rds describe-db-snapshots --db-snapshot-identifier "$SNAPSHOT_ID" >/dev/null 2>&1; then
+            aws rds create-db-snapshot --db-instance-identifier trackmyrmc-postgres \
+              --db-snapshot-identifier "$SNAPSHOT_ID" >/dev/null
+          fi
+          aws rds wait db-snapshot-completed --db-snapshot-identifier "$SNAPSHOT_ID"
+          echo "RDS recovery snapshot ready: $SNAPSHOT_ID"
       - name: Verify production runtime secret exists
         run: |
           set -euo pipefail
@@ -125,7 +214,7 @@ jobs:
         id: release
         run: |
           set -euo pipefail
-          SHA="${GITHUB_SHA}"
+          SHA="${RELEASE_SHA}"
           tar -C frontend -czf /tmp/frontend.tgz dist
           aws s3 cp backend/target/release/trackmyrmc-backend "s3://${ARTIFACT_BUCKET}/backend-${SHA}"
           aws s3 cp /tmp/frontend.tgz "s3://${ARTIFACT_BUCKET}/frontend-${SHA}.tgz"
@@ -133,24 +222,29 @@ jobs:
           aws s3 cp "/tmp/admin-web-${SHA}.tgz" "s3://${ARTIFACT_BUCKET}/admin-web-${SHA}.tgz"
 
       - name: Deploy EC2 through SSM
+        id: deploy_release
         run: |
           set -euo pipefail
-          COMMAND_ID="$(aws ssm send-command             --instance-ids "${INSTANCE_ID}"             --document-name AWS-RunShellScript             --comment "TrackMyRMC production deploy ${GITHUB_SHA}"             --parameters commands="curl -fsSL "https://raw.githubusercontent.com/Aakruti7870/Track-My-RMC/${GITHUB_SHA}/ops/aws-deploy-ec2.sh" | RELEASE_SHA=${GITHUB_SHA} bash"             --query 'Command.CommandId'             --output text)"
-
-          for i in $(seq 1 60); do
-            STATUS="$(aws ssm get-command-invocation               --command-id "$COMMAND_ID"               --instance-id "${INSTANCE_ID}"               --query Status               --output text)"
-            echo "SSM: $STATUS"
-            case "$STATUS" in
+          REMOTE="set -o pipefail; curl -fsSL https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$RELEASE_SHA/ops/aws-deploy-ec2.sh | RELEASE_SHA=$RELEASE_SHA bash"
+          PARAMS="$(jq -cn --arg cmd "$REMOTE" '{commands:[$cmd]}')"
+          COMMAND_ID="$(aws ssm send-command --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript \
+            --comment "TrackMyRMC gated release $RELEASE_SHA" --parameters "$PARAMS" \
+            --query 'Command.CommandId' --output text)"
+          for attempt in $(seq 1 60); do
+            status="$(aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query Status --output text 2>/dev/null || true)"
+            case "$status" in
               Success) exit 0 ;;
               Failed|Cancelled|TimedOut|Cancelling)
-                aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "${INSTANCE_ID}"
+                echo "Deployment failed. The server-side application rollback trap was invoked."
                 exit 1 ;;
             esac
             sleep 5
           done
+          echo "Deployment timed out; inspect the instance before any retry." >&2
           exit 1
 
       - name: Verify public HTTPS, API, and web assets
+        id: public_smoke
         run: |
           set -euo pipefail
           curl --retry 10 --retry-all-errors --retry-delay 3 -fsS https://trackmyrmc.com/health
@@ -159,3 +253,15 @@ jobs:
           ADMIN_JS="$(curl --retry 10 --retry-all-errors --retry-delay 3 -fsS https://trackmyrmc.com/admin/ | grep -Eo 'src="/admin/assets/[^"]+\.js"' | head -n 1 | cut -d '"' -f 2)"
           test -n "$ADMIN_JS"
           curl --retry 10 --retry-all-errors --retry-delay 3 -fsSI "https://trackmyrmc.com$ADMIN_JS" | grep -Eiq '^HTTP/[^ ]+ 200'
+
+      - name: Restore previous application after public smoke failure
+        if: ${{ failure() && steps.deploy_release.outcome == 'success' && steps.public_smoke.outcome == 'failure' }}
+        run: |
+          set -euo pipefail
+          REMOTE="set -o pipefail; curl -fsSL https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$RELEASE_SHA/ops/aws-rollback-ec2.sh | RELEASE_SHA=$RELEASE_SHA bash"
+          PARAMS="$(jq -cn --arg cmd "$REMOTE" '{commands:[$cmd]}')"
+          COMMAND_ID="$(aws ssm send-command --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript \
+            --comment "TrackMyRMC failed external smoke rollback $RELEASE_SHA" --parameters "$PARAMS" \
+            --query 'Command.CommandId' --output text)"
+          aws ssm wait command-executed --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID"
+          echo "Previous application rollback command completed; investigate database compatibility and HTTPS."
