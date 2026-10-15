@@ -52,8 +52,8 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-      - name: Validate production deploy script syntax
-        run: bash -n ops/aws-deploy-ec2.sh
+      - name: Validate production deploy/rollback/preflight shell syntax
+        run: bash -n ops/aws-deploy-ec2.sh ops/aws-production-preflight.sh ops/aws-rollback-ec2.sh
 
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
