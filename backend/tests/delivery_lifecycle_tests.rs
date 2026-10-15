@@ -925,3 +925,65 @@ async fn legacy_order_routes_enforce_tenancy_and_lifecycle(pool: PgPool) {
         .unwrap();
     assert_eq!(status, "dispatched");
 }
+
+#[sqlx::test]
+async fn ordinary_admin_cannot_read_foreign_hr_master_or_payroll_records(pool: PgPool) {
+    use axum::extract::{Path, Query, State};
+    use trackmyrmc_backend::{
+        auth::AuthUser,
+        routes::{hr_routes, master_data_routes, payroll_routes, workforce_routes},
+    };
+    let (actor, order, _, _) = fixture(&pool).await;
+    let app = state(pool.clone());
+    let plant: Uuid = sqlx::query_scalar("SELECT plant_id FROM orders WHERE id=$1")
+        .bind(order)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let user = AuthUser {
+        user_id: Uuid::new_v4(),
+        role: "admin".into(),
+        phone: "test".into(),
+        email: None,
+    };
+    assert!(matches!(
+        master_data_routes::get_plant_profile(State(app.clone()), user.clone(), Path(plant)).await,
+        Err(AppError::Forbidden(_))
+    ));
+    assert!(matches!(
+        hr_routes::get_employee_hr_profile(State(app.clone()), user.clone(), Path((plant, actor)))
+            .await,
+        Err(AppError::Forbidden(_))
+    ));
+    assert!(matches!(
+        payroll_routes::export_payroll_csv(
+            State(app.clone()),
+            user.clone(),
+            Path((plant, "2026-10".into()))
+        )
+        .await,
+        Err(AppError::Forbidden(_))
+    ));
+    assert!(matches!(
+        payroll_routes::close_payroll_period(
+            State(app.clone()),
+            user.clone(),
+            Path((plant, "2026-10".into())),
+            None
+        )
+        .await,
+        Err(AppError::Forbidden(_))
+    ));
+    assert!(matches!(
+        workforce_routes::get_roster(
+            State(app),
+            user,
+            Query(workforce_routes::RosterQuery {
+                plant_id: plant,
+                date: None
+            })
+        )
+        .await,
+        Err(AppError::Forbidden(_))
+    ));
+}

@@ -15,37 +15,10 @@ use uuid::Uuid;
 
 async fn ensure_plant_staff_or_owner(
     state: &AppState,
-    auth_user: &AuthUser,
-    plant_id: Uuid,
+    user: &AuthUser,
+    plant: Uuid,
 ) -> Result<(), AppError> {
-    if auth_user.role == "admin" {
-        return Ok(());
-    }
-    if auth_user.role == "owner" || auth_user.role == "plant_owner" {
-        let is_owner: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM rmc_plants WHERE id = $1 AND owner_id = $2)",
-        )
-        .bind(plant_id)
-        .bind(auth_user.user_id)
-        .fetch_one(&state.db)
-        .await?;
-        if is_owner {
-            return Ok(());
-        }
-    }
-    let is_staff: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM plant_staff WHERE plant_id = $1 AND user_id = $2 AND is_active = TRUE)",
-    )
-    .bind(plant_id)
-    .bind(auth_user.user_id)
-    .fetch_one(&state.db)
-    .await?;
-    if !is_staff {
-        return Err(AppError::Forbidden(
-            "You are not authorized for this plant".to_string(),
-        ));
-    }
-    Ok(())
+    super::business_routes::ensure_plant_staff_or_owner(state, user, plant).await
 }
 
 #[derive(Debug, Deserialize, Serialize)]

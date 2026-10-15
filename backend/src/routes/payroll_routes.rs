@@ -17,17 +17,6 @@ async fn get_accessible_plants(
     state: &AppState,
     auth_user: &AuthUser,
 ) -> Result<Vec<(Uuid, String)>, AppError> {
-    if auth_user.role == "admin" {
-        let rows =
-            sqlx::query("SELECT id, name FROM rmc_plants WHERE is_active = TRUE ORDER BY name")
-                .fetch_all(&state.db)
-                .await?;
-        return Ok(rows
-            .into_iter()
-            .map(|r| (r.get("id"), r.get("name")))
-            .collect());
-    }
-
     let rows = sqlx::query(
         r#"
         SELECT p.id, p.name
@@ -170,6 +159,7 @@ pub async fn close_payroll_period(
     payload: Option<Json<ClosePeriodPayload>>,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
+    super::business_routes::ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
     let (year, month) = parse_year_month(&month_str)?;
     let override_reason = payload.and_then(|p| p.0.override_reason);
 
@@ -208,6 +198,7 @@ pub async fn reopen_payroll_period(
     Path((plant_id, month_str)): Path<(Uuid, String)>,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
+    super::business_routes::ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
     let (year, month) = parse_year_month(&month_str)?;
 
     sqlx::query(
@@ -235,6 +226,7 @@ pub async fn list_period_payslips(
     Path((plant_id, month_str)): Path<(Uuid, String)>,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["accountant", "owner", "plant_owner", "admin"])?;
+    super::business_routes::ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
     let (year, month) = parse_year_month(&month_str)?;
 
     let closure = sqlx::query(
@@ -316,6 +308,7 @@ pub async fn export_payroll_csv(
     Path((plant_id, month_str)): Path<(Uuid, String)>,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["accountant", "owner", "plant_owner", "admin"])?;
+    super::business_routes::ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
     let (year, month) = parse_year_month(&month_str)?;
 
     let records = sqlx::query(

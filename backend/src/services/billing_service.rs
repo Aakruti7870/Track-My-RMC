@@ -140,7 +140,7 @@ pub async fn payment(
         }
         let id: Uuid = p.get("id");
         tx.commit().await?;
-        return Ok(json!({"success":true,"payment_id":id}));
+        return Ok(json!({"success":true,"payment_id":id,"status":status}));
     }
     if status == "CANCELLED" {
         return Err(AppError::Conflict(

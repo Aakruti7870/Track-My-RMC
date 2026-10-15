@@ -47,33 +47,7 @@ pub async fn monthly_summary(
     }
     .ok_or_else(|| AppError::BadRequest("invalid month".to_string()))?;
 
-    if !matches!(auth_user.role.as_str(), "owner" | "plant_owner" | "admin") {
-        let assigned: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM plant_staff WHERE plant_id=$1 AND user_id=$2 AND is_active=TRUE)",
-        )
-        .bind(query.plant_id)
-        .bind(auth_user.user_id)
-        .fetch_one(&state.db)
-        .await?;
-        if !assigned {
-            return Err(AppError::Forbidden(
-                "You are not assigned to this plant".to_string(),
-            ));
-        }
-    } else if matches!(auth_user.role.as_str(), "owner" | "plant_owner") {
-        let owns_plant: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM rmc_plants WHERE id=$1 AND owner_id=$2)",
-        )
-        .bind(query.plant_id)
-        .bind(auth_user.user_id)
-        .fetch_one(&state.db)
-        .await?;
-        if !owns_plant {
-            return Err(AppError::Forbidden(
-                "This plant is not owned by your account".to_string(),
-            ));
-        }
-    }
+    super::business_routes::ensure_plant_staff_or_owner(&state, &auth_user, query.plant_id).await?;
 
     let attendance = sqlx::query(
         r#"
@@ -159,13 +133,6 @@ pub async fn monthly_workforce_report(
     {
         sqlx::query("SELECT id, name FROM rmc_plants WHERE owner_id = $1 AND is_active = TRUE ORDER BY name")
             .bind(auth_user.user_id)
-            .fetch_all(&state.db)
-            .await?
-            .into_iter()
-            .map(|r| (r.get("id"), r.get("name")))
-            .collect()
-    } else if auth_user.role == "admin" {
-        sqlx::query("SELECT id, name FROM rmc_plants WHERE is_active = TRUE ORDER BY name")
             .fetch_all(&state.db)
             .await?
             .into_iter()
@@ -332,6 +299,13 @@ pub async fn save_payroll_draft(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["accountant", "owner", "plant_owner", "admin"])?;
 
+    super::business_routes::ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
+    let belongs:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM plant_staff WHERE plant_id=$1 AND user_id=$2 AND is_active=TRUE)").bind(plant_id).bind(user_id).fetch_one(&state.db).await?;
+    if !belongs {
+        return Err(AppError::NotFound(
+            "Employee not found in this plant".into(),
+        ));
+    }
     let month_start = NaiveDate::parse_from_str(&format!("{}-01", month_str), "%Y-%m-%d")
         .map_err(|_| AppError::BadRequest("month must use YYYY-MM format".to_string()))?;
     let (year, month) = (month_start.year(), month_start.month() as i32);
@@ -413,6 +387,13 @@ pub async fn owner_payroll_decision(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
 
+    super::business_routes::ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
+    let belongs:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM plant_staff WHERE plant_id=$1 AND user_id=$2 AND is_active=TRUE)").bind(plant_id).bind(user_id).fetch_one(&state.db).await?;
+    if !belongs {
+        return Err(AppError::NotFound(
+            "Employee not found in this plant".into(),
+        ));
+    }
     let month_start = NaiveDate::parse_from_str(&format!("{}-01", month_str), "%Y-%m-%d")
         .map_err(|_| AppError::BadRequest("month must use YYYY-MM format".to_string()))?;
     let (year, month) = (month_start.year(), month_start.month() as i32);
@@ -460,6 +441,13 @@ pub async fn mark_payroll_paid(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["accountant", "owner", "plant_owner", "admin"])?;
 
+    super::business_routes::ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
+    let belongs:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM plant_staff WHERE plant_id=$1 AND user_id=$2 AND is_active=TRUE)").bind(plant_id).bind(user_id).fetch_one(&state.db).await?;
+    if !belongs {
+        return Err(AppError::NotFound(
+            "Employee not found in this plant".into(),
+        ));
+    }
     let month_start = NaiveDate::parse_from_str(&format!("{}-01", month_str), "%Y-%m-%d")
         .map_err(|_| AppError::BadRequest("month must use YYYY-MM format".to_string()))?;
     let (year, month) = (month_start.year(), month_start.month() as i32);
