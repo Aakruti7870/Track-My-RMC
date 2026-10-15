@@ -343,6 +343,10 @@ pub fn build_app_router(state: AppState) -> Router {
             post(finance_ops_routes::decide_customer_quotation),
         )
         .route(
+            "/api/ops/customer/quotations",
+            get(finance_ops_routes::list_customer_quotations),
+        )
+        .route(
             "/api/ops/customer/quotations/:quotation_id/decision",
             post(finance_ops_routes::decide_customer_quotation),
         )

@@ -519,6 +519,21 @@ pub async fn create_quotation_request(
     auth_user: AuthUser,
     Json(payload): Json<CustomerRfqPayload>,
 ) -> Result<impl IntoResponse, AppError> {
+    check_role(&auth_user, &["customer"])?;
+    if let Some(site) = payload.site_id {
+        let own: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM customer_sites WHERE id=$1 AND customer_id=$2)",
+        )
+        .bind(site)
+        .bind(auth_user.user_id)
+        .fetch_one(&state.db)
+        .await?;
+        if !own {
+            return Err(AppError::Forbidden(
+                "Saved site does not belong to this customer".into(),
+            ));
+        }
+    }
     let req_date = match &payload.required_date {
         Some(d) => NaiveDate::parse_from_str(d, "%Y-%m-%d").map_err(|_| {
             AppError::BadRequest("Invalid required_date, expected YYYY-MM-DD".to_string())
@@ -526,8 +541,11 @@ pub async fn create_quotation_request(
         None => chrono::Utc::now().date_naive() + chrono::Duration::days(1),
     };
 
-    let quantity = payload.quantity_m3.or(payload.quantity).unwrap_or(6.0);
-    if quantity <= 0.0 {
+    let quantity = payload
+        .quantity_m3
+        .or(payload.quantity)
+        .ok_or_else(|| AppError::BadRequest("Quantity is required".into()))?;
+    if !quantity.is_finite() || quantity <= 0.0 || quantity > 10000.0 {
         return Err(AppError::BadRequest(
             "Quantity must be greater than zero".to_string(),
         ));

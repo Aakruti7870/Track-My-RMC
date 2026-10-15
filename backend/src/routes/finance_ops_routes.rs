@@ -374,56 +374,10 @@ pub async fn list_customer_quotations(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
-    let rows = sqlx::query(
-        r#"
-        SELECT q.id, q.quotation_number, q.plant_id, q.grade, q.quantity_m3, q.rate_per_m3,
-               q.gst_rate, q.transport_amount, q.pumping_amount, q.total_amount,
-               q.valid_until, q.status, q.notes, q.created_at,
-               p.name as plant_name, p.contact_phone as plant_phone
-        FROM plant_quotations q
-        INNER JOIN rmc_plants p ON p.id = q.plant_id
-        WHERE q.customer_id = $1
-        ORDER BY q.created_at DESC
-        "#,
-    )
-    .bind(auth_user.user_id)
-    .fetch_all(&state.db)
-    .await?;
-
-    let quotations: Vec<_> = rows
-        .into_iter()
-        .map(|r| {
-            let id: Uuid = r.get("id");
-            let quotation_number: String = r.get("quotation_number");
-            let plant_id: Uuid = r.get("plant_id");
-            let plant_name: String = r.get("plant_name");
-            let plant_phone: Option<String> = r.get("plant_phone");
-            let grade: String = r.get("grade");
-            let quantity_m3: bigdecimal::BigDecimal = r.get("quantity_m3");
-            let rate_per_m3: bigdecimal::BigDecimal = r.get("rate_per_m3");
-            let total_amount: bigdecimal::BigDecimal = r.get("total_amount");
-            let valid_until: chrono::NaiveDate = r.get("valid_until");
-            let status: String = r.get("status");
-            let created_at: chrono::DateTime<chrono::Utc> = r.get("created_at");
-
-            json!({
-                "id": id,
-                "quotation_number": quotation_number,
-                "plant_id": plant_id,
-                "plant_name": plant_name,
-                "plant_phone": plant_phone,
-                "grade": grade,
-                "quantity_m3": quantity_m3,
-                "rate_per_m3": rate_per_m3,
-                "total_amount": total_amount,
-                "valid_until": valid_until,
-                "status": status,
-                "created_at": created_at
-            })
-        })
-        .collect();
-
-    Ok(Json(json!({ "success": true, "quotations": quotations })))
+    check_role(&auth_user, &["customer"])?;
+    let quotes:Vec<serde_json::Value>=sqlx::query_scalar("SELECT to_jsonb(q)||jsonb_build_object('plant_name',p.name,'plant_phone',p.contact_phone,'site_id',r.site_id,'quantity_m3',q.quantity_m3::DOUBLE PRECISION,'rate_per_m3',q.rate_per_m3::DOUBLE PRECISION,'gst_rate',q.gst_rate::DOUBLE PRECISION,'transport_amount',q.transport_amount::DOUBLE PRECISION,'pumping_amount',q.pumping_amount::DOUBLE PRECISION,'total',q.total_amount::DOUBLE PRECISION,'total_amount',q.total_amount::DOUBLE PRECISION,'gst_amount',ROUND((q.quantity_m3*q.rate_per_m3+q.transport_amount+q.pumping_amount)*q.gst_rate/100,2)::DOUBLE PRECISION,'order_id',o.id,'order_number',o.order_number) FROM plant_quotations q JOIN rmc_plants p ON p.id=q.plant_id LEFT JOIN customer_quotation_requests r ON r.id=q.request_id AND r.customer_id=q.customer_id LEFT JOIN orders o ON o.quotation_id=q.id WHERE q.customer_id=$1 ORDER BY q.created_at DESC LIMIT 500")
+        .bind(auth_user.user_id).fetch_all(&state.db).await?;
+    Ok(Json(json!({"success":true,"quotations":quotes})))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -438,37 +392,49 @@ pub async fn decide_customer_quotation(
     Path(quotation_id): Path<Uuid>,
     Json(payload): Json<CustomerQuotationDecisionPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    let new_status = if payload.action.to_uppercase() == "ACCEPT" {
-        "ACCEPTED"
-    } else {
-        "DECLINED"
+    check_role(&auth_user, &["customer"])?;
+    let new_status = match payload.action.as_str() {
+        "ACCEPT" => "ACCEPTED",
+        "DECLINE" => "DECLINED",
+        _ => {
+            return Err(AppError::BadRequest(
+                "Action must be ACCEPT or DECLINE".into(),
+            ))
+        }
     };
-
-    let result = sqlx::query(
-        r#"
-        UPDATE plant_quotations
-        SET status = $1, decline_reason = $2, updated_at = NOW()
-        WHERE id = $3 AND customer_id = $4
-        "#,
+    if payload.reason.as_ref().is_some_and(|s| s.len() > 2000) {
+        return Err(AppError::BadRequest("Reason is too long".into()));
+    }
+    let mut tx = state.db.begin().await?;
+    let row = sqlx::query(
+        "SELECT status,valid_until FROM plant_quotations WHERE id=$1 AND customer_id=$2 FOR UPDATE",
     )
-    .bind(new_status)
-    .bind(payload.reason)
     .bind(quotation_id)
     .bind(auth_user.user_id)
-    .execute(&state.db)
-    .await?;
-
-    if result.rows_affected() == 0 {
-        return Err(AppError::NotFound(
-            "Quotation not found or unauthorized".to_string(),
-        ));
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Quotation not found".into()))?;
+    let status: String = row.get("status");
+    if status != new_status {
+        if status != "SENT"
+            || row.get::<chrono::NaiveDate, _>("valid_until") < chrono::Utc::now().date_naive()
+        {
+            return Err(AppError::Conflict(
+                "Only an unexpired sent quotation can be decided".into(),
+            ));
+        }
+        sqlx::query(
+            "UPDATE plant_quotations SET status=$1,decline_reason=$2,updated_at=NOW() WHERE id=$3",
+        )
+        .bind(new_status)
+        .bind(payload.reason)
+        .bind(quotation_id)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'quotation.decision','quotation',$2,$3)").bind(auth_user.user_id).bind(quotation_id.to_string()).bind(json!({"from":status,"to":new_status})).execute(&mut *tx).await?;
     }
-
-    Ok(Json(json!({
-        "success": true,
-        "status": new_status,
-        "message": format!("Quotation {}", new_status.to_lowercase())
-    })))
+    tx.commit().await?;
+    Ok(Json(json!({"success":true,"status":new_status})))
 }
 
 #[derive(Debug, Deserialize, Serialize)]

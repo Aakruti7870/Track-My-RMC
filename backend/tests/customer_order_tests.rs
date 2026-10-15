@@ -199,6 +199,17 @@ async fn orders_enforce_kyc_site_ownership_rate_validity_and_draft_boundary(db: 
     payload["save_draft"] = json!(false);
     payload["site_id"] = json!(site);
     assert_eq!(
+        call(
+            &app,
+            "/api/customer/quotation-requests",
+            Some(json!({"plant_id":plant,"site_id":site,"grade":"M25","quantity":6})),
+            &token
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
         call(&app, "/api/customer/orders", Some(payload.clone()), &token)
             .await
             .0,
@@ -236,7 +247,30 @@ async fn orders_enforce_kyc_site_ownership_rate_validity_and_draft_boundary(db: 
 #[sqlx::test]
 async fn accepted_quotation_is_consumed_once_with_immutable_financial_totals(db: PgPool) {
     let (_, app, customer, plant, token) = fixture(&db).await;
-    let quote:Uuid=sqlx::query_scalar("INSERT INTO plant_quotations(plant_id,quotation_number,customer_id,customer_name,site_name,site_address,grade,quantity_m3,rate_per_m3,transport_amount,total_amount,valid_until,status) VALUES($1,'QT-TEST',$2,'Customer','Site','Address','M25',6,4500,100,31978,CURRENT_DATE+7,'ACCEPTED') RETURNING id").bind(plant).bind(customer).fetch_one(&db).await.unwrap();
+    let quote:Uuid=sqlx::query_scalar("INSERT INTO plant_quotations(plant_id,quotation_number,customer_id,customer_name,site_name,site_address,grade,quantity_m3,rate_per_m3,transport_amount,total_amount,valid_until,status) VALUES($1,'QT-TEST',$2,'Customer','Site','Address','M25',6,4500,100,31978,CURRENT_DATE+7,'SENT') RETURNING id").bind(plant).bind(customer).fetch_one(&db).await.unwrap();
+    let (status, list) = call(&app, "/api/ops/customer/quotations", None, &token).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(list["quotations"][0]["total"], 31978.0);
+    assert_eq!(list["quotations"][0]["quantity_m3"], 6.0);
+    let decision = format!("/api/ops/customer/quotations/{quote}/decision");
+    assert_eq!(
+        call(&app, &decision, Some(json!({"action":"UNKNOWN"})), &token)
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        call(&app, &decision, Some(json!({"action":"ACCEPT"})), &token)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        call(&app, &decision, Some(json!({"action":"ACCEPT"})), &token)
+            .await
+            .0,
+        StatusCode::OK
+    );
     let mut a = order(plant, "quotation-order-a");
     a["quotation_id"] = json!(quote);
     let mut b = a.clone();
@@ -272,6 +306,12 @@ async fn accepted_quotation_is_consumed_once_with_immutable_financial_totals(db:
             .await
             .unwrap();
     assert_eq!(amounts, (BigDecimal::from(31978), BigDecimal::from(4878)));
+    assert_eq!(
+        call(&app, &decision, Some(json!({"action":"DECLINE"})), &token)
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
 }
 
 #[sqlx::test]
