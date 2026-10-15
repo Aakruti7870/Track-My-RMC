@@ -224,7 +224,8 @@ async fn orders_enforce_kyc_site_ownership_rate_validity_and_draft_boundary(db: 
         StatusCode::BAD_REQUEST
     );
     assert_eq!(
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM orders")
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM orders WHERE plant_id=$1")
+            .bind(plant)
             .fetch_one(&db)
             .await
             .unwrap(),
@@ -297,7 +298,8 @@ async fn assistant_confirmation_requires_stored_customer_intent_and_reviewed_pri
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM orders")
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM orders WHERE plant_id=$1")
+            .bind(plant)
             .fetch_one(&db)
             .await
             .unwrap(),
@@ -352,7 +354,8 @@ async fn assistant_confirmation_requires_stored_customer_intent_and_reviewed_pri
     assert_eq!(b.0, StatusCode::OK);
     assert_eq!(a.1["id"], b.1["id"]);
     assert_eq!(
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM orders")
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM orders WHERE plant_id=$1")
+            .bind(plant)
             .fetch_one(&db)
             .await
             .unwrap(),
@@ -445,5 +448,112 @@ async fn automation_missing_credentials_expired_leases_and_unconfigured_delivery
         .await
         .0,
         StatusCode::CONFLICT
+    );
+}
+
+#[sqlx::test]
+async fn generic_dispatcher_status_cannot_skip_production_and_pod(db: PgPool) {
+    let (state, app, _, plant, token) = fixture(&db).await;
+    let (_, created) = call(
+        &app,
+        "/api/customer/orders",
+        Some(order(plant, "dispatcher-status-test")),
+        &token,
+    )
+    .await;
+    let id: Uuid = created["id"].as_str().unwrap().parse().unwrap();
+    let dispatcher = identity(&db, "dispatcher").await;
+    sqlx::query("INSERT INTO plant_staff(plant_id,user_id,role) VALUES($1,$2,'dispatcher')")
+        .bind(plant)
+        .bind(dispatcher)
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE orders SET status='scheduled' WHERE id=$1")
+        .bind(id)
+        .execute(&db)
+        .await
+        .unwrap();
+    let token = generate_token(
+        dispatcher,
+        "dispatcher",
+        "",
+        None,
+        &state.config.jwt_secret,
+        1,
+    )
+    .unwrap();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/dispatcher/orders/{id}/status"))
+                .method("PATCH")
+                .header("Authorization", format!("Bearer {token}"))
+                .header("Content-Type", "application/json")
+                .body(Body::from(json!({"status":"dispatched"}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT status FROM orders WHERE id=$1")
+            .bind(id)
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+        "scheduled"
+    );
+}
+
+#[sqlx::test]
+async fn cancellation_is_customer_scoped_atomic_and_idempotent(db: PgPool) {
+    let (state, app, _, plant, token) = fixture(&db).await;
+    let (_, created) = call(
+        &app,
+        "/api/customer/orders",
+        Some(order(plant, "cancel-order-test")),
+        &token,
+    )
+    .await;
+    let id: Uuid = created["id"].as_str().unwrap().parse().unwrap();
+    let path = format!("/api/customer/orders/{id}/cancel");
+    let admin = identity(&db, "admin").await;
+    let admin_token =
+        generate_token(admin, "admin", "", None, &state.config.jwt_secret, 1).unwrap();
+    assert_eq!(
+        call(&app, &path, Some(json!({})), &admin_token).await.0,
+        StatusCode::FORBIDDEN
+    );
+    let (a, b) = tokio::join!(
+        call(&app, &path, Some(json!({})), &token),
+        call(&app, &path, Some(json!({})), &token)
+    );
+    assert_eq!(a.0, StatusCode::OK);
+    assert_eq!(b.0, StatusCode::OK);
+    let changes: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM audit_logs WHERE resource_id=$1 AND action='order.cancel'",
+    )
+    .bind(id.to_string())
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(changes, 1);
+    sqlx::query("UPDATE orders SET status='in_production' WHERE id=$1")
+        .bind(id)
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        call(&app, &path, Some(json!({})), &token).await.0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT status FROM orders WHERE id=$1")
+            .bind(id)
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+        "in_production"
     );
 }

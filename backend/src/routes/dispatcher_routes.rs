@@ -2,7 +2,7 @@ use crate::{
     auth::{middleware::check_role, AuthUser},
     error::AppError,
     models::order::{AssignLoadRequest, UpdateOrderStatusRequest},
-    repositories::{dispatch_repo, order_repo},
+    repositories::dispatch_repo,
     state::AppState,
 };
 use axum::{
@@ -73,6 +73,12 @@ pub async fn update_order_status(
         .await?
         .ok_or_else(|| AppError::NotFound("Order not found".to_string()))?;
     ensure_plant_access(&state, &auth_user, plant_id).await?;
-    order_repo::update_order_status(&state.db, order_id, &payload.status).await?;
-    Ok(Json(json!({ "success": true, "status": payload.status })))
+    let current: String = sqlx::query_scalar("SELECT status FROM orders WHERE id=$1")
+        .bind(order_id)
+        .fetch_one(&state.db)
+        .await?;
+    if current != payload.status {
+        return Err(AppError::Conflict("Use the dedicated approval, production, load-dispatch or delivery workflow to change order status".into()));
+    }
+    Ok(Json(json!({ "success": true, "status": current })))
 }

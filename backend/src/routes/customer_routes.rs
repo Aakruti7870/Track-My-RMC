@@ -323,34 +323,43 @@ pub async fn cancel_order(
     auth_user: AuthUser,
     Path(order_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    let order = sqlx::query("SELECT customer_id, status FROM orders WHERE id = $1")
+    check_role(&auth_user, &["customer"])?;
+    let mut tx = state.db.begin().await?;
+    let order = sqlx::query("SELECT customer_id, status FROM orders WHERE id = $1 FOR UPDATE")
         .bind(order_id)
-        .fetch_optional(&state.db)
+        .fetch_optional(&mut *tx)
         .await?
         .ok_or_else(|| AppError::NotFound("Order not found".to_string()))?;
 
     let cid: Uuid = order.get("customer_id");
     let status: String = order.get("status");
 
-    if cid != auth_user.user_id && auth_user.role != "admin" {
+    if cid != auth_user.user_id {
         return Err(AppError::Forbidden("Unauthorized".to_string()));
     }
 
-    if !matches!(status.to_lowercase().as_str(), "pending" | "confirmed") {
+    if !matches!(
+        status.as_str(),
+        "draft" | "pending" | "confirmed" | "cancelled"
+    ) {
         return Err(AppError::BadRequest(
             "Cannot cancel order once production or dispatch has begun".to_string(),
         ));
     }
 
-    sqlx::query("UPDATE orders SET status = 'cancelled', updated_at = NOW() WHERE id = $1")
-        .bind(order_id)
-        .execute(&state.db)
-        .await?;
+    if status != "cancelled" {
+        sqlx::query("UPDATE orders SET status = 'cancelled', updated_at = NOW() WHERE id = $1")
+            .bind(order_id)
+            .execute(&mut *tx)
+            .await?;
 
-    sqlx::query("UPDATE order_loads SET status = 'cancelled' WHERE order_id = $1")
-        .bind(order_id)
-        .execute(&state.db)
-        .await?;
+        sqlx::query("UPDATE order_loads SET status = 'cancelled' WHERE order_id = $1")
+            .bind(order_id)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'order.cancel','order',$2,$3)").bind(auth_user.user_id).bind(order_id.to_string()).bind(json!({"from":status,"to":"cancelled"})).execute(&mut *tx).await?;
+    }
+    tx.commit().await?;
 
     Ok(Json(
         json!({ "success": true, "message": "Order cancelled successfully" }),
