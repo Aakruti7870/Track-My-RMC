@@ -1,7 +1,7 @@
 import React from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Href, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/src/auth/AuthContext";
@@ -18,6 +18,7 @@ import { HomeCarousel } from "@/src/components/HomeCarousel";
 import { OrderData } from "@/src/components/OrderCard";
 import { PlantData } from "@/src/components/PlantCard";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
+import { customerHomeModules } from "@/src/navigation/moduleCatalog";
 
 
 type HomeData = {
@@ -36,16 +37,7 @@ const ACTIONS: { key: "new" | "track" | "plants" | "orders"; label: string; icon
   { key: "orders", label: "My Orders", icon: "document-text" },
 ];
 
-const CUSTOMER_MODULES: { key: string; label: string; description: string; icon: keyof typeof Ionicons.glyphMap; route: Href }[] = [
-  { key: "projects", label: "Project & Site Hub", description: "Manage project sites", icon: "briefcase-outline", route: "/customer/projects" },
-  { key: "pour-planner", label: "Concrete Pour Planner", description: "Plan upcoming pours", icon: "time-outline", route: "/customer/pour-planner" },
-  { key: "receiving-guide", label: "Receiving & Quality Guide", description: "Delivery and quality guidance", icon: "shield-checkmark-outline", route: "/customer/receiving-guide" },
-  { key: "cube-tests", label: "Cube Test Follow-up", description: "Follow test results", icon: "flask-outline", route: "/customer/cube-test-follow-up" },
-  { key: "compare-plants", label: "Estimate & Compare Plants", description: "Compare plant options", icon: "git-compare-outline", route: "/customer/compare-plants" },
-  { key: "quotations", label: "Quotations", description: "Review your quotations", icon: "document-text-outline", route: "/customer/quotations" },
-  { key: "documents", label: "Documents", description: "Order-related documents", icon: "folder-outline", route: "/customer/documents" },
-  { key: "free-tools", label: "Free RMC Tools", description: "Concrete planning calculators", icon: "calculator-outline", route: "/customer/free-tools" },
-];
+const CUSTOMER_MODULES = customerHomeModules();
 
 export default function CustomerHome() {
   const { colors } = useTheme();

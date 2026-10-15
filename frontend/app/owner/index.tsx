@@ -12,6 +12,7 @@ import { Card } from "@/src/components/ui/Card";
 import { Skeleton } from "@/src/components/ui/Skeleton";
 import { OrderCard, OrderData } from "@/src/components/OrderCard";
 import { WeeklyInsights } from "@/src/components/WeeklyInsights";
+import { RoleModuleDirectory } from "@/src/components/RoleModuleDirectory";
 import { ErrorView } from "@/src/components/StateViews";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 
@@ -52,7 +53,7 @@ export default function OwnerHome() {
       </View>
 
       {error && !data ? (
-        <ErrorView message={error} onRetry={reload} />
+        <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}><ErrorView message={error} onRetry={reload} /><RoleModuleDirectory role={user?.role} /></ScrollView>
       ) : (
         <ScrollView
           contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120, gap: spacing.lg }}
@@ -91,6 +92,7 @@ export default function OwnerHome() {
               </View>
 
               <WeeklyInsights />
+              <RoleModuleDirectory role={user?.role} />
 
               <View style={{ gap: spacing.sm }}>
                 <View style={styles.rowBetween}>

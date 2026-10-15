@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeProvider";
+import { RoleModuleDirectory } from "@/src/components/RoleModuleDirectory";
 import { AppText } from "@/src/components/ui/AppText";
 import { Card } from "@/src/components/ui/Card";
 import { Badge } from "@/src/components/ui/Badge";
@@ -33,6 +34,7 @@ export default function DriverMore() {
           <View style={{ flex: 1, gap: 4 }}><AppText variant="heading">{user?.name}</AppText><AppText variant="caption">{user?.phone}</AppText><Badge label="Driver" color={colors.brand} /></View>
         </Card>
         <View style={{ gap: spacing.sm }}><AppText variant="label">Appearance</AppText><View style={{ flexDirection: "row", gap: spacing.sm }}>{MODES.map((m) => { const sel = mode === m.key; return <Pressable key={m.key} testID={`driver-theme-${m.key}`} onPress={() => setMode(m.key)} style={[styles.mode, { backgroundColor: sel ? colors.brand : colors.surfaceSecondary, borderColor: sel ? colors.brand : colors.border }]}><Ionicons name={m.icon} size={18} color={sel ? colors.onBrand : colors.onSurfaceSecondary} /><AppText style={{ fontFamily: fonts.medium, fontSize: fontSize.sm, color: sel ? colors.onBrand : colors.onSurfaceSecondary }}>{m.label}</AppText></Pressable>; })}</View></View>
+        <RoleModuleDirectory role={user?.role} title="All Driver Modules" />
         <Pressable testID="driver-workforce-hub" onPress={() => router.push("/workforce")} style={[styles.manage, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}><Ionicons name="people-circle-outline" size={22} color={colors.brand} /><View style={{ flex: 1 }}><AppText style={{ fontFamily: fonts.semibold, color: colors.onSurface }}>Workforce &amp; Field Activity</AppText><AppText variant="caption">Attendance, leave, visits and expense claims</AppText></View><Ionicons name="chevron-forward" size={18} color={colors.onSurfaceTertiary} /></Pressable>
         <Pressable testID="driver-shift-roster" onPress={() => router.push("/shift-roster")} style={[styles.manage, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}><Ionicons name="calendar-outline" size={22} color={colors.brand} /><View style={{ flex: 1 }}><AppText style={{ fontFamily: fonts.semibold, color: colors.onSurface }}>My Shift &amp; Roster</AppText><AppText variant="caption">Upcoming shifts, week-offs and attendance geofence</AppText></View><Ionicons name="chevron-forward" size={18} color={colors.onSurfaceTertiary} /></Pressable>
         <Pressable testID="driver-my-payslip" onPress={() => router.push("/my-payslip")} style={[styles.manage, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}><Ionicons name="document-text-outline" size={22} color={colors.brand} /><View style={{ flex: 1 }}><AppText style={{ fontFamily: fonts.semibold, color: colors.onSurface }}>My Payslip</AppText><AppText variant="caption">View and share closed-month payroll payslips</AppText></View><Ionicons name="chevron-forward" size={18} color={colors.onSurfaceTertiary} /></Pressable>

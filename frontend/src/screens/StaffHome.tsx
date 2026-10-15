@@ -1,7 +1,7 @@
 import React from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Href, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/src/auth/AuthContext";
@@ -11,6 +11,7 @@ import { AppText } from "@/src/components/ui/AppText";
 import { Skeleton } from "@/src/components/ui/Skeleton";
 import { ErrorView } from "@/src/components/StateViews";
 import { StaffCollection } from "@/src/screens/StaffCollection";
+import { RoleModuleDirectory } from "@/src/components/RoleModuleDirectory";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 
 type Kpi = { label: string; value: number; icon: keyof typeof Ionicons.glyphMap; unit?: string | null };
@@ -21,63 +22,6 @@ type HomeData = {
   kpis: Kpi[];
   primary: { title: string; kind: string };
 };
-type ModuleLink = { label: string; icon: keyof typeof Ionicons.glyphMap; route: Href };
-
-const ROLE_MODULES: Record<string, ModuleLink[]> = {
-  admin: [
-    { label: "Rate Cards", icon: "pricetag-outline", route: "/business/rates" },
-    { label: "Mix Designs", icon: "flask-outline", route: "/business/mixes" },
-    { label: "Inventory", icon: "cube-outline", route: "/business/inventory" },
-    { label: "Suppliers", icon: "people-circle-outline", route: "/business/suppliers" },
-    { label: "Purchases", icon: "cart-outline", route: "/business/purchases" },
-    { label: "Fleet", icon: "bus-outline", route: "/business/fleet" },
-    { label: "Diesel", icon: "water-outline", route: "/business/diesel" },
-    { label: "Quotations", icon: "document-text-outline", route: "/business/quotations" },
-    { label: "Expenses", icon: "cash-outline", route: "/business/expenses" },
-    { label: "Payroll", icon: "card-outline", route: "/business/payroll" },
-    { label: "Attendance", icon: "calendar-outline", route: "/business/attendance" },
-    { label: "Staff", icon: "people-outline", route: "/business/staff" },
-    { label: "Customers", icon: "person-outline", route: "/business/customers" },
-    { label: "Reports", icon: "bar-chart-outline", route: "/business/reports" },
-  ],
-  dispatcher: [
-    { label: "Attendance", icon: "calendar-outline", route: "/business/attendance" },
-    { label: "Plant Report", icon: "bar-chart-outline", route: "/business/reports" },
-  ],
-  operator: [
-    { label: "Attendance", icon: "calendar-outline", route: "/business/attendance" },
-    { label: "Plant Report", icon: "bar-chart-outline", route: "/business/reports" },
-  ],
-  supervisor: [
-    { label: "Attendance", icon: "calendar-outline", route: "/business/attendance" },
-    { label: "Plant Report", icon: "bar-chart-outline", route: "/business/reports" },
-  ],
-  accountant: [
-    { label: "Rate Cards", icon: "pricetag-outline", route: "/business/rates" },
-    { label: "Quotations", icon: "document-text-outline", route: "/business/quotations" },
-    { label: "Expenses", icon: "cash-outline", route: "/business/expenses" },
-    { label: "Payroll", icon: "card-outline", route: "/business/payroll" },
-    { label: "Plant Report", icon: "bar-chart-outline", route: "/business/reports" },
-  ],
-  quality_engineer: [
-    { label: "Mix Designs", icon: "flask-outline", route: "/business/mixes" },
-    { label: "Attendance", icon: "calendar-outline", route: "/business/attendance" },
-    { label: "Plant Report", icon: "bar-chart-outline", route: "/business/reports" },
-  ],
-  fleet_manager: [
-    { label: "Fleet", icon: "bus-outline", route: "/business/fleet" },
-    { label: "Diesel", icon: "water-outline", route: "/business/diesel" },
-    { label: "Attendance", icon: "calendar-outline", route: "/business/attendance" },
-  ],
-  store_manager: [
-    { label: "Inventory", icon: "cube-outline", route: "/business/inventory" },
-    { label: "Suppliers", icon: "people-circle-outline", route: "/business/suppliers" },
-    { label: "Purchases", icon: "cart-outline", route: "/business/purchases" },
-    { label: "Diesel", icon: "water-outline", route: "/business/diesel" },
-    { label: "Attendance", icon: "calendar-outline", route: "/business/attendance" },
-  ],
-};
-
 function formatValue(k: Kpi): string {
   if (k.unit === "₹") return `₹${Number(k.value).toLocaleString("en-IN")}`;
   return `${k.value}`;
@@ -90,8 +34,6 @@ export function StaffHome() {
   const insets = useSafeAreaInsets();
   const { data, loading, error, refetch, reload } = useGet<HomeData>("/staff/home");
   const { data: notif } = useGet<{ unread: number }>("/notifications");
-  const role = data?.role || user?.role || "";
-  const modules = ROLE_MODULES[role] || [];
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
@@ -111,7 +53,7 @@ export function StaffHome() {
       </View>
 
       {error && !data ? (
-        <ErrorView message={error} onRetry={reload} />
+        <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}><ErrorView message={error} onRetry={reload} /><RoleModuleDirectory role={user?.role} /></ScrollView>
       ) : (
         <ScrollView
           contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120, gap: spacing.lg }}
@@ -153,21 +95,7 @@ export function StaffHome() {
                 <AppText variant="heading">{data.primary.title}</AppText>
                 <StaffCollection kind={data.primary.kind} embedded limit={6} />
               </View>
-
-              {modules.length ? (
-                <View style={{ gap: spacing.sm }}>
-                  <AppText variant="heading">Operations</AppText>
-                  <View style={styles.moduleGrid}>
-                    {modules.map((m) => (
-                      <Pressable key={m.label} onPress={() => router.push(m.route)} style={[styles.module, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-                        <Ionicons name={m.icon} size={20} color={colors.brand} />
-                        <AppText style={{ fontFamily: fonts.semibold, fontSize: 13, color: colors.onSurface, flex: 1 }}>{m.label}</AppText>
-                        <Ionicons name="chevron-forward" size={16} color={colors.onSurfaceTertiary} />
-                      </Pressable>
-                    ))}
-                  </View>
-                </View>
-              ) : null}
+              <RoleModuleDirectory role={user?.role} />
             </>
           ) : null}
         </ScrollView>
