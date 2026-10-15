@@ -597,3 +597,98 @@ async fn cancellation_is_customer_scoped_atomic_and_idempotent(db: PgPool) {
         "in_production"
     );
 }
+
+#[sqlx::test]
+async fn customer_rfq_owner_response_acceptance_and_order_use_exact_shared_contracts(db: PgPool) {
+    let (state, app, _, plant, token) = fixture(&db).await;
+    let payload = json!({"plant_id":plant,"grade":"M25","quantity":6,"site_name":"Customer site","site_address":"Address supplied by customer","pump_required":true});
+    let (status, request) = call(
+        &app,
+        "/api/customer/quotation-requests",
+        Some(payload),
+        &token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let id = request["id"].as_str().unwrap();
+    let (status, requests) = call(&app, "/api/customer/quotation-requests", None, &token).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(requests["requests"][0]["site_name"], "Customer site");
+    assert_eq!(requests["requests"][0]["status"], "REQUESTED");
+    assert_eq!(requests["requests"][0]["quantity"], 6.0);
+    let owner: Uuid = sqlx::query_scalar("SELECT owner_id FROM rmc_plants WHERE id=$1")
+        .bind(plant)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    let owner_token =
+        generate_token(owner, "owner", "", None, &state.config.jwt_secret, 1).unwrap();
+    let (_, me) = call(&app, "/api/me", None, &owner_token).await;
+    assert_eq!(me["plant_id"], json!(plant));
+    let (_, queue) = call(
+        &app,
+        &format!("/api/ops/plants/{plant}/quotation-requests"),
+        None,
+        &owner_token,
+    )
+    .await;
+    assert_eq!(queue["requests"][0]["pump_required"], true);
+    assert_eq!(queue["requests"][0]["status"], "REQUESTED");
+    let path = format!("/api/ops/plants/{plant}/quotation-requests/{id}/respond");
+    let response = json!({"action":"SEND","rate_per_m3":4500.01,"transport_amount":100.01,"pumping_amount":0.02,"gst_rate":18});
+    let foreign = identity(&db, "admin").await;
+    let foreign_token =
+        generate_token(foreign, "admin", "", None, &state.config.jwt_secret, 1).unwrap();
+    assert_eq!(
+        call(&app, &path, Some(response.clone()), &foreign_token)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    let (a, b) = tokio::join!(
+        call(&app, &path, Some(response.clone()), &owner_token),
+        call(&app, &path, Some(response.clone()), &owner_token)
+    );
+    assert_eq!(a.0, StatusCode::OK);
+    assert_eq!(b.0, StatusCode::OK);
+    assert_eq!(a.1["quotation"]["id"], b.1["quotation"]["id"]);
+    let mut changed = response;
+    changed["rate_per_m3"] = json!(4000);
+    assert_eq!(
+        call(&app, &path, Some(changed), &owner_token).await.0,
+        StatusCode::CONFLICT
+    );
+    let (_, quotes) = call(&app, "/api/ops/customer/quotations", None, &token).await;
+    assert_eq!(quotes["quotations"][0]["total"], 31978.11);
+    let quote = quotes["quotations"][0]["id"].as_str().unwrap();
+    assert_eq!(
+        call(
+            &app,
+            &format!("/api/ops/customer/quotations/{quote}/decision"),
+            Some(json!({"action":"ACCEPT"})),
+            &token
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let mut payload = order(plant, "rfq-linked-order-request");
+    payload["quotation_id"] = json!(quote);
+    payload["site_id"] = requests["requests"][0]["site_id"].clone();
+    let (status, order) = call(&app, "/api/customer/orders", Some(payload), &token).await;
+    assert_eq!(status, StatusCode::OK);
+    let total: BigDecimal = sqlx::query_scalar("SELECT total_amount FROM orders WHERE id=$1")
+        .bind(order["id"].as_str().unwrap().parse::<Uuid>().unwrap())
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(total, "31978.11".parse::<BigDecimal>().unwrap());
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM plant_quotations WHERE request_id=$1")
+            .bind(id.parse::<Uuid>().unwrap())
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+        1
+    );
+}

@@ -520,109 +520,19 @@ pub async fn create_quotation_request(
     Json(payload): Json<CustomerRfqPayload>,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["customer"])?;
-    if let Some(site) = payload.site_id {
-        let own: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM customer_sites WHERE id=$1 AND customer_id=$2)",
-        )
-        .bind(site)
-        .bind(auth_user.user_id)
-        .fetch_one(&state.db)
-        .await?;
-        if !own {
-            return Err(AppError::Forbidden(
-                "Saved site does not belong to this customer".into(),
-            ));
-        }
-    }
-    let req_date = match &payload.required_date {
-        Some(d) => NaiveDate::parse_from_str(d, "%Y-%m-%d").map_err(|_| {
-            AppError::BadRequest("Invalid required_date, expected YYYY-MM-DD".to_string())
-        })?,
-        None => chrono::Utc::now().date_naive() + chrono::Duration::days(1),
-    };
-
-    let quantity = payload
-        .quantity_m3
-        .or(payload.quantity)
-        .ok_or_else(|| AppError::BadRequest("Quantity is required".into()))?;
-    if !quantity.is_finite() || quantity <= 0.0 || quantity > 10000.0 {
-        return Err(AppError::BadRequest(
-            "Quantity must be greater than zero".to_string(),
-        ));
-    }
-
-    let id: Uuid = sqlx::query_scalar(
-        r#"
-        INSERT INTO customer_quotation_requests (
-            customer_id, plant_id, site_id, grade, quantity_m3, required_date, notes, status
-        )
-        VALUES ($1, $2, $3, $4, $5::numeric, $6, $7, 'PENDING')
-        RETURNING id
-        "#,
-    )
-    .bind(auth_user.user_id)
-    .bind(payload.plant_id)
-    .bind(payload.site_id)
-    .bind(&payload.grade)
-    .bind(quantity)
-    .bind(req_date)
-    .bind(&payload.notes)
-    .fetch_one(&state.db)
-    .await?;
-
-    Ok(Json(
-        json!({ "success": true, "id": id, "message": "Quotation request submitted" }),
-    ))
+    let id =
+        crate::services::commercial_service::request(&state, auth_user.user_id, payload).await?;
+    Ok(Json(json!({"success":true,"id":id,"status":"REQUESTED"})))
 }
 
 pub async fn list_customer_rfqs(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
-    let rows = sqlx::query(
-        r#"
-        SELECT r.id, r.plant_id, r.grade, r.quantity_m3, r.required_date, r.status, r.notes, r.created_at,
-               p.name as plant_name, p.contact_phone as plant_phone
-        FROM customer_quotation_requests r
-        INNER JOIN rmc_plants p ON p.id = r.plant_id
-        WHERE r.customer_id = $1
-        ORDER BY r.created_at DESC
-        "#,
-    )
-    .bind(auth_user.user_id)
-    .fetch_all(&state.db)
-    .await?;
-
-    let rfqs: Vec<_> = rows
-        .into_iter()
-        .map(|r| {
-            let id: Uuid = r.get("id");
-            let plant_id: Uuid = r.get("plant_id");
-            let grade: String = r.get("grade");
-            let quantity_m3: bigdecimal::BigDecimal = r.get("quantity_m3");
-            let required_date: chrono::NaiveDate = r.get("required_date");
-            let status: String = r.get("status");
-            let notes: Option<String> = r.get("notes");
-            let created_at: chrono::DateTime<chrono::Utc> = r.get("created_at");
-            let plant_name: String = r.get("plant_name");
-            let plant_phone: Option<String> = r.get("plant_phone");
-
-            json!({
-                "id": id,
-                "plant_id": plant_id,
-                "plant_name": plant_name,
-                "plant_phone": plant_phone,
-                "grade": grade,
-                "quantity_m3": quantity_m3,
-                "required_date": required_date,
-                "status": status,
-                "notes": notes,
-                "created_at": created_at
-            })
-        })
-        .collect();
-
-    Ok(Json(json!({ "success": true, "requests": rfqs })))
+    check_role(&auth_user, &["customer"])?;
+    let rows:Vec<serde_json::Value>=sqlx::query_scalar("SELECT to_jsonb(r)-'response_payload'||jsonb_build_object('plant_name',p.name,'site_name',s.name,'site_address',s.address_line,'quantity',r.quantity_m3::DOUBLE PRECISION,'quantity_m3',r.quantity_m3::DOUBLE PRECISION,'status',CASE r.status WHEN 'PENDING' THEN 'REQUESTED' ELSE r.status END,'quotation_number',q.quotation_number,'quoted_total',q.total_amount::DOUBLE PRECISION) FROM customer_quotation_requests r JOIN rmc_plants p ON p.id=r.plant_id LEFT JOIN customer_sites s ON s.id=r.site_id AND s.customer_id=r.customer_id LEFT JOIN LATERAL(SELECT quotation_number,total_amount FROM plant_quotations WHERE request_id=r.id ORDER BY created_at LIMIT 1) q ON TRUE WHERE r.customer_id=$1 ORDER BY r.created_at DESC LIMIT 500")
+        .bind(auth_user.user_id).fetch_all(&state.db).await?;
+    Ok(Json(json!({"success":true,"requests":rows})))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
