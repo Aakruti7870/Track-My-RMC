@@ -19,13 +19,11 @@ import { fonts, radius } from "@/src/theme/tokens";
 
 const HERO_LIGHT = require("../../assets/images/home-hero-light.jpg");
 const HERO_DARK = require("../../assets/images/home-hero-dark.jpg");
+const CASHFREE_BANNER = require("../../assets/images/Cashfree Payments QR Pay Experience.png");
+const KYC_BANNER = require("../../assets/images/eKYC Aadhaar Digital Identity Network.png");
 
 const ORANGE = "#FF5A16";
 const ORANGE_DEEP = "#C93D00";
-const CASHFREE_GREEN = "#05B37E";
-const CASHFREE_INK = "#111827";
-const DIGI_BLUE = "#2F80ED";
-const DIGI_SAFFRON = "#FF9933";
 
 const AUTO_MS = 4500;
 const SLIDE_COUNT = 4;
@@ -81,90 +79,32 @@ function HeroSlide({ width, height }: SlideProps) {
 
 /** IMAGE 2 — Cashfree Payments Available (permanent light theme). */
 function CashfreeSlide({ width, height }: SlideProps) {
-  const scale = Math.min(Math.max(width / 390, 0.82), 1.5);
   return (
-    <View style={{ width, height, backgroundColor: "#F5F7FA", padding: 16 * scale, justifyContent: "space-between" }}>
-      <LinearGradient
-        colors={["#FFFFFF", "#EEF3F8"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+    <View style={{ width, height, backgroundColor: "#22004A" }}>
+      <Image
+        source={CASHFREE_BANNER}
         style={StyleSheet.absoluteFill}
+        contentFit="cover"
+        contentPosition="center"
+        cachePolicy="memory-disk"
+        accessibilityLabel="Cashfree Payments promotional banner"
       />
-      <View style={styles.slideTop}>
-        <BrandMark scale={scale} />
-        <Pill label="PAYMENTS NOW LIVE" bg="rgba(5,179,126,0.12)" color={CASHFREE_GREEN} scale={scale} />
-      </View>
-
-      <View style={[styles.slideBody, { gap: 14 * scale }]}>
-        <View style={{ flex: 1, gap: 4 * scale }}>
-          <AppText style={{ fontFamily: fonts.bold, fontSize: 22 * scale, lineHeight: 25 * scale, color: CASHFREE_INK }}>
-            <AppText style={{ fontFamily: fonts.bold, fontSize: 22 * scale, lineHeight: 25 * scale, color: CASHFREE_GREEN }}>Cashfree</AppText> Payments
-          </AppText>
-          <AppText style={{ fontFamily: fonts.semibold, fontSize: 12.5 * scale, lineHeight: 17 * scale, color: "#4A5568" }}>
-            Pay for your RMC orders instantly & securely — UPI, cards, netbanking & wallets.
-          </AppText>
-        </View>
-
-        <View style={[styles.cashfreeCard, { padding: 12 * scale, borderRadius: 14 * scale }]}>
-          <View style={styles.brandRow}>
-            <View style={[styles.cfDot, { backgroundColor: CASHFREE_GREEN }]} />
-            <AppText style={{ fontFamily: fonts.displayBold, fontSize: 15 * scale, color: CASHFREE_INK }}>
-              Cashfree
-            </AppText>
-          </View>
-          <View style={[styles.payIcons, { marginTop: 8 * scale }]}>
-            <View style={[styles.payChip, { backgroundColor: "rgba(5,179,126,0.12)" }]}>
-              <Ionicons name="phone-portrait-outline" size={13 * scale} color={CASHFREE_GREEN} />
-            </View>
-            <View style={[styles.payChip, { backgroundColor: "rgba(17,24,39,0.06)" }]}>
-              <Ionicons name="card-outline" size={13 * scale} color={CASHFREE_INK} />
-            </View>
-            <View style={[styles.payChip, { backgroundColor: "rgba(255,90,22,0.12)" }]}>
-              <Ionicons name="wallet-outline" size={13 * scale} color={ORANGE} />
-            </View>
-          </View>
-        </View>
-      </View>
     </View>
   );
 }
 
 /** IMAGE 3 — KYC Mandatory via DigiLocker (permanent dark theme). */
 function KycSlide({ width, height }: SlideProps) {
-  const scale = Math.min(Math.max(width / 390, 0.82), 1.5);
   return (
-    <View style={{ width, height, backgroundColor: "#0B0F14", padding: 16 * scale, justifyContent: "space-between" }}>
-      <LinearGradient
-        colors={["#111827", "#0B0F14"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+    <View style={{ width, height, backgroundColor: "#080D30" }}>
+      <Image
+        source={KYC_BANNER}
         style={StyleSheet.absoluteFill}
+        contentFit="cover"
+        contentPosition="center"
+        cachePolicy="memory-disk"
+        accessibilityLabel="Aadhaar eKYC promotional banner"
       />
-      <View style={styles.slideTop}>
-        <BrandMark dark scale={scale} />
-        <Pill label="KYC MANDATORY" bg="rgba(255,90,22,0.18)" color={ORANGE} scale={scale} />
-      </View>
-
-      <View style={[styles.slideBody, { gap: 14 * scale }]}>
-        <View style={{ flex: 1, gap: 4 * scale }}>
-          <AppText style={{ fontFamily: fonts.bold, fontSize: 22 * scale, lineHeight: 25 * scale, color: "#FFFFFF" }}>
-            Complete your KYC
-          </AppText>
-          <AppText style={{ fontFamily: fonts.semibold, fontSize: 12.5 * scale, lineHeight: 17 * scale, color: "#AEB8C4" }}>
-            Verify instantly with DigiLocker to unlock ordering. Government-backed, paperless & secure.
-          </AppText>
-        </View>
-
-        <View style={[styles.digiCard, { padding: 12 * scale, borderRadius: 14 * scale }]}>
-          <View style={[styles.digiIcon, { backgroundColor: "rgba(47,128,237,0.16)" }]}>
-            <Ionicons name="shield-checkmark" size={20 * scale} color={DIGI_BLUE} />
-          </View>
-          <AppText style={{ fontFamily: fonts.displayBold, fontSize: 15 * scale, marginTop: 8 * scale }}>
-            <AppText style={{ fontFamily: fonts.displayBold, fontSize: 15 * scale, color: DIGI_BLUE }}>Digi</AppText>
-            <AppText style={{ fontFamily: fonts.displayBold, fontSize: 15 * scale, color: DIGI_SAFFRON }}>Locker</AppText>
-          </AppText>
-        </View>
-      </View>
     </View>
   );
 }
@@ -213,9 +153,9 @@ function IndiaSlide({ width, height }: SlideProps) {
 type Props = { style?: ViewStyle };
 
 /**
- * Post-login top carousel: 4 auto-advancing slides. Image 1 is the existing
- * theme-aware hero. Images 2/3/4 are brand promo banners with permanent
- * light/dark/light themes. Supports auto-slide, manual swipe and dot paging.
+ * Post-login top carousel: 4 auto-advancing slides. The Cashfree and KYC
+ * slides display the uploaded promotional images, while the existing hero
+ * and India coverage slide remain unchanged. Supports swipe and dot paging.
  */
 export function HomeCarousel({ style }: Props) {
   const { colors } = useTheme();
