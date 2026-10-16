@@ -296,7 +296,7 @@ export default function CustomerPlants() {
                     returnKeyType="search" style={styles.searchInput} />
                   {q ? <Pressable onPress={()=>{setQ("");setPage(1);setFilters(current=>({...current,q:""}));}} accessibilityLabel="Clear search"><Ionicons name="close" size={20} color="#94A3B8" /></Pressable> : null}
                 </View>
-                <Pressable testID="plants-filter-toggle" onPress={()=>setShowFilters(v=>!v)} style={styles.orangeFilter} accessibilityRole="button">
+                <Pressable testID="plants-filter-toggle" accessibilityLabel={showFilters ? "Hide filters and site selection" : "Filters and site selection"} onPress={()=>setShowFilters(v=>!v)} style={styles.orangeFilter} accessibilityRole="button">
                   <Ionicons name="options-outline" size={18} color="#FFFFFF" /><AppText style={styles.orangeFilterText}>Filters</AppText>
                 </Pressable>
               </View>
@@ -384,7 +384,7 @@ function ScreenshotPlantCard({plant,onDetails,onQuotation,onOrder}:{plant:PlantD
     <AppText style={styles.screenshotAddress}>{plant.address || [plant.city,plant.district].filter(Boolean).join(", ")}</AppText>
     <View style={styles.screenshotActions}>
       <Pressable accessibilityRole="button" onPress={onQuotation} style={styles.screenshotOutline}><AppText numberOfLines={2} style={styles.screenshotOutlineText}>Request Quotation</AppText></Pressable>
-      <Pressable accessibilityRole="button" onPress={onDetails} style={styles.screenshotOutline}><AppText numberOfLines={2} style={styles.screenshotOutlineText}>Plant Details</AppText></Pressable>
+      <Pressable accessibilityRole="button" onPress={onDetails} accessibilityLabel="View Details" style={styles.screenshotOutline}><AppText numberOfLines={2} style={styles.screenshotOutlineText}>Plant Details</AppText></Pressable>
       <Pressable accessibilityRole="button" disabled={!eligible} onPress={onOrder} style={[styles.screenshotSolid,!eligible&&{backgroundColor:"#CBD5E1",borderColor:"#CBD5E1"}]}>
         <AppText numberOfLines={2} style={styles.screenshotSolidText}>{eligible?"Place Order":"Unavailable"}</AppText>
       </Pressable>
