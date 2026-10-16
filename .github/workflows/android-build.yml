@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 env:
   CI: "1"
@@ -23,6 +24,9 @@ env:
   PACKAGE_NAME: com.trackmyrmc.concreteking
   VERSION_CODE: "90"
   VERSION_NAME: "2.0.32"
+  AWS_REGION: ap-south-1
+  AWS_ROLE_ARN: arn:aws:iam::260234292958:role/TrackMyRMC-GitHubDeploy
+  APP_SECRET_NAME: trackmyrmc/app-runtime
 
 jobs:
   android-build:
@@ -81,7 +85,71 @@ jobs:
           test -s google-services.json
           node -e "const c=require('./google-services.json'); const p=c.client?.[0]?.client_info?.android_client_info?.package_name; if(p !== process.env.PACKAGE_NAME) process.exit(1); console.log('Firebase Android package verified')"
 
+      - name: Configure AWS credentials
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          audience: sts.amazonaws.com
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
+
+      - name: Load Google Maps keys from AWS Secrets Manager
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # Least-privilege & PR isolation: verify identity only if role was assumed
+            ACCOUNT="$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "")"
+            if [ -z "$ACCOUNT" ]; then
+              echo "Pull request build: AWS credentials not available or role not assumed; skipping secret loading to avoid exposing keys in PR."
+              exit 0
+            fi
+            if [ "$ACCOUNT" != "260234292958" ]; then
+              echo "Pull request build: unexpected AWS account $ACCOUNT; skipping to avoid exposing keys."
+              exit 0
+            fi
+          else
+            ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
+            test "$ACCOUNT" = "260234292958"
+          fi
+
+          SECRET_JSON="$(aws secretsmanager get-secret-value \
+            --secret-id "${APP_SECRET_NAME}" \
+            --region "${AWS_REGION}" \
+            --query SecretString \
+            --output text)"
+
+          printf '%s' "$SECRET_JSON" | python3 - <<'PY'
+import json, os, sys
+
+try:
+    secret = json.load(sys.stdin)
+except Exception as e:
+    sys.exit(f"Failed to parse secret JSON: {e}")
+
+expo_maps_key = (secret.get("EXPO_PUBLIC_GOOGLE_MAPS_KEY") or "").strip()
+android_maps_key = (secret.get("GOOGLE_MAPS_ANDROID_KEY") or "").strip()
+
+# Always mask keys immediately in GitHub Actions runner logs
+for val in (expo_maps_key, android_maps_key):
+    if val:
+        print(f"::add-mask::{val}")
+
+github_env = os.environ.get("GITHUB_ENV")
+if github_env:
+    with open(github_env, "a", encoding="utf-8") as f:
+        f.write(f"EXPO_PUBLIC_GOOGLE_MAPS_KEY={expo_maps_key}\n")
+        f.write(f"GOOGLE_MAPS_ANDROID_KEY={android_maps_key}\n")
+
+print("Google Maps runtime configuration loaded and masked.")
+PY
+
       - name: Generate Android project
+        env:
+          GOOGLE_MAPS_ANDROID_KEY: ${{ env.GOOGLE_MAPS_ANDROID_KEY }}
+          EXPO_PUBLIC_GOOGLE_MAPS_KEY: ${{ env.EXPO_PUBLIC_GOOGLE_MAPS_KEY }}
         run: npx expo prebuild --platform android --clean --no-install
 
       - name: Verify release version
