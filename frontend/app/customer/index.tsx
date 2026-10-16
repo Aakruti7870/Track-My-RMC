@@ -257,7 +257,7 @@ export default function CustomerHome() {
                     <Pressable testID="home-track-tm" onPress={openActiveTracking} style={styles.trackingAction}><Ionicons name="navigate-outline" size={23} color="#EA580C"/><View style={{flex:1}}><AppText style={styles.trackingActionTitle}>Track TM</AppText><AppText variant="caption">Live moving vehicle telemetry</AppText></View></Pressable>
                     <Pressable testID="home-call-driver" onPress={()=>void dial(liveLoad?.driver_mobile || tracking?.driver_mobile)} style={styles.trackingAction}><Ionicons name="call-outline" size={23} color="#EA580C"/><View style={{flex:1}}><AppText style={styles.trackingActionTitle}>Call Driver</AppText><AppText variant="caption">Open dialpad with assigned driver</AppText></View></Pressable>
                     <Pressable testID="home-call-plant" onPress={()=>router.push("/customer/plants")} style={styles.trackingAction}><Ionicons name="business-outline" size={23} color="#EA580C"/><View style={{flex:1}}><AppText style={styles.trackingActionTitle}>Contact Plant</AppText><AppText variant="caption">Find registered plant contact details</AppText></View></Pressable>
-                  </View>                  </Card>
+                  </View>
                 ) : (
                   <Card style={styles.emptyOrder}>
                     <Ionicons name="cube-outline" size={30} color={colors.onSurfaceTertiary} />
