@@ -23,6 +23,7 @@ import { PlantCard, PlantData } from "@/src/components/PlantCard";
 import { ErrorView } from "@/src/components/StateViews";
 import { requestNearbyPlantsLocationConsent } from "@/src/location/BackgroundLocationConsent";
 import { distanceKm, LatLng, validLatLng } from "@/src/maps/geo";
+import { EMPTY_PLANT_GEO, cleanPlantGeo, hasPlantGeoFilters, isValidPlantGeo, plantGeoLocationLabel, PlantGeoFilters } from "@/src/domain/plantGeoFilters";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 
 type NearbyLocationStatus = "ok" | "denied" | "services-disabled" | "timeout" | "unavailable";
@@ -134,7 +135,9 @@ export default function CustomerPlants() {
   const [verified, setVerified] = useState(false);
   const [showFilters,setShowFilters] = useState(false);
   const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState({q:"",grade:"",radius_km:50,verified:false});
+  const [geoDraft, setGeoDraft] = useState<PlantGeoFilters>({...EMPTY_PLANT_GEO});
+  const [applyingGeo, setApplyingGeo] = useState(false);
+  const [filters, setFilters] = useState({q:"",grade:"",radius_km:50,verified:false,...EMPTY_PLANT_GEO});
   const [manualLat, setManualLat] = useState("");
   const [manualLng, setManualLng] = useState("");
   const [recent, setRecent] = useState<{label:string;coords:LatLng}[]>([]);
@@ -145,7 +148,7 @@ export default function CustomerPlants() {
   const { data, loading, error, refetch, reload, clearCache } = usePlantSearch(userLocation, filters, page);
   const {
     data: googleNearby, loading: googleLoading, error: googleError, refresh: refreshGoogle,
-  } = useGoogleNearbyPlants(userLocation, Math.min(filters.radius_km, 50), !filters.verified && !filters.grade.trim(), filters.q);
+  } = useGoogleNearbyPlants(userLocation, Math.min(filters.radius_km, 50), !filters.verified && !filters.grade.trim(), filters.q, filters);
   const didInit = useRef(false);
   const previousLocationStatus = useRef<NearbyLocationStatus | null>(null);
   const locationRequest = useRef(0);
@@ -228,6 +231,60 @@ export default function CustomerPlants() {
       if (user?.id) await storage.setItem(`recent-plant-locations-${user.id}`,JSON.stringify(locations));
     } catch (e:any) {toast(e?.detail || "Could not locate this address. Try coordinates or search plants by city.","error");}
     finally {setLocating(false);}
+  };
+
+  const applyPlantFilters = async () => {
+    const radius = Number(radiusKm);
+    if (!Number.isFinite(radius) || radius < 1 || radius > 200) {
+      toast("Choose a radius between 1 and 200 km", "error");
+      return;
+    }
+    const geo = cleanPlantGeo(geoDraft);
+    if (!isValidPlantGeo(geo)) {
+      toast("Enter valid State, District, Taluka and City names (80 characters maximum)", "error");
+      return;
+    }
+    if (hasPlantGeoFilters(geo)) {
+      if (!token) return;
+      setApplyingGeo(true);
+      try {
+        // Resolving the selected administrative area is explicit and keeps GPS
+        // permission optional. Google Places remains a live, server-side search.
+        const center = await apiPost<LatLng & {label: string}>(
+          "/customer/plants/locate", token, {address: plantGeoLocationLabel(geo)}
+        );
+        if (!validLatLng(center)) throw new Error("Location lookup returned invalid coordinates");
+        manualLocation.current = true;
+        setUserLocation({lat:center.lat,lng:center.lng});
+        setLocationStatus("ok");
+      } catch (err: any) {
+        toast(err?.detail || "Could not locate this area. Check the district, taluka and city.", "error");
+        return;
+      } finally {
+        setApplyingGeo(false);
+      }
+    } else if (hasPlantGeoFilters(filters)) {
+      manualLocation.current = false;
+      void applyLocation({forceRefresh:false,allowPrompt:false,refetchPlants:false});
+    }
+    setPage(1);
+    setFilters({q,grade,radius_km:radius,verified,...geo});
+    setShowFilters(false);
+  };
+
+  const clearPlantFilters = () => {
+    const hadGeo = hasPlantGeoFilters(filters);
+    setQ("");
+    setGrade("");
+    setRadiusKm("50");
+    setVerified(false);
+    setGeoDraft({...EMPTY_PLANT_GEO});
+    setPage(1);
+    setFilters({q:"",grade:"",radius_km:50,verified:false,...EMPTY_PLANT_GEO});
+    if (hadGeo) {
+      manualLocation.current = false;
+      void applyLocation({forceRefresh:false,allowPrompt:false,refetchPlants:false});
+    }
   };
 
   const refreshLocation = () => void applyLocation({ forceRefresh: true, allowPrompt: true, refetchPlants: true });
@@ -364,12 +421,44 @@ export default function CustomerPlants() {
               </View>
               {showFilters ? <Card style={{gap:12}}>
                 <AppText variant="heading">Refine your search</AppText>
+                <AppText variant="label">Location filters</AppText>
+                <View style={{flexDirection:"row",flexWrap:"wrap",gap:10}}>
+                  <View style={styles.geoFilterField}>
+                    <AppText variant="caption">State</AppText>
+                    <TextInput testID="plants-filter-state" accessibilityLabel="State" placeholder="State, e.g. Maharashtra"
+                      value={geoDraft.state}
+                      onChangeText={state=>setGeoDraft({state,district:"",taluka:"",city:""})}
+                      style={styles.geoFilterInput} autoCapitalize="words" maxLength={80} />
+                  </View>
+                  <View style={styles.geoFilterField}>
+                    <AppText variant="caption">District</AppText>
+                    <TextInput testID="plants-filter-district" accessibilityLabel="District" placeholder="District, e.g. Pune"
+                      value={geoDraft.district}
+                      onChangeText={district=>setGeoDraft(previous=>({...previous,district,taluka:"",city:""}))}
+                      style={styles.geoFilterInput} autoCapitalize="words" maxLength={80} />
+                  </View>
+                  <View style={styles.geoFilterField}>
+                    <AppText variant="caption">Taluka</AppText>
+                    <TextInput testID="plants-filter-taluka" accessibilityLabel="Taluka" placeholder="Taluka, e.g. Haveli"
+                      value={geoDraft.taluka}
+                      onChangeText={taluka=>setGeoDraft(previous=>({...previous,taluka,city:""}))}
+                      style={styles.geoFilterInput} autoCapitalize="words" maxLength={80} />
+                  </View>
+                  <View style={styles.geoFilterField}>
+                    <AppText variant="caption">City</AppText>
+                    <TextInput testID="plants-filter-city" accessibilityLabel="City" placeholder="City, e.g. Ravet"
+                      value={geoDraft.city}
+                      onChangeText={city=>setGeoDraft(previous=>({...previous,city}))}
+                      style={styles.geoFilterInput} autoCapitalize="words" maxLength={80} />
+                  </View>
+                </View>
+                <AppText variant="caption">Enter one or more areas to center the map and search RMC plants there. More specific City or Taluka gives better results. Google Places results are searched within up to 50 km of the selected location.</AppText>
                 <TextInput accessibilityLabel="Concrete grade" placeholder="Concrete grade, e.g. M25" value={grade} onChangeText={setGrade} style={{minHeight:48,color:colors.onSurface}} />
                 <TextInput accessibilityLabel="Search radius in kilometres" placeholder="Radius in km (1–200)" value={radiusKm} onChangeText={setRadiusKm} keyboardType="numeric" style={{minHeight:48,color:colors.onSurface}} />
                 <Button label={verified ? "Verified plants only ✓" : "All registered plants"} onPress={() => setVerified(v => !v)} />
                 <AppText variant="caption">Active plants, sorted by distance when a location is selected. Delivery eligibility is confirmed when ordering.</AppText>
-                <Button label="Apply" onPress={() => { const radius = Number(radiusKm); if (!Number.isFinite(radius)||radius<1||radius>200) {toast("Choose a radius between 1 and 200 km","error");return;} setPage(1);setFilters({q,grade,radius_km:radius,verified});}} />
-                <Button label="Clear Filters" onPress={() => {setQ("");setGrade("");setRadiusKm("50");setVerified(false);setPage(1);setFilters({q:"",grade:"",radius_km:50,verified:false});}} />
+                <Button label="Apply" loading={applyingGeo} onPress={() => void applyPlantFilters()} />
+                <Button label="Clear Filters" onPress={clearPlantFilters} />
                 <AppText variant="heading">Choose a site manually</AppText>
                 <TextInput accessibilityLabel="Site area, city or PIN code" placeholder="Site address, city or PIN code" value={siteAddress} onChangeText={setSiteAddress} style={{minHeight:48,color:colors.onSurface}} />
                 <Button label="Find this location" loading={locating} onPress={locateAddress} />
@@ -580,6 +669,8 @@ const styles = StyleSheet.create({
   mapPill:{position:"absolute",top:10,right:10,backgroundColor:"#FFFFFF",borderRadius:24,paddingVertical:7,paddingHorizontal:13,flexDirection:"row",alignItems:"center",gap:6,elevation:3},
   mapPillText:{color:"#1E293B",fontFamily:fonts.bold,fontSize:13},
   searchRow:{flexDirection:"row",gap:10,alignItems:"center"},
+  geoFilterField:{flexGrow:1,flexBasis:"45%",minWidth:130,gap:5},
+  geoFilterInput:{minHeight:44,borderWidth:1,borderColor:"#E2E8F0",backgroundColor:"#FFFFFF",borderRadius:10,paddingHorizontal:10,fontFamily:fonts.medium,fontSize:13,color:"#1E293B"},
   orangeFilter:{backgroundColor:"#F25C05",borderRadius:12,height:46,paddingHorizontal:14,flexDirection:"row",alignItems:"center",gap:6},
   orangeFilterText:{fontFamily:fonts.semibold,fontSize:14,color:"#FFFFFF"},
   screenshotCard:{backgroundColor:"#FFFFFF",borderWidth:1,borderColor:"#E2E8F0",borderRadius:16,padding:16,gap:7,elevation:2},
