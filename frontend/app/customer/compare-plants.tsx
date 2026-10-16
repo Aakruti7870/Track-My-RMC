@@ -38,7 +38,8 @@ export default function ComparePlants() {
   const { colors } = useTheme();
   const { token } = useAuth();
   const router = useRouter();
-  const params = useLocalSearchParams<{ siteId?: string; grade?: string; quantity?: string }>();
+  const params = useLocalSearchParams<{ siteId?: string; grade?: string; quantity?: string; plantId?: string }>();
+  const targetPlantId = params.plantId || null;
   const toast = useToast();
   const insets = useSafeAreaInsets();
   const { data: siteData } = useGet<{ sites: Site[] }>("/master/customer/sites");
@@ -85,8 +86,17 @@ export default function ComparePlants() {
         params.set("lng", String(site.lng));
       }
       const response = await apiGet<CompareResponse>(`/customer/compare-plants?${params.toString()}`, token);
-      setResults(response.estimates || []);
-      if (!response.estimates?.length) setError("No active plant has an effective rate card for this grade.");
+      const estimates = response.estimates || [];
+      const selectedPlant = targetPlantId ? estimates.find(item => item.plant_id === targetPlantId) : undefined;
+      setResults(selectedPlant
+        ? [selectedPlant, ...estimates.filter(item => item.plant_id !== targetPlantId)]
+        : estimates);
+      if (selectedPlant) setSelected([selectedPlant.plant_id]);
+      if (targetPlantId && !selectedPlant) {
+        setError("Your selected plant has no active rate card for this grade. Try another grade or contact the verified supplier.");
+      } else if (!estimates.length) {
+        setError("No active plant has an effective rate card for this grade.");
+      }
     } catch (e: any) {
       setError(e.detail || "Could not compare plants");
       setResults([]);
@@ -157,6 +167,7 @@ export default function ComparePlants() {
             </AppText>
           </View>
           <AppText variant="heading">Your requirement</AppText>
+          {targetPlantId ? <AppText variant="caption">Your selected RMC plant will be listed first when it offers the selected grade. It will not be replaced with a different supplier.</AppText> : null}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>
             {GRADES.map((item) => <Chip key={item} label={item} selected={grade === item} onPress={() => setGrade(item)} />)}
           </ScrollView>

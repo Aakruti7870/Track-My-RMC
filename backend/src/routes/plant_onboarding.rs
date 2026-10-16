@@ -595,6 +595,20 @@ pub async fn approve_listing(
     .execute(&mut *tx)
     .await?;
 
+    // Reconcile customer quotation interests linked by the permanent Place ID.
+    // This runs in the same transaction as approval, never before verification.
+    if let Some(place_id) = req.google_place_id.as_deref() {
+        sqlx::query(
+            "UPDATE google_plant_quote_interests
+             SET status='MATCHED', matched_plant_id=$1, updated_at=NOW()
+             WHERE google_place_id=$2 AND status='PENDING_PARTNER'",
+        )
+        .bind(plant_id)
+        .bind(place_id)
+        .execute(&mut *tx)
+        .await?;
+    }
+
     sqlx::query(
         "INSERT INTO audit_logs (user_id, action, resource_type, resource_id, metadata)
          VALUES ($1, 'plant_listing.approve', 'plant_listing_request', $2, $3)",

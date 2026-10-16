@@ -66,7 +66,7 @@ async fn existing_installation_upgrades_without_changing_checksums_or_records(po
     .unwrap();
     assert_eq!(
         versions,
-        vec![19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34]
+        vec![19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35]
     );
 }
 
@@ -92,6 +92,7 @@ async fn migrations_apply_from_an_empty_database() {
         "account_deletion_requests",
         "device_push_tokens",
         "plant_listing_requests",
+        "google_plant_quote_interests",
         "play_review_fixtures",
         "play_review_login_attempts",
     ] {
