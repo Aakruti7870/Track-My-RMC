@@ -20,7 +20,7 @@ import { Card } from "@/src/components/ui/Card";
 import { Skeleton } from "@/src/components/ui/Skeleton";
 import { PlantMap } from "@/src/components/PlantMap";
 import { PlantCard, PlantData } from "@/src/components/PlantCard";
-import { EmptyView, ErrorView } from "@/src/components/StateViews";
+import { ErrorView } from "@/src/components/StateViews";
 import { requestNearbyPlantsLocationConsent } from "@/src/location/BackgroundLocationConsent";
 import { distanceKm, LatLng, validLatLng } from "@/src/maps/geo";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
@@ -433,10 +433,6 @@ export default function CustomerPlants() {
                 </View>
               ) : null}
 
-              <View style={styles.registeredHeading}>
-                <AppText variant="heading">Registered plants</AppText>
-                <AppText variant="caption">Active plants near your selected site. Delivery eligibility is checked when ordering.</AppText>
-              </View>
             </View>
           }
           renderItem={({ item }) => loading && !data ? null : (
@@ -444,16 +440,14 @@ export default function CustomerPlants() {
               onQuotation={()=>router.push({pathname:"/customer/compare-plants",params:{plantId:item.id}} as any)}
               onOrder={()=>router.push(`/new-order?plantId=${item.id}` as any)} />
           )}
-          ListFooterComponent={<View style={{gap:12}}>
+          ListFooterComponent={filtered.length ? <View style={{gap:12}}>
             <AppText variant="caption">Page {page}</AppText>
             <Button label="Previous" variant="outline" disabled={page===1 || loading} onPress={() => setPage(v=>v-1)} />
             <Button label="Next" variant="outline" disabled={!data?.has_more || loading} onPress={() => setPage(v=>v+1)} />
-          </View>}
+          </View> : null}
           ListEmptyComponent={loading && !data ? (
             <View style={{ gap: spacing.md }}>{[0, 1].map((i) => <Skeleton key={i} height={140} style={{ borderRadius: radius.lg }} />)}</View>
-          ) : (
-            <EmptyView icon="business-outline" title="No registered plants found" subtitle={q.trim() ? "Try another name, city, PIN code or grade" : "Choose a site, increase the radius or clear your filters"} />
-          )}
+          ) : null}
         />
       )}
       <Modal visible={!!details} animationType="slide" onRequestClose={() => setDetails(null)}>
@@ -607,7 +601,6 @@ const styles = StyleSheet.create({
   discoveryMetaText: { fontFamily: fonts.medium, fontSize: 12 },
   dotDivider: { width: 1, height: 18, marginHorizontal: 3 },
   findMore: { minHeight: 38, paddingHorizontal: spacing.md, borderRadius: 14, alignItems: "center", justifyContent: "center" },
-  registeredHeading: { gap: 2, paddingTop: spacing.xs },
   reviewHint: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, borderWidth: 1, borderRadius: radius.md, paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
   reviewHintText: { flex: 1, fontFamily: fonts.medium, fontSize: 12, lineHeight: 17 },
   locationBanner: { flexDirection: "row", alignItems: "center", gap: spacing.sm, borderWidth: 1, borderRadius: radius.md, paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
