@@ -16,7 +16,17 @@ if ! command -v aws >/dev/null 2>&1; then
 fi
 
 id -u trackmyrmc >/dev/null 2>&1 || useradd --system --home /opt/trackmyrmc --shell /usr/sbin/nologin trackmyrmc
-mkdir -p /opt/trackmyrmc/releases /opt/trackmyrmc/frontend
+DEPLOY_CACHE_DIR="/opt/trackmyrmc/deploy-cache"
+mkdir -p /opt/trackmyrmc/releases /opt/trackmyrmc/frontend "$DEPLOY_CACHE_DIR"
+chown -R trackmyrmc:trackmyrmc "$DEPLOY_CACHE_DIR" || true
+chmod 0700 "$DEPLOY_CACHE_DIR" || true
+
+cleanup_release_archives() {
+  rm -f "$DEPLOY_CACHE_DIR/frontend-$RELEASE_SHA.tgz" \
+        "$DEPLOY_CACHE_DIR/source-$RELEASE_SHA.tgz" \
+        "$DEPLOY_CACHE_DIR/admin-web-$RELEASE_SHA.tgz"
+}
+trap cleanup_release_archives EXIT
 
 # Obtain a certificate only when absent; routine deploys keep HTTPS online.
 if [ ! -s /etc/letsencrypt/live/trackmyrmc.com/fullchain.pem ] || [ ! -s /etc/letsencrypt/live/trackmyrmc.com/privkey.pem ]; then
@@ -284,14 +294,14 @@ GOOGLE_PLACES_API_KEY="$(printf '%s' "$APP_JSON" | jq -r '.GOOGLE_PLACES_API_KEY
 
 
 aws s3 cp "s3://$BUCKET/backend-$RELEASE_SHA" "/opt/trackmyrmc/releases/backend-$RELEASE_SHA"
-aws s3 cp "s3://$BUCKET/frontend-$RELEASE_SHA.tgz" "/tmp/frontend-$RELEASE_SHA.tgz"
-aws s3 cp "s3://$BUCKET/source-$RELEASE_SHA.tgz" "/tmp/source-$RELEASE_SHA.tgz"
-aws s3 cp "s3://$BUCKET/admin-web-$RELEASE_SHA.tgz" "/tmp/admin-web-$RELEASE_SHA.tgz"
+aws s3 cp "s3://$BUCKET/frontend-$RELEASE_SHA.tgz" "$DEPLOY_CACHE_DIR/frontend-$RELEASE_SHA.tgz"
+aws s3 cp "s3://$BUCKET/source-$RELEASE_SHA.tgz" "$DEPLOY_CACHE_DIR/source-$RELEASE_SHA.tgz"
+aws s3 cp "s3://$BUCKET/admin-web-$RELEASE_SHA.tgz" "$DEPLOY_CACHE_DIR/admin-web-$RELEASE_SHA.tgz"
 chmod 0755 "/opt/trackmyrmc/releases/backend-$RELEASE_SHA"
 
 rm -rf /opt/trackmyrmc/frontend.new
 mkdir /opt/trackmyrmc/frontend.new
-tar -xzf "/tmp/frontend-$RELEASE_SHA.tgz" -C /opt/trackmyrmc/frontend.new --strip-components=1
+tar -xzf "$DEPLOY_CACHE_DIR/frontend-$RELEASE_SHA.tgz" -C /opt/trackmyrmc/frontend.new --strip-components=1
 rm -rf /opt/trackmyrmc/frontend.prev
 if [ -d /opt/trackmyrmc/frontend ]; then mv /opt/trackmyrmc/frontend /opt/trackmyrmc/frontend.prev; fi
 mv /opt/trackmyrmc/frontend.new /opt/trackmyrmc/frontend
@@ -299,7 +309,7 @@ mv /opt/trackmyrmc/frontend.new /opt/trackmyrmc/frontend
 # Keep a complete, SHA-pinned source checkout and the separately built admin dashboard on EC2.
 rm -rf /opt/trackmyrmc/source.new
 install -d -o trackmyrmc -g trackmyrmc /opt/trackmyrmc/source.new
-tar -xzf "/tmp/source-$RELEASE_SHA.tgz" -C /opt/trackmyrmc/source.new
+tar -xzf "$DEPLOY_CACHE_DIR/source-$RELEASE_SHA.tgz" -C /opt/trackmyrmc/source.new
 test -f /opt/trackmyrmc/source.new/backend/Cargo.toml
 test -f /opt/trackmyrmc/source.new/frontend/package.json
 test -f /opt/trackmyrmc/source.new/admin-web/package.json
@@ -311,13 +321,17 @@ mv /opt/trackmyrmc/source.new /opt/trackmyrmc/source
 
 rm -rf /opt/trackmyrmc/admin-web.new
 install -d -o trackmyrmc -g trackmyrmc /opt/trackmyrmc/admin-web.new
-tar -xzf "/tmp/admin-web-$RELEASE_SHA.tgz" -C /opt/trackmyrmc/admin-web.new
+tar -xzf "$DEPLOY_CACHE_DIR/admin-web-$RELEASE_SHA.tgz" -C /opt/trackmyrmc/admin-web.new
 test -s /opt/trackmyrmc/admin-web.new/index.html
 if [ -d /opt/trackmyrmc/admin-web ]; then
   rm -rf /opt/trackmyrmc/admin-web.prev
   mv /opt/trackmyrmc/admin-web /opt/trackmyrmc/admin-web.prev
 fi
 mv /opt/trackmyrmc/admin-web.new /opt/trackmyrmc/admin-web
+
+# Safe cleanup of extracted release archives from deploy cache
+cleanup_release_archives
+find "$DEPLOY_CACHE_DIR" -maxdepth 1 -name '*.tgz' -type f -mtime +1 -delete 2>/dev/null || true
 
 printf '%s\\n' "$RELEASE_SHA" > /opt/trackmyrmc/DEPLOYED_RELEASE_SHA
 

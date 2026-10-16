@@ -168,6 +168,53 @@ jobs:
       - name: Build Rust backend
         run: cargo build --release --manifest-path backend/Cargo.toml
 
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          audience: sts.amazonaws.com
+
+      - name: Load production runtime secrets from AWS Secrets Manager
+        run: |
+          set -euo pipefail
+
+          ACCOUNT="$(aws sts get-caller-identity \
+            --query Account --output text)"
+          test "$ACCOUNT" = "260234292958"
+
+          SECRET_JSON="$(aws secretsmanager get-secret-value \
+            --secret-id "${APP_SECRET_NAME}" \
+            --region "${AWS_REGION}" \
+            --query SecretString \
+            --output text)"
+
+          printf '%s' "$SECRET_JSON" | python3 - <<'PY'
+          import json, os, sys
+
+          try:
+              secret = json.load(sys.stdin)
+          except Exception as e:
+              sys.exit(f"Failed to parse secret JSON: {e}")
+
+          expo_maps_key = (secret.get("EXPO_PUBLIC_GOOGLE_MAPS_KEY") or "").strip()
+          android_maps_key = (secret.get("GOOGLE_MAPS_ANDROID_KEY") or "").strip()
+          places_key = (secret.get("GOOGLE_PLACES_API_KEY") or "").strip()
+
+          # Mask secrets immediately so GitHub Actions redacts any appearance in logs
+          for val in (expo_maps_key, android_maps_key, places_key):
+              if val:
+                  print(f"::add-mask::{val}")
+
+          github_env = os.environ.get("GITHUB_ENV")
+          if github_env:
+              with open(github_env, "a", encoding="utf-8") as f:
+                  f.write(f"EXPO_PUBLIC_GOOGLE_MAPS_KEY={expo_maps_key}\n")
+                  f.write(f"GOOGLE_MAPS_ANDROID_KEY={android_maps_key}\n")
+
+          print("Production runtime keys loaded and masked.")
+          PY
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -179,6 +226,7 @@ jobs:
         working-directory: frontend
         env:
           EXPO_PUBLIC_BACKEND_URL: https://trackmyrmc.com
+          EXPO_PUBLIC_GOOGLE_MAPS_KEY: ${{ env.EXPO_PUBLIC_GOOGLE_MAPS_KEY }}
         run: |
           set -euo pipefail
           npm ci
@@ -217,26 +265,6 @@ jobs:
           test -s "/tmp/admin-web-${RELEASE_SHA}.tgz"
           test -s "/tmp/frontend-${RELEASE_SHA}.tgz"
           test -s backend/target/release/trackmyrmc-backend
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ env.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Verify AWS identity and runtime secret
-        run: |
-          set -euo pipefail
-
-          ACCOUNT="$(aws sts get-caller-identity \
-            --query Account --output text)"
-
-          test "$ACCOUNT" = "260234292958"
-
-          aws secretsmanager describe-secret \
-            --secret-id "$APP_SECRET_NAME" >/dev/null
-
-          echo "AWS identity and runtime secret verified."
 
       - name: Upload release artifacts to S3
         run: |
@@ -285,8 +313,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Use the S3-hosted deploy script so the instance doesn't need GitHub raw access.
-          REMOTE_COMMAND="set -euo pipefail; aws s3 cp s3://${ARTIFACT_BUCKET}/ops/aws-deploy-ec2-${RELEASE_SHA}.sh /tmp/trackmyrmc-deploy.sh && bash -n /tmp/trackmyrmc-deploy.sh && RELEASE_SHA='${RELEASE_SHA}' bash /tmp/trackmyrmc-deploy.sh"
+          # Use the S3-hosted deploy script via deploy-cache so the instance doesn't need GitHub raw access.
+          REMOTE_COMMAND="set -euo pipefail; mkdir -p /opt/trackmyrmc/deploy-cache && aws s3 cp s3://${ARTIFACT_BUCKET}/ops/aws-deploy-ec2-${RELEASE_SHA}.sh /opt/trackmyrmc/deploy-cache/trackmyrmc-deploy-${RELEASE_SHA}.sh && bash -n /opt/trackmyrmc/deploy-cache/trackmyrmc-deploy-${RELEASE_SHA}.sh && RELEASE_SHA='${RELEASE_SHA}' bash /opt/trackmyrmc/deploy-cache/trackmyrmc-deploy-${RELEASE_SHA}.sh && rm -f /opt/trackmyrmc/deploy-cache/trackmyrmc-deploy-${RELEASE_SHA}.sh"
 
           PARAMS="$(jq -nc \
             --arg command "$REMOTE_COMMAND" \
@@ -323,7 +351,7 @@ jobs:
           echo "=== SSM Stderr ===" >&2
           printf '%s\n' "$INVOCATION_JSON" | jq -r '.StandardErrorContent // "<no stderr>"' >&2
 
-          STATUS="$(printf '%s\n' "$INVOCATION_JSON" | jq -r '.Status // "Unknown")"
+          STATUS="$(printf '%s\n' "$INVOCATION_JSON" | jq -r '.Status // "Unknown"')"
 
           if [ "$STATUS" != "Success" ]; then
             echo "AWS deployment failed: $STATUS"
