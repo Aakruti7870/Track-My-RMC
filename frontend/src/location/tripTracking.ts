@@ -9,6 +9,7 @@ import { requestBackgroundLocationConsent } from "@/src/location/BackgroundLocat
 export const TRIP_LOCATION_TASK = "trackmyrmc-active-trip-location";
 const ACTIVE_TRIP_KEY = "tmrmc_active_trip_id";
 const TOKEN_KEY = "tmrmc_token";
+let foregroundSubscription: Location.LocationSubscription | null = null;
 
 const activeStatuses = new Set(["EN_ROUTE", "ARRIVED", "POURING", "AT_SITE", "UNLOADING", "POD_PENDING"]);
 
@@ -27,7 +28,7 @@ async function postLocation(tripId: string, location: Location.LocationObject): 
 
   const { latitude, longitude, accuracy } = location.coords;
   try {
-    await fetch(`${base}/api/driver/trips/${encodeURIComponent(tripId)}/location`, {
+    const response = await fetch(`${base}/api/driver/trips/${encodeURIComponent(tripId)}/location`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -40,6 +41,7 @@ async function postLocation(tripId: string, location: Location.LocationObject): 
         recorded_at_ms: location.timestamp,
       }),
     });
+    if ([401,403,404,409].includes(response.status) && await storage.getItem<string>(ACTIVE_TRIP_KEY, "") === tripId) await stopTripLocationTracking();
   } catch {
     // Foreground/Expo fallback delivery remains best-effort. The native Android
     // service adds an encrypted bounded retry queue when it is available.
@@ -82,7 +84,8 @@ export async function hasBackgroundLocationPermission(): Promise<boolean> {
 }
 
 async function startForegroundWatcher(tripId: string): Promise<Location.LocationSubscription> {
-  return Location.watchPositionAsync(
+  foregroundSubscription?.remove();
+  const subscription = await Location.watchPositionAsync(
     {
       accuracy: Location.Accuracy.High,
       timeInterval: 15_000,
@@ -92,6 +95,8 @@ async function startForegroundWatcher(tripId: string): Promise<Location.Location
       void postLocation(tripId, location);
     },
   );
+  foregroundSubscription=subscription;
+  return {remove:() => {subscription.remove();if(foregroundSubscription===subscription)foregroundSubscription=null;}};
 }
 
 async function startNativeBackgroundTracking(tripId: string): Promise<boolean> {
@@ -198,6 +203,8 @@ export async function startTripLocationTracking(
 }
 
 export async function stopTripLocationTracking(): Promise<void> {
+  foregroundSubscription?.remove();
+  foregroundSubscription=null;
   await storage.removeItem(ACTIVE_TRIP_KEY);
 
   if (Platform.OS === "android" && NativeTripLocation) {

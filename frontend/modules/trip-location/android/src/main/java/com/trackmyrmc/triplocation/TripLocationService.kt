@@ -212,11 +212,13 @@ class TripLocationService : Service() {
       val status = connection.responseCode
       if (status == 401 || status == 403 || status == 404 || status == 409) {
         // Revoked authorization or an ended/reassigned trip must stop collection.
-        TripLocationState.clear(this)
-        stopSelf()
+        if (TripLocationState.snapshot(this)?.tripId == snapshot.tripId) {
+          TripLocationState.clear(this)
+          stopSelf()
+        }
         true
       } else {
-        status in 200..299
+        status in 200..299 || status == 400 || status == 422
       }
     } catch (_: Exception) {
       false
