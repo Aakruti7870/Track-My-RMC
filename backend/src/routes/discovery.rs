@@ -33,7 +33,7 @@ pub struct Search {
 fn valid_geo_field(value: &Option<String>) -> bool {
     value
         .as_ref()
-        .is_none_or(|v| v.len() <= 80 && !v.chars().any(char::is_control))
+        .is_none_or(|v| v.chars().count() <= 80 && !v.chars().any(char::is_control))
 }
 
 impl Search {
