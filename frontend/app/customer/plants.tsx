@@ -220,7 +220,13 @@ export default function CustomerPlants() {
     if (!token || !isValidPlantGeo(geo)
       || Object.values(geo).some(value => value.length > 0 && value.length < 2)) return;
     const area = plantGeoLocationLabel(geo);
-    if (area === lastAppliedGeoLocation.current) return;
+    if (area === lastAppliedGeoLocation.current) {
+      // Different administrative fields can produce the same geocoding query;
+      // keep the structured Rust search filters synchronized with the UI.
+      setFilters(current => ({...current,...geo}));
+      setPage(1);
+      return;
+    }
     const timeout = setTimeout(() => {
       void apiPost<LatLng & {label:string}>(
         "/customer/plants/locate", token, {address:area}
