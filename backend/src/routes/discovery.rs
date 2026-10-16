@@ -162,7 +162,7 @@ impl GoogleNearbyQuery {
             || self
                 .q
                 .as_ref()
-                .is_some_and(|q| q.len() > 80 || q.chars().any(char::is_control))
+                .is_some_and(|q| q.chars().count() > 80 || q.chars().any(char::is_control))
         {
             return Err(AppError::BadRequest(
                 "Google nearby search requires valid coordinates and a radius from 1 to 50 km"
