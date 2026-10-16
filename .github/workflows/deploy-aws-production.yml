@@ -8,9 +8,9 @@ name: Deploy TrackMyRMC AWS Production
 
 on:
   workflow_run:
+    # One release gate per SHA; it waits for Frontend CI as well.
     workflows:
       - "Backend CI"
-      - "Frontend CI"
     types:
       - completed
     branches:
@@ -77,22 +77,29 @@ jobs:
             exit 1
           fi
 
-          for workflow in backend.yml frontend.yml; do
-            echo "Checking $workflow"
+          # Display names match workflow_run; resolve immutable IDs via the API.
+          # A CI workflow MUST have an actual successful push run for this main SHA.
+          for wf_name in "Backend CI" "Frontend CI"; do
+            echo "Checking required workflow: $wf_name"
+
+            workflow_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows?per_page=100" |
+              jq -er --arg name "$wf_name" '
+                [.workflows[] | select(.name == $name and .state == "active") | .id]
+                | if length == 1 then .[0] else error("Expected exactly one active workflow named " + $name) end
+              ')"
 
             passed=false
-
             for attempt in $(seq 1 45); do
               response="$(gh api \
-                "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow}/runs?event=push&head_sha=${RELEASE_SHA}&per_page=50")"
+                "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_id}/runs?event=push&branch=main&head_sha=${RELEASE_SHA}&per_page=100")"
 
               status="$(printf '%s' "$response" | jq -r \
                 --arg sha "$RELEASE_SHA" '
                   [
                     .workflow_runs[]
-                    | select(.head_sha == $sha)
+                    | select(.head_sha == $sha and .event == "push" and .head_branch == "main")
                   ]
-                  | sort_by(.run_attempt, .run_number)
+                  | sort_by(.run_number, .run_attempt)
                   | last
                   | if . == null then
                       "missing"
@@ -101,23 +108,20 @@ jobs:
                     end
                 ')"
 
-              echo "$workflow: $status"
-
+              echo "${wf_name} (${workflow_id}): $status"
               if [ "$status" = "completed:success" ]; then
                 passed=true
                 break
               fi
-
               if [[ "$status" == completed:* ]]; then
-                echo "Required workflow failed."
+                echo "Required workflow ${wf_name} completed unsuccessfully."
                 exit 1
               fi
-
               sleep 20
             done
 
             if [ "$passed" != true ]; then
-              echo "$workflow did not pass."
+              echo "${wf_name} did not pass for release SHA ${RELEASE_SHA}."
               exit 1
             fi
           done
