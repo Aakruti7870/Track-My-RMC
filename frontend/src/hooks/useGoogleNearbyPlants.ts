@@ -25,10 +25,11 @@ type GoogleNearbyResult = {
 
 // Google Places content is not cached or written to permanent storage.
 // Every response is only retained in React state while the Nearby Plants screen is active.
-export function useGoogleNearbyPlants(location: LatLng | null, radiusKm: number, enabled: boolean) {
+export function useGoogleNearbyPlants(location: LatLng | null, radiusKm: number, enabled: boolean, query: string) {
   const { token } = useAuth();
   const lat = location?.lat;
   const lng = location?.lng;
+  const searchName = query.trim().slice(0, 80);
   const [revision, setRevision] = useState(0);
   const sequence = useRef(0);
   const [state, setState] = useState<{
@@ -52,6 +53,7 @@ export function useGoogleNearbyPlants(location: LatLng | null, radiusKm: number,
         lat,
         lng,
         radius_km: Math.min(Math.max(1, radiusKm), 50),
+        q: searchName,
       }).then((result) => {
         if (id === sequence.current) setState({ data: result, loading: false, error: null });
       }).catch((error: unknown) => {
@@ -61,7 +63,7 @@ export function useGoogleNearbyPlants(location: LatLng | null, radiusKm: number,
       });
     }, 700);
     return () => { clearTimeout(timer); sequence.current++; };
-  }, [token, lat, lng, radiusKm, enabled, revision]);
+  }, [token, lat, lng, radiusKm, enabled, searchName, revision]);
 
   return { ...state, refresh };
 }
