@@ -9,6 +9,8 @@ import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { AppText } from "@/src/components/ui/AppText";
 import { QuickActionHub } from "@/src/components/QuickActionHub";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
+import { tabVectorSymbol } from "@/src/navigation/vectorSymbolAssignments";
 import { control, fonts, radius, spacing } from "@/src/theme/tokens";
 
 export type TabDef = {
@@ -46,6 +48,7 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick" }: 
     const tab = tabs.find((definition) => definition.name === route.name)!;
     const index = state.routes.findIndex((candidate) => candidate.key === route.key);
     const focused = state.index === index;
+    const symbol = tabVectorSymbol(tab.label, user?.role);
 
     return (
       <Pressable
@@ -64,7 +67,7 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick" }: 
       >
         <View style={[styles.activeIndicator, { backgroundColor: focused ? colors.brand : "transparent" }]} />
         <View style={[styles.iconWrap, focused && { backgroundColor: colors.brandSoft, borderColor: colors.brand + "38" }]}>
-          <Ionicons name={focused ? tab.active : tab.icon} size={22} color={focused ? colors.brand : colors.onSurfaceTertiary} />
+          {symbol ? <VectorSymbol name={symbol} size={31} /> : <Ionicons name={focused ? tab.active : tab.icon} size={22} color={focused ? colors.brand : colors.onSurfaceTertiary} />}
         </View>
         <AppText
           numberOfLines={1}
@@ -117,7 +120,7 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick" }: 
                 },
               ]}
             >
-              <Ionicons name="add" size={29} color={colors.onBrand} />
+              {centerLabel === "New" ? <VectorSymbol name="new-order" size={38} /> : <Ionicons name="add" size={29} color={colors.onBrand} />}
             </Pressable>
             <AppText style={[styles.centerLabel, { color: colors.brand }]}>{centerLabel}</AppText>
           </View>
