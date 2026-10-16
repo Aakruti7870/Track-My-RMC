@@ -144,6 +144,49 @@ async fn nearby_search_route_filters_radius_grade_and_enforces_authentication(db
 }
 
 #[sqlx::test]
+async fn plant_contacts_follow_approval_on_list_and_search_endpoints(db: PgPool) {
+    let (_, app, _, approved_id, token) = fixture(&db).await;
+    sqlx::query("UPDATE rmc_plants SET contact_phone=$1,contact_email=$2 WHERE id=$3")
+        .bind("+917498276543")
+        .bind("approved@example.com")
+        .bind(approved_id)
+        .execute(&db)
+        .await
+        .unwrap();
+
+    let owner = identity(&db, "owner").await;
+    let unapproved_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,address_line,city,state,pincode,contact_phone,contact_email) VALUES($1,'Unapproved Directory Plant','UNAPPROVED-DIR',19.1,73.1,'Example address','Panvel','Maharashtra','410206',$2,$3) RETURNING id"
+    )
+    .bind(owner)
+    .bind("+917498212345")
+    .bind("unapproved@example.com")
+    .fetch_one(&db)
+    .await
+    .unwrap();
+
+    for (path, payload) in [
+        ("/api/customer/plants", None),
+        ("/api/customer/plants/search", Some(json!({"page_size":30}))),
+    ] {
+        let (status, body) = call(&app, path, payload, &token).await;
+        assert_eq!(status, StatusCode::OK, "{path}: {body}");
+        let plants = body["plants"].as_array().expect("plants array");
+        let unapproved = plants.iter().find(|plant| plant["id"] == json!(unapproved_id)).expect("unapproved listing");
+        assert_eq!(unapproved["verified"], false, "{path}");
+        assert!(unapproved["contact_phone"].is_null(), "{path}: raw phone leaked");
+        assert!(unapproved["contact_email"].is_null(), "{path}: unapproved email leaked");
+        assert_eq!(unapproved["contact_phone_masked"], "9174982*****", "{path}");
+        assert!(!body.to_string().contains("12345"), "{path}: phone suffix leaked");
+        assert!(!body.to_string().contains("unapproved@example.com"), "{path}: email leaked");
+
+        let approved = plants.iter().find(|plant| plant["id"] == json!(approved_id)).expect("approved listing");
+        assert_eq!(approved["verified"], true, "{path}");
+        assert_eq!(approved["contact_phone"], "+917498276543", "{path}");
+    }
+}
+
+#[sqlx::test]
 async fn customer_tracking_is_owned_and_does_not_leak_reused_mixer_positions(db: PgPool) {
     let (state, app, _, plant, token) = fixture(&db).await;
     let (status, created) = call(
