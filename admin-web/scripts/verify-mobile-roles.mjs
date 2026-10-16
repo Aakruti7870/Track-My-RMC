@@ -206,15 +206,32 @@ try {
       await page.reload();
       await expect(page.getByTestId('plants-list')).toBeVisible();
       await expect(page.getByTestId('permission-introduction')).not.toBeVisible();
-      phase = 'manual site and filtered plant search';
-      await page.getByRole('button',{name:'Filters and site selection',exact:true}).click();
-      await page.getByLabel('Site latitude',{exact:true}).fill('19.076');
-      await page.getByLabel('Site longitude',{exact:true}).fill('72.877');
-      await page.getByRole('button',{name:'Use this site',exact:true}).click();
-      await page.getByLabel('Concrete grade',{exact:true}).fill('M25');
-      await page.getByRole('button',{name:'Apply',exact:true}).click();
+      phase = 'four-field automatic geographic plant search';
+      await page.getByRole('button',{name:'Location filters',exact:true}).click();
+      for (const field of ['State','District','Taluka','City']) {
+        await expect(page.getByTestId('plants-filter-' + field.toLowerCase())).toBeVisible();
+      }
+      // Removed legacy manual-site, grade/radius and Apply/Clear controls must stay absent.
+      for (const label of ['Use this site','Apply','Clear Filters','Find this location','All registered plants']) {
+        await expect(page.getByRole('button',{name:label,exact:true})).toHaveCount(0);
+      }
+      // Real Google geocoding is not needed in a self-contained CI fixture.
+      // Intercept only geocoding; the resulting registered-plant search must
+      // still use the real Rust API and PostgreSQL records.
+      await page.route('**/api/customer/plants/locate',route => route.fulfill({
+        status:200,
+        contentType:'application/json',
+        body:JSON.stringify({lat:19.076,lng:72.877,label:'Mumbai, Maharashtra, India'}),
+      }));
+      const filteredGeoSearch = page.waitForResponse(response => {
+        if (new URL(response.url()).pathname !== '/api/customer/plants/search' || response.status() !== 200) return false;
+        const body = response.request().postDataJSON();
+        return body?.state === 'Maharashtra' && body?.lat === 19.076 && body?.lng === 72.877;
+      });
+      await page.getByTestId('plants-filter-state').fill('Maharashtra');
+      await filteredGeoSearch;
       await expect(page.getByText('Browser staging plant',{exact:true}).first()).toBeVisible();
-      await page.getByRole('button',{name:'Hide filters and site selection',exact:true}).click();
+      await page.getByRole('button',{name:'Hide location filters',exact:true}).click();
       await page.getByRole('button',{name:'View Details',exact:true}).click();
       await expect(page.getByRole('button',{name:'Close details',exact:true})).toBeVisible();
       await page.getByRole('button',{name:'Close details',exact:true}).click();
