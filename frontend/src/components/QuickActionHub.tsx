@@ -8,6 +8,8 @@ import { AppText } from "@/src/components/ui/AppText";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { control, fonts, radius, spacing } from "@/src/theme/tokens";
 import type { TabDef } from "@/src/components/GlassTabBar";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
+import { tabVectorSymbol } from "@/src/navigation/vectorSymbolAssignments";
 
 type Props = {
   visible: boolean;
@@ -105,7 +107,7 @@ export function QuickActionHub({ visible, onClose, tabs, role, navigation }: Pro
               >
                 <View style={styles.actionTopRow}>
                   <View style={[styles.actionIcon, { backgroundColor: colors.brandSoft, borderColor: colors.brand + "28" }]}>
-                    <Ionicons name={tab.active} size={23} color={colors.brand} />
+                    {tabVectorSymbol(tab.label, role) ? <VectorSymbol name={tabVectorSymbol(tab.label, role)!} size={41} /> : <Ionicons name={tab.active} size={23} color={colors.brand} />}
                   </View>
                   <AppText style={[styles.index, { color: colors.onSurfaceTertiary }]}>{String(index + 1).padStart(2, "0")}</AppText>
                 </View>
