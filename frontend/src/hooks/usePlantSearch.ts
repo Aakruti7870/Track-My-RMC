@@ -12,6 +12,7 @@ export function usePlantSearch(location: LatLng | null, filters: { q: string; gr
   const key = `${token}\0${body}`;
   const [state, setState] = useState<{key: string; data: Result | null; loading: boolean; error: string | null}>({key:"",data:null,loading:true,error:null});
   const sequence = useRef(0);
+  const invalidate = useCallback(() => { sequence.current++; },[]);
   const cache = useRef(new Map<string, { at: number; result: Result }>());
   const load = useCallback(async (force = false) => {
     const id = ++sequence.current;
@@ -31,8 +32,8 @@ export function usePlantSearch(location: LatLng | null, filters: { q: string; gr
   }, [body, key, token]);
   useEffect(() => {
     const timeout = setTimeout(() => void load(), 400);
-    return () => { clearTimeout(timeout); sequence.current++; };
-  }, [load]);
+    return () => { clearTimeout(timeout); invalidate(); };
+  }, [load,invalidate]);
   useEffect(() => {
     const subscription = AppState.addEventListener("change", status => { if (status === "active") void load(); });
     const onVisible = () => { if (document.visibilityState === "visible") void load(); };

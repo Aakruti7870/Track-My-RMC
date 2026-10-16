@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { AppState, Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -61,7 +61,7 @@ export default function TrackScreen() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
 
-  useEffect(() => {
+  useFocusEffect(React.useCallback(() => {
     if (["DELIVERED","CANCELLED","REJECTED"].includes(data?.status || "")) return;
     let pending = false;
     const update = async () => {
@@ -73,7 +73,7 @@ export default function TrackScreen() {
     const t = setInterval(() => void update(), 15000);
     const subscription = AppState.addEventListener("change", state => { if (state === "active") void update(); });
     return () => {clearInterval(t);subscription.remove();};
-  }, [data?.status, refetch]);
+  }, [data?.status, refetch]));
 
   useEffect(() => {
     const active = data?.active_loads || [];
@@ -188,6 +188,7 @@ export default function TrackScreen() {
                   <View style={{ flex: 1 }}>
                     <AppText style={{ fontFamily: fonts.semibold, color: colors.onSurface }}>{load.load_code || `Load ${load.load_number}`} · {load.quantity_m3 || 0} m³</AppText>
                     <AppText variant="caption">{[load.tm_number, load.driver_name].filter(Boolean).join(" · ") || "Not assigned"}</AppText>
+                    {Object.entries(load.milestones || {}).filter(([,at])=>!!at).map(([name,at]) => <AppText key={name} variant="caption">{name.replace(/_at$/,"").replace(/_/g," ")}: {new Date(at!).toLocaleString()}</AppText>)}
                   </View>
                   <Badge label={(load.status || "").replace(/_/g, " ")} status={load.status} />
                 </Card>

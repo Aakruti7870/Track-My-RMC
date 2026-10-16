@@ -72,7 +72,7 @@ export function PlantCard({ plant, onOrder, onDetails }: { plant: Plant; onOrder
 
       <View style={styles.badgeRow}>
         <Badge label={readableStatus(status)} status={status} size="sm" />
-        {plant.verified ? <Badge label="KYC VERIFIED" status="KYC_VERIFIED" size="sm" /> : <Badge label="Verification pending" status="PENDING" size="sm" />}
+        {plant.verified ? <Badge label="LISTING VERIFIED" status="VERIFIED" size="sm" /> : <Badge label="Verification pending" status="PENDING" size="sm" />}
         {plant.promoted ? (
           <View style={[styles.promotedBadge, { backgroundColor: colors.warning + "18", borderColor: colors.warning + "48" }]}>
             <Ionicons name="sparkles" size={13} color={colors.warning} />

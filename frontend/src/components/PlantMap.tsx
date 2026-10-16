@@ -4,7 +4,6 @@ import Constants from "expo-constants";
 import MapView, { Marker, PROVIDER_GOOGLE, type Region } from "react-native-maps";
 
 import { PlantData } from "./PlantCard";
-import { MapPlaceholder } from "./ui/MapPlaceholder";
 import { AppText } from "./ui/AppText";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
@@ -43,7 +42,7 @@ export function PlantMap({ plants, userLocation, onSelectPlant, onRegionChange }
   const map = useRef<MapView | null>(null);
   useEffect(() => {
     if (userLocation && validLatLng(userLocation)) map.current?.animateToRegion({latitude:userLocation.lat,longitude:userLocation.lng,latitudeDelta:0.15,longitudeDelta:0.15},300);
-  },[userLocation?.lat,userLocation?.lng]);
+  },[userLocation]);
   const { colors } = useTheme();
   const mapsConfigured = Boolean(Constants.expoConfig?.extra?.googleMapsAndroidConfigured);
   const mappedPlants = useMemo(() => plants.filter((plant) => validLatLng(plant)), [plants]);
@@ -51,21 +50,13 @@ export function PlantMap({ plants, userLocation, onSelectPlant, onRegionChange }
 
   if (!mapsConfigured) {
     return (
-      <MapPlaceholder
-        pins={mappedPlants.length}
-        label="Google Maps will activate after the Android Maps key is added to the build"
-        style={{ minHeight: 210 }}
-      />
+      <View style={{padding:16}}><AppText>Map unavailable: configure the Android Google Maps key and rebuild the app. Real plant results remain available below.</AppText></View>
     );
   }
 
   if (!initialRegion) {
     return (
-      <MapPlaceholder
-        pins={0}
-        label="Plant coordinates are not available yet"
-        style={{ minHeight: 190 }}
-      />
+      <View style={{padding:16}}><AppText>Choose a site to center the map. No plant coordinates are available for this search.</AppText></View>
     );
   }
 
