@@ -2,6 +2,7 @@ import React, { useRef, useState } from "react";
 import { Alert, Linking, PanResponder, Platform, Pressable, StyleSheet, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { Ionicons } from "@expo/vector-icons";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -147,9 +148,9 @@ export default function PodScreen() {
           onPress={() => router.back()}
           style={[styles.iconBtn, { borderColor: colors.border }]}
         >
-          <Ionicons name="chevron-back" size={22} color={colors.onSurface} />
+          <VectorSymbol name="back" size={29} />
         </Pressable>
-        <AppText variant="title">Proof of Delivery</AppText>
+        <VectorSymbol name="proof-of-delivery" size={33} /><AppText variant="title">Proof of Delivery</AppText>
       </View>
 
       <KeyboardAwareScrollView
