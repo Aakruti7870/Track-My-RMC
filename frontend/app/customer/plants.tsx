@@ -12,7 +12,6 @@ import { useTheme } from "@/src/theme/ThemeProvider";
 import { useToast } from "@/src/components/ui/Toast";
 import { usePlantSearch } from "@/src/hooks/usePlantSearch";
 import { GoogleNearbyPlant, useGoogleNearbyPlants } from "@/src/hooks/useGoogleNearbyPlants";
-import { storage } from "@/src/utils/storage";
 import { Button } from "@/src/components/ui/Button";
 import { usePermissions } from "@/src/permissions/PermissionProvider";
 import { AppText } from "@/src/components/ui/AppText";
@@ -130,21 +129,15 @@ export default function CustomerPlants() {
   const [userLocation, setUserLocation] = useState<LatLng | null>(null);
   const [locating, setLocating] = useState(false);
   const [locationStatus, setLocationStatus] = useState<NearbyLocationStatus | null>(null);
-  const [grade, setGrade] = useState("");
-  const [radiusKm, setRadiusKm] = useState("50");
-  const [verified, setVerified] = useState(false);
   const [showFilters,setShowFilters] = useState(false);
   const [page, setPage] = useState(1);
   const [geoDraft, setGeoDraft] = useState<PlantGeoFilters>({...EMPTY_PLANT_GEO});
-  const [applyingGeo, setApplyingGeo] = useState(false);
   const [filters, setFilters] = useState({q:"",grade:"",radius_km:50,verified:false,...EMPTY_PLANT_GEO});
-  const [manualLat, setManualLat] = useState("");
-  const [manualLng, setManualLng] = useState("");
-  const [recent, setRecent] = useState<{label:string;coords:LatLng}[]>([]);
-  const [siteAddress,setSiteAddress] = useState("");
   const [details,setDetails] = useState<PlantData | null>(null);
   const [quoteSubmitting,setQuoteSubmitting] = useState<string | null>(null);
   const manualLocation = useRef(false);
+  const geoLookupVersion = useRef(0);
+  const lastAppliedGeoLocation = useRef("");
   const { data, loading, error, refetch, reload, clearCache } = usePlantSearch(userLocation, filters, page);
   const {
     data: googleNearby, loading: googleLoading, error: googleError, refresh: refreshGoogle,
@@ -201,102 +194,59 @@ export default function CustomerPlants() {
     }
     return () => {disposed=true;subscription.remove();permission?.removeEventListener("change",changed);};
   }, [applyLocation,locationEnabled]);
+
+  // Geographical filters are the only controls in the expanded Filters panel.
+  // Debounce changes so a field is never geocoded on every keystroke.
+  // Ignore late responses when the user edits a more specific location.
   useEffect(() => {
-    let active = true;
-    setRecent([]);
-    if (user?.id) void storage.getItem(`recent-plant-locations-${user.id}`, "").then(raw => {
-      try { const values = raw ? JSON.parse(raw) : []; if (active && Array.isArray(values)) setRecent(values.filter(v => validLatLng(v.coords)).slice(0,5)); } catch { /* Ignore invalid preferences. */ }
-    });
-    return () => { active = false; };
-  }, [user?.id]);
-  const chooseManualLocation = () => {
-    const coords = {lat:Number(manualLat),lng:Number(manualLng)};
-    if (!manualLat.trim() || !manualLng.trim() || !validLatLng(coords)) { toast("Enter a valid latitude and longitude", "error"); return; }
-    setUserLocation(coords); setPage(1); setLocationStatus("ok");
-    manualLocation.current=true;
-    const locations = [{label:q.trim() || `${coords.lat.toFixed(3)}, ${coords.lng.toFixed(3)}`,coords}, ...recent.filter(v => distanceKm(v.coords,coords)>0.1)].slice(0,5);
-    setRecent(locations);
-    if (user?.id) void storage.setItem(`recent-plant-locations-${user.id}`,JSON.stringify(locations));
-  };
-
-  const locateAddress = async () => {
-    if (!token) return;
-    setLocating(true);
-    try {
-      const result = await apiPost<LatLng & {label:string}>("/customer/plants/locate",token,{address:siteAddress});
-      if (!validLatLng(result)) throw new Error("Invalid coordinates");
-      manualLocation.current=true;setUserLocation(result);setPage(1);setLocationStatus("ok");
-      const locations = [{label:result.label,coords:{lat:result.lat,lng:result.lng}},...recent.filter(v=>distanceKm(v.coords,result)>0.1)].slice(0,5);
-      setRecent(locations);
-      if (user?.id) await storage.setItem(`recent-plant-locations-${user.id}`,JSON.stringify(locations));
-    } catch (e:any) {toast(e?.detail || "Could not locate this address. Try coordinates or search plants by city.","error");}
-    finally {setLocating(false);}
-  };
-
-  const applyPlantFilters = async () => {
-    const radius = Number(radiusKm);
-    if (!Number.isFinite(radius) || radius < 1 || radius > 200) {
-      toast("Choose a radius between 1 and 200 km", "error");
-      return;
-    }
+    const request = ++geoLookupVersion.current;
     const geo = cleanPlantGeo(geoDraft);
-    if (!isValidPlantGeo(geo)) {
-      toast("Enter valid State, District, Taluka and City names (80 characters maximum)", "error");
+    if (!hasPlantGeoFilters(geo)) {
+      if (lastAppliedGeoLocation.current) {
+        lastAppliedGeoLocation.current = "";
+        setFilters(current => ({...current,...EMPTY_PLANT_GEO}));
+        setPage(1);
+        manualLocation.current = false;
+        if (locationEnabled) {
+          // Restore device-based nearby results after clearing all four fields.
+          void applyLocation({forceRefresh:false,allowPrompt:false,refetchPlants:false});
+        } else {
+          setUserLocation(null);
+          setLocationStatus("denied");
+        }
+      }
       return;
     }
-    if (hasPlantGeoFilters(geo)) {
-      if (!token) return;
-      setApplyingGeo(true);
-      try {
-        // Resolving the selected administrative area is explicit and keeps GPS
-        // permission optional. Google Places remains a live, server-side search.
-        const center = await apiPost<LatLng & {label: string}>(
-          "/customer/plants/locate", token, {address: plantGeoLocationLabel(geo)}
-        );
+    if (!token || !isValidPlantGeo(geo)
+      || Object.values(geo).some(value => value.length > 0 && value.length < 2)) return;
+    const area = plantGeoLocationLabel(geo);
+    if (area === lastAppliedGeoLocation.current) return;
+    const timeout = setTimeout(() => {
+      void apiPost<LatLng & {label:string}>(
+        "/customer/plants/locate", token, {address:area}
+      ).then(center => {
+        if (request !== geoLookupVersion.current) return;
         if (!validLatLng(center)) throw new Error("Location lookup returned invalid coordinates");
+        lastAppliedGeoLocation.current = area;
         manualLocation.current = true;
         setUserLocation({lat:center.lat,lng:center.lng});
         setLocationStatus("ok");
-      } catch (err: any) {
-        toast(err?.detail || "Could not locate this area. Check the district, taluka and city.", "error");
-        return;
-      } finally {
-        setApplyingGeo(false);
-      }
-    } else if (hasPlantGeoFilters(filters)) {
-      manualLocation.current = false;
-      if (locationEnabled) {
-        void applyLocation({forceRefresh:false,allowPrompt:false,refetchPlants:false});
-      } else {
-        setUserLocation(null);
-        setLocationStatus("denied");
-      }
-    }
-    setPage(1);
-    setFilters({q,grade,radius_km:radius,verified,...geo});
-    // Preserve the expanded Filters panel so customers can review and adjust
-    // an applied location or grade without reopening it.
-  };
-
-  const clearPlantFilters = () => {
-    const hadGeo = hasPlantGeoFilters(filters);
-    setQ("");
-    setGrade("");
-    setRadiusKm("50");
-    setVerified(false);
-    setGeoDraft({...EMPTY_PLANT_GEO});
-    setPage(1);
-    setFilters({q:"",grade:"",radius_km:50,verified:false,...EMPTY_PLANT_GEO});
-    if (hadGeo) {
-      manualLocation.current = false;
-      if (locationEnabled) {
-        void applyLocation({forceRefresh:false,allowPrompt:false,refetchPlants:false});
-      } else {
-        setUserLocation(null);
-        setLocationStatus("denied");
-      }
-    }
-  };
+        setPage(1);
+        setFilters(current => ({...current,...geo}));
+      }).catch((error: any) => {
+        if (request === geoLookupVersion.current) {
+          toast(error?.detail || "Could not find this area. Check the State, District, Taluka or City.", "error");
+        }
+      });
+    }, 1200);
+    return () => {
+      clearTimeout(timeout);
+      geoLookupVersion.current++;
+    };
+    // applyLocation changes when location/results change; this search must only
+    // start again when the customer's geographic selection changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [geoDraft.state, geoDraft.district, geoDraft.taluka, geoDraft.city, token, locationEnabled]);
 
   const refreshLocation = () => void applyLocation({ forceRefresh: true, allowPrompt: true, refetchPlants: true });
 
@@ -426,13 +376,11 @@ export default function CustomerPlants() {
                     returnKeyType="search" style={styles.searchInput} />
                   {q ? <Pressable onPress={()=>{setQ("");setPage(1);setFilters(current=>({...current,q:""}));}} accessibilityLabel="Clear search"><Ionicons name="close" size={20} color="#94A3B8" /></Pressable> : null}
                 </View>
-                <Pressable testID="plants-filter-toggle" accessibilityLabel={showFilters ? "Hide filters and site selection" : "Filters and site selection"} onPress={()=>setShowFilters(v=>!v)} style={styles.orangeFilter} accessibilityRole="button">
+                <Pressable testID="plants-filter-toggle" accessibilityLabel={showFilters ? "Hide location filters" : "Location filters"} onPress={()=>setShowFilters(v=>!v)} style={styles.orangeFilter} accessibilityRole="button">
                   <VectorSymbol name="filter" size={28} /><AppText style={styles.orangeFilterText}>Filters</AppText>
                 </Pressable>
               </View>
-              {showFilters ? <Card style={{gap:12}}>
-                <AppText variant="heading">Refine your search</AppText>
-                <AppText variant="label">Location filters</AppText>
+              {showFilters ? <Card testID="plants-geo-filters" style={{gap:12}}>
                 <View style={{flexDirection:"row",flexWrap:"wrap",gap:10}}>
                   <View style={styles.geoFilterField}>
                     <AppText variant="caption">State</AppText>
@@ -463,23 +411,6 @@ export default function CustomerPlants() {
                       style={styles.geoFilterInput} autoCapitalize="words" maxLength={80} />
                   </View>
                 </View>
-                <AppText variant="caption">Enter one or more areas to center the map and search RMC plants there. More specific City or Taluka gives better results. Google Places results are searched within up to 50 km of the selected location.</AppText>
-                <TextInput accessibilityLabel="Concrete grade" placeholder="Concrete grade, e.g. M25" value={grade} onChangeText={setGrade} style={{minHeight:48,color:colors.onSurface}} />
-                <TextInput accessibilityLabel="Search radius in kilometres" placeholder="Radius in km (1–200)" value={radiusKm} onChangeText={setRadiusKm} keyboardType="numeric" style={{minHeight:48,color:colors.onSurface}} />
-                <Button label={verified ? "Verified plants only ✓" : "All registered plants"} onPress={() => setVerified(v => !v)} />
-                <AppText variant="caption">Active plants, sorted by distance when a location is selected. Delivery eligibility is confirmed when ordering.</AppText>
-                <Button label="Apply" loading={applyingGeo} onPress={() => void applyPlantFilters()} />
-                <Button label="Clear Filters" onPress={clearPlantFilters} />
-                <AppText variant="heading">Choose a site manually</AppText>
-                <TextInput accessibilityLabel="Site area, city or PIN code" placeholder="Site address, city or PIN code" value={siteAddress} onChangeText={setSiteAddress} style={{minHeight:48,color:colors.onSurface}} />
-                <Button label="Find this location" loading={locating} onPress={locateAddress} />
-                <AppText variant="caption">Search by area or PIN above without location access, or enter site coordinates to search by distance.</AppText>
-                <TextInput accessibilityLabel="Site latitude" placeholder="Latitude" value={manualLat} onChangeText={setManualLat} keyboardType="numbers-and-punctuation" style={{minHeight:48,color:colors.onSurface}} />
-                <TextInput accessibilityLabel="Site longitude" placeholder="Longitude" value={manualLng} onChangeText={setManualLng} keyboardType="numbers-and-punctuation" style={{minHeight:48,color:colors.onSurface}} />
-                <Button label="Use this site" onPress={chooseManualLocation} />
-                {recent.map((entry,i) => <Button key={i} label={`Recent: ${entry.label}`} onPress={() => {manualLocation.current=true;setUserLocation(entry.coords);setPage(1);setLocationStatus("ok");}} />)}
-                {loading ? <ActivityIndicator color={colors.brand} /> : null}
-                {error ? <Button label="Search failed — Retry" onPress={reload} /> : null}
               </Card> : null}
 
 
