@@ -17,7 +17,7 @@ export function PlantMap({ plants, userLocation, onSelectPlant, onRegionChange }
   const html = useMemo(() => `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body,#map{height:100%;margin:0}</style></head><body><div id="map"></div><script>
     var map, markers=[],center=null;
     function send(data){parent.postMessage(data,'*')}
-    window.gm_authFailure=function(){send({kind:'map-error'})};
+    window.gm_authFailure=function(){send({kind:'map-error',reason:'Google Maps authentication failed. Verify API key, allowed HTTP referrers, Maps JavaScript API and billing.'})};
     function init(){
       map=new google.maps.Map(document.getElementById('map'),{center:{lat:20,lng:78},zoom:5,gestureHandling:'cooperative'});
       var dragged=false;map.addListener('dragstart',function(){dragged=true});
@@ -32,12 +32,12 @@ export function PlantMap({ plants, userLocation, onSelectPlant, onRegionChange }
       var next=d.center||(d.plants.length?{lat:d.plants[0].lat,lng:d.plants[0].lng}:null);
       if(next&&(!center||center.lat!==next.lat||center.lng!==next.lng)){center=next;map.panTo(next);if(map.getZoom()<9)map.setZoom(11)}
     });
-    </script><script async onerror="send({kind:'map-error'})" src="https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(KEY)}&loading=async&callback=init"></script></body></html>`,[]);
+    </script><script async onerror="send({kind:'map-error',reason:'Google Maps JavaScript API failed to load. Verify network access and API restrictions.'})" src="https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(KEY)}&loading=async&callback=init"></script></body></html>`,[]);
   useEffect(() => {
     const listener = (event: MessageEvent) => {
       if (event.source !== frame.current?.contentWindow) return;
       if (event.data?.kind === "map-ready") setReady(true);
-      if (event.data?.kind === "map-error") setError("The map could not load. Check your connection or use Directions from a plant card.");
+      if (event.data?.kind === "map-error") { setReady(false); setError(event.data.reason || "The map could not load. Check your connection or use Directions from a plant card."); }
       if (event.data?.kind === "map-center" && validLatLng(event.data.center)) callbacks.current.onRegionChange?.(event.data.center);
       if (event.data?.kind === "map-plant") { const plant = callbacks.current.plants.find(p => p.id===event.data.id); if (plant) callbacks.current.onSelectPlant?.(plant); }
     };
