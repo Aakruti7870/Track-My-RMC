@@ -140,6 +140,7 @@ export default function CustomerPlants() {
   const [recent, setRecent] = useState<{label:string;coords:LatLng}[]>([]);
   const [siteAddress,setSiteAddress] = useState("");
   const [details,setDetails] = useState<PlantData | null>(null);
+  const [quoteSubmitting,setQuoteSubmitting] = useState<string | null>(null);
   const manualLocation = useRef(false);
   const { data, loading, error, refetch, reload, clearCache } = usePlantSearch(userLocation, filters, page);
   const {
@@ -298,6 +299,25 @@ export default function CustomerPlants() {
     void Linking.openURL(place.google_maps_uri || fallback);
   }, []);
 
+  const requestGoogleQuotation = useCallback(async (place: GoogleNearbyPlant) => {
+    if (!token || quoteSubmitting) return;
+    setQuoteSubmitting(place.place_id);
+    try {
+      const result = await apiPost<{status:"REGISTERED" | "PENDING_PARTNER";plant_id?:string;message?:string}>(
+        "/customer/plants/google-quote-interest", token, {google_place_id:place.place_id},
+      );
+      if (result.status === "REGISTERED" && result.plant_id) {
+        router.push({pathname:"/customer/compare-plants",params:{plantId:result.plant_id}} as any);
+      } else {
+        toast(result.message || "Interest saved. No quotation has been sent: plant registration is pending.", "success");
+      }
+    } catch (error: any) {
+      toast(error?.detail || error?.message || "Could not record quotation interest. Please retry.", "error");
+    } finally {
+      setQuoteSubmitting(null);
+    }
+  }, [token, quoteSubmitting, router, toast]);
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
       <View style={{ height: insets.top }} />
@@ -321,7 +341,8 @@ export default function CustomerPlants() {
                 <PlantMap plants={mappedPlants} userLocation={userLocation} onSelectPlant={(plant) => {
                   if (plant.id.startsWith("google:")) {
                     const place = googleEntries.find((entry) => `google:${entry.place_id}` === plant.id);
-                    if (place) openGooglePlace(place);
+                    const listing = googleMapPlants.find((entry) => entry.id === plant.id);
+                    if (listing) setDetails(listing);
                   } else {
                     setDetails(plant);
                   }
@@ -367,7 +388,7 @@ export default function CustomerPlants() {
               {userLocation && !filters.verified && !filters.grade.trim() ? (
                 <View testID="google-nearby-plants-section" style={{gap:10,paddingTop:10}}>
                   <View style={{flexDirection:"row",alignItems:"center",justifyContent:"space-between",gap:8}}>
-                    <AppText variant="heading">Nearby businesses on Google Maps</AppText>
+                    <AppText variant="heading">Nearby RMC Plants</AppText>
                     <AppText accessibilityLabel="Google Maps" numberOfLines={1}
                       style={{fontFamily:"Roboto",fontSize:14,fontWeight:"400",color:"#5E5E5E"}}>
                       Google Maps
@@ -386,25 +407,21 @@ export default function CustomerPlants() {
                   {!googleLoading && !googleError && googleNearby && !googleEntries.length ? (
                     <AppText variant="caption">No matching RMC businesses found on Google Maps in this radius. Try moving the map or increasing the radius.</AppText>
                   ) : null}
-                  {googleEntries.map((place) => (
-                    <View key={place.place_id} style={styles.googleListingCard} testID="google-places-plant">
-                      <View style={{flexDirection:"row",alignItems:"center",gap:8}}>
-                        <Ionicons name="location-outline" size={21} color={PLANT_ORANGE} />
-                        <AppText style={{flex:1,fontFamily:fonts.bold,fontSize:16,color:"#0F172A"}}>{place.name}</AppText>
+                  {googleEntries.map((place) => {
+                    const listing = googleMapPlants.find((plant) => plant.id === `google:${place.place_id}`);
+                    if (!listing) return null;
+                    return (
+                      <View key={place.place_id} testID="google-places-plant">
+                        <ScreenshotPlantCard
+                          plant={listing}
+                          onQuotation={() => void requestGoogleQuotation(place)}
+                          onDetails={() => setDetails(listing)}
+                          onOrder={() => toast("Ordering is available once this supplier completes TrackMyRMC verification.", "info")}
+                          quoteSubmitting={quoteSubmitting === place.place_id}
+                        />
                       </View>
-                      <AppText style={styles.screenshotAddress}>{place.address}</AppText>
-                      <AppText variant="caption">{place.distance_km.toFixed(1)} km away · Google Maps listing · Not TrackMyRMC verified</AppText>
-                      <Pressable
-                        accessibilityRole="link"
-                        accessibilityLabel={`View ${place.name} on Google Maps`}
-                        onPress={() => openGooglePlace(place)}
-                        style={styles.googlePlaceLink}
-                      >
-                        <Ionicons name="navigate-outline" size={16} color={PLANT_ORANGE} />
-                        <AppText style={{color:PLANT_ORANGE,fontFamily:fonts.semibold}}>View on Google Maps</AppText>
-                      </Pressable>
-                    </View>
-                  ))}
+                    );
+                  })}
                 </View>
               ) : null}
               {isPlayReviewCustomer ? (
@@ -441,13 +458,30 @@ export default function CustomerPlants() {
       )}
       <Modal visible={!!details} animationType="slide" onRequestClose={() => setDetails(null)}>
         <ScrollView contentContainerStyle={{padding:24,paddingTop:56,gap:16,backgroundColor:colors.surface,flexGrow:1}}>
-          {details ? <><AppText variant="title">Plant Specifications</AppText><AppText style={{color:"#F25C05"}}>{details.name}</AppText><AppText>{details.address}</AppText>
+          {details ? <><AppText variant="title">{details.status === "google_listing" ? "Plant Details" : "Plant Specifications"}</AppText><AppText style={{color:"#F25C05"}}>{details.name}</AppText><AppText>{details.address}</AppText>
+          {details.status === "google_listing" ? (
+            <AppText accessibilityLabel="Google Maps" style={{fontSize:14,color:"#5E5E5E"}}>
+              Google Maps · Public business listing · Not TrackMyRMC verified
+            </AppText>
+          ) : null}
           <DetailLine label="Available concrete grades" value={details.grades?.join(", ") || "Not provided"} />
           <DetailLine label="Delivery radius" value={details.service_area_km ? `${details.service_area_km} km` : "Not provided"} />
           <DetailLine label="Contact" value={details.contact_phone || "Not provided"} />
           <DetailLine label="Verification" value={details.verified ? "Verified listing" : "Verification pending"} />
           <AppText variant="caption">Plant capacity, available mixers, laboratory, loading hours and government approvals are shown only when verified records are available. Customers cannot edit plant data.</AppText>
-          <Button label="Place Order" onPress={()=>{setDetails(null);router.push(`/new-order?plantId=${details.id}` as any);}} />
+          {details.status === "google_listing" ? (
+            <>
+              <DetailLine label="Distance from selected site" value={details.distance_km != null ? `${details.distance_km.toFixed(1)} km` : "Not available"} />
+              <Button label="View on Google Maps" variant="outline" onPress={()=>{
+                const place=googleEntries.find(entry=>`google:${entry.place_id}` === details.id);
+                if (place) openGooglePlace(place);
+              }} />
+              <AppText variant="caption">Request Quotation records your interest only. This business cannot receive orders or quotations through TrackMyRMC until it joins and is approved.</AppText>
+              <Button label="Place Order" disabled onPress={()=>{}} />
+            </>
+          ) : (
+            <Button label="Place Order" disabled={!details.order_enabled} onPress={()=>{setDetails(null);router.push(`/new-order?plantId=${details.id}` as any);}} />
+          )}
           </> : null}
           <Button label="Close details" onPress={() => setDetails(null)} />
         </ScrollView>
@@ -460,17 +494,23 @@ const PLANT_ORANGE = "#F25C05";
 function DetailLine({label,value}:{label:string;value:string}) {
   return <View style={{gap:4,borderBottomWidth:1,borderColor:"#E2E8F0",paddingVertical:10}}><AppText variant="caption">{label}</AppText><AppText>{value}</AppText></View>;
 }
-function ScreenshotPlantCard({plant,onDetails,onQuotation,onOrder}:{plant:PlantData;onDetails:()=>void;onQuotation:()=>void;onOrder:()=>void}) {
+function ScreenshotPlantCard({plant,onDetails,onQuotation,onOrder,quoteSubmitting=false}:{plant:PlantData;onDetails:()=>void;onQuotation:()=>void;onOrder:()=>void;quoteSubmitting?:boolean}) {
   const active=(plant.status||"active").toLowerCase()==="active";
+  const isGoogleListing=plant.status === "google_listing";
   const eligible=plant.order_enabled ?? (active && plant.verified);
   return <View style={styles.screenshotCard}>
     <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}><VectorSymbol name={plant.verified ? "verified-plant" : "unverified-plant"} size={29} /><AppText style={[styles.screenshotPlantName, { flex: 1 }]}>{plant.name}</AppText></View>
     <AppText style={styles.screenshotAddress}>{plant.address || [plant.city,plant.district].filter(Boolean).join(", ")}</AppText>
+    {isGoogleListing ? (
+      <AppText accessibilityLabel="Google Maps listing, not TrackMyRMC verified" style={styles.googleListingCaption}>
+        {plant.distance_km != null ? `${plant.distance_km.toFixed(1)} km away · ` : ""}Google Maps · Not TrackMyRMC verified
+      </AppText>
+    ) : null}
     <View style={styles.screenshotActions}>
-      <Pressable accessibilityRole="button" onPress={onQuotation} style={styles.screenshotOutline}><AppText numberOfLines={2} style={styles.screenshotOutlineText}>Request Quotation</AppText></Pressable>
+      <Pressable accessibilityRole="button" disabled={quoteSubmitting} onPress={onQuotation} style={styles.screenshotOutline}><AppText numberOfLines={2} style={styles.screenshotOutlineText}>{quoteSubmitting?"Saving…":"Request Quotation"}</AppText></Pressable>
       <Pressable accessibilityRole="button" onPress={onDetails} accessibilityLabel="View Details" style={styles.screenshotOutline}><AppText numberOfLines={2} style={styles.screenshotOutlineText}>Plant Details</AppText></Pressable>
-      <Pressable accessibilityRole="button" disabled={!eligible} onPress={onOrder} style={[styles.screenshotSolid,!eligible&&{backgroundColor:"#CBD5E1",borderColor:"#CBD5E1"}]}>
-        <AppText numberOfLines={2} style={styles.screenshotSolidText}>{eligible?"Place Order":"Unavailable"}</AppText>
+      <Pressable accessibilityRole="button" disabled={!eligible} accessibilityState={{disabled:!eligible}} accessibilityLabel={!eligible ? "Place Order unavailable until plant is verified" : "Place Order"} onPress={onOrder} style={[styles.screenshotSolid,!eligible&&{backgroundColor:"#CBD5E1",borderColor:"#CBD5E1"}]}>
+        <AppText numberOfLines={2} style={styles.screenshotSolidText}>Place Order</AppText>
       </Pressable>
     </View>
   </View>;
@@ -550,6 +590,7 @@ const styles = StyleSheet.create({
   orangeFilterText:{fontFamily:fonts.semibold,fontSize:14,color:"#FFFFFF"},
   screenshotCard:{backgroundColor:"#FFFFFF",borderWidth:1,borderColor:"#E2E8F0",borderRadius:16,padding:16,gap:7,elevation:2},
   googleListingCard:{backgroundColor:"#FFFFFF",borderWidth:1,borderColor:"#E2E8F0",borderRadius:16,padding:14,gap:8},
+  googleListingCaption:{fontFamily:fonts.medium,fontSize:12,color:"#64748B",marginBottom:5},
   googlePlaceLink:{minHeight:42,flexDirection:"row",gap:7,alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:"#F25C05",borderRadius:10},
   screenshotPlantName:{fontFamily:fonts.bold,fontSize:17,color:"#0F172A"},
   screenshotAddress:{fontFamily:fonts.medium,fontSize:13,lineHeight:19,color:"#475569",marginBottom:8},
