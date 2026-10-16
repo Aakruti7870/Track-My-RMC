@@ -283,7 +283,7 @@ export default function CustomerPlants() {
           ListHeaderComponent={
             <View style={{ gap: spacing.sm, marginBottom: spacing.xs }}>
               <View style={styles.mapShell}>
-                {mapView ? <PlantMap plants={filtered} userLocation={userLocation} onSelectPlant={setDetails} onRegionChange={coords => { if (!userLocation || distanceKm(userLocation,coords)>1) { manualLocation.current=true;setUserLocation(coords); setPage(1); } }} /> : <View style={{height:210,justifyContent:"center",alignItems:"center"}}><AppText variant="caption">Map hidden. Select Maps View to show registered plant locations.</AppText></View>}
+                {mapView ? <PlantMap plants={filtered} userLocation={userLocation} onSelectPlant={setDetails} onRegionChange={coords => { if (!userLocation || distanceKm(userLocation,coords)>1) { manualLocation.current=true;setUserLocation(coords); setPage(1); } }} /> : <View style={{height:242,justifyContent:"center",alignItems:"center"}}><AppText variant="caption">Map hidden. Select Maps View to show registered plant locations.</AppText></View>}
                 <Pressable accessibilityRole="button" accessibilityLabel="Toggle Maps View" onPress={() => setMapView(v=>!v)} style={styles.mapPill}><Ionicons name="map-outline" size={17} color="#F25C05" /><AppText style={styles.mapPillText}>Maps View</AppText></Pressable>
               </View>
 
@@ -458,7 +458,7 @@ function LocationBanner({ status, locating, onEnable, onRetry }: {
 
 const styles = StyleSheet.create({
   titleRow: { paddingHorizontal: 18, paddingTop: 16, paddingBottom: 8, gap: 3 },
-  mapShell:{height:210,borderRadius:16,overflow:"hidden",borderWidth:1,borderColor:"#E2E8F0",position:"relative"},
+  mapShell:{height:242,borderRadius:16,overflow:"hidden",borderWidth:1,borderColor:"#E2E8F0",position:"relative"},
   mapPill:{position:"absolute",top:10,right:10,backgroundColor:"#FFFFFF",borderRadius:24,paddingVertical:7,paddingHorizontal:13,flexDirection:"row",alignItems:"center",gap:6,elevation:3},
   mapPillText:{color:"#1E293B",fontFamily:fonts.bold,fontSize:13},
   searchRow:{flexDirection:"row",gap:10,alignItems:"center"},
