@@ -142,6 +142,187 @@ pub async fn search(
     Ok(Json(json!({"plants":plants,"page":page,"has_more":more})))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct GoogleNearbyQuery {
+    lat: f64,
+    lng: f64,
+    radius_km: Option<f64>,
+    q: Option<String>,
+}
+
+impl GoogleNearbyQuery {
+    fn validate(&self) -> Result<f64, AppError> {
+        let radius = self.radius_km.unwrap_or(25.0);
+        if !self.lat.is_finite()
+            || !self.lng.is_finite()
+            || !(-90.0..=90.0).contains(&self.lat)
+            || !(-180.0..=180.0).contains(&self.lng)
+            || !radius.is_finite()
+            || !(1.0..=50.0).contains(&radius)
+            || self
+                .q
+                .as_ref()
+                .is_some_and(|q| q.chars().count() > 80 || q.chars().any(char::is_control))
+        {
+            return Err(AppError::BadRequest(
+                "Google nearby search requires valid coordinates and a radius from 1 to 50 km"
+                    .into(),
+            ));
+        }
+        Ok(radius)
+    }
+}
+
+// The Google result data is transient: never persist it or place it in a server-side cache.
+// Place IDs alone can be retained for a future claimed-plant workflow.
+fn google_distance_km(lat1: f64, lng1: f64, lat2: f64, lng2: f64) -> f64 {
+    let dlat = (lat2 - lat1).to_radians();
+    let dlng = (lng2 - lng1).to_radians();
+    let a = (dlat / 2.0).sin().powi(2)
+        + lat1.to_radians().cos() * lat2.to_radians().cos() * (dlng / 2.0).sin().powi(2);
+    6371.0 * 2.0 * a.clamp(0.0, 1.0).sqrt().asin()
+}
+
+fn normalize_google_nearby(payload: &Value, query: &GoogleNearbyQuery, radius: f64) -> Vec<Value> {
+    let mut results: Vec<Value> = payload["places"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|place| {
+            if place["businessStatus"].as_str() == Some("CLOSED_PERMANENTLY") {
+                return None;
+            }
+            let place_id = place["id"].as_str()?;
+            if place_id.is_empty() || place_id.len() > 255 {
+                return None;
+            }
+            let name = place["displayName"]["text"].as_str()?.trim();
+            if name.is_empty() {
+                return None;
+            }
+            let lat = place["location"]["latitude"].as_f64()?;
+            let lng = place["location"]["longitude"].as_f64()?;
+            if !lat.is_finite()
+                || !lng.is_finite()
+                || !(-90.0..=90.0).contains(&lat)
+                || !(-180.0..=180.0).contains(&lng)
+            {
+                return None;
+            }
+            let distance_km = google_distance_km(query.lat, query.lng, lat, lng);
+            if distance_km > radius {
+                return None;
+            }
+            Some(json!({
+                "place_id": place_id,
+                "name": name,
+                "address": place["formattedAddress"].as_str().unwrap_or(""),
+                "lat": lat,
+                "lng": lng,
+                "distance_km": distance_km,
+                "google_maps_uri": place["googleMapsUri"].as_str(),
+                "source": "google_places",
+                "verified": false,
+                "order_enabled": false
+            }))
+        })
+        .collect();
+    results.sort_by(|a, b| {
+        a["distance_km"]
+            .as_f64()
+            .partial_cmp(&b["distance_km"].as_f64())
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    results.dedup_by(|a, b| a["place_id"] == b["place_id"]);
+    results
+}
+
+// A separate limit protects our paid Google API quota from repeated map pan/zoom events.
+// In production the API gateway must apply shared limits across application instances too.
+fn allow_google_search(user: Uuid) -> bool {
+    static BUCKETS: OnceLock<Mutex<HashMap<Uuid, (Instant, u32)>>> = OnceLock::new();
+    let Ok(mut buckets) = BUCKETS.get_or_init(Default::default).lock() else {
+        return false;
+    };
+    let now = Instant::now();
+    buckets.retain(|_, (at, _)| now.duration_since(*at) < Duration::from_secs(60));
+    if !buckets.contains_key(&user) && buckets.len() >= 10000 {
+        return false;
+    }
+    let (_, count) = buckets.entry(user).or_insert((now, 0));
+    *count += 1;
+    *count <= 8
+}
+
+/// Live Places Text Search (New), proxied with the AWS secret; no key reaches Android/web.
+/// Search is RMC-specific because Places Nearby Search has no dedicated RMC plant type.
+pub async fn google_nearby(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Json(query): Json<GoogleNearbyQuery>,
+) -> Result<Json<Value>, AppError> {
+    check_role(&user, &["customer"])?;
+    let radius = query.validate()?;
+    if !allow_google_search(user.user_id) {
+        return Err(AppError::RateLimited(
+            "Google nearby search limit reached. Try again shortly.".into(),
+        ));
+    }
+    let key = state
+        .config
+        .google_places_api_key
+        .as_deref()
+        .ok_or_else(|| {
+            AppError::BadRequest("Live Google Places discovery is not configured".into())
+        })?;
+    let text_query = match query.q.as_deref().map(str::trim).filter(|q| q.len() >= 3) {
+        Some(term) => format!("{term} ready mix concrete plant"),
+        None => "ready mix concrete plant".to_string(),
+    };
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(12))
+        .build()
+        .map_err(|_| AppError::InternalError("Places service unavailable".into()))?;
+    let response = client
+        .post("https://places.googleapis.com/v1/places:searchText")
+        .header("X-Goog-Api-Key", key)
+        .header(
+            "X-Goog-FieldMask",
+            "places.id,places.displayName,places.formattedAddress,places.location,places.googleMapsUri,places.businessStatus",
+        )
+        .json(&json!({
+            "textQuery": text_query,
+            "pageSize": 20,
+            "languageCode": "en",
+            "regionCode": "IN",
+            "locationBias": {
+                "circle": {
+                    "center": {"latitude": query.lat, "longitude": query.lng},
+                    "radius": radius * 1000.0
+                }
+            }
+        }))
+        .send()
+        .await
+        .map_err(|_| AppError::InternalError("Google Places search is temporarily unavailable".into()))?;
+    if !response.status().is_success() {
+        return Err(AppError::InternalError(
+            "Google Places search is temporarily unavailable".into(),
+        ));
+    }
+    let payload: Value = response
+        .json()
+        .await
+        .map_err(|_| AppError::InternalError("Invalid Google Places response".into()))?;
+    let places = normalize_google_nearby(&payload, &query, radius);
+    Ok(Json(json!({
+        "places": places,
+        "source": "google_places",
+        "attribution": "Google Maps",
+        "radius_km": radius
+    })))
+}
+
 #[derive(Deserialize)]
 pub struct Address {
     address: String,
@@ -201,6 +382,74 @@ pub async fn locate(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn google_nearby_rejects_invalid_location_and_oversized_radius() {
+        for query in [
+            GoogleNearbyQuery {
+                lat: 91.0,
+                lng: 73.0,
+                radius_km: None,
+                q: None,
+            },
+            GoogleNearbyQuery {
+                lat: f64::NAN,
+                lng: 73.0,
+                radius_km: None,
+                q: None,
+            },
+            GoogleNearbyQuery {
+                lat: 18.0,
+                lng: 181.0,
+                radius_km: None,
+                q: None,
+            },
+            GoogleNearbyQuery {
+                lat: 18.0,
+                lng: 73.0,
+                radius_km: Some(51.0),
+                q: None,
+            },
+            GoogleNearbyQuery {
+                lat: 18.0,
+                lng: 73.0,
+                radius_km: Some(-1.0),
+                q: None,
+            },
+        ] {
+            assert!(query.validate().is_err());
+        }
+        let valid = GoogleNearbyQuery {
+            lat: 18.9,
+            lng: 73.1,
+            radius_km: None,
+            q: None,
+        };
+        assert_eq!(valid.validate().unwrap(), 25.0);
+    }
+
+    #[test]
+    fn google_nearby_filters_distance_closed_locations_and_invalid_results() {
+        let query = GoogleNearbyQuery {
+            lat: 18.9,
+            lng: 73.1,
+            radius_km: Some(10.0),
+            q: None,
+        };
+        let payload = json!({"places":[
+            {"id":"near","displayName":{"text":"Nearby RMC"},"location":{"latitude":18.91,"longitude":73.1},"formattedAddress":"Raigad"},
+            {"id":"closed","displayName":{"text":"Closed RMC"},"businessStatus":"CLOSED_PERMANENTLY","location":{"latitude":18.91,"longitude":73.1}},
+            {"id":"far","displayName":{"text":"Far RMC"},"location":{"latitude":20.0,"longitude":73.1}},
+            {"id":"bad","displayName":{"text":"Bad coordinates"},"location":{"latitude":null,"longitude":73.1}}
+        ]});
+        let plants = normalize_google_nearby(&payload, &query, 10.0);
+        assert_eq!(plants.len(), 1);
+        assert_eq!(plants[0]["place_id"], "near");
+        assert_eq!(plants[0]["verified"], false);
+        assert_eq!(plants[0]["order_enabled"], false);
+        assert!(plants[0].get("contact_phone").is_none());
+    }
+
     #[test]
     fn rejects_invalid_and_unbounded_searches() {
         for body in [
