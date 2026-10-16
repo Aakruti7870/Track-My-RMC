@@ -223,6 +223,13 @@ try {
         contentType:'application/json',
         body:JSON.stringify({lat:19.076,lng:72.877,label:'Mumbai, Maharashtra, India'}),
       }));
+      // Browser fixture intentionally has no paid Google Places key. Keep
+      // live-provider calls mocked while registered-plant searches remain real.
+      await page.route('**/api/customer/plants/google-nearby',route => route.fulfill({
+        status:200,
+        contentType:'application/json',
+        body:JSON.stringify({places:[],source:'google_places',attribution:'Google Maps',radius_km:50}),
+      }));
       const filteredGeoSearch = page.waitForResponse(response => {
         if (new URL(response.url()).pathname !== '/api/customer/plants/search' || response.status() !== 200) return false;
         const body = response.request().postDataJSON();
