@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, AppState, FlatList, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import * as Location from "expo-location";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -287,7 +288,7 @@ export default function CustomerPlants() {
 
               <View style={styles.searchRow}>
                 <View style={[styles.searchBar,{backgroundColor:"#FFFFFF",borderColor:"#E2E8F0"}]}>
-                  <Ionicons name="search-outline" size={21} color="#64748B" />
+                  <VectorSymbol name="search" size={29} />
                   <TextInput testID="plants-search" value={q}
                     onChangeText={value=>{setQ(value);setPage(1);setFilters(current=>({...current,q:value}));}}
                     placeholder="Search plant by name" placeholderTextColor="#94A3B8"
@@ -295,7 +296,7 @@ export default function CustomerPlants() {
                   {q ? <Pressable onPress={()=>{setQ("");setPage(1);setFilters(current=>({...current,q:""}));}} accessibilityLabel="Clear search"><Ionicons name="close" size={20} color="#94A3B8" /></Pressable> : null}
                 </View>
                 <Pressable testID="plants-filter-toggle" accessibilityLabel={showFilters ? "Hide filters and site selection" : "Filters and site selection"} onPress={()=>setShowFilters(v=>!v)} style={styles.orangeFilter} accessibilityRole="button">
-                  <Ionicons name="options-outline" size={18} color="#FFFFFF" /><AppText style={styles.orangeFilterText}>Filters</AppText>
+                  <VectorSymbol name="filter" size={28} /><AppText style={styles.orangeFilterText}>Filters</AppText>
                 </Pressable>
               </View>
               {showFilters ? <Card style={{gap:12}}>
@@ -378,7 +379,7 @@ function ScreenshotPlantCard({plant,onDetails,onQuotation,onOrder}:{plant:PlantD
   const active=(plant.status||"active").toLowerCase()==="active";
   const eligible=plant.order_enabled ?? (active && plant.verified);
   return <View style={styles.screenshotCard}>
-    <AppText style={styles.screenshotPlantName}>{plant.name}</AppText>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}><VectorSymbol name={plant.verified ? "verified-plant" : "unverified-plant"} size={29} /><AppText style={[styles.screenshotPlantName, { flex: 1 }]}>{plant.name}</AppText></View>
     <AppText style={styles.screenshotAddress}>{plant.address || [plant.city,plant.district].filter(Boolean).join(", ")}</AppText>
     <View style={styles.screenshotActions}>
       <Pressable accessibilityRole="button" onPress={onQuotation} style={styles.screenshotOutline}><AppText numberOfLines={2} style={styles.screenshotOutlineText}>Request Quotation</AppText></Pressable>
