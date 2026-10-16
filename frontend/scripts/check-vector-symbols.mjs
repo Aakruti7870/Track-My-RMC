@@ -62,4 +62,28 @@ const integrationFiles = [
 for (const filename of integrationFiles) {
   assert.match(read(filename), /<VectorSymbol\b/, `SVG not rendered by ${filename}`);
 }
-console.log(`PASS: ${masters.length} original SVGs registered, ${mapped}/${MODULE_CATALOG.length} role modules mapped, bottom tabs and quick actions connected`);
+// Every uploaded symbol must have an actual UI assignment, not merely a registry key.
+const uiFiles = [
+  "src/navigation/moduleCatalog.ts",
+  "src/navigation/vectorSymbolAssignments.ts",
+  "app/customer/index.tsx",
+  "src/components/GlassTabBar.tsx",
+  "src/components/PlantCard.tsx",
+  "src/components/KycBanner.tsx",
+  "app/owner/operations.tsx",
+  "src/screens/StaffCollection.tsx",
+  "src/components/StateViews.tsx",
+  "app/customer/more.tsx",
+  "src/screens/StaffMore.tsx",
+  "app/driver/trips.tsx",
+  "app/trip/[id].tsx",
+  "app/challan/[id].tsx",
+  "app/pod/[id].tsx",
+  "app/customer/plants.tsx",
+];
+const sourceUI = uiFiles.map(read).join("\\n");
+for (const filename of masters) {
+  const key = filename.slice(0, -4);
+  assert.ok(sourceUI.includes(`"${key}"`), `SVG registered but not assigned to a real UI surface: ${key}`);
+}
+console.log(`PASS: ${masters.length}/${masters.length} SVGs registered and assigned to real UI surfaces, ${mapped}/${MODULE_CATALOG.length} role modules assigned; tabs and quick actions connected`);
