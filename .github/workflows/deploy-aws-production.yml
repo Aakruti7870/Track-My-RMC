@@ -1,7 +1,7 @@
 name: Deploy TrackMyRMC AWS Production
 
 # Automatic production deployment:
-# - Triggered by completion of Backend CI or Frontend CI
+# - Triggered by completion of Backend CI, then checks Frontend CI for the same SHA
 # - Requires both workflows to pass for the exact same main commit
 # - Does not authorize database cutover
 # - Deploys only a SHA-pinned release
