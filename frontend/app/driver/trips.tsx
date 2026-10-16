@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { FlatList, Pressable, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -34,7 +35,7 @@ export default function DriverTrips() {
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
       <View style={{ height: insets.top }} />
       <View style={{ borderBottomColor: colors.divider, borderBottomWidth: StyleSheet.hairlineWidth }}>
-        <View style={styles.titleRow}><AppText variant="title">My Trips</AppText></View>
+        <View style={[styles.titleRow, { flexDirection: "row", alignItems: "center", gap: spacing.sm }]}><VectorSymbol name={active === "all" ? "trip-history" : "assigned-trips"} size={36} /><AppText variant="title">My Trips</AppText></View>
         <View style={styles.chipRow}>
           {FILTERS.map((f) => {
             const sel = f.key === active;
