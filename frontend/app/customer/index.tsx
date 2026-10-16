@@ -233,6 +233,7 @@ export default function CustomerHome() {
                   </Pressable>
                 </View>
                 {data.active_order ? (
+                  <>
                   <Card style={styles.activeCard}>
                     <View style={styles.activeTop}>
                       <View style={styles.activeInfo}>
@@ -258,6 +259,7 @@ export default function CustomerHome() {
                     <Pressable testID="home-call-driver" onPress={()=>void dial(liveLoad?.driver_mobile || tracking?.driver_mobile)} style={styles.trackingAction}><Ionicons name="call-outline" size={23} color="#EA580C"/><View style={{flex:1}}><AppText style={styles.trackingActionTitle}>Call Driver</AppText><AppText variant="caption">Open dialpad with assigned driver</AppText></View></Pressable>
                     <Pressable testID="home-call-plant" onPress={()=>router.push("/customer/plants")} style={styles.trackingAction}><Ionicons name="business-outline" size={23} color="#EA580C"/><View style={{flex:1}}><AppText style={styles.trackingActionTitle}>Contact Plant</AppText><AppText variant="caption">Find registered plant contact details</AppText></View></Pressable>
                   </View>
+                  </>
                 ) : (
                   <Card style={styles.emptyOrder}>
                     <Ionicons name="cube-outline" size={30} color={colors.onSurfaceTertiary} />
