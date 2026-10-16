@@ -6,33 +6,35 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { AppText } from "@/src/components/ui/AppText";
+import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 
 type Section = {
   key: string;
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
+  symbol: VectorSymbolName;
   desc: string;
   route: Href;
 };
 
 const SECTIONS: Section[] = [
-  { key: "production", label: "Production", icon: "cog-outline", desc: "Batching, produced quantity and material consumption", route: "/owner/orders" },
-  { key: "dispatch", label: "Dispatch", icon: "navigate-outline", desc: "Multi-load planning, TM/driver, challan and gate pass", route: "/owner/orders" },
-  { key: "rates", label: "Rate Cards", icon: "pricetag-outline", desc: "Grade pricing, GST, transport and pumping", route: "/business/rates" },
-  { key: "mixes", label: "Mix Designs", icon: "flask-outline", desc: "Concrete recipes used by production stock consumption", route: "/business/mixes" },
-  { key: "inventory", label: "Inventory", icon: "cube-outline", desc: "Cement, fly ash, sand, aggregates, admixture and water", route: "/business/inventory" },
-  { key: "suppliers", label: "Suppliers", icon: "people-circle-outline", desc: "Material vendor master", route: "/business/suppliers" },
-  { key: "purchases", label: "Purchases", icon: "cart-outline", desc: "Purchase receipts with automatic stock posting", route: "/business/purchases" },
-  { key: "fleet", label: "Fleet", icon: "bus-outline", desc: "Transit mixers, capacity and availability", route: "/business/fleet" },
-  { key: "diesel", label: "Diesel", icon: "water-outline", desc: "Diesel receipts, issues and running balance", route: "/business/diesel" },
-  { key: "billing", label: "Billing & Ledger", icon: "wallet-outline", desc: "Invoices, payments and outstanding", route: "/owner/billing" },
-  { key: "expenses", label: "Expenses", icon: "cash-outline", desc: "Plant expense register", route: "/business/expenses" },
-  { key: "quotations", label: "Quotations", icon: "document-text-outline", desc: "Customer/site commercial quotations", route: "/business/quotations" },
-  { key: "attendance", label: "Attendance", icon: "calendar-outline", desc: "Daily staff attendance", route: "/business/attendance" },
-  { key: "payroll", label: "Payroll", icon: "card-outline", desc: "Salary, allowances, overtime and deductions", route: "/business/payroll" },
-  { key: "incidents", label: "Incidents / SOS", icon: "warning-outline", desc: "Driver emergencies and alerts", route: "/owner/incidents" },
-  { key: "reports", label: "Plant Report", icon: "bar-chart-outline", desc: "Operational and commercial summary", route: "/business/reports" },
+  { key: "production", label: "Production", icon: "cog-outline", symbol: "material-consumption", desc: "Batching, produced quantity and material consumption", route: "/owner/orders" },
+  { key: "dispatch", label: "Dispatch", icon: "navigate-outline", symbol: "driver-assignment", desc: "Multi-load planning, TM/driver, challan and gate pass", route: "/owner/orders" },
+  { key: "rates", label: "Rate Cards", icon: "pricetag-outline", symbol: "rate-cards", desc: "Grade pricing, GST, transport and pumping", route: "/business/rates" },
+  { key: "mixes", label: "Mix Designs", icon: "flask-outline", symbol: "mix-designs", desc: "Concrete recipes used by production stock consumption", route: "/business/mixes" },
+  { key: "inventory", label: "Inventory", icon: "cube-outline", symbol: "material-inventory", desc: "Cement, fly ash, sand, aggregates, admixture and water", route: "/business/inventory" },
+  { key: "suppliers", label: "Suppliers", icon: "people-circle-outline", symbol: "suppliers", desc: "Material vendor master", route: "/business/suppliers" },
+  { key: "purchases", label: "Purchases", icon: "cart-outline", symbol: "material-receipts", desc: "Purchase receipts with automatic stock posting", route: "/business/purchases" },
+  { key: "fleet", label: "Fleet", icon: "bus-outline", symbol: "transit-mixer-fleet", desc: "Transit mixers, capacity and availability", route: "/business/fleet" },
+  { key: "diesel", label: "Diesel", icon: "water-outline", symbol: "diesel-ledger", desc: "Diesel receipts, issues and running balance", route: "/business/diesel" },
+  { key: "billing", label: "Billing & Ledger", icon: "wallet-outline", symbol: "billing-ledger", desc: "Invoices, payments and outstanding", route: "/owner/billing" },
+  { key: "expenses", label: "Expenses", icon: "cash-outline", symbol: "expenses", desc: "Plant expense register", route: "/business/expenses" },
+  { key: "quotations", label: "Quotations", icon: "document-text-outline", symbol: "quotations", desc: "Customer/site commercial quotations", route: "/business/quotations" },
+  { key: "attendance", label: "Attendance", icon: "calendar-outline", symbol: "attendance", desc: "Daily staff attendance", route: "/business/attendance" },
+  { key: "payroll", label: "Payroll", icon: "card-outline", symbol: "payroll", desc: "Salary, allowances, overtime and deductions", route: "/business/payroll" },
+  { key: "incidents", label: "Incidents / SOS", icon: "warning-outline", symbol: "incident-register", desc: "Driver emergencies and alerts", route: "/owner/incidents" },
+  { key: "reports", label: "Plant Report", icon: "bar-chart-outline", symbol: "production-report", desc: "Operational and commercial summary", route: "/business/reports" },
 ];
 
 export default function OwnerOperations() {
@@ -56,7 +58,7 @@ export default function OwnerOperations() {
             style={[styles.row, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}
           >
             <View style={[styles.icon, { backgroundColor: colors.brandSoft }]}>
-              <Ionicons name={s.icon} size={20} color={colors.onBrandSoft} />
+              <VectorSymbol name={s.symbol} size={37} />
             </View>
             <View style={{ flex: 1 }}>
               <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: colors.onSurface }}>{s.label}</AppText>

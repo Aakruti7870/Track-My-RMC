@@ -1,6 +1,7 @@
 import React from "react";
 import { Linking, Pressable, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { VectorSymbol } from "./VectorSymbol";
 
 import type { Plant } from "@/src/domain/plant";
 import { useTheme } from "@/src/theme/ThemeProvider";
@@ -49,7 +50,7 @@ export function PlantCard({ plant, onOrder, onDetails }: { plant: Plant; onOrder
     >
       <View style={styles.header}>
         <View style={[styles.plantGlyph, { backgroundColor: colors.brandSoft, borderColor: colors.brand + "30" }]}>
-          <Ionicons name="business-outline" size={22} color={colors.brand} />
+          <VectorSymbol name="plants" size={39} />
         </View>
         <View style={styles.titleBlock}>
           <View style={styles.nameRow}>
@@ -59,7 +60,7 @@ export function PlantCard({ plant, onOrder, onDetails }: { plant: Plant; onOrder
             >
               {plant.name}
             </AppText>
-            {plant.verified ? <Ionicons name="shield-checkmark" size={19} color={colors.verified} accessibilityLabel="Verified plant" /> : null}
+            <VectorSymbol name={plant.verified ? "verified-plant" : "unverified-plant"} size={25} />
           </View>
           <View style={styles.locationRow}>
             <Ionicons name="location-outline" size={14} color={colors.onSurfaceTertiary} />
@@ -120,7 +121,7 @@ export function PlantCard({ plant, onOrder, onDetails }: { plant: Plant; onOrder
             },
           ]}
         >
-          <Ionicons name={orderEnabled ? "add-circle-outline" : "time-outline"} size={17} color={orderEnabled ? colors.onBrand : colors.disabledContent} />
+          <VectorSymbol name={orderEnabled ? "order-enabled" : "pending-approval"} size={25} />
           <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.sm, color: orderEnabled ? colors.onBrand : colors.disabledContent }}>
             {orderEnabled ? "Order RMC" : "Unavailable"}
           </AppText>

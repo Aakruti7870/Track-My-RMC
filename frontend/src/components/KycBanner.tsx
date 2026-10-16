@@ -1,6 +1,7 @@
 import React from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { VectorSymbol, type VectorSymbolName } from "./VectorSymbol";
 import { useRouter } from "expo-router";
 
 import { useTheme } from "@/src/theme/ThemeProvider";
@@ -9,13 +10,13 @@ import { AppText } from "./ui/AppText";
 
 const CONFIG: Record<
   string,
-  { icon: keyof typeof Ionicons.glyphMap; title: string; sub: string; tone: "verified" | "brand" | "warning" | "error" }
+  { symbol: VectorSymbolName; title: string; sub: string; tone: "verified" | "brand" | "warning" | "error" }
 > = {
-  VERIFIED: { icon: "checkmark-circle", title: "KYC VERIFIED", sub: "You can place orders using the app", tone: "verified" },
-  PENDING: { icon: "hourglass-outline", title: "KYC Under Review", sub: "We’re verifying your details", tone: "warning" },
-  REJECTED: { icon: "close-circle-outline", title: "KYC Rejected", sub: "Review the issue and retry verification", tone: "error" },
-  REQUIRES_REVERIFICATION: { icon: "refresh-outline", title: "Re-verification Needed", sub: "Update your KYC to continue", tone: "warning" },
-  NOT_STARTED: { icon: "id-card-outline", title: "Complete your KYC", sub: "Verify once to unlock ordering", tone: "brand" },
+  VERIFIED: { symbol: "kyc-verified", title: "KYC VERIFIED", sub: "You can place orders using the app", tone: "verified" },
+  PENDING: { symbol: "pending-approval", title: "KYC Under Review", sub: "We’re verifying your details", tone: "warning" },
+  REJECTED: { symbol: "warning", title: "KYC Rejected", sub: "Review the issue and retry verification", tone: "error" },
+  REQUIRES_REVERIFICATION: { symbol: "warning", title: "Re-verification Needed", sub: "Update your KYC to continue", tone: "warning" },
+  NOT_STARTED: { symbol: "kyc-verification", title: "Complete your KYC", sub: "Verify once to unlock ordering", tone: "brand" },
 };
 
 export function KycBanner({ status }: { status: string }) {
@@ -56,7 +57,7 @@ export function KycBanner({ status }: { status: string }) {
       ]}
     >
       <View style={[styles.icon, { backgroundColor: isVerified ? tone : colors.surfaceSecondary, borderColor: tone + "32" }]}>
-        <Ionicons name={cfg.icon} size={20} color={isVerified ? "#FFFFFF" : tone} />
+        <VectorSymbol name={cfg.symbol} size={34} />
       </View>
       <View style={styles.copy}>
         <AppText variant="eyebrow" color={tone}>{isVerified ? "IDENTITY STATUS" : "VERIFICATION"}</AppText>

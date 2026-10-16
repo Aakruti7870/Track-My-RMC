@@ -1,6 +1,7 @@
 import React from "react";
 import { Pressable, ScrollView, Share, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -69,9 +70,9 @@ export default function ChallanScreen() {
       <View style={{ height: insets.top }} />
       <View style={[styles.header, { borderBottomColor: colors.divider }]}>
         <Pressable testID="challan-back" onPress={() => router.back()} style={[styles.iconBtn, { borderColor: colors.border }]}>
-          <Ionicons name="chevron-back" size={22} color={colors.onSurface} />
+          <VectorSymbol name="back" size={29} />
         </Pressable>
-        <AppText variant="title">Challan</AppText>
+        <VectorSymbol name="delivery-challan" size={33} /><AppText variant="title">Challan</AppText>
       </View>
 
       {error && !data ? (

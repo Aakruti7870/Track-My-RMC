@@ -41,12 +41,6 @@ const ACTIONS: { key: "new" | "track" | "plants" | "orders"; label: string; icon
 ];
 
 const CUSTOMER_MODULES = customerHomeModules();
-const MODULE_SYMBOLS: Record<string, VectorSymbolName> = {
-  projects: "project-site-hub", "pour-planner": "concrete-pour-planner",
-  "receiving-guide": "receiving-quality-guide", "cube-tests": "cube-test-follow-up",
-  "compare-plants": "compare-plants", quotations: "quotations",
-  documents: "documents", "free-tools": "free-rmc-tools",
-};
 const ACTION_SYMBOLS: Record<string, VectorSymbolName> = {
   new: "new-order", track: "live-order-tracking",
   plants: "nearby-rmc-plants", orders: "my-orders",
@@ -148,7 +142,7 @@ export default function CustomerHome() {
                   ]}
                 >
                   <View style={[styles.moduleIcon, { backgroundColor: colors.brandSoft }]}>
-                    {MODULE_SYMBOLS[module.key] ? <VectorSymbol name={MODULE_SYMBOLS[module.key]} size={34} /> : <Ionicons name={module.icon} size={22} color={colors.brand} />}
+                    {module.symbol ? <VectorSymbol name={module.symbol} size={34} /> : <Ionicons name={module.icon} size={22} color={colors.brand} />}
                   </View>
                   <AppText style={[styles.moduleLabel, { color: colors.onSurface }]}>{module.label}</AppText>
                   
@@ -227,7 +221,7 @@ export default function CustomerHome() {
                       ]}
                     >
                       <View style={[styles.moduleIcon, { backgroundColor: colors.brandSoft }]}>
-                        {MODULE_SYMBOLS[module.key] ? <VectorSymbol name={MODULE_SYMBOLS[module.key]} size={34} /> : <Ionicons name={module.icon} size={22} color={colors.brand} />}
+                        {module.symbol ? <VectorSymbol name={module.symbol} size={34} /> : <Ionicons name={module.icon} size={22} color={colors.brand} />}
                       </View>
                       <AppText style={[styles.moduleLabel, { color: colors.onSurface }]}>{module.label}</AppText>
                       

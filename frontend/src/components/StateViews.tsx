@@ -1,6 +1,7 @@
 import React from "react";
 import { StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { VectorSymbol } from "./VectorSymbol";
 
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
@@ -13,7 +14,7 @@ export function ErrorView({ message, onRetry }: { message: string; onRetry: () =
     <View style={styles.wrap} testID="error-view" accessibilityRole="alert">
       <View style={[styles.stateCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
         <View style={[styles.errorIcon, { backgroundColor: colors.error + "12" }]}>
-          <Ionicons name="cloud-offline-outline" size={30} color={colors.error} />
+          <VectorSymbol name={/access denied|forbidden|not authorized|permission denied/i.test(message) ? "restricted-access" : "warning"} size={44} />
         </View>
         <AppText style={[styles.title, { color: colors.onSurface }]} center>We couldn’t load this</AppText>
         <AppText variant="bodyMuted" center>{message}</AppText>

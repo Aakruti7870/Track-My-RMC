@@ -8,6 +8,7 @@ import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { RoleModuleDirectory } from "@/src/components/RoleModuleDirectory";
 import { AppText } from "@/src/components/ui/AppText";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { Card } from "@/src/components/ui/Card";
 import { Badge } from "@/src/components/ui/Badge";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
@@ -34,7 +35,7 @@ export function StaffMore() {
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
       <View style={{ height: insets.top }} />
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120, gap: spacing.lg }} showsVerticalScrollIndicator={false}>
-        <AppText variant="title">More</AppText>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><VectorSymbol name="settings" size={35} /><AppText variant="title">More</AppText></View>
 
         <Card style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
           <View style={[styles.avatar, { backgroundColor: colors.brand }]}>
@@ -119,7 +120,7 @@ export function StaffMore() {
           </Pressable>
         ) : null}
 
-        <Pressable testID="logout-button" onPress={doLogout} style={[styles.logout, { borderColor: colors.error }]}><Ionicons name="log-out-outline" size={20} color={colors.error} /><AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: colors.error }}>Logout</AppText></Pressable>
+        <Pressable testID="logout-button" onPress={doLogout} style={[styles.logout, { borderColor: colors.error }]}><VectorSymbol name="logout" size={27} /><AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: colors.error }}>Logout</AppText></Pressable>
         <AppText variant="caption" center>TrackMyRMC · v2.0.18 (76)</AppText>
       </ScrollView>
     </View>

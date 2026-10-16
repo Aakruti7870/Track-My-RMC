@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Linking, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -171,7 +172,7 @@ export default function TripDetail() {
           onPress={() => router.back()}
           style={[styles.iconBtn, { borderColor: colors.border }]}
         >
-          <Ionicons name="chevron-back" size={22} color={colors.onSurface} />
+          <VectorSymbol name="back" size={29} />
         </Pressable>
         <AppText variant="title">{t?.order_number || "Trip"}</AppText>
       </View>
@@ -240,7 +241,7 @@ export default function TripDetail() {
                 borderColor: colors.success + "55",
               }}
             >
-              <Ionicons name="checkmark-circle" size={22} color={colors.success} />
+              <VectorSymbol name="success" size={29} />
               <AppText style={{ flex: 1, fontFamily: fonts.medium, color: colors.onSurface }}>
                 Delivered
                 {data?.pod
@@ -255,7 +256,7 @@ export default function TripDetail() {
                 label="Open Navigation"
                 variant="secondary"
                 onPress={openNavigation}
-                icon={<Ionicons name="navigate-outline" size={18} color={colors.onSurface} />}
+                icon={<VectorSymbol name="gps-live-location" size={26} />}
               />
               {action ? (
                 <Button
@@ -270,7 +271,7 @@ export default function TripDetail() {
                   testID="trip-pod"
                   label="Complete Delivery (POD)"
                   onPress={() => router.push(`/pod/${id}` as any)}
-                  icon={<Ionicons name="clipboard-outline" size={18} color={colors.onBrand} />}
+                  icon={<VectorSymbol name="proof-of-delivery" size={26} />}
                 />
               ) : null}
             </View>

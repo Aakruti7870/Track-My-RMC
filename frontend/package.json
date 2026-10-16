@@ -18,7 +18,8 @@
     "check:android-permissions": "node ./scripts/check-android-permissions.mjs",
     "check:android-layout": "node ./scripts/check-android-responsive-layout.mjs",
     "doctor": "expo-doctor",
-    "build:preview": "expo export --platform web --output-dir dist"
+    "build:preview": "expo export --platform web --output-dir dist",
+    "check:vector-symbols": "node ./scripts/check-vector-symbols.mjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "6.1.2",

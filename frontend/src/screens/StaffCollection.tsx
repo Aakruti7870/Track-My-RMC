@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Modal, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
 import { useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -17,6 +18,12 @@ import { Badge } from "@/src/components/ui/Badge";
 import { Skeleton } from "@/src/components/ui/Skeleton";
 import { ErrorView } from "@/src/components/StateViews";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
+
+const COLLECTION_SYMBOLS: Readonly<Record<string, VectorSymbolName>> = {
+  inventory: "stock-register", quality: "concrete-cube-testing",
+  dispatch: "driver-assignment", production: "batching-operations",
+  fleet: "transit-mixer-fleet",
+};
 
 export type StaffAction = {
   key: string;
@@ -135,6 +142,10 @@ export function StaffCollection({ kind, embedded = false, limit, onItemPress }: 
   }, [allItems, query, statusFilter, searchable, limit]);
 
   const items = filtered;
+  const collectionSymbol: VectorSymbolName | undefined =
+    kind === "inventory" && badges.some(b => /low stock|reorder|critical/i.test(b)) ? "low-stock-alert" :
+    kind === "fleet" && badges.some(b => /maintenance|repair/i.test(b)) ? "vehicle-maintenance" :
+    COLLECTION_SYMBOLS[kind];
 
   const runPost = async (path: string, body?: Record<string, unknown>) => {
     if (!token) {
@@ -283,6 +294,7 @@ export function StaffCollection({ kind, embedded = false, limit, onItemPress }: 
           refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={colors.brand} />}
         >
           <View style={styles.head}>
+            {collectionSymbol ? <VectorSymbol name={collectionSymbol} size={36} /> : null}
             <AppText variant="title">{data?.title || "List"}</AppText>
             {data?.create ? (
               <Pressable testID="staff-create" onPress={openCreate} style={[styles.addBtn, { backgroundColor: colors.brand }]}>

@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { AppText } from "@/src/components/ui/AppText";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { Card } from "@/src/components/ui/Card";
 import { Badge } from "@/src/components/ui/Badge";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
@@ -40,8 +41,8 @@ export default function CustomerMore() {
         contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120, gap: spacing.lg }}
         showsVerticalScrollIndicator={false}
       >
-        <AppText variant="title">More</AppText>
-        <Pressable accessibilityRole="button" onPress={review} style={{minHeight:48,justifyContent:"center"}}><AppText variant="heading">Permission settings</AppText></Pressable>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><VectorSymbol name="settings" size={35} /><AppText variant="title">More</AppText></View>
+        <Pressable accessibilityRole="button" onPress={review} style={{minHeight:48,justifyContent:"center"}}><View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><VectorSymbol name="permission-settings" size={33} /><AppText variant="heading">Permission settings</AppText></View></Pressable>
 
         <Card style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
           <View style={[styles.avatar, { backgroundColor: colors.brand }]}>
@@ -116,7 +117,7 @@ export default function CustomerMore() {
         </Card>
 
         <Pressable testID="logout-button" onPress={doLogout} style={[styles.logout, { borderColor: colors.error }]}>
-          <Ionicons name="log-out-outline" size={20} color={colors.error} />
+          <VectorSymbol name="logout" size={27} />
           <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: colors.error }}>Logout</AppText>
         </Pressable>
 
