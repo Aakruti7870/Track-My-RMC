@@ -51,6 +51,26 @@ impl Search {
     }
 }
 
+// Defense-in-depth for every customer-visible plant response. Never serialize
+// unapproved plant contact details, even if an upstream query selected them.
+pub(crate) fn redact_plant_contact(value: &mut Value, verified: bool) {
+    if verified {
+        value["contact_phone_masked"] = Value::Null;
+        return;
+    }
+    let masked = value["contact_phone"].as_str().and_then(|phone| {
+        let digits: String = phone.chars().filter(|c| c.is_ascii_digit()).collect();
+        (digits.len() >= 5).then(|| format!("{}*****", &digits[..digits.len() - 5]))
+    });
+    if let Some(masked) = masked {
+        value["contact_phone_masked"] = json!(masked);
+    } else if value.get("contact_phone_masked").is_none() {
+        value["contact_phone_masked"] = Value::Null;
+    }
+    value["contact_phone"] = Value::Null;
+    value["contact_email"] = Value::Null;
+}
+
 // Bound per-process state; shared deployments should also enforce an ingress limit.
 fn allow_search(user: Uuid) -> bool {
     static BUCKETS: OnceLock<Mutex<HashMap<Uuid, (Instant, u32)>>> = OnceLock::new();
@@ -94,7 +114,12 @@ pub async fn search(
                 = EXISTS(SELECT 1 FROM play_review_fixtures f WHERE f.plant_id=p.id AND f.role='customer' AND f.enabled)
         )
         SELECT jsonb_build_object('id',id,'name',name,'address',address_line,'city',city,'district',state,'pincode',pincode,
-            'lat',latitude,'lng',longitude,'contact_phone',contact_phone,'verified',verified,'order_enabled',verified,
+            'lat',latitude,'lng',longitude,
+            'contact_phone',CASE WHEN verified THEN contact_phone ELSE NULL END,
+            'contact_phone_masked',CASE WHEN NOT verified AND contact_phone IS NOT NULL AND length(regexp_replace(contact_phone,'[^0-9]','','g')) >= 5 THEN
+                left(regexp_replace(contact_phone,'[^0-9]','','g'), greatest(0,length(regexp_replace(contact_phone,'[^0-9]','','g'))-5)) || '*****'
+                ELSE NULL END,
+            'verified',verified,'order_enabled',verified,
             'status','active','grades',grades,'distance_km',distance_km)
         FROM candidates WHERE (distance_km IS NULL OR distance_km <= $4)
           AND ($5='' OR strpos(lower(name||' '||address_line||' '||city||' '||state||' '||pincode),lower($5))>0)
@@ -105,9 +130,16 @@ pub async fn search(
         .bind(query.q.unwrap_or_default().trim()).bind(query.grade.unwrap_or_default().trim())
         .bind(query.verified.unwrap_or(false)).bind(size+1).bind((page-1)*size).fetch_all(&state.db).await?;
     let more = rows.len() > size as usize;
-    Ok(Json(
-        json!({"plants":rows.into_iter().take(size as usize).collect::<Vec<_>>(),"page":page,"has_more":more}),
-    ))
+    let plants = rows
+        .into_iter()
+        .take(size as usize)
+        .map(|mut value| {
+            let verified = value["verified"].as_bool().unwrap_or(false);
+            redact_plant_contact(&mut value, verified);
+            value
+        })
+        .collect::<Vec<_>>();
+    Ok(Json(json!({"plants":plants,"page":page,"has_more":more})))
 }
 
 #[derive(Deserialize)]
@@ -189,5 +221,38 @@ mod tests {
                 .validate()
                 .is_ok()
         );
+    }
+    #[test]
+    fn unapproved_plant_never_exposes_contact_details() {
+        let mut plant = json!({"verified":false,"name":"Example RMC","contact_phone":"+91-74982-12345","contact_email":"owner@example.com"});
+        redact_plant_contact(&mut plant, false);
+        assert!(plant["contact_phone"].is_null());
+        assert!(plant["contact_email"].is_null());
+        assert_eq!(plant["contact_phone_masked"], "9174982*****");
+        assert!(!plant.to_string().contains("12345"));
+        assert!(!plant.to_string().contains("owner@example.com"));
+    }
+
+    #[test]
+    fn approved_plant_retains_full_contact() {
+        let mut plant = json!({"verified":true,"contact_phone":"+917498212345","contact_email":"owner@example.com"});
+        redact_plant_contact(&mut plant, true);
+        assert_eq!(plant["contact_phone"], "+917498212345");
+        assert_eq!(plant["contact_email"], "owner@example.com");
+        assert!(plant["contact_phone_masked"].is_null());
+    }
+
+    #[test]
+    fn partial_or_pre_masked_contact_cannot_leak() {
+        let mut short = json!({"verified":false,"contact_phone":"1234"});
+        redact_plant_contact(&mut short, false);
+        assert!(short["contact_phone"].is_null());
+        assert!(short["contact_phone_masked"].is_null());
+
+        let mut search =
+            json!({"verified":false,"contact_phone":null,"contact_phone_masked":"9174982*****"});
+        redact_plant_contact(&mut search, false);
+        assert!(search["contact_phone"].is_null());
+        assert_eq!(search["contact_phone_masked"], "9174982*****");
     }
 }
