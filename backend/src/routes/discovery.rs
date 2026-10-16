@@ -24,6 +24,16 @@ pub struct Search {
     pub page: Option<i64>,
     pub page_size: Option<i64>,
     pub verified: Option<bool>,
+    pub state: Option<String>,
+    pub district: Option<String>,
+    pub taluka: Option<String>,
+    pub city: Option<String>,
+}
+
+fn valid_geo_field(value: &Option<String>) -> bool {
+    value.as_ref().is_none_or(|v| {
+        v.len() <= 80 && !v.chars().any(char::is_control)
+    })
 }
 
 impl Search {
@@ -42,6 +52,10 @@ impl Search {
             || self.page_size.is_some_and(|v| !(1..=100).contains(&v))
             || self.q.as_ref().is_some_and(|v| v.len() > 160)
             || self.grade.as_ref().is_some_and(|v| v.len() > 30)
+            || !valid_geo_field(&self.state)
+            || !valid_geo_field(&self.district)
+            || !valid_geo_field(&self.taluka)
+            || !valid_geo_field(&self.city)
         {
             return Err(AppError::BadRequest(
                 "Invalid plant search parameters".into(),
@@ -125,10 +139,19 @@ pub async fn search(
           AND ($5='' OR strpos(lower(name||' '||address_line||' '||city||' '||state||' '||pincode),lower($5))>0)
           AND ($6='' OR EXISTS(SELECT 1 FROM unnest(grades) g WHERE lower(replace(g,'-',''))=lower(replace($6,'-',''))))
           AND (NOT $7 OR verified)
-        ORDER BY distance_km NULLS LAST, name, id LIMIT $8 OFFSET $9
+          AND ($8='' OR lower(coalesce(state,''))=lower($8))
+          AND ($9='' OR strpos(lower(coalesce(address_line,'')||' '||coalesce(city,'')||' '||coalesce(state,'')),lower($9))>0)
+          AND ($10='' OR strpos(lower(coalesce(address_line,'')||' '||coalesce(city,'')),lower($10))>0)
+          AND ($11='' OR strpos(lower(coalesce(city,'')||' '||coalesce(address_line,'')),lower($11))>0)
+        ORDER BY distance_km NULLS LAST, name, id LIMIT $12 OFFSET $13
     "#).bind(user.user_id).bind(query.lat).bind(query.lng).bind(query.radius_km.unwrap_or(50.0))
         .bind(query.q.unwrap_or_default().trim()).bind(query.grade.unwrap_or_default().trim())
-        .bind(query.verified.unwrap_or(false)).bind(size+1).bind((page-1)*size).fetch_all(&state.db).await?;
+        .bind(query.verified.unwrap_or(false))
+        .bind(query.state.unwrap_or_default().trim())
+        .bind(query.district.unwrap_or_default().trim())
+        .bind(query.taluka.unwrap_or_default().trim())
+        .bind(query.city.unwrap_or_default().trim())
+        .bind(size+1).bind((page-1)*size).fetch_all(&state.db).await?;
     let more = rows.len() > size as usize;
     let plants = rows
         .into_iter()
