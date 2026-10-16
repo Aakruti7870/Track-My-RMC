@@ -301,7 +301,9 @@ try {
     }
     if (user.role === 'quality_engineer') {
       phase = 'quality inspection';
-      await page.getByTestId(/^open-/).first().click();
+      const qualityRow = page.getByTestId(/^open-/).filter({visible:true}).first();
+      const inspectedRowId = await qualityRow.getAttribute('data-testid');
+      await qualityRow.click();
       await expect(page.getByTestId('qt-save')).toBeDisabled();
       await page.getByTestId('qt-slump').fill('125');
       await page.getByTestId('qt-cube7').fill('22.35');
@@ -326,7 +328,7 @@ try {
       phase = 'quality persistence: return to collection';
       await page.getByTestId('qt-back').click();
       phase = 'quality persistence: collection status';
-      await expect(page.getByText('Engineer FAIL', { exact: true })).toBeVisible();
+      await expect(page.getByTestId(inspectedRowId).filter({visible:true}).getByText('Engineer FAIL', { exact: true })).toBeVisible();
     }
     phase = 'logout';
     await page.getByText('More', { exact: true }).last().click();
@@ -341,9 +343,11 @@ try {
     await context.close();
     console.log(`PASS: ${user.role} real Expo login, authorized dashboard/records and revoked logout`);
   }
-} catch {
+} catch (error) {
   // Playwright errors can contain fill values. Never print the original error.
   console.error(`FAIL: synthetic mobile browser role=${activeRole} phase=${phase}. No credential-bearing diagnostics retained.`);
+  const safeFailure = String(error?.message).includes('strict mode violation') ? 'Ambiguous locator' : String(error?.message).includes('Timeout') ? 'Timeout' : 'Assertion or runtime failure';
+  console.error(`Failure category: ${safeFailure}`);
   for (const diagnostic of safeDiagnostics) console.error(diagnostic);
   console.error(`Completed API paths: ${[...safeSuccessfulPaths].join(', ')}`);
   for (const diagnostic of startupDiagnostics) console.error(diagnostic);
