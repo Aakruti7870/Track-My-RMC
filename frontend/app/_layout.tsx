@@ -73,7 +73,7 @@ export default function RootLayout() {
       {showOpeningArtwork ? (
         <View style={styles.openingSplash} pointerEvents="auto">
           <Image
-            source={require("../assets/images/splash-image.png")}
+            source={require("../assets/images/RMC_Splash_logo.png")}
             style={styles.openingSplashArtwork}
             resizeMode="contain"
             onLoad={() => setArtworkLoaded(true)}
