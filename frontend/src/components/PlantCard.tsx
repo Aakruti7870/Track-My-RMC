@@ -60,7 +60,7 @@ export function PlantCard({ plant, onOrder, onDetails }: { plant: Plant; onOrder
             >
               {plant.name}
             </AppText>
-            {plant.verified ? <VectorSymbol name="verified-plant" size={25} /> : null}
+            <VectorSymbol name={plant.verified ? "verified-plant" : "unverified-plant"} size={25} />
           </View>
           <View style={styles.locationRow}>
             <Ionicons name="location-outline" size={14} color={colors.onSurfaceTertiary} />
