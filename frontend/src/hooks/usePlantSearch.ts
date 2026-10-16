@@ -14,6 +14,7 @@ export function usePlantSearch(location: LatLng | null, filters: { q: string; gr
   const sequence = useRef(0);
   const invalidate = useCallback(() => { sequence.current++; },[]);
   const cache = useRef(new Map<string, { at: number; result: Result }>());
+  const clearCache = useCallback(() => cache.current.clear(),[]);
   const load = useCallback(async (force = false) => {
     const id = ++sequence.current;
     if (!token) return;
@@ -40,6 +41,6 @@ export function usePlantSearch(location: LatLng | null, filters: { q: string; gr
     if (Platform.OS === "web") document.addEventListener("visibilitychange", onVisible);
     return () => { subscription.remove(); if (Platform.OS === "web") document.removeEventListener("visibilitychange", onVisible); };
   }, [load]);
-  return { data:state.key === key ? state.data : null, loading:state.key !== key || state.loading, error:state.key === key ? state.error : null,
+  return { clearCache, data:state.key === key ? state.data : null, loading:state.key !== key || state.loading, error:state.key === key ? state.error : null,
     refetch:useCallback(() => load(true),[load]), reload:useCallback(() => load(true),[load]) };
 }

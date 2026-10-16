@@ -101,7 +101,7 @@ async function resolveNearbyLocation(opts?: { forceRefresh?: boolean; allowPromp
     return { status: "ok", coords };
   } catch (e: any) {
     try {
-      const last = await Location.getLastKnownPositionAsync();
+      const last = await Location.getLastKnownPositionAsync({maxAge:NEARBY_CACHE_TTL_MS});
       if (last) {
         const coords: LatLng = { lat: last.coords.latitude, lng: last.coords.longitude };
         rememberNearbyLocation(coords);
@@ -140,26 +140,31 @@ export default function CustomerPlants() {
   const [siteAddress,setSiteAddress] = useState("");
   const [details,setDetails] = useState<PlantData | null>(null);
   const manualLocation = useRef(false);
-  const { data, loading, error, refetch, reload } = usePlantSearch(userLocation, filters, page);
+  const { data, loading, error, refetch, reload, clearCache } = usePlantSearch(userLocation, filters, page);
   const didInit = useRef(false);
   const previousLocationStatus = useRef<NearbyLocationStatus | null>(null);
+  const locationRequest = useRef(0);
   const isPlayReviewCustomer = user?.name === PLAY_REVIEW_CUSTOMER_NAME;
 
   const applyLocation = useCallback(async (opts: { forceRefresh?: boolean; allowPrompt?: boolean; refetchPlants?: boolean }) => {
+    const request = ++locationRequest.current;
     setLocating(true);
     try {
       const result = await resolveNearbyLocation({ forceRefresh: opts.forceRefresh, allowPrompt: opts.allowPrompt });
+      if (request !== locationRequest.current) return result;
       const changed = previousLocationStatus.current !== null && previousLocationStatus.current !== result.status;
+      if (changed) clearCache();
       previousLocationStatus.current=result.status;
-      setLocationStatus(result.status);
+      setLocationStatus(manualLocation.current && !opts.allowPrompt ? "ok" : result.status);
       if (result.status === "ok" && opts.allowPrompt) {didInit.current=true;void enablePreference.current();}
-      if (result.coords && (!manualLocation.current || opts.allowPrompt)) {manualLocation.current=false;setUserLocation(result.coords);setPage(1);}
+      if (result.status === "ok" && result.coords && (!manualLocation.current || opts.allowPrompt)) {manualLocation.current=false;setUserLocation(result.coords);setPage(1);}
+      if (result.status === "denied" && !manualLocation.current) {nearbyLocationCache=null;setUserLocation(null);setPage(1);}
       if (result.status === "ok" && (opts.refetchPlants || changed)) await refetch();
       return result;
     } finally {
-      setLocating(false);
+      if (request === locationRequest.current) setLocating(false);
     }
-  },[refetch]);
+  },[refetch,clearCache]);
 
   useEffect(() => {
     if (!locationEnabled) {
@@ -177,7 +182,16 @@ export default function CustomerPlants() {
     const subscription = AppState.addEventListener("change", state => {
       if (state === "active" && locationEnabled) void applyLocation({forceRefresh:true,allowPrompt:false});
     });
-    return () => subscription.remove();
+    let disposed = false;
+    let permission: PermissionStatus | null = null;
+    const changed = () => {if (locationEnabled) void applyLocation({forceRefresh:true,allowPrompt:false});};
+    if (Platform.OS === "web" && navigator.permissions) {
+      void navigator.permissions.query({name:"geolocation"}).then(status => {
+        if (disposed) return;
+        permission=status;status.addEventListener("change",changed);
+      }).catch(() => { /* Browser without permission-status support: use resume refresh. */ });
+    }
+    return () => {disposed=true;subscription.remove();permission?.removeEventListener("change",changed);};
   }, [applyLocation,locationEnabled]);
   useEffect(() => {
     let active = true;
