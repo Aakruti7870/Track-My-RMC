@@ -147,6 +147,7 @@ pub struct GoogleNearbyQuery {
     lat: f64,
     lng: f64,
     radius_km: Option<f64>,
+    q: Option<String>,
 }
 
 impl GoogleNearbyQuery {
@@ -158,6 +159,9 @@ impl GoogleNearbyQuery {
             || !(-180.0..=180.0).contains(&self.lng)
             || !radius.is_finite()
             || !(1.0..=50.0).contains(&radius)
+            || self.q.as_ref().is_some_and(|q| {
+                q.len() > 80 || q.chars().any(char::is_control)
+            })
         {
             return Err(AppError::BadRequest(
                 "Google nearby search requires valid coordinates and a radius from 1 to 50 km"
@@ -270,6 +274,10 @@ pub async fn google_nearby(
         .ok_or_else(|| {
             AppError::BadRequest("Live Google Places discovery is not configured".into())
         })?;
+    let text_query = match query.q.as_deref().map(str::trim).filter(|q| q.len() >= 3) {
+        Some(term) => format!("{term} ready mix concrete plant"),
+        None => "ready mix concrete plant".to_string(),
+    };
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(12))
         .build()
@@ -282,7 +290,7 @@ pub async fn google_nearby(
             "places.id,places.displayName,places.formattedAddress,places.location,places.googleMapsUri,places.businessStatus",
         )
         .json(&json!({
-            "textQuery": "ready mix concrete plant",
+            "textQuery": text_query,
             "pageSize": 20,
             "languageCode": "en",
             "regionCode": "IN",
@@ -381,26 +389,31 @@ mod tests {
                 lat: 91.0,
                 lng: 73.0,
                 radius_km: None,
+                q: None,
             },
             GoogleNearbyQuery {
                 lat: f64::NAN,
                 lng: 73.0,
                 radius_km: None,
+                q: None,
             },
             GoogleNearbyQuery {
                 lat: 18.0,
                 lng: 181.0,
                 radius_km: None,
+                q: None,
             },
             GoogleNearbyQuery {
                 lat: 18.0,
                 lng: 73.0,
                 radius_km: Some(51.0),
+                q: None,
             },
             GoogleNearbyQuery {
                 lat: 18.0,
                 lng: 73.0,
                 radius_km: Some(-1.0),
+                q: None,
             },
         ] {
             assert!(query.validate().is_err());
@@ -409,6 +422,7 @@ mod tests {
             lat: 18.9,
             lng: 73.1,
             radius_km: None,
+            q: None,
         };
         assert_eq!(valid.validate().unwrap(), 25.0);
     }
@@ -419,6 +433,7 @@ mod tests {
             lat: 18.9,
             lng: 73.1,
             radius_km: Some(10.0),
+            q: None,
         };
         let payload = json!({"places":[
             {"id":"near","displayName":{"text":"Nearby RMC"},"location":{"latitude":18.91,"longitude":73.1},"formattedAddress":"Raigad"},
