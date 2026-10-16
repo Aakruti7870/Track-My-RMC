@@ -218,7 +218,9 @@ try {
       await page.getByRole('button',{name:'View Details',exact:true}).click();
       await expect(page.getByRole('button',{name:'Close details',exact:true})).toBeVisible();
       await page.getByRole('button',{name:'Close details',exact:true}).click();
+      await expect(page.getByRole('button',{name:'Close details',exact:true})).not.toBeVisible();
       await page.setViewportSize({width:1280,height:900});
+      await expect(page.getByText('Browser staging plant',{exact:true}).first()).toBeVisible();
       await page.screenshot({path:new URL('../../artifacts/customer-experience/plants-desktop.png',import.meta.url).pathname});
       await page.setViewportSize({width:390,height:844});
       phase = 'owned active delivery tracking and browser back';

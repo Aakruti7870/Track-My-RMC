@@ -74,7 +74,7 @@ window.gm_authFailure=function(){document.body.innerHTML='<div style="display:fl
 
   if (!canRender) {
     return (
-      <View style={[styles.wrap,style,{padding:16}]}><AppText>{!MAPS_KEY ? "The map is currently unavailable." : "The delivery site has no map coordinates."} {ended ? "Tracking ended." : "Recorded trip details are shown below."}</AppText></View>
+      <View style={[styles.wrap,style,{padding:16,minHeight:80}]}><AppText>{!MAPS_KEY ? "The map is currently unavailable." : "The delivery site has no map coordinates."} {ended ? "Tracking ended." : "Recorded trip details are shown below."}</AppText></View>
     );
   }
 

@@ -24,6 +24,12 @@ type RouteInfo = {
   polyline?: string;
 };
 type Location = { lat: number; lng: number; at: string };
+const MILESTONES = [
+  {key:"dispatched_at",label:"Dispatched"},
+  {key:"arrived_at",label:"Arrived at site"},
+  {key:"pour_started_at",label:"Pouring started"},
+  {key:"pour_completed_at",label:"Pouring completed"},
+];
 type TrackedLoad = {
   id: string;
   load_code?: string;
@@ -167,7 +173,7 @@ export default function TrackScreen() {
             {driver ? <Row icon="person-outline" label="Driver" value={driver} colors={colors} /> : null}
             {mapLocation ? <Row icon="navigate-outline" label="Mixer location" value={`${mapLocation.lat.toFixed(5)}, ${mapLocation.lng.toFixed(5)}`} colors={colors} /> : null}
             <Row icon="pulse-outline" label="Last GPS update" value={mapLocation?.at ? new Date(mapLocation.at).toLocaleTimeString() : "Awaiting driver location"} colors={colors} />
-            {Object.entries(selected?.milestones || {}).map(([name,at]) => <Row key={name} icon="checkmark-circle-outline" label={name.replace(/_at$/,"").replace(/_/g," ")} value={at ? new Date(at).toLocaleString() : "Not recorded yet"} colors={colors} />)}
+            {selected ? MILESTONES.map(({key,label}) => <Row key={key} icon="checkmark-circle-outline" label={label} value={selected.milestones?.[key] ? new Date(selected.milestones[key]!).toLocaleString() : "Not recorded yet"} colors={colors} />) : null}
           </Card>
 
           {!mapLocation && data.active ? (
@@ -188,7 +194,7 @@ export default function TrackScreen() {
                   <View style={{ flex: 1 }}>
                     <AppText style={{ fontFamily: fonts.semibold, color: colors.onSurface }}>{load.load_code || `Load ${load.load_number}`} · {load.quantity_m3 || 0} m³</AppText>
                     <AppText variant="caption">{[load.tm_number, load.driver_name].filter(Boolean).join(" · ") || "Not assigned"}</AppText>
-                    {Object.entries(load.milestones || {}).filter(([,at])=>!!at).map(([name,at]) => <AppText key={name} variant="caption">{name.replace(/_at$/,"").replace(/_/g," ")}: {new Date(at!).toLocaleString()}</AppText>)}
+                    {MILESTONES.filter(({key})=>!!load.milestones?.[key]).map(({key,label}) => <AppText key={key} variant="caption">{label}: {new Date(load.milestones![key]!).toLocaleString()}</AppText>)}
                   </View>
                   <Badge label={(load.status || "").replace(/_/g, " ")} status={load.status} />
                 </Card>
