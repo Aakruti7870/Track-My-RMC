@@ -29,7 +29,7 @@ export function useGoogleNearbyPlants(location: LatLng | null, radiusKm: number,
   const { token } = useAuth();
   const lat = location?.lat;
   const lng = location?.lng;
-  const searchName = query.trim().slice(0, 80);
+  const searchName = Array.from(query.trim()).slice(0, 80).join("");
   const [revision, setRevision] = useState(0);
   const sequence = useRef(0);
   const [state, setState] = useState<{
