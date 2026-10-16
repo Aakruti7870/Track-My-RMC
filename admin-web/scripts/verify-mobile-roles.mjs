@@ -221,6 +221,19 @@ try {
       await page.setViewportSize({width:1280,height:900});
       await page.screenshot({path:new URL('../../artifacts/customer-experience/plants-desktop.png',import.meta.url).pathname});
       await page.setViewportSize({width:390,height:844});
+      phase = 'owned active delivery tracking and browser back';
+      const ordersResponse = await context.request.get('http://127.0.0.1:8301/api/customer/orders',{headers:{Authorization:`Bearer ${token}`}});
+      assert.equal(ordersResponse.status(),200);
+      const ownedOrders = await ordersResponse.json();
+      const activeDelivery = ownedOrders.orders.find(order => order.status === 'EN_ROUTE');
+      assert.ok(activeDelivery);
+      await page.goto(`http://127.0.0.1:8081/track/${activeDelivery.id}`);
+      await expect(page.getByText('Mixer location',{exact:true})).toBeVisible();
+      await expect(page.getByText('CI-MOBILE-TM',{exact:true}).first()).toBeVisible();
+      await page.screenshot({path:new URL('../../artifacts/customer-experience/tracking-mobile.png',import.meta.url).pathname});
+      await page.goBack();
+      await expect(page.getByTestId('plants-list')).toBeVisible();
+      await expect(page.getByTestId('permission-introduction')).not.toBeVisible();
       await page.getByTestId('tab-home').click();
     }
     if (user.role !== 'customer') assert.ok(currentIdentity.plant_id);

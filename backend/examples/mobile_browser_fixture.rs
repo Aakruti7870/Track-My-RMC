@@ -194,7 +194,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 .await?;
         }
     }
-    sqlx::query("INSERT INTO transit_mixers(plant_id,registration_number,driver_id) VALUES($1,'CI-MOBILE-TM',$2)").bind(plant).bind(driver).execute(&mut *tx).await?;
+    let mixer:Uuid=sqlx::query_scalar("INSERT INTO transit_mixers(plant_id,registration_number,driver_id) VALUES($1,'CI-MOBILE-TM',$2) RETURNING id").bind(plant).bind(driver).fetch_one(&mut *tx).await?;
     let site:Uuid=sqlx::query_scalar("INSERT INTO customer_sites(customer_id,name,address_line,city,state,pincode,latitude,longitude,contact_person,contact_phone,is_default) VALUES($1,'Browser site','Synthetic staging delivery address','Mumbai','Maharashtra','400001',19.1,72.9,'Staging customer','12025550101',TRUE) RETURNING id").bind(customer).fetch_one(&mut *tx).await?;
     tx.commit().await?;
     eprintln!("CI-FIXTURE: customer order");
@@ -220,6 +220,17 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .bind(inspection_id)
         .execute(&state.db)
         .await?;
+    // Dedicated synthetic active delivery for real browser tracking assertions.
+    let tracking_order = serde_json::from_value(
+        json!({"plant_id":plant,"site_id":site,"grade":"M25","quantity":6,"delivery_date":chrono::Utc::now().date_naive()+chrono::Duration::days(1),"delivery_time":"12:00","idempotency_key":"ci-mobile-tracking-order"}),
+    )?;
+    let tracking = customer_order::place(&state, customer, tracking_order).await?;
+    sqlx::query("UPDATE orders SET status='in_transit' WHERE id=$1")
+        .bind(tracking.id)
+        .execute(&state.db)
+        .await?;
+    let load:Uuid=sqlx::query_scalar("INSERT INTO order_loads(order_id,load_number,mixer_id,driver_id,quantity_m3,status,dispatched_at) VALUES($1,99,$2,$3,6,'en_route',NOW()) RETURNING id").bind(tracking.id).bind(mixer).bind(driver).fetch_one(&state.db).await?;
+    sqlx::query("INSERT INTO gps_telemetry(mixer_id,driver_id,load_id,latitude,longitude,recorded_at) VALUES($1,$2,$3,19.08,72.88,NOW())").bind(mixer).bind(driver).bind(load).execute(&state.db).await?;
     eprintln!("CI-FIXTURE: router");
     let cors = CorsLayer::new()
         .allow_origin("http://127.0.0.1:8081".parse::<axum::http::HeaderValue>()?)
