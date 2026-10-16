@@ -457,7 +457,11 @@ mod tests {
             google_place_id: "ChIJc1_example-ID".into(),
         };
         assert_eq!(accepted.validate().unwrap(), "ChIJc1_example-ID");
-        for raw in ["", "   ", "bad place id", "too\\nlong"] {
+        let oversized = GoogleQuoteInterest {
+            google_place_id: "X".repeat(257),
+        };
+        assert!(oversized.validate().is_err());
+        for raw in ["", "   ", "bad place id"] {
             let rejected = GoogleQuoteInterest {
                 google_place_id: raw.into(),
             };
