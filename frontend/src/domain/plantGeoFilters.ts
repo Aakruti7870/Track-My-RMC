@@ -1,4 +1,4 @@
-// Customer-entered location filters are applied only when the user taps Apply.
+// Customer-entered geographic filters are applied after a short debounce.
 // The four values are not Google Places content and must not be confused with
 // verified coordinates or an exhaustive location directory.
 export type PlantGeoFilters = {
