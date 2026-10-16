@@ -130,7 +130,6 @@ export default function CustomerPlants() {
   const [grade, setGrade] = useState("");
   const [radiusKm, setRadiusKm] = useState("50");
   const [verified, setVerified] = useState(false);
-  const [mapView, setMapView] = useState(true);
   const [showFilters,setShowFilters] = useState(false);
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState({q:"",grade:"",radius_km:50,verified:false});
@@ -283,8 +282,7 @@ export default function CustomerPlants() {
           ListHeaderComponent={
             <View style={{ gap: spacing.sm, marginBottom: spacing.xs }}>
               <View style={styles.mapShell}>
-                {mapView ? <PlantMap plants={filtered} userLocation={userLocation} onSelectPlant={setDetails} onRegionChange={coords => { if (!userLocation || distanceKm(userLocation,coords)>1) { manualLocation.current=true;setUserLocation(coords); setPage(1); } }} /> : <View style={{height:242,justifyContent:"center",alignItems:"center"}}><AppText variant="caption">Map hidden. Select Maps View to show registered plant locations.</AppText></View>}
-                <Pressable accessibilityRole="button" accessibilityLabel="Toggle Maps View" onPress={() => setMapView(v=>!v)} style={styles.mapPill}><Ionicons name="map-outline" size={17} color="#F25C05" /><AppText style={styles.mapPillText}>Maps View</AppText></Pressable>
+                <PlantMap plants={filtered} userLocation={userLocation} onSelectPlant={setDetails} onRegionChange={coords => { if (!userLocation || distanceKm(userLocation,coords)>1) { manualLocation.current=true;setUserLocation(coords); setPage(1); } }} />
               </View>
 
               <View style={styles.searchRow}>
