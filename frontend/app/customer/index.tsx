@@ -19,7 +19,7 @@ import { OrderData } from "@/src/components/OrderCard";
 import { PlantData } from "@/src/components/PlantCard";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 import { customerHomeModules } from "@/src/navigation/moduleCatalog";
-import { useGet as useTrackingGet } from "@/src/hooks/useApi";
+
 
 
 type HomeData = {
@@ -49,7 +49,7 @@ export default function CustomerHome() {
   const insets = useSafeAreaInsets();
   const { data, loading, error, refetch, reload } = useGet<HomeData>("/customer/home");
   const activeId = data?.active_order?.id;
-  const {data: tracking} = useTrackingGet<ActiveTracking>(activeId ? `/customer/orders/${activeId}/tracking` : null as any);
+  const {data: tracking} = useGet<ActiveTracking>(activeId ? `/customer/orders/${activeId}/tracking` : null);
   const liveLoad = tracking?.active_loads?.find(load=>load.location) || tracking?.active_loads?.[0];
   const liveLocation = liveLoad?.location || tracking?.location;
   const isFresh = Boolean(liveLocation?.at && Date.now()-new Date(liveLocation.at).getTime()<90000);
