@@ -142,7 +142,6 @@ pub async fn search(
     Ok(Json(json!({"plants":plants,"page":page,"has_more":more})))
 }
 
-
 #[derive(Debug, Deserialize)]
 pub struct GoogleNearbyQuery {
     lat: f64,
@@ -175,9 +174,7 @@ fn google_distance_km(lat1: f64, lng1: f64, lat2: f64, lng2: f64) -> f64 {
     let dlat = (lat2 - lat1).to_radians();
     let dlng = (lng2 - lng1).to_radians();
     let a = (dlat / 2.0).sin().powi(2)
-        + lat1.to_radians().cos()
-            * lat2.to_radians().cos()
-            * (dlng / 2.0).sin().powi(2);
+        + lat1.to_radians().cos() * lat2.to_radians().cos() * (dlng / 2.0).sin().powi(2);
     6371.0 * 2.0 * a.clamp(0.0, 1.0).sqrt().asin()
 }
 
@@ -270,7 +267,9 @@ pub async fn google_nearby(
         .config
         .google_places_api_key
         .as_deref()
-        .ok_or_else(|| AppError::BadRequest("Live Google Places discovery is not configured".into()))?;
+        .ok_or_else(|| {
+            AppError::BadRequest("Live Google Places discovery is not configured".into())
+        })?;
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(12))
         .build()
@@ -378,21 +377,49 @@ mod tests {
     #[test]
     fn google_nearby_rejects_invalid_location_and_oversized_radius() {
         for query in [
-            GoogleNearbyQuery { lat: 91.0, lng: 73.0, radius_km: None },
-            GoogleNearbyQuery { lat: f64::NAN, lng: 73.0, radius_km: None },
-            GoogleNearbyQuery { lat: 18.0, lng: 181.0, radius_km: None },
-            GoogleNearbyQuery { lat: 18.0, lng: 73.0, radius_km: Some(51.0) },
-            GoogleNearbyQuery { lat: 18.0, lng: 73.0, radius_km: Some(-1.0) },
+            GoogleNearbyQuery {
+                lat: 91.0,
+                lng: 73.0,
+                radius_km: None,
+            },
+            GoogleNearbyQuery {
+                lat: f64::NAN,
+                lng: 73.0,
+                radius_km: None,
+            },
+            GoogleNearbyQuery {
+                lat: 18.0,
+                lng: 181.0,
+                radius_km: None,
+            },
+            GoogleNearbyQuery {
+                lat: 18.0,
+                lng: 73.0,
+                radius_km: Some(51.0),
+            },
+            GoogleNearbyQuery {
+                lat: 18.0,
+                lng: 73.0,
+                radius_km: Some(-1.0),
+            },
         ] {
             assert!(query.validate().is_err());
         }
-        let valid = GoogleNearbyQuery { lat: 18.9, lng: 73.1, radius_km: None };
+        let valid = GoogleNearbyQuery {
+                lat: 18.9,
+                lng: 73.1,
+                radius_km: None,
+            };
         assert_eq!(valid.validate().unwrap(), 25.0);
     }
 
     #[test]
     fn google_nearby_filters_distance_closed_locations_and_invalid_results() {
-        let query = GoogleNearbyQuery { lat: 18.9, lng: 73.1, radius_km: Some(10.0) };
+        let query = GoogleNearbyQuery {
+                lat: 18.9,
+                lng: 73.1,
+                radius_km: Some(10.0),
+            };
         let payload = json!({"places":[
             {"id":"near","displayName":{"text":"Nearby RMC"},"location":{"latitude":18.91,"longitude":73.1},"formattedAddress":"Raigad"},
             {"id":"closed","displayName":{"text":"Closed RMC"},"businessStatus":"CLOSED_PERMANENTLY","location":{"latitude":18.91,"longitude":73.1}},
