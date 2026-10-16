@@ -1,7 +1,7 @@
 import { chromium, expect } from '@playwright/test';
 import { createHmac, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdir } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
@@ -9,7 +9,8 @@ import { createRequire } from 'node:module';
 
 // The real Expo UI, Rust router and disposable PostgreSQL database are used.
 // Only delivery is replaced. All transient codes remain in process memory;
-// no traces, screenshots, response bodies or credential-bearing errors are saved.
+// No traces, response bodies or credential-bearing errors are saved. Screenshots
+// are limited to the consent screen and synthetic post-login discovery fixtures.
 assert.equal(process.env.GITHUB_ACTIONS, 'true');
 assert.equal(process.env.APP_ENV, 'test');
 const root = fileURLToPath(new URL('../../', import.meta.url));
@@ -113,6 +114,19 @@ try {
     phase = 'login';
     const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
     const page = await context.newPage();
+    if (user.role === 'customer') {
+      // Even an existing OS grant must not override the user's manual choice.
+      await context.grantPermissions(['geolocation']);
+      await context.setGeolocation({latitude:19.076,longitude:72.877});
+      await page.addInitScript(() => {
+        window.__tmLocationRequests = 0;
+        const original = navigator.geolocation.getCurrentPosition.bind(navigator.geolocation);
+        navigator.geolocation.getCurrentPosition = (...args) => {
+          window.__tmLocationRequests++;
+          return original(...args);
+        };
+      });
+    }
     page.setDefaultTimeout(60000);
     const failures = [], runtimeErrors = [];
     safeDiagnostics = failures;
@@ -166,6 +180,14 @@ try {
     const rolePath = user.alias ?? user.role;
     phase = 'role navigation';
     await page.waitForURL(url => url.pathname === `/${rolePath}` || url.pathname === `/${rolePath}/`);
+    if (user.role === 'customer') {
+      phase = 'post OTP optional consent';
+      await expect(page.getByTestId('permission-introduction')).toBeVisible();
+      await mkdir(new URL('../../artifacts/customer-experience/',import.meta.url),{recursive:true});
+      await page.screenshot({path:new URL('../../artifacts/customer-experience/consent-mobile.png',import.meta.url).pathname});
+      await page.getByTestId('permission-continue').click();
+      await expect(page.getByTestId('permission-introduction')).not.toBeVisible();
+    }
     phase = 'dashboard';
     const summary = user.role === 'customer' ? 'customer-home-scroll' : `${['plant_owner', 'driver'].includes(user.role) ? rolePath : 'staff'}-home-summary`;
     await expect(page.getByTestId(summary)).toBeVisible();
@@ -173,6 +195,72 @@ try {
     await expect.poll(() => successfulPaths.has(homePath)).toBe(true);
     await expect.poll(() => currentIdentity?.role).toBe(user.role);
     assert.ok(currentIdentity.name && token);
+    if (user.role === 'customer') {
+      phase = 'automatic nearby discovery with optional location off';
+      await page.getByTestId('tab-plants').click();
+      await expect(page.getByTestId('plants-list')).toBeVisible();
+      await expect.poll(() => successfulPaths.has('/api/customer/plants/search')).toBe(true);
+      await expect(page.getByText('Browser staging plant',{exact:true}).first()).toBeVisible();
+      assert.equal(await page.evaluate(() => window.__tmLocationRequests),0,'Manual preference must prevent automatic GPS even with an OS grant');
+      await page.screenshot({path:new URL('../../artifacts/customer-experience/plants-mobile.png',import.meta.url).pathname});
+      await page.reload();
+      await expect(page.getByTestId('plants-list')).toBeVisible();
+      await expect(page.getByTestId('permission-introduction')).not.toBeVisible();
+      phase = 'manual site and filtered plant search';
+      await page.getByRole('button',{name:'Filters and site selection',exact:true}).click();
+      await page.getByLabel('Site latitude',{exact:true}).fill('19.076');
+      await page.getByLabel('Site longitude',{exact:true}).fill('72.877');
+      await page.getByRole('button',{name:'Use this site',exact:true}).click();
+      await page.getByLabel('Concrete grade',{exact:true}).fill('M25');
+      await page.getByRole('button',{name:'Apply',exact:true}).click();
+      await expect(page.getByText('Browser staging plant',{exact:true}).first()).toBeVisible();
+      await page.getByRole('button',{name:'Hide filters and site selection',exact:true}).click();
+      await page.getByRole('button',{name:'View Details',exact:true}).click();
+      await expect(page.getByRole('button',{name:'Close details',exact:true})).toBeVisible();
+      await page.getByRole('button',{name:'Close details',exact:true}).click();
+      await expect(page.getByRole('button',{name:'Close details',exact:true})).not.toBeVisible();
+      await page.setViewportSize({width:1280,height:900});
+      await expect(page.getByText('Browser staging plant',{exact:true}).first()).toBeVisible();
+      await page.screenshot({path:new URL('../../artifacts/customer-experience/plants-desktop.png',import.meta.url).pathname});
+      await page.setViewportSize({width:390,height:844});
+      phase = 'browser permission revocation drops GPS coordinates';
+      const preference = await context.request.put('http://127.0.0.1:8301/api/me/permission-consent',{headers:{Authorization:`Bearer ${token}`},data:{version:1,location_choice:'granted',notification_choice:'manual'}});
+      assert.equal(preference.status(),200);
+      const gpsSearch = page.waitForResponse(response => new URL(response.url()).pathname === '/api/customer/plants/search' && response.status()===200 && response.request().postDataJSON()?.lat != null);
+      await page.reload();
+      await gpsSearch;
+      await expect.poll(() => page.evaluate(() => window.__tmLocationRequests)).toBeGreaterThan(0);
+      const noLocationSearch = page.waitForResponse(response => {
+        if (new URL(response.url()).pathname !== '/api/customer/plants/search' || response.status() !== 200) return false;
+        return response.request().postDataJSON()?.lat == null;
+      });
+      await context.clearPermissions();
+      await noLocationSearch;
+      await expect(page.getByRole('button',{name:'Enable Location',exact:true})).toBeVisible();
+      phase = 'network unavailable and retry recovery';
+      await context.setOffline(true);
+      await page.getByTestId('plants-search').fill('network-outage-regression');
+      await expect(page.getByTestId('error-view')).toBeVisible();
+      await context.setOffline(false);
+      await page.getByTestId('retry-button').click();
+      await expect(page.getByTestId('plants-search')).toBeVisible();
+      await page.getByTestId('plants-search').fill('');
+      await expect(page.getByText('Browser staging plant',{exact:true}).first()).toBeVisible();
+      phase = 'owned active delivery tracking and browser back';
+      const ordersResponse = await context.request.get('http://127.0.0.1:8301/api/customer/orders',{headers:{Authorization:`Bearer ${token}`}});
+      assert.equal(ordersResponse.status(),200);
+      const ownedOrders = await ordersResponse.json();
+      const activeDelivery = ownedOrders.orders.find(order => order.status === 'EN_ROUTE');
+      assert.ok(activeDelivery);
+      await page.goto(`http://127.0.0.1:8081/track/${activeDelivery.id}`);
+      await expect(page.getByText('Mixer location',{exact:true})).toBeVisible();
+      await expect(page.getByText('CI-MOBILE-TM',{exact:true}).first()).toBeVisible();
+      await page.screenshot({path:new URL('../../artifacts/customer-experience/tracking-mobile.png',import.meta.url).pathname});
+      await page.goBack();
+      await expect(page.getByTestId('plants-list')).toBeVisible();
+      await expect(page.getByTestId('permission-introduction')).not.toBeVisible();
+      await page.getByTestId('tab-home').click();
+    }
     if (user.role !== 'customer') assert.ok(currentIdentity.plant_id);
     phase = 'role module discovery';
     // Verify the rendered Expo menu against the same typed catalog that CI
@@ -238,7 +326,9 @@ try {
     }
     if (user.role === 'quality_engineer') {
       phase = 'quality inspection';
-      await page.getByTestId(/^open-/).first().click();
+      const qualityRow = page.getByTestId(/^open-/).filter({visible:true}).first();
+      const inspectedRowId = await qualityRow.getAttribute('data-testid');
+      await qualityRow.click();
       await expect(page.getByTestId('qt-save')).toBeDisabled();
       await page.getByTestId('qt-slump').fill('125');
       await page.getByTestId('qt-cube7').fill('22.35');
@@ -263,7 +353,7 @@ try {
       phase = 'quality persistence: return to collection';
       await page.getByTestId('qt-back').click();
       phase = 'quality persistence: collection status';
-      await expect(page.getByText('Engineer FAIL', { exact: true })).toBeVisible();
+      await expect(page.getByTestId(inspectedRowId).filter({visible:true}).getByText('Engineer FAIL', { exact: true })).toBeVisible();
     }
     phase = 'logout';
     await page.getByText('More', { exact: true }).last().click();
@@ -278,9 +368,11 @@ try {
     await context.close();
     console.log(`PASS: ${user.role} real Expo login, authorized dashboard/records and revoked logout`);
   }
-} catch {
+} catch (error) {
   // Playwright errors can contain fill values. Never print the original error.
   console.error(`FAIL: synthetic mobile browser role=${activeRole} phase=${phase}. No credential-bearing diagnostics retained.`);
+  const safeFailure = String(error?.message).includes('strict mode violation') ? 'Ambiguous locator' : String(error?.message).includes('Timeout') ? 'Timeout' : 'Assertion or runtime failure';
+  console.error(`Failure category: ${safeFailure}`);
   for (const diagnostic of safeDiagnostics) console.error(diagnostic);
   console.error(`Completed API paths: ${[...safeSuccessfulPaths].join(', ')}`);
   for (const diagnostic of startupDiagnostics) console.error(diagnostic);

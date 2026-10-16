@@ -1,8 +1,8 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { Platform, StyleSheet, View, ViewStyle } from "react-native";
 import { WebView } from "react-native-webview";
 
-import { MapPlaceholder } from "@/src/components/ui/MapPlaceholder";
+import { AppText } from "@/src/components/ui/AppText";
 import { radius } from "@/src/theme/tokens";
 
 const MAPS_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY || "";
@@ -12,15 +12,18 @@ type LatLng = { lat: number; lng: number };
 /**
  * Live Google map for delivery tracking. Renders a real map (mixer marker,
  * site marker, route polyline) via the Maps JS API inside a WebView when a
- * client key is configured; otherwise falls back to the on-brand placeholder.
+ * client key is configured. GPS updates move existing markers without reloading
+ * the Maps SDK, preserving the viewport and avoiding repeated map-load charges.
  */
 export function LiveMap({
+  origin,
   destination,
   mixer,
   polyline,
   ended,
   style,
 }: {
+  origin?: LatLng | null;
   destination?: LatLng | null;
   mixer?: LatLng | null;
   polyline?: string | null;
@@ -28,37 +31,50 @@ export function LiveMap({
   style?: ViewStyle;
 }) {
   const canRender = !!MAPS_KEY && !!destination && destination.lat != null && destination.lng != null;
+  const native = useRef<WebView | null>(null);
+  const frame = useRef<HTMLIFrameElement | null>(null);
+  const payload = useMemo(() => ({kind:"tracking-update",destination,mixer,origin,polyline}),[destination,mixer,origin,polyline]);
+  const latest = useRef(payload);
+  latest.current=payload;
+  const updateMap = () => {
+    frame.current?.contentWindow?.postMessage(latest.current,"*");
+    native.current?.injectJavaScript(`window.updateTracking && window.updateTracking(${JSON.stringify(latest.current).replace(/</g,"\\u003c")});true;`);
+  };
+  useEffect(() => {
+    frame.current?.contentWindow?.postMessage(payload,"*");
+    native.current?.injectJavaScript(`window.updateTracking && window.updateTracking(${JSON.stringify(payload).replace(/</g,"\\u003c")});true;`);
+  },[payload]);
 
   const html = useMemo(() => {
     if (!canRender) return "";
-    const site = `{lat:${destination!.lat},lng:${destination!.lng}}`;
-    const mk = mixer && mixer.lat != null ? `{lat:${mixer.lat},lng:${mixer.lng}}` : "null";
-    const poly = polyline ? JSON.stringify(polyline) : "null";
+    const initial = JSON.stringify(latest.current).replace(/</g,"\\u003c");
     return `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
 <style>html,body,#map{height:100%;margin:0;padding:0;background:#eee}</style></head>
 <body><div id="map"></div><script>
+var map,siteMarker,mixerMarker,plantMarker,line,lastPoly,fit=false,latest=${initial};
+window.updateTracking=function(data){
+ latest=data;if(!map)return;
+ if(data.destination){if(!siteMarker)siteMarker=new google.maps.Marker({map:map,title:'Delivery site'});siteMarker.setPosition(data.destination)}
+ if(data.mixer){if(!mixerMarker)mixerMarker=new google.maps.Marker({map:map,title:'Transit mixer'});mixerMarker.setPosition(data.mixer);mixerMarker.setMap(map)}else if(mixerMarker)mixerMarker.setMap(null);
+ if(data.origin){if(!plantMarker)plantMarker=new google.maps.Marker({map:map,title:'Origin plant'});plantMarker.setPosition(data.origin);plantMarker.setMap(map)}else if(plantMarker)plantMarker.setMap(null);
+ if(data.polyline!==lastPoly){lastPoly=data.polyline;if(line)line.setMap(null);if(lastPoly&&google.maps.geometry)line=new google.maps.Polyline({path:google.maps.geometry.encoding.decodePath(lastPoly),map:map,strokeColor:'#121212',strokeWeight:5})}
+ if(!fit&&data.destination){var bounds=new google.maps.LatLngBounds();bounds.extend(data.destination);if(data.origin)bounds.extend(data.origin);if(data.mixer)bounds.extend(data.mixer);map.fitBounds(bounds,50);fit=true;}
+};
+window.addEventListener('message',function(event){if(event.source===parent&&event.data.kind==='tracking-update')window.updateTracking(event.data)});
 function init(){
- var site=${site};var mixer=${mk};var poly=${poly};
- var map=new google.maps.Map(document.getElementById('map'),{center:site,zoom:13,disableDefaultUI:true,gestureHandling:'greedy'});
- new google.maps.Marker({position:site,map:map,title:'Delivery site'});
- var b=new google.maps.LatLngBounds();b.extend(site);
- if(mixer){new google.maps.Marker({position:mixer,map:map,title:'Transit mixer',icon:{path:google.maps.SymbolPath.CIRCLE,scale:8,fillColor:'#CCFF00',fillOpacity:1,strokeColor:'#121212',strokeWeight:2}});b.extend(mixer);}
- if(poly&&google.maps.geometry){var path=google.maps.geometry.encoding.decodePath(poly);new google.maps.Polyline({path:path,map:map,strokeColor:'#121212',strokeWeight:5,strokeOpacity:0.85});path.forEach(function(p){b.extend(p)});}
- if(mixer||poly){map.fitBounds(b,50);}
+ map=new google.maps.Map(document.getElementById('map'),{center:latest.destination,zoom:13,gestureHandling:'cooperative'});
+ window.updateTracking(latest);
 }
-window.gm_authFailure=function(){document.body.innerHTML='<div style="display:flex;height:100%;align-items:center;justify-content:center;font-family:sans-serif;color:#888;padding:16px;text-align:center">Map key not authorized for this domain</div>';};
+window.gm_authFailure=function(){document.body.innerHTML='<div style="display:flex;height:100%;align-items:center;justify-content:center;font-family:sans-serif;color:#888;padding:16px;text-align:center">The map could not load. Your recorded trip details remain available below.</div>';};
 </script>
-<script async src="https://maps.googleapis.com/maps/api/js?key=${MAPS_KEY}&libraries=geometry&loading=async&callback=init"></script>
+<script async src="https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(MAPS_KEY)}&libraries=geometry&loading=async&callback=init"></script>
 </body></html>`;
-  }, [canRender, destination?.lat, destination?.lng, mixer?.lat, mixer?.lng, polyline]);
+  }, [canRender]);
+  const source = useMemo(() => ({html}),[html]);
 
   if (!canRender) {
     return (
-      <MapPlaceholder
-        pins={mixer ? 1 : 0}
-        label={ended ? "Tracking ended" : mixer ? "Transit mixer en route" : "Awaiting driver location"}
-        style={style}
-      />
+      <View style={[styles.wrap,style,{padding:16,minHeight:80}]}><AppText>{!MAPS_KEY ? "The map is currently unavailable." : "The delivery site has no map coordinates."} {ended ? "Tracking ended." : "Recorded trip details are shown below."}</AppText></View>
     );
   }
 
@@ -67,6 +83,9 @@ window.gm_authFailure=function(){document.body.innerHTML='<div style="display:fl
     return (
       <View style={[styles.wrap, style]}>
         {React.createElement("iframe", {
+          ref:frame,
+          onLoad:updateMap,
+          title:"Live delivery tracking",
           // @ts-ignore — raw DOM element under react-native-web
           "data-testid": "live-map",
           srcDoc: html,
@@ -79,9 +98,11 @@ window.gm_authFailure=function(){document.body.innerHTML='<div style="display:fl
   return (
     <View style={[styles.wrap, style]}>
       <WebView
+        ref={native}
+        onLoadEnd={updateMap}
         testID="live-map"
         originWhitelist={["*"]}
-        source={{ html }}
+        source={source}
         style={{ flex: 1, backgroundColor: "transparent" }}
         scrollEnabled={false}
         javaScriptEnabled

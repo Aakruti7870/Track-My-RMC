@@ -90,6 +90,100 @@ async fn call(app: &Router, path: &str, body: Option<Value>, token: &str) -> (St
 }
 
 #[sqlx::test]
+async fn nearby_search_route_filters_radius_grade_and_enforces_authentication(db: PgPool) {
+    let (_, app, _, plant, token) = fixture(&db).await;
+    let search =
+        json!({"lat":19.0,"lng":73.0,"radius_km":10,"grade":"M-25","verified":true,"page_size":1});
+    let (status, body) = call(
+        &app,
+        "/api/customer/plants/search",
+        Some(search.clone()),
+        &token,
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "the discovery endpoint must not return 404: {body}"
+    );
+    assert_eq!(body["plants"][0]["id"], plant.to_string());
+    assert!(body["plants"][0]["distance_km"].as_f64().unwrap() < 0.01);
+    assert_eq!(body["has_more"], false);
+    let (status, _) = call(
+        &app,
+        "/api/customer/plants/search",
+        Some(search.clone()),
+        "",
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (_, body) = call(
+        &app,
+        "/api/customer/plants/search",
+        Some(json!({"lat":0,"lng":0,"radius_km":1})),
+        &token,
+    )
+    .await;
+    assert_eq!(body["plants"], json!([]));
+    let (status, _) = call(
+        &app,
+        "/api/customer/plants/search",
+        Some(json!({"lat":91,"lng":73})),
+        &token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (_, body) = call(
+        &app,
+        "/api/customer/plants/search",
+        Some(json!({"q":"Test","grade":"M99"})),
+        &token,
+    )
+    .await;
+    assert_eq!(body["plants"], json!([]));
+}
+
+#[sqlx::test]
+async fn customer_tracking_is_owned_and_does_not_leak_reused_mixer_positions(db: PgPool) {
+    let (state, app, _, plant, token) = fixture(&db).await;
+    let (status, created) = call(
+        &app,
+        "/api/customer/orders",
+        Some(order(plant, "tracking-contract")),
+        &token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let order_id = Uuid::parse_str(created["id"].as_str().unwrap()).unwrap();
+    let path = format!("/api/customer/orders/{order_id}/tracking");
+    let foreign = identity(&db, "customer").await;
+    let foreign_token =
+        generate_token(foreign, "customer", "", None, &state.config.jwt_secret, 1).unwrap();
+    assert_eq!(
+        call(&app, &path, None, &foreign_token).await.0,
+        StatusCode::FORBIDDEN
+    );
+    let driver = identity(&db, "driver").await;
+    let mixer:Uuid=sqlx::query_scalar("INSERT INTO transit_mixers(plant_id,registration_number,driver_id,last_latitude,last_longitude,last_ping_at) VALUES($1,'TRACK-TEST',$2,55,66,NOW()) RETURNING id").bind(plant).bind(driver).fetch_one(&db).await.unwrap();
+    let load:Uuid=sqlx::query_scalar("INSERT INTO order_loads(order_id,load_number,mixer_id,driver_id,quantity_m3,status,dispatched_at) VALUES($1,99,$2,$3,6,'en_route',NOW()) RETURNING id").bind(order_id).bind(mixer).bind(driver).fetch_one(&db).await.unwrap();
+    let (status, body) = call(&app, &path, None, &token).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["active"], true);
+    assert!(body["destination"].is_object());
+    assert_eq!(
+        body["active_loads"][0]["location"],
+        Value::Null,
+        "mixer-global GPS must not leak into a load"
+    );
+    sqlx::query("INSERT INTO gps_telemetry(mixer_id,driver_id,load_id,latitude,longitude,recorded_at) VALUES($1,$2,$3,19.1,73.1,NOW()-INTERVAL '5 minutes')").bind(mixer).bind(driver).bind(load).execute(&db).await.unwrap();
+    let (_, body) = call(&app, &path, None, &token).await;
+    assert_eq!(body["active_loads"][0]["id"], load.to_string());
+    assert_eq!(body["active_loads"][0]["location"]["lat"], 19.1);
+    assert_eq!(body["active_loads"][0]["location"]["stale"], true);
+    assert!(body["active_loads"][0]["milestones"]["dispatched_at"].is_string());
+}
+
+#[sqlx::test]
 async fn mobile_order_contract_uses_server_prices_and_concurrent_retries_create_one_site(
     db: PgPool,
 ) {

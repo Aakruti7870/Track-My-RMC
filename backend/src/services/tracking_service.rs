@@ -11,6 +11,20 @@ pub async fn record_driver_location(
     driver_id: Uuid,
     req: LocationUpdateRequest,
 ) -> Result<(), AppError> {
+    if req
+        .timestamp
+        .is_some_and(|at| at > chrono::Utc::now() + chrono::Duration::seconds(30))
+    {
+        return Err(AppError::BadRequest(
+            "Location timestamp is in the future".into(),
+        ));
+    }
+    // Unscoped mixer telemetry cannot safely be shared with a customer trip.
+    if req.load_id.is_none() {
+        return Err(AppError::BadRequest(
+            "An active assigned load is required for delivery tracking".into(),
+        ));
+    }
     if !req.latitude.is_finite() || !(-90.0..=90.0).contains(&req.latitude) {
         return Err(AppError::BadRequest("Invalid latitude".to_string()));
     }
@@ -78,6 +92,7 @@ pub async fn record_driver_location(
     telemetry_repo::insert_telemetry(
         &state.db,
         crate::repositories::telemetry_repo::TelemetryInput {
+            recorded_at: req.timestamp.unwrap_or_else(chrono::Utc::now),
             mixer_id: req.mixer_id,
             driver_id: Some(driver_id),
             load_id: req.load_id,

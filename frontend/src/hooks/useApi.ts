@@ -88,7 +88,7 @@ export function useGet<T>(path: string | null) {
     data: current ? state.data : null,
     loading: requestKey ? (current ? state.loading : true) : false,
     error: current ? state.error : null,
-    refetch: () => load(false),
-    reload: () => load(true),
+    refetch: useCallback(() => load(false), [load]),
+    reload: useCallback(() => load(true), [load]),
   };
 }

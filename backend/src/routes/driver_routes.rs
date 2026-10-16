@@ -566,6 +566,7 @@ pub async fn get_driver_sos_status(
 pub struct TripLocationPayload {
     pub lat: f64,
     pub lng: f64,
+    pub recorded_at_ms: Option<i64>,
 }
 
 pub async fn update_trip_location(
@@ -595,7 +596,19 @@ pub async fn update_trip_location(
             longitude: payload.lng,
             speed: None,
             heading: None,
-            timestamp: None,
+            timestamp: match payload.recorded_at_ms {
+                Some(ms) => {
+                    let at = chrono::DateTime::from_timestamp_millis(ms)
+                        .ok_or_else(|| AppError::BadRequest("Invalid location timestamp".into()))?;
+                    if at > chrono::Utc::now() + chrono::Duration::seconds(30) {
+                        return Err(AppError::BadRequest(
+                            "Location timestamp is in the future".into(),
+                        ));
+                    }
+                    Some(at)
+                }
+                None => None,
+            },
         },
     )
     .await?;

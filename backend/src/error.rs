@@ -17,6 +17,8 @@ pub struct ApiErrorResponse {
 
 #[derive(Error, Debug)]
 pub enum AppError {
+    #[error("Too many requests: {0}")]
+    RateLimited(String),
     #[error("Resource not found: {0}")]
     NotFound(String),
 
@@ -48,6 +50,11 @@ pub enum AppError {
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, client_message, error_code) = match &self {
+            AppError::RateLimited(msg) => (
+                StatusCode::TOO_MANY_REQUESTS,
+                msg.clone(),
+                Some("RATE_LIMITED".into()),
+            ),
             AppError::NotFound(msg) => (
                 StatusCode::NOT_FOUND,
                 msg.clone(),

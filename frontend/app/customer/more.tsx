@@ -11,6 +11,7 @@ import { Card } from "@/src/components/ui/Card";
 import { Badge } from "@/src/components/ui/Badge";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 import { RoleModuleDirectory } from "@/src/components/RoleModuleDirectory";
+import { usePermissions } from "@/src/permissions/PermissionProvider";
 
 const MODES: { key: "system" | "light" | "dark"; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { key: "light", label: "Light", icon: "sunny-outline" },
@@ -19,6 +20,7 @@ const MODES: { key: "system" | "light" | "dark"; label: string; icon: keyof type
 ];
 
 export default function CustomerMore() {
+  const { review } = usePermissions();
   const { colors, mode, setMode } = useTheme();
   const { user, signOut } = useAuth();
   const router = useRouter();
@@ -39,6 +41,7 @@ export default function CustomerMore() {
         showsVerticalScrollIndicator={false}
       >
         <AppText variant="title">More</AppText>
+        <Pressable accessibilityRole="button" onPress={review} style={{minHeight:48,justifyContent:"center"}}><AppText variant="heading">Permission settings</AppText></Pressable>
 
         <Card style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
           <View style={[styles.avatar, { backgroundColor: colors.brand }]}>

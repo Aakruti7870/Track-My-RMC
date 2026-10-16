@@ -17,6 +17,8 @@ import { ToastProvider } from "@/src/components/ui/Toast";
 import { PushNotificationBridge } from "@/src/notifications/PushNotificationBridge";
 import { BackgroundLocationConsentProvider } from "@/src/location/BackgroundLocationConsent";
 import { SupportWidgetBridge } from "@/src/support/SupportWidgetBridge";
+import { PermissionProvider } from "@/src/permissions/PermissionProvider";
+import { RootBackHandler } from "@/src/navigation/RootBackHandler";
 
 // Keep the native splash visible from cold start until fonts, theme preference,
 // and the branded opening artwork are ready. Development warnings remain enabled.
@@ -57,8 +59,11 @@ export default function RootLayout() {
                 <ToastProvider>
                   <PushNotificationBridge />
                   <BackgroundLocationConsentProvider />
+                  <PermissionProvider>
+                  <RootBackHandler />
                   <Stack screenOptions={{ headerShown: false, animation: "fade" }} />
                   <SupportWidgetBridge />
+                  </PermissionProvider>
                 </ToastProvider>
               </AuthProvider>
             </ThemeProvider>

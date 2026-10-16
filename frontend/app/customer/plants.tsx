@@ -1,15 +1,18 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, Linking, Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, AppState, FlatList, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 
-import { apiGet, apiPost } from "@/src/api/client";
+import { apiPost } from "@/src/api/client";
 import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { useToast } from "@/src/components/ui/Toast";
-import { useGet } from "@/src/hooks/useApi";
+import { usePlantSearch } from "@/src/hooks/usePlantSearch";
+import { storage } from "@/src/utils/storage";
+import { Button } from "@/src/components/ui/Button";
+import { usePermissions } from "@/src/permissions/PermissionProvider";
 import { AppText } from "@/src/components/ui/AppText";
 import { Card } from "@/src/components/ui/Card";
 import { Skeleton } from "@/src/components/ui/Skeleton";
@@ -19,24 +22,6 @@ import { EmptyView, ErrorView } from "@/src/components/StateViews";
 import { requestNearbyPlantsLocationConsent } from "@/src/location/BackgroundLocationConsent";
 import { distanceKm, LatLng, validLatLng } from "@/src/maps/geo";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
-
-type GooglePlant = {
-  place_id: string;
-  name: string;
-  address?: string | null;
-  city?: string | null;
-  district?: string | null;
-  lat: number;
-  lng: number;
-  contact_phone?: string | null;
-  google_maps_uri?: string | null;
-  business_status?: string | null;
-  registered: boolean;
-  plant_id?: string | null;
-  request_status?: string | null;
-};
-
-type GoogleDiscoveryResponse = { configured: boolean; places: GooglePlant[] };
 
 type NearbyLocationStatus = "ok" | "denied" | "services-disabled" | "timeout" | "unavailable";
 type NearbyLocationResult = { status: NearbyLocationStatus; coords: LatLng | null; fromCache?: boolean; canAskAgain?: boolean };
@@ -116,7 +101,7 @@ async function resolveNearbyLocation(opts?: { forceRefresh?: boolean; allowPromp
     return { status: "ok", coords };
   } catch (e: any) {
     try {
-      const last = await Location.getLastKnownPositionAsync();
+      const last = await Location.getLastKnownPositionAsync({maxAge:NEARBY_CACHE_TTL_MS});
       if (last) {
         const coords: LatLng = { lat: last.coords.latitude, lng: last.coords.longitude };
         rememberNearbyLocation(coords);
@@ -130,6 +115,9 @@ async function resolveNearbyLocation(opts?: { forceRefresh?: boolean; allowPromp
 }
 
 export default function CustomerPlants() {
+  const { locationEnabled, enableDiscoveryLocation } = usePermissions();
+  const enablePreference = useRef(enableDiscoveryLocation);
+  enablePreference.current = enableDiscoveryLocation;
   const { colors } = useTheme();
   const { token, user } = useAuth();
   const toast = useToast();
@@ -139,32 +127,103 @@ export default function CustomerPlants() {
   const [userLocation, setUserLocation] = useState<LatLng | null>(null);
   const [locating, setLocating] = useState(false);
   const [locationStatus, setLocationStatus] = useState<NearbyLocationStatus | null>(null);
-  const [googlePlants, setGooglePlants] = useState<GooglePlant[]>([]);
-  const [discovering, setDiscovering] = useState(false);
-  const [discoveryError, setDiscoveryError] = useState<string | null>(null);
-  const [requestingPlace, setRequestingPlace] = useState<string | null>(null);
-  const { data, loading, error, refetch, reload } = useGet<{ plants: PlantData[] }>("/customer/plants");
+  const [grade, setGrade] = useState("");
+  const [radiusKm, setRadiusKm] = useState("50");
+  const [verified, setVerified] = useState(false);
+  const [mapView, setMapView] = useState(true);
+  const [showFilters,setShowFilters] = useState(false);
+  const [page, setPage] = useState(1);
+  const [filters, setFilters] = useState({q:"",grade:"",radius_km:50,verified:false});
+  const [manualLat, setManualLat] = useState("");
+  const [manualLng, setManualLng] = useState("");
+  const [recent, setRecent] = useState<{label:string;coords:LatLng}[]>([]);
+  const [siteAddress,setSiteAddress] = useState("");
+  const [details,setDetails] = useState<PlantData | null>(null);
+  const manualLocation = useRef(false);
+  const { data, loading, error, refetch, reload, clearCache } = usePlantSearch(userLocation, filters, page);
   const didInit = useRef(false);
+  const previousLocationStatus = useRef<NearbyLocationStatus | null>(null);
+  const locationRequest = useRef(0);
   const isPlayReviewCustomer = user?.name === PLAY_REVIEW_CUSTOMER_NAME;
 
-  const applyLocation = async (opts: { forceRefresh?: boolean; allowPrompt?: boolean; refetchPlants?: boolean }) => {
+  const applyLocation = useCallback(async (opts: { forceRefresh?: boolean; allowPrompt?: boolean; refetchPlants?: boolean }) => {
+    const request = ++locationRequest.current;
     setLocating(true);
     try {
       const result = await resolveNearbyLocation({ forceRefresh: opts.forceRefresh, allowPrompt: opts.allowPrompt });
-      setLocationStatus(result.status);
-      if (result.coords) setUserLocation(result.coords);
-      if (result.status === "ok" && opts.refetchPlants) await refetch();
+      if (request !== locationRequest.current) return result;
+      const changed = previousLocationStatus.current !== null && previousLocationStatus.current !== result.status;
+      if (changed) clearCache();
+      previousLocationStatus.current=result.status;
+      setLocationStatus(manualLocation.current && !opts.allowPrompt ? "ok" : result.status);
+      if (result.status === "ok" && opts.allowPrompt) {didInit.current=true;void enablePreference.current();}
+      if (result.status === "ok" && result.coords && (!manualLocation.current || opts.allowPrompt)) {manualLocation.current=false;setUserLocation(result.coords);setPage(1);}
+      if (result.status === "denied" && !manualLocation.current) {nearbyLocationCache=null;setUserLocation(null);setPage(1);}
+      if (result.status === "ok" && (opts.refetchPlants || changed)) await refetch();
       return result;
     } finally {
-      setLocating(false);
+      if (request === locationRequest.current) setLocating(false);
     }
-  };
+  },[refetch,clearCache]);
 
   useEffect(() => {
+    if (!locationEnabled) {
+      didInit.current=false;
+      nearbyLocationCache=null;
+      if (!manualLocation.current) {setLocationStatus("denied");setUserLocation(null);}
+      return;
+    }
     if (didInit.current) return;
     didInit.current = true;
-    void applyLocation({ forceRefresh: false, allowPrompt: true, refetchPlants: false });
-  }, []);
+    void applyLocation({ forceRefresh: false, allowPrompt: false, refetchPlants: false });
+  }, [applyLocation,locationEnabled]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", state => {
+      if (state === "active" && locationEnabled) void applyLocation({forceRefresh:true,allowPrompt:false});
+    });
+    let disposed = false;
+    let permission: PermissionStatus | null = null;
+    const changed = () => {if (locationEnabled) void applyLocation({forceRefresh:true,allowPrompt:false});};
+    if (Platform.OS === "web" && navigator.permissions) {
+      void navigator.permissions.query({name:"geolocation"}).then(status => {
+        if (disposed) return;
+        permission=status;status.addEventListener("change",changed);
+      }).catch(() => { /* Browser without permission-status support: use resume refresh. */ });
+    }
+    return () => {disposed=true;subscription.remove();permission?.removeEventListener("change",changed);};
+  }, [applyLocation,locationEnabled]);
+  useEffect(() => {
+    let active = true;
+    setRecent([]);
+    if (user?.id) void storage.getItem(`recent-plant-locations-${user.id}`, "").then(raw => {
+      try { const values = raw ? JSON.parse(raw) : []; if (active && Array.isArray(values)) setRecent(values.filter(v => validLatLng(v.coords)).slice(0,5)); } catch { /* Ignore invalid preferences. */ }
+    });
+    return () => { active = false; };
+  }, [user?.id]);
+  const chooseManualLocation = () => {
+    const coords = {lat:Number(manualLat),lng:Number(manualLng)};
+    if (!manualLat.trim() || !manualLng.trim() || !validLatLng(coords)) { toast("Enter a valid latitude and longitude", "error"); return; }
+    setUserLocation(coords); setPage(1); setLocationStatus("ok");
+    manualLocation.current=true;
+    const locations = [{label:q.trim() || `${coords.lat.toFixed(3)}, ${coords.lng.toFixed(3)}`,coords}, ...recent.filter(v => distanceKm(v.coords,coords)>0.1)].slice(0,5);
+    setRecent(locations);
+    if (user?.id) void storage.setItem(`recent-plant-locations-${user.id}`,JSON.stringify(locations));
+  };
+
+  const locateAddress = async () => {
+    if (!token) return;
+    setLocating(true);
+    try {
+      const result = await apiPost<LatLng & {label:string}>("/customer/plants/locate",token,{address:siteAddress});
+      if (!validLatLng(result)) throw new Error("Invalid coordinates");
+      manualLocation.current=true;setUserLocation(result);setPage(1);setLocationStatus("ok");
+      const locations = [{label:result.label,coords:{lat:result.lat,lng:result.lng}},...recent.filter(v=>distanceKm(v.coords,result)>0.1)].slice(0,5);
+      setRecent(locations);
+      if (user?.id) await storage.setItem(`recent-plant-locations-${user.id}`,JSON.stringify(locations));
+    } catch (e:any) {toast(e?.detail || "Could not locate this address. Try coordinates or search plants by city.","error");}
+    finally {setLocating(false);}
+  };
 
   const refreshLocation = () => void applyLocation({ forceRefresh: true, allowPrompt: true, refetchPlants: true });
 
@@ -175,56 +234,6 @@ export default function CustomerPlants() {
     const result = await applyLocation({ forceRefresh: true, allowPrompt: true, refetchPlants: true });
     if (result.status === "denied" && result.canAskAgain === false) {
       try { await Linking.openSettings(); } catch { }
-    }
-  };
-
-  const discoverOnGoogle = async () => {
-    if (!token) return;
-    if (!userLocation) {
-      toast("Refresh location first", "error");
-      return;
-    }
-    setDiscovering(true);
-    setDiscoveryError(null);
-    try {
-      const query = q.trim() || "ready mix concrete RMC plant";
-      const result = await apiGet<GoogleDiscoveryResponse>(
-        `/maps/rmc-plants?lat=${userLocation.lat}&lng=${userLocation.lng}&radius_km=50&q=${encodeURIComponent(query)}`,
-        token,
-      );
-      if (!result.configured) {
-        setGooglePlants([]);
-        setDiscoveryError("Google Places discovery is not configured on the server yet.");
-        return;
-      }
-      setGooglePlants(result.places || []);
-      if (!result.places?.length) setDiscoveryError("No additional RMC plants found. Try a plant or city name.");
-    } catch (e: any) {
-      setDiscoveryError(e?.detail || "Google RMC discovery failed");
-    } finally {
-      setDiscovering(false);
-    }
-  };
-
-  const requestListing = async (place: GooglePlant) => {
-    if (!token) return;
-    setRequestingPlace(place.place_id);
-    try {
-      const result = await apiPost<{ status: string; request_id?: string; plant_id?: string }>(
-        `/maps/rmc-plants/${encodeURIComponent(place.place_id)}/request-listing`,
-        token,
-      );
-      setGooglePlants((current) => current.map((p) => p.place_id === place.place_id ? {
-        ...p,
-        registered: result.status === "REGISTERED" ? true : p.registered,
-        plant_id: result.plant_id || p.plant_id,
-        request_status: result.status === "REGISTERED" ? p.request_status : result.status,
-      } : p));
-      toast(result.status === "REGISTERED" ? "Plant is already registered" : "Sent to Authority for review", "success");
-    } catch (e: any) {
-      toast(e?.detail || "Could not submit this plant", "error");
-    } finally {
-      setRequestingPlace(null);
     }
   };
 
@@ -239,8 +248,6 @@ export default function CustomerPlants() {
         const bReview = b.name === PLAY_REVIEW_PLANT_NAME;
         if (aReview !== bReview) return aReview ? -1 : 1;
       }
-      const promoted = Number(Boolean(b.promoted)) - Number(Boolean(a.promoted));
-      if (promoted) return promoted;
       if (userLocation) {
         const distance = (a.distance_km ?? Number.POSITIVE_INFINITY) - (b.distance_km ?? Number.POSITIVE_INFINITY);
         if (distance) return distance;
@@ -253,42 +260,15 @@ export default function CustomerPlants() {
   }, [data, isPlayReviewCustomer, userLocation]);
 
   const filtered = useMemo(() => {
-    if (!q.trim()) return ranked;
-    const t = q.toLowerCase();
-    return ranked.filter((p) =>
-      (p.name || "").toLowerCase().includes(t) ||
-      (p.city || "").toLowerCase().includes(t) ||
-      (p.district || "").toLowerCase().includes(t) ||
-      (p.address || "").toLowerCase().includes(t));
-  }, [ranked, q]);
-
-  const googleMapPlants = useMemo<PlantData[]>(() => googlePlants
-    .filter((p) => !p.registered)
-    .map((p) => ({
-      id: `google:${p.place_id}`,
-      name: p.name,
-      city: p.city || "Google Places",
-      district: p.district || undefined,
-      address: p.address || "",
-      lat: p.lat,
-      lng: p.lng,
-      grades: [],
-      contact_phone: p.contact_phone || "",
-      service_area_km: 0,
-      status: "google_discovered",
-      verified: false,
-      order_enabled: false,
-      distance_km: userLocation ? distanceKm(userLocation, { lat: p.lat, lng: p.lng }) : null,
-    })), [googlePlants, userLocation]);
-
-  const mapPlants = useMemo(() => [...filtered, ...googleMapPlants], [filtered, googleMapPlants]);
+    return ranked;
+  }, [ranked]);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
       <View style={{ height: insets.top }} />
       <View style={styles.titleRow}>
         <AppText variant="title">Nearby Plants</AppText>
-        <AppText variant="caption">Registered plants first. Discover more real RMC businesses nearby when needed.</AppText>
+        <AppText variant="caption">Find registered RMC plants for your delivery site.</AppText>
       </View>
 
       {error && !data ? <ErrorView message={error} onRetry={reload} /> : (
@@ -298,22 +278,23 @@ export default function CustomerPlants() {
           keyExtractor={(p) => p.id}
           showsVerticalScrollIndicator={false}
           onRefresh={refetch}
-          refreshing={false}
-          contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120, gap: spacing.md, flexGrow: 1 }}
+          refreshing={loading && !!data}
+          contentContainerStyle={{ width:"100%",maxWidth:1100,alignSelf:"center",padding: spacing.lg, paddingBottom: 120, gap: spacing.md, flexGrow: 1 }}
           ListHeaderComponent={
             <View style={{ gap: spacing.sm, marginBottom: spacing.xs }}>
-              <PlantMap plants={mapPlants} userLocation={userLocation} />
+              <Button label={mapView ? "List View" : "Map View"} onPress={() => setMapView(v => !v)} />
+              {mapView ? <PlantMap plants={filtered} userLocation={userLocation} onSelectPlant={setDetails} onRegionChange={coords => { if (!userLocation || distanceKm(userLocation,coords)>1) { manualLocation.current=true;setUserLocation(coords); setPage(1); } }} /> : null}
 
               <View style={[styles.searchBar, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
                 <Ionicons name="search-outline" size={20} color={colors.onSurfaceTertiary} />
                 <TextInput
                   testID="plants-search"
                   value={q}
-                  onChangeText={setQ}
-                  placeholder="Search plants or area…"
+                  onChangeText={value => {setQ(value);setPage(1);setFilters(current=>({...current,q:value}));}}
+                  placeholder="Plant name, area, city or PIN code…"
                   placeholderTextColor={colors.onSurfaceTertiary}
                   returnKeyType="search"
-                  onSubmitEditing={() => { if (q.trim()) void discoverOnGoogle(); }}
+                  onSubmitEditing={() => {setPage(1);setFilters({q,grade,radius_km:Number(radiusKm)||50,verified});}}
                   style={[styles.searchInput, { color: colors.onSurface }]}
                 />
                 <Pressable
@@ -327,28 +308,29 @@ export default function CustomerPlants() {
                 </Pressable>
               </View>
 
-              <View style={styles.discoveryRow}>
-                <View style={styles.discoveryMeta}>
-                  <Ionicons name="location" size={15} color={colors.brand} />
-                  <AppText style={[styles.discoveryMetaText, { color: colors.onSurfaceSecondary }]}>
-                    {locating && !userLocation ? "Locating…" : `${ranked.length} nearby`}
-                  </AppText>
-                  <View style={[styles.dotDivider, { backgroundColor: colors.border }]} />
-                  <Ionicons name="search-circle-outline" size={17} color={colors.brand} />
-                  <AppText style={[styles.discoveryMetaText, { color: colors.onSurfaceSecondary }]}>Google discovery</AppText>
-                </View>
-                <Pressable
-                  testID="discover-google-rmc"
-                  onPress={discoverOnGoogle}
-                  disabled={discovering}
-                  style={({ pressed }) => [styles.findMore, { backgroundColor: colors.brand, opacity: pressed || discovering ? 0.72 : 1 }]}
-                >
-                  <AppText style={{ fontFamily: fonts.semibold, fontSize: 12, color: colors.onBrand }}>
-                    {discovering ? "Searching…" : "Find More"}
-                  </AppText>
-                </Pressable>
-              </View>
+              <Button label={showFilters ? "Hide filters and site selection" : "Filters and site selection"} onPress={() => setShowFilters(v=>!v)} />
+              {showFilters ? <Card style={{gap:12}}>
+                <AppText variant="heading">Refine your search</AppText>
+                <TextInput accessibilityLabel="Concrete grade" placeholder="Concrete grade, e.g. M25" value={grade} onChangeText={setGrade} style={{minHeight:48,color:colors.onSurface}} />
+                <TextInput accessibilityLabel="Search radius in kilometres" placeholder="Radius in km (1–200)" value={radiusKm} onChangeText={setRadiusKm} keyboardType="numeric" style={{minHeight:48,color:colors.onSurface}} />
+                <Button label={verified ? "Verified plants only ✓" : "All registered plants"} onPress={() => setVerified(v => !v)} />
+                <AppText variant="caption">Active plants, sorted by distance when a location is selected. Delivery eligibility is confirmed when ordering.</AppText>
+                <Button label="Apply" onPress={() => { const radius = Number(radiusKm); if (!Number.isFinite(radius)||radius<1||radius>200) {toast("Choose a radius between 1 and 200 km","error");return;} setPage(1);setFilters({q,grade,radius_km:radius,verified});}} />
+                <Button label="Clear Filters" onPress={() => {setQ("");setGrade("");setRadiusKm("50");setVerified(false);setPage(1);setFilters({q:"",grade:"",radius_km:50,verified:false});}} />
+                <AppText variant="heading">Choose a site manually</AppText>
+                <TextInput accessibilityLabel="Site area, city or PIN code" placeholder="Site address, city or PIN code" value={siteAddress} onChangeText={setSiteAddress} style={{minHeight:48,color:colors.onSurface}} />
+                <Button label="Find this location" loading={locating} onPress={locateAddress} />
+                <AppText variant="caption">Search by area or PIN above without location access, or enter site coordinates to search by distance.</AppText>
+                <TextInput accessibilityLabel="Site latitude" placeholder="Latitude" value={manualLat} onChangeText={setManualLat} keyboardType="numbers-and-punctuation" style={{minHeight:48,color:colors.onSurface}} />
+                <TextInput accessibilityLabel="Site longitude" placeholder="Longitude" value={manualLng} onChangeText={setManualLng} keyboardType="numbers-and-punctuation" style={{minHeight:48,color:colors.onSurface}} />
+                <Button label="Use this site" onPress={chooseManualLocation} />
+                {recent.map((entry,i) => <Button key={i} label={`Recent: ${entry.label}`} onPress={() => {manualLocation.current=true;setUserLocation(entry.coords);setPage(1);setLocationStatus("ok");}} />)}
+                {loading ? <ActivityIndicator color={colors.brand} /> : null}
+                {error ? <Button label="Search failed — Retry" onPress={reload} /> : null}
+              </Card> : null}
 
+              <AppText variant="caption">{filtered.length} registered plants on this page · Sorted by distance when a site is selected</AppText>
+              {loading ? <ActivityIndicator accessibilityLabel="Searching nearby plants" color={colors.brand} /> : null}
               <LocationBanner status={locationStatus} locating={locating} onEnable={enableLocation} onRetry={refreshLocation} />
               {isPlayReviewCustomer ? (
                 <View testID="play-review-nearby-hint" style={[styles.reviewHint, { backgroundColor: colors.brandSoft, borderColor: colors.brand + "44" }]}>
@@ -358,35 +340,34 @@ export default function CustomerPlants() {
                   </AppText>
                 </View>
               ) : null}
-              {discoveryError ? <AppText variant="caption" color={colors.warning}>{discoveryError}</AppText> : null}
 
               <View style={styles.registeredHeading}>
                 <AppText variant="heading">Registered plants</AppText>
-                <AppText variant="caption">Order-enabled plants appear first by proximity.</AppText>
+                <AppText variant="caption">Active plants near your selected site. Delivery eligibility is checked when ordering.</AppText>
               </View>
             </View>
           }
           renderItem={({ item }) => loading && !data ? null : (
-            <PlantCard plant={item} onOrder={() => router.push(`/new-order?plantId=${item.id}` as any)} />
+            <PlantCard plant={item} onDetails={() => setDetails(item)} onOrder={() => router.push(`/new-order?plantId=${item.id}` as any)} />
           )}
-          ListFooterComponent={googlePlants.length ? (
-            <View style={{ gap: spacing.md, marginTop: spacing.lg }}>
-              <View style={{ gap: 2 }}>
-                <AppText variant="heading">More RMC plants nearby</AppText>
-                <AppText variant="caption">Google-discovered businesses are not orderable until Authority approval and plant setup.</AppText>
-              </View>
-              {googlePlants.map((place) => (
-                <GooglePlantCard key={place.place_id} place={place} requesting={requestingPlace === place.place_id} onRequest={() => requestListing(place)} />
-              ))}
-            </View>
-          ) : null}
-          ListEmptyComponent={googlePlants.length ? null : loading && !data ? (
+          ListFooterComponent={<View style={{gap:12}}>
+            <AppText variant="caption">Page {page}</AppText>
+            <Button label="Previous" variant="outline" disabled={page===1 || loading} onPress={() => setPage(v=>v-1)} />
+            <Button label="Next" variant="outline" disabled={!data?.has_more || loading} onPress={() => setPage(v=>v+1)} />
+          </View>}
+          ListEmptyComponent={loading && !data ? (
             <View style={{ gap: spacing.md }}>{[0, 1].map((i) => <Skeleton key={i} height={140} style={{ borderRadius: radius.lg }} />)}</View>
           ) : (
-            <EmptyView icon="business-outline" title="No registered plants found" subtitle={q.trim() ? "Try another search or use Find More" : "Use Find More to discover RMC businesses nearby"} />
+            <EmptyView icon="business-outline" title="No registered plants found" subtitle={q.trim() ? "Try another name, city, PIN code or grade" : "Choose a site, increase the radius or clear your filters"} />
           )}
         />
       )}
+      <Modal visible={!!details} animationType="slide" onRequestClose={() => setDetails(null)}>
+        <ScrollView contentContainerStyle={{padding:24,paddingTop:56,gap:16,backgroundColor:colors.surface,flexGrow:1}}>
+          {details ? <><AppText variant="title">{details.name}</AppText><AppText>{details.address}</AppText><PlantCard plant={details} onOrder={() => {setDetails(null);router.push(`/new-order?plantId=${details.id}` as any);}} /></> : null}
+          <Button label="Close details" onPress={() => setDetails(null)} />
+        </ScrollView>
+      </Modal>
     </View>
   );
 }
@@ -452,48 +433,6 @@ function LocationBanner({ status, locating, onEnable, onRetry }: {
         <AppText style={{ fontFamily: fonts.semibold, fontSize: 12, color: colors.onBrand }}>{c.label}</AppText>
       </Pressable>
     </View>
-  );
-}
-
-function GooglePlantCard({ place, requesting, onRequest }: { place: GooglePlant; requesting: boolean; onRequest: () => void }) {
-  const { colors } = useTheme();
-  const pending = place.request_status === "PENDING";
-  const approved = place.request_status === "APPROVED";
-  const buttonLabel = place.registered ? "Already listed" : pending ? "Sent for review" : approved ? "Approved" : requesting ? "Submitting…" : "Add to TrackMyRMC";
-
-  const openDirections = () => {
-    const url = place.google_maps_uri || `https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lng}`;
-    void Linking.openURL(url);
-  };
-
-  return (
-    <Card style={{ gap: spacing.sm }}>
-      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.sm }}>
-        <View style={[styles.googleIcon, { backgroundColor: colors.surfaceTertiary }]}><Ionicons name="location-outline" size={18} color={colors.brand} /></View>
-        <View style={{ flex: 1, gap: 3 }}>
-          <AppText style={{ fontFamily: fonts.bold, fontSize: fontSize.base, color: colors.onSurface }} numberOfLines={2}>{place.name}</AppText>
-          <AppText variant="caption" numberOfLines={2}>{place.address || [place.city, place.district].filter(Boolean).join(" · ")}</AppText>
-          <AppText variant="caption" color={place.registered ? colors.success : colors.warning}>
-            {place.registered ? "Registered TrackMyRMC plant" : "Google-discovered · not yet verified for orders"}
-          </AppText>
-        </View>
-      </View>
-      <View style={styles.googleActions}>
-        <Pressable onPress={openDirections} style={[styles.googleOutlineButton, { borderColor: colors.border }]}>
-          <Ionicons name="navigate-outline" size={15} color={colors.onSurfaceSecondary} />
-          <AppText style={{ fontFamily: fonts.semibold, fontSize: 12, color: colors.onSurfaceSecondary }}>Directions</AppText>
-        </Pressable>
-        <Pressable
-          testID={`request-google-plant-${place.place_id}`}
-          disabled={place.registered || pending || approved || requesting}
-          onPress={onRequest}
-          style={[styles.googleRequestButton, { backgroundColor: place.registered || pending || approved ? colors.surfaceTertiary : colors.brand, opacity: requesting ? 0.7 : 1 }]}
-        >
-          <Ionicons name={place.registered ? "checkmark-circle-outline" : pending ? "time-outline" : "add-circle-outline"} size={15} color={place.registered || pending || approved ? colors.onSurfaceTertiary : colors.onBrand} />
-          <AppText style={{ fontFamily: fonts.semibold, fontSize: 12, color: place.registered || pending || approved ? colors.onSurfaceTertiary : colors.onBrand }}>{buttonLabel}</AppText>
-        </Pressable>
-      </View>
-    </Card>
   );
 }
 
