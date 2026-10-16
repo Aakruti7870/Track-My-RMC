@@ -3,13 +3,6 @@ name: Backend CI
 on:
   push:
     branches: [ main, develop ]
-    paths:
-      - 'backend/**'
-      - 'frontend/**'
-      - 'admin-web/**'
-      - 'ops/**'
-      - '.github/workflows/backend.yml'
-      - '.github/workflows/deploy-aws-production.yml'
   # Include stacked feature PRs so dependent slices are tested before retargeting
   # to main; otherwise their base branch would silently skip required CI.
   pull_request:
