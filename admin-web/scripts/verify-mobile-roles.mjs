@@ -114,6 +114,19 @@ try {
     phase = 'login';
     const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
     const page = await context.newPage();
+    if (user.role === 'customer') {
+      // Even an existing OS grant must not override the user's manual choice.
+      await context.grantPermissions(['geolocation']);
+      await context.setGeolocation({latitude:19.076,longitude:72.877});
+      await page.addInitScript(() => {
+        window.__tmLocationRequests = 0;
+        const original = navigator.geolocation.getCurrentPosition.bind(navigator.geolocation);
+        navigator.geolocation.getCurrentPosition = (...args) => {
+          window.__tmLocationRequests++;
+          return original(...args);
+        };
+      });
+    }
     page.setDefaultTimeout(60000);
     const failures = [], runtimeErrors = [];
     safeDiagnostics = failures;
@@ -188,6 +201,7 @@ try {
       await expect(page.getByTestId('plants-list')).toBeVisible();
       await expect.poll(() => successfulPaths.has('/api/customer/plants/search')).toBe(true);
       await expect(page.getByText('Browser staging plant',{exact:true}).first()).toBeVisible();
+      assert.equal(await page.evaluate(() => window.__tmLocationRequests),0,'Manual preference must prevent automatic GPS even with an OS grant');
       await page.screenshot({path:new URL('../../artifacts/customer-experience/plants-mobile.png',import.meta.url).pathname});
       await page.reload();
       await expect(page.getByTestId('plants-list')).toBeVisible();
