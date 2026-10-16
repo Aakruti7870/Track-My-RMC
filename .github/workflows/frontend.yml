@@ -32,6 +32,8 @@ jobs:
         run: npm ci
       - name: Type Check
         run: npm run typecheck
+      - name: API base path regressions
+        run: npm run test:api-base
       - name: Validate role routing
         run: npm run check:auth-routing
       - name: Validate all role module routes and menus

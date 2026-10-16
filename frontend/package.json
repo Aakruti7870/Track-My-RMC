@@ -11,6 +11,7 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
+    "test:api-base": "node --test scripts/test-api-base.cjs",
     "check:auth-routing": "node ./scripts/check-role-routing.mjs",
     "check:modules": "node ./scripts/check-module-discovery.mjs",
     "check:play-policy": "node ./scripts/check-play-policy-readiness.mjs",
