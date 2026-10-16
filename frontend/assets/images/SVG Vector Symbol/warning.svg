@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <defs>
+    <linearGradient id="warning-warn" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FDE047" />
+      <stop offset="1" stop-color="#EAB308" />
+    </linearGradient>
+    <linearGradient id="warning-plate" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" />
+      <stop offset="1" stop-color="#C9D7DB" />
+    </linearGradient>
+    <linearGradient id="warning-sheen" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.9" />
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <rect x="8" y="12" width="48" height="47" rx="15" fill="#16232A" opacity="0.16" />
+  <rect x="7" y="6" width="50" height="50" rx="15" fill="url(#warning-plate)" />
+  <rect x="7.9" y="6.9" width="48.2" height="48.2" rx="14" fill="none" stroke="#FFFFFF" stroke-opacity="0.75" stroke-width="1.4" />
+  <rect x="11" y="9" width="42" height="19" rx="11" fill="url(#warning-sheen)" />
+  <path d="M32 17 L47 44 a2 2 0 0 1 -2 3 H19 a2 2 0 0 1 -2 -3 Z" fill="url(#warning-warn)" stroke="#FFFFFF" stroke-width="1.5" stroke-linejoin="round" />
+  <line x1="32" y1="28" x2="32" y2="38" stroke="#16232A" stroke-width="3" stroke-linecap="round" />
+  <circle cx="32" cy="42.5" r="1.8" fill="#16232A" />
+</svg>

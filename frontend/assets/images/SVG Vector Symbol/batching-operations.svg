@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <defs>
+    <linearGradient id="batching-operations-bo" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#22D3EE" />
+      <stop offset="1" stop-color="#0891B2" />
+    </linearGradient>
+    <linearGradient id="batching-operations-bo2" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#22D3EE" />
+      <stop offset="1" stop-color="#0891B2" />
+    </linearGradient>
+    <linearGradient id="batching-operations-bo3" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FBBF24" />
+      <stop offset="1" stop-color="#D97706" />
+    </linearGradient>
+    <linearGradient id="batching-operations-plate" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" />
+      <stop offset="1" stop-color="#C9D7DB" />
+    </linearGradient>
+    <linearGradient id="batching-operations-sheen" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.9" />
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <rect x="8" y="12" width="48" height="47" rx="15" fill="#16232A" opacity="0.16" />
+  <rect x="7" y="6" width="50" height="50" rx="15" fill="url(#batching-operations-plate)" />
+  <rect x="7.9" y="6.9" width="48.2" height="48.2" rx="14" fill="none" stroke="#FFFFFF" stroke-opacity="0.75" stroke-width="1.4" />
+  <rect x="11" y="9" width="42" height="19" rx="11" fill="url(#batching-operations-sheen)" />
+  <path d="M22 46 V24 a5 5 0 0 1 5 -5 h10 a5 5 0 0 1 5 5 v22 Z" fill="url(#batching-operations-bo)" />
+  <polygon points="27,19 23,12 41,12 37,19" fill="url(#batching-operations-bo2)" />
+  <path d="M28 46 l4 -8 l4 8 Z" fill="url(#batching-operations-bo3)" />
+  <rect x="25" y="22" width="4" height="18" rx="2" fill="#FFFFFF" opacity="0.25" />
+</svg>

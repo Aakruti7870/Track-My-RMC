@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <defs>
+    <linearGradient id="live-order-tracking-route" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#60A5FA" />
+      <stop offset="1" stop-color="#2563EB" />
+    </linearGradient>
+    <linearGradient id="live-order-tracking-trk" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F87171" />
+      <stop offset="1" stop-color="#DC2626" />
+    </linearGradient>
+    <linearGradient id="live-order-tracking-trk-d" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F87171" />
+      <stop offset="1" stop-color="#DC2626" />
+    </linearGradient>
+    <linearGradient id="live-order-tracking-plate" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" />
+      <stop offset="1" stop-color="#C9D7DB" />
+    </linearGradient>
+    <linearGradient id="live-order-tracking-sheen" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.9" />
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <rect x="8" y="12" width="48" height="47" rx="15" fill="#16232A" opacity="0.16" />
+  <rect x="7" y="6" width="50" height="50" rx="15" fill="url(#live-order-tracking-plate)" />
+  <rect x="7.9" y="6.9" width="48.2" height="48.2" rx="14" fill="none" stroke="#FFFFFF" stroke-opacity="0.75" stroke-width="1.4" />
+  <rect x="11" y="9" width="42" height="19" rx="11" fill="url(#live-order-tracking-sheen)" />
+  <path d="M18 40 q8 -16 14 -8 t14 -8" fill="none" stroke="url(#live-order-tracking-route)" stroke-width="3" stroke-dasharray="4 4" stroke-linecap="round" />
+  <path d="M32 16 C25.4 16 20 21.2 20 27.8 C20 36.5 32 48 32 48 C32 48 44 36.5 44 27.8 C44 21.2 38.6 16 32 16 Z" fill="url(#live-order-tracking-trk)" />
+  <circle cx="32" cy="27.6" r="5" fill="#FFFFFF" />
+  <circle cx="32" cy="27.6" r="2.6" fill="url(#live-order-tracking-trk-d)" />
+</svg>

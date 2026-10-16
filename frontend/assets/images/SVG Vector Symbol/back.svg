@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <defs>
+    <linearGradient id="back-arr" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#60A5FA" />
+      <stop offset="1" stop-color="#2563EB" />
+    </linearGradient>
+    <linearGradient id="back-plate" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" />
+      <stop offset="1" stop-color="#C9D7DB" />
+    </linearGradient>
+    <linearGradient id="back-sheen" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.9" />
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <rect x="8" y="12" width="48" height="47" rx="15" fill="#16232A" opacity="0.16" />
+  <rect x="7" y="6" width="50" height="50" rx="15" fill="url(#back-plate)" />
+  <rect x="7.9" y="6.9" width="48.2" height="48.2" rx="14" fill="none" stroke="#FFFFFF" stroke-opacity="0.75" stroke-width="1.4" />
+  <rect x="11" y="9" width="42" height="19" rx="11" fill="url(#back-sheen)" />
+  <path d="M40 20 L26 32 L40 44" fill="none" stroke="url(#back-arr)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <defs>
+    <linearGradient id="new-order-cube-t" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FBBF24" />
+      <stop offset="1" stop-color="#D97706" />
+    </linearGradient>
+    <linearGradient id="new-order-cube-l" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#16232A" stop-opacity="0" />
+      <stop offset="1" stop-color="#16232A" stop-opacity="0.22" />
+    </linearGradient>
+    <linearGradient id="new-order-cube-ls" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FBBF24" />
+      <stop offset="1" stop-color="#D97706" />
+    </linearGradient>
+    <linearGradient id="new-order-cube-rs" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FBBF24" />
+      <stop offset="1" stop-color="#D97706" />
+    </linearGradient>
+    <linearGradient id="new-order-cube-r2" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#16232A" stop-opacity="0.3" />
+      <stop offset="1" stop-color="#16232A" stop-opacity="0.42" />
+    </linearGradient>
+    <linearGradient id="new-order-plus" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#34D399" />
+      <stop offset="1" stop-color="#059669" />
+    </linearGradient>
+    <linearGradient id="new-order-plate" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" />
+      <stop offset="1" stop-color="#C9D7DB" />
+    </linearGradient>
+    <linearGradient id="new-order-sheen" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.9" />
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <rect x="8" y="12" width="48" height="47" rx="15" fill="#16232A" opacity="0.16" />
+  <rect x="7" y="6" width="50" height="50" rx="15" fill="url(#new-order-plate)" />
+  <rect x="7.9" y="6.9" width="48.2" height="48.2" rx="14" fill="none" stroke="#FFFFFF" stroke-opacity="0.75" stroke-width="1.4" />
+  <rect x="11" y="9" width="42" height="19" rx="11" fill="url(#new-order-sheen)" />
+  <polygon points="20,24 30,29 30,39 20,34" fill="url(#new-order-cube-ls)" />
+  <polygon points="40,24 30,29 30,39 40,34" fill="url(#new-order-cube-rs)" />
+  <polygon points="30,19 40,24 30,29 20,24" fill="url(#new-order-cube-t)" />
+  <polygon points="20,24 30,29 30,39 20,34" fill="url(#new-order-cube-l)" />
+  <polygon points="40,24 30,29 30,39 40,34" fill="url(#new-order-cube-r2)" />
+  <circle cx="44" cy="42" r="8" fill="url(#new-order-plus)" stroke="#FFFFFF" stroke-width="2" />
+  <line x1="40" y1="42" x2="48" y2="42" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" />
+  <line x1="44" y1="38" x2="44" y2="46" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" />
+</svg>

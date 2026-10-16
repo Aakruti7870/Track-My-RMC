@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <defs>
+    <linearGradient id="saved-sites-spin" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F87171" />
+      <stop offset="1" stop-color="#DC2626" />
+    </linearGradient>
+    <linearGradient id="saved-sites-spin-d" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F87171" />
+      <stop offset="1" stop-color="#DC2626" />
+    </linearGradient>
+    <linearGradient id="saved-sites-plate" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" />
+      <stop offset="1" stop-color="#C9D7DB" />
+    </linearGradient>
+    <linearGradient id="saved-sites-sheen" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.9" />
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <rect x="8" y="12" width="48" height="47" rx="15" fill="#16232A" opacity="0.16" />
+  <rect x="7" y="6" width="50" height="50" rx="15" fill="url(#saved-sites-plate)" />
+  <rect x="7.9" y="6.9" width="48.2" height="48.2" rx="14" fill="none" stroke="#FFFFFF" stroke-opacity="0.75" stroke-width="1.4" />
+  <rect x="11" y="9" width="42" height="19" rx="11" fill="url(#saved-sites-sheen)" />
+  <path d="M32 16 C25.4 16 20 21.2 20 27.8 C20 36.5 32 48 32 48 C32 48 44 36.5 44 27.8 C44 21.2 38.6 16 32 16 Z" fill="url(#saved-sites-spin)" />
+  <circle cx="32" cy="27.6" r="5" fill="#FFFFFF" />
+  <circle cx="32" cy="27.6" r="2.6" fill="url(#saved-sites-spin-d)" />
+  <path d="M28 24 l1.6 3.4 l3.7 0.4 l-2.8 2.5 l0.8 3.7 l-3.3 -1.9 l-3.3 1.9 l0.8 -3.7 l-2.8 -2.5 l3.7 -0.4 Z" fill="#FACC15" />
+</svg>

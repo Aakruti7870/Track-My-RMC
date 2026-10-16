@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <defs>
+    <linearGradient id="documents-fold" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FDE047" />
+      <stop offset="1" stop-color="#EAB308" />
+    </linearGradient>
+    <linearGradient id="documents-fold-b" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FDE047" />
+      <stop offset="1" stop-color="#EAB308" />
+    </linearGradient>
+    <linearGradient id="documents-plate" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" />
+      <stop offset="1" stop-color="#C9D7DB" />
+    </linearGradient>
+    <linearGradient id="documents-sheen" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.9" />
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <rect x="8" y="12" width="48" height="47" rx="15" fill="#16232A" opacity="0.16" />
+  <rect x="7" y="6" width="50" height="50" rx="15" fill="url(#documents-plate)" />
+  <rect x="7.9" y="6.9" width="48.2" height="48.2" rx="14" fill="none" stroke="#FFFFFF" stroke-opacity="0.75" stroke-width="1.4" />
+  <rect x="11" y="9" width="42" height="19" rx="11" fill="url(#documents-sheen)" />
+  <path d="M18 23 a2 2 0 0 1 2 -2 h7 l3 4 h13 a2 2 0 0 1 2 2 v16 a2 2 0 0 1 -2 2 h-25 a2 2 0 0 1 -2 -2 Z" fill="url(#documents-fold-b)" />
+  <rect x="18" y="27" width="28" height="18" rx="2" fill="url(#documents-fold)" />
+  <rect x="21" y="29" width="20" height="3" rx="1.5" fill="#FFFFFF" opacity="0.3" />
+</svg>

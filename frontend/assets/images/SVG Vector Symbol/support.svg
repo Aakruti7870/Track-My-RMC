@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <defs>
+    <linearGradient id="support-hs" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#22D3EE" />
+      <stop offset="1" stop-color="#0891B2" />
+    </linearGradient>
+    <linearGradient id="support-hs2" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FBBF24" />
+      <stop offset="1" stop-color="#D97706" />
+    </linearGradient>
+    <linearGradient id="support-plate" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" />
+      <stop offset="1" stop-color="#C9D7DB" />
+    </linearGradient>
+    <linearGradient id="support-sheen" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.9" />
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <rect x="8" y="12" width="48" height="47" rx="15" fill="#16232A" opacity="0.16" />
+  <rect x="7" y="6" width="50" height="50" rx="15" fill="url(#support-plate)" />
+  <rect x="7.9" y="6.9" width="48.2" height="48.2" rx="14" fill="none" stroke="#FFFFFF" stroke-opacity="0.75" stroke-width="1.4" />
+  <rect x="11" y="9" width="42" height="19" rx="11" fill="url(#support-sheen)" />
+  <path d="M20 34 v-2 a12 12 0 0 1 24 0 v2" fill="none" stroke="url(#support-hs)" stroke-width="3.4" stroke-linecap="round" />
+  <rect x="17" y="32" width="6" height="11" rx="3" fill="url(#support-hs)" />
+  <rect x="41" y="32" width="6" height="11" rx="3" fill="url(#support-hs)" />
+  <path d="M44 42 v2 a4 4 0 0 1 -4 4 h-6" fill="none" stroke="url(#support-hs)" stroke-width="3" stroke-linecap="round" />
+  <circle cx="32" cy="48" r="2.6" fill="url(#support-hs2)" />
+</svg>

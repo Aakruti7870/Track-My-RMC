@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <defs>
+    <linearGradient id="kyc-verified-shield" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#34D399" />
+      <stop offset="1" stop-color="#059669" />
+    </linearGradient>
+    <linearGradient id="kyc-verified-kv" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#60A5FA" />
+      <stop offset="1" stop-color="#2563EB" />
+    </linearGradient>
+    <linearGradient id="kyc-verified-plate" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" />
+      <stop offset="1" stop-color="#C9D7DB" />
+    </linearGradient>
+    <linearGradient id="kyc-verified-sheen" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.9" />
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <rect x="8" y="12" width="48" height="47" rx="15" fill="#16232A" opacity="0.16" />
+  <rect x="7" y="6" width="50" height="50" rx="15" fill="url(#kyc-verified-plate)" />
+  <rect x="7.9" y="6.9" width="48.2" height="48.2" rx="14" fill="none" stroke="#FFFFFF" stroke-opacity="0.75" stroke-width="1.4" />
+  <rect x="11" y="9" width="42" height="19" rx="11" fill="url(#kyc-verified-sheen)" />
+  <path d="M32 15 L45 20 V31 C45 39.5 39.2 45 32 48 C24.8 45 19 39.5 19 31 V20 Z" fill="url(#kyc-verified-shield)" />
+  <path d="M32 16.6 L43.4 21 V31 C43.4 38.2 38.4 43 32 45.6 Z" fill="#FFFFFF" opacity="0.14" />
+  <circle cx="32" cy="28" r="5" fill="#FFFFFF" />
+  <path d="M26 40 a6 7 0 0 1 12 0 Z" fill="#FFFFFF" opacity="0.95" />
+  <circle cx="40" cy="40" r="4.6" fill="url(#kyc-verified-kv)" />
+  <path d="M37.8 40 l1.4 1.4 l2.8 -3" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

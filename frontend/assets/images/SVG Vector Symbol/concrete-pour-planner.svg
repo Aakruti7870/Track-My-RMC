@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <defs>
+    <linearGradient id="concrete-pour-planner-cal" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#A78BFA" />
+      <stop offset="1" stop-color="#7C3AED" />
+    </linearGradient>
+    <linearGradient id="concrete-pour-planner-cal-top" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2A3A44" />
+      <stop offset="1" stop-color="#0D151A" />
+    </linearGradient>
+    <linearGradient id="concrete-pour-planner-pour" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#22D3EE" />
+      <stop offset="1" stop-color="#0891B2" />
+    </linearGradient>
+    <linearGradient id="concrete-pour-planner-plate" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" />
+      <stop offset="1" stop-color="#C9D7DB" />
+    </linearGradient>
+    <linearGradient id="concrete-pour-planner-sheen" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.9" />
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <rect x="8" y="12" width="48" height="47" rx="15" fill="#16232A" opacity="0.16" />
+  <rect x="7" y="6" width="50" height="50" rx="15" fill="url(#concrete-pour-planner-plate)" />
+  <rect x="7.9" y="6.9" width="48.2" height="48.2" rx="14" fill="none" stroke="#FFFFFF" stroke-opacity="0.75" stroke-width="1.4" />
+  <rect x="11" y="9" width="42" height="19" rx="11" fill="url(#concrete-pour-planner-sheen)" />
+  <rect x="18" y="20" width="28" height="25" rx="4" fill="url(#concrete-pour-planner-cal)" />
+  <rect x="18" y="20" width="28" height="8" rx="4" fill="url(#concrete-pour-planner-cal-top)" />
+  <rect x="23" y="16" width="3" height="7" rx="1.5" fill="#16232A" />
+  <rect x="38" y="16" width="3" height="7" rx="1.5" fill="#16232A" />
+  <rect x="21" y="31" width="22" height="11" rx="1.5" fill="#FFFFFF" opacity="0.85" />
+  <path d="M26 36 q6 6 12 0 q-2 6 -6 6 q-4 0 -6 -6 Z" fill="url(#concrete-pour-planner-pour)" />
+</svg>

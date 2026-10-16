@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <defs>
+    <linearGradient id="filter-sld" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#A78BFA" />
+      <stop offset="1" stop-color="#7C3AED" />
+    </linearGradient>
+    <linearGradient id="filter-sld2" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#22D3EE" />
+      <stop offset="1" stop-color="#0891B2" />
+    </linearGradient>
+    <linearGradient id="filter-sld3" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FBBF24" />
+      <stop offset="1" stop-color="#D97706" />
+    </linearGradient>
+    <linearGradient id="filter-sld4" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#34D399" />
+      <stop offset="1" stop-color="#059669" />
+    </linearGradient>
+    <linearGradient id="filter-plate" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" />
+      <stop offset="1" stop-color="#C9D7DB" />
+    </linearGradient>
+    <linearGradient id="filter-sheen" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.9" />
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <rect x="8" y="12" width="48" height="47" rx="15" fill="#16232A" opacity="0.16" />
+  <rect x="7" y="6" width="50" height="50" rx="15" fill="url(#filter-plate)" />
+  <rect x="7.9" y="6.9" width="48.2" height="48.2" rx="14" fill="none" stroke="#FFFFFF" stroke-opacity="0.75" stroke-width="1.4" />
+  <rect x="11" y="9" width="42" height="19" rx="11" fill="url(#filter-sheen)" />
+  <line x1="20" y1="24" x2="44" y2="24" stroke="url(#filter-sld)" stroke-width="3.4" stroke-linecap="round" />
+  <line x1="20" y1="32" x2="44" y2="32" stroke="url(#filter-sld)" stroke-width="3.4" stroke-linecap="round" />
+  <line x1="20" y1="40" x2="44" y2="40" stroke="url(#filter-sld)" stroke-width="3.4" stroke-linecap="round" />
+  <circle cx="28" cy="24" r="3.6" fill="url(#filter-sld2)" stroke="#FFFFFF" stroke-width="1.6" />
+  <circle cx="38" cy="32" r="3.6" fill="url(#filter-sld3)" stroke="#FFFFFF" stroke-width="1.6" />
+  <circle cx="25" cy="40" r="3.6" fill="url(#filter-sld4)" stroke="#FFFFFF" stroke-width="1.6" />
+</svg>

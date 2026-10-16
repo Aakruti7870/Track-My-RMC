@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <defs>
+    <linearGradient id="notifications-bell" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FBBF24" />
+      <stop offset="1" stop-color="#D97706" />
+    </linearGradient>
+    <linearGradient id="notifications-bell-c" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2A3A44" />
+      <stop offset="1" stop-color="#0D151A" />
+    </linearGradient>
+    <linearGradient id="notifications-plate" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" />
+      <stop offset="1" stop-color="#C9D7DB" />
+    </linearGradient>
+    <linearGradient id="notifications-sheen" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.9" />
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <rect x="8" y="12" width="48" height="47" rx="15" fill="#16232A" opacity="0.16" />
+  <rect x="7" y="6" width="50" height="50" rx="15" fill="url(#notifications-plate)" />
+  <rect x="7.9" y="6.9" width="48.2" height="48.2" rx="14" fill="none" stroke="#FFFFFF" stroke-opacity="0.75" stroke-width="1.4" />
+  <rect x="11" y="9" width="42" height="19" rx="11" fill="url(#notifications-sheen)" />
+  <path d="M32 16 a3 3 0 0 0 -3 3 v1 c-5 1.5 -7 6 -7 11 l-2 5 h24 l-2 -5 c0 -5 -2 -9.5 -7 -11 v-1 a3 3 0 0 0 -3 -3 Z" fill="url(#notifications-bell)" />
+  <path d="M28 40 a4 4 0 0 0 8 0 Z" fill="url(#notifications-bell-c)" />
+  <rect x="26" y="22" width="4" height="10" rx="2" fill="#FFFFFF" opacity="0.3" />
+</svg>

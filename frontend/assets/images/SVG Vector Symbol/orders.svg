@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <defs>
+    <linearGradient id="orders-cube-t" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FBBF24" />
+      <stop offset="1" stop-color="#D97706" />
+    </linearGradient>
+    <linearGradient id="orders-cube-l" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#16232A" stop-opacity="0" />
+      <stop offset="1" stop-color="#16232A" stop-opacity="0.22" />
+    </linearGradient>
+    <linearGradient id="orders-cube-ls" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FBBF24" />
+      <stop offset="1" stop-color="#D97706" />
+    </linearGradient>
+    <linearGradient id="orders-cube-rs" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FBBF24" />
+      <stop offset="1" stop-color="#D97706" />
+    </linearGradient>
+    <linearGradient id="orders-cube-r2" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#16232A" stop-opacity="0.3" />
+      <stop offset="1" stop-color="#16232A" stop-opacity="0.42" />
+    </linearGradient>
+    <linearGradient id="orders-plate" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" />
+      <stop offset="1" stop-color="#C9D7DB" />
+    </linearGradient>
+    <linearGradient id="orders-sheen" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.9" />
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <rect x="8" y="12" width="48" height="47" rx="15" fill="#16232A" opacity="0.16" />
+  <rect x="7" y="6" width="50" height="50" rx="15" fill="url(#orders-plate)" />
+  <rect x="7.9" y="6.9" width="48.2" height="48.2" rx="14" fill="none" stroke="#FFFFFF" stroke-opacity="0.75" stroke-width="1.4" />
+  <rect x="11" y="9" width="42" height="19" rx="11" fill="url(#orders-sheen)" />
+  <polygon points="21,25.5 32,31 32,42 21,36.5" fill="url(#orders-cube-ls)" />
+  <polygon points="43,25.5 32,31 32,42 43,36.5" fill="url(#orders-cube-rs)" />
+  <polygon points="32,20 43,25.5 32,31 21,25.5" fill="url(#orders-cube-t)" />
+  <polygon points="21,25.5 32,31 32,42 21,36.5" fill="url(#orders-cube-l)" />
+  <polygon points="43,25.5 32,31 32,42 43,36.5" fill="url(#orders-cube-r2)" />
+  <line x1="26" y1="44" x2="33.2" y2="44" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" opacity="0.85" />
+</svg>

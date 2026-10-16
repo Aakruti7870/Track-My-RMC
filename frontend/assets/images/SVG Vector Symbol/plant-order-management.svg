@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <defs>
+    <linearGradient id="plant-order-management-cube-t" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FBBF24" />
+      <stop offset="1" stop-color="#D97706" />
+    </linearGradient>
+    <linearGradient id="plant-order-management-cube-l" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#16232A" stop-opacity="0" />
+      <stop offset="1" stop-color="#16232A" stop-opacity="0.22" />
+    </linearGradient>
+    <linearGradient id="plant-order-management-cube-ls" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FBBF24" />
+      <stop offset="1" stop-color="#D97706" />
+    </linearGradient>
+    <linearGradient id="plant-order-management-cube-rs" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FBBF24" />
+      <stop offset="1" stop-color="#D97706" />
+    </linearGradient>
+    <linearGradient id="plant-order-management-cube-r2" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#16232A" stop-opacity="0.3" />
+      <stop offset="1" stop-color="#16232A" stop-opacity="0.42" />
+    </linearGradient>
+    <linearGradient id="plant-order-management-gear" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#64748B" />
+      <stop offset="1" stop-color="#334155" />
+    </linearGradient>
+    <linearGradient id="plant-order-management-gear-hole" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#64748B" />
+      <stop offset="1" stop-color="#334155" />
+    </linearGradient>
+    <linearGradient id="plant-order-management-plate" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" />
+      <stop offset="1" stop-color="#C9D7DB" />
+    </linearGradient>
+    <linearGradient id="plant-order-management-sheen" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.9" />
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <rect x="8" y="12" width="48" height="47" rx="15" fill="#16232A" opacity="0.16" />
+  <rect x="7" y="6" width="50" height="50" rx="15" fill="url(#plant-order-management-plate)" />
+  <rect x="7.9" y="6.9" width="48.2" height="48.2" rx="14" fill="none" stroke="#FFFFFF" stroke-opacity="0.75" stroke-width="1.4" />
+  <rect x="11" y="9" width="42" height="19" rx="11" fill="url(#plant-order-management-sheen)" />
+  <polygon points="20,24.5 29,29 29,38 20,33.5" fill="url(#plant-order-management-cube-ls)" />
+  <polygon points="38,24.5 29,29 29,38 38,33.5" fill="url(#plant-order-management-cube-rs)" />
+  <polygon points="29,20 38,24.5 29,29 20,24.5" fill="url(#plant-order-management-cube-t)" />
+  <polygon points="20,24.5 29,29 29,38 20,33.5" fill="url(#plant-order-management-cube-l)" />
+  <polygon points="38,24.5 29,29 29,38 38,33.5" fill="url(#plant-order-management-cube-r2)" />
+  <polygon points="46.60,40.80 51.60,40.80 51.60,43.20 46.60,43.20" fill="url(#plant-order-management-gear)" />
+  <polygon points="45.81,44.85 48.92,48.76 47.05,50.25 43.93,46.34" fill="url(#plant-order-management-gear)" />
+  <polygon points="42.15,46.75 41.03,51.63 38.69,51.09 39.81,46.22" fill="url(#plant-order-management-gear)" />
+  <polygon points="38.38,45.08 33.87,47.25 32.83,45.08 37.33,42.91" fill="url(#plant-order-management-gear)" />
+  <polygon points="37.33,41.09 32.83,38.92 33.87,36.75 38.38,38.92" fill="url(#plant-order-management-gear)" />
+  <polygon points="39.81,37.78 38.69,32.91 41.03,32.37 42.15,37.25" fill="url(#plant-order-management-gear)" />
+  <polygon points="43.93,37.66 47.05,33.75 48.92,35.24 45.81,39.15" fill="url(#plant-order-management-gear)" />
+  <circle cx="42" cy="42" r="4.6" fill="url(#plant-order-management-gear)" />
+  <circle cx="42" cy="42" r="3.8" fill="#FFFFFF" opacity="0.14" />
+  <circle cx="42" cy="42" r="4.2" fill="#FFFFFF" />
+  <circle cx="42" cy="42" r="4.2" fill="url(#plant-order-management-gear-hole)" opacity="0" />
+</svg>

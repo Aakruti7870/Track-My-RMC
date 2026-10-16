@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <defs>
+    <linearGradient id="settings-gear" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#64748B" />
+      <stop offset="1" stop-color="#334155" />
+    </linearGradient>
+    <linearGradient id="settings-gear-hole" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#64748B" />
+      <stop offset="1" stop-color="#334155" />
+    </linearGradient>
+    <linearGradient id="settings-plate" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" />
+      <stop offset="1" stop-color="#C9D7DB" />
+    </linearGradient>
+    <linearGradient id="settings-sheen" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.9" />
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <rect x="8" y="12" width="48" height="47" rx="15" fill="#16232A" opacity="0.16" />
+  <rect x="7" y="6" width="50" height="50" rx="15" fill="url(#settings-plate)" />
+  <rect x="7.9" y="6.9" width="48.2" height="48.2" rx="14" fill="none" stroke="#FFFFFF" stroke-opacity="0.75" stroke-width="1.4" />
+  <rect x="11" y="9" width="42" height="19" rx="11" fill="url(#settings-sheen)" />
+  <polygon points="42.00,30.80 47.00,30.80 47.00,33.20 42.00,33.20" fill="url(#settings-gear)" />
+  <polygon points="39.92,38.22 43.46,41.76 41.76,43.46 38.22,39.92" fill="url(#settings-gear)" />
+  <polygon points="33.20,42.00 33.20,47.00 30.80,47.00 30.80,42.00" fill="url(#settings-gear)" />
+  <polygon points="25.78,39.92 22.24,43.46 20.54,41.76 24.08,38.22" fill="url(#settings-gear)" />
+  <polygon points="22.00,33.20 17.00,33.20 17.00,30.80 22.00,30.80" fill="url(#settings-gear)" />
+  <polygon points="24.08,25.78 20.54,22.24 22.24,20.54 25.78,24.08" fill="url(#settings-gear)" />
+  <polygon points="30.80,22.00 30.80,17.00 33.20,17.00 33.20,22.00" fill="url(#settings-gear)" />
+  <polygon points="38.22,24.08 41.76,20.54 43.46,22.24 39.92,25.78" fill="url(#settings-gear)" />
+  <circle cx="32" cy="32" r="10" fill="url(#settings-gear)" />
+  <circle cx="32" cy="32" r="9.2" fill="#FFFFFF" opacity="0.14" />
+  <circle cx="32" cy="32" r="4.2" fill="#FFFFFF" />
+  <circle cx="32" cy="32" r="4.2" fill="url(#settings-gear-hole)" opacity="0" />
+</svg>

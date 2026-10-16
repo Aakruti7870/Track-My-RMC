@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <defs>
+    <linearGradient id="production-queue-conv" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#64748B" />
+      <stop offset="1" stop-color="#334155" />
+    </linearGradient>
+    <linearGradient id="production-queue-cube-t" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FBBF24" />
+      <stop offset="1" stop-color="#D97706" />
+    </linearGradient>
+    <linearGradient id="production-queue-cube-l" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#16232A" stop-opacity="0" />
+      <stop offset="1" stop-color="#16232A" stop-opacity="0.22" />
+    </linearGradient>
+    <linearGradient id="production-queue-cube-ls" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FBBF24" />
+      <stop offset="1" stop-color="#D97706" />
+    </linearGradient>
+    <linearGradient id="production-queue-cube-rs" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FBBF24" />
+      <stop offset="1" stop-color="#D97706" />
+    </linearGradient>
+    <linearGradient id="production-queue-cube-r2" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#16232A" stop-opacity="0.3" />
+      <stop offset="1" stop-color="#16232A" stop-opacity="0.42" />
+    </linearGradient>
+    <linearGradient id="production-queue-plate" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" />
+      <stop offset="1" stop-color="#C9D7DB" />
+    </linearGradient>
+    <linearGradient id="production-queue-sheen" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.9" />
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <rect x="8" y="12" width="48" height="47" rx="15" fill="#16232A" opacity="0.16" />
+  <rect x="7" y="6" width="50" height="50" rx="15" fill="url(#production-queue-plate)" />
+  <rect x="7.9" y="6.9" width="48.2" height="48.2" rx="14" fill="none" stroke="#FFFFFF" stroke-opacity="0.75" stroke-width="1.4" />
+  <rect x="11" y="9" width="42" height="19" rx="11" fill="url(#production-queue-sheen)" />
+  <rect x="18" y="38" width="28" height="6" rx="3" fill="url(#production-queue-conv)" />
+  <circle cx="22" cy="41" r="2.4" fill="#FFFFFF" />
+  <circle cx="32" cy="41" r="2.4" fill="#FFFFFF" />
+  <circle cx="42" cy="41" r="2.4" fill="#FFFFFF" />
+  <polygon points="18,27 24,30 24,36 18,33" fill="url(#production-queue-cube-ls)" />
+  <polygon points="30,27 24,30 24,36 30,33" fill="url(#production-queue-cube-rs)" />
+  <polygon points="24,24 30,27 24,30 18,27" fill="url(#production-queue-cube-t)" />
+  <polygon points="18,27 24,30 24,36 18,33" fill="url(#production-queue-cube-l)" />
+  <polygon points="30,27 24,30 24,36 30,33" fill="url(#production-queue-cube-r2)" />
+  <polygon points="30,27 36,30 36,36 30,33" fill="url(#production-queue-cube-ls)" />
+  <polygon points="42,27 36,30 36,36 42,33" fill="url(#production-queue-cube-rs)" />
+  <polygon points="36,24 42,27 36,30 30,27" fill="url(#production-queue-cube-t)" />
+  <polygon points="30,27 36,30 36,36 30,33" fill="url(#production-queue-cube-l)" />
+  <polygon points="42,27 36,30 36,36 42,33" fill="url(#production-queue-cube-r2)" />
+</svg>

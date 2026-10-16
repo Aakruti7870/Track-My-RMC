@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <defs>
+    <linearGradient id="nearby-rmc-plants-plant-b" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2A3A44" />
+      <stop offset="1" stop-color="#0D151A" />
+    </linearGradient>
+    <linearGradient id="nearby-rmc-plants-plant-s" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#22D3EE" />
+      <stop offset="1" stop-color="#0891B2" />
+    </linearGradient>
+    <linearGradient id="nearby-rmc-plants-plant-dome" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#22D3EE" />
+      <stop offset="1" stop-color="#0891B2" />
+    </linearGradient>
+    <linearGradient id="nearby-rmc-plants-npin" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F87171" />
+      <stop offset="1" stop-color="#DC2626" />
+    </linearGradient>
+    <linearGradient id="nearby-rmc-plants-npin-d" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F87171" />
+      <stop offset="1" stop-color="#DC2626" />
+    </linearGradient>
+    <linearGradient id="nearby-rmc-plants-plate" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" />
+      <stop offset="1" stop-color="#C9D7DB" />
+    </linearGradient>
+    <linearGradient id="nearby-rmc-plants-sheen" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.9" />
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <rect x="8" y="12" width="48" height="47" rx="15" fill="#16232A" opacity="0.16" />
+  <rect x="7" y="6" width="50" height="50" rx="15" fill="url(#nearby-rmc-plants-plate)" />
+  <rect x="7.9" y="6.9" width="48.2" height="48.2" rx="14" fill="none" stroke="#FFFFFF" stroke-opacity="0.75" stroke-width="1.4" />
+  <rect x="11" y="9" width="42" height="19" rx="11" fill="url(#nearby-rmc-plants-sheen)" />
+  <rect x="19" y="34" width="26" height="14" rx="2.5" fill="url(#nearby-rmc-plants-plant-b)" />
+  <path d="M22 34 V24 a5 5 0 0 1 5 -5 h3 a5 5 0 0 1 5 5 V34 Z" fill="url(#nearby-rmc-plants-plant-s)" />
+  <ellipse cx="29.5" cy="19" rx="5" ry="2.4" fill="url(#nearby-rmc-plants-plant-dome)" />
+  <rect x="38" y="28" width="7" height="6" rx="1.5" fill="url(#nearby-rmc-plants-plant-s)" />
+  <rect x="23" y="21" width="4" height="11" rx="2" fill="#FFFFFF" opacity="0.3" />
+  <rect x="24" y="38" width="4" height="4" rx="1" fill="#FFFFFF" opacity="0.6" />
+  <rect x="36" y="38" width="5" height="4" rx="1" fill="#FFFFFF" opacity="0.5" />
+  <path d="M32 16 C25.4 16 20 21.2 20 27.8 C20 36.5 32 48 32 48 C32 48 44 36.5 44 27.8 C44 21.2 38.6 16 32 16 Z" fill="url(#nearby-rmc-plants-npin)" transform="translate(10 -14) scale(0.5)" />
+  <circle cx="32" cy="27.6" r="5" fill="#FFFFFF" transform="translate(10 -14) scale(0.5)" />
+  <circle cx="32" cy="27.6" r="2.6" fill="url(#nearby-rmc-plants-npin-d)" transform="translate(10 -14) scale(0.5)" />
+</svg>
