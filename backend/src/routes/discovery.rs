@@ -563,7 +563,8 @@ mod tests {
         }))
         .unwrap();
         assert!(valid.validate().is_ok());
-        let invalid: Search = serde_json::from_value(json!({"district": format!("Pune{}Other", char::from(10))})).unwrap();
+        let invalid_value = format!("Pune{}Other", char::from(10));
+        let invalid: Search = serde_json::from_value(json!({"district": invalid_value})).unwrap();
         assert!(invalid.validate().is_err());
         let oversized: GoogleNearbyQuery = serde_json::from_value(json!({
             "lat":18.9, "lng":73.1, "state": "x".repeat(81)
