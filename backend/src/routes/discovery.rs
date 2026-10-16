@@ -406,20 +406,20 @@ mod tests {
             assert!(query.validate().is_err());
         }
         let valid = GoogleNearbyQuery {
-                lat: 18.9,
-                lng: 73.1,
-                radius_km: None,
-            };
+            lat: 18.9,
+            lng: 73.1,
+            radius_km: None,
+        };
         assert_eq!(valid.validate().unwrap(), 25.0);
     }
 
     #[test]
     fn google_nearby_filters_distance_closed_locations_and_invalid_results() {
         let query = GoogleNearbyQuery {
-                lat: 18.9,
-                lng: 73.1,
-                radius_km: Some(10.0),
-            };
+            lat: 18.9,
+            lng: 73.1,
+            radius_km: Some(10.0),
+        };
         let payload = json!({"places":[
             {"id":"near","displayName":{"text":"Nearby RMC"},"location":{"latitude":18.91,"longitude":73.1},"formattedAddress":"Raigad"},
             {"id":"closed","displayName":{"text":"Closed RMC"},"businessStatus":"CLOSED_PERMANENTLY","location":{"latitude":18.91,"longitude":73.1}},
