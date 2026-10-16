@@ -279,36 +279,27 @@ export default function CustomerPlants() {
           showsVerticalScrollIndicator={false}
           onRefresh={refetch}
           refreshing={loading && !!data}
-          contentContainerStyle={{ width:"100%",maxWidth:1100,alignSelf:"center",padding: spacing.lg, paddingBottom: 120, gap: spacing.md, flexGrow: 1 }}
+          contentContainerStyle={{ width:"100%",maxWidth:1100,alignSelf:"center",paddingHorizontal: 16, paddingTop: 12, paddingBottom: 120, gap: 14, flexGrow: 1 }}
           ListHeaderComponent={
             <View style={{ gap: spacing.sm, marginBottom: spacing.xs }}>
-              <Button label={mapView ? "List View" : "Map View"} onPress={() => setMapView(v => !v)} />
-              {mapView ? <PlantMap plants={filtered} userLocation={userLocation} onSelectPlant={setDetails} onRegionChange={coords => { if (!userLocation || distanceKm(userLocation,coords)>1) { manualLocation.current=true;setUserLocation(coords); setPage(1); } }} /> : null}
-
-              <View style={[styles.searchBar, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-                <Ionicons name="search-outline" size={20} color={colors.onSurfaceTertiary} />
-                <TextInput
-                  testID="plants-search"
-                  value={q}
-                  onChangeText={value => {setQ(value);setPage(1);setFilters(current=>({...current,q:value}));}}
-                  placeholder="Plant name, area, city or PIN code…"
-                  placeholderTextColor={colors.onSurfaceTertiary}
-                  returnKeyType="search"
-                  onSubmitEditing={() => {setPage(1);setFilters({q,grade,radius_km:Number(radiusKm)||50,verified});}}
-                  style={[styles.searchInput, { color: colors.onSurface }]}
-                />
-                <Pressable
-                  testID="plants-use-location"
-                  accessibilityLabel="Refresh nearby plants and location"
-                  onPress={refreshLocation}
-                  disabled={locating}
-                  style={({ pressed }) => [styles.refreshButton, { backgroundColor: colors.brandSoft, opacity: pressed || locating ? 0.65 : 1 }]}
-                >
-                  {locating ? <ActivityIndicator size="small" color={colors.brand} /> : <Ionicons name="refresh" size={20} color={colors.brand} />}
-                </Pressable>
+              <View style={styles.mapShell}>
+                {mapView ? <PlantMap plants={filtered} userLocation={userLocation} onSelectPlant={setDetails} onRegionChange={coords => { if (!userLocation || distanceKm(userLocation,coords)>1) { manualLocation.current=true;setUserLocation(coords); setPage(1); } }} /> : <View style={{height:210,justifyContent:"center",alignItems:"center"}}><AppText variant="caption">Map hidden. Select Maps View to show registered plant locations.</AppText></View>}
+                <Pressable accessibilityRole="button" accessibilityLabel="Toggle Maps View" onPress={() => setMapView(v=>!v)} style={styles.mapPill}><Ionicons name="map-outline" size={17} color="#F25C05" /><AppText style={styles.mapPillText}>Maps View</AppText></Pressable>
               </View>
 
-              <Button label={showFilters ? "Hide filters and site selection" : "Filters and site selection"} onPress={() => setShowFilters(v=>!v)} />
+              <View style={styles.searchRow}>
+                <View style={[styles.searchBar,{backgroundColor:"#FFFFFF",borderColor:"#E2E8F0"}]}>
+                  <Ionicons name="search-outline" size={21} color="#64748B" />
+                  <TextInput testID="plants-search" value={q}
+                    onChangeText={value=>{setQ(value);setPage(1);setFilters(current=>({...current,q:value}));}}
+                    placeholder="Search plant by name" placeholderTextColor="#94A3B8"
+                    returnKeyType="search" style={styles.searchInput} />
+                  {q ? <Pressable onPress={()=>{setQ("");setPage(1);setFilters(current=>({...current,q:""}));}} accessibilityLabel="Clear search"><Ionicons name="close" size={20} color="#94A3B8" /></Pressable> : null}
+                </View>
+                <Pressable testID="plants-filter-toggle" accessibilityLabel={showFilters ? "Hide filters and site selection" : "Filters and site selection"} onPress={()=>setShowFilters(v=>!v)} style={styles.orangeFilter} accessibilityRole="button">
+                  <Ionicons name="options-outline" size={18} color="#FFFFFF" /><AppText style={styles.orangeFilterText}>Filters</AppText>
+                </Pressable>
+              </View>
               {showFilters ? <Card style={{gap:12}}>
                 <AppText variant="heading">Refine your search</AppText>
                 <TextInput accessibilityLabel="Concrete grade" placeholder="Concrete grade, e.g. M25" value={grade} onChangeText={setGrade} style={{minHeight:48,color:colors.onSurface}} />
@@ -329,7 +320,7 @@ export default function CustomerPlants() {
                 {error ? <Button label="Search failed — Retry" onPress={reload} /> : null}
               </Card> : null}
 
-              <AppText variant="caption">{filtered.length} registered plants on this page · Sorted by distance when a site is selected</AppText>
+
               {loading ? <ActivityIndicator accessibilityLabel="Searching nearby plants" color={colors.brand} /> : null}
               <LocationBanner status={locationStatus} locating={locating} onEnable={enableLocation} onRetry={refreshLocation} />
               {isPlayReviewCustomer ? (
@@ -348,7 +339,9 @@ export default function CustomerPlants() {
             </View>
           }
           renderItem={({ item }) => loading && !data ? null : (
-            <PlantCard plant={item} onDetails={() => setDetails(item)} onOrder={() => router.push(`/new-order?plantId=${item.id}` as any)} />
+            <ScreenshotPlantCard plant={item} onDetails={()=>setDetails(item)}
+              onQuotation={()=>router.push({pathname:"/customer/compare-plants",params:{plantId:item.id}} as any)}
+              onOrder={()=>router.push(`/new-order?plantId=${item.id}` as any)} />
           )}
           ListFooterComponent={<View style={{gap:12}}>
             <AppText variant="caption">Page {page}</AppText>
@@ -364,12 +357,39 @@ export default function CustomerPlants() {
       )}
       <Modal visible={!!details} animationType="slide" onRequestClose={() => setDetails(null)}>
         <ScrollView contentContainerStyle={{padding:24,paddingTop:56,gap:16,backgroundColor:colors.surface,flexGrow:1}}>
-          {details ? <><AppText variant="title">{details.name}</AppText><AppText>{details.address}</AppText><PlantCard plant={details} onOrder={() => {setDetails(null);router.push(`/new-order?plantId=${details.id}` as any);}} /></> : null}
+          {details ? <><AppText variant="title">Plant Specifications</AppText><AppText style={{color:"#F25C05"}}>{details.name}</AppText><AppText>{details.address}</AppText>
+          <DetailLine label="Available concrete grades" value={details.grades?.join(", ") || "Not provided"} />
+          <DetailLine label="Delivery radius" value={details.service_area_km ? `${details.service_area_km} km` : "Not provided"} />
+          <DetailLine label="Contact" value={details.contact_phone || "Not provided"} />
+          <DetailLine label="Verification" value={details.verified ? "Verified listing" : "Verification pending"} />
+          <AppText variant="caption">Plant capacity, available mixers, laboratory, loading hours and government approvals are shown only when verified records are available. Customers cannot edit plant data.</AppText>
+          <Button label="Place Order" onPress={()=>{setDetails(null);router.push(`/new-order?plantId=${details.id}` as any);}} />
+          </> : null}
           <Button label="Close details" onPress={() => setDetails(null)} />
         </ScrollView>
       </Modal>
     </View>
   );
+}
+
+const PLANT_ORANGE = "#F25C05";
+function DetailLine({label,value}:{label:string;value:string}) {
+  return <View style={{gap:4,borderBottomWidth:1,borderColor:"#E2E8F0",paddingVertical:10}}><AppText variant="caption">{label}</AppText><AppText>{value}</AppText></View>;
+}
+function ScreenshotPlantCard({plant,onDetails,onQuotation,onOrder}:{plant:PlantData;onDetails:()=>void;onQuotation:()=>void;onOrder:()=>void}) {
+  const active=(plant.status||"active").toLowerCase()==="active";
+  const eligible=plant.order_enabled ?? (active && plant.verified);
+  return <View style={styles.screenshotCard}>
+    <AppText style={styles.screenshotPlantName}>{plant.name}</AppText>
+    <AppText style={styles.screenshotAddress}>{plant.address || [plant.city,plant.district].filter(Boolean).join(", ")}</AppText>
+    <View style={styles.screenshotActions}>
+      <Pressable accessibilityRole="button" onPress={onQuotation} style={styles.screenshotOutline}><AppText numberOfLines={2} style={styles.screenshotOutlineText}>Request Quotation</AppText></Pressable>
+      <Pressable accessibilityRole="button" onPress={onDetails} accessibilityLabel="View Details" style={styles.screenshotOutline}><AppText numberOfLines={2} style={styles.screenshotOutlineText}>Plant Details</AppText></Pressable>
+      <Pressable accessibilityRole="button" disabled={!eligible} onPress={onOrder} style={[styles.screenshotSolid,!eligible&&{backgroundColor:"#CBD5E1",borderColor:"#CBD5E1"}]}>
+        <AppText numberOfLines={2} style={styles.screenshotSolidText}>{eligible?"Place Order":"Unavailable"}</AppText>
+      </Pressable>
+    </View>
+  </View>;
 }
 
 function LocationBanner({ status, locating, onEnable, onRetry }: {
@@ -437,9 +457,23 @@ function LocationBanner({ status, locating, onEnable, onRetry }: {
 }
 
 const styles = StyleSheet.create({
-  titleRow: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.md, gap: 2 },
-  searchBar: { minHeight: 54, borderWidth: 1, borderRadius: 18, paddingLeft: spacing.md, paddingRight: 6, flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  searchInput: { flex: 1, minHeight: 52, fontFamily: fonts.medium, fontSize: fontSize.base, paddingVertical: 0 },
+  titleRow: { paddingHorizontal: 18, paddingTop: 16, paddingBottom: 8, gap: 3 },
+  mapShell:{height:210,borderRadius:16,overflow:"hidden",borderWidth:1,borderColor:"#E2E8F0",position:"relative"},
+  mapPill:{position:"absolute",top:10,right:10,backgroundColor:"#FFFFFF",borderRadius:24,paddingVertical:7,paddingHorizontal:13,flexDirection:"row",alignItems:"center",gap:6,elevation:3},
+  mapPillText:{color:"#1E293B",fontFamily:fonts.bold,fontSize:13},
+  searchRow:{flexDirection:"row",gap:10,alignItems:"center"},
+  orangeFilter:{backgroundColor:"#F25C05",borderRadius:12,height:46,paddingHorizontal:14,flexDirection:"row",alignItems:"center",gap:6},
+  orangeFilterText:{fontFamily:fonts.semibold,fontSize:14,color:"#FFFFFF"},
+  screenshotCard:{backgroundColor:"#FFFFFF",borderWidth:1,borderColor:"#E2E8F0",borderRadius:16,padding:16,gap:7,elevation:2},
+  screenshotPlantName:{fontFamily:fonts.bold,fontSize:17,color:"#0F172A"},
+  screenshotAddress:{fontFamily:fonts.medium,fontSize:13,lineHeight:19,color:"#475569",marginBottom:8},
+  screenshotActions:{flexDirection:"row",gap:8},
+  screenshotOutline:{flex:1,minHeight:42,borderWidth:1.5,borderColor:"#F25C05",borderRadius:10,alignItems:"center",justifyContent:"center",paddingHorizontal:3},
+  screenshotOutlineText:{fontFamily:fonts.semibold,fontSize:11,color:"#F25C05",textAlign:"center"},
+  screenshotSolid:{flex:1,minHeight:42,backgroundColor:"#F25C05",borderWidth:1.5,borderColor:"#F25C05",borderRadius:10,alignItems:"center",justifyContent:"center",paddingHorizontal:3},
+  screenshotSolidText:{fontFamily:fonts.semibold,fontSize:11,color:"#FFFFFF",textAlign:"center"},
+  searchBar: { flex:1,minHeight:46, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", gap: 8 },
+  searchInput: { flex: 1, minHeight: 44, fontFamily: fonts.medium, fontSize: 14, paddingVertical: 0,color:"#1E293B" },
   refreshButton: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center" },
   discoveryRow: { minHeight: 46, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
   discoveryMeta: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 5, flexWrap: "wrap" },
