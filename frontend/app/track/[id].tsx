@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { AppState, Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -36,8 +36,10 @@ type TrackedLoad = {
   delivered_quantity?: number;
   location: Location | null;
   route?: RouteInfo | null;
+  milestones?: Record<string,string | null>;
 };
 type Track = {
+  origin?: {name?:string;lat?:number;lng?:number};
   active: boolean;
   status: string;
   tm_number?: string;
@@ -57,12 +59,21 @@ export default function TrackScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data, loading, error, refetch, reload } = useGet<Track>(`/customer/orders/${id}/tracking`);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    if (!data?.active) return;
-    const t = setInterval(() => refetch(), 15000);
-    return () => clearInterval(t);
-  }, [data?.active, refetch]);
+    if (["DELIVERED","CANCELLED","REJECTED"].includes(data?.status || "")) return;
+    let pending = false;
+    const update = async () => {
+      setNow(Date.now());
+      if (pending || AppState.currentState !== "active") return;
+      pending = true;
+      try { await refetch(); } finally { pending = false; }
+    };
+    const t = setInterval(() => void update(), 15000);
+    const subscription = AppState.addEventListener("change", state => { if (state === "active") void update(); });
+    return () => {clearInterval(t);subscription.remove();};
+  }, [data?.status, refetch]);
 
   useEffect(() => {
     const active = data?.active_loads || [];
@@ -80,6 +91,7 @@ export default function TrackScreen() {
   const driver = selected?.driver_name || data?.driver_name;
   const driverMobile = selected?.driver_mobile || data?.driver_mobile;
   const liveStatus = selected?.status || data?.status || "PENDING";
+  const stale = !mapLocation?.at || now - new Date(mapLocation.at).getTime() > 90000;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
@@ -118,6 +130,7 @@ export default function TrackScreen() {
           ) : null}
 
           <LiveMap
+            origin={data.origin?.lat != null && data.origin.lng != null ? {lat:data.origin.lat,lng:data.origin.lng} : null}
             destination={data.destination.lat != null ? { lat: data.destination.lat, lng: data.destination.lng! } : null}
             mixer={mapLocation ? { lat: mapLocation.lat, lng: mapLocation.lng } : null}
             polyline={route?.polyline}
@@ -125,7 +138,7 @@ export default function TrackScreen() {
             style={{ minHeight: 240 }}
           />
 
-          {data.active && route ? (
+          {data.active && route && !stale && !error ? (
             <View style={styles.etaRow}>
               <View style={[styles.etaCard, { backgroundColor: colors.brand }]}>
                 <AppText style={{ fontFamily: fonts.displayBold, fontSize: fontSize["2xl"], color: colors.onBrand }}>{route.eta_text}</AppText>
@@ -139,6 +152,9 @@ export default function TrackScreen() {
           ) : null}
 
           <Card style={{ gap: spacing.md }}>
+            {data.origin?.name ? <AppText variant="heading">From {data.origin.name}</AppText> : null}
+            {error ? <Button label="Connection interrupted — Retry" onPress={reload} /> : null}
+            {mapLocation && stale ? <AppText>Location is stale. Showing the last known position; awaiting a new driver update.</AppText> : null}
             <View style={styles.rowBetween}>
               <View style={{ flex: 1 }}>
                 <AppText variant="heading">{selected?.load_code || (data.status === "DELIVERED" ? "Delivery complete" : data.active ? "Mixer delivery" : "Not dispatched yet")}</AppText>
@@ -151,6 +167,7 @@ export default function TrackScreen() {
             {driver ? <Row icon="person-outline" label="Driver" value={driver} colors={colors} /> : null}
             {mapLocation ? <Row icon="navigate-outline" label="Mixer location" value={`${mapLocation.lat.toFixed(5)}, ${mapLocation.lng.toFixed(5)}`} colors={colors} /> : null}
             <Row icon="pulse-outline" label="Last GPS update" value={mapLocation?.at ? new Date(mapLocation.at).toLocaleTimeString() : "Awaiting driver location"} colors={colors} />
+            {Object.entries(selected?.milestones || {}).map(([name,at]) => <Row key={name} icon="checkmark-circle-outline" label={name.replace(/_at$/,"").replace(/_/g," ")} value={at ? new Date(at).toLocaleString() : "Not recorded yet"} colors={colors} />)}
           </Card>
 
           {!mapLocation && data.active ? (

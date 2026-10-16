@@ -42,7 +42,9 @@ function apiBase(): string {
     } as ApiError;
   }
 
-  return `${RAW_BACKEND.replace(/\/$/, "")}/api`;
+  // Accept either a backend origin or an API base, without /api/api 404s.
+  const base = RAW_BACKEND.replace(/\/+$/, "");
+  return base.endsWith("/api") ? base : `${base}/api`;
 }
 
 function validatedApiPath(path: string): string {

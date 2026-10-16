@@ -10,12 +10,12 @@ export const TRIP_LOCATION_TASK = "trackmyrmc-active-trip-location";
 const ACTIVE_TRIP_KEY = "tmrmc_active_trip_id";
 const TOKEN_KEY = "tmrmc_token";
 
-const activeStatuses = new Set(["EN_ROUTE", "ARRIVED", "AT_SITE", "UNLOADING", "POD_PENDING"]);
+const activeStatuses = new Set(["EN_ROUTE", "ARRIVED", "POURING", "AT_SITE", "UNLOADING", "POD_PENDING"]);
 
 function backendBase(): string | null {
   const raw = process.env.EXPO_PUBLIC_BACKEND_URL?.trim();
   if (!raw) return null;
-  return raw.replace(/\/$/, "");
+  return raw.replace(/\/+$/, "").replace(/\/api$/, "");
 }
 
 async function postLocation(tripId: string, location: Location.LocationObject): Promise<void> {
@@ -37,6 +37,7 @@ async function postLocation(tripId: string, location: Location.LocationObject): 
         lat: latitude,
         lng: longitude,
         accuracy: accuracy ?? undefined,
+        recorded_at_ms: location.timestamp,
       }),
     });
   } catch {

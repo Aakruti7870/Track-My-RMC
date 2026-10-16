@@ -159,6 +159,7 @@ class TripLocationService : Service() {
       .put("lat", location.latitude)
       .put("lng", location.longitude)
       .put("accuracy", location.accuracy.toDouble())
+      .put("recorded_at_ms", location.time)
       .toString()
 
   private fun deliverWithQueue(currentPayload: String) {
@@ -208,7 +209,15 @@ class TripLocationService : Service() {
       connection.outputStream.use { stream ->
         stream.write(payload.toByteArray(Charsets.UTF_8))
       }
-      connection.responseCode in 200..299
+      val status = connection.responseCode
+      if (status == 401 || status == 403 || status == 404 || status == 409) {
+        // Revoked authorization or an ended/reassigned trip must stop collection.
+        TripLocationState.clear(this)
+        stopSelf()
+        true
+      } else {
+        status in 200..299
+      }
     } catch (_: Exception) {
       false
     } finally {

@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { StyleSheet, View } from "react-native";
 import Constants from "expo-constants";
 import MapView, { Marker, PROVIDER_GOOGLE, type Region } from "react-native-maps";
@@ -14,6 +14,7 @@ type Props = {
   plants: PlantData[];
   userLocation?: LatLng | null;
   onSelectPlant?: (plant: PlantData) => void;
+  onRegionChange?: (center: LatLng) => void;
 };
 
 function regionFor(plants: PlantData[], userLocation?: LatLng | null): Region | null {
@@ -38,7 +39,11 @@ function regionFor(plants: PlantData[], userLocation?: LatLng | null): Region | 
   };
 }
 
-export function PlantMap({ plants, userLocation, onSelectPlant }: Props) {
+export function PlantMap({ plants, userLocation, onSelectPlant, onRegionChange }: Props) {
+  const map = useRef<MapView | null>(null);
+  useEffect(() => {
+    if (userLocation && validLatLng(userLocation)) map.current?.animateToRegion({latitude:userLocation.lat,longitude:userLocation.lng,latitudeDelta:0.15,longitudeDelta:0.15},300);
+  },[userLocation?.lat,userLocation?.lng]);
   const { colors } = useTheme();
   const mapsConfigured = Boolean(Constants.expoConfig?.extra?.googleMapsAndroidConfigured);
   const mappedPlants = useMemo(() => plants.filter((plant) => validLatLng(plant)), [plants]);
@@ -67,10 +72,12 @@ export function PlantMap({ plants, userLocation, onSelectPlant }: Props) {
   return (
     <View style={[styles.shell, { borderColor: colors.border, backgroundColor: colors.surfaceSecondary }]}>
       <MapView
+        ref={map}
         testID="customer-plants-map"
         provider={PROVIDER_GOOGLE}
         style={StyleSheet.absoluteFill}
-        initialRegion={initialRegion}
+        initialRegion={userLocation ? {latitude:userLocation.lat,longitude:userLocation.lng,latitudeDelta:0.15,longitudeDelta:0.15} : initialRegion}
+        onRegionChangeComplete={(region, details) => { if (details.isGesture) onRegionChange?.({lat:region.latitude,lng:region.longitude}); }}
         showsCompass
         showsScale
         toolbarEnabled={false}

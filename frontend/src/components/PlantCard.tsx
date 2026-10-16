@@ -26,7 +26,7 @@ function readableStatus(value?: string) {
   return status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export function PlantCard({ plant, onOrder }: { plant: Plant; onOrder?: () => void }) {
+export function PlantCard({ plant, onOrder, onDetails }: { plant: Plant; onOrder?: () => void; onDetails?: () => void }) {
   const { colors } = useTheme();
   const status = (plant.status || "active").toLowerCase();
   const orderEnabled = plant.order_enabled ?? (status === "active" && plant.verified);
@@ -101,6 +101,7 @@ export function PlantCard({ plant, onOrder }: { plant: Plant; onOrder?: () => vo
       </View>
 
       <View style={styles.actions}>
+        {onDetails ? <Action icon="information-circle-outline" label="View Details" colors={colors} onPress={onDetails} /> : null}
         <Action icon="call-outline" label="Call" colors={colors} disabled={!hasPhone} onPress={() => hasPhone && void Linking.openURL(`tel:${plant.contact_phone}`)} />
         <Action icon="navigate-outline" label="Directions" colors={colors} onPress={openDirections} />
         <Pressable
