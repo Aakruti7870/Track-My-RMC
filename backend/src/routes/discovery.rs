@@ -249,10 +249,10 @@ mod tests {
         assert!(short["contact_phone"].is_null());
         assert!(short["contact_phone_masked"].is_null());
 
-        let mut search = json!({"verified":false,"contact_phone":null,"contact_phone_masked":"9174982*****"});
+        let mut search =
+            json!({"verified":false,"contact_phone":null,"contact_phone_masked":"9174982*****"});
         redact_plant_contact(&mut search, false);
         assert!(search["contact_phone"].is_null());
         assert_eq!(search["contact_phone_masked"], "9174982*****");
     }
-
 }
