@@ -393,7 +393,9 @@ pub async fn request_google_quote(
         .header("X-Goog-FieldMask", "id")
         .send()
         .await
-        .map_err(|_| AppError::InternalError("Places verification temporarily unavailable".into()))?;
+        .map_err(|_| {
+            AppError::InternalError("Places verification temporarily unavailable".into())
+        })?;
     if !response.status().is_success() {
         return Err(AppError::BadRequest(
             "This Google business could not be verified. Refresh Nearby RMC Plants.".into(),
