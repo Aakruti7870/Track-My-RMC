@@ -127,7 +127,7 @@ pub async fn search(
             AND EXISTS(SELECT 1 FROM play_review_fixtures f WHERE f.user_id=$1 AND f.role='customer' AND f.enabled)
                 = EXISTS(SELECT 1 FROM play_review_fixtures f WHERE f.plant_id=p.id AND f.role='customer' AND f.enabled)
         )
-        SELECT jsonb_build_object('id',id,'name',name,'address',address_line,'city',city,'district',state,'pincode',pincode,
+        SELECT jsonb_build_object('id',id,'name',name,'address',address_line,'city',city,'district',coalesce(nullif(district,''),state),'pincode',pincode,
             'lat',latitude,'lng',longitude,
             'contact_phone',CASE WHEN verified THEN contact_phone ELSE NULL END,
             'contact_phone_masked',CASE WHEN NOT verified AND contact_phone IS NOT NULL AND length(regexp_replace(contact_phone,'[^0-9]','','g')) >= 5 THEN
@@ -140,7 +140,7 @@ pub async fn search(
           AND ($6='' OR EXISTS(SELECT 1 FROM unnest(grades) g WHERE lower(replace(g,'-',''))=lower(replace($6,'-',''))))
           AND (NOT $7 OR verified)
           AND ($8='' OR lower(coalesce(state,''))=lower($8))
-          AND ($9='' OR strpos(lower(coalesce(address_line,'')||' '||coalesce(city,'')||' '||coalesce(state,'')),lower($9))>0)
+          AND ($9='' OR lower(coalesce(district,''))=lower($9) OR strpos(lower(coalesce(address_line,'')||' '||coalesce(city,'')||' '||coalesce(state,'')),lower($9))>0)
           AND ($10='' OR strpos(lower(coalesce(address_line,'')||' '||coalesce(city,'')),lower($10))>0)
           AND ($11='' OR strpos(lower(coalesce(city,'')||' '||coalesce(address_line,'')),lower($11))>0)
         ORDER BY distance_km NULLS LAST, name, id LIMIT $12 OFFSET $13
