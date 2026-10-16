@@ -110,6 +110,7 @@ export function PlantMap({ plants, userLocation, onSelectPlant, onRegionChange }
 
 const styles = StyleSheet.create({
   shell: {
+    flex: 1,
     minHeight: 210,
     overflow: "hidden",
     borderRadius: radius.lg,
