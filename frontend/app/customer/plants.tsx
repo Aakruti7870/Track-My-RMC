@@ -265,7 +265,12 @@ export default function CustomerPlants() {
       }
     } else if (hasPlantGeoFilters(filters)) {
       manualLocation.current = false;
-      void applyLocation({forceRefresh:false,allowPrompt:false,refetchPlants:false});
+      if (locationEnabled) {
+        void applyLocation({forceRefresh:false,allowPrompt:false,refetchPlants:false});
+      } else {
+        setUserLocation(null);
+        setLocationStatus("denied");
+      }
     }
     setPage(1);
     setFilters({q,grade,radius_km:radius,verified,...geo});
@@ -283,7 +288,12 @@ export default function CustomerPlants() {
     setFilters({q:"",grade:"",radius_km:50,verified:false,...EMPTY_PLANT_GEO});
     if (hadGeo) {
       manualLocation.current = false;
-      void applyLocation({forceRefresh:false,allowPrompt:false,refetchPlants:false});
+      if (locationEnabled) {
+        void applyLocation({forceRefresh:false,allowPrompt:false,refetchPlants:false});
+      } else {
+        setUserLocation(null);
+        setLocationStatus("denied");
+      }
     }
   };
 
