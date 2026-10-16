@@ -290,7 +290,10 @@ pub fn build_app_router(state: AppState) -> Router {
         // --- Customer Domain ---
         .route("/api/customer/plants", get(customer_routes::list_plants))
         .route("/api/customer/plants/search", post(discovery::search))
-        .route("/api/customer/plants/google-nearby", post(discovery::google_nearby))
+        .route(
+            "/api/customer/plants/google-nearby",
+            post(discovery::google_nearby),
+        )
         .route("/api/customer/plants/locate", post(discovery::locate))
         .route(
             "/api/me/permission-consent",
