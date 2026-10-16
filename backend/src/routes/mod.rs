@@ -6,6 +6,7 @@ pub mod automation_routes;
 pub mod business_routes;
 pub mod control_center_routes;
 pub mod customer_routes;
+pub mod discovery;
 pub mod dispatcher_routes;
 pub mod driver_routes;
 pub mod finance_ops_routes;
@@ -17,6 +18,7 @@ pub mod master_data_routes;
 pub mod notifications;
 pub mod owner_routes;
 pub mod payroll_routes;
+pub mod permission_consent;
 pub mod plant_onboarding;
 pub mod plant_plans_routes;
 pub mod play_review;
@@ -287,6 +289,12 @@ pub fn build_app_router(state: AppState) -> Router {
         )
         // --- Customer Domain ---
         .route("/api/customer/plants", get(customer_routes::list_plants))
+        .route("/api/customer/plants/search", post(discovery::search))
+        .route("/api/customer/plants/locate", post(discovery::locate))
+        .route(
+            "/api/me/permission-consent",
+            get(permission_consent::get).put(permission_consent::save),
+        )
         .route(
             "/api/customer/compare-plants",
             get(customer_routes::compare_plants),

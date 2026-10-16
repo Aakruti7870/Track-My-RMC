@@ -483,7 +483,7 @@ pub async fn get_order_tracking(
     Path(order_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     let order =
-        sqlx::query("SELECT customer_id, plant_id, site_id, status FROM orders WHERE id = $1")
+        sqlx::query("SELECT o.customer_id, o.plant_id, o.site_id, o.status, s.name AS site_name, s.address_line AS site_address, s.latitude AS site_lat, s.longitude AS site_lng, p.name AS plant_name, p.latitude AS plant_lat, p.longitude AS plant_lng FROM orders o LEFT JOIN customer_sites s ON s.id=o.site_id LEFT JOIN rmc_plants p ON p.id=o.plant_id WHERE o.id = $1")
             .bind(order_id)
             .fetch_optional(&state.db)
             .await?
@@ -498,12 +498,18 @@ pub async fn get_order_tracking(
 
     let active_loads = sqlx::query(
         r#"
-        SELECT l.id as load_id, l.load_number, l.status,
-               m.registration_number, m.last_latitude, m.last_longitude, m.last_ping_at,
+        SELECT l.id as load_id, l.load_number, l.status, l.quantity_m3::double precision AS quantity_m3,
+               l.dispatched_at, l.arrived_at, l.pour_started_at, l.pour_completed_at,
+               m.registration_number, t.latitude AS last_latitude, t.longitude AS last_longitude, t.recorded_at AS last_ping_at,
                u.full_name as driver_name, u.phone as driver_phone
         FROM order_loads l
         LEFT JOIN transit_mixers m ON m.id = l.mixer_id
         LEFT JOIN users u ON u.id = l.driver_id
+        LEFT JOIN LATERAL (
+            SELECT latitude, longitude, recorded_at FROM gps_telemetry
+            WHERE load_id=l.id AND mixer_id=l.mixer_id AND driver_id=l.driver_id
+            ORDER BY recorded_at DESC LIMIT 1
+        ) t ON TRUE
         WHERE l.order_id = $1
         ORDER BY l.load_number
         "#,
@@ -524,14 +530,29 @@ pub async fn get_order_tracking(
             let latitude: Option<f64> = l.get("last_latitude");
             let longitude: Option<f64> = l.get("last_longitude");
             let last_ping: Option<chrono::DateTime<chrono::Utc>> = l.get("last_ping_at");
+            let location = match (latitude, longitude, last_ping) {
+                (Some(lat),Some(lng),Some(at)) => json!({"lat":lat,"lng":lng,"at":at,"stale":(chrono::Utc::now()-at).num_seconds()>90}),
+                _ => serde_json::Value::Null,
+            };
 
             json!({
                 "load_id": load_id,
+                "id": load_id,
+                "quantity_m3": l.get::<f64,_>("quantity_m3"),
                 "load_number": load_number,
                 "status": load_status,
                 "mixer_number": mixer_number,
+                "tm_number": mixer_number,
                 "driver_name": driver_name,
                 "driver_phone": driver_phone,
+                "driver_mobile": driver_phone,
+                "location": location,
+                "milestones": {
+                    "dispatched_at":l.get::<Option<chrono::DateTime<chrono::Utc>>,_>("dispatched_at"),
+                    "arrived_at":l.get::<Option<chrono::DateTime<chrono::Utc>>,_>("arrived_at"),
+                    "pour_started_at":l.get::<Option<chrono::DateTime<chrono::Utc>>,_>("pour_started_at"),
+                    "pour_completed_at":l.get::<Option<chrono::DateTime<chrono::Utc>>,_>("pour_completed_at")
+                },
                 "latitude": latitude,
                 "longitude": longitude,
                 "last_ping_at": last_ping
@@ -539,9 +560,23 @@ pub async fn get_order_tracking(
         })
         .collect();
 
-    Ok(Json(
-        json!({ "success": true, "order_status": status, "loads": tracking }),
-    ))
+    let active_loads: Vec<_> = tracking
+        .iter()
+        .filter(|l| {
+            matches!(
+                l["status"].as_str(),
+                Some("en_route" | "arrived" | "pouring")
+            )
+        })
+        .cloned()
+        .collect();
+    Ok(Json(json!({
+        "success":true,"order_status":status,"status":status.to_uppercase(),"order_id":order_id,
+        "active":!active_loads.is_empty(),"loads":tracking,"active_loads":active_loads,
+        "location":null,"route":null,
+        "destination":{"site_name":order.get::<Option<String>,_>("site_name").unwrap_or_else(||"Delivery site".into()),"address":order.get::<Option<String>,_>("site_address"),"lat":order.get::<Option<f64>,_>("site_lat"),"lng":order.get::<Option<f64>,_>("site_lng")},
+        "origin":{"name":order.get::<Option<String>,_>("plant_name"),"lat":order.get::<Option<f64>,_>("plant_lat"),"lng":order.get::<Option<f64>,_>("plant_lng")}
+    })))
 }
 
 pub async fn get_order_challan(
