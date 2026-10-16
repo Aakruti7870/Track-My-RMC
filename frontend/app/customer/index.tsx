@@ -1,4 +1,5 @@
 import React from "react";
+import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
 import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -40,6 +41,16 @@ const ACTIONS: { key: "new" | "track" | "plants" | "orders"; label: string; icon
 ];
 
 const CUSTOMER_MODULES = customerHomeModules();
+const MODULE_SYMBOLS: Record<string, VectorSymbolName> = {
+  projects: "project-site-hub", "pour-planner": "concrete-pour-planner",
+  "receiving-guide": "receiving-quality-guide", "cube-tests": "cube-test-follow-up",
+  "compare-plants": "compare-plants", quotations: "quotations",
+  documents: "documents", "free-tools": "free-rmc-tools",
+};
+const ACTION_SYMBOLS: Record<string, VectorSymbolName> = {
+  new: "new-order", track: "live-order-tracking",
+  plants: "nearby-rmc-plants", orders: "my-orders",
+};
 
 export default function CustomerHome() {
   const { colors } = useTheme();
@@ -137,10 +148,10 @@ export default function CustomerHome() {
                   ]}
                 >
                   <View style={[styles.moduleIcon, { backgroundColor: colors.brandSoft }]}>
-                    <Ionicons name={module.icon} size={22} color={colors.brand} />
+                    {MODULE_SYMBOLS[module.key] ? <VectorSymbol name={MODULE_SYMBOLS[module.key]} size={34} /> : <Ionicons name={module.icon} size={22} color={colors.brand} />}
                   </View>
                   <AppText style={[styles.moduleLabel, { color: colors.onSurface }]}>{module.label}</AppText>
-                  <AppText variant="caption" numberOfLines={2}>{module.description}</AppText>
+                  
                 </Pressable>
               ))}
             </View>
@@ -184,7 +195,7 @@ export default function CustomerHome() {
                       ]}
                     >
                       <View style={[styles.actionIcon, { backgroundColor: index === 0 ? colors.brand : colors.surfaceTertiary }]}> 
-                        <Ionicons name={action.icon} size={25} color={index === 0 ? colors.onBrand : colors.onSurface} />
+                        <VectorSymbol name={ACTION_SYMBOLS[action.key]} size={38} />
                       </View>
                       <AppText style={[styles.actionLabel, { color: colors.onSurface }]}>{action.label}</AppText>
                     </Pressable>
@@ -216,10 +227,10 @@ export default function CustomerHome() {
                       ]}
                     >
                       <View style={[styles.moduleIcon, { backgroundColor: colors.brandSoft }]}>
-                        <Ionicons name={module.icon} size={22} color={colors.brand} />
+                        {MODULE_SYMBOLS[module.key] ? <VectorSymbol name={MODULE_SYMBOLS[module.key]} size={34} /> : <Ionicons name={module.icon} size={22} color={colors.brand} />}
                       </View>
                       <AppText style={[styles.moduleLabel, { color: colors.onSurface }]}>{module.label}</AppText>
-                      <AppText variant="caption" numberOfLines={2}>{module.description}</AppText>
+                      
                     </Pressable>
                   ))}
                 </View>
@@ -325,10 +336,10 @@ const styles = StyleSheet.create({
   action: { flex: 1, minHeight: 126, borderRadius: 22, borderWidth: 1, padding: 12, alignItems: "center", justifyContent: "center", gap: 10 },
   actionIcon: { width: 54, height: 54, borderRadius: 17, alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
   actionLabel: { fontFamily: fonts.semibold, fontSize: 12, textAlign: "center" },
-  moduleGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  moduleCard: { width: "47.5%", minHeight: 150, borderRadius: 18, borderWidth: 1, padding: 14, gap: 8 },
-  moduleIcon: { width: 42, height: 42, borderRadius: 13, alignItems: "center", justifyContent: "center" },
-  moduleLabel: { fontFamily: fonts.semibold, fontSize: 13 },
+  moduleGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: 10 },
+  moduleCard: { width: "23%", minHeight: 104, borderRadius: 14, borderWidth: 1, padding: 7, gap: 5, alignItems: "center", justifyContent: "center" },
+  moduleIcon: { width: 44, height: 44, borderRadius: 11, alignItems: "center", justifyContent: "center" },
+  moduleLabel: { fontFamily: fonts.semibold, fontSize: 10, textAlign: "center" },
   rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   activeCard: { padding: 0, overflow: "hidden", borderRadius: 24 },
   activeTop: { flexDirection: "row", minHeight: 186 },
