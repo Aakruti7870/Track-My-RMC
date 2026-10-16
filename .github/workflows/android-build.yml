@@ -2,16 +2,8 @@ name: Android Build Validation
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - "frontend/**"
-      - ".github/workflows/android-build.yml"
-  pull_request:
-    branches: [main, 'integration/**']
-    paths:
-      - "frontend/**"
-      - ".github/workflows/android-build.yml"
+  # Signed release artifacts are generated on demand, not on every frontend PR/merge.
+  # Keep lightweight Android policy/layout checks in Frontend CI.
 
 permissions:
   contents: read
