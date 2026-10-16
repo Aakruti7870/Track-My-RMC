@@ -115,36 +115,58 @@ jobs:
             test "$ACCOUNT" = "260234292958"
           fi
 
-          SECRET_JSON="$(aws secretsmanager get-secret-value \
+          SECRET_ARN="$(aws secretsmanager describe-secret \
             --secret-id "${APP_SECRET_NAME}" \
+            --region "${AWS_REGION}" \
+            --query ARN \
+            --output text 2>/dev/null || echo "${APP_SECRET_NAME}")"
+
+          SECRET_JSON="$(aws secretsmanager get-secret-value \
+            --secret-id "${SECRET_ARN}" \
             --region "${AWS_REGION}" \
             --query SecretString \
             --output text)"
 
-          printf '%s' "$SECRET_JSON" | python3 - <<'PY'
+          TRACKMYRMC_SECRET_JSON="${SECRET_JSON}" python3 - <<'PY'
           import json, os, sys
 
+          secret_raw = os.environ.get("TRACKMYRMC_SECRET_JSON", "")
           try:
-              secret = json.load(sys.stdin)
+              secret = json.loads(secret_raw)
           except Exception as e:
               sys.exit(f"Failed to parse secret JSON: {e}")
 
           expo_maps_key = (secret.get("EXPO_PUBLIC_GOOGLE_MAPS_KEY") or "").strip()
           android_maps_key = (secret.get("GOOGLE_MAPS_ANDROID_KEY") or "").strip()
+          places_key = (secret.get("GOOGLE_PLACES_API_KEY") or "").strip()
 
           # Always mask keys immediately in GitHub Actions runner logs
-          for val in (expo_maps_key, android_maps_key):
+          for val in (expo_maps_key, android_maps_key, places_key):
               if val:
                   print(f"::add-mask::{val}")
+
+          # Validate all three Google Maps keys are nonempty without printing their values
+          missing = []
+          if not expo_maps_key:
+              missing.append("EXPO_PUBLIC_GOOGLE_MAPS_KEY")
+          if not android_maps_key:
+              missing.append("GOOGLE_MAPS_ANDROID_KEY")
+          if not places_key:
+              missing.append("GOOGLE_PLACES_API_KEY")
+
+          if missing:
+              sys.exit(f"Validation failed: Google Maps keys missing or empty: {', '.join(missing)}")
 
           github_env = os.environ.get("GITHUB_ENV")
           if github_env:
               with open(github_env, "a", encoding="utf-8") as f:
                   f.write(f"EXPO_PUBLIC_GOOGLE_MAPS_KEY={expo_maps_key}\n")
                   f.write(f"GOOGLE_MAPS_ANDROID_KEY={android_maps_key}\n")
+                  f.write(f"GOOGLE_PLACES_API_KEY={places_key}\n")
 
-          print("Google Maps runtime configuration loaded and masked.")
+          print("Google Maps runtime configuration loaded, masked, and validated.")
           PY
+          unset SECRET_JSON TRACKMYRMC_SECRET_JSON
 
       - name: Generate Android project
         env:
@@ -201,6 +223,9 @@ jobs:
 
       - name: Build unsigned release AAB
         working-directory: frontend/android
+        env:
+          GOOGLE_MAPS_ANDROID_KEY: ${{ env.GOOGLE_MAPS_ANDROID_KEY }}
+          EXPO_PUBLIC_GOOGLE_MAPS_KEY: ${{ env.EXPO_PUBLIC_GOOGLE_MAPS_KEY }}
         run: |
           set -euo pipefail
           chmod +x gradlew
