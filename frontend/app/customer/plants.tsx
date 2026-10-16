@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, AppState, FlatList, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { ActivityIndicator, AppState, FlatList, Image, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
 import * as Location from "expo-location";
@@ -11,6 +11,7 @@ import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { useToast } from "@/src/components/ui/Toast";
 import { usePlantSearch } from "@/src/hooks/usePlantSearch";
+import { GoogleNearbyPlant, useGoogleNearbyPlants } from "@/src/hooks/useGoogleNearbyPlants";
 import { storage } from "@/src/utils/storage";
 import { Button } from "@/src/components/ui/Button";
 import { usePermissions } from "@/src/permissions/PermissionProvider";
@@ -141,6 +142,9 @@ export default function CustomerPlants() {
   const [details,setDetails] = useState<PlantData | null>(null);
   const manualLocation = useRef(false);
   const { data, loading, error, refetch, reload, clearCache } = usePlantSearch(userLocation, filters, page);
+  const {
+    data: googleNearby, loading: googleLoading, error: googleError, refresh: refreshGoogle,
+  } = useGoogleNearbyPlants(userLocation, Math.min(filters.radius_km, 50), !filters.verified && !filters.grade.trim());
   const didInit = useRef(false);
   const previousLocationStatus = useRef<NearbyLocationStatus | null>(null);
   const locationRequest = useRef(0);
@@ -263,12 +267,45 @@ export default function CustomerPlants() {
     return ranked;
   }, [ranked]);
 
+  // Google-sourced data remains separate from the app's approved, order-enabled directory.
+  const googleEntries = useMemo(() => {
+    const term = filters.q.trim().toLowerCase();
+    const registered = data?.plants || [];
+    return (googleNearby?.places || []).filter((place) => {
+      if (term && !(`${place.name} ${place.address}`).toLowerCase().includes(term)) return false;
+      return !registered.some((plant) => plant.name.trim().toLowerCase() === place.name.trim().toLowerCase()
+        && validLatLng(plant) && distanceKm({lat:plant.lat!,lng:plant.lng!},place) < 0.15);
+    });
+  }, [googleNearby, filters.q, data]);
+
+  const googleMapPlants = useMemo<PlantData[]>(() => googleEntries.map(place => ({
+    id: `google:${place.place_id}`,
+    name: place.name,
+    city: "",
+    address: place.address,
+    lat: place.lat,
+    lng: place.lng,
+    grades: [],
+    contact_phone: "",
+    service_area_km: 0,
+    status: "google_listing",
+    verified: false,
+    order_enabled: false,
+    distance_km: place.distance_km,
+  })), [googleEntries]);
+
+  const mappedPlants = useMemo(() => [...filtered, ...googleMapPlants], [filtered, googleMapPlants]);
+  const openGooglePlace = useCallback((place: GoogleNearbyPlant) => {
+    const fallback = `https://www.google.com/maps/search/?api=1&query=${place.lat}%2C${place.lng}&query_place_id=${encodeURIComponent(place.place_id)}`;
+    void Linking.openURL(place.google_maps_uri || fallback);
+  }, []);
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
       <View style={{ height: insets.top }} />
       <View style={styles.titleRow}>
         <AppText variant="title">Nearby Plants</AppText>
-        <AppText variant="caption">Find registered RMC plants for your delivery site.</AppText>
+        <AppText variant="caption">Find registered plants and nearby RMC businesses listed on Google Maps.</AppText>
       </View>
 
       {error && !data ? <ErrorView message={error} onRetry={reload} /> : (
@@ -277,13 +314,20 @@ export default function CustomerPlants() {
           data={filtered}
           keyExtractor={(p) => p.id}
           showsVerticalScrollIndicator={false}
-          onRefresh={refetch}
+          onRefresh={() => {void refetch();refreshGoogle();}}
           refreshing={loading && !!data}
           contentContainerStyle={{ width:"100%",maxWidth:1100,alignSelf:"center",paddingHorizontal: 16, paddingTop: 12, paddingBottom: 120, gap: 14, flexGrow: 1 }}
           ListHeaderComponent={
             <View style={{ gap: spacing.sm, marginBottom: spacing.xs }}>
               <View style={styles.mapShell}>
-                <PlantMap plants={filtered} userLocation={userLocation} onSelectPlant={setDetails} onRegionChange={coords => { if (!userLocation || distanceKm(userLocation,coords)>1) { manualLocation.current=true;setUserLocation(coords); setPage(1); } }} />
+                <PlantMap plants={mappedPlants} userLocation={userLocation} onSelectPlant={(plant) => {
+                  if (plant.id.startsWith("google:")) {
+                    const place = googleEntries.find((entry) => `google:${entry.place_id}` === plant.id);
+                    if (place) openGooglePlace(place);
+                  } else {
+                    setDetails(plant);
+                  }
+                }} onRegionChange={coords => { if (!userLocation || distanceKm(userLocation,coords)>1) { manualLocation.current=true;setUserLocation(coords); setPage(1); } }} />
               </View>
 
               <View style={styles.searchRow}>
@@ -322,6 +366,51 @@ export default function CustomerPlants() {
 
               {loading ? <ActivityIndicator accessibilityLabel="Searching nearby plants" color={colors.brand} /> : null}
               <LocationBanner status={locationStatus} locating={locating} onEnable={enableLocation} onRetry={refreshLocation} />
+              {userLocation && !filters.verified && !filters.grade.trim() ? (
+                <View testID="google-nearby-plants-section" style={{gap:10,paddingTop:10}}>
+                  <View style={{flexDirection:"row",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                    <AppText variant="heading">Nearby businesses on Google Maps</AppText>
+                    <Image
+                      source={{uri:"https://www.gstatic.com/images/branding/googlelogo/2x/googlelogo_color_92x30dp.png"}}
+                      accessibilityLabel="Google"
+                      resizeMode="contain"
+                      style={{width:68,height:24}}
+                    />
+                  </View>
+                  <AppText variant="caption">
+                    Live Google Places listings within {Math.min(filters.radius_km,50)} km. Google listings are not TrackMyRMC-verified and cannot accept orders here.
+                  </AppText>
+                  {googleLoading ? <ActivityIndicator accessibilityLabel="Finding live Google Places listings" color={colors.brand} /> : null}
+                  {googleError ? (
+                    <View style={{gap:8}}>
+                      <AppText variant="caption">{googleError}</AppText>
+                      <Button label="Retry Google Places search" variant="outline" onPress={refreshGoogle} />
+                    </View>
+                  ) : null}
+                  {!googleLoading && !googleError && googleNearby && !googleEntries.length ? (
+                    <AppText variant="caption">No matching RMC businesses found on Google Maps in this radius. Try moving the map or increasing the radius.</AppText>
+                  ) : null}
+                  {googleEntries.map((place) => (
+                    <View key={place.place_id} style={styles.googleListingCard} testID="google-places-plant">
+                      <View style={{flexDirection:"row",alignItems:"center",gap:8}}>
+                        <Ionicons name="location-outline" size={21} color={PLANT_ORANGE} />
+                        <AppText style={{flex:1,fontFamily:fonts.bold,fontSize:16,color:"#0F172A"}}>{place.name}</AppText>
+                      </View>
+                      <AppText style={styles.screenshotAddress}>{place.address}</AppText>
+                      <AppText variant="caption">{place.distance_km.toFixed(1)} km away · Google Maps listing · Not TrackMyRMC verified</AppText>
+                      <Pressable
+                        accessibilityRole="link"
+                        accessibilityLabel={`View ${place.name} on Google Maps`}
+                        onPress={() => openGooglePlace(place)}
+                        style={styles.googlePlaceLink}
+                      >
+                        <Ionicons name="navigate-outline" size={16} color={PLANT_ORANGE} />
+                        <AppText style={{color:PLANT_ORANGE,fontFamily:fonts.semibold}}>View on Google Maps</AppText>
+                      </Pressable>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
               {isPlayReviewCustomer ? (
                 <View testID="play-review-nearby-hint" style={[styles.reviewHint, { backgroundColor: colors.brandSoft, borderColor: colors.brand + "44" }]}>
                   <Ionicons name="shield-checkmark-outline" size={18} color={colors.brand} />
@@ -464,6 +553,8 @@ const styles = StyleSheet.create({
   orangeFilter:{backgroundColor:"#F25C05",borderRadius:12,height:46,paddingHorizontal:14,flexDirection:"row",alignItems:"center",gap:6},
   orangeFilterText:{fontFamily:fonts.semibold,fontSize:14,color:"#FFFFFF"},
   screenshotCard:{backgroundColor:"#FFFFFF",borderWidth:1,borderColor:"#E2E8F0",borderRadius:16,padding:16,gap:7,elevation:2},
+  googleListingCard:{backgroundColor:"#FFFFFF",borderWidth:1,borderColor:"#E2E8F0",borderRadius:16,padding:14,gap:8},
+  googlePlaceLink:{minHeight:42,flexDirection:"row",gap:7,alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:"#F25C05",borderRadius:10},
   screenshotPlantName:{fontFamily:fonts.bold,fontSize:17,color:"#0F172A"},
   screenshotAddress:{fontFamily:fonts.medium,fontSize:13,lineHeight:19,color:"#475569",marginBottom:8},
   screenshotActions:{flexDirection:"row",gap:8},
