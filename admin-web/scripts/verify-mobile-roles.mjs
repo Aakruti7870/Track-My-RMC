@@ -1,7 +1,7 @@
 import { chromium, expect } from '@playwright/test';
 import { createHmac, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdir } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
@@ -9,7 +9,8 @@ import { createRequire } from 'node:module';
 
 // The real Expo UI, Rust router and disposable PostgreSQL database are used.
 // Only delivery is replaced. All transient codes remain in process memory;
-// no traces, screenshots, response bodies or credential-bearing errors are saved.
+// No traces, response bodies or credential-bearing errors are saved. Screenshots
+// are limited to the consent screen and synthetic post-login discovery fixtures.
 assert.equal(process.env.GITHUB_ACTIONS, 'true');
 assert.equal(process.env.APP_ENV, 'test');
 const root = fileURLToPath(new URL('../../', import.meta.url));
@@ -166,6 +167,14 @@ try {
     const rolePath = user.alias ?? user.role;
     phase = 'role navigation';
     await page.waitForURL(url => url.pathname === `/${rolePath}` || url.pathname === `/${rolePath}/`);
+    if (user.role === 'customer') {
+      phase = 'post OTP optional consent';
+      await expect(page.getByTestId('permission-introduction')).toBeVisible();
+      await mkdir(new URL('../../artifacts/customer-experience/',import.meta.url),{recursive:true});
+      await page.screenshot({path:new URL('../../artifacts/customer-experience/consent-mobile.png',import.meta.url).pathname});
+      await page.getByTestId('permission-continue').click();
+      await expect(page.getByTestId('permission-introduction')).not.toBeVisible();
+    }
     phase = 'dashboard';
     const summary = user.role === 'customer' ? 'customer-home-scroll' : `${['plant_owner', 'driver'].includes(user.role) ? rolePath : 'staff'}-home-summary`;
     await expect(page.getByTestId(summary)).toBeVisible();
@@ -173,6 +182,33 @@ try {
     await expect.poll(() => successfulPaths.has(homePath)).toBe(true);
     await expect.poll(() => currentIdentity?.role).toBe(user.role);
     assert.ok(currentIdentity.name && token);
+    if (user.role === 'customer') {
+      phase = 'automatic nearby discovery with optional location off';
+      await page.getByTestId('tab-plants').click();
+      await expect(page.getByTestId('plants-list')).toBeVisible();
+      await expect.poll(() => successfulPaths.has('/api/customer/plants/search')).toBe(true);
+      await expect(page.getByText('Browser staging plant',{exact:true}).first()).toBeVisible();
+      await page.screenshot({path:new URL('../../artifacts/customer-experience/plants-mobile.png',import.meta.url).pathname});
+      await page.reload();
+      await expect(page.getByTestId('plants-list')).toBeVisible();
+      await expect(page.getByTestId('permission-introduction')).not.toBeVisible();
+      phase = 'manual site and filtered plant search';
+      await page.getByRole('button',{name:'Filters and site selection',exact:true}).click();
+      await page.getByLabel('Site latitude',{exact:true}).fill('19.076');
+      await page.getByLabel('Site longitude',{exact:true}).fill('72.877');
+      await page.getByRole('button',{name:'Use this site',exact:true}).click();
+      await page.getByLabel('Concrete grade',{exact:true}).fill('M25');
+      await page.getByRole('button',{name:'Apply',exact:true}).click();
+      await expect(page.getByText('Browser staging plant',{exact:true}).first()).toBeVisible();
+      await page.getByRole('button',{name:'Hide filters and site selection',exact:true}).click();
+      await page.getByRole('button',{name:'View Details',exact:true}).click();
+      await expect(page.getByRole('button',{name:'Close details',exact:true})).toBeVisible();
+      await page.getByRole('button',{name:'Close details',exact:true}).click();
+      await page.setViewportSize({width:1280,height:900});
+      await page.screenshot({path:new URL('../../artifacts/customer-experience/plants-desktop.png',import.meta.url).pathname});
+      await page.setViewportSize({width:390,height:844});
+      await page.getByTestId('tab-home').click();
+    }
     if (user.role !== 'customer') assert.ok(currentIdentity.plant_id);
     phase = 'role module discovery';
     // Verify the rendered Expo menu against the same typed catalog that CI

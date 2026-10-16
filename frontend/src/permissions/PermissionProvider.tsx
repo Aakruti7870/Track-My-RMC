@@ -119,7 +119,7 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
     {children}
     <Modal visible={visible} animationType="slide" onRequestClose={() => { if (!busy) void finish(); }}>
       <ScrollView contentContainerStyle={{ flexGrow: 1, padding: 24, paddingTop: 56, gap: 20, backgroundColor: colors.surface }}>
-        <AppText variant="title">Welcome to TrackMyRMC</AppText>
+        <AppText testID="permission-introduction" variant="title">Welcome to TrackMyRMC</AppText>
         <AppText>Choose what works for you. All permissions below are optional. You can change them later in More → Permission settings.</AppText>
         <Card style={{gap:12}}>
           <AppText variant="heading">Find concrete plants near your site</AppText>
@@ -138,7 +138,7 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
         <AppText>Camera access is requested only for KYC, document capture or delivery proof. Uploads use the system file/photo picker. Location is not used for advertising. Drivers receive a separate disclosure for assigned active delivery tracking.</AppText>
         <Button label={Platform.OS === "web" ? "Browser settings help" : "Open device Settings"} disabled={busy} onPress={() => Platform.OS === "web" ? setError("Use the site permissions icon beside the address bar to review location and notification access.") : void Linking.openSettings()} />
         {error ? <AppText>{error}</AppText> : null}
-        <Button label="Continue with my choices" loading={busy} onPress={finish} />
+        <Button testID="permission-continue" label="Continue with my choices" loading={busy} onPress={finish} />
       </ScrollView>
     </Modal>
   </Permissions.Provider>;

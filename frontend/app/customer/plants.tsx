@@ -149,6 +149,7 @@ export default function CustomerPlants() {
   const [radiusKm, setRadiusKm] = useState("50");
   const [verified, setVerified] = useState(false);
   const [mapView, setMapView] = useState(true);
+  const [showFilters,setShowFilters] = useState(false);
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState({q:"",grade:"",radius_km:50,verified:false});
   const [manualLat, setManualLat] = useState("");
@@ -372,7 +373,8 @@ export default function CustomerPlants() {
                 </Pressable>
               </View>
 
-              <Card style={{gap:12}}>
+              <Button label={showFilters ? "Hide filters and site selection" : "Filters and site selection"} onPress={() => setShowFilters(v=>!v)} />
+              {showFilters ? <Card style={{gap:12}}>
                 <AppText variant="heading">Refine your search</AppText>
                 <TextInput accessibilityLabel="Concrete grade" placeholder="Concrete grade, e.g. M25" value={grade} onChangeText={setGrade} style={{minHeight:48,color:colors.onSurface}} />
                 <TextInput accessibilityLabel="Search radius in kilometres" placeholder="Radius in km (1–200)" value={radiusKm} onChangeText={setRadiusKm} keyboardType="numeric" style={{minHeight:48,color:colors.onSurface}} />
@@ -395,7 +397,7 @@ export default function CustomerPlants() {
                   <AppText>Page {page}</AppText>
                   <Button label="Next" disabled={!data?.has_more || loading} onPress={() => setPage(v=>v+1)} />
                 </View>
-              </Card>
+              </Card> : null}
 
               <View style={styles.discoveryRow}>
                 <View style={styles.discoveryMeta}>

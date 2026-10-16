@@ -136,3 +136,10 @@ jobs:
         run: |
           npm ci --prefix frontend
           node admin-web/scripts/verify-mobile-roles.mjs
+      - name: Upload synthetic customer acceptance screenshots
+        if: always() && matrix.postgres == 18
+        uses: actions/upload-artifact@v4
+        with:
+          name: customer-experience-screenshots
+          path: artifacts/customer-experience/*.png
+          if-no-files-found: ignore
