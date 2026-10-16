@@ -94,7 +94,12 @@ pub async fn search(
                 = EXISTS(SELECT 1 FROM play_review_fixtures f WHERE f.plant_id=p.id AND f.role='customer' AND f.enabled)
         )
         SELECT jsonb_build_object('id',id,'name',name,'address',address_line,'city',city,'district',state,'pincode',pincode,
-            'lat',latitude,'lng',longitude,'contact_phone',contact_phone,'verified',verified,'order_enabled',verified,
+            'lat',latitude,'lng',longitude,
+            'contact_phone',CASE WHEN verified THEN contact_phone ELSE NULL END,
+            'contact_phone_masked',CASE WHEN NOT verified AND contact_phone IS NOT NULL AND length(regexp_replace(contact_phone,'[^0-9]','','g')) >= 5 THEN
+                left(regexp_replace(contact_phone,'[^0-9]','','g'), greatest(0,length(regexp_replace(contact_phone,'[^0-9]','','g'))-5)) || '*****'
+                ELSE NULL END,
+            'verified',verified,'order_enabled',verified,
             'status','active','grades',grades,'distance_km',distance_km)
         FROM candidates WHERE (distance_km IS NULL OR distance_km <= $4)
           AND ($5='' OR strpos(lower(name||' '||address_line||' '||city||' '||state||' '||pincode),lower($5))>0)
