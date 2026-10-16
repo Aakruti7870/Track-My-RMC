@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 
 import { AppText } from "@/src/components/ui/AppText";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
 import { modulesForRole, type ModuleGroup } from "@/src/navigation/moduleCatalog";
@@ -51,7 +52,7 @@ export function RoleModuleDirectory({ role, title = "Your Modules" }: {
                   ]}
                 >
                   <View style={[styles.icon, { backgroundColor: colors.brandSoft }]}>
-                    <Ionicons name={module.icon} size={19} color={colors.brand} />
+                    {module.symbol ? <VectorSymbol name={module.symbol} size={37} /> : <Ionicons name={module.icon} size={19} color={colors.brand} />}
                   </View>
                   <View style={{ flex: 1, gap: 2 }}>
                     <AppText style={{ fontFamily: fonts.semibold, color: colors.onSurface }}>{module.label}</AppText>
