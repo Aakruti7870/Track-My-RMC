@@ -3,14 +3,6 @@ name: Frontend CI
 on:
   push:
     branches: [main]
-    paths:
-      # Production gate requires both workflows on the same release SHA.
-      # Backend-only changes must trigger Frontend CI too.
-      - "backend/**"
-      - "frontend/**"
-      - "admin-web/**"
-      - ".github/workflows/frontend.yml"
-      - ".github/workflows/deploy-aws-production.yml"
   pull_request:
     paths:
       # Production gate requires both workflows on the same release SHA.
