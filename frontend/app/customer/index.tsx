@@ -235,30 +235,45 @@ export default function CustomerHome() {
                 {data.active_order ? (
                   <>
                   <Card style={styles.activeCard}>
-                    <View style={styles.activeTop}>
-                      <View style={styles.activeInfo}>
+                    <View style={styles.activeInfo}>
+                      <View style={styles.rowBetween}>
                         <AppText style={[styles.orderNumber, { color: colors.onSurface }]}>{data.active_order.order_number}</AppText>
-                        <View style={styles.statusRow}><View style={[styles.statusDot, { backgroundColor: colors.brand }]} /><AppText style={{ color: colors.brand, fontFamily: fonts.medium }}>{data.active_order.status.replace(/_/g," ")}</AppText></View>
-                        <AppText style={[styles.grade, { color: colors.onSurface }]}>{data.active_order.grade} Grade · {data.active_order.quantity} m³</AppText>
-                        <View style={styles.locationRow}><Ionicons name="location-outline" size={17} color={colors.onSurfaceTertiary} /><AppText variant="caption" style={{ flex: 1 }}>{data.active_order.site_name}</AppText></View>
+                        <View style={styles.statusRow}><View style={[styles.statusDot, { backgroundColor: colors.brand }]} /><AppText style={{ color: colors.brand, fontFamily: fonts.medium }}>{data.active_order.status.replace(/_/g, " ")}</AppText></View>
                       </View>
-                      <View style={styles.map}><LiveMap origin={tracking?.origin?.lat!=null && tracking.origin.lng!=null?{lat:tracking.origin.lat,lng:tracking.origin.lng}:null} destination={tracking?.destination?.lat!=null && tracking.destination.lng!=null?{lat:tracking.destination.lat,lng:tracking.destination.lng}:null} mixer={canShowLive && liveLocation?{lat:liveLocation.lat,lng:liveLocation.lng}:null} style={{flex:1}} /></View>
+                      <AppText style={[styles.grade, { color: colors.onSurface }]}>{data.active_order.grade} Grade · {data.active_order.quantity} m³</AppText>
+                      <View style={styles.locationRow}><Ionicons name="location-outline" size={17} color={colors.onSurfaceTertiary} /><AppText variant="caption" style={{ flex: 1 }}>{data.active_order.site_name}</AppText></View>
                     </View>
-                    <View style={[styles.metrics, { borderTopColor: colors.divider }]}> 
-                      <View><AppText variant="caption">GPS</AppText><AppText style={styles.metricValue}>{canShowLive ? "Live" : liveLocation ? "Last known" : "Awaiting"}</AppText></View>
-                      <View style={[styles.metricDivider, { backgroundColor: colors.divider }]} />
+                    <View style={styles.map}>
+                      <LiveMap
+                        origin={tracking?.origin?.lat != null && tracking.origin.lng != null ? { lat: tracking.origin.lat, lng: tracking.origin.lng } : null}
+                        destination={tracking?.destination?.lat != null && tracking.destination.lng != null ? { lat: tracking.destination.lat, lng: tracking.destination.lng } : null}
+                        mixer={canShowLive && liveLocation ? { lat: liveLocation.lat, lng: liveLocation.lng } : null}
+                        style={{ flex: 1 }}
+                      />
+                    </View>
+                    <View style={styles.trackingDock}>
+                      <Pressable testID="home-track-tm" accessibilityRole="button" accessibilityLabel="Track TM" onPress={openActiveTracking} style={styles.trackingAction}>
+                        <Ionicons name="navigate-outline" size={22} color={colors.brand} />
+                        <AppText style={styles.trackingActionTitle}>Track TM</AppText>
+                      </Pressable>
+                      <Pressable testID="home-call-driver" accessibilityRole="button" accessibilityLabel="Call Driver" onPress={() => void dial(liveLoad?.driver_mobile || tracking?.driver_mobile)} style={styles.trackingAction}>
+                        <Ionicons name="call-outline" size={22} color={colors.brand} />
+                        <AppText style={styles.trackingActionTitle}>Call Driver</AppText>
+                      </Pressable>
+                      <Pressable testID="home-call-plant" accessibilityRole="button" accessibilityLabel="Contact Plant" onPress={() => router.push("/customer/plants")} style={styles.trackingAction}>
+                        <Ionicons name="business-outline" size={22} color={colors.brand} />
+                        <AppText style={styles.trackingActionTitle}>Contact Plant</AppText>
+                      </Pressable>
+                    </View>
+                    <View style={[styles.metrics, { borderTopColor: colors.divider }]}>
+                      <View><AppText variant="caption">GPS status</AppText><AppText style={styles.metricValue}>{canShowLive ? "Live" : liveLocation ? "Last known" : "Awaiting"}</AppText></View>
                       <View><AppText variant="caption">Quantity</AppText><AppText style={styles.metricValue}>{data.active_order.quantity} m³</AppText></View>
-                      <Pressable testID="track-active-order" onPress={openActiveTracking} style={({ pressed }) => [styles.trackLive, { backgroundColor: colors.brand, opacity: pressed ? 0.85 : 1 }]}> 
+                      <Pressable testID="track-active-order" accessibilityRole="button" accessibilityLabel="Track Live" onPress={openActiveTracking} style={({ pressed }) => [styles.trackLive, { backgroundColor: colors.brand, opacity: pressed ? 0.85 : 1 }]}>
                         <Ionicons name="radio-outline" size={18} color={colors.onBrand} />
                         <AppText style={styles.trackLiveText}>Track Live</AppText>
                       </Pressable>
                     </View>
                   </Card>
-                  <View style={styles.trackingDock}>
-                    <Pressable testID="home-track-tm" onPress={openActiveTracking} style={styles.trackingAction}><Ionicons name="navigate-outline" size={23} color="#EA580C"/><View style={{flex:1}}><AppText style={styles.trackingActionTitle}>Track TM</AppText><AppText variant="caption">Live moving vehicle telemetry</AppText></View></Pressable>
-                    <Pressable testID="home-call-driver" onPress={()=>void dial(liveLoad?.driver_mobile || tracking?.driver_mobile)} style={styles.trackingAction}><Ionicons name="call-outline" size={23} color="#EA580C"/><View style={{flex:1}}><AppText style={styles.trackingActionTitle}>Call Driver</AppText><AppText variant="caption">Open dialpad with assigned driver</AppText></View></Pressable>
-                    <Pressable testID="home-call-plant" onPress={()=>router.push("/customer/plants")} style={styles.trackingAction}><Ionicons name="business-outline" size={23} color="#EA580C"/><View style={{flex:1}}><AppText style={styles.trackingActionTitle}>Contact Plant</AppText><AppText variant="caption">Find registered plant contact details</AppText></View></Pressable>
-                  </View>
                   </>
                 ) : (
                   <Card style={styles.emptyOrder}>
@@ -317,14 +332,14 @@ const styles = StyleSheet.create({
   rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   activeCard: { padding: 0, overflow: "hidden", borderRadius: 24 },
   activeTop: { flexDirection: "row", minHeight: 186 },
-  activeInfo: { flex: 1, padding: 18, gap: 10 },
+  activeInfo: { padding: 18, gap: 10 },
   orderNumber: { fontFamily: fonts.bold, fontSize: 18 },
   statusRow: { flexDirection: "row", alignItems: "center", gap: 7 },
   statusDot: { width: 7, height: 7, borderRadius: 4 },
   grade: { fontFamily: fonts.semibold, fontSize: 14 },
   locationRow: { flexDirection: "row", gap: 5, alignItems: "flex-start" },
-  map: { width: "48%", minHeight: 186, borderRadius: 0 },
-  metrics: { minHeight: 72, borderTopWidth: 1, paddingHorizontal: 18, flexDirection: "row", alignItems: "center", gap: 16 },
+  map: { width: "100%", height: 220, overflow: "hidden" },
+  metrics: { minHeight: 72, borderTopWidth: 1, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" },
   metricValue: { fontFamily: fonts.bold, fontSize: 15 },
   metricDivider: { width: 1, height: 32 },
   trackLive: { marginLeft: "auto", minHeight: 44, borderRadius: 22, paddingHorizontal: 18, flexDirection: "row", alignItems: "center", gap: 7 },
@@ -332,7 +347,7 @@ const styles = StyleSheet.create({
   emptyOrder: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 18 },
   plantChip: { width: 156, minHeight: 104, gap: 7, padding: 14, borderRadius: 18, borderWidth: 1 },
   plantName: { fontFamily: fonts.semibold, fontSize: fontSize.sm },
-  trackingDock: {gap:10},
-  trackingAction: {backgroundColor:"#FFFFFF",borderColor:"#E2E8F0",borderWidth:1,borderRadius:16,padding:15,flexDirection:"row",alignItems:"center",gap:15},
-  trackingActionTitle:{fontFamily:fonts.bold,fontSize:15,color:"#0F172A"},
+  trackingDock: { flexDirection: "row", padding: 10, gap: 8 },
+  trackingAction: { flex: 1, minWidth: 0, minHeight: 70, borderColor: "#E2E8F0", borderWidth: 1, borderRadius: 12, padding: 6, alignItems: "center", justifyContent: "center", gap: 5 },
+  trackingActionTitle: { fontFamily: fonts.semibold, fontSize: 11, color: "#0F172A", textAlign: "center" },
 });
