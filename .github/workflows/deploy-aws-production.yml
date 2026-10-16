@@ -1,16 +1,18 @@
 name: Deploy TrackMyRMC AWS Production
 
 # Automatic production deployment:
-# - Triggered by completion of Backend CI, then checks Frontend CI for the same SHA
+# - Triggered by either CI completion, so late success or reruns can recheck the release
 # - Requires both workflows to pass for the exact same main commit
 # - Does not authorize database cutover
 # - Deploys only a SHA-pinned release
 
 on:
   workflow_run:
-    # One release gate per SHA; it waits for Frontend CI as well.
+    # Both completions can re-open the gate (including CI reruns).
+    # The production concurrency group prevents overlapping deployments.
     workflows:
       - "Backend CI"
+      - "Frontend CI"
     types:
       - completed
     branches:
