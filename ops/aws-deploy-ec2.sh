@@ -231,7 +231,22 @@ fi
 # preserve the database already configured by the running release.
 CURRENT_DB_NAME=""
 if [ -r /etc/trackmyrmc/app.env ]; then
-  CURRENT_DB_NAME="$(python3 -c 'from urllib.parse import urlparse; import sys; print(urlparse(next(x.split("=",1)[1].strip() for x in open(sys.argv[1]) if x.startswith("DATABASE_URL="))).path.lstrip("/"))' /etc/trackmyrmc/app.env)"
+  CURRENT_DB_NAME="$(python3 - /etc/trackmyrmc/app.env <<'PY'
+import sys
+from urllib.parse import urlsplit, unquote
+with open(sys.argv[1], encoding="utf-8") as f:
+    values = [line.split("=", 1)[1].strip() for line in f if line.startswith("DATABASE_URL=")]
+if len(values) != 1:
+    sys.exit("Expected exactly one DATABASE_URL")
+parsed = urlsplit(values[0].strip("\\\"'"))
+if parsed.scheme not in ("postgres", "postgresql") or not parsed.hostname:
+    sys.exit("Malformed existing DATABASE_URL; refusing deployment")
+name = unquote(parsed.path.lstrip("/"))
+if not name or any(ch in name for ch in ("/", ":", "%", '"')):
+    sys.exit("Invalid existing database name; refusing deployment")
+print(name)
+PY
+)"
 fi
 if [[ -n "$CURRENT_DB_NAME" && "$CURRENT_DB_NAME" != "$DB_NAME" && "${ALLOW_DATABASE_CUTOVER:-false}" != "true" ]]; then
   echo "Database cutover is blocked: runtime currently uses '$CURRENT_DB_NAME' while secret DB_NAME is '$DB_NAME'. Preserving '$CURRENT_DB_NAME' until a verified backup and data/migration parity check authorizes cutover."
@@ -240,6 +255,20 @@ fi
 
 DB_JSON="$(aws secretsmanager get-secret-value --secret-id "$RDS_SECRET" --query SecretString --output text)"
 DATABASE_URL="$(printf '%s' "$DB_JSON" | TRACKMYRMC_DB_NAME="$DB_NAME" python3 -c 'import json,sys,urllib.parse as u,os; x=json.load(sys.stdin); db=os.environ["TRACKMYRMC_DB_NAME"]; print("postgres://%s:%s@trackmyrmc-postgres.cf8mmcwuuinx.ap-south-1.rds.amazonaws.com:5432/%s?sslmode=require"%(u.quote(x["username"],safe=""),u.quote(x["password"],safe=""),u.quote(db,safe="")))')"
+
+# Validate the generated connection string without exposing credentials.
+TRACKMYRMC_DATABASE_URL="$DATABASE_URL" TRACKMYRMC_EXPECTED_DB_NAME="$DB_NAME" python3 - <<'PY'
+import os
+from urllib.parse import urlsplit, unquote
+url = os.environ["TRACKMYRMC_DATABASE_URL"]
+parsed = urlsplit(url)
+name = unquote(parsed.path.lstrip("/"))
+if (parsed.scheme not in ("postgres", "postgresql")
+        or not parsed.hostname or not parsed.username or not parsed.password
+        or name != os.environ["TRACKMYRMC_EXPECTED_DB_NAME"]
+        or any(ch in url for ch in ('"', "'", "\\n", "\\r"))):
+    raise SystemExit("Invalid PostgreSQL connection configuration; deployment blocked")
+PY
 
 JWT_SECRET="$(printf '%s' "$APP_JSON" | jq -r '.JWT_SECRET')"
 OTP_PEPPER="$(printf '%s' "$APP_JSON" | jq -r '.OTP_PEPPER')"
