@@ -13,7 +13,7 @@ import { registerPushDevice } from "@/src/notifications/pushClient";
 const VERSION = 1;
 type Choice = "granted" | "denied" | "manual" | "unavailable" | "undetermined";
 type Decision = { version: number; location_choice: Choice; notification_choice: Choice; updated_at?: string };
-const Permissions = createContext({ ready: false, review: () => {} });
+const Permissions = createContext({ ready: false, locationEnabled: false, enableDiscoveryLocation: async () => {}, review: () => {} });
 export const usePermissions = () => useContext(Permissions);
 
 export function PermissionProvider({ children }: { children: React.ReactNode }) {
@@ -58,7 +58,10 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
 
   const visible = installReady && (installNeeded || needed || reviewing);
   const refreshStatuses = async () => {
-    try { setLocation((await Location.getForegroundPermissionsAsync()).status as Choice); } catch { setLocation("unavailable"); }
+    try {
+      const status = (await Location.getForegroundPermissionsAsync()).status as Choice;
+      setLocation(previous => previous === "granted" ? status : previous);
+    } catch { setLocation(previous => previous === "granted" ? "unavailable" : previous); }
   };
   useEffect(() => {
     const subscription = AppState.addEventListener("change", state => { if (state === "active" && reviewing) void refreshStatuses(); });
@@ -115,7 +118,17 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
     } catch { setError("Could not save your preferences. Please retry; optional permissions can remain off."); }
     finally { setBusy(false); }
   };
-  return <Permissions.Provider value={{ ready: !hydrating && installReady && !installNeeded && (!account || (loadedFor === account && !needed)), review: () => { setReviewing(true); void refreshStatuses(); } }}>
+  const enableDiscoveryLocation = async () => {
+    setLocation("granted");
+    if (account && token) {
+      const decision: Decision = {version:VERSION,location_choice:"granted",notification_choice:notifications};
+      try {
+        await apiPut("/me/permission-consent",token,decision);
+        await storage.setItem(`permission-user-${account}`,JSON.stringify(decision));
+      } catch { /* Runtime access remains explicit; preferences can be saved again in Settings. */ }
+    }
+  };
+  return <Permissions.Provider value={{ ready: !hydrating && installReady && !installNeeded && (!account || (loadedFor === account && !needed)), locationEnabled: location === "granted", enableDiscoveryLocation, review: () => { setReviewing(true); void refreshStatuses(); } }}>
     {children}
     <Modal visible={visible} animationType="slide" onRequestClose={() => { if (!busy) void finish(); }}>
       <ScrollView contentContainerStyle={{ flexGrow: 1, padding: 24, paddingTop: 56, gap: 20, backgroundColor: colors.surface }}>
