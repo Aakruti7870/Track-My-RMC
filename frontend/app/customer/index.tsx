@@ -1,5 +1,5 @@
 import React from "react";
-import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
+import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -11,7 +11,7 @@ import { useGet } from "@/src/hooks/useApi";
 import { AppText } from "@/src/components/ui/AppText";
 import { Card } from "@/src/components/ui/Card";
 import { Skeleton } from "@/src/components/ui/Skeleton";
-import { MapPlaceholder } from "@/src/components/ui/MapPlaceholder";
+import { LiveMap } from "@/src/components/LiveMap";
 import { KycBanner } from "@/src/components/KycBanner";
 import { ErrorView } from "@/src/components/StateViews";
 import { HomeCarousel } from "@/src/components/HomeCarousel";
@@ -19,6 +19,7 @@ import { OrderData } from "@/src/components/OrderCard";
 import { PlantData } from "@/src/components/PlantCard";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 import { customerHomeModules } from "@/src/navigation/moduleCatalog";
+import { useGet as useTrackingGet } from "@/src/hooks/useApi";
 
 
 type HomeData = {
@@ -29,6 +30,7 @@ type HomeData = {
   nearby_plants: PlantData[];
   unread_notifications: number;
 };
+type ActiveTracking = { active: boolean; status: string; tm_number?: string; driver_mobile?: string; location?: {lat:number;lng:number;at:string}|null; active_loads?: Array<{id:string;status:string;tm_number?:string;driver_mobile?:string;location?:{lat:number;lng:number;at:string}|null}>; origin?:{lat?:number;lng?:number}; destination?:{lat?:number;lng?:number}; };
 
 const ACTIONS: { key: "new" | "track" | "plants" | "orders"; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { key: "new", label: "New Order", icon: "add" },
@@ -46,6 +48,18 @@ export default function CustomerHome() {
   const toast = useToast();
   const insets = useSafeAreaInsets();
   const { data, loading, error, refetch, reload } = useGet<HomeData>("/customer/home");
+  const activeId = data?.active_order?.id;
+  const {data: tracking} = useTrackingGet<ActiveTracking>(activeId ? `/customer/orders/${activeId}/tracking` : null as any);
+  const liveLoad = tracking?.active_loads?.find(load=>load.location) || tracking?.active_loads?.[0];
+  const liveLocation = liveLoad?.location || tracking?.location;
+  const isFresh = Boolean(liveLocation?.at && Date.now()-new Date(liveLocation.at).getTime()<90000);
+  const canShowLive = Boolean(tracking?.active && liveLocation && isFresh);
+  const dial = async (number?:string|null) => {
+    if (!number) return toast("Contact number not available for this trip", "info");
+    const normalized=number.replace(/[\\s()-]/g,"");
+    if (!/^\\+?[0-9]{7,15}$/.test(normalized)) return toast("Invalid contact number", "info");
+    try { await Linking.openURL(`tel:${normalized}`); } catch { toast("Unable to open phone dialer", "error"); }
+  };
 
   const openActiveTracking = () => {
     if (!data?.active_order) {
@@ -101,7 +115,7 @@ export default function CustomerHome() {
           <ErrorView message={error} onRetry={reload} />
           <View style={styles.section} testID="customer-module-grid">
             <View style={styles.rowBetween}>
-              <AppText style={[styles.sectionTitle, { color: colors.onSurface }]}>Your Modules</AppText>
+              <AppText style={[styles.sectionTitle, { color: colors.onSurface }]}>Site & Quality Tools</AppText>
               <Pressable testID="view-all-customer-modules" onPress={() => router.push("/customer/more")}>
                 <AppText variant="label" color={colors.brand}>All tools  ›</AppText>
               </Pressable>
@@ -213,7 +227,7 @@ export default function CustomerHome() {
 
               <View style={styles.section}>
                 <View style={styles.rowBetween}>
-                  <AppText style={[styles.sectionTitle, { color: colors.onSurface }]}>Active Order</AppText>
+                  <AppText style={[styles.sectionTitle, { color: colors.onSurface }]}>Active Transit Mixer Live Tracking</AppText>
                   <Pressable testID="view-all-orders" onPress={() => router.push("/customer/orders")}>
                     <AppText variant="label" color={colors.brand}>View All  ›</AppText>
                   </Pressable>
@@ -223,14 +237,14 @@ export default function CustomerHome() {
                     <View style={styles.activeTop}>
                       <View style={styles.activeInfo}>
                         <AppText style={[styles.orderNumber, { color: colors.onSurface }]}>{data.active_order.order_number}</AppText>
-                        <View style={styles.statusRow}><View style={[styles.statusDot, { backgroundColor: colors.brand }]} /><AppText style={{ color: colors.brand, fontFamily: fonts.medium }}>Dispatched</AppText></View>
+                        <View style={styles.statusRow}><View style={[styles.statusDot, { backgroundColor: colors.brand }]} /><AppText style={{ color: colors.brand, fontFamily: fonts.medium }}>{data.active_order.status.replace(/_/g," ")}</AppText></View>
                         <AppText style={[styles.grade, { color: colors.onSurface }]}>{data.active_order.grade} Grade · {data.active_order.quantity} m³</AppText>
                         <View style={styles.locationRow}><Ionicons name="location-outline" size={17} color={colors.onSurfaceTertiary} /><AppText variant="caption" style={{ flex: 1 }}>{data.active_order.site_name}</AppText></View>
                       </View>
-                      <MapPlaceholder pins={0} label="" style={styles.map} />
+                      <View style={styles.map}><LiveMap origin={tracking?.origin?.lat!=null && tracking.origin.lng!=null?{lat:tracking.origin.lat,lng:tracking.origin.lng}:null} destination={tracking?.destination?.lat!=null && tracking.destination.lng!=null?{lat:tracking.destination.lat,lng:tracking.destination.lng}:null} mixer={canShowLive && liveLocation?{lat:liveLocation.lat,lng:liveLocation.lng}:null} style={{flex:1}} /></View>
                     </View>
                     <View style={[styles.metrics, { borderTopColor: colors.divider }]}> 
-                      <View><AppText variant="caption">ETA</AppText><AppText style={styles.metricValue}>Live</AppText></View>
+                      <View><AppText variant="caption">GPS</AppText><AppText style={styles.metricValue}>{canShowLive ? "Live" : liveLocation ? "Last known" : "Awaiting"}</AppText></View>
                       <View style={[styles.metricDivider, { backgroundColor: colors.divider }]} />
                       <View><AppText variant="caption">Quantity</AppText><AppText style={styles.metricValue}>{data.active_order.quantity} m³</AppText></View>
                       <Pressable testID="track-active-order" onPress={openActiveTracking} style={({ pressed }) => [styles.trackLive, { backgroundColor: colors.brand, opacity: pressed ? 0.85 : 1 }]}> 
@@ -239,6 +253,11 @@ export default function CustomerHome() {
                       </Pressable>
                     </View>
                   </Card>
+                  <View style={styles.trackingDock}>
+                    <Pressable testID="home-track-tm" onPress={openActiveTracking} style={styles.trackingAction}><Ionicons name="navigate-outline" size={23} color="#EA580C"/><View style={{flex:1}}><AppText style={styles.trackingActionTitle}>Track TM</AppText><AppText variant="caption">Live moving vehicle telemetry</AppText></View></Pressable>
+                    <Pressable testID="home-call-driver" onPress={()=>void dial(liveLoad?.driver_mobile || tracking?.driver_mobile)} style={styles.trackingAction}><Ionicons name="call-outline" size={23} color="#EA580C"/><View style={{flex:1}}><AppText style={styles.trackingActionTitle}>Call Driver</AppText><AppText variant="caption">Open dialpad with assigned driver</AppText></View></Pressable>
+                    <Pressable testID="home-call-plant" onPress={()=>router.push("/customer/plants")} style={styles.trackingAction}><Ionicons name="business-outline" size={23} color="#EA580C"/><View style={{flex:1}}><AppText style={styles.trackingActionTitle}>Contact Plant</AppText><AppText variant="caption">Find registered plant contact details</AppText></View></Pressable>
+                  </View>                  </Card>
                 ) : (
                   <Card style={styles.emptyOrder}>
                     <Ionicons name="cube-outline" size={30} color={colors.onSurfaceTertiary} />
@@ -311,4 +330,7 @@ const styles = StyleSheet.create({
   emptyOrder: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 18 },
   plantChip: { width: 156, minHeight: 104, gap: 7, padding: 14, borderRadius: 18, borderWidth: 1 },
   plantName: { fontFamily: fonts.semibold, fontSize: fontSize.sm },
+  trackingDock: {gap:10},
+  trackingAction: {backgroundColor:"#FFFFFF",borderColor:"#E2E8F0",borderWidth:1,borderRadius:16,padding:15,flexDirection:"row",alignItems:"center",gap:15},
+  trackingActionTitle:{fontFamily:fonts.bold,fontSize:15,color:"#0F172A"},
 });
