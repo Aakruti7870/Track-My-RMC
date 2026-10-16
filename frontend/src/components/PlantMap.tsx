@@ -50,7 +50,7 @@ export function PlantMap({ plants, userLocation, onSelectPlant, onRegionChange }
 
   if (!mapsConfigured) {
     return (
-      <View style={{padding:16}}><AppText>Map unavailable: configure the Android Google Maps key and rebuild the app. Real plant results remain available below.</AppText></View>
+      <View style={{padding:16}}><AppText>The map is currently unavailable. Browse the plant list or open Directions below.</AppText></View>
     );
   }
 

@@ -37,7 +37,7 @@ export function PlantMap({ plants, userLocation, onSelectPlant, onRegionChange }
     const listener = (event: MessageEvent) => {
       if (event.source !== frame.current?.contentWindow) return;
       if (event.data?.kind === "map-ready") setReady(true);
-      if (event.data?.kind === "map-error") setError("Google Maps could not load. Check the configured browser key and its website restrictions.");
+      if (event.data?.kind === "map-error") setError("The map could not load. Check your connection or use Directions from a plant card.");
       if (event.data?.kind === "map-center" && validLatLng(event.data.center)) callbacks.current.onRegionChange?.(event.data.center);
       if (event.data?.kind === "map-plant") { const plant = callbacks.current.plants.find(p => p.id===event.data.id); if (plant) callbacks.current.onSelectPlant?.(plant); }
     };
@@ -45,7 +45,7 @@ export function PlantMap({ plants, userLocation, onSelectPlant, onRegionChange }
     return () => window.removeEventListener("message",listener);
   },[]);
   useEffect(() => { if (ready) frame.current?.contentWindow?.postMessage({kind:"map-data",plants:mapped,center:userLocation},"*"); },[ready,mapped,userLocation]);
-  if (!KEY || error) return <View style={{padding:16}}><AppText>{error || "Map unavailable: configure EXPO_PUBLIC_GOOGLE_MAPS_KEY. Real plant results remain available below."}</AppText></View>;
+  if (!KEY || error) return <View style={{padding:16}}><AppText>{error || "The map is currently unavailable. Browse the plant list or open Directions below."}</AppText></View>;
   return <View style={{minHeight:300,borderRadius:16,overflow:"hidden"}}>
     {React.createElement("iframe",{ref:frame,title:"Nearby concrete plants",srcDoc:html,sandbox:"allow-scripts allow-same-origin",style:{width:"100%",height:300,border:0}})}
   </View>;

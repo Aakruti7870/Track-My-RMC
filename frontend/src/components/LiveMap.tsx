@@ -65,7 +65,7 @@ function init(){
  map=new google.maps.Map(document.getElementById('map'),{center:latest.destination,zoom:13,gestureHandling:'cooperative'});
  window.updateTracking(latest);
 }
-window.gm_authFailure=function(){document.body.innerHTML='<div style="display:flex;height:100%;align-items:center;justify-content:center;font-family:sans-serif;color:#888;padding:16px;text-align:center">Map key not authorized for this domain</div>';};
+window.gm_authFailure=function(){document.body.innerHTML='<div style="display:flex;height:100%;align-items:center;justify-content:center;font-family:sans-serif;color:#888;padding:16px;text-align:center">The map could not load. Your recorded trip details remain available below.</div>';};
 </script>
 <script async src="https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(MAPS_KEY)}&libraries=geometry&loading=async&callback=init"></script>
 </body></html>`;
@@ -74,7 +74,7 @@ window.gm_authFailure=function(){document.body.innerHTML='<div style="display:fl
 
   if (!canRender) {
     return (
-      <View style={[styles.wrap,style,{padding:16}]}><AppText>{!MAPS_KEY ? "Map unavailable: Google Maps is not configured for this build." : "The delivery site has no map coordinates."} {ended ? "Tracking ended." : "Recorded trip details are shown below."}</AppText></View>
+      <View style={[styles.wrap,style,{padding:16}]}><AppText>{!MAPS_KEY ? "The map is currently unavailable." : "The delivery site has no map coordinates."} {ended ? "Tracking ended." : "Recorded trip details are shown below."}</AppText></View>
     );
   }
 
