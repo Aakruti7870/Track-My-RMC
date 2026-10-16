@@ -371,6 +371,44 @@ pub async fn request_google_quote(
         return Ok(Json(json!({"status":"REGISTERED","plant_id":plant_id})));
     }
 
+    // A client-supplied ID is not evidence of a real Google Places listing.
+    // Verify it with Places Details using the same server-held key before storage.
+    let key = state
+        .config
+        .google_places_api_key
+        .as_deref()
+        .ok_or_else(|| AppError::InternalError("Google Places is not configured".into()))?;
+    let mut url = reqwest::Url::parse("https://places.googleapis.com/v1/places/")
+        .map_err(|_| AppError::InternalError("Invalid Places endpoint".into()))?;
+    url.path_segments_mut()
+        .map_err(|_| AppError::InternalError("Invalid Places endpoint".into()))?
+        .pop_if_empty()
+        .push(place_id);
+    let response = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|_| AppError::InternalError("Places client unavailable".into()))?
+        .get(url)
+        .header("X-Goog-Api-Key", key)
+        .header("X-Goog-FieldMask", "id")
+        .send()
+        .await
+        .map_err(|_| AppError::InternalError("Places verification temporarily unavailable".into()))?;
+    if !response.status().is_success() {
+        return Err(AppError::BadRequest(
+            "This Google business could not be verified. Refresh Nearby RMC Plants.".into(),
+        ));
+    }
+    let verified_place: Value = response
+        .json()
+        .await
+        .map_err(|_| AppError::InternalError("Invalid Places verification response".into()))?;
+    if verified_place["id"].as_str() != Some(place_id) {
+        return Err(AppError::BadRequest(
+            "Google Place ID verification failed. Refresh Nearby RMC Plants.".into(),
+        ));
+    }
+
     // Unique (customer, place) prevents repeated clicks from creating noise.
     let request_id: Uuid = sqlx::query_scalar(
         "INSERT INTO google_plant_quote_interests (customer_id, google_place_id)
