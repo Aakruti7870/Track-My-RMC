@@ -24,10 +24,6 @@ const KYC_BANNER = require("../../assets/images/eKYC Aadhaar Digital Identity Ne
 
 const ORANGE = "#FF5A16";
 const ORANGE_DEEP = "#C93D00";
-const CASHFREE_GREEN = "#05B37E";
-const CASHFREE_INK = "#111827";
-const DIGI_BLUE = "#2F80ED";
-const DIGI_SAFFRON = "#FF9933";
 
 const AUTO_MS = 4500;
 const SLIDE_COUNT = 4;
@@ -157,9 +153,9 @@ function IndiaSlide({ width, height }: SlideProps) {
 type Props = { style?: ViewStyle };
 
 /**
- * Post-login top carousel: 4 auto-advancing slides. Image 1 is the existing
- * theme-aware hero. Images 2/3/4 are brand promo banners with permanent
- * light/dark/light themes. Supports auto-slide, manual swipe and dot paging.
+ * Post-login top carousel: 4 auto-advancing slides. The Cashfree and KYC
+ * slides display the uploaded promotional images, while the existing hero
+ * and India coverage slide remain unchanged. Supports swipe and dot paging.
  */
 export function HomeCarousel({ style }: Props) {
   const { colors } = useTheme();
