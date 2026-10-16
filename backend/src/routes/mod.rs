@@ -294,6 +294,10 @@ pub fn build_app_router(state: AppState) -> Router {
             "/api/customer/plants/google-nearby",
             post(discovery::google_nearby),
         )
+        .route(
+            "/api/customer/plants/google-quote-interest",
+            post(discovery::request_google_quote),
+        )
         .route("/api/customer/plants/locate", post(discovery::locate))
         .route(
             "/api/me/permission-consent",
