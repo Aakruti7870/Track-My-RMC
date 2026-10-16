@@ -172,15 +172,33 @@ async fn plant_contacts_follow_approval_on_list_and_search_endpoints(db: PgPool)
         let (status, body) = call(&app, path, payload, &token).await;
         assert_eq!(status, StatusCode::OK, "{path}: {body}");
         let plants = body["plants"].as_array().expect("plants array");
-        let unapproved = plants.iter().find(|plant| plant["id"] == json!(unapproved_id)).expect("unapproved listing");
+        let unapproved = plants
+            .iter()
+            .find(|plant| plant["id"] == json!(unapproved_id))
+            .expect("unapproved listing");
         assert_eq!(unapproved["verified"], false, "{path}");
-        assert!(unapproved["contact_phone"].is_null(), "{path}: raw phone leaked");
-        assert!(unapproved["contact_email"].is_null(), "{path}: unapproved email leaked");
+        assert!(
+            unapproved["contact_phone"].is_null(),
+            "{path}: raw phone leaked"
+        );
+        assert!(
+            unapproved["contact_email"].is_null(),
+            "{path}: unapproved email leaked"
+        );
         assert_eq!(unapproved["contact_phone_masked"], "9174982*****", "{path}");
-        assert!(!body.to_string().contains("12345"), "{path}: phone suffix leaked");
-        assert!(!body.to_string().contains("unapproved@example.com"), "{path}: email leaked");
+        assert!(
+            !body.to_string().contains("12345"),
+            "{path}: phone suffix leaked"
+        );
+        assert!(
+            !body.to_string().contains("unapproved@example.com"),
+            "{path}: email leaked"
+        );
 
-        let approved = plants.iter().find(|plant| plant["id"] == json!(approved_id)).expect("approved listing");
+        let approved = plants
+            .iter()
+            .find(|plant| plant["id"] == json!(approved_id))
+            .expect("approved listing");
         assert_eq!(approved["verified"], true, "{path}");
         assert_eq!(approved["contact_phone"], "+917498276543", "{path}");
     }
