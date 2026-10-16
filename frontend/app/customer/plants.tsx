@@ -274,7 +274,8 @@ export default function CustomerPlants() {
     }
     setPage(1);
     setFilters({q,grade,radius_km:radius,verified,...geo});
-    setShowFilters(false);
+    // Preserve the expanded Filters panel so customers can review and adjust
+    // an applied location or grade without reopening it.
   };
 
   const clearPlantFilters = () => {
