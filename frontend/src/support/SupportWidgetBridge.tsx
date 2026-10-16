@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/src/auth/AuthContext";
+import { AnimatedPuppy } from "@/src/support/AnimatedPuppy";
 import { AppText } from "@/src/components/ui/AppText";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
@@ -285,10 +286,10 @@ export function SupportWidgetBridge() {
                 },
               ]}
             >
-              <Ionicons name="chatbubbles-outline" size={30} color={colors.brand} />
+              <AnimatedPuppy mood={customerHelpOpen ? "greeting" : "idle"} active={showCustomerSupport} size={48} />
             </Pressable>
             <View pointerEvents="none" style={[styles.customerBadge, { backgroundColor: colors.brand }]}> 
-              <AppText style={[styles.badgeText, { color: colors.onBrand }]}>Support</AppText>
+              <AppText style={[styles.badgeText, { color: colors.onBrand }]}>May I Help you?</AppText>
             </View>
           </View>
         </View>
@@ -443,7 +444,7 @@ export function SupportWidgetBridge() {
             },
           ]}
         >
-          <Ionicons name="chatbubbles-outline" size={30} color={colors.brand} />
+          <AnimatedPuppy mood={publicHelpOpen ? "greeting" : "idle"} active={showPublicLoginHelp} size={48} />
         </Pressable>
       </View>
     </View>
