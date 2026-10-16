@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { apiErrorDetail, apiPost } from "@/src/api/client";
 import { useAuth } from "@/src/auth/AuthContext";
 import { LatLng, validLatLng } from "@/src/maps/geo";
+import { PlantGeoFilters } from "@/src/domain/plantGeoFilters";
 
 export type GoogleNearbyPlant = {
   place_id: string;
@@ -25,7 +26,7 @@ type GoogleNearbyResult = {
 
 // Google Places content is not cached or written to permanent storage.
 // Every response is only retained in React state while the Nearby Plants screen is active.
-export function useGoogleNearbyPlants(location: LatLng | null, radiusKm: number, enabled: boolean, query: string) {
+export function useGoogleNearbyPlants(location: LatLng | null, radiusKm: number, enabled: boolean, query: string, geo: PlantGeoFilters) {
   const { token } = useAuth();
   const lat = location?.lat;
   const lng = location?.lng;
@@ -54,6 +55,10 @@ export function useGoogleNearbyPlants(location: LatLng | null, radiusKm: number,
         lng,
         radius_km: Math.min(Math.max(1, radiusKm), 50),
         q: searchName,
+        state: geo.state,
+        district: geo.district,
+        taluka: geo.taluka,
+        city: geo.city,
       }).then((result) => {
         if (id === sequence.current) setState({ data: result, loading: false, error: null });
       }).catch((error: unknown) => {
@@ -63,7 +68,7 @@ export function useGoogleNearbyPlants(location: LatLng | null, radiusKm: number,
       });
     }, 700);
     return () => { clearTimeout(timer); sequence.current++; };
-  }, [token, lat, lng, radiusKm, enabled, searchName, revision]);
+  }, [token, lat, lng, radiusKm, enabled, searchName, geo.state, geo.district, geo.taluka, geo.city, revision]);
 
   return { ...state, refresh };
 }

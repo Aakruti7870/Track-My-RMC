@@ -24,6 +24,16 @@ pub struct Search {
     pub page: Option<i64>,
     pub page_size: Option<i64>,
     pub verified: Option<bool>,
+    pub state: Option<String>,
+    pub district: Option<String>,
+    pub taluka: Option<String>,
+    pub city: Option<String>,
+}
+
+fn valid_geo_field(value: &Option<String>) -> bool {
+    value
+        .as_ref()
+        .is_none_or(|v| v.chars().count() <= 80 && !v.chars().any(char::is_control))
 }
 
 impl Search {
@@ -42,6 +52,10 @@ impl Search {
             || self.page_size.is_some_and(|v| !(1..=100).contains(&v))
             || self.q.as_ref().is_some_and(|v| v.len() > 160)
             || self.grade.as_ref().is_some_and(|v| v.len() > 30)
+            || !valid_geo_field(&self.state)
+            || !valid_geo_field(&self.district)
+            || !valid_geo_field(&self.taluka)
+            || !valid_geo_field(&self.city)
         {
             return Err(AppError::BadRequest(
                 "Invalid plant search parameters".into(),
@@ -113,7 +127,7 @@ pub async fn search(
             AND EXISTS(SELECT 1 FROM play_review_fixtures f WHERE f.user_id=$1 AND f.role='customer' AND f.enabled)
                 = EXISTS(SELECT 1 FROM play_review_fixtures f WHERE f.plant_id=p.id AND f.role='customer' AND f.enabled)
         )
-        SELECT jsonb_build_object('id',id,'name',name,'address',address_line,'city',city,'district',state,'pincode',pincode,
+        SELECT jsonb_build_object('id',id,'name',name,'address',address_line,'city',city,'district',coalesce(nullif(district,''),state),'pincode',pincode,
             'lat',latitude,'lng',longitude,
             'contact_phone',CASE WHEN verified THEN contact_phone ELSE NULL END,
             'contact_phone_masked',CASE WHEN NOT verified AND contact_phone IS NOT NULL AND length(regexp_replace(contact_phone,'[^0-9]','','g')) >= 5 THEN
@@ -125,10 +139,19 @@ pub async fn search(
           AND ($5='' OR strpos(lower(name||' '||address_line||' '||city||' '||state||' '||pincode),lower($5))>0)
           AND ($6='' OR EXISTS(SELECT 1 FROM unnest(grades) g WHERE lower(replace(g,'-',''))=lower(replace($6,'-',''))))
           AND (NOT $7 OR verified)
-        ORDER BY distance_km NULLS LAST, name, id LIMIT $8 OFFSET $9
+          AND ($8='' OR lower(coalesce(state,''))=lower($8))
+          AND ($9='' OR lower(coalesce(district,''))=lower($9) OR strpos(lower(coalesce(address_line,'')||' '||coalesce(city,'')||' '||coalesce(state,'')),lower($9))>0)
+          AND ($10='' OR strpos(lower(coalesce(address_line,'')||' '||coalesce(city,'')),lower($10))>0)
+          AND ($11='' OR strpos(lower(coalesce(city,'')||' '||coalesce(address_line,'')),lower($11))>0)
+        ORDER BY distance_km NULLS LAST, name, id LIMIT $12 OFFSET $13
     "#).bind(user.user_id).bind(query.lat).bind(query.lng).bind(query.radius_km.unwrap_or(50.0))
         .bind(query.q.unwrap_or_default().trim()).bind(query.grade.unwrap_or_default().trim())
-        .bind(query.verified.unwrap_or(false)).bind(size+1).bind((page-1)*size).fetch_all(&state.db).await?;
+        .bind(query.verified.unwrap_or(false))
+        .bind(query.state.unwrap_or_default().trim())
+        .bind(query.district.unwrap_or_default().trim())
+        .bind(query.taluka.unwrap_or_default().trim())
+        .bind(query.city.unwrap_or_default().trim())
+        .bind(size+1).bind((page-1)*size).fetch_all(&state.db).await?;
     let more = rows.len() > size as usize;
     let plants = rows
         .into_iter()
@@ -148,6 +171,10 @@ pub struct GoogleNearbyQuery {
     lng: f64,
     radius_km: Option<f64>,
     q: Option<String>,
+    state: Option<String>,
+    district: Option<String>,
+    taluka: Option<String>,
+    city: Option<String>,
 }
 
 impl GoogleNearbyQuery {
@@ -163,6 +190,10 @@ impl GoogleNearbyQuery {
                 .q
                 .as_ref()
                 .is_some_and(|q| q.chars().count() > 80 || q.chars().any(char::is_control))
+            || !valid_geo_field(&self.state)
+            || !valid_geo_field(&self.district)
+            || !valid_geo_field(&self.taluka)
+            || !valid_geo_field(&self.city)
         {
             return Err(AppError::BadRequest(
                 "Google nearby search requires valid coordinates and a radius from 1 to 50 km"
@@ -275,10 +306,26 @@ pub async fn google_nearby(
         .ok_or_else(|| {
             AppError::BadRequest("Live Google Places discovery is not configured".into())
         })?;
-    let text_query = match query.q.as_deref().map(str::trim).filter(|q| q.len() >= 3) {
+    let mut text_query = match query.q.as_deref().map(str::trim).filter(|q| q.len() >= 3) {
         Some(term) => format!("{term} ready mix concrete plant"),
         None => "ready mix concrete plant".to_string(),
     };
+    let area = [
+        query.city.as_deref(),
+        query.taluka.as_deref(),
+        query.district.as_deref(),
+        query.state.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .map(str::trim)
+    .filter(|value| !value.is_empty())
+    .collect::<Vec<_>>();
+    if !area.is_empty() {
+        text_query.push_str(" in ");
+        text_query.push_str(&area.join(", "));
+        text_query.push_str(", India");
+    }
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(12))
         .build()
@@ -510,6 +557,23 @@ mod tests {
     }
 
     #[test]
+    fn geo_filters_validate_and_reject_control_characters() {
+        let valid: Search = serde_json::from_value(json!({
+            "state": "Maharashtra", "district": "Pune", "taluka": "Haveli", "city": "Ravet"
+        }))
+        .unwrap();
+        assert!(valid.validate().is_ok());
+        let invalid_value = format!("Pune{}Other", char::from(10));
+        let invalid: Search = serde_json::from_value(json!({"district": invalid_value})).unwrap();
+        assert!(invalid.validate().is_err());
+        let oversized: GoogleNearbyQuery = serde_json::from_value(json!({
+            "lat":18.9, "lng":73.1, "state": "x".repeat(81)
+        }))
+        .unwrap();
+        assert!(oversized.validate().is_err());
+    }
+
+    #[test]
     fn google_nearby_rejects_invalid_location_and_oversized_radius() {
         for query in [
             GoogleNearbyQuery {
@@ -517,30 +581,50 @@ mod tests {
                 lng: 73.0,
                 radius_km: None,
                 q: None,
+                state: None,
+                district: None,
+                taluka: None,
+                city: None,
             },
             GoogleNearbyQuery {
                 lat: f64::NAN,
                 lng: 73.0,
                 radius_km: None,
                 q: None,
+                state: None,
+                district: None,
+                taluka: None,
+                city: None,
             },
             GoogleNearbyQuery {
                 lat: 18.0,
                 lng: 181.0,
                 radius_km: None,
                 q: None,
+                state: None,
+                district: None,
+                taluka: None,
+                city: None,
             },
             GoogleNearbyQuery {
                 lat: 18.0,
                 lng: 73.0,
                 radius_km: Some(51.0),
                 q: None,
+                state: None,
+                district: None,
+                taluka: None,
+                city: None,
             },
             GoogleNearbyQuery {
                 lat: 18.0,
                 lng: 73.0,
                 radius_km: Some(-1.0),
                 q: None,
+                state: None,
+                district: None,
+                taluka: None,
+                city: None,
             },
         ] {
             assert!(query.validate().is_err());
@@ -550,6 +634,10 @@ mod tests {
             lng: 73.1,
             radius_km: None,
             q: None,
+            state: None,
+            district: None,
+            taluka: None,
+            city: None,
         };
         assert_eq!(valid.validate().unwrap(), 25.0);
     }
@@ -561,6 +649,10 @@ mod tests {
             lng: 73.1,
             radius_km: Some(10.0),
             q: None,
+            state: None,
+            district: None,
+            taluka: None,
+            city: None,
         };
         let payload = json!({"places":[
             {"id":"near","displayName":{"text":"Nearby RMC"},"location":{"latitude":18.91,"longitude":73.1},"formattedAddress":"Raigad"},
