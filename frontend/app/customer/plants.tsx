@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, AppState, FlatList, Image, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { ActivityIndicator, AppState, FlatList, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
 import * as Location from "expo-location";
@@ -144,7 +144,7 @@ export default function CustomerPlants() {
   const { data, loading, error, refetch, reload, clearCache } = usePlantSearch(userLocation, filters, page);
   const {
     data: googleNearby, loading: googleLoading, error: googleError, refresh: refreshGoogle,
-  } = useGoogleNearbyPlants(userLocation, Math.min(filters.radius_km, 50), !filters.verified && !filters.grade.trim());
+  } = useGoogleNearbyPlants(userLocation, Math.min(filters.radius_km, 50), !filters.verified && !filters.grade.trim(), filters.q);
   const didInit = useRef(false);
   const previousLocationStatus = useRef<NearbyLocationStatus | null>(null);
   const locationRequest = useRef(0);
@@ -269,14 +269,12 @@ export default function CustomerPlants() {
 
   // Google-sourced data remains separate from the app's approved, order-enabled directory.
   const googleEntries = useMemo(() => {
-    const term = filters.q.trim().toLowerCase();
     const registered = data?.plants || [];
     return (googleNearby?.places || []).filter((place) => {
-      if (term && !(`${place.name} ${place.address}`).toLowerCase().includes(term)) return false;
       return !registered.some((plant) => plant.name.trim().toLowerCase() === place.name.trim().toLowerCase()
         && validLatLng(plant) && distanceKm({lat:plant.lat!,lng:plant.lng!},place) < 0.15);
     });
-  }, [googleNearby, filters.q, data]);
+  }, [googleNearby, data]);
 
   const googleMapPlants = useMemo<PlantData[]>(() => googleEntries.map(place => ({
     id: `google:${place.place_id}`,
@@ -370,12 +368,10 @@ export default function CustomerPlants() {
                 <View testID="google-nearby-plants-section" style={{gap:10,paddingTop:10}}>
                   <View style={{flexDirection:"row",alignItems:"center",justifyContent:"space-between",gap:8}}>
                     <AppText variant="heading">Nearby businesses on Google Maps</AppText>
-                    <Image
-                      source={{uri:"https://www.gstatic.com/images/branding/googlelogo/2x/googlelogo_color_92x30dp.png"}}
-                      accessibilityLabel="Google"
-                      resizeMode="contain"
-                      style={{width:68,height:24}}
-                    />
+                    <AppText accessibilityLabel="Google Maps" numberOfLines={1}
+                      style={{fontFamily:"Roboto",fontSize:14,fontWeight:"400",color:"#5E5E5E"}}>
+                      Google Maps
+                    </AppText>
                   </View>
                   <AppText variant="caption">
                     Live Google Places listings within {Math.min(filters.radius_km,50)} km. Google listings are not TrackMyRMC-verified and cannot accept orders here.
