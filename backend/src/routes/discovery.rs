@@ -453,10 +453,14 @@ mod tests {
 
     #[test]
     fn google_quote_interest_validates_place_id() {
-        let accepted = GoogleQuoteInterest { google_place_id: "ChIJc1_example-ID".into() };
+        let accepted = GoogleQuoteInterest {
+            google_place_id: "ChIJc1_example-ID".into(),
+        };
         assert_eq!(accepted.validate().unwrap(), "ChIJc1_example-ID");
         for raw in ["", "   ", "bad place id", "too\\nlong"] {
-            let rejected = GoogleQuoteInterest { google_place_id: raw.into() };
+            let rejected = GoogleQuoteInterest {
+                google_place_id: raw.into(),
+            };
             assert!(rejected.validate().is_err());
         }
     }
