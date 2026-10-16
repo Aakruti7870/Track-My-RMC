@@ -323,6 +323,74 @@ pub async fn google_nearby(
     })))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct GoogleQuoteInterest {
+    google_place_id: String,
+}
+
+impl GoogleQuoteInterest {
+    fn validate(&self) -> Result<&str, AppError> {
+        let id = self.google_place_id.trim();
+        if id.is_empty() || id.len() > 256 || !id.chars().all(|c| c.is_ascii_graphic()) {
+            return Err(AppError::BadRequest("Invalid Google Place ID".into()));
+        }
+        Ok(id)
+    }
+}
+
+/// Record interest in an unregistered Google listing without claiming to have
+/// contacted a supplier or creating a quote/order against an unverified plant.
+/// Only the place ID and requester identity are retained.
+pub async fn request_google_quote(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Json(input): Json<GoogleQuoteInterest>,
+) -> Result<Json<Value>, AppError> {
+    check_role(&user, &["customer"])?;
+    let place_id = input.validate()?;
+    if !allow_search(user.user_id) {
+        return Err(AppError::RateLimited(
+            "Please wait before requesting another quotation".into(),
+        ));
+    }
+
+    // If a Google listing is already linked to an approved TrackMyRMC plant,
+    // send the client to the existing verified-plant quotation workflow.
+    let registered: Option<Uuid> = sqlx::query_scalar(
+        "SELECT p.id FROM rmc_plants p
+         WHERE p.google_place_id=$1 AND p.is_active
+           AND EXISTS (SELECT 1 FROM plant_listing_requests r
+                       WHERE r.plant_id=p.id AND r.status='APPROVED')
+         LIMIT 1",
+    )
+    .bind(place_id)
+    .fetch_optional(&state.db)
+    .await?;
+
+    if let Some(plant_id) = registered {
+        return Ok(Json(json!({"status":"REGISTERED","plant_id":plant_id})));
+    }
+
+    // Unique (customer, place) prevents repeated clicks from creating noise.
+    let request_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO google_plant_quote_interests (customer_id, google_place_id)
+         VALUES ($1, $2)
+         ON CONFLICT (customer_id, google_place_id)
+         DO UPDATE SET updated_at = NOW()
+         RETURNING id",
+    )
+    .bind(user.user_id)
+    .bind(place_id)
+    .fetch_one(&state.db)
+    .await?;
+
+    Ok(Json(json!({
+        "status":"PENDING_PARTNER",
+        "request_id":request_id,
+        "message":"Interest saved. This Google listing is not an approved TrackMyRMC supplier. No quotation has been sent."
+    })))
+}
+
 #[derive(Deserialize)]
 pub struct Address {
     address: String,
@@ -382,6 +450,16 @@ pub async fn locate(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn google_quote_interest_validates_place_id() {
+        let accepted = GoogleQuoteInterest { google_place_id: "ChIJc1_example-ID".into() };
+        assert_eq!(accepted.validate().unwrap(), "ChIJc1_example-ID");
+        for raw in ["", "   ", "bad place id", "too\\nlong"] {
+            let rejected = GoogleQuoteInterest { google_place_id: raw.into() };
+            assert!(rejected.validate().is_err());
+        }
+    }
 
     #[test]
     fn google_nearby_rejects_invalid_location_and_oversized_radius() {
