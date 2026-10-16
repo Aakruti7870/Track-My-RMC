@@ -237,6 +237,15 @@ try {
       await context.clearPermissions();
       await noLocationSearch;
       await expect(page.getByRole('button',{name:'Enable Location',exact:true})).toBeVisible();
+      phase = 'network unavailable and retry recovery';
+      await context.setOffline(true);
+      await page.getByTestId('plants-search').fill('network-outage-regression');
+      await expect(page.getByTestId('error-view')).toBeVisible();
+      await context.setOffline(false);
+      await page.getByTestId('retry-button').click();
+      await expect(page.getByTestId('plants-search')).toBeVisible();
+      await page.getByTestId('plants-search').fill('');
+      await expect(page.getByText('Browser staging plant',{exact:true}).first()).toBeVisible();
       phase = 'owned active delivery tracking and browser back';
       const ordersResponse = await context.request.get('http://127.0.0.1:8301/api/customer/orders',{headers:{Authorization:`Bearer ${token}`}});
       assert.equal(ordersResponse.status(),200);
