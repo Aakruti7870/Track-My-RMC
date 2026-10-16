@@ -31,9 +31,9 @@ pub struct Search {
 }
 
 fn valid_geo_field(value: &Option<String>) -> bool {
-    value.as_ref().is_none_or(|v| {
-        v.len() <= 80 && !v.chars().any(char::is_control)
-    })
+    value
+        .as_ref()
+        .is_none_or(|v| v.len() <= 80 && !v.chars().any(char::is_control))
 }
 
 impl Search {
@@ -557,6 +557,22 @@ mod tests {
     }
 
     #[test]
+    fn geo_filters_validate_and_reject_control_characters() {
+        let valid: Search = serde_json::from_value(json!({
+            "state": "Maharashtra", "district": "Pune", "taluka": "Haveli", "city": "Ravet"
+        }))
+        .unwrap();
+        assert!(valid.validate().is_ok());
+        let invalid: Search = serde_json::from_value(json!({"district": "Pune\\nOther"})).unwrap();
+        assert!(invalid.validate().is_err());
+        let oversized: GoogleNearbyQuery = serde_json::from_value(json!({
+            "lat":18.9, "lng":73.1, "state": "x".repeat(81)
+        }))
+        .unwrap();
+        assert!(oversized.validate().is_err());
+    }
+
+    #[test]
     fn google_nearby_rejects_invalid_location_and_oversized_radius() {
         for query in [
             GoogleNearbyQuery {
@@ -564,13 +580,9 @@ mod tests {
                 lng: 73.0,
                 radius_km: None,
                 q: None,
-
                 state: None,
-
                 district: None,
-
                 taluka: None,
-
                 city: None,
             },
             GoogleNearbyQuery {
@@ -578,13 +590,9 @@ mod tests {
                 lng: 73.0,
                 radius_km: None,
                 q: None,
-
                 state: None,
-
                 district: None,
-
                 taluka: None,
-
                 city: None,
             },
             GoogleNearbyQuery {
@@ -592,13 +600,9 @@ mod tests {
                 lng: 181.0,
                 radius_km: None,
                 q: None,
-
                 state: None,
-
                 district: None,
-
                 taluka: None,
-
                 city: None,
             },
             GoogleNearbyQuery {
@@ -606,13 +610,9 @@ mod tests {
                 lng: 73.0,
                 radius_km: Some(51.0),
                 q: None,
-
                 state: None,
-
                 district: None,
-
                 taluka: None,
-
                 city: None,
             },
             GoogleNearbyQuery {
@@ -620,13 +620,9 @@ mod tests {
                 lng: 73.0,
                 radius_km: Some(-1.0),
                 q: None,
-
                 state: None,
-
                 district: None,
-
                 taluka: None,
-
                 city: None,
             },
         ] {
@@ -637,13 +633,9 @@ mod tests {
             lng: 73.1,
             radius_km: None,
             q: None,
-
             state: None,
-
             district: None,
-
             taluka: None,
-
             city: None,
         };
         assert_eq!(valid.validate().unwrap(), 25.0);
@@ -656,13 +648,9 @@ mod tests {
             lng: 73.1,
             radius_km: Some(10.0),
             q: None,
-
             state: None,
-
             district: None,
-
             taluka: None,
-
             city: None,
         };
         let payload = json!({"places":[
