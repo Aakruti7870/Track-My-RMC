@@ -60,6 +60,7 @@ pub async fn list_plants(
         value["address"] = json!(plant.address_line);
         value["lat"] = json!(plant.latitude);
         value["lng"] = json!(plant.longitude);
+        crate::routes::discovery::redact_plant_contact(&mut value, verified);
         result.push(value);
     }
     Ok(Json(json!({ "success": true, "plants": result })))
