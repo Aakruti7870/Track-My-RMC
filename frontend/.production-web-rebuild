@@ -1,0 +1,2 @@
+Production web rebuild requested 2026-10-16 after updating EXPO_PUBLIC_GOOGLE_MAPS_KEY in AWS Secrets Manager trackmyrmc/app-runtime.
+This marker does not contain credentials and does not change application behavior.
