@@ -1,8 +1,8 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { apiPost, apiPublicPost, requestOtp } from "@/src/api/client";
+import { apiPost, apiPublicPost } from "@/src/api/client";
 import { useAuth } from "@/src/auth/AuthContext";
 import { AppText } from "@/src/components/ui/AppText";
 import { Button } from "@/src/components/ui/Button";
@@ -25,7 +25,7 @@ type DeletionRequest = {
 type PublicPhase = "identify" | "verify" | "submitted";
 
 export default function AccountDeletion() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const toast = useToast();
@@ -38,15 +38,44 @@ export default function AccountDeletion() {
   const [code, setCode] = useState("");
   const [publicPhase, setPublicPhase] = useState<PublicPhase>("identify");
   const [deliveryText, setDeliveryText] = useState("");
+  const [signedCodeSent, setSignedCodeSent] = useState(false);
+  const signedIdentifier = user && ["customer", "driver"].includes(user.role)
+    ? user.phone || user.mobile || ""
+    : user?.email || "";
+
+  useEffect(() => {
+    setCode("");
+    setConfirm("");
+    setReason("");
+    setSignedCodeSent(false);
+    setPublicPhase("identify");
+    setDeliveryText("");
+  }, [token, signedIdentifier]);
+
+  const sendSignedCode = async () => {
+    if (!token || !signedIdentifier) return toast("Registered contact unavailable. Please sign in again.", "error");
+    setBusy(true);
+    try {
+      await apiPublicPost("/account-deletion/otp/send", { identifier: signedIdentifier });
+      setCode("");
+      setSignedCodeSent(true);
+      toast("Deletion verification code requested", "success");
+    } catch (e: any) {
+      toast(e.detail || "Could not send verification code", "error");
+    } finally { setBusy(false); }
+  };
 
   const requestSignedInDeletion = async () => {
     if (!token) return;
     if (confirm.trim().toUpperCase() !== "DELETE") return toast("Type DELETE to confirm", "error");
+    if (!signedCodeSent || code.trim().length < 4) return toast("Enter a fresh deletion verification code", "error");
     setBusy(true);
     try {
-      await apiPost("/account-deletion/request", token, { confirm: "DELETE", reason: reason.trim() || null });
+      await apiPost("/account-deletion/request", token, { confirm: "DELETE", code: code.trim(), reason: reason.trim() || null });
       toast("Deletion request submitted", "success");
       setConfirm("");
+      setCode("");
+      setSignedCodeSent(false);
       refetch();
     } catch (e: any) {
       toast(e.detail || "Request failed", "error");
@@ -74,8 +103,8 @@ export default function AccountDeletion() {
     if (value.length < 3) return toast("Enter your registered mobile number or email", "error");
     setBusy(true);
     try {
-      const response = await requestOtp(value);
-      setDeliveryText(response.channel === "email" ? "Verification code sent by email." : "Verification code sent by SMS.");
+      const response = await apiPublicPost<{ channel: string }>("/account-deletion/otp/send", { identifier: value });
+      setDeliveryText(response.channel === "email" ? "If your account matches, a verification code will arrive by email." : "If your account matches, a verification code will arrive by WhatsApp.");
       setCode("");
       setPublicPhase("verify");
       toast("Verification code sent", "success");
@@ -142,9 +171,12 @@ export default function AccountDeletion() {
             ) : (
               <Card style={{ gap: spacing.md }}>
                 <AppText variant="heading">Signed-in request</AppText>
+                <AppText variant="caption">Confirm ownership with a fresh deletion code sent to your registered {user && ["customer", "driver"].includes(user.role) ? "WhatsApp number" : "email"}. Selecting this page does not delete your account.</AppText>
+                <Button label={signedCodeSent ? "Resend Deletion Verification Code" : "Send Deletion Verification Code"} variant="outline" onPress={sendSignedCode} disabled={busy} />
+                {signedCodeSent ? <Input label="Deletion verification code" testID="deletion-otp" value={code} onChangeText={value => setCode(value.replace(/\D/g, "").slice(0, 8))} keyboardType="number-pad" maxLength={8} editable={!busy} /> : null}
                 <Input label="Reason (optional)" value={reason} onChangeText={setReason} placeholder="Why are you deleting your account?" />
                 <Input label='Type "DELETE" to confirm' value={confirm} onChangeText={setConfirm} autoCapitalize="characters" autoCorrect={false} />
-                <Button label="Request Account Deletion" onPress={requestSignedInDeletion} loading={busy} />
+                <Button label="Request Account Deletion" onPress={requestSignedInDeletion} loading={busy} disabled={!signedCodeSent || code.trim().length < 4 || confirm.trim().toUpperCase() !== "DELETE"} />
               </Card>
             )}
           </>

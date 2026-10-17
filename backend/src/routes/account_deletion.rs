@@ -21,6 +21,7 @@ pub struct PublicDeletionOtpRequest {
 #[derive(Debug, Deserialize)]
 pub struct DeletionRequestBody {
     pub confirm: String,
+    pub code: String,
     pub reason: Option<String>,
 }
 
@@ -315,16 +316,26 @@ pub async fn submit_signed_in_request(
         ));
     }
     let reason = normalized_reason(payload.reason)?;
-    let identifier = auth_user
-        .email
-        .as_deref()
-        .unwrap_or(&auth_user.phone)
-        .trim()
-        .to_ascii_lowercase();
+    // Bind fresh deletion-purpose verification to the current database identity,
+    // never to an identifier supplied by the caller or a stale token claim.
+    let user = user_repo::find_by_id(&state.db, auth_user.user_id)
+        .await?
+        .filter(|user| user.is_active)
+        .ok_or_else(|| AppError::Unauthorized("Account unavailable".into()))?;
+    let identifier = deletion_identifier(&user.role, &user.phone, user.email.as_deref())?;
+    let (destination, channel) = normalize_identifier(&identifier)?;
+    OtpEngine::verify_otp(
+        &state,
+        &destination,
+        channel,
+        DELETION_OTP_PURPOSE,
+        &payload.code,
+    )
+    .await?;
     let row = record_request(
         &state.db,
         auth_user.user_id,
-        &identifier,
+        &destination,
         reason,
         "signed_in",
     )
@@ -332,6 +343,26 @@ pub async fn submit_signed_in_request(
     Ok(Json(
         json!({ "success": true, "request": request_json(row) }),
     ))
+}
+
+fn deletion_identifier(role: &str, phone: &str, email: Option<&str>) -> Result<String, AppError> {
+    if matches!(role, "customer" | "driver") {
+        let (destination, channel) = normalize_identifier(phone)?;
+        if channel != "whatsapp" {
+            return Err(AppError::BadRequest(
+                "A registered mobile number is required".into(),
+            ));
+        }
+        Ok(destination)
+    } else {
+        let (destination, channel) = normalize_identifier(email.unwrap_or_default())?;
+        if channel != "email" {
+            return Err(AppError::BadRequest(
+                "A registered email is required".into(),
+            ));
+        }
+        Ok(destination)
+    }
 }
 
 pub async fn cancel(
@@ -373,7 +404,26 @@ pub async fn cancel(
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_identifier;
+    use super::{deletion_identifier, normalize_identifier, DeletionRequestBody};
+
+    #[test]
+    fn signed_in_deletion_requires_a_code_and_uses_role_bound_contact() {
+        assert!(serde_json::from_value::<DeletionRequestBody>(
+            serde_json::json!({"confirm":"DELETE"})
+        )
+        .is_err());
+        assert_eq!(
+            deletion_identifier("customer", "+91 98765-43210", Some("customer@example.com"))
+                .unwrap(),
+            "919876543210"
+        );
+        assert_eq!(
+            deletion_identifier("plant_owner", "9876543210", Some("OWNER@EXAMPLE.COM")).unwrap(),
+            "owner@example.com"
+        );
+        assert!(deletion_identifier("plant_owner", "9876543210", None).is_err());
+        assert!(deletion_identifier("customer", "", Some("customer@example.com")).is_err());
+    }
 
     #[test]
     fn normalizes_email_case_and_whitespace() {

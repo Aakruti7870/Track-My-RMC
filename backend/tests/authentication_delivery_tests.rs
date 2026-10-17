@@ -26,6 +26,123 @@ use trackmyrmc_backend::{
 };
 use uuid::Uuid;
 
+#[sqlx::test]
+async fn signed_in_deletion_requires_fresh_purpose_and_account_bound_otp(db: PgPool) {
+    let mut state = state(db.clone());
+    let delivery = Arc::new(MemoryDelivery::default());
+    state.otp_delivery = delivery.clone();
+    let phone = "12025550171";
+    let other_phone = "12025550172";
+    let user_id = identity(&db, "customer", None, Some(phone)).await;
+    identity(&db, "customer", None, Some(other_phone)).await;
+    let token = trackmyrmc_backend::auth::jwt::generate_token(
+        user_id,
+        "customer",
+        phone,
+        None,
+        &state.config.jwt_secret,
+        1,
+    )
+    .unwrap();
+    let app = build_app_router(state);
+    let path = "/api/account-deletion/request";
+
+    // A bearer session and typed confirmation alone cannot submit a request.
+    assert!(!call(
+        &app,
+        path,
+        Some(json!({"confirm":"DELETE","code":"123456"})),
+        Some(&token)
+    )
+    .await
+    .0
+    .is_success());
+
+    // Even an otherwise valid login OTP cannot authorize account deletion.
+    assert_eq!(
+        call(
+            &app,
+            "/api/auth/otp/whatsapp/send",
+            Some(json!({"phone":phone})),
+            None
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let login_code = delivery.take_code(phone);
+    assert!(!call(
+        &app,
+        path,
+        Some(json!({"confirm":"DELETE","code":login_code})),
+        Some(&token)
+    )
+    .await
+    .0
+    .is_success());
+
+    // A different customer's deletion code is also insufficient.
+    assert_eq!(
+        call(
+            &app,
+            "/api/account-deletion/otp/send",
+            Some(json!({"identifier":other_phone})),
+            None
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let other_code = delivery.take_code(other_phone);
+    assert!(!call(
+        &app,
+        path,
+        Some(json!({"confirm":"DELETE","code":other_code})),
+        Some(&token)
+    )
+    .await
+    .0
+    .is_success());
+    let count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM account_deletion_requests WHERE user_id=$1")
+            .bind(user_id)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert_eq!(count, 0);
+
+    assert_eq!(
+        call(
+            &app,
+            "/api/account-deletion/otp/send",
+            Some(json!({"identifier":phone})),
+            None
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let code = delivery.take_code(phone);
+    let payload = json!({"confirm":"DELETE","code":code});
+    assert_eq!(
+        call(&app, path, Some(payload.clone()), Some(&token))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert!(!call(&app, path, Some(payload), Some(&token))
+        .await
+        .0
+        .is_success());
+    let status = call(&app, "/api/account-deletion/status", None, Some(&token)).await;
+    assert_eq!(status.1["request"]["status"], "PENDING");
+    // Submission records a cancellable request; it does not delete the account.
+    assert_eq!(
+        call(&app, "/api/me", None, Some(&token)).await.0,
+        StatusCode::OK
+    );
+}
+
 #[derive(Default)]
 struct MemoryDelivery {
     messages: Mutex<Vec<(String, String, String)>>,

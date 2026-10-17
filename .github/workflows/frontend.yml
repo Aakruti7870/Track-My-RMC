@@ -36,6 +36,8 @@ jobs:
         run: node --test scripts/test-home-tracking.cjs
       - name: Google Maps loader regressions
         run: npm run test:maps
+      - name: Customer header foreground location regressions
+        run: node --test scripts/test-header-location.cjs
       - name: Validate role routing
         run: npm run check:auth-routing
       - name: Validate all role module routes and menus
@@ -64,12 +66,19 @@ jobs:
           SERVER_PID=$!
           trap 'kill "$SERVER_PID"' EXIT
           node scripts/test-home-tracking-browser.cjs
+          node scripts/test-customer-header-browser.cjs
       - name: Upload tracking layout previews
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: customer-home-tracking-previews
           path: frontend/tracking-previews/
+      - name: Upload customer header theme previews
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: customer-header-theme-previews
+          path: frontend/header-previews/
 
   admin-web-build:
     name: Admin dashboard build

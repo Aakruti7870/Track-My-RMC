@@ -86,7 +86,7 @@ pub(crate) fn redact_plant_contact(value: &mut Value, verified: bool) {
 }
 
 // Bound per-process state; shared deployments should also enforce an ingress limit.
-fn allow_search(user: Uuid) -> bool {
+pub(crate) fn allow_search(user: Uuid) -> bool {
     static BUCKETS: OnceLock<Mutex<HashMap<Uuid, (Instant, u32)>>> = OnceLock::new();
     let Ok(mut buckets) = BUCKETS.get_or_init(Default::default).lock() else {
         return false;

@@ -2,7 +2,7 @@ import React from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { CustomerHomeHeader } from "@/src/components/customer/CustomerHomeHeader";
 import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
 import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeProvider";
@@ -17,7 +17,7 @@ import { ErrorView } from "@/src/components/StateViews";
 import { HomeCarousel } from "@/src/components/HomeCarousel";
 import type { OrderData } from "@/src/components/OrderCard";
 import type { PlantData } from "@/src/components/PlantCard";
-import { fonts, radius, spacing } from "@/src/theme/tokens";
+import { fonts, radius } from "@/src/theme/tokens";
 import { modulesForRole } from "@/src/navigation/moduleCatalog";
 
 type HomeData = {
@@ -57,7 +57,6 @@ export default function CustomerHome() {
   const { user } = useAuth();
   const router = useRouter();
   const toast = useToast();
-  const insets = useSafeAreaInsets();
   const { data, loading, error, refetch, reload } = useGet<HomeData>("/customer/home");
 
   const onAction = (key: ActionKey) => {
@@ -150,29 +149,7 @@ export default function CustomerHome() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.surface }]}>
-      <View style={{ height: insets.top }} />
-      <View style={styles.header}>
-        <View style={styles.wordmark}>
-          <AppText style={[styles.wordmarkSmall, { color: colors.onSurface }]}>TRACK MY</AppText>
-          <AppText style={[styles.wordmarkBig, { color: colors.onSurface }]}>RMC</AppText>
-        </View>
-        <View style={styles.headerRight}>
-          {(data?.kyc_status ?? user?.kyc_status) === "VERIFIED" ? (
-            <View style={[styles.verifiedPill, { borderColor: colors.verified, backgroundColor: colors.verified + "10" }]}>
-              <AppText style={[styles.verifiedText, { color: colors.verified }]}>KYC VERIFIED</AppText>
-              <Ionicons name="checkmark-circle" size={19} color={colors.verified} />
-            </View>
-          ) : (
-            <Pressable testID="header-kyc" accessibilityRole="button" onPress={() => router.push("/kyc")} style={[styles.kycPending, { borderColor: colors.border }]}>
-              <AppText variant="label">KYC</AppText>
-            </Pressable>
-          )}
-          <Pressable testID="notifications-bell" accessibilityRole="button" accessibilityLabel="Notifications" onPress={() => router.push("/notifications")} style={[styles.iconBtn, { borderColor: colors.border, backgroundColor: colors.surfaceSecondary }]}>
-            <Ionicons name="notifications-outline" size={22} color={colors.onSurface} />
-            {data && data.unread_notifications > 0 ? <View style={[styles.dot, { backgroundColor: colors.brand }]} /> : null}
-          </Pressable>
-        </View>
-      </View>
+      <CustomerHomeHeader onRefreshHome={refetch} />
 
       <ScrollView
         testID="customer-home-scroll"
@@ -218,16 +195,6 @@ export default function CustomerHome() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 18, paddingTop: 10, paddingBottom: 10 },
-  wordmark: { gap: 0 },
-  wordmarkSmall: { fontFamily: fonts.bold, fontSize: 13, letterSpacing: 1.1, lineHeight: 15 },
-  wordmarkBig: { fontFamily: fonts.displayBold, fontSize: 30, lineHeight: 31, letterSpacing: -0.8 },
-  headerRight: { flexDirection: "row", alignItems: "center", gap: 9 },
-  verifiedPill: { minHeight: 42, borderRadius: 12, borderWidth: 1, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", gap: 6 },
-  verifiedText: { fontFamily: fonts.bold, fontSize: 11 },
-  kycPending: { minHeight: 42, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, alignItems: "center", justifyContent: "center" },
-  iconBtn: { width: 44, height: 44, borderRadius: 16, alignItems: "center", justifyContent: "center", borderWidth: 1 },
-  dot: { position: "absolute", top: 7, right: 7, width: 8, height: 8, borderRadius: 4 },
   scrollContent: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 190, gap: 14, maxWidth: 1100, alignSelf: "center", width: "100%" },
   groupCard: { padding: 12, gap: 12 },
   sectionTitle: { fontFamily: fonts.displayBold, fontSize: 19, paddingHorizontal: 4 },
