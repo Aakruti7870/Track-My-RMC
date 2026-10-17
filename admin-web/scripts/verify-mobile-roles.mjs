@@ -294,8 +294,15 @@ try {
       await page.getByText('More', { exact: true }).last().click();
     }
     await expect(page.getByTestId('role-module-directory')).toBeVisible();
-    for (const module of modulesForRole(user.role)) {
-      await expect(page.getByTestId('role-module-' + module.key)).toBeVisible();
+    const visibleKeys = user.role === 'customer'
+      ? ['account-deletion', 'customer-support', 'notifications', 'quotations', 'documents']
+      : modulesForRole(user.role).map(module => module.key);
+    for (const key of visibleKeys) {
+      await expect(page.getByTestId('role-module-' + key)).toBeVisible();
+    }
+    if (user.role === 'customer') {
+      await expect(page.getByTestId('role-module-directory').locator('[data-testid^="role-module-"]')).toHaveCount(5);
+      await expect(page.getByText('All Customer Modules', { exact: true })).toHaveCount(0);
     }
     if (user.role === 'customer') {
       await page.getByText('Home', { exact: true }).last().click();
@@ -307,21 +314,21 @@ try {
       await expect(page.getByTestId('orders-list')).toBeVisible();
       await expect(page.getByText('Browser site', { exact: true }).first()).toBeVisible();
       assert.ok(successfulPaths.has('/api/customer/orders'));
-      phase = 'project hub: open More';
-      await page.getByText('More', { exact: true }).last().click();
-      phase = 'project hub: open module';
-      await page.getByTestId('role-module-projects').click();
+      phase = 'project hub: open Home';
+      await page.getByText('Home', { exact: true }).last().click();
+      phase = 'project hub: open Home shortcut';
+      await page.getByTestId('customer-module-projects').click();
       phase = 'project hub: route navigation';
       await page.waitForURL(url => url.pathname === '/customer/projects' || url.pathname === '/customer/projects/');
       phase = 'project hub: route heading';
       await expect(page.getByTestId('project-hub-heading')).toBeVisible();
       phase = 'project hub: authorized API';
       await expect.poll(() => successfulPaths.has('/api/customer/project-sites')).toBe(true);
-      phase = 'project hub: return to More';
+      phase = 'project hub: return to Home';
       // The native header back button uses expo-router's history, which is
       // not necessarily equivalent to browser history in Expo web tests.
       await page.getByTestId('project-hub-back').click();
-      await expect(page.getByTestId('role-module-directory')).toBeVisible();
+      await expect(page.getByTestId('customer-module-grid')).toBeVisible();
       phase = 'support create';
       await page.getByTestId('customer-support-widget').click();
       await page.getByTestId('customer-support-open-center').click();

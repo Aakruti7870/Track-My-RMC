@@ -11,7 +11,7 @@ import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { Card } from "@/src/components/ui/Card";
 import { Badge } from "@/src/components/ui/Badge";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
-import { RoleModuleDirectory } from "@/src/components/RoleModuleDirectory";
+import { modulesForRole } from "@/src/navigation/moduleCatalog";
 import { usePermissions } from "@/src/permissions/PermissionProvider";
 
 const MODES: { key: "system" | "light" | "dark"; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
@@ -19,6 +19,16 @@ const MODES: { key: "system" | "light" | "dark"; label: string; icon: keyof type
   { key: "dark", label: "Dark", icon: "moon-outline" },
   { key: "system", label: "System", icon: "phone-portrait-outline" },
 ];
+
+// Customer More is a five-link settings/documentation menu, not the full
+// role directory. Keep the shared catalog intact for authorization and Home.
+const CUSTOMER_MORE_KEYS = [
+  "account-deletion",
+  "customer-support",
+  "notifications",
+  "quotations",
+  "documents",
+] as const;
 
 export default function CustomerMore() {
   const { review } = usePermissions();
@@ -28,6 +38,8 @@ export default function CustomerMore() {
   const insets = useSafeAreaInsets();
   const kycVerified = user?.kyc_status === "VERIFIED";
   const mobile = user?.phone || user?.mobile;
+  const customerModules = modulesForRole(user?.role);
+  const moreModules = CUSTOMER_MORE_KEYS.flatMap(key => customerModules.filter(module => module.key === key));
 
   const doLogout = async () => {
     await signOut();
@@ -109,7 +121,36 @@ export default function CustomerMore() {
             })}
           </View>
         </View>
-        <RoleModuleDirectory role={user?.role} title="All Customer Modules" />
+        <View testID="role-module-directory" style={{ gap: spacing.sm }}>
+          {moreModules.map(module => (
+            <Pressable
+              key={module.key}
+              testID={`role-module-${module.key}`}
+              accessibilityRole="button"
+              accessibilityLabel={module.label}
+              onPress={() => router.push(module.route)}
+              style={({ pressed }) => [
+                styles.item,
+                {
+                  backgroundColor: colors.surfaceSecondary,
+                  borderColor: colors.border,
+                  opacity: pressed ? 0.8 : 1,
+                },
+              ]}
+            >
+              <View style={[styles.moduleIcon, { backgroundColor: colors.brandSoft }]}>
+                {module.symbol
+                  ? <VectorSymbol name={module.symbol} size={37} />
+                  : <Ionicons name={module.icon} size={19} color={colors.brand} />}
+              </View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <AppText style={{ fontFamily: fonts.semibold, color: colors.onSurface }}>{module.label}</AppText>
+                <AppText variant="caption" numberOfLines={2}>{module.description}</AppText>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.onSurfaceTertiary} />
+            </Pressable>
+          ))}
+        </View>
 
         <Card style={{ gap: 4 }}>
           <AppText variant="label">Legal & support</AppText>
@@ -140,7 +181,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: 1,
   },
-  item: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.lg },
+  item: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 68, borderWidth: 1, borderRadius: radius.md, padding: spacing.md },
+  moduleIcon: { width: 38, height: 38, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
   logout: {
     flexDirection: "row",
     alignItems: "center",

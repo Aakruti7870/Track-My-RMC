@@ -104,6 +104,26 @@ assert.ok(customerHome.includes('moduleIcon: { width: 42, height: 42') &&
   "Each Home SVG and its surrounding background must both measure 42 × 42 px.");
 
 
+// The customer More page intentionally surfaces only these five routes, in order.
+const customerMore = read("app/customer/more.tsx");
+const moreKeysBlock = customerMore.match(/const CUSTOMER_MORE_KEYS = \[([\s\S]*?)\] as const;/);
+assert.ok(moreKeysBlock, "Customer More must declare an explicit five-link shortlist.");
+const moreKeys = [...moreKeysBlock[1].matchAll(/"([a-z-]+)"/g)].map(match => match[1]);
+assert.deepEqual(moreKeys, [
+  "account-deletion", "customer-support", "notifications", "quotations", "documents",
+], "Customer More must contain exactly the requested five links in order.");
+const customerRoleModules = modulesForRole("customer");
+for (const key of moreKeys) {
+  assert.ok(customerRoleModules.some(module => module.key === key),
+    "Customer More destination must exist and be customer-authorized: " + key);
+}
+assert.ok(customerMore.includes("CUSTOMER_MORE_KEYS.flatMap(key => customerModules.filter(module => module.key === key))"),
+  "Customer More must render only its five approved catalog entries.");
+assert.ok(customerMore.includes('testID="role-module-directory"'),
+  "Customer More destination container must remain covered by role browser tests.");
+assert.ok(!customerMore.includes("<RoleModuleDirectory") && !customerMore.includes("All Customer Modules"),
+  "Customer More must not render the generic module directory heading, count, or groups.");
+
 const connected = [
   "app/customer/index.tsx", "app/customer/more.tsx",
   "app/owner/index.tsx", "app/owner/more.tsx",
