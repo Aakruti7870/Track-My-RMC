@@ -41,19 +41,29 @@ function regionFor(plants: PlantData[], userLocation?: LatLng | null): Region | 
 
 export function PlantMap({ plants, userLocation, selectedPlantId, onSelectPlant, onRegionChange }: Props) {
   const map = useRef<MapView | null>(null);
+  const currentPlants = useRef(plants);
+  currentPlants.current = plants;
+
+  // Selecting a different marker focuses it without resetting user map gestures
+  // when a Places or registered-plant search refreshes the marker data.
   useEffect(() => {
-    if (userLocation && validLatLng(userLocation)) map.current?.animateToRegion({latitude:userLocation.lat,longitude:userLocation.lng,latitudeDelta:0.15,longitudeDelta:0.15},300);
-  },[userLocation]);
-  useEffect(() => {
-    const selected = plants.find(plant => plant.id === selectedPlantId);
-    const isSelected = Boolean(selected && validLatLng(selected));
-    const center = isSelected ? selected : userLocation;
-    if (center && validLatLng(center)) map.current?.animateToRegion({
-      latitude: center.lat, longitude: center.lng,
-      latitudeDelta: isSelected ? 0.03 : 0.15,
-      longitudeDelta: isSelected ? 0.03 : 0.15,
+    if (!selectedPlantId) return;
+    const selected = currentPlants.current.find(plant => plant.id === selectedPlantId);
+    if (selected && validLatLng(selected)) map.current?.animateToRegion({
+      latitude: selected.lat, longitude: selected.lng,
+      latitudeDelta: 0.03, longitudeDelta: 0.03,
     }, 300);
-  }, [plants, selectedPlantId, userLocation]);
+  }, [selectedPlantId]);
+
+  // Follow a new search/GPS location only when no plant is selected. This also
+  // restores the current location when the parent clears a stale selection.
+  useEffect(() => {
+    if (selectedPlantId || !userLocation || !validLatLng(userLocation)) return;
+    map.current?.animateToRegion({
+      latitude: userLocation.lat, longitude: userLocation.lng,
+      latitudeDelta: 0.15, longitudeDelta: 0.15,
+    }, 300);
+  }, [selectedPlantId, userLocation?.lat, userLocation?.lng]);
   const { colors } = useTheme();
   const mapsConfigured = Boolean(Constants.expoConfig?.extra?.googleMapsAndroidConfigured);
   const mappedPlants = useMemo(() => plants.filter((plant) => validLatLng(plant)), [plants]);
