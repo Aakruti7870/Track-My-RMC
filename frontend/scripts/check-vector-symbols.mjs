@@ -8,7 +8,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = relative => readFileSync(path.join(root, relative), "utf8");
 const assets = "assets/images/SVG Vector Symbol";
 const masters = readdirSync(path.join(root, assets)).filter(name => name.endsWith(".svg")).sort();
-assert.equal(masters.length, 88, "Expected exactly 88 uploaded SVG master files");
+const serviceNames = ["building-material", "cement", "labour-contractor"];
+assert.equal(masters.length, 91, "Expected 88 original and 3 new SVG masters");
 
 const embedded = new Map();
 for (let i = 0; i < 8; i++) {
@@ -20,7 +21,16 @@ for (let i = 0; i < 8; i++) {
     embedded.set(name, JSON.parse(serialized));
   }
 }
-assert.equal(embedded.size, masters.length);
+assert.equal(embedded.size, 88, "Preserve all 88 original registered vectors");
+const newSet = read("src/components/vector-symbols/set8.ts");
+const newEntries = [...newSet.matchAll(/^\s+"([^"]+)": ("(?:[^"\\]|\\.)*"),?$/gm)];
+assert.equal(newEntries.length, 3, "The new service set must have three vectors");
+assert.deepEqual(newEntries.map(([, name]) => name).sort(), serviceNames);
+for (const [, name, serialized] of newEntries) {
+  assert.ok(!embedded.has(name), `Duplicate SVG symbol: ${name}`);
+  embedded.set(name, JSON.parse(serialized));
+}
+assert.equal(embedded.size, masters.length, "Every SVG master must be embedded");
 for (const filename of masters) {
   const name = filename.slice(0, -4);
   const original = read(`${assets}/${filename}`).trim();
@@ -86,4 +96,11 @@ for (const filename of masters) {
   const key = filename.slice(0, -4);
   assert.ok(sourceUI.includes(`"${key}"`), `SVG registered but not assigned to a real UI surface: ${key}`);
 }
-console.log(`PASS: ${masters.length}/${masters.length} SVGs registered and assigned to real UI surfaces, ${mapped}/${MODULE_CATALOG.length} role modules assigned; tabs and quick actions connected`);
+const homeSource = read("app/customer/index.tsx");
+const registry = read("src/components/VectorSymbol.tsx");
+assert.ok(registry.includes('import { set8 } from "./vector-symbols/set8";') && registry.includes("...set8,"), "New symbols must be registered");
+for (const [key, symbol] of [["cement", "cement"], ["labour", "labour-contractor"], ["material", "building-material"]]) {
+  assert.ok(homeSource.includes(`key: "${key}"`) && homeSource.includes(`symbol: "${symbol}"`), `Customer service ${key} missing vector assignment`);
+}
+assert.ok(homeSource.includes('<VectorSymbol name={service.symbol} size={56} />'), "Other Services must render the assigned vector, not a generic Ionicon");
+console.log(`PASS: ${masters.length}/${masters.length} SVG masters, original 88 preserved, 3 Other Services symbols rendered; ${mapped}/${MODULE_CATALOG.length} role modules; tabs and quick actions connected`);
