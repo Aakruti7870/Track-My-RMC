@@ -138,7 +138,7 @@ export default function CustomerHome() {
             style={({ pressed }) => [styles.tile, { width: "33.333%", opacity: pressed ? 0.75 : 1 }]}
           >
             <View style={styles.serviceIcon}>
-              <VectorSymbol name={service.symbol} size={56} />
+              <VectorSymbol name={service.symbol} size={58} />
             </View>
             <AppText numberOfLines={2} style={[styles.serviceLabel, { color: colors.onSurface }]}>{service.label}</AppText>
           </Pressable>
