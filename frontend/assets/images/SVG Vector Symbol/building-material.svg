@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <defs>
+    <linearGradient id="building-material-brick" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FBBF24" />
+      <stop offset="1" stop-color="#D97706" />
+    </linearGradient>
+    <linearGradient id="building-material-brick-shade" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#EAAE66" />
+      <stop offset="1" stop-color="#BC6A29" />
+    </linearGradient>
+    <linearGradient id="building-material-aggregate" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#64748B" />
+      <stop offset="1" stop-color="#334155" />
+    </linearGradient>
+    <linearGradient id="building-material-plate" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" />
+      <stop offset="1" stop-color="#C9D7DB" />
+    </linearGradient>
+    <linearGradient id="building-material-sheen" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.9" />
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <rect x="8" y="12" width="48" height="47" rx="15" fill="#16232A" opacity="0.16" />
+  <rect x="7" y="6" width="50" height="50" rx="15" fill="url(#building-material-plate)" />
+  <rect x="7.9" y="6.9" width="48.2" height="48.2" rx="14" fill="none" stroke="#FFFFFF" stroke-opacity="0.75" stroke-width="1.4" />
+  <rect x="11" y="9" width="42" height="19" rx="11" fill="url(#building-material-sheen)" />
+  <!-- Stacked masonry units plus an aggregate mound distinguish materials from cement. -->
+  <path d="M35 41 L38 33 L41 35 L44 30 L48 38 L49 45 L34 45 Z" fill="url(#building-material-aggregate)" />
+  <path d="M37 39 L40 35 L43 37 L45 34" stroke="#FFFFFF" stroke-opacity="0.48" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+  <rect x="20" y="25" width="21" height="9" rx="1.7" fill="url(#building-material-brick)" />
+  <path d="M30.5 25 L30.5 34" stroke="#FFFFFF" stroke-opacity="0.83" stroke-width="1.7" />
+  <rect x="16" y="35" width="24" height="11" rx="1.7" fill="url(#building-material-brick-shade)" />
+  <path d="M28 35 L28 46" stroke="#FFFFFF" stroke-width="1.8" stroke-opacity="0.83" />
+  <path d="M17.2 35 L39 35" stroke="#FFFFFF" stroke-width="1.6" stroke-opacity="0.85" />
+  <path d="M20 45.7 L40 45.7" stroke="#16232A" stroke-width="1" stroke-opacity="0.23" stroke-linecap="round" />
+</svg>
