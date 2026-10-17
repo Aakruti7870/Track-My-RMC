@@ -88,6 +88,11 @@ assert.ok(customerHome.includes("name={ACTION_SYMBOLS[action.key]} size={44}"),
 assert.equal(customerHome.split("name={module.symbol} size={34}").length - 1, 2,
   "Home module vectors must retain the existing 34 px symbol size.");
 assert.ok(!customerHome.includes(">Your Modules</AppText>"), "Remove the old Home section heading.");
+assert.ok(customerHome.includes('moduleCard: { width: 80, minHeight: 88'),
+  "Keep the six Home shortcut cards compact.");
+assert.ok(customerHome.includes('moduleIcon: { width: 42, height: 42'),
+  "Reduce module icon background below its original 44 px size.");
+
 
 const connected = [
   "app/customer/index.tsx", "app/customer/more.tsx",
