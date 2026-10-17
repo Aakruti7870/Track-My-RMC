@@ -1,6 +1,6 @@
 import React from "react";
 import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
-import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -10,9 +10,8 @@ import { useTheme } from "@/src/theme/ThemeProvider";
 import { useToast } from "@/src/components/ui/Toast";
 import { useGet } from "@/src/hooks/useApi";
 import { AppText } from "@/src/components/ui/AppText";
-import { Card } from "@/src/components/ui/Card";
 import { Skeleton } from "@/src/components/ui/Skeleton";
-import { LiveMap } from "@/src/components/LiveMap";
+import { ActiveTransitMixerCard } from "@/src/components/ActiveTransitMixerCard";
 import { KycBanner } from "@/src/components/KycBanner";
 import { ErrorView } from "@/src/components/StateViews";
 import { HomeCarousel } from "@/src/components/HomeCarousel";
@@ -31,8 +30,6 @@ type HomeData = {
   nearby_plants: PlantData[];
   unread_notifications: number;
 };
-type ActiveTracking = { active: boolean; status: string; tm_number?: string; driver_mobile?: string; location?: {lat:number;lng:number;at:string}|null; active_loads?: Array<{id:string;status:string;tm_number?:string;driver_mobile?:string;location?:{lat:number;lng:number;at:string}|null}>; origin?:{lat?:number;lng?:number}; destination?:{lat?:number;lng?:number}; };
-
 const ACTIONS: { key: "new" | "track" | "plants" | "orders"; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { key: "new", label: "New Order", icon: "add" },
   { key: "track", label: "Track Order", icon: "navigate" },
@@ -67,19 +64,6 @@ export default function CustomerHome() {
   const toast = useToast();
   const insets = useSafeAreaInsets();
   const { data, loading, error, refetch, reload } = useGet<HomeData>("/customer/home");
-  const activeId = data?.active_order?.id;
-  const {data: tracking} = useGet<ActiveTracking>(activeId ? `/customer/orders/${activeId}/tracking` : null);
-  const liveLoad = tracking?.active_loads?.find(load=>load.location) || tracking?.active_loads?.[0];
-  const liveLocation = liveLoad?.location || tracking?.location;
-  const isFresh = Boolean(liveLocation?.at && Date.now()-new Date(liveLocation.at).getTime()<90000);
-  const canShowLive = Boolean(tracking?.active && liveLocation && isFresh);
-  const dial = async (number?:string|null) => {
-    if (!number) return toast("Contact number not available for this trip", "info");
-    const normalized=number.replace(/[\\s()-]/g,"");
-    if (!/^\\+?[0-9]{7,15}$/.test(normalized)) return toast("Invalid contact number", "info");
-    try { await Linking.openURL(`tel:${normalized}`); } catch { toast("Unable to open phone dialer", "error"); }
-  };
-
   const openActiveTracking = () => {
     if (!data?.active_order) {
       toast("No active order to track", "info");
@@ -228,64 +212,11 @@ export default function CustomerHome() {
                 </ScrollView>
               </View>
 
-              <View style={styles.section}>
-                <View style={styles.rowBetween}>
-                  <AppText style={[styles.sectionTitle, { color: colors.onSurface }]}>Active Transit Mixer Live Tracking</AppText>
-                  <Pressable testID="view-all-orders" onPress={() => router.push("/customer/orders")}>
-                    <AppText variant="label" color={colors.brand}>View All  ›</AppText>
-                  </Pressable>
-                </View>
-                {data.active_order ? (
-                  <>
-                  <Card style={styles.activeCard}>
-                    <View style={styles.activeInfo}>
-                      <View style={styles.rowBetween}>
-                        <AppText style={[styles.orderNumber, { color: colors.onSurface }]}>{data.active_order.order_number}</AppText>
-                        <View style={styles.statusRow}><View style={[styles.statusDot, { backgroundColor: colors.brand }]} /><AppText style={{ color: colors.brand, fontFamily: fonts.medium }}>{data.active_order.status.replace(/_/g, " ")}</AppText></View>
-                      </View>
-                      <AppText style={[styles.grade, { color: colors.onSurface }]}>{data.active_order.grade} Grade · {data.active_order.quantity} m³</AppText>
-                      <View style={styles.locationRow}><Ionicons name="location-outline" size={17} color={colors.onSurfaceTertiary} /><AppText variant="caption" style={{ flex: 1 }}>{data.active_order.site_name}</AppText></View>
-                    </View>
-                    <View style={styles.map}>
-                      <LiveMap
-                        origin={tracking?.origin?.lat != null && tracking.origin.lng != null ? { lat: tracking.origin.lat, lng: tracking.origin.lng } : null}
-                        destination={tracking?.destination?.lat != null && tracking.destination.lng != null ? { lat: tracking.destination.lat, lng: tracking.destination.lng } : null}
-                        mixer={canShowLive && liveLocation ? { lat: liveLocation.lat, lng: liveLocation.lng } : null}
-                        style={{ flex: 1 }}
-                      />
-                    </View>
-                    <View style={styles.trackingDock}>
-                      <Pressable testID="home-track-tm" accessibilityRole="button" accessibilityLabel="Track TM" onPress={openActiveTracking} style={styles.trackingAction}>
-                        <Ionicons name="navigate-outline" size={22} color={colors.brand} />
-                        <AppText style={styles.trackingActionTitle}>Track TM</AppText>
-                      </Pressable>
-                      <Pressable testID="home-call-driver" accessibilityRole="button" accessibilityLabel="Call Driver" onPress={() => void dial(liveLoad?.driver_mobile || tracking?.driver_mobile)} style={styles.trackingAction}>
-                        <Ionicons name="call-outline" size={22} color={colors.brand} />
-                        <AppText style={styles.trackingActionTitle}>Call Driver</AppText>
-                      </Pressable>
-                      <Pressable testID="home-call-plant" accessibilityRole="button" accessibilityLabel="Contact Plant" onPress={() => router.push("/customer/plants")} style={styles.trackingAction}>
-                        <Ionicons name="business-outline" size={22} color={colors.brand} />
-                        <AppText style={styles.trackingActionTitle}>Contact Plant</AppText>
-                      </Pressable>
-                    </View>
-                    <View style={[styles.metrics, { borderTopColor: colors.divider }]}>
-                      <View><AppText variant="caption">GPS status</AppText><AppText style={styles.metricValue}>{canShowLive ? "Live" : liveLocation ? "Last known" : "Awaiting"}</AppText></View>
-                      <View><AppText variant="caption">Quantity</AppText><AppText style={styles.metricValue}>{data.active_order.quantity} m³</AppText></View>
-                      <Pressable testID="track-active-order" accessibilityRole="button" accessibilityLabel="Track Live" onPress={openActiveTracking} style={({ pressed }) => [styles.trackLive, { backgroundColor: colors.brand, opacity: pressed ? 0.85 : 1 }]}>
-                        <Ionicons name="radio-outline" size={18} color={colors.onBrand} />
-                        <AppText style={styles.trackLiveText}>Track Live</AppText>
-                      </Pressable>
-                    </View>
-                  </Card>
-                  </>
-                ) : (
-                  <Card style={styles.emptyOrder}>
-                    <Ionicons name="cube-outline" size={30} color={colors.onSurfaceTertiary} />
-                    <View style={{ flex: 1 }}><AppText style={{ fontFamily: fonts.semibold }}>No active delivery</AppText><AppText variant="caption">Your live order will appear here after dispatch.</AppText></View>
-                    <Pressable onPress={() => onAction("new")}><Ionicons name="add-circle" size={30} color={colors.brand} /></Pressable>
-                  </Card>
-                )}
-              </View>
+              <ActiveTransitMixerCard
+                order={data.active_order || data.recent_orders[0] || null}
+                onNewOrder={() => onAction("new")}
+                onRefreshHome={refetch}
+              />
 
               {data.nearby_plants.length > 0 ? (
                 <View style={styles.section}>
@@ -333,24 +264,6 @@ const styles = StyleSheet.create({
   moduleIcon: { width: 42, height: 42, borderRadius: 10, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   moduleLabel: { fontFamily: fonts.semibold, fontSize: 10, lineHeight: 12, textAlign: "center" },
   rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  activeCard: { padding: 0, overflow: "hidden", borderRadius: 24 },
-  activeTop: { flexDirection: "row", minHeight: 186 },
-  activeInfo: { padding: 18, gap: 10 },
-  orderNumber: { fontFamily: fonts.bold, fontSize: 18 },
-  statusRow: { flexDirection: "row", alignItems: "center", gap: 7 },
-  statusDot: { width: 7, height: 7, borderRadius: 4 },
-  grade: { fontFamily: fonts.semibold, fontSize: 14 },
-  locationRow: { flexDirection: "row", gap: 5, alignItems: "flex-start" },
-  map: { width: "100%", height: 220, overflow: "hidden" },
-  metrics: { minHeight: 72, borderTopWidth: 1, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" },
-  metricValue: { fontFamily: fonts.bold, fontSize: 15 },
-  metricDivider: { width: 1, height: 32 },
-  trackLive: { marginLeft: "auto", minHeight: 44, borderRadius: 22, paddingHorizontal: 18, flexDirection: "row", alignItems: "center", gap: 7 },
-  trackLiveText: { fontFamily: fonts.semibold, color: "#FFFFFF", fontSize: 14 },
-  emptyOrder: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 18 },
   plantChip: { width: 156, minHeight: 104, gap: 7, padding: 14, borderRadius: 18, borderWidth: 1 },
   plantName: { fontFamily: fonts.semibold, fontSize: fontSize.sm },
-  trackingDock: { flexDirection: "row", padding: 10, gap: 8 },
-  trackingAction: { flex: 1, minWidth: 0, minHeight: 70, borderColor: "#E2E8F0", borderWidth: 1, borderRadius: 12, padding: 6, alignItems: "center", justifyContent: "center", gap: 5 },
-  trackingActionTitle: { fontFamily: fonts.semibold, fontSize: 11, color: "#0F172A", textAlign: "center" },
 });

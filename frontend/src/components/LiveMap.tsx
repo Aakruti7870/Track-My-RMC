@@ -51,13 +51,19 @@ export function LiveMap({
     return `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
 <style>html,body,#map{height:100%;margin:0;padding:0;background:#eee}</style></head>
 <body><div id="map"></div><script>
-var map,siteMarker,mixerMarker,plantMarker,line,lastPoly,fit=false,latest=${initial};
+var map,siteMarker,mixerMarker,plantMarker,line,lastPoly,fit=false,lastRouteAt=0,routeBusy=false,latest=${initial};
 window.updateTracking=function(data){
  latest=data;if(!map)return;
  if(data.destination){if(!siteMarker)siteMarker=new google.maps.Marker({map:map,title:'Delivery site'});siteMarker.setPosition(data.destination)}
  if(data.mixer){if(!mixerMarker)mixerMarker=new google.maps.Marker({map:map,title:'Transit mixer'});mixerMarker.setPosition(data.mixer);mixerMarker.setMap(map)}else if(mixerMarker)mixerMarker.setMap(null);
  if(data.origin){if(!plantMarker)plantMarker=new google.maps.Marker({map:map,title:'Origin plant'});plantMarker.setPosition(data.origin);plantMarker.setMap(map)}else if(plantMarker)plantMarker.setMap(null);
- if(data.polyline!==lastPoly){lastPoly=data.polyline;if(line)line.setMap(null);if(lastPoly&&google.maps.geometry)line=new google.maps.Polyline({path:google.maps.geometry.encoding.decodePath(lastPoly),map:map,strokeColor:'#121212',strokeWeight:5})}
+ if(data.polyline!==lastPoly){lastPoly=data.polyline;if(line)line.setMap(null);if(lastPoly&&google.maps.geometry)line=new google.maps.Polyline({path:google.maps.geometry.encoding.decodePath(lastPoly),map:map,strokeColor:'#F18A20',strokeWeight:5})}
+ if(data.mixer&&data.destination&&!data.polyline&&!routeBusy&&Date.now()-lastRouteAt>60000){
+  routeBusy=true;lastRouteAt=Date.now();
+  new google.maps.DirectionsService().route({origin:data.mixer,destination:data.destination,travelMode:'DRIVING'},function(result,status){
+    routeBusy=false;if(status==='OK'&&result.routes[0]){if(line)line.setMap(null);line=new google.maps.Polyline({path:result.routes[0].overview_path,map:map,strokeColor:'#F18A20',strokeWeight:5});}
+  });
+ }
  if(!fit&&data.destination){var bounds=new google.maps.LatLngBounds();bounds.extend(data.destination);if(data.origin)bounds.extend(data.origin);if(data.mixer)bounds.extend(data.mixer);map.fitBounds(bounds,50);fit=true;}
 };
 window.addEventListener('message',function(event){if(event.source===parent&&event.data.kind==='tracking-update')window.updateTracking(event.data)});
@@ -65,9 +71,11 @@ function init(){
  map=new google.maps.Map(document.getElementById('map'),{center:latest.destination,zoom:13,gestureHandling:'cooperative'});
  window.updateTracking(latest);
 }
-window.gm_authFailure=function(){document.body.innerHTML='<div style="display:flex;height:100%;align-items:center;justify-content:center;font-family:sans-serif;color:#888;padding:16px;text-align:center">The map could not load. Your recorded trip details remain available below.</div>';};
+function mapFailed(){document.body.innerHTML='<div style="display:flex;height:100%;align-items:center;justify-content:center;font-family:sans-serif;color:#888;padding:16px;text-align:center">The map could not load. Your recorded trip details remain available below.</div>';};
+window.gm_authFailure=mapFailed;
+setTimeout(function(){if(!map)mapFailed()},15000);
 </script>
-<script async src="https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(MAPS_KEY)}&libraries=geometry&loading=async&callback=init"></script>
+<script async onerror="mapFailed()" src="https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(MAPS_KEY)}&libraries=geometry&loading=async&callback=init"></script>
 </body></html>`;
   }, [canRender]);
   const source = useMemo(() => ({html}),[html]);
@@ -89,7 +97,7 @@ window.gm_authFailure=function(){document.body.innerHTML='<div style="display:fl
           // @ts-ignore — raw DOM element under react-native-web
           "data-testid": "live-map",
           srcDoc: html,
-          style: { border: 0, width: "100%", height: 260 },
+          style: { border: 0, width: "100%", height: "100%", minHeight: 0, flex: 1 },
         })}
       </View>
     );

@@ -32,6 +32,8 @@ jobs:
         run: npm run typecheck
       - name: API base path regressions
         run: npm run test:api-base
+      - name: Home tracking state regressions
+        run: node --test scripts/test-home-tracking.cjs
       - name: Google Maps loader regressions
         run: npm run test:maps
       - name: Validate role routing
@@ -52,6 +54,22 @@ jobs:
         env:
           EXPO_PUBLIC_BACKEND_URL: https://trackmyrmc.com
         run: npm run build:preview
+      - name: Install browser test dependencies
+        run: |
+          npm ci --prefix ../admin-web
+          node ../admin-web/node_modules/playwright/cli.js install --with-deps chromium
+      - name: Verify Customer Home at mobile and desktop widths
+        run: |
+          python3 -m http.server 8765 --directory dist > /tmp/home-preview-server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID"' EXIT
+          node scripts/test-home-tracking-browser.cjs
+      - name: Upload tracking layout previews
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: customer-home-tracking-previews
+          path: frontend/tracking-previews/
 
   admin-web-build:
     name: Admin dashboard build

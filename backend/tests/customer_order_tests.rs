@@ -1836,3 +1836,39 @@ async fn quality_recording_requires_active_plant_engineer_and_matching_load(db: 
         StatusCode::FORBIDDEN
     );
 }
+
+#[sqlx::test]
+async fn home_tracking_selects_pending_and_preserves_completed_history(db: PgPool) {
+    let (_, app, _, plant, token) = fixture(&db).await;
+    let (_, empty) = call(&app, "/api/customer/home", None, &token).await;
+    assert!(empty["active_order"].is_null());
+    assert_eq!(empty["recent_orders"].as_array().unwrap().len(), 0);
+    let (_, created) = call(
+        &app,
+        "/api/customer/orders",
+        Some(order(plant, "home-tracking")),
+        &token,
+    )
+    .await;
+    let id = Uuid::parse_str(created["id"].as_str().unwrap()).unwrap();
+    let (status, home) = call(&app, "/api/customer/home", None, &token).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(home["active_order"]["id"], id.to_string());
+    let (_, tracking) = call(
+        &app,
+        &format!("/api/customer/orders/{id}/tracking"),
+        None,
+        &token,
+    )
+    .await;
+    assert_eq!(tracking["active"], false);
+    assert_eq!(tracking["challan_available"], false);
+    sqlx::query("UPDATE orders SET status='delivered' WHERE id=$1")
+        .bind(id)
+        .execute(&db)
+        .await
+        .unwrap();
+    let (_, home) = call(&app, "/api/customer/home", None, &token).await;
+    assert!(home["active_order"].is_null());
+    assert_eq!(home["recent_orders"][0]["id"], id.to_string());
+}
