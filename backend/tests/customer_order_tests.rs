@@ -1521,7 +1521,8 @@ async fn actual_customer_and_owner_dashboards_return_the_mobile_contract_and_sco
     assert_eq!(home["kyc_status"], "VERIFIED");
     assert_eq!(home["recent_orders"][0]["quantity"], 6.0);
     assert_eq!(home["recent_orders"][0]["id"], placed["id"]);
-    assert!(home["active_order"].is_null());
+    assert_eq!(home["active_order"]["id"], placed["id"]);
+    assert_eq!(home["active_order"]["status"], "PENDING");
     assert_eq!(home["unread_notifications"], 0);
     assert!(home["nearby_plants"]
         .as_array()

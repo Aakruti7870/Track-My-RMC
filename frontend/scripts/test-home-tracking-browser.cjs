@@ -10,11 +10,11 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  const path=new URL(route.request().url()).pathname;
  const me={id:'test-customer',name:'Customer',role:'customer',roles:['customer'],status:'active',kyc_status:'VERIFIED',plant_id:null};
  const home={name:'Customer',kyc_status:'VERIFIED',active_order:null,recent_orders:[],nearby_plants:[],unread_notifications:0};
- await route.fulfill({json:path.endsWith('/me')?me:path.endsWith('/customer/home')?home:{}});
+ await route.fulfill({json:path.endsWith('/permission-consent')?{consent:{version:1,location_choice:'manual',notification_choice:'manual'}}:path.endsWith('/me')?me:path.endsWith('/customer/home')?home:{}});
  });
  page.on('pageerror',e=>console.error(e.message));
  await page.goto('http://127.0.0.1:8765/customer/');
- const card=page.getByTestId('demo-tracking-card'); await card.waitFor({timeout:30000});
+ const card=page.getByTestId('demo-tracking-card'); try { await card.waitFor({timeout:30000}); } catch(e) { await page.screenshot({path:`tracking-previews/failure-${width}.png`,fullPage:true}); console.error(await page.locator('body').innerText()); throw e; }
  await card.scrollIntoViewIfNeeded();
  const b=await card.boundingBox();const m=await page.getByTestId('demo-tracking-map').boundingBox();
  if(Math.abs(m.width/m.height-2)>0.05)throw Error('map ratio');
