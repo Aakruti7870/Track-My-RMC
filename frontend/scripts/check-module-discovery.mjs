@@ -74,7 +74,7 @@ for (const role of requiredRoles) {
 assert.equal(customerHomeModules().length, 8, "All eight customer Home-eligible modules remain available in the full directory.");
 
 const customerHome = read("app/customer/index.tsx");
-const homeKeysBlock = customerHome.match(/const HOME_MODULE_KEYS = new Set\\(\\[([\\s\\S]*?)\\]\\);/);
+const homeKeysBlock = customerHome.match(/const HOME_MODULE_KEYS = new Set\(\[([\s\S]*?)\]\);/);
 assert.ok(homeKeysBlock, "Customer Home must declare an explicit six-module shortlist.");
 const homeKeys = [...homeKeysBlock[1].matchAll(/"([a-z-]+)"/g)].map(match => match[1]);
 assert.deepEqual(homeKeys, [
