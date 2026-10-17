@@ -40,7 +40,16 @@ const ACTIONS: { key: "new" | "track" | "plants" | "orders"; label: string; icon
   { key: "orders", label: "My Orders", icon: "document-text" },
 ];
 
-const CUSTOMER_MODULES = customerHomeModules();
+// Limit only the Home shortcut strip; all other customer modules stay in More.
+const HOME_MODULE_KEYS = new Set([
+  "projects",
+  "pour-planner",
+  "receiving-guide",
+  "cube-tests",
+  "compare-plants",
+  "free-tools",
+]);
+const CUSTOMER_MODULES = customerHomeModules().filter(module => HOME_MODULE_KEYS.has(module.key));
 const ACTION_SYMBOLS: Record<string, VectorSymbolName> = {
   new: "new-order", track: "live-order-tracking",
   plants: "nearby-rmc-plants", orders: "my-orders",
@@ -119,13 +128,7 @@ export default function CustomerHome() {
         >
           <ErrorView message={error} onRetry={reload} />
           <View style={styles.section} testID="customer-module-grid">
-            <View style={styles.rowBetween}>
-              <AppText style={[styles.sectionTitle, { color: colors.onSurface }]}>Site & Quality Tools</AppText>
-              <Pressable testID="view-all-customer-modules" onPress={() => router.push("/customer/more")}>
-                <AppText variant="label" color={colors.brand}>All tools  ›</AppText>
-              </Pressable>
-            </View>
-            <View style={styles.moduleGrid}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.moduleGrid}>
               {CUSTOMER_MODULES.map((module) => (
                 <Pressable
                   key={module.key}
@@ -134,21 +137,19 @@ export default function CustomerHome() {
                   style={({ pressed }) => [
                     styles.moduleCard,
                     {
-                      backgroundColor: colors.surfaceSecondary,
-                      borderColor: colors.border,
                       opacity: pressed ? 0.82 : 1,
                       transform: [{ scale: pressed ? 0.985 : 1 }],
                     },
                   ]}
                 >
-                  <View style={[styles.moduleIcon, { backgroundColor: colors.brandSoft }]}>
+                  <View style={[styles.moduleIcon, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
                     {module.symbol ? <VectorSymbol name={module.symbol} size={34} /> : <Ionicons name={module.icon} size={22} color={colors.brand} />}
                   </View>
                   <AppText style={[styles.moduleLabel, { color: colors.onSurface }]}>{module.label}</AppText>
                   
                 </Pressable>
               ))}
-            </View>
+            </ScrollView>
           </View>
         </ScrollView>
       ) : (
@@ -189,7 +190,7 @@ export default function CustomerHome() {
                       ]}
                     >
                       <View style={[styles.actionIcon, { backgroundColor: index === 0 ? colors.brand : colors.surfaceTertiary }]}> 
-                        <VectorSymbol name={ACTION_SYMBOLS[action.key]} size={38} />
+                        <VectorSymbol name={ACTION_SYMBOLS[action.key]} size={44} />
                       </View>
                       <AppText style={[styles.actionLabel, { color: colors.onSurface }]}>{action.label}</AppText>
                     </Pressable>
@@ -198,13 +199,7 @@ export default function CustomerHome() {
               </View>
 
               <View style={styles.section} testID="customer-module-grid">
-                <View style={styles.rowBetween}>
-                  <AppText style={[styles.sectionTitle, { color: colors.onSurface }]}>Your Modules</AppText>
-                  <Pressable testID="view-all-customer-modules" onPress={() => router.push("/customer/more")}>
-                    <AppText variant="label" color={colors.brand}>All tools  ›</AppText>
-                  </Pressable>
-                </View>
-                <View style={styles.moduleGrid}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.moduleGrid}>
                   {CUSTOMER_MODULES.map((module) => (
                     <Pressable
                       key={module.key}
@@ -213,21 +208,19 @@ export default function CustomerHome() {
                       style={({ pressed }) => [
                         styles.moduleCard,
                         {
-                          backgroundColor: colors.surfaceSecondary,
-                          borderColor: colors.border,
                           opacity: pressed ? 0.82 : 1,
                           transform: [{ scale: pressed ? 0.985 : 1 }],
                         },
                       ]}
                     >
-                      <View style={[styles.moduleIcon, { backgroundColor: colors.brandSoft }]}>
+                      <View style={[styles.moduleIcon, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
                         {module.symbol ? <VectorSymbol name={module.symbol} size={34} /> : <Ionicons name={module.icon} size={22} color={colors.brand} />}
                       </View>
                       <AppText style={[styles.moduleLabel, { color: colors.onSurface }]}>{module.label}</AppText>
                       
                     </Pressable>
                   ))}
-                </View>
+                </ScrollView>
               </View>
 
               <View style={styles.section}>
@@ -330,10 +323,10 @@ const styles = StyleSheet.create({
   action: { flex: 1, minHeight: 126, borderRadius: 22, borderWidth: 1, padding: 12, alignItems: "center", justifyContent: "center", gap: 10 },
   actionIcon: { width: 54, height: 54, borderRadius: 17, alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
   actionLabel: { fontFamily: fonts.semibold, fontSize: 12, textAlign: "center" },
-  moduleGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: 10 },
-  moduleCard: { width: "23%", minHeight: 104, borderRadius: 14, borderWidth: 1, padding: 7, gap: 5, alignItems: "center", justifyContent: "center" },
-  moduleIcon: { width: 44, height: 44, borderRadius: 11, alignItems: "center", justifyContent: "center" },
-  moduleLabel: { fontFamily: fonts.semibold, fontSize: 10, textAlign: "center" },
+  moduleGrid: { flexDirection: "row", alignItems: "flex-start", gap: 8, paddingRight: 18 },
+  moduleCard: { width: 92, minHeight: 96, paddingVertical: 2, gap: 6, alignItems: "center", justifyContent: "flex-start" },
+  moduleIcon: { width: 64, height: 60, borderRadius: 14, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  moduleLabel: { fontFamily: fonts.semibold, fontSize: 10, lineHeight: 12, textAlign: "center" },
   rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   activeCard: { padding: 0, overflow: "hidden", borderRadius: 24 },
   activeTop: { flexDirection: "row", minHeight: 186 },
