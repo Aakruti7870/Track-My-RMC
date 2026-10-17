@@ -46,10 +46,14 @@ export function PlantMap({ plants, userLocation, selectedPlantId, onSelectPlant,
   },[userLocation]);
   useEffect(() => {
     const selected = plants.find(plant => plant.id === selectedPlantId);
-    if (selected && validLatLng(selected)) map.current?.animateToRegion({
-      latitude: selected.lat, longitude: selected.lng, latitudeDelta: 0.03, longitudeDelta: 0.03,
+    const center = selected && validLatLng(selected) ? selected : userLocation;
+    if (center && validLatLng(center)) map.current?.animateToRegion({
+      latitude: center.lat,
+      longitude: center.lng,
+      latitudeDelta: selected && validLatLng(selected) ? 0.03 : 0.15,
+      longitudeDelta: selected && validLatLng(selected) ? 0.03 : 0.15,
     }, 300);
-  }, [plants, selectedPlantId]);
+  }, [plants, selectedPlantId, userLocation]);
   const { colors } = useTheme();
   const mapsConfigured = Boolean(Constants.expoConfig?.extra?.googleMapsAndroidConfigured);
   const mappedPlants = useMemo(() => plants.filter((plant) => validLatLng(plant)), [plants]);
