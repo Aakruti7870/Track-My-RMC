@@ -102,5 +102,5 @@ assert.ok(registry.includes('import { set8 } from "./vector-symbols/set8";') && 
 for (const [key, symbol] of [["cement", "cement"], ["labour", "labour-contractor"], ["material", "building-material"]]) {
   assert.ok(homeSource.includes(`key: "${key}"`) && homeSource.includes(`symbol: "${symbol}"`), `Customer service ${key} missing vector assignment`);
 }
-assert.ok(homeSource.includes('<VectorSymbol name={service.symbol} size={56} />'), "Other Services must render the assigned vector, not a generic Ionicon");
+assert.ok(homeSource.includes('<VectorSymbol name={service.symbol} size={58} />'), "Other Services must render the assigned vector, not a generic Ionicon");
 console.log(`PASS: ${masters.length}/${masters.length} SVG masters, original 88 preserved, 3 Other Services symbols rendered; ${mapped}/${MODULE_CATALOG.length} role modules; tabs and quick actions connected`);
