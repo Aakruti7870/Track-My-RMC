@@ -6,6 +6,7 @@ pub mod automation_routes;
 pub mod business_routes;
 pub mod control_center_routes;
 pub mod customer_routes;
+pub mod customer_services;
 pub mod discovery;
 pub mod dispatcher_routes;
 pub mod driver_routes;
@@ -288,6 +289,19 @@ pub fn build_app_router(state: AppState) -> Router {
             delete(master_data_routes::delete_customer_site),
         )
         // --- Customer Domain ---
+        // Customer service enquiries are not orders or official quotations.
+        .route(
+            "/api/customer/service-enquiries",
+            get(customer_services::list_customer).post(customer_services::create),
+        )
+        .route(
+            "/api/admin/service-enquiries",
+            get(customer_services::list_admin),
+        )
+        .route(
+            "/api/admin/service-enquiries/:id/status",
+            patch(customer_services::update_status),
+        )
         .route("/api/customer/plants", get(customer_routes::list_plants))
         .route("/api/customer/plants/search", post(discovery::search))
         .route(
