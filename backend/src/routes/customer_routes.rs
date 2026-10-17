@@ -401,7 +401,7 @@ pub async fn get_customer_home(
         .bind(auth_user.user_id)
         .fetch_all(&state.db)
         .await?;
-    let query=format!("{} WHERE o.customer_id=$1 AND lower(o.status) IN('dispatched','in_transit','en_route','at_site','pouring','unloading','pod_pending') ORDER BY o.delivery_date,o.created_at,o.id LIMIT 1",order_service::MOBILE_ORDER_SELECT);
+    let query=format!("{} WHERE o.customer_id=$1 AND lower(o.status) NOT IN('delivered','cancelled','rejected') ORDER BY CASE WHEN EXISTS(SELECT 1 FROM order_loads l WHERE l.order_id=o.id AND lower(l.status) IN('dispatched','en_route','arrived','pouring')) THEN 0 ELSE 1 END,o.delivery_date,o.created_at,o.id LIMIT 1",order_service::MOBILE_ORDER_SELECT);
     let active: Option<serde_json::Value> = sqlx::query_scalar(&query)
         .bind(auth_user.user_id)
         .fetch_optional(&state.db)
@@ -484,7 +484,7 @@ pub async fn get_order_tracking(
     Path(order_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     let order =
-        sqlx::query("SELECT o.customer_id, o.plant_id, o.site_id, o.status, s.name AS site_name, s.address_line AS site_address, s.latitude AS site_lat, s.longitude AS site_lng, p.name AS plant_name, p.latitude AS plant_lat, p.longitude AS plant_lng FROM orders o LEFT JOIN customer_sites s ON s.id=o.site_id LEFT JOIN rmc_plants p ON p.id=o.plant_id WHERE o.id = $1")
+        sqlx::query("SELECT o.customer_id, o.plant_id, o.site_id, o.status, s.name AS site_name, s.address_line AS site_address, s.latitude AS site_lat, s.longitude AS site_lng, p.contact_phone AS plant_phone, EXISTS(SELECT 1 FROM challans c JOIN order_loads cl ON cl.id=c.load_id WHERE cl.order_id=o.id) AS challan_available, p.name AS plant_name, p.latitude AS plant_lat, p.longitude AS plant_lng FROM orders o LEFT JOIN customer_sites s ON s.id=o.site_id LEFT JOIN rmc_plants p ON p.id=o.plant_id WHERE o.id = $1")
             .bind(order_id)
             .fetch_optional(&state.db)
             .await?
@@ -566,7 +566,7 @@ pub async fn get_order_tracking(
         .filter(|l| {
             matches!(
                 l["status"].as_str(),
-                Some("en_route" | "arrived" | "pouring")
+                Some("dispatched" | "en_route" | "arrived" | "pouring")
             )
         })
         .cloned()
@@ -575,6 +575,8 @@ pub async fn get_order_tracking(
         "success":true,"order_status":status,"status":status.to_uppercase(),"order_id":order_id,
         "active":!active_loads.is_empty(),"loads":tracking,"active_loads":active_loads,
         "location":null,"route":null,
+        "plant_phone":order.get::<Option<String>,_>("plant_phone"),
+        "challan_available":order.get::<bool,_>("challan_available"),
         "destination":{"site_name":order.get::<Option<String>,_>("site_name").unwrap_or_else(||"Delivery site".into()),"address":order.get::<Option<String>,_>("site_address"),"lat":order.get::<Option<f64>,_>("site_lat"),"lng":order.get::<Option<f64>,_>("site_lng")},
         "origin":{"name":order.get::<Option<String>,_>("plant_name"),"lat":order.get::<Option<f64>,_>("plant_lat"),"lng":order.get::<Option<f64>,_>("plant_lng")}
     })))
