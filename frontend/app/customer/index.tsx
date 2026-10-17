@@ -46,10 +46,10 @@ const HOME_MODULE_KEYS = [
 const DIRECTORY = modulesForRole("customer");
 const CUSTOMER_MODULES = HOME_MODULE_KEYS.flatMap(key => DIRECTORY.filter(module => module.key === key));
 
-const SERVICES: readonly { key: ServiceKey; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { key: "cement", label: "Cement", icon: "bag-handle-outline" },
-  { key: "labour", label: "Labour Contractor", icon: "people-outline" },
-  { key: "material", label: "Building Material", icon: "layers-outline" },
+const SERVICES: readonly { key: ServiceKey; label: string; symbol: VectorSymbolName }[] = [
+  { key: "cement", label: "Cement", symbol: "cement" },
+  { key: "labour", label: "Labour Contractor", symbol: "labour-contractor" },
+  { key: "material", label: "Building Material", symbol: "building-material" },
 ];
 
 export default function CustomerHome() {
@@ -137,8 +137,8 @@ export default function CustomerHome() {
             onPress={() => openService(service.key)}
             style={({ pressed }) => [styles.tile, { width: "33.333%", opacity: pressed ? 0.75 : 1 }]}
           >
-            <View style={[styles.serviceIcon, { backgroundColor: colors.brandSoft, borderColor: colors.brand + "33" }]}>
-              <Ionicons name={service.icon} size={33} color={colors.brand} />
+            <View style={styles.serviceIcon}>
+              <VectorSymbol name={service.symbol} size={58} />
             </View>
             <AppText numberOfLines={2} style={[styles.serviceLabel, { color: colors.onSurface }]}>{service.label}</AppText>
           </Pressable>
@@ -235,7 +235,7 @@ const styles = StyleSheet.create({
   tile: { minHeight: 96, alignItems: "center", justifyContent: "flex-start", paddingHorizontal: 3, paddingVertical: 8, gap: 7 },
   actionIcon: { width: 56, height: 56, borderRadius: 17, alignItems: "center", justifyContent: "center" },
   toolIcon: { width: 55, height: 55, borderRadius: 15, borderWidth: 1, alignItems: "center", justifyContent: "center" },
-  serviceIcon: { width: 58, height: 58, borderRadius: 17, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  serviceIcon: { width: 58, height: 58, alignItems: "center", justifyContent: "center" },
   tileLabel: { fontFamily: fonts.semibold, fontSize: 11, lineHeight: 14, textAlign: "center" },
   serviceLabel: { fontFamily: fonts.semibold, fontSize: 12, lineHeight: 15, textAlign: "center" },
 });

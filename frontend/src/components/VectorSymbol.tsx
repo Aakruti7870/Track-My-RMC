@@ -8,9 +8,10 @@ import { set4 } from "./vector-symbols/set4";
 import { set5 } from "./vector-symbols/set5";
 import { set6 } from "./vector-symbols/set6";
 import { set7 } from "./vector-symbols/set7";
+import { set8 } from "./vector-symbols/set8";
 
 /**
- * The complete library of 88 original, checked-in SVG vector symbols.
+ * The library of 91 checked-in SVG vector symbols (88 original + 3 Other Services).
  * Each master lives in frontend/assets/images/SVG Vector Symbol/.
  * The embedded XML works with Expo Metro on Android and web without a
  * custom SVG transformer. Keep each generated set in sync with its masters.
@@ -24,6 +25,7 @@ const symbols = {
   ...set5,
   ...set6,
   ...set7,
+  ...set8,
 } as const;
 
 export type VectorSymbolName = keyof typeof symbols;
