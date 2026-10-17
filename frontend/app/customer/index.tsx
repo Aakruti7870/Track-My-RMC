@@ -19,7 +19,7 @@ import { HomeCarousel } from "@/src/components/HomeCarousel";
 import { OrderData } from "@/src/components/OrderCard";
 import { PlantData } from "@/src/components/PlantCard";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
-import { customerHomeModules } from "@/src/navigation/moduleCatalog";
+import { modulesForRole } from "@/src/navigation/moduleCatalog";
 
 
 
@@ -41,15 +41,20 @@ const ACTIONS: { key: "new" | "track" | "plants" | "orders"; label: string; icon
 ];
 
 // Limit only the Home shortcut strip; all other customer modules stay in More.
-const HOME_MODULE_KEYS = new Set([
+// Exactly eight Customer Home shortcuts, in the requested display order.
+// This does not change module access or the complete More directory.
+const HOME_MODULE_KEYS = [
   "projects",
   "pour-planner",
   "receiving-guide",
   "cube-tests",
+  "saved-sites",
+  "customer-support",
   "compare-plants",
   "free-tools",
-]);
-const CUSTOMER_MODULES = customerHomeModules().filter(module => HOME_MODULE_KEYS.has(module.key));
+];
+const CUSTOMER_DIRECTORY = modulesForRole("customer");
+const CUSTOMER_MODULES = HOME_MODULE_KEYS.flatMap(key => CUSTOMER_DIRECTORY.filter(module => module.key === key));
 const ACTION_SYMBOLS: Record<string, VectorSymbolName> = {
   new: "new-order", track: "live-order-tracking",
   plants: "nearby-rmc-plants", orders: "my-orders",
