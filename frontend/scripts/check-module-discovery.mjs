@@ -71,7 +71,23 @@ for (const role of requiredRoles) {
   assert.ok(entries.length >= mustInclude[role].length, `Empty role directory for ${role}`);
   console.log(`PASS: ${role} -> ${entries.length} declared, existing Expo routes`);
 }
-assert.equal(customerHomeModules().length, 8, "Existing customer Home discovery cards should remain stable.");
+assert.equal(customerHomeModules().length, 8, "All eight customer Home-eligible modules remain available in the full directory.");
+
+const customerHome = read("app/customer/index.tsx");
+const homeKeysBlock = customerHome.match(/const HOME_MODULE_KEYS = new Set\\(\\[([\\s\\S]*?)\\]\\);/);
+assert.ok(homeKeysBlock, "Customer Home must declare an explicit six-module shortlist.");
+const homeKeys = [...homeKeysBlock[1].matchAll(/"([a-z-]+)"/g)].map(match => match[1]);
+assert.deepEqual(homeKeys, [
+  "projects", "pour-planner", "receiving-guide", "cube-tests", "compare-plants", "free-tools",
+], "Only the six requested customer modules must appear on Home.");
+assert.ok(customerHome.includes("customerHomeModules().filter(module => HOME_MODULE_KEYS.has(module.key))"));
+assert.equal(customerHome.split("contentContainerStyle={styles.moduleGrid}>").length - 1, 2,
+  "Normal and error-state Home modules must be in a single horizontally scrollable row.");
+assert.ok(customerHome.includes("name={ACTION_SYMBOLS[action.key]} size={44}"),
+  "Quick Actions must use 44 px vector symbols.");
+assert.equal(customerHome.split("name={module.symbol} size={34}").length - 1, 2,
+  "Home module vectors must retain the existing 34 px symbol size.");
+assert.ok(!customerHome.includes(">Your Modules</AppText>"), "Remove the old Home section heading.");
 
 const connected = [
   "app/customer/index.tsx", "app/customer/more.tsx",
