@@ -412,14 +412,14 @@ function CommandCenter() {
             )}
             {user.role === 'central_admin' && <section aria-label="Authorized workspaces" style={{marginTop:18}}>
               <nav style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                {['users','plants','orders','support','audit','sessions'].filter(kind=>permissions.includes(({users:'user.view',plants:'plant.view',orders:'order.view',support:'support.view',audit:'audit.view',sessions:'session.view'} as Record<string,string>)[kind])).map(kind=>
+                {['users','plants','orders','support','service_enquiries','audit','sessions'].filter(kind=>permissions.includes(({users:'user.view',plants:'plant.view',orders:'order.view',support:'support.view',service_enquiries:'support.view',audit:'audit.view',sessions:'session.view'} as Record<string,string>)[kind])).map(kind=>
                   <button key={kind} disabled={busy} onClick={()=>void loadWorkspace(kind)} style={{...buttonStyle,width:'auto',textTransform:'capitalize'}}>{kind}</button>)}
               </nav>
               {workspace && <><h2 style={{textTransform:'capitalize'}}>{workspace}</h2>
                 {!busy && records.length===0 && <p>No records on this page.</p>}
                 <div style={{overflowX:'auto'}}><table style={{width:'100%',fontSize:13,borderCollapse:'collapse'}}>
                   <thead><tr>{Object.keys(records[0]||{}).map(key=><th key={key} style={{textAlign:'left',padding:8}}>{key.replace(/_/g,' ')}</th>)}</tr></thead>
-                  <tbody>{records.map((row,index)=><tr key={String(row.id||index)}>{Object.entries(row).map(([key,value])=><td key={key} style={{padding:8,borderTop:'1px solid #334155'}}>{value===null?'—':String(value)}</td>)}</tr>)}</tbody>
+                  <tbody>{records.map((row,index)=><tr key={String(row.id||index)}>{Object.entries(row).map(([key,value])=><td key={key} style={{padding:8,borderTop:'1px solid #334155'}}>{value===null?'—':typeof value==='object'?JSON.stringify(value):String(value)}</td>)}</tr>)}</tbody>
                 </table></div>
                 <button disabled={busy||workspaceOffset===0} onClick={()=>void loadWorkspace(workspace,Math.max(0,workspaceOffset-25))}>Previous</button>
                 <button disabled={busy||records.length<25} onClick={()=>void loadWorkspace(workspace,workspaceOffset+25)}>Next</button>

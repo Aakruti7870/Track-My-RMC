@@ -32,6 +32,7 @@ pub async fn collection(
         "plants"=>("plant.view","SELECT jsonb_build_object('id',id,'name',name,'city',city,'owner_id',owner_id,'active',is_active) FROM rmc_plants ORDER BY id LIMIT $1 OFFSET $2"),
         "orders"=>("order.view","SELECT jsonb_build_object('id',id,'number',order_number,'plant_id',plant_id,'quantity',total_quantity_m3::DOUBLE PRECISION,'status',status) FROM orders ORDER BY id LIMIT $1 OFFSET $2"),
         "support"=>("support.view","SELECT jsonb_build_object('id',id,'subject',subject,'status',status,'created_at',created_at) FROM support_cases ORDER BY id LIMIT $1 OFFSET $2"),
+        "service_enquiries"=>("support.view","SELECT jsonb_build_object('id',id,'service_type',service_type,'contact_name',contact_name,'contact_phone',contact_phone,'location',location,'required_date',required_date,'details',details,'status',status,'created_at',created_at) FROM customer_service_enquiries ORDER BY created_at DESC LIMIT $1 OFFSET $2"),
         "audit"=>("audit.view","SELECT jsonb_build_object('id',id,'action',action,'resource_type',resource_type,'resource_id',resource_id,'created_at',created_at) FROM audit_logs ORDER BY id LIMIT $1 OFFSET $2"),
         "sessions"=>("session.view","SELECT jsonb_build_object('user_id',user_id,'created_at',created_at,'expires_at',expires_at,'revoked',revoked_at IS NOT NULL) FROM control_center_sessions ORDER BY created_at,token_hash LIMIT $1 OFFSET $2"),
         _=>return Err(AppError::NotFound("Control Center workspace not found".into())),
