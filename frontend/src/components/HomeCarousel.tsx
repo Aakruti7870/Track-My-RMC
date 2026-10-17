@@ -17,16 +17,18 @@ import { AppText } from "@/src/components/ui/AppText";
 import { IndiaServiceMap } from "@/src/components/promo/IndiaServiceMap";
 import { fonts, radius } from "@/src/theme/tokens";
 
-const HERO_LIGHT = require("../../assets/images/home-hero-light.jpg");
-const HERO_DARK = require("../../assets/images/home-hero-dark.jpg");
-const CASHFREE_BANNER = require("../../assets/images/Cashfree Payments QR Pay Experience.png");
-const KYC_BANNER = require("../../assets/images/eKYC Aadhaar Digital Identity Network.png");
+// Use the exact, case-sensitive filenames committed under frontend/assets/images.
+const HERO_BANNER = require("../../assets/images/RMC truck Banner .png");
+const CALCULATOR_BANNER = require("../../assets/images/Calculator Banner.png");
+const CASHFREE_BANNER = require("../../assets/images/Cashfree Banner.png");
+const KYC_BANNER = require("../../assets/images/KYC banner .png");
+const SUPPORT_BANNER = require("../../assets/images/Customer support Banner .png");
 
 const ORANGE = "#FF5A16";
 const ORANGE_DEEP = "#C93D00";
 
 const AUTO_MS = 4500;
-const SLIDE_COUNT = 4;
+const SLIDE_COUNT = 6;
 const MAX_WIDTH = 720;
 
 type SlideProps = { width: number; height: number };
@@ -59,13 +61,13 @@ function Pill({ label, bg, color, scale = 1 }: { label: string; bg: string; colo
   );
 }
 
-/** IMAGE 1 — existing theme-aware hero (unchanged). */
+/** IMAGE 1 — RMC transit mixer promotional banner. */
 function HeroSlide({ width, height }: SlideProps) {
   const { colors } = useTheme();
   return (
     <View style={{ width, height, backgroundColor: colors.isDark ? "#080A0C" : "#F7F8F6" }}>
       <Image
-        source={colors.isDark ? HERO_DARK : HERO_LIGHT}
+        source={HERO_BANNER}
         style={StyleSheet.absoluteFill}
         contentFit="contain"
         contentPosition="center"
@@ -77,14 +79,30 @@ function HeroSlide({ width, height }: SlideProps) {
   );
 }
 
-/** IMAGE 2 — Cashfree Payments Available (permanent light theme). */
+/** IMAGE 2 — free RMC calculator. */
+function CalculatorSlide({ width, height }: SlideProps) {
+  return (
+    <View style={{ width, height, backgroundColor: "#101B24" }}>
+      <Image
+        source={CALCULATOR_BANNER}
+        style={StyleSheet.absoluteFill}
+        contentFit="contain"
+        contentPosition="center"
+        cachePolicy="memory-disk"
+        accessibilityLabel="Free RMC calculator promotional banner"
+      />
+    </View>
+  );
+}
+
+/** IMAGE 3 — Cashfree Payments Available. */
 function CashfreeSlide({ width, height }: SlideProps) {
   return (
     <View style={{ width, height, backgroundColor: "#22004A" }}>
       <Image
         source={CASHFREE_BANNER}
         style={StyleSheet.absoluteFill}
-        contentFit="cover"
+        contentFit="contain"
         contentPosition="center"
         cachePolicy="memory-disk"
         accessibilityLabel="Cashfree Payments promotional banner"
@@ -93,14 +111,14 @@ function CashfreeSlide({ width, height }: SlideProps) {
   );
 }
 
-/** IMAGE 3 — KYC Mandatory via DigiLocker (permanent dark theme). */
+/** IMAGE 4 — KYC Mandatory via DigiLocker. */
 function KycSlide({ width, height }: SlideProps) {
   return (
     <View style={{ width, height, backgroundColor: "#080D30" }}>
       <Image
         source={KYC_BANNER}
         style={StyleSheet.absoluteFill}
-        contentFit="cover"
+        contentFit="contain"
         contentPosition="center"
         cachePolicy="memory-disk"
         accessibilityLabel="Aadhaar eKYC promotional banner"
@@ -109,7 +127,23 @@ function KycSlide({ width, height }: SlideProps) {
   );
 }
 
-/** IMAGE 4 — India service availability: Maharashtra, Goa, Karnataka (permanent light theme). */
+/** IMAGE 5 — customer support. */
+function SupportSlide({ width, height }: SlideProps) {
+  return (
+    <View style={{ width, height, backgroundColor: "#101B24" }}>
+      <Image
+        source={SUPPORT_BANNER}
+        style={StyleSheet.absoluteFill}
+        contentFit="contain"
+        contentPosition="center"
+        cachePolicy="memory-disk"
+        accessibilityLabel="Customer support promotional banner"
+      />
+    </View>
+  );
+}
+
+/** IMAGE 6 — India service availability: Maharashtra, Goa, Karnataka. */
 function IndiaSlide({ width, height }: SlideProps) {
   const scale = Math.min(Math.max(width / 390, 0.82), 1.5);
   const mapHeight = Math.min(height - 40 * scale, height * 0.82);
@@ -153,9 +187,8 @@ function IndiaSlide({ width, height }: SlideProps) {
 type Props = { style?: ViewStyle };
 
 /**
- * Post-login top carousel: 4 auto-advancing slides. The Cashfree and KYC
- * slides display the uploaded promotional images, while the existing hero
- * and India coverage slide remain unchanged. Supports swipe and dot paging.
+ * Post-login top carousel: five uploaded promotional images plus the
+ * India coverage slide. Auto-advances with swipe and dot paging.
  */
 export function HomeCarousel({ style }: Props) {
   const { colors } = useTheme();
@@ -225,8 +258,10 @@ export function HomeCarousel({ style }: Props) {
             style={StyleSheet.absoluteFill}
           >
             <HeroSlide width={w} height={h} />
+            <CalculatorSlide width={w} height={h} />
             <CashfreeSlide width={w} height={h} />
             <KycSlide width={w} height={h} />
+            <SupportSlide width={w} height={h} />
             <IndiaSlide width={w} height={h} />
           </ScrollView>
 

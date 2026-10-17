@@ -36,27 +36,36 @@ describe('final login and customer hero guards', () => {
     assert.doesNotMatch(login, /textDecorationLine\s*:\s*["']underline["']/);
   });
 
-  it('renders the final four-slide customer carousel in the required order', () => {
+  it('renders all five uploaded banners followed by India coverage', () => {
     assert.ok(home.includes('HomeCarousel'));
     assert.ok(carousel.includes('const AUTO_MS = 4500'));
-    assert.ok(carousel.includes('const SLIDE_COUNT = 4'));
+    assert.ok(carousel.includes('const SLIDE_COUNT = 6'));
     assert.ok(carousel.includes('pagingEnabled'));
     assert.ok(carousel.includes('aspectRatio: 16 / 9'));
 
-    const hero = carousel.indexOf('<HeroSlide');
-    const cashfree = carousel.indexOf('<CashfreeSlide');
-    const kyc = carousel.indexOf('<KycSlide');
-    const india = carousel.indexOf('<IndiaSlide');
-    assert.ok(hero >= 0 && hero < cashfree && cashfree < kyc && kyc < india);
+    const slides = ['<HeroSlide', '<CalculatorSlide', '<CashfreeSlide', '<KycSlide', '<SupportSlide', '<IndiaSlide'];
+    const positions = slides.map(slide => carousel.indexOf(slide));
+    assert.ok(positions.every(position => position >= 0));
+    assert.ok(positions.every((position, index) => index === 0 || position > positions[index - 1]));
   });
 
-  it('keeps slide one theme-aware and promo slides on their permanent themes', () => {
-    assert.ok(carousel.includes('home-hero-light.jpg'));
-    assert.ok(carousel.includes('home-hero-dark.jpg'));
-    assert.ok(carousel.includes('colors.isDark ? HERO_DARK : HERO_LIGHT'));
-    assert.ok(carousel.includes('Cashfree Payments'));
-    assert.ok(carousel.includes('KYC MANDATORY'));
-    assert.ok(carousel.includes('DigiLocker'));
+  it('resolves every carousel image import to a real uploaded file', () => {
+    const imports = [...carousel.matchAll(/require\("([^"]+)"\)/g)].filter(([, asset]) => asset.startsWith('../../assets/images/'));
+    assert.equal(imports.length, 5);
+    for (const [, relativeAsset] of imports) {
+      const absoluteAsset = path.resolve(root, 'src/components', relativeAsset);
+      assert.ok(fs.existsSync(absoluteAsset), `Missing carousel image: ${relativeAsset}`);
+    }
+    for (const filename of [
+      'RMC truck Banner .png',
+      'Calculator Banner.png',
+      'Cashfree Banner.png',
+      'KYC banner .png',
+      'Customer support Banner .png',
+    ]) {
+      assert.ok(carousel.includes(filename));
+    }
+    assert.ok(carousel.includes('contentFit="contain"'));
   });
 
   it('limits the India coverage banner to the approved launch regions', () => {
