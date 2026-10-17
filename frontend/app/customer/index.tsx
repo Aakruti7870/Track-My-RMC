@@ -132,7 +132,7 @@ export default function CustomerHome() {
                   ]}
                 >
                   <View style={[styles.moduleIcon, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-                    {module.symbol ? <VectorSymbol name={module.symbol} size={34} /> : <Ionicons name={module.icon} size={22} color={colors.brand} />}
+                    {module.symbol ? <VectorSymbol name={module.symbol} size={42} /> : <Ionicons name={module.icon} size={22} color={colors.brand} />}
                   </View>
                   <AppText style={[styles.moduleLabel, { color: colors.onSurface }]}>{module.label}</AppText>
                   
@@ -203,7 +203,7 @@ export default function CustomerHome() {
                       ]}
                     >
                       <View style={[styles.moduleIcon, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-                        {module.symbol ? <VectorSymbol name={module.symbol} size={34} /> : <Ionicons name={module.icon} size={22} color={colors.brand} />}
+                        {module.symbol ? <VectorSymbol name={module.symbol} size={42} /> : <Ionicons name={module.icon} size={22} color={colors.brand} />}
                       </View>
                       <AppText style={[styles.moduleLabel, { color: colors.onSurface }]}>{module.label}</AppText>
                       

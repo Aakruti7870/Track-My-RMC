@@ -92,13 +92,16 @@ assert.equal(customerHome.split("contentContainerStyle={styles.moduleGrid}>").le
   "Normal and error-state Home modules must be in a single horizontally scrollable row.");
 assert.ok(customerHome.includes("name={ACTION_SYMBOLS[action.key]} size={44}"),
   "Quick Actions must use 44 px vector symbols.");
-assert.equal(customerHome.split("name={module.symbol} size={34}").length - 1, 2,
-  "Home module vectors must retain the existing 34 px symbol size.");
+assert.equal(customerHome.split("name={module.symbol} size={42}").length - 1, 2,
+  "All eight Home module vectors must be 42 px in normal and error states.");
 assert.ok(!customerHome.includes(">Your Modules</AppText>"), "Remove the old Home section heading.");
 assert.ok(customerHome.includes('moduleCard: { width: 80, minHeight: 88'),
   "Keep the eight Home shortcut cards compact.");
 assert.ok(customerHome.includes('moduleIcon: { width: 42, height: 42'),
   "Keep the existing reduced Home module icon background dimensions.");
+assert.ok(customerHome.includes('moduleIcon: { width: 42, height: 42') &&
+  customerHome.split("name={module.symbol} size={42}").length - 1 === 2,
+  "Each Home SVG and its surrounding background must both measure 42 × 42 px.");
 
 
 const connected = [
