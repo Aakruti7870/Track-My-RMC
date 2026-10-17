@@ -74,35 +74,35 @@ for (const role of requiredRoles) {
 assert.equal(customerHomeModules().length, 8, "All eight customer Home-eligible modules remain available in the full directory.");
 
 const customerHome = read("app/customer/index.tsx");
-const homeKeysBlock = customerHome.match(/const HOME_MODULE_KEYS = \[([\s\S]*?)\];/);
+const homeKeysBlock = customerHome.match(/const HOME_MODULE_KEYS = \[([\s\S]*?)\](?: as const)?;/);
 assert.ok(homeKeysBlock, "Customer Home must declare an explicit eight-module shortlist.");
 const homeKeys = [...homeKeysBlock[1].matchAll(/"([a-z-]+)"/g)].map(match => match[1]);
 assert.deepEqual(homeKeys, [
   "projects", "pour-planner", "receiving-guide", "cube-tests",
   "saved-sites", "customer-support", "compare-plants", "free-tools",
-], "Customer Home must show exactly eight shortcuts in the requested order.");
+], "Customer Home must show eight shortcuts in the requested order.");
 for (const key of homeKeys) {
   const module = modulesForRole("customer").find(entry => entry.key === key);
-  assert.ok(module, "Customer Home shortcut must exist in the customer module catalog: " + key);
-  assert.ok(module.symbol, "Customer Home shortcut must retain its assigned SVG: " + key);
+  assert.ok(module && module.symbol, `Customer Home must use a registered vector symbol for ${key}`);
 }
-assert.ok(customerHome.includes('const CUSTOMER_DIRECTORY = modulesForRole("customer");'));
-assert.ok(customerHome.includes("const CUSTOMER_MODULES = HOME_MODULE_KEYS.flatMap(key => CUSTOMER_DIRECTORY.filter(module => module.key === key));"));
-assert.equal(customerHome.split("contentContainerStyle={styles.moduleGrid}>").length - 1, 2,
-  "Normal and error-state Home modules must be in a single horizontally scrollable row.");
-assert.ok(customerHome.includes("name={ACTION_SYMBOLS[action.key]} size={44}"),
-  "Quick Actions must use 44 px vector symbols.");
-assert.equal(customerHome.split("name={module.symbol} size={42}").length - 1, 2,
-  "All eight Home module vectors must be 42 px in normal and error states.");
-assert.ok(!customerHome.includes(">Your Modules</AppText>"), "Remove the old Home section heading.");
-assert.ok(customerHome.includes('moduleCard: { width: 80, minHeight: 88'),
-  "Keep the eight Home shortcut cards compact.");
-assert.ok(customerHome.includes('moduleIcon: { width: 42, height: 42'),
-  "Keep the existing reduced Home module icon background dimensions.");
-assert.ok(customerHome.includes('moduleIcon: { width: 42, height: 42') &&
-  customerHome.split("name={module.symbol} size={42}").length - 1 === 2,
-  "Each Home SVG and its surrounding background must both measure 42 × 42 px.");
-
+assert.ok(customerHome.includes('const DIRECTORY = modulesForRole("customer");'));
+assert.ok(customerHome.includes("const CUSTOMER_MODULES = HOME_MODULE_KEYS.flatMap(key => DIRECTORY.filter(module => module.key === key));"));
+for (const name of ["home-quick-actions", "customer-module-grid", "home-other-services"]) {
+  assert.ok(customerHome.includes(`testID="${name}"`), `Missing grouped Home card: ${name}`);
+}
+assert.ok(customerHome.includes('<HomeCarousel />'), "Preserve existing carousel component.");
+assert.ok(customerHome.includes('<KycBanner status={data.kyc_status} />'), "Preserve KYC state machine.");
+assert.ok(customerHome.includes('<ActiveTransitMixerCard'), "Preserve real order and demo tracking.");
+assert.ok(customerHome.includes('width: "25%"'), "Quick Actions and RMC Tools must be a four-column responsive grid.");
+assert.ok(customerHome.includes('width: "33.333%"'), "Other Services must be a three-column responsive grid.");
+assert.ok(customerHome.includes('<VectorSymbol name={action.symbol} size={50} />'), "Quick Actions must render a visible assigned vector.");
+assert.ok(customerHome.includes('<VectorSymbol name={module.symbol} size={48} />'), "Tools must render assigned vector artwork.");
+assert.ok(!customerHome.includes('contentContainerStyle={styles.moduleGrid}'), "Remove old horizontal shortcut strip.");
+const serviceForm = read("app/customer/service-enquiry.tsx");
+for (const kind of ["CEMENT", "LABOUR_CONTRACTOR", "BUILDING_MATERIAL"]) {
+  assert.ok(serviceForm.includes(`service_type: "${kind}"`), `Missing enquiry schema: ${kind}`);
+}
+assert.ok(serviceForm.includes('"/customer/service-enquiries"'), "Enquiry API integration missing.");
 
 // The customer More page intentionally surfaces only these five routes, in order.
 const customerMore = read("app/customer/more.tsx");
