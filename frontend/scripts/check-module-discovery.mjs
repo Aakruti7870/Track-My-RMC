@@ -74,13 +74,20 @@ for (const role of requiredRoles) {
 assert.equal(customerHomeModules().length, 8, "All eight customer Home-eligible modules remain available in the full directory.");
 
 const customerHome = read("app/customer/index.tsx");
-const homeKeysBlock = customerHome.match(/const HOME_MODULE_KEYS = new Set\(\[([\s\S]*?)\]\);/);
-assert.ok(homeKeysBlock, "Customer Home must declare an explicit six-module shortlist.");
+const homeKeysBlock = customerHome.match(/const HOME_MODULE_KEYS = \[([\s\S]*?)\];/);
+assert.ok(homeKeysBlock, "Customer Home must declare an explicit eight-module shortlist.");
 const homeKeys = [...homeKeysBlock[1].matchAll(/"([a-z-]+)"/g)].map(match => match[1]);
 assert.deepEqual(homeKeys, [
-  "projects", "pour-planner", "receiving-guide", "cube-tests", "compare-plants", "free-tools",
-], "Only the six requested customer modules must appear on Home.");
-assert.ok(customerHome.includes("customerHomeModules().filter(module => HOME_MODULE_KEYS.has(module.key))"));
+  "projects", "pour-planner", "receiving-guide", "cube-tests",
+  "saved-sites", "customer-support", "compare-plants", "free-tools",
+], "Customer Home must show exactly eight shortcuts in the requested order.");
+for (const key of homeKeys) {
+  const module = modulesForRole("customer").find(entry => entry.key === key);
+  assert.ok(module, "Customer Home shortcut must exist in the customer module catalog: " + key);
+  assert.ok(module.symbol, "Customer Home shortcut must retain its assigned SVG: " + key);
+}
+assert.ok(customerHome.includes('const CUSTOMER_DIRECTORY = modulesForRole("customer");'));
+assert.ok(customerHome.includes("const CUSTOMER_MODULES = HOME_MODULE_KEYS.flatMap(key => CUSTOMER_DIRECTORY.filter(module => module.key === key));"));
 assert.equal(customerHome.split("contentContainerStyle={styles.moduleGrid}>").length - 1, 2,
   "Normal and error-state Home modules must be in a single horizontally scrollable row.");
 assert.ok(customerHome.includes("name={ACTION_SYMBOLS[action.key]} size={44}"),
@@ -89,9 +96,9 @@ assert.equal(customerHome.split("name={module.symbol} size={34}").length - 1, 2,
   "Home module vectors must retain the existing 34 px symbol size.");
 assert.ok(!customerHome.includes(">Your Modules</AppText>"), "Remove the old Home section heading.");
 assert.ok(customerHome.includes('moduleCard: { width: 80, minHeight: 88'),
-  "Keep the six Home shortcut cards compact.");
+  "Keep the eight Home shortcut cards compact.");
 assert.ok(customerHome.includes('moduleIcon: { width: 42, height: 42'),
-  "Reduce module icon background below its original 44 px size.");
+  "Keep the existing reduced Home module icon background dimensions.");
 
 
 const connected = [
