@@ -50,7 +50,7 @@ describe('final login and customer hero guards', () => {
   });
 
   it('resolves every carousel image import to a real uploaded file', () => {
-    const imports = [...carousel.matchAll(/require\\("(\\.\\.\\/\\.\\.\\/assets\\/images\\/[^"\\n]+)"\\)/g)];
+    const imports = [...carousel.matchAll(/require\("([^"]+)"\)/g)].filter(([, asset]) => asset.startsWith('../../assets/images/'));
     assert.equal(imports.length, 5);
     for (const [, relativeAsset] of imports) {
       const absoluteAsset = path.resolve(root, 'src/components', relativeAsset);
