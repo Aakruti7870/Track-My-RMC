@@ -12,6 +12,7 @@ import { LatLng, validLatLng } from "@/src/maps/geo";
 type Props = {
   plants: PlantData[];
   userLocation?: LatLng | null;
+  selectedPlantId?: string | null;
   onSelectPlant?: (plant: PlantData) => void;
   onRegionChange?: (center: LatLng) => void;
 };
@@ -38,11 +39,17 @@ function regionFor(plants: PlantData[], userLocation?: LatLng | null): Region | 
   };
 }
 
-export function PlantMap({ plants, userLocation, onSelectPlant, onRegionChange }: Props) {
+export function PlantMap({ plants, userLocation, selectedPlantId, onSelectPlant, onRegionChange }: Props) {
   const map = useRef<MapView | null>(null);
   useEffect(() => {
     if (userLocation && validLatLng(userLocation)) map.current?.animateToRegion({latitude:userLocation.lat,longitude:userLocation.lng,latitudeDelta:0.15,longitudeDelta:0.15},300);
   },[userLocation]);
+  useEffect(() => {
+    const selected = plants.find(plant => plant.id === selectedPlantId);
+    if (selected && validLatLng(selected)) map.current?.animateToRegion({
+      latitude: selected.lat, longitude: selected.lng, latitudeDelta: 0.03, longitudeDelta: 0.03,
+    }, 300);
+  }, [plants, selectedPlantId]);
   const { colors } = useTheme();
   const mapsConfigured = Boolean(Constants.expoConfig?.extra?.googleMapsAndroidConfigured);
   const mappedPlants = useMemo(() => plants.filter((plant) => validLatLng(plant)), [plants]);
