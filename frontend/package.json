@@ -19,7 +19,8 @@
     "check:android-layout": "node ./scripts/check-android-responsive-layout.mjs",
     "doctor": "expo-doctor",
     "build:preview": "expo export --platform web --output-dir dist",
-    "check:vector-symbols": "node ./scripts/check-vector-symbols.mjs"
+    "check:vector-symbols": "node ./scripts/check-vector-symbols.mjs",
+    "test:maps": "node --test scripts/test-google-maps.cjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "6.1.2",

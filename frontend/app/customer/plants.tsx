@@ -133,8 +133,10 @@ export default function CustomerPlants() {
   const [page, setPage] = useState(1);
   const [geoDraft, setGeoDraft] = useState<PlantGeoFilters>({...EMPTY_PLANT_GEO});
   const [filters, setFilters] = useState({q:"",grade:"",radius_km:50,verified:false,...EMPTY_PLANT_GEO});
+  const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null);
   const [details,setDetails] = useState<PlantData | null>(null);
   const [quoteSubmitting,setQuoteSubmitting] = useState<string | null>(null);
+  useEffect(() => { setSelectedPlantId(null); }, [userLocation?.lat, userLocation?.lng]);
   const manualLocation = useRef(false);
   const geoLookupVersion = useRef(0);
   const lastAppliedGeoLocation = useRef("");
@@ -362,7 +364,8 @@ export default function CustomerPlants() {
           ListHeaderComponent={
             <View style={{ gap: spacing.sm, marginBottom: spacing.xs }}>
               <View style={styles.mapShell}>
-                <PlantMap plants={mappedPlants} userLocation={userLocation} onSelectPlant={(plant) => {
+                <PlantMap plants={mappedPlants} userLocation={userLocation} selectedPlantId={selectedPlantId} onSelectPlant={(plant) => {
+                  setSelectedPlantId(plant.id);
                   if (plant.id.startsWith("google:")) {
                     const place = googleEntries.find((entry) => `google:${entry.place_id}` === plant.id);
                     const listing = googleMapPlants.find((entry) => entry.id === plant.id);
@@ -452,7 +455,8 @@ export default function CustomerPlants() {
                         <ScreenshotPlantCard
                           plant={listing}
                           onQuotation={() => void requestGoogleQuotation(place)}
-                          onDetails={() => setDetails(listing)}
+                          onSelect={() => setSelectedPlantId(listing.id)}
+                          onDetails={() => {setSelectedPlantId(listing.id);setDetails(listing);}}
                           onOrder={() => toast("Ordering is available once this supplier completes TrackMyRMC verification.", "info")}
                           quoteSubmitting={quoteSubmitting === place.place_id}
                         />
@@ -473,7 +477,7 @@ export default function CustomerPlants() {
             </View>
           }
           renderItem={({ item }) => loading && !data ? null : (
-            <ScreenshotPlantCard plant={item} onDetails={()=>setDetails(item)}
+            <ScreenshotPlantCard plant={item} onSelect={()=>setSelectedPlantId(item.id)} onDetails={()=>{setSelectedPlantId(item.id);setDetails(item);}}
               onQuotation={()=>router.push({pathname:"/customer/compare-plants",params:{plantId:item.id}} as any)}
               onOrder={()=>router.push(`/new-order?plantId=${item.id}` as any)} />
           )}
@@ -525,12 +529,12 @@ const PLANT_ORANGE = "#F25C05";
 function DetailLine({label,value}:{label:string;value:string}) {
   return <View style={{gap:4,borderBottomWidth:1,borderColor:"#E2E8F0",paddingVertical:10}}><AppText variant="caption">{label}</AppText><AppText>{value}</AppText></View>;
 }
-function ScreenshotPlantCard({plant,onDetails,onQuotation,onOrder,quoteSubmitting=false}:{plant:PlantData;onDetails:()=>void;onQuotation:()=>void;onOrder:()=>void;quoteSubmitting?:boolean}) {
+function ScreenshotPlantCard({plant,onDetails,onQuotation,onOrder,quoteSubmitting=false,onSelect}:{plant:PlantData;onSelect:()=>void;onDetails:()=>void;onQuotation:()=>void;onOrder:()=>void;quoteSubmitting?:boolean}) {
   const active=(plant.status||"active").toLowerCase()==="active";
   const isGoogleListing=plant.status === "google_listing";
   const eligible=plant.order_enabled ?? (active && plant.verified);
   return <View style={styles.screenshotCard}>
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}><VectorSymbol name={plant.verified ? "verified-plant" : "unverified-plant"} size={29} /><AppText style={[styles.screenshotPlantName, { flex: 1 }]}>{plant.name}</AppText></View>
+    <Pressable accessibilityRole="button" accessibilityLabel={`Show ${plant.name} on map`} onPress={onSelect} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}><VectorSymbol name={plant.verified ? "verified-plant" : "unverified-plant"} size={29} /><AppText style={[styles.screenshotPlantName, { flex: 1 }]}>{plant.name}</AppText></Pressable>
     <AppText style={styles.screenshotAddress}>{plant.address || [plant.city,plant.district].filter(Boolean).join(", ")}</AppText>
     {isGoogleListing ? (
       <AppText accessibilityLabel="Google Maps listing, not TrackMyRMC verified" style={styles.googleListingCaption}>
