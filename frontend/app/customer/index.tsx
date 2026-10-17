@@ -252,7 +252,7 @@ const styles = StyleSheet.create({
   kycPending: { minHeight: 42, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, alignItems: "center", justifyContent: "center" },
   iconBtn: { width: 44, height: 44, borderRadius: 16, alignItems: "center", justifyContent: "center", borderWidth: 1 },
   dot: { position: "absolute", top: 7, right: 7, width: 8, height: 8, borderRadius: 4 },
-  scrollContent: { paddingHorizontal: 18, paddingTop: 6, paddingBottom: 120, gap: 24 },
+  scrollContent: { paddingHorizontal: 18, paddingTop: 6, paddingBottom: 220, gap: 24 },
   section: { gap: 12 },
   sectionTitle: { fontFamily: fonts.displayBold, fontSize: 20 },
   actionGrid: { flexDirection: "row", gap: 10 },
