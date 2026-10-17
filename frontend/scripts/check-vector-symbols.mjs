@@ -8,13 +8,13 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = relative => readFileSync(path.join(root, relative), "utf8");
 const assets = "assets/images/SVG Vector Symbol";
 const masters = readdirSync(path.join(root, assets)).filter(name => name.endsWith(".svg")).sort();
-assert.equal(masters.length, 88, "Expected exactly 88 uploaded SVG master files");
+assert.equal(masters.length, 91, "Expected 88 original and 3 Other Services SVG master files");
 
 const embedded = new Map();
-for (let i = 0; i < 8; i++) {
+for (let i = 0; i < 9; i++) {
   const content = read(`src/components/vector-symbols/set${i}.ts`);
   const entries = [...content.matchAll(/^\s+"([^"]+)": ("(?:[^"\\]|\\.)*"),?$/gm)];
-  assert.equal(entries.length, 11, `Expected 11 vector symbols in set${i}`);
+  assert.equal(entries.length, i === 8 ? 3 : 11, `Unexpected vector symbol count in set${i}`);
   for (const [, name, serialized] of entries) {
     assert.ok(!embedded.has(name), `Duplicate vector symbol: ${name}`);
     embedded.set(name, JSON.parse(serialized));
