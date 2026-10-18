@@ -71,7 +71,81 @@ curl "${curl_opts[@]}" -o /dev/null "$base$admin_js"
 echo "Trusted origin verification passed: release $EXPECTED_SHA, API, Expo and admin asset."
 REMOTE
 )"
-REMOTE_COMMAND="EXPECTED_SHA='${RELEASE_SHA}'"$'\n'"$ORIGIN_SCRIPT"
+# AWS-RunShellScript invokes /bin/sh by default. Explicitly launch Bash:
+# array arguments and [[ ... ]] are used in the trusted-origin assertions.
+REMOTE_COMMAND="bash <<'TRACKMYRMC_ORIGIN_CHECK'"
+PARAMS="$(jq -nc --arg command "$REMOTE_COMMAND" '{commands: [$command]}')"
+COMMAND_ID="$(aws ssm send-command \
+  --region "$AWS_REGION" \
+  --instance-ids "$INSTANCE_ID" \
+  --document-name 'AWS-RunShellScript' \
+  --comment 'Verify TrackMyRMC pinned production release at trusted origin' \
+  --parameters "$PARAMS" \
+  --query 'Command.CommandId' --output text)"
+
+# Retrieve full result even if the remote operation fails, and do not log secrets.
+aws ssm wait command-executed --region "$AWS_REGION" \
+  --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" || true
+INVOCATION="$(aws ssm get-command-invocation --region "$AWS_REGION" \
+  --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --output json)"
+STATUS="$(jq -r '.Status // "Unknown"' <<< "$INVOCATION")"
+jq -r '.StandardOutputContent // ""' <<< "$INVOCATION"
+if [[ "$STATUS" != 'Success' ]]; then
+  jq -r '.StandardErrorContent // ""' <<< "$INVOCATION" >&2
+  echo "Trusted origin health verification failed: $STATUS" >&2
+  exit 1
+fi
+
+echo 'Production verification passed: trusted origin healthy and Cloudflare edge classified.'
+\n'"EXPECTED_SHA='${RELEASE_SHA}'"
+PARAMS="$(jq -nc --arg command "$REMOTE_COMMAND" '{commands: [$command]}')"
+COMMAND_ID="$(aws ssm send-command \
+  --region "$AWS_REGION" \
+  --instance-ids "$INSTANCE_ID" \
+  --document-name 'AWS-RunShellScript' \
+  --comment 'Verify TrackMyRMC pinned production release at trusted origin' \
+  --parameters "$PARAMS" \
+  --query 'Command.CommandId' --output text)"
+
+# Retrieve full result even if the remote operation fails, and do not log secrets.
+aws ssm wait command-executed --region "$AWS_REGION" \
+  --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" || true
+INVOCATION="$(aws ssm get-command-invocation --region "$AWS_REGION" \
+  --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --output json)"
+STATUS="$(jq -r '.Status // "Unknown"' <<< "$INVOCATION")"
+jq -r '.StandardOutputContent // ""' <<< "$INVOCATION"
+if [[ "$STATUS" != 'Success' ]]; then
+  jq -r '.StandardErrorContent // ""' <<< "$INVOCATION" >&2
+  echo "Trusted origin health verification failed: $STATUS" >&2
+  exit 1
+fi
+
+echo 'Production verification passed: trusted origin healthy and Cloudflare edge classified.'
+\n'"$ORIGIN_SCRIPT"
+PARAMS="$(jq -nc --arg command "$REMOTE_COMMAND" '{commands: [$command]}')"
+COMMAND_ID="$(aws ssm send-command \
+  --region "$AWS_REGION" \
+  --instance-ids "$INSTANCE_ID" \
+  --document-name 'AWS-RunShellScript' \
+  --comment 'Verify TrackMyRMC pinned production release at trusted origin' \
+  --parameters "$PARAMS" \
+  --query 'Command.CommandId' --output text)"
+
+# Retrieve full result even if the remote operation fails, and do not log secrets.
+aws ssm wait command-executed --region "$AWS_REGION" \
+  --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" || true
+INVOCATION="$(aws ssm get-command-invocation --region "$AWS_REGION" \
+  --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --output json)"
+STATUS="$(jq -r '.Status // "Unknown"' <<< "$INVOCATION")"
+jq -r '.StandardOutputContent // ""' <<< "$INVOCATION"
+if [[ "$STATUS" != 'Success' ]]; then
+  jq -r '.StandardErrorContent // ""' <<< "$INVOCATION" >&2
+  echo "Trusted origin health verification failed: $STATUS" >&2
+  exit 1
+fi
+
+echo 'Production verification passed: trusted origin healthy and Cloudflare edge classified.'
+\n''TRACKMYRMC_ORIGIN_CHECK'
 PARAMS="$(jq -nc --arg command "$REMOTE_COMMAND" '{commands: [$command]}')"
 COMMAND_ID="$(aws ssm send-command \
   --region "$AWS_REGION" \
