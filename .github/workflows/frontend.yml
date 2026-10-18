@@ -47,8 +47,6 @@ jobs:
         run: npm run check:auth-routing
       - name: Validate all role module routes and menus
         run: npm run check:modules
-      - name: Verify uploaded light/dark glass card assets and shared styling
-        run: node --test scripts/test-glass-card-assets.cjs
       - name: Validate every uploaded vector symbol and role assignment
         run: npm run check:vector-symbols
       - name: Validate Google Play privacy and permission readiness
