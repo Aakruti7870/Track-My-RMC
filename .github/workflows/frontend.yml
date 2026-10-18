@@ -43,6 +43,8 @@ jobs:
         run: npm run test:maps
       - name: Customer header foreground location regressions
         run: node --test scripts/test-header-location.cjs
+      - name: Verify isolated Google Play reviewer MFA routing
+        run: node --test scripts/test-play-review-mfa-routing.cjs
       - name: Validate role routing
         run: npm run check:auth-routing
       - name: Validate all role module routes and menus
