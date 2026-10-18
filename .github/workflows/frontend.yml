@@ -44,6 +44,8 @@ jobs:
         run: npm run check:modules
       - name: Validate every uploaded vector symbol and role assignment
         run: npm run check:vector-symbols
+      - name: Validate light theme TypeScript and Kotlin screenshot palette parity
+        run: npm run check:light-theme
       - name: Validate Google Play privacy and permission readiness
         run: npm run check:android-permissions
       - name: Validate Play review, account deletion, and App Links contracts
