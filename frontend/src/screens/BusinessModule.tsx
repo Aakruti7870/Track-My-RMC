@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Modal, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 
 import { apiGet, apiPost, apiPut } from "@/src/api/client";
 import { useAuth } from "@/src/auth/AuthContext";
@@ -197,11 +198,10 @@ const MODULES: Record<string, ModuleDef> = {
   attendance: { title: "Attendance", subtitle: "Daily staff attendance register" },
   staff: {
     title: "Plant Staff",
-    subtitle: "Owner-managed email OTP accounts. Drivers are managed separately by Plant Admin.",
+    subtitle: "Link an existing email-OTP staff account. Drivers use separate WhatsApp onboarding.",
     addLabel: "Add Plant Staff",
     fields: [
-      { key: "name", label: "Full name", required: true },
-      { key: "email", label: "Work email", placeholder: "name@company.com", required: true },
+      { key: "user_id", label: "Existing staff user UUID", placeholder: "UUID from an already registered staff account", required: true },
       { key: "role", label: "Role", placeholder: "admin / dispatcher / operator / supervisor / accountant / quality_engineer / fleet_manager / store_manager", required: true },
     ],
   },
@@ -210,7 +210,6 @@ const MODULES: Record<string, ModuleDef> = {
 };
 
 const STAFF_ROLE_OPTIONS = [
-  { value: "admin", label: "Plant Admin" },
   { value: "dispatcher", label: "Dispatcher" },
   { value: "operator", label: "Plant Operator / Batcher" },
   { value: "supervisor", label: "Supervisor" },
@@ -291,6 +290,7 @@ export function BusinessModule({ kind }: { kind: string }) {
   const { colors } = useTheme();
   const toast = useToast();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
 
   const [plants, setPlants] = useState<Plant[]>([]);
   const [plantId, setPlantId] = useState<string | null>(null);
@@ -497,6 +497,9 @@ export function BusinessModule({ kind }: { kind: string }) {
           <AppText variant="title">{def.title}</AppText>
           <AppText variant="caption">{def.subtitle}</AppText>
         </View>
+        {kind === "staff" && (user?.role === "plant_owner" || user?.role === "owner") ? (
+          <Button label="Onboard / Manage Drivers" variant="outline" onPress={() => router.push("/owner/drivers")} />
+        ) : null}
 
         {plants.length > 1 ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>
@@ -610,7 +613,7 @@ export function BusinessModule({ kind }: { kind: string }) {
                         );
                       })}
                     </View>
-                    <AppText variant="caption">Drivers use a separate mobile OTP and KYC onboarding flow.</AppText>
+                    <AppText variant="caption">Select the role of an existing registered staff user. Drivers use separate mobile OTP onboarding.</AppText>
                   </View>
                 ) : (
                   <Input
