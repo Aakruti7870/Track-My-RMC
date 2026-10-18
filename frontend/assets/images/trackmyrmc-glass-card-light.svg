@@ -1,0 +1,139 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1536" height="515" viewBox="0 0 1536 515" role="img" aria-label="Light-theme frosted glass card with luminous amber edges">
+  <defs>
+    <linearGradient id="outer" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4a3931"/><stop offset="0.18" stop-color="#b49c83"/>
+      <stop offset="0.38" stop-color="#ebd5b9"/><stop offset="0.73" stop-color="#dbd1c7"/>
+      <stop offset="1" stop-color="#a19b9b"/>
+    </linearGradient>
+    <linearGradient id="base" x1="0" y1="0" x2="1" y2="0.32">
+      <stop offset="0" stop-color="#bbb7b8"/><stop offset=".23" stop-color="#c2c2c5"/>
+      <stop offset=".52" stop-color="#e3e2e2"/><stop offset=".77" stop-color="#f0eff1"/>
+      <stop offset="1" stop-color="#faf9f9"/>
+    </linearGradient>
+    <linearGradient id="vertical" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fffefa" stop-opacity=".90"/>
+      <stop offset=".09" stop-color="#eee9e6" stop-opacity=".4"/>
+      <stop offset=".56" stop-color="#ccd0d7" stop-opacity=".05"/>
+      <stop offset=".83" stop-color="#f9f8f8" stop-opacity=".13"/>
+      <stop offset="1" stop-color="#fff7e7" stop-opacity=".92"/>
+    </linearGradient>
+    <radialGradient id="leftAmber" cx="0" cy="0" r="1" gradientTransform="translate(20 405) rotate(-22) scale(480 410)">
+      <stop offset="0" stop-color="#f38d3d" stop-opacity=".72"/>
+      <stop offset=".27" stop-color="#f6b57b" stop-opacity=".35"/>
+      <stop offset=".75" stop-color="#f2c7a4" stop-opacity=".05"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="bottomAmber" cx="0" cy="0" r="1" gradientTransform="translate(775 503) rotate(-90) scale(96 455)">
+      <stop offset="0" stop-color="#fffdef" stop-opacity="1"/>
+      <stop offset=".23" stop-color="#fff3c6" stop-opacity=".76"/>
+      <stop offset=".5" stop-color="#ffd897" stop-opacity=".32"/>
+      <stop offset="1" stop-color="#ff9b21" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="topAmber" cx="0" cy="0" r="1" gradientTransform="translate(690 -12) rotate(90) scale(78 435)">
+      <stop offset="0" stop-color="#fff3ad" stop-opacity="1"/>
+      <stop offset=".26" stop-color="#ffd38a" stop-opacity=".68"/>
+      <stop offset="1" stop-color="#fc9e3a" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="edgeStroke" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffeaca"/>
+      <stop offset=".13" stop-color="#fffdf7"/>
+      <stop offset=".37" stop-color="#ffd792"/>
+      <stop offset=".58" stop-color="#fff8e5"/>
+      <stop offset=".75" stop-color="#fffdf5"/>
+      <stop offset="1" stop-color="#ff982a"/>
+    </linearGradient>
+    <linearGradient id="topLine" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#fffef4" stop-opacity=".9"/>
+      <stop offset=".23" stop-color="#fffef4" stop-opacity=".65"/>
+      <stop offset=".46" stop-color="#fff6d1" stop-opacity="1"/>
+      <stop offset=".77" stop-color="#fff" stop-opacity=".86"/>
+      <stop offset="1" stop-color="#ffe5a1" stop-opacity=".95"/>
+    </linearGradient>
+    <linearGradient id="bottomLine" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffc065"/>
+      <stop offset=".22" stop-color="#fff2dc"/>
+      <stop offset=".52" stop-color="#fffef0"/>
+      <stop offset=".68" stop-color="#fff5b1"/>
+      <stop offset=".88" stop-color="#fffdf8"/>
+      <stop offset="1" stop-color="#f5a34e"/>
+    </linearGradient>
+    <linearGradient id="leftSweep" x1="0" y1="0" x2=".55" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".70"/>
+      <stop offset=".24" stop-color="#f7f6f9" stop-opacity=".14"/>
+      <stop offset=".82" stop-color="#dde0e8" stop-opacity=".07"/>
+      <stop offset="1" stop-color="#f8bb84" stop-opacity=".18"/>
+    </linearGradient>
+    <linearGradient id="diagonal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".80"/>
+      <stop offset=".15" stop-color="#f9f8fa" stop-opacity=".60"/>
+      <stop offset=".48" stop-color="#e4e4e8" stop-opacity=".24"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#fff" stop-opacity="0"/>
+      <stop offset=".48" stop-color="#fff" stop-opacity=".62"/>
+      <stop offset=".63" stop-color="#fff" stop-opacity=".14"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="glowHot" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#fffef0" stop-opacity="1"/>
+      <stop offset=".22" stop-color="#fff3a6" stop-opacity=".93"/>
+      <stop offset=".54" stop-color="#ffa62d" stop-opacity=".65"/>
+      <stop offset="1" stop-color="#fe8122" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowEdge" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#fffbdc" stop-opacity=".9"/>
+      <stop offset=".3" stop-color="#ffcc69" stop-opacity=".72"/>
+      <stop offset=".6" stop-color="#ff8d29" stop-opacity=".35"/>
+      <stop offset="1" stop-color="#ff8d29" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="blur6" x="-30%" y="-40%" width="160%" height="180%"><feGaussianBlur stdDeviation="6"/></filter>
+    <filter id="blur11" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="11"/></filter>
+    <filter id="blur23" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="23"/></filter>
+    <clipPath id="clip"><rect x="17" y="9" width="1502" height="483" rx="79"/></clipPath>
+  </defs>
+  <!-- Outer ambient background + rim bloom -->
+  <rect width="1536" height="515" fill="url(#outer)"/>
+  <path d="M60 38 Q90 5 172 5 H1362 Q1440 5 1480 39" stroke="#fff8c6" stroke-width="20" opacity=".42" filter="url(#blur11)"/>
+  <path d="M24 86 Q8 127 8 184 V371 Q8 444 58 479" stroke="#ff8925" stroke-width="18" opacity=".72" filter="url(#blur11)"/>
+  <path d="M1514 100 V402 Q1513 455 1485 475" stroke="#ff8e2d" stroke-width="17" opacity=".5" filter="url(#blur11)"/>
+  <path d="M84 497 H1450" stroke="#ff9e31" stroke-width="27" opacity=".62" filter="url(#blur11)"/>
+  <ellipse cx="698" cy="7" rx="310" ry="24" fill="url(#glowEdge)"/>
+  <ellipse cx="758" cy="504" rx="510" ry="33" fill="url(#glowEdge)"/>
+  <ellipse cx="35" cy="420" rx="55" ry="140" fill="url(#glowEdge)"/>
+  <!-- Main glass -->
+  <rect x="17" y="9" width="1502" height="483" rx="79" fill="url(#base)"/>
+  <g clip-path="url(#clip)">
+    <rect x="17" y="9" width="1502" height="483" fill="url(#vertical)"/>
+    <rect x="17" y="9" width="1502" height="483" fill="url(#leftAmber)"/>
+    <rect x="17" y="9" width="1502" height="483" fill="url(#topAmber)"/>
+    <rect x="17" y="9" width="1502" height="483" fill="url(#bottomAmber)"/>
+    <!-- Large subtle diagonal frosted-glass bands -->
+    <path d="M322 -38 C238 95 130 214 -30 326 V536 H60 C238 395 361 292 480 184 C552 119 617 39 655 -40Z" fill="url(#leftSweep)" opacity=".78"/>
+    <path d="M728 -55 L956 -55 C758 167 575 300 330 525 H108 C364 340 560 160 728 -55Z" fill="url(#diagonal)" opacity=".34"/>
+    <path d="M1213 -65 L1368 -35 L899 531 L764 531Z" fill="url(#diagonal)" opacity=".26"/>
+    <path d="M280 -8 C211 111 120 252 -18 315" fill="none" stroke="#fffdf9" stroke-width="7" opacity=".42" filter="url(#blur6)"/>
+    <path d="M280 -8 C211 111 120 252 -18 315" fill="none" stroke="#fffef8" stroke-width="2" opacity=".56"/>
+    <path d="M1263 -60 L854 519" fill="none" stroke="#fff" stroke-width="8" opacity=".18" filter="url(#blur6)"/>
+    <path d="M1263 -60 L854 519" fill="none" stroke="#fff" stroke-width="1.6" opacity=".27"/>
+    <path d="M-10 20 C505 8 1050 2 1545 19" fill="none" stroke="#fff" stroke-width="30" opacity=".34" filter="url(#blur23)"/>
+    <rect x="20" y="11" width="1496" height="479" rx="77" fill="none" stroke="#fff" stroke-width="11" opacity=".31" filter="url(#blur6)"/>
+    <ellipse cx="730" cy="501" rx="430" ry="60" fill="#ffeeb4" opacity=".5" filter="url(#blur23)"/>
+    <path d="M45 53 L385 -30" stroke="url(#shine)" stroke-width="3" opacity=".36"/>
+  </g>
+  <!-- Hot highlights along the glass edge; all vector, not bitmap textures -->
+  <ellipse cx="769" cy="488" rx="298" ry="24" fill="url(#glowHot)" opacity=".66"/>
+  <ellipse cx="693" cy="13" rx="256" ry="17" fill="url(#glowHot)" opacity=".60"/>
+  <ellipse cx="26" cy="361" rx="26" ry="118" fill="url(#glowEdge)" opacity=".68"/>
+  <!-- polished luminous edges -->
+  <rect x="18" y="9" width="1500" height="483" rx="79" fill="none" stroke="#ffad48" stroke-opacity=".7" stroke-width="9" filter="url(#blur6)"/>
+  <rect x="19" y="10" width="1498" height="481" rx="78" fill="none" stroke="url(#edgeStroke)" stroke-width="4" opacity=".96"/>
+  <path d="M101 12 H1406" stroke="url(#topLine)" stroke-width="3.5" stroke-linecap="round" opacity=".85"/>
+  <path d="M102 488 H1415" stroke="url(#bottomLine)" stroke-width="3" stroke-linecap="round" opacity=".95"/>
+  <path d="M20 103 V395" stroke="#fff9e9" stroke-opacity=".66" stroke-width="2.4"/>
+  <path d="M1516 96 V412" stroke="#fff8e9" stroke-opacity=".75" stroke-width="2.2"/>
+  <path d="M60 35 Q36 52 26 86" fill="none" stroke="#fffdf4" stroke-width="4" stroke-linecap="round"/>
+  <path d="M45 455 Q64 484 100 488" fill="none" stroke="#fffdef" stroke-width="3.8" stroke-linecap="round"/>
+  <path d="M1459 21 Q1501 42 1513 88" fill="none" stroke="#fffef7" stroke-width="3.8" stroke-linecap="round"/>
+  <path d="M1481 463 Q1462 486 1426 488" fill="none" stroke="#fffbed" stroke-width="3.5" stroke-linecap="round"/>
+</svg>
