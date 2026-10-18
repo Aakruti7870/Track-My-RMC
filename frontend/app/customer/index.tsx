@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
 import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeProvider";
+import { ThemedScreen } from "@/src/components/ThemedScreen";
 import { useToast } from "@/src/components/ui/Toast";
 import { useGet } from "@/src/hooks/useApi";
 import { AppText } from "@/src/components/ui/AppText";
@@ -148,6 +149,7 @@ export default function CustomerHome() {
   );
 
   return (
+    <ThemedScreen>
     <View style={[styles.root, { backgroundColor: colors.surface }]}>
       <CustomerHomeHeader onRefreshHome={refetch} />
 
@@ -190,6 +192,7 @@ export default function CustomerHome() {
         ) : null}
       </ScrollView>
     </View>
+    </ThemedScreen>
   );
 }
 

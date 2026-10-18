@@ -9,6 +9,7 @@ import { useRouter } from "expo-router";
 import { apiPost } from "@/src/api/client";
 import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeProvider";
+import { ThemedScreen } from "@/src/components/ThemedScreen";
 import { useToast } from "@/src/components/ui/Toast";
 import { usePlantSearch } from "@/src/hooks/usePlantSearch";
 import { GoogleNearbyPlant, useGoogleNearbyPlants } from "@/src/hooks/useGoogleNearbyPlants";
@@ -345,6 +346,7 @@ export default function CustomerPlants() {
   }, [token, quoteSubmitting, router, toast]);
 
   return (
+    <ThemedScreen>
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
       <View style={{ height: insets.top }} />
       <View style={styles.titleRow}>
@@ -522,6 +524,7 @@ export default function CustomerPlants() {
         </ScrollView>
       </Modal>
     </View>
+    </ThemedScreen>
   );
 }
 

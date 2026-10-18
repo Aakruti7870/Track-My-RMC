@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeProvider";
+import { ThemedScreen } from "@/src/components/ThemedScreen";
 import { AppText } from "@/src/components/ui/AppText";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { Card } from "@/src/components/ui/Card";
@@ -47,6 +48,7 @@ export default function CustomerMore() {
   };
 
   return (
+    <ThemedScreen>
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
       <View style={{ height: insets.top }} />
       <ScrollView
@@ -165,6 +167,7 @@ export default function CustomerMore() {
         <AppText variant="caption" center>TrackMyRMC · 2.0.16 (74)</AppText>
       </ScrollView>
     </View>
+    </ThemedScreen>
   );
 }
 

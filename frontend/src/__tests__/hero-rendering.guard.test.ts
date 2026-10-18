@@ -53,16 +53,38 @@ describe('final login and customer hero guards', () => {
 
   it('uses two theme backgrounds with a 35 percent image layer and glass card surfaces', () => {
     const layout = fs.readFileSync(path.join(root, 'app/_layout.tsx'), 'utf8');
+    const scene = fs.readFileSync(path.join(root, 'src/theme/sceneBackground.ts'), 'utf8');
+    const activePage = fs.readFileSync(path.join(root, 'src/components/ThemedScreen.tsx'), 'utf8');
     const colors = fs.readFileSync(path.join(root, 'src/theme/tokens.ts'), 'utf8');
     const card = fs.readFileSync(path.join(root, 'src/components/ui/Card.tsx'), 'utf8');
     for (const image of ['Background Light Theme.png', 'Background Dark Theme.png']) {
-      assert.ok(layout.includes(image));
+      assert.ok(scene.includes(image));
+      assert.ok(activePage.includes(image));
       assert.ok(fs.existsSync(path.join(root, 'assets/images', image)));
     }
     assert.ok(fs.existsSync(path.join(root, 'assets/images', 'Background Light Theme.PNG')));
-    assert.ok(layout.includes('themeArtwork: { opacity: 0.35 }'));
-    assert.ok(layout.includes('backgroundColor: "transparent"'));
+    assert.ok(activePage.includes('opacity: 0.35'));
+    assert.ok(scene.includes('rgba(247,248,249,0.65)'));
+    assert.ok(scene.includes('rgba(14,17,22,0.65)'));
+    assert.ok(layout.includes('contentStyle: getThemedSceneStyle(colors)'));
+    assert.ok(!layout.includes('contentStyle: { backgroundColor: "transparent" }'));
     assert.ok(colors.includes('surfaceSecondary: "rgba('));
     assert.ok(card.includes('backgroundColor: colors.surfaceSecondary'));
+  });
+
+  it('isolates tab scenes and keeps each customer tab artwork behind its own content', () => {
+    for (const role of ['customer', 'owner', 'driver']) {
+      const layout = fs.readFileSync(path.join(root, 'app', role, '_layout.tsx'), 'utf8');
+      assert.ok(!layout.includes("sceneStyle: { backgroundColor: 'transparent' }"), role);
+    }
+    const staff = fs.readFileSync(path.join(root, 'src/screens/StaffTabs.tsx'), 'utf8');
+    assert.ok(staff.includes('sceneStyle: getThemedSceneStyle(colors)'));
+    const customerLayout = fs.readFileSync(path.join(root, 'app/customer/_layout.tsx'), 'utf8');
+    assert.ok(customerLayout.includes('getThemedCanvasColor(colors)'));
+    for (const route of ['index', 'orders', 'plants', 'more']) {
+      const screen = fs.readFileSync(path.join(root, 'app/customer', route + '.tsx'), 'utf8');
+      assert.ok(screen.includes('<ThemedScreen>'), route);
+      assert.ok(screen.includes('</ThemedScreen>'), route);
+    }
   });
 });
