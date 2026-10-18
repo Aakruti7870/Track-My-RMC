@@ -347,7 +347,7 @@ export default function CustomerPlants() {
 
   return (
     <ThemedScreen>
-    <View style={{ flex: 1, backgroundColor: "transparent" }}>
+    <View style={{ flex: 1, backgroundColor: colors.isDark ? "transparent" : colors.surface }}>
       <View style={{ height: insets.top }} />
       <View style={styles.titleRow}>
         <AppText variant="title">Nearby <AppText color={colors.brand}>Plants</AppText></AppText>
