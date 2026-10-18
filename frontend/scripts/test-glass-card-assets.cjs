@@ -11,7 +11,7 @@ const dark = "trackmyrmc-dark-glass-card";
 test("both uploaded themes have SVG masters and valid WebP card assets", () => {
   for (const name of [light, dark]) {
     const vector = fs.readFileSync(path.join(images, name + ".svg"), "utf8");
-    assert.match(vector, /<svg\\b/);
+    assert.match(vector, /<svg\b/);
     const image = fs.readFileSync(path.join(images, name + ".webp"));
     assert.equal(image.toString("ascii", 0, 4), "RIFF");
     assert.equal(image.toString("ascii", 8, 12), "WEBP");
