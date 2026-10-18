@@ -58,7 +58,7 @@ export function QuickActionHub({ visible, onClose, tabs, role, navigation }: Pro
           style={[
             styles.sheet,
             {
-              backgroundColor: colors.isDark ? "rgba(18,20,22,0.97)" : "rgba(255,255,255,0.97)",
+              backgroundColor: colors.isDark ? "rgba(18,20,22,0.82)" : "rgba(255,255,255,0.82)",
               borderColor: colors.isDark ? "rgba(255,255,255,0.11)" : "rgba(17,19,21,0.09)",
               shadowColor: colors.shadow,
             },
@@ -107,7 +107,7 @@ export function QuickActionHub({ visible, onClose, tabs, role, navigation }: Pro
               >
                 <View style={styles.actionTopRow}>
                   <View style={[styles.actionIcon, { backgroundColor: colors.brandSoft, borderColor: colors.brand + "28" }]}>
-                    {tabVectorSymbol(tab.label, role) ? <VectorSymbol name={tabVectorSymbol(tab.label, role)!} size={41} /> : <Ionicons name={tab.active} size={23} color={colors.brand} />}
+                    {tabVectorSymbol(tab.label, role) ? <VectorSymbol name={tabVectorSymbol(tab.label, role)!} size={42} /> : <Ionicons name={tab.active} size={23} color={colors.brand} />}
                   </View>
                   <AppText style={[styles.index, { color: colors.onSurfaceTertiary }]}>{String(index + 1).padStart(2, "0")}</AppText>
                 </View>

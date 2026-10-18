@@ -2,7 +2,6 @@ import React from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { CustomerHomeHeader } from "@/src/components/customer/CustomerHomeHeader";
 import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
 import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeProvider";
@@ -15,9 +14,10 @@ import { ActiveTransitMixerCard } from "@/src/components/ActiveTransitMixerCard"
 import { KycBanner } from "@/src/components/KycBanner";
 import { ErrorView } from "@/src/components/StateViews";
 import { HomeCarousel } from "@/src/components/HomeCarousel";
+import { CustomerHomeHeader } from "@/src/components/customer/CustomerHomeHeader";
 import type { OrderData } from "@/src/components/OrderCard";
 import type { PlantData } from "@/src/components/PlantCard";
-import { fonts, radius } from "@/src/theme/tokens";
+import { fonts, radius, spacing } from "@/src/theme/tokens";
 import { modulesForRole } from "@/src/navigation/moduleCatalog";
 
 type HomeData = {
@@ -81,17 +81,17 @@ export default function CustomerHome() {
     <Card testID="home-quick-actions" style={styles.groupCard}>
       <AppText style={[styles.sectionTitle, { color: colors.onSurface }]}>Quick Actions</AppText>
       <View style={styles.grid}>
-        {ACTIONS.map((action, index) => (
+        {ACTIONS.map((action) => (
           <Pressable
             key={action.key}
             testID={`action-${action.key}`}
             accessibilityRole="button"
             accessibilityLabel={action.label}
             onPress={() => onAction(action.key)}
-            style={({ pressed }) => [styles.tile, { width: "25%", opacity: pressed ? 0.75 : 1 }]}
+            style={({ pressed }) => [styles.tile, { width: "23.5%", backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.75 : 1 }]}
           >
-            <View style={[styles.actionIcon, { backgroundColor: index === 0 ? colors.brandSoft : colors.surfaceTertiary }]}>
-              <VectorSymbol name={action.symbol} size={50} />
+            <View style={[styles.actionIcon, { backgroundColor: colors.glassTint }]}>
+              <VectorSymbol name={action.symbol} size={42} />
             </View>
             <AppText numberOfLines={2} style={[styles.tileLabel, { color: colors.onSurface }]}>{action.label}</AppText>
           </Pressable>
@@ -111,10 +111,10 @@ export default function CustomerHome() {
             accessibilityRole="button"
             accessibilityLabel={module.label}
             onPress={() => router.push(module.route)}
-            style={({ pressed }) => [styles.tile, { width: "25%", opacity: pressed ? 0.75 : 1 }]}
+            style={({ pressed }) => [styles.tile, { width: "23.5%", backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.75 : 1 }]}
           >
             <View style={[styles.toolIcon, { backgroundColor: colors.surfaceTertiary, borderColor: colors.border }]}>
-              {module.symbol ? <VectorSymbol name={module.symbol} size={48} /> : <Ionicons name={module.icon} size={31} color={colors.brand} />}
+              {module.symbol ? <VectorSymbol name={module.symbol} size={42} /> : <Ionicons name={module.icon} size={31} color={colors.brand} />}
             </View>
             <AppText numberOfLines={3} style={[styles.tileLabel, { color: colors.onSurface }]}>{module.key === "projects" ? "Project Hub" : module.label}</AppText>
           </Pressable>
@@ -134,10 +134,10 @@ export default function CustomerHome() {
             accessibilityRole="button"
             accessibilityLabel={`${service.label} enquiry`}
             onPress={() => openService(service.key)}
-            style={({ pressed }) => [styles.tile, { width: "33.333%", opacity: pressed ? 0.75 : 1 }]}
+            style={({ pressed }) => [styles.tile, { width: "31.5%", backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.75 : 1 }]}
           >
             <View style={styles.serviceIcon}>
-              <VectorSymbol name={service.symbol} size={58} />
+              <VectorSymbol name={service.symbol} size={42} />
             </View>
             <AppText numberOfLines={2} style={[styles.serviceLabel, { color: colors.onSurface }]}>{service.label}</AppText>
           </Pressable>
@@ -174,7 +174,7 @@ export default function CustomerHome() {
           </>
         ) : data ? (
           <>
-            {/* Existing carousel component, assets and sizing intentionally untouched. */}
+            {/* Approved five-image promotional carousel. */}
             <HomeCarousel />
             {quickActions}
             <KycBanner status={data.kyc_status} />
@@ -195,13 +195,23 @@ export default function CustomerHome() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 18, paddingTop: 10, paddingBottom: 10 },
+  wordmark: { gap: 0 },
+  wordmarkSmall: { fontFamily: fonts.bold, fontSize: 13, letterSpacing: 1.1, lineHeight: 15 },
+  wordmarkBig: { fontFamily: fonts.displayBold, fontSize: 30, lineHeight: 31, letterSpacing: -0.8 },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: 9 },
+  verifiedPill: { minHeight: 42, borderRadius: 12, borderWidth: 1, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", gap: 6 },
+  verifiedText: { fontFamily: fonts.bold, fontSize: 11 },
+  kycPending: { minHeight: 42, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, alignItems: "center", justifyContent: "center" },
+  iconBtn: { width: 44, height: 44, borderRadius: 16, alignItems: "center", justifyContent: "center", borderWidth: 1 },
+  dot: { position: "absolute", top: 7, right: 7, width: 8, height: 8, borderRadius: 4 },
   scrollContent: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 190, gap: 14, maxWidth: 1100, alignSelf: "center", width: "100%" },
   groupCard: { padding: 12, gap: 12 },
   sectionTitle: { fontFamily: fonts.displayBold, fontSize: 19, paddingHorizontal: 4 },
-  grid: { flexDirection: "row", flexWrap: "wrap", width: "100%" },
-  tile: { minHeight: 96, alignItems: "center", justifyContent: "flex-start", paddingHorizontal: 3, paddingVertical: 8, gap: 7 },
-  actionIcon: { width: 56, height: 56, borderRadius: 17, alignItems: "center", justifyContent: "center" },
-  toolIcon: { width: 55, height: 55, borderRadius: 15, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  grid: { flexDirection: "row", flexWrap: "wrap", width: "100%", justifyContent: "space-between", rowGap: 8 },
+  tile: { minHeight: 102, alignItems: "center", justifyContent: "flex-start", paddingHorizontal: 3, paddingVertical: 8, gap: 7, borderWidth: 1, borderRadius: radius.md },
+  actionIcon: { width: 52, height: 52, borderRadius: 17, alignItems: "center", justifyContent: "center" },
+  toolIcon: { width: 52, height: 52, borderRadius: 15, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   serviceIcon: { width: 58, height: 58, alignItems: "center", justifyContent: "center" },
   tileLabel: { fontFamily: fonts.semibold, fontSize: 11, lineHeight: 14, textAlign: "center" },
   serviceLabel: { fontFamily: fonts.semibold, fontSize: 12, lineHeight: 15, textAlign: "center" },

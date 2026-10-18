@@ -52,7 +52,7 @@ export function RoleModuleDirectory({ role, title = "Your Modules" }: {
                   ]}
                 >
                   <View style={[styles.icon, { backgroundColor: colors.brandSoft }]}>
-                    {module.symbol ? <VectorSymbol name={module.symbol} size={37} /> : <Ionicons name={module.icon} size={19} color={colors.brand} />}
+                    {module.symbol ? <VectorSymbol name={module.symbol} size={36} /> : <Ionicons name={module.icon} size={19} color={colors.brand} />}
                   </View>
                   <View style={{ flex: 1, gap: 2 }}>
                     <AppText style={{ fontFamily: fonts.semibold, color: colors.onSurface }}>{module.label}</AppText>
@@ -72,5 +72,5 @@ export function RoleModuleDirectory({ role, title = "Your Modules" }: {
 const styles = StyleSheet.create({
   heading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
   item: { flexDirection: "row", gap: spacing.md, alignItems: "center", minHeight: 68, borderWidth: 1, borderRadius: radius.md, padding: spacing.md },
-  icon: { width: 38, height: 38, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
+  icon: { width: 42, height: 42, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
 });

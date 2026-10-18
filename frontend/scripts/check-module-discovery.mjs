@@ -93,8 +93,8 @@ for (const name of ["home-quick-actions", "customer-module-grid", "home-other-se
 assert.ok(customerHome.includes('<HomeCarousel />'), "Preserve existing carousel component.");
 assert.ok(customerHome.includes('<KycBanner status={data.kyc_status} />'), "Preserve KYC state machine.");
 assert.ok(customerHome.includes('<ActiveTransitMixerCard'), "Preserve real order and demo tracking.");
-assert.ok(customerHome.includes('width: "25%"'), "Quick Actions and RMC Tools must be a four-column responsive grid.");
-assert.ok(customerHome.includes('width: "33.333%"'), "Other Services must be a three-column responsive grid.");
+assert.ok(customerHome.includes('width: "23.5%"'), "Quick Actions and RMC Tools must be a four-column responsive grid.");
+assert.ok(customerHome.includes('width: "31.5%"'), "Other Services must be a three-column responsive grid.");
 // Newly uploaded Other Services SVG masters must render on the actual home cards.
 for (const [key, symbol] of [
   ["cement", "cement"],
@@ -106,10 +106,10 @@ for (const [key, symbol] of [
     `Missing Other Services SVG assignment for ${key}`,
   );
 }
-assert.ok(customerHome.includes('<VectorSymbol name={service.symbol} size={58} />'), "Other Services must render the uploaded artwork.");
+assert.ok(customerHome.includes('<VectorSymbol name={service.symbol} size={42} />'), "Other Services must render the uploaded artwork.");
 assert.ok(!customerHome.includes('<Ionicons name={service.icon}'), "Do not regress to generic service icons.");
-assert.ok(customerHome.includes('<VectorSymbol name={action.symbol} size={50} />'), "Quick Actions must render a visible assigned vector.");
-assert.ok(customerHome.includes('<VectorSymbol name={module.symbol} size={48} />'), "Tools must render assigned vector artwork.");
+assert.ok(customerHome.includes('<VectorSymbol name={action.symbol} size={42} />'), "Quick Actions must render a visible assigned vector.");
+assert.ok(customerHome.includes('<VectorSymbol name={module.symbol} size={42} />'), "Tools must render assigned vector artwork.");
 assert.ok(!customerHome.includes('contentContainerStyle={styles.moduleGrid}'), "Remove old horizontal shortcut strip.");
 const serviceForm = read("app/customer/service-enquiry.tsx");
 for (const kind of ["CEMENT", "LABOUR_CONTRACTOR", "BUILDING_MATERIAL"]) {

@@ -1,50 +1,35 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import {
-  LayoutChangeEvent,
-  NativeScrollEvent,
-  NativeSyntheticEvent,
-  ScrollView,
-  StyleSheet,
-  View,
-  ViewStyle,
-} from "react-native";
+import { LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent, ScrollView, StyleSheet, View, ViewStyle } from "react-native";
 import { Image } from "expo-image";
-
 import { useTheme } from "@/src/theme/ThemeProvider";
-import { glass, radius } from "@/src/theme/tokens";
+import { radius } from "@/src/theme/tokens";
 
-// The assets are already committed on main. Match exact filenames and requested order.
-const slides = [
-  { image: require("../../assets/images/Mixer.png"), label: "Transit mixer" },
-  { image: require("../../assets/images/KYC-verification.png"), label: "KYC verification" },
-  { image: require("../../assets/images/Free-Calculator.png"), label: "Free RMC calculator" },
-  { image: require("../../assets/images/Cashfree.png"), label: "Cashfree payments" },
-  { image: require("../../assets/images/CountryMap.png"), label: "India service coverage" },
+// Exactly five approved 1280x720 images, in display order; paths are case sensitive.
+const SLIDES = [
+  { id: "mixer", source: require("../../assets/images/Mixer.png"), label: "Transit mixer" },
+  { id: "kyc", source: require("../../assets/images/KYC-verification.png"), label: "KYC verification" },
+  { id: "calculator", source: require("../../assets/images/Free-Calculator.png"), label: "Free RMC calculator" },
+  { id: "cashfree", source: require("../../assets/images/Cashfree.png"), label: "Cashfree payments" },
+  { id: "country", source: require("../../assets/images/CountryMap.png"), label: "India coverage" },
 ] as const;
-
 const AUTO_MS = 4500;
-const SLIDE_COUNT = slides.length;
+const SLIDE_COUNT = SLIDES.length;
 const MAX_WIDTH = 720;
 
-type Props = { style?: ViewStyle };
-
-export function HomeCarousel({ style }: Props) {
+export function HomeCarousel({ style }: { style?: ViewStyle }) {
   const { colors } = useTheme();
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [index, setIndex] = useState(0);
   const indexRef = useRef(0);
   const interactingRef = useRef(false);
   const scrollRef = useRef<ScrollView>(null);
-
-  const onLayout = useCallback((e: LayoutChangeEvent) => {
-    const { width, height } = e.nativeEvent.layout;
+  const onLayout = useCallback((event: LayoutChangeEvent) => {
+    const { width, height } = event.nativeEvent.layout;
     setSize(prev => Math.abs(prev.w - width) > 0.5 || Math.abs(prev.h - height) > 0.5 ? { w: width, h: height } : prev);
   }, []);
-
   useEffect(() => {
     if (size.w > 0) scrollRef.current?.scrollTo({ x: indexRef.current * size.w, animated: false });
   }, [size.w]);
-
   useEffect(() => {
     if (size.w <= 0) return;
     const timer = setInterval(() => {
@@ -56,10 +41,9 @@ export function HomeCarousel({ style }: Props) {
     }, AUTO_MS);
     return () => clearInterval(timer);
   }, [size.w]);
-
-  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+  const onScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     if (size.w <= 0) return;
-    const next = Math.round(e.nativeEvent.contentOffset.x / size.w);
+    const next = Math.round(event.nativeEvent.contentOffset.x / size.w);
     if (next !== indexRef.current && next >= 0 && next < SLIDE_COUNT) {
       indexRef.current = next;
       setIndex(next);
@@ -67,49 +51,29 @@ export function HomeCarousel({ style }: Props) {
   }, [size.w]);
 
   return (
-    <View
-      onLayout={onLayout}
-      style={[styles.wrap, {
-        borderColor: colors.isDark ? glass.darkBorder : glass.lightBorder,
-        backgroundColor: colors.isDark ? glass.darkSurface : glass.lightSurface,
-      }, style]}
-    >
+    <View testID="home-promotional-carousel" onLayout={onLayout}
+      style={[styles.wrap, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }, style]}>
       {size.w > 0 && size.h > 0 ? (
         <>
-          <ScrollView
-            ref={scrollRef}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            scrollEventThrottle={16}
-            onScroll={onScroll}
+          <ScrollView ref={scrollRef} horizontal pagingEnabled showsHorizontalScrollIndicator={false}
+            scrollEventThrottle={16} onScroll={onScroll}
             onScrollBeginDrag={() => { interactingRef.current = true; }}
             onScrollEndDrag={() => { interactingRef.current = false; }}
             onMomentumScrollEnd={() => { interactingRef.current = false; }}
-            style={StyleSheet.absoluteFill}
-          >
-            {slides.map((slide, i) => (
-              <View key={slide.label} style={{ width: size.w, height: size.h }}>
-                <Image
-                  source={slide.image}
-                  style={StyleSheet.absoluteFill}
-                  contentFit="contain"
-                  contentPosition="center"
-                  cachePolicy="memory-disk"
-                  priority={i === 0 ? "high" : "normal"}
-                  accessibilityLabel={slide.label}
-                />
+            style={StyleSheet.absoluteFill}>
+            {SLIDES.map(slide => (
+              <View key={slide.id} style={{ width: size.w, height: size.h }}>
+                <Image source={slide.source} style={StyleSheet.absoluteFill}
+                  contentFit="contain" contentPosition="center" cachePolicy="memory-disk"
+                  accessibilityLabel={slide.label} />
               </View>
             ))}
           </ScrollView>
           <View style={styles.dots} pointerEvents="none">
-            {slides.map((slide, i) => (
-              <View
-                key={slide.label}
-                style={[styles.dot, i === index
-                  ? { width: 18, backgroundColor: colors.brand }
-                  : { width: 6, backgroundColor: colors.isDark ? "rgba(255,255,255,0.38)" : "rgba(14,17,22,0.28)" }]}
-              />
+            {SLIDES.map((slide, i) => (
+              <View key={slide.id} style={[styles.dot, i === index
+                ? { width: 18, backgroundColor: colors.brand }
+                : { width: 6, backgroundColor: "rgba(148,163,184,0.76)" }]} />
             ))}
           </View>
         </>
@@ -117,7 +81,6 @@ export function HomeCarousel({ style }: Props) {
     </View>
   );
 }
-
 const styles = StyleSheet.create({
   wrap: { width: "100%", maxWidth: MAX_WIDTH, alignSelf: "center", aspectRatio: 16 / 9, borderRadius: radius.xl, overflow: "hidden", borderWidth: 1 },
   dots: { position: "absolute", bottom: 10, left: 0, right: 0, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 5 },

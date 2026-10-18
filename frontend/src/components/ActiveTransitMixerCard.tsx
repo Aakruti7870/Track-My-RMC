@@ -49,7 +49,7 @@ export function ActiveTransitMixerCard({ order, onNewOrder, onRefreshHome }: {
         <AppText style={styles.status}>● {order ? order.status.replace(/_/g, " ") : demo.status}</AppText>
         <AppText style={styles.grade}>{order ? `${order.grade} Grade · ${order.quantity} m³` : "M-25 Grade · 6 m³"}</AppText>
         <View style={styles.site}><Ionicons name="location-outline" size={17} color={colors.onSurfaceSecondary} /><AppText style={{ flex: 1 }}>{order?.site_name || demo.siteName}</AppText></View>
-        <View style={styles.metrics}>
+        <View style={[styles.metrics, { borderTopColor: colors.border }]}>
           <View style={{ flex: 1 }}><AppText variant="caption">{t.eta}</AppText><AppText style={styles.value}>{!order ? demo.etaLabel : live && load?.route?.eta_text ? load.route.eta_text : t.unavailable}</AppText></View>
           <View style={{ flex: 1 }}><AppText variant="caption">{order ? t.orderedQuantity : t.quantity}</AppText><AppText style={styles.value}>{order?.quantity ?? demo.quantityM3} m³</AppText></View>
         </View>
@@ -58,7 +58,7 @@ export function ActiveTransitMixerCard({ order, onNewOrder, onRefreshHome }: {
       <View style={{ flex: 1, minWidth: 0 }}>
         {!order ? <View><DemoTrackingPreview /><View style={styles.badge}><AppText style={styles.badgeText}>{t.liveTracking}</AppText></View></View> : <>
           <View style={styles.realMap}>
-            {location ? <LiveMap origin={validPoint(tracking?.origin) ? tracking.origin : null} destination={validPoint(tracking?.destination) ? tracking.destination : null} mixer={location} polyline={load?.route?.polyline} style={{ flex: 1, minHeight: 0 }} /> : <View style={styles.waiting}><Ionicons name="time-outline" size={32} color={colors.brand} /><AppText>{["DELIVERED", "CANCELLED", "REJECTED"].includes(order.status.toUpperCase()) ? order.status.replace(/_/g, " ") : tracking?.active ? t.locationUnavailable : t.waitingForDispatch}</AppText></View>}
+            {location ? <LiveMap origin={validPoint(tracking?.origin) ? tracking.origin : null} destination={validPoint(tracking?.destination) ? tracking.destination : null} mixer={location} polyline={load?.route?.polyline} style={{ flex: 1, minHeight: 0 }} /> : <View style={[styles.waiting, { backgroundColor: colors.surfaceTertiary }]}><Ionicons name="time-outline" size={32} color={colors.brand} /><AppText>{["DELIVERED", "CANCELLED", "REJECTED"].includes(order.status.toUpperCase()) ? order.status.replace(/_/g, " ") : tracking?.active ? t.locationUnavailable : t.waitingForDispatch}</AppText></View>}
           </View>
           <View style={styles.realStatus}>
             <AppText style={{ fontFamily: fonts.semibold }}>{live ? t.liveTracking : location ? t.lastKnown : order.status.replace(/_/g, " ")}</AppText>
@@ -67,7 +67,7 @@ export function ActiveTransitMixerCard({ order, onNewOrder, onRefreshHome }: {
             {error ? <AppText variant="caption">{t.retry}</AppText> : null}
           </View>
         </>}
-        <View style={styles.actions}>{actions.map(action => <Pressable key={action.label} accessibilityRole="button" accessibilityLabel={action.label} onPress={action.run} style={[styles.action, { borderColor: colors.border }]}><Ionicons name={action.icon} size={23} color={colors.onSurface} /><AppText style={styles.actionText}>{action.label}</AppText></Pressable>)}</View>
+        <View style={[styles.actions, { backgroundColor: colors.surfaceTertiary }]}>{actions.map(action => <Pressable key={action.label} accessibilityRole="button" accessibilityLabel={action.label} onPress={action.run} style={[styles.action, { borderColor: colors.border }]}><Ionicons name={action.icon} size={23} color={colors.onSurface} /><AppText style={styles.actionText}>{action.label}</AppText></Pressable>)}</View>
       </View>
     </View>
   </View>;
@@ -79,6 +79,6 @@ const styles = StyleSheet.create({
   metrics: { flexDirection: "row", gap: 15, borderTopWidth: 1, borderTopColor: "#EDF0F2", paddingTop: 15 }, value: { fontFamily: fonts.bold, fontSize: 16 },
   print: { flexDirection: "row", gap: 8, minHeight: 48, alignItems: "center", justifyContent: "center", marginTop: 8 },
   badge: { position: "absolute", top: 10, right: 10, backgroundColor: "#B95100", borderRadius: 7, padding: 7 }, badgeText: { fontFamily: fonts.bold, fontSize: 11, color: "white" },
-  actions: { flexDirection: "row", padding: 10, gap: 8, backgroundColor: "#F8FAFC" }, action: { flex: 1, minWidth: 0, minHeight: 64, borderWidth: 1, borderRadius: 10, alignItems: "center", justifyContent: "center", gap: 5, padding: 4 }, actionText: { fontFamily: fonts.medium, fontSize: 12, textAlign: "center" },
-  realMap: { width: "100%", aspectRatio: 2, overflow: "hidden" }, waiting: { flex: 1, padding: 16, alignItems: "center", justifyContent: "center", gap: 10, backgroundColor: "#F0F3F5" }, realStatus: { gap: 4, padding: 10 },
+  actions: { flexDirection: "row", padding: 10, gap: 8, backgroundColor: "transparent" }, action: { flex: 1, minWidth: 0, minHeight: 64, borderWidth: 1, borderRadius: 10, alignItems: "center", justifyContent: "center", gap: 5, padding: 4 }, actionText: { fontFamily: fonts.medium, fontSize: 12, textAlign: "center" },
+  realMap: { width: "100%", aspectRatio: 2, overflow: "hidden" }, waiting: { flex: 1, padding: 16, alignItems: "center", justifyContent: "center", gap: 10, backgroundColor: "transparent" }, realStatus: { gap: 4, padding: 10 },
 });
