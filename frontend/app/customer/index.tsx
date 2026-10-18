@@ -2,7 +2,6 @@ import React from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
 import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeProvider";
@@ -15,6 +14,7 @@ import { ActiveTransitMixerCard } from "@/src/components/ActiveTransitMixerCard"
 import { KycBanner } from "@/src/components/KycBanner";
 import { ErrorView } from "@/src/components/StateViews";
 import { HomeCarousel } from "@/src/components/HomeCarousel";
+import { CustomerHomeHeader } from "@/src/components/customer/CustomerHomeHeader";
 import type { OrderData } from "@/src/components/OrderCard";
 import type { PlantData } from "@/src/components/PlantCard";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
@@ -57,7 +57,6 @@ export default function CustomerHome() {
   const { user } = useAuth();
   const router = useRouter();
   const toast = useToast();
-  const insets = useSafeAreaInsets();
   const { data, loading, error, refetch, reload } = useGet<HomeData>("/customer/home");
 
   const onAction = (key: ActionKey) => {
@@ -150,29 +149,7 @@ export default function CustomerHome() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.surface }]}>
-      <View style={{ height: insets.top }} />
-      <View style={styles.header}>
-        <View style={styles.wordmark}>
-          <AppText style={[styles.wordmarkSmall, { color: colors.onSurface }]}>TRACK MY</AppText>
-          <AppText style={[styles.wordmarkBig, { color: colors.onSurface }]}>RMC</AppText>
-        </View>
-        <View style={styles.headerRight}>
-          {(data?.kyc_status ?? user?.kyc_status) === "VERIFIED" ? (
-            <View style={[styles.verifiedPill, { borderColor: colors.verified, backgroundColor: colors.verified + "10" }]}>
-              <AppText style={[styles.verifiedText, { color: colors.verified }]}>KYC VERIFIED</AppText>
-              <Ionicons name="checkmark-circle" size={19} color={colors.verified} />
-            </View>
-          ) : (
-            <Pressable testID="header-kyc" accessibilityRole="button" onPress={() => router.push("/kyc")} style={[styles.kycPending, { borderColor: colors.border }]}>
-              <AppText variant="label">KYC</AppText>
-            </Pressable>
-          )}
-          <Pressable testID="notifications-bell" accessibilityRole="button" accessibilityLabel="Notifications" onPress={() => router.push("/notifications")} style={[styles.iconBtn, { borderColor: colors.border, backgroundColor: colors.surfaceSecondary }]}>
-            <Ionicons name="notifications-outline" size={22} color={colors.onSurface} />
-            {data && data.unread_notifications > 0 ? <View style={[styles.dot, { backgroundColor: colors.brand }]} /> : null}
-          </Pressable>
-        </View>
-      </View>
+      <CustomerHomeHeader onRefreshHome={refetch} />
 
       <ScrollView
         testID="customer-home-scroll"

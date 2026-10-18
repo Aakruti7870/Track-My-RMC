@@ -10,6 +10,7 @@ node_modules/
 dist/
 build/
 web-build/
+header-previews/
 *.apk
 *.aab
 *.ipa

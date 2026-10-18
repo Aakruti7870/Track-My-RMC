@@ -150,7 +150,19 @@ try {
       if (response.status() >= 400) failures.push(`${path}: ${response.status()}`);
       else {
         successfulPaths.add(path);
-        if (path === '/api/me') currentIdentity = await response.json();
+        if (path === '/api/me') {
+          try {
+            const identity = await response.json();
+            if (!page.isClosed()) currentIdentity = identity;
+          } catch (error) {
+            // Navigation/logout can discard a completed request's body before
+            // this asynchronous observer reads it. The initial identity is still
+            // required by expect.poll below; discard only this browser race.
+            if (!/No data found for resource|Response body is not available|Target.*closed|has been closed/.test(String(error?.message))) {
+              failures.push('/api/me: unreadable identity response');
+            }
+          }
+        }
       }
     });
     await page.goto('http://127.0.0.1:8081/login', { timeout: 180000 });

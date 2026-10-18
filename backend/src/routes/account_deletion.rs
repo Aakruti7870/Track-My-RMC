@@ -21,6 +21,7 @@ pub struct PublicDeletionOtpRequest {
 #[derive(Debug, Deserialize)]
 pub struct DeletionRequestBody {
     pub confirm: String,
+    pub code: String,
     pub reason: Option<String>,
 }
 
@@ -158,6 +159,66 @@ async fn record_request(
     Ok(row)
 }
 
+// Reuse the same deletion-purpose OTP creation and delivery in both flows.
+async fn send_deletion_otp(
+    state: &AppState,
+    destination: &str,
+    channel: &str,
+) -> Result<(), AppError> {
+    state.otp_delivery.validate(channel)?;
+    let (otp, salt, hashed_otp) = OtpEngine::generate_secure_otp(&state.config.otp_pepper);
+    let session_id = OtpEngine::create_pending_session(
+        &state.db,
+        crate::auth::otp::OtpSessionInput {
+            destination,
+            channel,
+            purpose: DELETION_OTP_PURPOSE,
+            salt: &salt,
+            hashed_otp: &hashed_otp,
+            expiration_minutes: state.config.otp_expiration_minutes,
+            max_attempts: state.config.otp_max_verification_attempts,
+        },
+    )
+    .await?;
+
+    let delivery = state
+        .otp_delivery
+        .send(channel, destination, &otp, "Account Deletion")
+        .await;
+
+    if let Err(error) = delivery {
+        let _ = OtpEngine::discard_pending_session(&state.db, session_id).await;
+        return Err(error);
+    }
+
+    OtpEngine::activate_pending_session(
+        &state.db,
+        session_id,
+        destination,
+        channel,
+        DELETION_OTP_PURPOSE,
+    )
+    .await?;
+
+    Ok(())
+}
+
+pub async fn send_signed_in_otp(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+) -> Result<impl IntoResponse, AppError> {
+    let user = user_repo::find_by_id(&state.db, auth_user.user_id)
+        .await?
+        .filter(|user| user.is_active)
+        .ok_or_else(|| AppError::Unauthorized("Account unavailable".into()))?;
+    let identifier = deletion_identifier(&user.role, &user.phone, user.email.as_deref())?;
+    let (destination, channel) = normalize_identifier(&identifier)?;
+    // The signed-in flow reports cooldown errors instead of claiming a code was sent.
+    OtpEngine::check_rate_limit(&state.db, &destination, state.config.otp_cooldown_seconds).await?;
+    send_deletion_otp(&state, &destination, channel).await?;
+    Ok(Json(json!({"success":true,"channel":channel})))
+}
+
 pub async fn send_public_otp(
     State(state): State<AppState>,
     Json(payload): Json<PublicDeletionOtpRequest>,
@@ -196,40 +257,7 @@ pub async fn send_public_otp(
         Err(error) => return Err(error),
     }
 
-    state.otp_delivery.validate(channel)?;
-    let (otp, salt, hashed_otp) = OtpEngine::generate_secure_otp(&state.config.otp_pepper);
-    let session_id = OtpEngine::create_pending_session(
-        &state.db,
-        crate::auth::otp::OtpSessionInput {
-            destination: &destination,
-            channel,
-            purpose: DELETION_OTP_PURPOSE,
-            salt: &salt,
-            hashed_otp: &hashed_otp,
-            expiration_minutes: state.config.otp_expiration_minutes,
-            max_attempts: state.config.otp_max_verification_attempts,
-        },
-    )
-    .await?;
-
-    let delivery = state
-        .otp_delivery
-        .send(channel, &destination, &otp, "Account Deletion")
-        .await;
-
-    if let Err(error) = delivery {
-        let _ = OtpEngine::discard_pending_session(&state.db, session_id).await;
-        return Err(error);
-    }
-
-    OtpEngine::activate_pending_session(
-        &state.db,
-        session_id,
-        &destination,
-        channel,
-        DELETION_OTP_PURPOSE,
-    )
-    .await?;
+    send_deletion_otp(&state, &destination, channel).await?;
 
     Ok(public_otp_response(channel))
 }
@@ -315,16 +343,26 @@ pub async fn submit_signed_in_request(
         ));
     }
     let reason = normalized_reason(payload.reason)?;
-    let identifier = auth_user
-        .email
-        .as_deref()
-        .unwrap_or(&auth_user.phone)
-        .trim()
-        .to_ascii_lowercase();
+    // Bind fresh deletion-purpose verification to the current database identity,
+    // never to an identifier supplied by the caller or a stale token claim.
+    let user = user_repo::find_by_id(&state.db, auth_user.user_id)
+        .await?
+        .filter(|user| user.is_active)
+        .ok_or_else(|| AppError::Unauthorized("Account unavailable".into()))?;
+    let identifier = deletion_identifier(&user.role, &user.phone, user.email.as_deref())?;
+    let (destination, channel) = normalize_identifier(&identifier)?;
+    OtpEngine::verify_otp(
+        &state,
+        &destination,
+        channel,
+        DELETION_OTP_PURPOSE,
+        &payload.code,
+    )
+    .await?;
     let row = record_request(
         &state.db,
         auth_user.user_id,
-        &identifier,
+        &destination,
         reason,
         "signed_in",
     )
@@ -332,6 +370,26 @@ pub async fn submit_signed_in_request(
     Ok(Json(
         json!({ "success": true, "request": request_json(row) }),
     ))
+}
+
+fn deletion_identifier(role: &str, phone: &str, email: Option<&str>) -> Result<String, AppError> {
+    if matches!(role, "customer" | "driver") {
+        let (destination, channel) = normalize_identifier(phone)?;
+        if channel != "whatsapp" {
+            return Err(AppError::BadRequest(
+                "A registered mobile number is required".into(),
+            ));
+        }
+        Ok(destination)
+    } else {
+        let (destination, channel) = normalize_identifier(email.unwrap_or_default())?;
+        if channel != "email" {
+            return Err(AppError::BadRequest(
+                "A registered email is required".into(),
+            ));
+        }
+        Ok(destination)
+    }
 }
 
 pub async fn cancel(
@@ -373,7 +431,26 @@ pub async fn cancel(
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_identifier;
+    use super::{deletion_identifier, normalize_identifier, DeletionRequestBody};
+
+    #[test]
+    fn signed_in_deletion_requires_a_code_and_uses_role_bound_contact() {
+        assert!(serde_json::from_value::<DeletionRequestBody>(
+            serde_json::json!({"confirm":"DELETE"})
+        )
+        .is_err());
+        assert_eq!(
+            deletion_identifier("customer", "+91 98765-43210", Some("customer@example.com"))
+                .unwrap(),
+            "919876543210"
+        );
+        assert_eq!(
+            deletion_identifier("plant_owner", "9876543210", Some("OWNER@EXAMPLE.COM")).unwrap(),
+            "owner@example.com"
+        );
+        assert!(deletion_identifier("plant_owner", "9876543210", None).is_err());
+        assert!(deletion_identifier("customer", "", Some("customer@example.com")).is_err());
+    }
 
     #[test]
     fn normalizes_email_case_and_whitespace() {

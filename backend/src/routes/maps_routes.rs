@@ -145,22 +145,168 @@ pub async fn autocomplete_places(
 }
 
 pub async fn geocode_address(
-    State(_state): State<AppState>,
-    _auth_user: AuthUser,
+    State(state): State<AppState>,
+    auth_user: AuthUser,
     Query(q): Query<GeocodeQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    let lat = q.lat.unwrap_or(19.0760);
-    let lng = q.lng.unwrap_or(72.8777);
-    let address = q
-        .address
-        .unwrap_or_else(|| "Mumbai, Maharashtra".to_string());
+    let lookup = geocode_lookup(&q)?;
+    if !super::discovery::allow_search(auth_user.user_id) {
+        return Err(AppError::RateLimited(
+            "Please wait before searching again".into(),
+        ));
+    }
+    let key = state
+        .config
+        .google_places_api_key
+        .as_deref()
+        .ok_or_else(|| {
+            AppError::BadRequest("Location lookup is unavailable. Please retry later.".into())
+        })?;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|_| AppError::InternalError("Location lookup unavailable".into()))?;
+    let response = client
+        .get("https://maps.googleapis.com/maps/api/geocode/json")
+        .query(&[
+            (lookup.0, lookup.1.as_str()),
+            ("key", key),
+            ("region", "in"),
+        ])
+        .send()
+        .await
+        .map_err(|_| {
+            AppError::BadRequest("Location lookup could not connect. Please retry.".into())
+        })?
+        .error_for_status()
+        .map_err(|_| AppError::BadRequest("Location provider unavailable. Please retry.".into()))?;
+    let result: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|_| AppError::BadRequest("Invalid location provider response".into()))?;
+    // Never return a fabricated city or provider error text (which can include key details).
+    Ok(Json(geocode_result(&result)?))
+}
 
-    Ok(Json(json!({
-        "success": true,
-        "lat": lat,
-        "lng": lng,
-        "formatted_address": address
-    })))
+fn geocode_lookup(q: &GeocodeQuery) -> Result<(&'static str, String), AppError> {
+    match (q.lat, q.lng, q.address.as_deref().map(str::trim)) {
+        (Some(lat), Some(lng), None)
+            if lat.is_finite()
+                && lng.is_finite()
+                && (-90.0..=90.0).contains(&lat)
+                && (-180.0..=180.0).contains(&lng) =>
+        {
+            Ok(("latlng", format!("{lat},{lng}")))
+        }
+        (None, None, Some(address)) if (3..=200).contains(&address.len()) => {
+            Ok(("address", address.to_string()))
+        }
+        _ => Err(AppError::BadRequest(
+            "Provide a city or valid latitude and longitude".into(),
+        )),
+    }
+}
+
+fn geocode_result(result: &serde_json::Value) -> Result<serde_json::Value, AppError> {
+    match result["status"].as_str() {
+        Some("OK") => {}
+        Some("ZERO_RESULTS") => {
+            return Err(AppError::NotFound(
+                "Location could not be resolved. Try a city or PIN code.".into(),
+            ));
+        }
+        _ => {
+            // Do not conflate provider quota or configuration failures with no results.
+            // Never surface provider error_message, which can contain sensitive data.
+            return Err(AppError::InternalError(
+                "Location provider is temporarily unavailable. Please retry.".into(),
+            ));
+        }
+    }
+    let results = result["results"]
+        .as_array()
+        .ok_or_else(|| AppError::NotFound("No location found".into()))?;
+    // Prefer a city, then a locality, instead of displaying an exact street address in the header.
+    for kind in [
+        "locality",
+        "postal_town",
+        "sublocality",
+        "administrative_area_level_3",
+        "administrative_area_level_2",
+    ] {
+        for found in results {
+            let component = found["address_components"].as_array().and_then(|items| {
+                items.iter().find(|item| {
+                    item["types"]
+                        .as_array()
+                        .is_some_and(|types| types.iter().any(|value| value == kind))
+                })
+            });
+            if let Some(locality) = component
+                .and_then(|item| item["long_name"].as_str())
+                .filter(|value| !value.trim().is_empty())
+            {
+                if let (Some(lat), Some(lng)) = (
+                    found["geometry"]["location"]["lat"].as_f64(),
+                    found["geometry"]["location"]["lng"].as_f64(),
+                ) {
+                    return Ok(
+                        json!({"success":true,"lat":lat,"lng":lng,"locality":locality,"formatted_address":found["formatted_address"]}),
+                    );
+                }
+            }
+        }
+    }
+    Err(AppError::NotFound(
+        "No city or locality found. Try a more specific location.".into(),
+    ))
+}
+
+#[cfg(test)]
+mod geocode_tests {
+    use super::*;
+
+    #[test]
+    fn validates_coordinates_and_rejects_ambiguous_lookups() {
+        let query = |lat, lng, address| GeocodeQuery { lat, lng, address };
+        assert_eq!(
+            geocode_lookup(&query(Some(0.0), Some(0.0), None))
+                .unwrap()
+                .1,
+            "0,0"
+        );
+        assert!(geocode_lookup(&query(Some(91.0), Some(1.0), None)).is_err());
+        assert!(geocode_lookup(&query(Some(f64::NAN), Some(1.0), None)).is_err());
+        assert!(geocode_lookup(&query(Some(1.0), None, None)).is_err());
+        assert!(geocode_lookup(&query(None, None, None)).is_err());
+        assert!(geocode_lookup(&query(Some(1.0), Some(1.0), Some("City".into()))).is_err());
+        assert_eq!(
+            geocode_lookup(&query(None, None, Some(" Panvel ".into())))
+                .unwrap()
+                .1,
+            "Panvel"
+        );
+    }
+
+    #[test]
+    fn prefers_city_and_never_fabricates_a_location() {
+        assert!(matches!(
+            geocode_result(&json!({"status":"ZERO_RESULTS","results":[]})),
+            Err(AppError::NotFound(_))
+        ));
+        for status in ["REQUEST_DENIED", "OVER_QUERY_LIMIT", "UNKNOWN_ERROR"] {
+            assert!(matches!(
+                geocode_result(&json!({"status":status,"error_message":"sensitive"})),
+                Err(AppError::InternalError(_))
+            ));
+        }
+        let result = json!({"status":"OK","results":[{
+            "geometry":{"location":{"lat":18.99,"lng":73.11}},
+            "formatted_address":"Street, Panvel",
+            "address_components":[{"long_name":"Street","types":["route"]},{"long_name":"Panvel","types":["locality"]}]
+        }]});
+        assert_eq!(geocode_result(&result).unwrap()["locality"], "Panvel");
+    }
 }
 
 pub async fn calculate_route(

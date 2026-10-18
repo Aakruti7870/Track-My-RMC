@@ -6,6 +6,7 @@ import {
   requestAttendanceLocationConsent,
   requestSosLocationConsent,
   requestForegroundLocationConsent,
+  requestNearbyPlantsLocationConsent,
 } from "@/src/location/BackgroundLocationConsent";
 
 export type CurrentDeviceLocation = {
@@ -19,21 +20,35 @@ export type CurrentLocationResult =
   | { ok: true; location: CurrentDeviceLocation; source: "native" | "expo" }
   | { ok: false; reason: "permission-denied" | "services-disabled" | "unavailable" };
 
-export async function getCurrentDeviceLocation(purpose: "attendance" | "sos" | "foreground" = "foreground"): Promise<CurrentLocationResult> {
+async function boundedDiscoveryFix<T>(promise: Promise<T>, deadline?: number): Promise<T> {
+  if (deadline === undefined) return promise;
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) throw new Error("Location timed out");
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([promise, new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error("Location timed out")), remaining);
+    })]);
+  } finally { if (timer) clearTimeout(timer); }
+}
+
+export async function getCurrentDeviceLocation(purpose: "attendance" | "sos" | "foreground" | "discovery" = "foreground"): Promise<CurrentLocationResult> {
   if (Platform.OS === "web") return { ok: false, reason: "unavailable" };
 
   try {
     const servicesEnabled = await Location.hasServicesEnabledAsync();
     if (!servicesEnabled) return { ok: false, reason: "services-disabled" };
 
-    const consented = purpose === "attendance"
+    let permission = await Location.getForegroundPermissionsAsync();
+    const consented = purpose === "discovery"
+      ? permission.status === "granted" || await requestNearbyPlantsLocationConsent()
+      : purpose === "attendance"
       ? await requestAttendanceLocationConsent()
       : purpose === "sos"
         ? await requestSosLocationConsent()
         : await requestForegroundLocationConsent();
     if (!consented) return { ok: false, reason: "permission-denied" };
 
-    let permission = await Location.getForegroundPermissionsAsync();
     if (permission.status !== "granted") {
       permission = await Location.requestForegroundPermissionsAsync();
     }
@@ -41,10 +56,12 @@ export async function getCurrentDeviceLocation(purpose: "attendance" | "sos" | "
       return { ok: false, reason: "permission-denied" };
     }
 
+    // One deadline applies to both native and Expo fixes, avoiding two full timeouts.
+    const discoveryDeadline = purpose === "discovery" ? Date.now() + 12000 : undefined;
     if (Platform.OS === "android" && NativeTripLocation) {
       try {
         if (NativeTripLocation.isAvailable()) {
-          const nativeLocation = await NativeTripLocation.getCurrentLocation();
+          const nativeLocation = await boundedDiscoveryFix(NativeTripLocation.getCurrentLocation(), discoveryDeadline);
           if (
             Number.isFinite(nativeLocation.latitude) &&
             Number.isFinite(nativeLocation.longitude) &&
@@ -71,9 +88,9 @@ export async function getCurrentDeviceLocation(purpose: "attendance" | "sos" | "
       }
     }
 
-    const expoLocation = await Location.getCurrentPositionAsync({
+    const expoLocation = await boundedDiscoveryFix(Location.getCurrentPositionAsync({
       accuracy: Location.Accuracy.High,
-    });
+    }), discoveryDeadline);
     return {
       ok: true,
       source: "expo",
