@@ -615,3 +615,57 @@ async fn legacy_password_registration_and_unbound_totp_cannot_issue_sessions(db:
     .await
     .unwrap());
 }
+
+
+// Google Play Owner fixtures must never be redirected into ordinary staff
+// Authenticator enrollment. The fixture's reviewer code is checked separately,
+// and live Plant Staff accounts must still report mandatory MFA setup.
+#[sqlx::test]
+async fn play_review_owner_session_skips_staff_enrollment_without_weakening_staff_mfa(db: PgPool) {
+    let mut isolated = state(db.clone());
+    isolated.config.play_review_access_code = Some("654321".to_string());
+    let reviewer = build_app_router(isolated.clone());
+
+    let (login_status, login) = call(
+        &reviewer,
+        "/api/auth/play-review",
+        Some(json!({"role":"plant_owner","access_code":"654321"})),
+        None,
+    )
+    .await;
+    assert_eq!(login_status, StatusCode::OK, "Play review fixture login must succeed: {login}");
+    let reviewer_token = login["token"].as_str().expect("review JWT");
+    let (me_status, review_me) = call(&reviewer, "/api/me", None, Some(reviewer_token)).await;
+    assert_eq!(me_status, StatusCode::OK);
+    assert_eq!(review_me["role"], "owner");
+    assert_eq!(review_me["mfa_enabled"], false);
+    assert_eq!(review_me["mfa_configured"], false);
+    assert_eq!(review_me["plant_id"].is_null(), false);
+
+    // A review session token is NOT an MFA enrollment challenge. The backend
+    // stays fail-closed even though its /me response no longer triggers the UI.
+    let (challenge_status, _) = call(
+        &reviewer,
+        "/api/auth/staff/mfa/enroll/start",
+        Some(json!({"challenge_token":reviewer_token})),
+        None,
+    )
+    .await;
+    assert_eq!(challenge_status, StatusCode::UNAUTHORIZED);
+
+    let staff_email = "normal-plant-staff@example.invalid";
+    let staff_user = identity(&db, "owner", Some(staff_email), None).await;
+    let staff_token = trackmyrmc_backend::auth::jwt::generate_token(
+        staff_user,
+        "owner",
+        "12025550149",
+        Some(staff_email),
+        &isolated.config.jwt_secret,
+        1,
+    )
+    .unwrap();
+    let (normal_status, normal_me) = call(&reviewer, "/api/me", None, Some(&staff_token)).await;
+    assert_eq!(normal_status, StatusCode::OK);
+    assert_eq!(normal_me["mfa_enabled"], false);
+    assert_eq!(normal_me["mfa_configured"], true);
+}

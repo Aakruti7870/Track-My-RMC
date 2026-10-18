@@ -7,7 +7,7 @@ import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import * as Linking from "expo-linking";
 
-import { confirmStaffMfaEnrollment, MfaEnrollmentStartResponse, startStaffMfaEnrollment } from "@/src/api/client";
+import type { MfaEnrollmentStartResponse } from "@/src/api/client";
 import { useAuth } from "@/src/auth/AuthContext";
 import { roleRouteFor } from "@/src/auth/roleRoutes";
 import { AppText } from "@/src/components/ui/AppText";
@@ -19,7 +19,7 @@ import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 export default function MfaSetup() {
   const { colors } = useTheme();
   const router = useRouter();
-  const { token, user, refreshMe, signOut } = useAuth();
+  const { token, user, refreshMe, signOut, startStaffMfaEnrollment, confirmStaffMfaEnrollment } = useAuth();
   const [setup, setSetup] = useState<MfaEnrollmentStartResponse | null>(null);
   const [code, setCode] = useState("");
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
@@ -32,17 +32,19 @@ export default function MfaSetup() {
       router.replace("/login" as any);
       return;
     }
-    if (user.mfa_enabled) {
+    // A review fixture (and already-enrolled staff) never has a pending
+    // first-factor enrollment challenge. Do not treat its login JWT as one.
+    if (user.mfa_enabled || user.mfa_configured === false) {
       router.replace(roleRouteFor(user.role) as any);
       return;
     }
     let active = true;
     (async () => {
       try {
-        const response = await startStaffMfaEnrollment(token);
+        const response = await startStaffMfaEnrollment();
         if (active) setSetup(response);
       } catch (e: any) {
-        if (active) setError(e.detail || "Could not start Authenticator setup");
+        if (active) setError(e.detail || e.message || "Could not start Authenticator setup. Sign out and verify your work email again.");
       } finally {
         if (active) setLoading(false);
       }
@@ -55,10 +57,10 @@ export default function MfaSetup() {
     setLoading(true);
     setError(null);
     try {
-      setSetup(await startStaffMfaEnrollment(token));
+      setSetup(await startStaffMfaEnrollment());
       setCode("");
     } catch (e: any) {
-      setError(e.detail || "Could not restart Authenticator setup");
+      setError(e.detail || e.message || "Could not restart Authenticator setup. Sign out and verify your work email again.");
     } finally {
       setLoading(false);
     }
@@ -69,7 +71,7 @@ export default function MfaSetup() {
     setLoading(true);
     setError(null);
     try {
-      const response = await confirmStaffMfaEnrollment(token, code);
+      const response = await confirmStaffMfaEnrollment(code);
       setRecoveryCodes(response.recovery_codes);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e: any) {

@@ -51,6 +51,11 @@ pub async fn get_me(
     .bind(auth_user.user_id)
     .fetch_one(&state.db)
     .await?;
+    // Review fixture users authenticate exclusively through /auth/play-review.
+    // They have no TOTP enrollment challenge; marking them as ordinary staff
+    // incorrectly sends the Play Review Owner to /mfa-setup with a login JWT.
+    // Do not change MFA policy for any real Plant Staff or owner account.
+    let review_fixture = crate::services::play_review::is_review_fixture(&state, auth_user.user_id).await?;
     let role_label = match user_resp.role.as_str() {
         "owner" | "plant_owner" => "Plant Owner".to_string(),
         other => other
@@ -78,7 +83,7 @@ pub async fn get_me(
         "status":"active",
         "kyc_status":if user_resp.kyc_status.eq_ignore_ascii_case("unverified") {"NOT_STARTED".to_string()} else {user_resp.kyc_status.to_uppercase()},
         "mfa_enabled":mfa_enabled,
-        "mfa_configured":true,
+        "mfa_configured":!review_fixture,
         "passkey_enabled":false,
         "passkey_count":0,
         "user": user_resp,
