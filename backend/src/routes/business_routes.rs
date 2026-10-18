@@ -337,7 +337,7 @@ pub async fn add_plant_staff(
 
     // Staff linking only: never create users, grant a different global role, or
     // enrol drivers in the email-OTP plant_staff system.
-    const allowed = ["dispatcher", "operator", "supervisor", "accountant",
+    let allowed = ["dispatcher", "operator", "supervisor", "accountant",
                      "quality_engineer", "fleet_manager", "store_manager"];
     if !allowed.contains(&payload.role.as_str()) {
         return Err(AppError::BadRequest("Select an existing non-privileged plant staff role".into()));
