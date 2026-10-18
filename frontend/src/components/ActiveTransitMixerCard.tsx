@@ -3,6 +3,7 @@ import { AppState, Linking, Pressable, StyleSheet, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { AppText } from "./ui/AppText";
+import { GlassCardArtwork } from "./ui/GlassCardArtwork";
 import { LiveMap } from "./LiveMap";
 import { DemoTrackingPreview } from "./DemoTrackingPreview";
 import { useToast } from "./ui/Toast";
@@ -44,6 +45,7 @@ export function ActiveTransitMixerCard({ order, onNewOrder, onRefreshHome }: {
   return <View style={{ gap: 12 }} onLayout={event => setWidth(event.nativeEvent.layout.width)}>
     <AppText style={{ fontFamily: fonts.displayBold, fontSize: 20 }}>{t.title}</AppText>
     <View testID={order ? "real-tracking-card" : "demo-tracking-card"} style={[styles.card, { flexDirection: width >= 760 ? "row" : "column", borderColor: colors.border, backgroundColor: colors.surfaceSecondary }]}>
+      <GlassCardArtwork cornerRadius={24} opacity={0.82} />
       <View style={[styles.info, width >= 760 && { width: "34%" }]}>
         <Pressable accessibilityRole="button" disabled={!!order} onPress={onNewOrder} style={{ minHeight: 44, justifyContent: "center" }}><AppText style={styles.title}>{order?.order_number || demo.title}</AppText></Pressable>
         <AppText style={styles.status}>● {order ? order.status.replace(/_/g, " ") : demo.status}</AppText>
