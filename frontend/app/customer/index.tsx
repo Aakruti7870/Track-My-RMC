@@ -9,7 +9,6 @@ import { ThemedScreen } from "@/src/components/ThemedScreen";
 import { useToast } from "@/src/components/ui/Toast";
 import { useGet } from "@/src/hooks/useApi";
 import { AppText } from "@/src/components/ui/AppText";
-import { Card } from "@/src/components/ui/Card";
 import { Skeleton } from "@/src/components/ui/Skeleton";
 import { ActiveTransitMixerCard } from "@/src/components/ActiveTransitMixerCard";
 import { KycBanner } from "@/src/components/KycBanner";
@@ -57,7 +56,8 @@ export default function CustomerHome() {
   const { colors } = useTheme();
   const [quickGridWidth, setQuickGridWidth] = React.useState(0);
   // At small viewports, two columns preserve the requested 75-unit SVGs without clipping.
-  const fourQuickColumns = quickGridWidth >= 355;
+  const fourQuickColumns = quickGridWidth >= 334;
+  const fourToolColumns = quickGridWidth >= 310;
   const { user } = useAuth();
   const router = useRouter();
   const toast = useToast();
@@ -82,7 +82,7 @@ export default function CustomerHome() {
   };
 
   const quickActions = (
-    <Card testID="home-quick-actions" style={styles.groupCard}>
+    <View testID="home-quick-actions" style={styles.groupCard}>
       <AppText style={[styles.sectionTitle, { color: colors.onSurface }]}>Quick Actions</AppText>
       <View style={styles.grid} onLayout={event => {
         const width = event.nativeEvent.layout.width;
@@ -95,18 +95,18 @@ export default function CustomerHome() {
             accessibilityRole="button"
             accessibilityLabel={action.label}
             onPress={() => onAction(action.key)}
-            style={({ pressed }) => [styles.tile, styles.quickTile, { width: fourQuickColumns ? "23.5%" : "48.5%", backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.75 : 1 }]}
+            style={({ pressed }) => [styles.tile, styles.quickTile, { width: fourQuickColumns ? "24%" : "49%", backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.75 : 1 }]}
           >
             <VectorSymbol name={action.symbol} size={75} />
             <AppText numberOfLines={2} style={[styles.tileLabel, { color: colors.onSurface }]}>{action.label}</AppText>
           </Pressable>
         ))}
       </View>
-    </Card>
+    </View>
   );
 
   const tools = (
-    <Card testID="customer-module-grid" style={styles.groupCard}>
+    <View testID="customer-module-grid" style={styles.groupCard}>
       <AppText style={[styles.sectionTitle, { color: colors.onSurface }]}>RMC Tools</AppText>
       <View style={styles.grid}>
         {CUSTOMER_MODULES.map(module => (
@@ -116,18 +116,18 @@ export default function CustomerHome() {
             accessibilityRole="button"
             accessibilityLabel={module.label}
             onPress={() => router.push(module.route)}
-            style={({ pressed }) => [styles.tile, { width: "23.5%", backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.75 : 1 }]}
+            style={({ pressed }) => [styles.tile, styles.toolTile, { width: fourToolColumns ? "24%" : "49%", backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.75 : 1 }]}
           >
             {module.symbol ? <VectorSymbol name={module.symbol} size={52} /> : <Ionicons name={module.icon} size={52} color={colors.brand} />}
             <AppText numberOfLines={3} style={[styles.tileLabel, { color: colors.onSurface }]}>{module.key === "projects" ? "Project Hub" : module.label}</AppText>
           </Pressable>
         ))}
       </View>
-    </Card>
+    </View>
   );
 
   const otherServices = (
-    <Card testID="home-other-services" style={styles.groupCard}>
+    <View testID="home-other-services" style={styles.groupCard}>
       <AppText style={[styles.sectionTitle, { color: colors.onSurface }]}>Other Services</AppText>
       <View style={styles.grid}>
         {SERVICES.map(service => (
@@ -137,7 +137,7 @@ export default function CustomerHome() {
             accessibilityRole="button"
             accessibilityLabel={`${service.label} enquiry`}
             onPress={() => openService(service.key)}
-            style={({ pressed }) => [styles.tile, { width: "31.5%", backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.75 : 1 }]}
+            style={({ pressed }) => [styles.tile, styles.serviceTile, { width: "32%", backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.75 : 1 }]}
           >
             <VectorSymbol name={service.symbol} size={58} />
             <AppText numberOfLines={2} style={[styles.serviceLabel, { color: colors.onSurface }]}>{service.label}</AppText>
@@ -145,7 +145,7 @@ export default function CustomerHome() {
         ))}
       </View>
       <AppText variant="caption" style={{ textAlign: "center" }}>Send an enquiry; our team will contact you.</AppText>
-    </Card>
+    </View>
   );
 
   return (
@@ -208,12 +208,15 @@ const styles = StyleSheet.create({
   kycPending: { minHeight: 42, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, alignItems: "center", justifyContent: "center" },
   iconBtn: { width: 44, height: 44, borderRadius: 16, alignItems: "center", justifyContent: "center", borderWidth: 1 },
   dot: { position: "absolute", top: 7, right: 7, width: 8, height: 8, borderRadius: 4 },
-  scrollContent: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 190, gap: 14, maxWidth: 1100, alignSelf: "center", width: "100%" },
-  groupCard: { padding: 12, gap: 12 },
-  sectionTitle: { fontFamily: fonts.displayBold, fontSize: 19, paddingHorizontal: 4 },
-  grid: { flexDirection: "row", flexWrap: "wrap", width: "100%", justifyContent: "space-between", rowGap: 8 },
-  tile: { minHeight: 120, alignItems: "center", justifyContent: "flex-start", paddingHorizontal: 3, paddingVertical: 8, gap: 7, borderWidth: 1, borderRadius: radius.md },
-  quickTile: { minHeight: 132 },
+  scrollContent: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 190, gap: 11, maxWidth: 1100, alignSelf: "center", width: "100%" },
+  // No second oversized glass perimeter: individual compact tiles carry the only border.
+  groupCard: { paddingHorizontal: 0, paddingVertical: 2, gap: 7 },
+  sectionTitle: { fontFamily: fonts.displayBold, fontSize: 19, paddingHorizontal: 2 },
+  grid: { flexDirection: "row", flexWrap: "wrap", width: "100%", justifyContent: "space-between", rowGap: 5 },
+  tile: { alignItems: "center", justifyContent: "center", paddingHorizontal: 1, paddingVertical: 5, gap: 4, borderWidth: 1, borderRadius: radius.md },
+  quickTile: { minHeight: 116 },
+  toolTile: { minHeight: 108 },
+  serviceTile: { minHeight: 104 },
   tileLabel: { fontFamily: fonts.semibold, fontSize: 11, lineHeight: 14, textAlign: "center" },
   serviceLabel: { fontFamily: fonts.semibold, fontSize: 12, lineHeight: 15, textAlign: "center" },
 });
