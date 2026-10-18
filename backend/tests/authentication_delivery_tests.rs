@@ -616,14 +616,15 @@ async fn legacy_password_registration_and_unbound_totp_cannot_issue_sessions(db:
     .unwrap());
 }
 
-
 // Google Play Owner fixtures must never be redirected into ordinary staff
 // Authenticator enrollment. The fixture's reviewer code is checked separately,
 // and live Plant Staff accounts must still report mandatory MFA setup.
 #[sqlx::test]
 async fn play_review_owner_session_skips_staff_enrollment_without_weakening_staff_mfa(db: PgPool) {
     let mut isolated = state(db.clone());
-    isolated.config.play_review_access_code = Some("654321".to_string());
+    let mut config = (*isolated.config).clone();
+    config.play_review_access_code = Some("654321".to_string());
+    isolated.config = Arc::new(config);
     let reviewer = build_app_router(isolated.clone());
 
     let (login_status, login) = call(
@@ -633,7 +634,11 @@ async fn play_review_owner_session_skips_staff_enrollment_without_weakening_staf
         None,
     )
     .await;
-    assert_eq!(login_status, StatusCode::OK, "Play review fixture login must succeed: {login}");
+    assert_eq!(
+        login_status,
+        StatusCode::OK,
+        "Play review fixture login must succeed: {login}"
+    );
     let reviewer_token = login["token"].as_str().expect("review JWT");
     let (me_status, review_me) = call(&reviewer, "/api/me", None, Some(reviewer_token)).await;
     assert_eq!(me_status, StatusCode::OK);
