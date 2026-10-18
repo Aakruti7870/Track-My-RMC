@@ -34,7 +34,7 @@ const out=process.env.HEADER_PREVIEW_DIR||'header-previews';fs.mkdirSync(out,{re
   await home();const header=page.getByTestId('customer-home-header');
   await page.getByTestId('header-unread-dot').waitFor();
   const headerSurface=await header.evaluate(node=>getComputedStyle(node.parentElement).backgroundColor);
-  assert.match(headerSurface,scheme==='light'?/rgba\(255,\s*255,\s*255,\s*0\.78\)/:/rgba\(20,\s*24,\s*31,\s*0\.76\)/,`theme-aware glass surface expected at ${width}px, got ${headerSurface}`);
+  assert.match(headerSurface,scheme==='light'?/rgba\(255,\s*255,\s*255,\s*0\.78\)/:/rgba\(26,\s*31,\s*38,\s*0\.78\)/,`theme-aware glass surface expected at ${width}px, got ${headerSurface}`);
 
   assert.equal(await page.evaluate(()=>window.headerGeoCalls),0,'manual consent triggered GPS');
   let previousRight=0;
