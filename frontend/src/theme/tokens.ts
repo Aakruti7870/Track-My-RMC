@@ -151,7 +151,7 @@ export const lightColors: ThemeColors = {
 
 export const glass = {
   lightSurface: "rgba(255,255,255,0.78)",
-  darkSurface: "rgba(20,24,31,0.76)",
+  darkSurface: "rgba(26,31,38,0.78)",
   lightBorder: "rgba(20,24,31,0.08)",
   darkBorder: "rgba(255,154,61,0.28)",
   lightHighlight: "rgba(255,255,255,0.98)",
