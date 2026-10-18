@@ -1,5 +1,5 @@
 import React from "react";
-import { Image, StyleSheet } from "react-native";
+import { Image, StyleSheet, View } from "react-native";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { radius } from "@/src/theme/tokens";
 
@@ -18,8 +18,8 @@ export function GlassCardArtwork({
 }) {
   const { colors } = useTheme();
   return (
-    <Image
-      pointerEvents="none"
+    <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+      <Image
       accessible={false}
       source={colors.isDark
         ? require("../../../assets/images/trackmyrmc-dark-glass-card.webp")
@@ -27,6 +27,7 @@ export function GlassCardArtwork({
       resizeMode="stretch"
       fadeDuration={0}
       style={[StyleSheet.absoluteFillObject, { borderRadius: cornerRadius, opacity }]}
-    />
+      />
+    </View>
   );
 }
