@@ -43,7 +43,8 @@ describe('final login and customer hero guards', () => {
     assert.ok(carousel.includes('pagingEnabled'));
     assert.ok(carousel.includes('aspectRatio: 16 / 9'));
     const filenames = ['Mixer.png', 'KYC-verification.png', 'Free-Calculator.png', 'Cashfree.png', 'CountryMap.png'];
-    const imports = [...carousel.matchAll(/require\\("([^"]+)"\\)/g)].map(match => match[1]);
+    const imports = carousel.split("\n").filter(line => line.includes('source: require('))
+      .map(line => line.split('assets/images/')[1]?.split('"')[0]);
     assert.deepEqual(imports.map(file => path.basename(file)), filenames);
     for (const file of imports) assert.ok(fs.existsSync(path.resolve(root, 'src/components', file)), file);
     assert.ok(carousel.includes('contentFit="contain"'));
@@ -60,7 +61,7 @@ describe('final login and customer hero guards', () => {
     }
     assert.ok(layout.includes('themeArtwork: { opacity: 0.35 }'));
     assert.ok(layout.includes('backgroundColor: "transparent"'));
-    assert.match(colors, /surfaceSecondary: "rgba\\(/);
+    assert.ok(colors.includes('surfaceSecondary: "rgba('));
     assert.ok(card.includes('backgroundColor: colors.surfaceSecondary'));
   });
 });
