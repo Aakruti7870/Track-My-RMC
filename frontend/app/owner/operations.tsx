@@ -27,6 +27,7 @@ const SECTIONS: Section[] = [
   { key: "suppliers", label: "Suppliers", icon: "people-circle-outline", symbol: "suppliers", desc: "Material vendor master", route: "/business/suppliers" },
   { key: "purchases", label: "Purchases", icon: "cart-outline", symbol: "material-receipts", desc: "Purchase receipts with automatic stock posting", route: "/business/purchases" },
   { key: "fleet", label: "Fleet", icon: "bus-outline", symbol: "transit-mixer-fleet", desc: "Transit mixers, capacity and availability", route: "/business/fleet" },
+  { key: "drivers", label: "Driver Onboarding", icon: "people-outline", symbol: "drivers", desc: "Driver employment, emergency contacts and mixer assignments", route: "/owner/drivers" },
   { key: "diesel", label: "Diesel", icon: "water-outline", symbol: "diesel-ledger", desc: "Diesel receipts, issues and running balance", route: "/business/diesel" },
   { key: "billing", label: "Billing & Ledger", icon: "wallet-outline", symbol: "billing-ledger", desc: "Invoices, payments and outstanding", route: "/owner/billing" },
   { key: "expenses", label: "Expenses", icon: "cash-outline", symbol: "expenses", desc: "Plant expense register", route: "/business/expenses" },
