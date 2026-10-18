@@ -1,6 +1,14 @@
 //! Driver self-service identity and owner-managed onboarding; preserves trip/attendance routes.
-use crate::{auth::{middleware::check_role, AuthUser}, error::AppError, state::AppState};
-use axum::{extract::{Path, State}, response::IntoResponse, Json};
+use crate::{
+    auth::{middleware::check_role, AuthUser},
+    error::AppError,
+    state::AppState,
+};
+use axum::{
+    extract::{Path, State},
+    response::IntoResponse,
+    Json,
+};
 use chrono::{NaiveDate, Utc};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -31,8 +39,11 @@ pub async fn get_driver_identity(
     check_role(&auth_user, &["driver"])?;
     let name: String = sqlx::query_scalar(
         "SELECT full_name FROM users WHERE id=$1 AND role='driver' AND is_active=TRUE",
-    ).bind(auth_user.user_id).fetch_optional(&state.db).await?
-        .ok_or_else(|| AppError::NotFound("Active driver not found".into()))?;
+    )
+    .bind(auth_user.user_id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Active driver not found".into()))?;
 
     // Never guess between two simultaneous plant assignments.
     let plants = sqlx::query(
@@ -42,9 +53,14 @@ pub async fn get_driver_identity(
                OR EXISTS (SELECT 1 FROM driver_employment_profiles ep
                           WHERE ep.plant_id=p.id AND ep.driver_id=$1 AND ep.is_active=TRUE)
            ) ORDER BY p.id LIMIT 2"#,
-    ).bind(auth_user.user_id).fetch_all(&state.db).await?;
+    )
+    .bind(auth_user.user_id)
+    .fetch_all(&state.db)
+    .await?;
     if plants.len() > 1 {
-        return Err(AppError::Conflict("Multiple plant assignments detected. Contact your plant owner.".into()));
+        return Err(AppError::Conflict(
+            "Multiple plant assignments detected. Contact your plant owner.".into(),
+        ));
     }
     let Some(plant) = plants.first() else {
         return Ok(Json(json!({
@@ -69,13 +85,23 @@ pub async fn get_driver_identity(
                   emergency_contact_2_name, emergency_contact_2_phone
            FROM driver_employment_profiles
            WHERE plant_id=$1 AND driver_id=$2 AND is_active=TRUE"#,
-    ).bind(plant_id).bind(auth_user.user_id).fetch_optional(&state.db).await?;
+    )
+    .bind(plant_id)
+    .bind(auth_user.user_id)
+    .fetch_optional(&state.db)
+    .await?;
 
     let field = |key: &str| -> Option<String> {
-        profile.as_ref().and_then(|p| p.get::<Option<String>, _>(key))
+        profile
+            .as_ref()
+            .and_then(|p| p.get::<Option<String>, _>(key))
     };
-    let date = profile.as_ref().and_then(|p| p.get::<Option<NaiveDate>, _>("company_joining_date"));
-    let months = profile.as_ref().and_then(|p| p.get::<Option<i32>, _>("total_driving_experience_months"));
+    let date = profile
+        .as_ref()
+        .and_then(|p| p.get::<Option<NaiveDate>, _>("company_joining_date"));
+    let months = profile
+        .as_ref()
+        .and_then(|p| p.get::<Option<i32>, _>("total_driving_experience_months"));
     Ok(Json(json!({
         "success": true,
         "plant_name": plant.get::<String, _>("name"),
@@ -130,7 +156,10 @@ pub async fn list_plant_drivers(
         ) FROM driver_employment_profiles ep
         JOIN users d ON d.id=ep.driver_id AND d.role='driver'
         WHERE ep.plant_id=$1 ORDER BY d.full_name LIMIT 500"#,
-    ).bind(plant_id).fetch_all(&state.db).await?;
+    )
+    .bind(plant_id)
+    .fetch_all(&state.db)
+    .await?;
     Ok(Json(json!({"success": true, "drivers": drivers})))
 }
 
@@ -148,8 +177,14 @@ pub struct UpsertDriverProfile {
     pub transit_mixer_id: Option<Uuid>,
 }
 
-fn bounded_optional(value: Option<String>, max: usize, field: &str) -> Result<Option<String>, AppError> {
-    let value = value.map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+fn bounded_optional(
+    value: Option<String>,
+    max: usize,
+    field: &str,
+) -> Result<Option<String>, AppError> {
+    let value = value
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
     if value.as_ref().is_some_and(|s| s.len() > max) {
         return Err(AppError::BadRequest(format!("{field} is too long")));
     }
@@ -157,19 +192,31 @@ fn bounded_optional(value: Option<String>, max: usize, field: &str) -> Result<Op
 }
 fn normalized_phone(value: &str) -> Result<String, AppError> {
     let phone: String = value.chars().filter(|c| c.is_ascii_digit()).collect();
-    let canonical = if phone.len() == 10 { format!("91{phone}") } else { phone };
+    let canonical = if phone.len() == 10 {
+        format!("91{phone}")
+    } else {
+        phone
+    };
     if !(10..=15).contains(&canonical.len()) {
-        return Err(AppError::BadRequest("Enter a valid registered driver mobile number".into()));
+        return Err(AppError::BadRequest(
+            "Enter a valid registered driver mobile number".into(),
+        ));
     }
     Ok(canonical)
 }
 fn validate_contact(value: Option<String>) -> Result<Option<String>, AppError> {
-    let Some(phone) = bounded_optional(value, 20, "Emergency contact")? else { return Ok(None) };
-    if !phone.chars().all(|c| c.is_ascii_digit() || c == '+' || c == '-' || c == ' ')
+    let Some(phone) = bounded_optional(value, 20, "Emergency contact")? else {
+        return Ok(None);
+    };
+    if !phone
+        .chars()
+        .all(|c| c.is_ascii_digit() || c == '+' || c == '-' || c == ' ')
         || phone.chars().filter(|c| c.is_ascii_digit()).count() < 10
         || phone.chars().filter(|c| c.is_ascii_digit()).count() > 15
     {
-        return Err(AppError::BadRequest("Invalid emergency contact number".into()));
+        return Err(AppError::BadRequest(
+            "Invalid emergency contact number".into(),
+        ));
     }
     Ok(Some(phone))
 }
@@ -184,20 +231,33 @@ pub async fn save_driver_profile(
     super::business_routes::ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
     let phone = normalized_phone(&input.phone)?;
     let employee_id = input.employee_id.trim().to_ascii_uppercase();
-    if employee_id.len() < 2 || employee_id.len() > 50
-        || !employee_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
-        return Err(AppError::BadRequest("Employee ID must use 2-50 letters, digits, _ or -".into()));
+    if employee_id.len() < 2
+        || employee_id.len() > 50
+        || !employee_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(AppError::BadRequest(
+            "Employee ID must use 2-50 letters, digits, _ or -".into(),
+        ));
     }
     let date = NaiveDate::parse_from_str(&input.company_joining_date, "%Y-%m-%d")
         .map_err(|_| AppError::BadRequest("Joining date must be YYYY-MM-DD".into()))?;
     if date > Utc::now().date_naive() {
-        return Err(AppError::BadRequest("Joining date cannot be in the future".into()));
+        return Err(AppError::BadRequest(
+            "Joining date cannot be in the future".into(),
+        ));
     }
     if !(0..=960).contains(&input.total_driving_experience_months) {
-        return Err(AppError::BadRequest("Experience must be between 0 and 960 months".into()));
+        return Err(AppError::BadRequest(
+            "Experience must be between 0 and 960 months".into(),
+        ));
     }
     let blood_group = bounded_optional(input.blood_group, 3, "Blood group")?;
-    if blood_group.as_ref().is_some_and(|v| !["A+","A-","B+","B-","AB+","AB-","O+","O-"].contains(&v.as_str())) {
+    if blood_group
+        .as_ref()
+        .is_some_and(|v| !["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].contains(&v.as_str()))
+    {
         return Err(AppError::BadRequest("Unsupported blood group".into()));
     }
     let ec1_name = bounded_optional(input.emergency_contact_1_name, 120, "Contact 1 name")?;
@@ -219,20 +279,26 @@ pub async fn save_driver_profile(
         )"#,
     ).bind(driver_id).bind(plant_id).fetch_one(&mut *tx).await?;
     if cross_plant {
-        return Err(AppError::Conflict("Driver is already assigned to another plant".into()));
+        return Err(AppError::Conflict(
+            "Driver is already assigned to another plant".into(),
+        ));
     }
     if let Some(mixer_id) = input.transit_mixer_id {
         let other: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM transit_mixers WHERE plant_id=$1 AND driver_id=$2 AND id<>$3)",
         ).bind(plant_id).bind(driver_id).bind(mixer_id).fetch_one(&mut *tx).await?;
         if other {
-            return Err(AppError::Conflict("Driver already has another mixer. Reassign it in Fleet first".into()));
+            return Err(AppError::Conflict(
+                "Driver already has another mixer. Reassign it in Fleet first".into(),
+            ));
         }
         let result = sqlx::query(
             "UPDATE transit_mixers SET driver_id=$1 WHERE id=$2 AND plant_id=$3 AND (driver_id IS NULL OR driver_id=$1)",
         ).bind(driver_id).bind(mixer_id).bind(plant_id).execute(&mut *tx).await?;
         if result.rows_affected() != 1 {
-            return Err(AppError::Conflict("Mixer is unavailable or belongs to a different plant".into()));
+            return Err(AppError::Conflict(
+                "Mixer is unavailable or belongs to a different plant".into(),
+            ));
         }
     }
     let exists: bool = sqlx::query_scalar(
@@ -254,13 +320,27 @@ pub async fn save_driver_profile(
           emergency_contact_2_name=EXCLUDED.emergency_contact_2_name,
           emergency_contact_2_phone=EXCLUDED.emergency_contact_2_phone,
           is_active=TRUE,updated_at=NOW()"#,
-    ).bind(plant_id).bind(driver_id).bind(&employee_id).bind(date)
-    .bind(input.total_driving_experience_months).bind(&blood_group)
-    .bind(&ec1_name).bind(&ec1_phone).bind(&ec2_name).bind(&ec2_phone)
-    .execute(&mut *tx).await;
+    )
+    .bind(plant_id)
+    .bind(driver_id)
+    .bind(&employee_id)
+    .bind(date)
+    .bind(input.total_driving_experience_months)
+    .bind(&blood_group)
+    .bind(&ec1_name)
+    .bind(&ec1_phone)
+    .bind(&ec2_name)
+    .bind(&ec2_phone)
+    .execute(&mut *tx)
+    .await;
     if let Err(err) = update {
-        if err.as_database_error().is_some_and(|e| e.is_unique_violation()) {
-            return Err(AppError::Conflict("Employee ID already belongs to another driver in this plant".into()));
+        if err
+            .as_database_error()
+            .is_some_and(|e| e.is_unique_violation())
+        {
+            return Err(AppError::Conflict(
+                "Employee ID already belongs to another driver in this plant".into(),
+            ));
         }
         return Err(err.into());
     }
@@ -268,12 +348,23 @@ pub async fn save_driver_profile(
         r#"INSERT INTO driver_employment_audit
            (plant_id,driver_id,actor_user_id,action,changed_fields)
            VALUES ($1,$2,$3,$4,$5)"#,
-    ).bind(plant_id).bind(driver_id).bind(auth_user.user_id)
-     .bind(if exists {"UPDATED"} else {"CREATED"})
-     .bind(vec!["employment","blood_group","emergency_contacts","mixer_assignment"])
-     .execute(&mut *tx).await?;
+    )
+    .bind(plant_id)
+    .bind(driver_id)
+    .bind(auth_user.user_id)
+    .bind(if exists { "UPDATED" } else { "CREATED" })
+    .bind(vec![
+        "employment",
+        "blood_group",
+        "emergency_contacts",
+        "mixer_assignment",
+    ])
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
-    Ok(Json(json!({"success": true, "driver_id": driver_id, "message": "Driver profile saved"})))
+    Ok(Json(
+        json!({"success": true, "driver_id": driver_id, "message": "Driver profile saved"}),
+    ))
 }
 
 #[cfg(test)]
@@ -288,7 +379,10 @@ mod tests {
     }
     #[test]
     fn phone_normalization() {
-        assert_eq!(super::normalized_phone("+91 98765 43210").unwrap(), "919876543210");
+        assert_eq!(
+            super::normalized_phone("+91 98765 43210").unwrap(),
+            "919876543210"
+        );
         assert!(super::normalized_phone("12").is_err());
     }
 }
