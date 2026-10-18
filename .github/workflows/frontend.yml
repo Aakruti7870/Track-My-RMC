@@ -10,6 +10,7 @@ on:
       - "backend/**"
       - "frontend/**"
       - "admin-web/**"
+      - "ops/**"
       - ".github/workflows/frontend.yml"
       - ".github/workflows/deploy-aws-production.yml"
 
@@ -22,6 +23,10 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+      - name: Validate production shell scripts before merge
+        run: |
+          bash -n ../ops/aws-deploy-ec2.sh
+          bash -n ../ops/verify-production-health.sh
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
