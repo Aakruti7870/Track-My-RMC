@@ -13,6 +13,7 @@ import { Badge } from "@/src/components/ui/Badge";
 import { Skeleton } from "@/src/components/ui/Skeleton";
 import { ErrorView } from "@/src/components/StateViews";
 import { RoleModuleDirectory } from "@/src/components/RoleModuleDirectory";
+import { DriverIdentityCard } from "@/src/components/DriverIdentityCard";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 
 type Trip = { id: string; order_number: string; status: string; grade: string; quantity: number; tm_number: string; site_name: string };
@@ -77,6 +78,7 @@ export default function DriverHome() {
             </>
           ) : data ? (
             <>
+              <DriverIdentityCard />
               <Card variant="brand" style={styles.summary} testID="driver-home-summary">
                 <View style={{ flex: 1, gap: spacing.xs }}>
                   <AppText variant="caption">TODAY&apos;S SHIFT</AppText>
