@@ -9,187 +9,25 @@ import {
   ViewStyle,
 } from "react-native";
 import { Image } from "expo-image";
-import { LinearGradient } from "expo-linear-gradient";
-import { Ionicons } from "@expo/vector-icons";
 
 import { useTheme } from "@/src/theme/ThemeProvider";
-import { AppText } from "@/src/components/ui/AppText";
-import { IndiaServiceMap } from "@/src/components/promo/IndiaServiceMap";
-import { fonts, radius } from "@/src/theme/tokens";
+import { glass, radius } from "@/src/theme/tokens";
 
-// Use the exact, case-sensitive filenames committed under frontend/assets/images.
-const HERO_BANNER = require("../../assets/images/RMC truck Banner .png");
-const CALCULATOR_BANNER = require("../../assets/images/Calculator Banner.png");
-const CASHFREE_BANNER = require("../../assets/images/Cashfree Banner.png");
-const KYC_BANNER = require("../../assets/images/KYC banner .png");
-const SUPPORT_BANNER = require("../../assets/images/Customer support Banner .png");
-
-const ORANGE = "#FF5A16";
-const ORANGE_DEEP = "#C93D00";
+// The assets are already committed on main. Match exact filenames and requested order.
+const slides = [
+  { image: require("../../assets/images/Mixer.png"), label: "Transit mixer" },
+  { image: require("../../assets/images/KYC-verification.png"), label: "KYC verification" },
+  { image: require("../../assets/images/Free-Calculator.png"), label: "Free RMC calculator" },
+  { image: require("../../assets/images/Cashfree.png"), label: "Cashfree payments" },
+  { image: require("../../assets/images/CountryMap.png"), label: "India service coverage" },
+] as const;
 
 const AUTO_MS = 4500;
-const SLIDE_COUNT = 6;
+const SLIDE_COUNT = slides.length;
 const MAX_WIDTH = 720;
-
-type SlideProps = { width: number; height: number };
-
-/** Compact Track My RMC wordmark used consistently across every promo slide. */
-function BrandMark({ dark, scale = 1 }: { dark?: boolean; scale?: number }) {
-  const fg = dark ? "#FFFFFF" : "#111315";
-  return (
-    <View style={styles.brandRow}>
-      <View style={[styles.brandCube, { width: 18 * scale, height: 18 * scale, borderRadius: 5 * scale }]}>
-        <Ionicons name="cube" size={11 * scale} color="#FFFFFF" />
-      </View>
-      <View>
-        <AppText style={{ fontFamily: fonts.bold, fontSize: 8 * scale, letterSpacing: 1, color: fg, lineHeight: 9 * scale }}>
-          TRACK MY
-        </AppText>
-        <AppText style={{ fontFamily: fonts.displayBold, fontSize: 13 * scale, lineHeight: 14 * scale, color: ORANGE }}>
-          RMC
-        </AppText>
-      </View>
-    </View>
-  );
-}
-
-function Pill({ label, bg, color, scale = 1 }: { label: string; bg: string; color: string; scale?: number }) {
-  return (
-    <View style={[styles.pill, { backgroundColor: bg, paddingHorizontal: 9 * scale, paddingVertical: 3 * scale }]}>
-      <AppText style={{ fontFamily: fonts.bold, fontSize: 8.5 * scale, letterSpacing: 0.8, color }}>{label}</AppText>
-    </View>
-  );
-}
-
-/** IMAGE 1 — RMC transit mixer promotional banner. */
-function HeroSlide({ width, height }: SlideProps) {
-  const { colors } = useTheme();
-  return (
-    <View style={{ width, height, backgroundColor: colors.isDark ? "#080A0C" : "#F7F8F6" }}>
-      <Image
-        source={HERO_BANNER}
-        style={StyleSheet.absoluteFill}
-        contentFit="contain"
-        contentPosition="center"
-        priority="high"
-        cachePolicy="memory-disk"
-        transition={0}
-      />
-    </View>
-  );
-}
-
-/** IMAGE 2 — free RMC calculator. */
-function CalculatorSlide({ width, height }: SlideProps) {
-  return (
-    <View style={{ width, height, backgroundColor: "#101B24" }}>
-      <Image
-        source={CALCULATOR_BANNER}
-        style={StyleSheet.absoluteFill}
-        contentFit="contain"
-        contentPosition="center"
-        cachePolicy="memory-disk"
-        accessibilityLabel="Free RMC calculator promotional banner"
-      />
-    </View>
-  );
-}
-
-/** IMAGE 3 — Cashfree Payments Available. */
-function CashfreeSlide({ width, height }: SlideProps) {
-  return (
-    <View style={{ width, height, backgroundColor: "#22004A" }}>
-      <Image
-        source={CASHFREE_BANNER}
-        style={StyleSheet.absoluteFill}
-        contentFit="contain"
-        contentPosition="center"
-        cachePolicy="memory-disk"
-        accessibilityLabel="Cashfree Payments promotional banner"
-      />
-    </View>
-  );
-}
-
-/** IMAGE 4 — KYC Mandatory via DigiLocker. */
-function KycSlide({ width, height }: SlideProps) {
-  return (
-    <View style={{ width, height, backgroundColor: "#080D30" }}>
-      <Image
-        source={KYC_BANNER}
-        style={StyleSheet.absoluteFill}
-        contentFit="contain"
-        contentPosition="center"
-        cachePolicy="memory-disk"
-        accessibilityLabel="Aadhaar eKYC promotional banner"
-      />
-    </View>
-  );
-}
-
-/** IMAGE 5 — customer support. */
-function SupportSlide({ width, height }: SlideProps) {
-  return (
-    <View style={{ width, height, backgroundColor: "#101B24" }}>
-      <Image
-        source={SUPPORT_BANNER}
-        style={StyleSheet.absoluteFill}
-        contentFit="contain"
-        contentPosition="center"
-        cachePolicy="memory-disk"
-        accessibilityLabel="Customer support promotional banner"
-      />
-    </View>
-  );
-}
-
-/** IMAGE 6 — India service availability: Maharashtra, Goa, Karnataka. */
-function IndiaSlide({ width, height }: SlideProps) {
-  const scale = Math.min(Math.max(width / 390, 0.82), 1.5);
-  const mapHeight = Math.min(height - 40 * scale, height * 0.82);
-  return (
-    <View style={{ width, height, backgroundColor: "#F5F7FA", padding: 16 * scale, justifyContent: "space-between" }}>
-      <LinearGradient
-        colors={["#FFFFFF", "#EDF1F6"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-      <View style={styles.slideTop}>
-        <BrandMark scale={scale} />
-        <Pill label="NOW SERVICEABLE" bg="rgba(255,90,22,0.12)" color={ORANGE_DEEP} scale={scale} />
-      </View>
-
-      <View style={[styles.slideBody, { gap: 12 * scale }]}>
-        <View style={{ flex: 1, gap: 5 * scale }}>
-          <AppText style={{ fontFamily: fonts.bold, fontSize: 21 * scale, lineHeight: 24 * scale, color: "#111315" }}>
-            Now serving across India
-          </AppText>
-          <AppText style={{ fontFamily: fonts.semibold, fontSize: 12.5 * scale, lineHeight: 17 * scale, color: "#4A5568" }}>
-            Track My RMC is live in Maharashtra, Goa & Karnataka.
-          </AppText>
-          <View style={[styles.legendRow, { marginTop: 4 * scale }]}>
-            <View style={[styles.legendDot, { backgroundColor: ORANGE }]} />
-            <AppText style={{ fontFamily: fonts.bold, fontSize: 10.5 * scale, color: "#111315" }}>
-              Maharashtra · Goa · Karnataka
-            </AppText>
-          </View>
-        </View>
-
-        <View style={{ alignItems: "center", justifyContent: "center" }}>
-          <IndiaServiceMap height={mapHeight} highlight={ORANGE} highlightStroke={ORANGE_DEEP} />
-        </View>
-      </View>
-    </View>
-  );
-}
 
 type Props = { style?: ViewStyle };
 
-/**
- * Post-login top carousel: five uploaded promotional images plus the
- * India coverage slide. Auto-advances with swipe and dot paging.
- */
 export function HomeCarousel({ style }: Props) {
   const { colors } = useTheme();
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -200,50 +38,43 @@ export function HomeCarousel({ style }: Props) {
 
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
-    setSize((prev) => (Math.abs(prev.w - width) > 0.5 || Math.abs(prev.h - height) > 0.5 ? { w: width, h: height } : prev));
+    setSize(prev => Math.abs(prev.w - width) > 0.5 || Math.abs(prev.h - height) > 0.5 ? { w: width, h: height } : prev);
   }, []);
 
-  // Keep current slide aligned when the container is (re)sized.
   useEffect(() => {
-    if (size.w > 0) {
-      scrollRef.current?.scrollTo({ x: indexRef.current * size.w, animated: false });
-    }
+    if (size.w > 0) scrollRef.current?.scrollTo({ x: indexRef.current * size.w, animated: false });
   }, [size.w]);
 
-  // Auto-advance.
   useEffect(() => {
     if (size.w <= 0) return;
-    const id = setInterval(() => {
+    const timer = setInterval(() => {
       if (interactingRef.current) return;
       const next = (indexRef.current + 1) % SLIDE_COUNT;
       indexRef.current = next;
       setIndex(next);
       scrollRef.current?.scrollTo({ x: next * size.w, animated: true });
     }, AUTO_MS);
-    return () => clearInterval(id);
+    return () => clearInterval(timer);
   }, [size.w]);
 
   const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     if (size.w <= 0) return;
-    const i = Math.round(e.nativeEvent.contentOffset.x / size.w);
-    if (i !== indexRef.current && i >= 0 && i < SLIDE_COUNT) {
-      indexRef.current = i;
-      setIndex(i);
+    const next = Math.round(e.nativeEvent.contentOffset.x / size.w);
+    if (next !== indexRef.current && next >= 0 && next < SLIDE_COUNT) {
+      indexRef.current = next;
+      setIndex(next);
     }
   }, [size.w]);
-
-  const { w, h } = size;
 
   return (
     <View
       onLayout={onLayout}
-      style={[
-        styles.wrap,
-        { borderColor: colors.border, backgroundColor: colors.isDark ? "#080A0C" : "#F7F8F6" },
-        style,
-      ]}
+      style={[styles.wrap, {
+        borderColor: colors.isDark ? glass.darkBorder : glass.lightBorder,
+        backgroundColor: colors.isDark ? glass.darkSurface : glass.lightSurface,
+      }, style]}
     >
-      {w > 0 && h > 0 ? (
+      {size.w > 0 && size.h > 0 ? (
         <>
           <ScrollView
             ref={scrollRef}
@@ -257,24 +88,27 @@ export function HomeCarousel({ style }: Props) {
             onMomentumScrollEnd={() => { interactingRef.current = false; }}
             style={StyleSheet.absoluteFill}
           >
-            <HeroSlide width={w} height={h} />
-            <CalculatorSlide width={w} height={h} />
-            <CashfreeSlide width={w} height={h} />
-            <KycSlide width={w} height={h} />
-            <SupportSlide width={w} height={h} />
-            <IndiaSlide width={w} height={h} />
+            {slides.map((slide, i) => (
+              <View key={slide.label} style={{ width: size.w, height: size.h }}>
+                <Image
+                  source={slide.image}
+                  style={StyleSheet.absoluteFill}
+                  contentFit="contain"
+                  contentPosition="center"
+                  cachePolicy="memory-disk"
+                  priority={i === 0 ? "high" : "normal"}
+                  accessibilityLabel={slide.label}
+                />
+              </View>
+            ))}
           </ScrollView>
-
           <View style={styles.dots} pointerEvents="none">
-            {Array.from({ length: SLIDE_COUNT }).map((_, i) => (
+            {slides.map((slide, i) => (
               <View
-                key={i}
-                style={[
-                  styles.dot,
-                  i === index
-                    ? { width: 18, backgroundColor: ORANGE }
-                    : { width: 6, backgroundColor: "rgba(148,163,184,0.55)" },
-                ]}
+                key={slide.label}
+                style={[styles.dot, i === index
+                  ? { width: 18, backgroundColor: colors.brand }
+                  : { width: 6, backgroundColor: colors.isDark ? "rgba(255,255,255,0.38)" : "rgba(14,17,22,0.28)" }]}
               />
             ))}
           </View>
@@ -285,50 +119,7 @@ export function HomeCarousel({ style }: Props) {
 }
 
 const styles = StyleSheet.create({
-  wrap: {
-    width: "100%",
-    maxWidth: MAX_WIDTH,
-    alignSelf: "center",
-    aspectRatio: 16 / 9,
-    borderRadius: radius.xl,
-    overflow: "hidden",
-    borderWidth: 1,
-  },
-  brandRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  brandCube: { backgroundColor: ORANGE, alignItems: "center", justifyContent: "center" },
-  pill: { borderRadius: 999, alignSelf: "flex-start" },
-  slideTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  slideBody: { flexDirection: "row", alignItems: "flex-end", flex: 1, paddingTop: 8 },
-  cashfreeCard: {
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "rgba(17,24,39,0.08)",
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-  },
-  cfDot: { width: 12, height: 12, borderRadius: 6 },
-  payIcons: { flexDirection: "row", gap: 6 },
-  payChip: { width: 26, height: 26, borderRadius: 8, alignItems: "center", justifyContent: "center" },
-  digiCard: {
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    alignItems: "center",
-  },
-  digiIcon: { width: 38, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  legendRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  legendDot: { width: 10, height: 10, borderRadius: 5 },
-  dots: {
-    position: "absolute",
-    bottom: 10,
-    left: 0,
-    right: 0,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 5,
-  },
+  wrap: { width: "100%", maxWidth: MAX_WIDTH, alignSelf: "center", aspectRatio: 16 / 9, borderRadius: radius.xl, overflow: "hidden", borderWidth: 1 },
+  dots: { position: "absolute", bottom: 10, left: 0, right: 0, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 5 },
   dot: { height: 6, borderRadius: 3 },
 });
