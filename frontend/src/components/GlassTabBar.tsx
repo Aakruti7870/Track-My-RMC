@@ -93,8 +93,8 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick" }: 
           style={[
             styles.bar,
             {
-              borderColor: colors.isDark ? "rgba(255,255,255,0.10)" : "rgba(20,24,31,0.08)",
-              backgroundColor: colors.isDark ? "rgba(20,24,31,0.76)" : "rgba(255,255,255,0.78)",
+              borderColor: colors.isDark ? "rgba(255,154,61,0.26)" : "rgba(20,24,31,0.08)",
+              backgroundColor: colors.surfaceSecondary,
               shadowColor: colors.shadow,
             },
           ]}
