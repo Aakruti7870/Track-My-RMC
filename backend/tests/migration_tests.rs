@@ -64,8 +64,15 @@ async fn existing_installation_upgrades_without_changing_checksums_or_records(po
     .fetch_all(&pool)
     .await
     .unwrap();
-    let expected_versions: Vec<i64> = all.iter().filter(|migration| migration.version > 18).map(|migration| migration.version).collect();
-    assert_eq!(versions, expected_versions, "Every available forward migration must apply");
+    let expected_versions: Vec<i64> = all
+        .iter()
+        .filter(|migration| migration.version > 18)
+        .map(|migration| migration.version)
+        .collect();
+    assert_eq!(
+        versions, expected_versions,
+        "Every available forward migration must apply"
+    );
 }
 
 #[tokio::test]
