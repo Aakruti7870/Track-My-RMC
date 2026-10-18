@@ -21,7 +21,7 @@ export default function CustomerLayout() {
   if (!ready) return null;
 
   return (
-    <Tabs backBehavior="history" screenOptions={{ headerShown: false }} tabBar={(props) => <GlassTabBar {...props} tabs={TABS} centerLabel="New" />}>
+    <Tabs backBehavior="history" screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: 'transparent' } }} tabBar={(props) => <GlassTabBar {...props} tabs={TABS} centerLabel="New" />}>
       {TABS.map((tab) => (
         <Tabs.Screen key={tab.name} name={tab.name} />
       ))}

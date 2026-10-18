@@ -36,40 +36,33 @@ describe('final login and customer hero guards', () => {
     assert.doesNotMatch(login, /textDecorationLine\s*:\s*["']underline["']/);
   });
 
-  it('renders all five uploaded banners followed by India coverage', () => {
+  it('renders exactly five new banners in the approved order', () => {
     assert.ok(home.includes('HomeCarousel'));
     assert.ok(carousel.includes('const AUTO_MS = 4500'));
-    assert.ok(carousel.includes('const SLIDE_COUNT = 6'));
+    assert.ok(carousel.includes('const SLIDE_COUNT = SLIDES.length'));
     assert.ok(carousel.includes('pagingEnabled'));
     assert.ok(carousel.includes('aspectRatio: 16 / 9'));
-
-    const slides = ['<HeroSlide', '<CalculatorSlide', '<CashfreeSlide', '<KycSlide', '<SupportSlide', '<IndiaSlide'];
-    const positions = slides.map(slide => carousel.indexOf(slide));
-    assert.ok(positions.every(position => position >= 0));
-    assert.ok(positions.every((position, index) => index === 0 || position > positions[index - 1]));
-  });
-
-  it('resolves every carousel image import to a real uploaded file', () => {
-    const imports = [...carousel.matchAll(/require\("([^"]+)"\)/g)].filter(([, asset]) => asset.startsWith('../../assets/images/'));
-    assert.equal(imports.length, 5);
-    for (const [, relativeAsset] of imports) {
-      const absoluteAsset = path.resolve(root, 'src/components', relativeAsset);
-      assert.ok(fs.existsSync(absoluteAsset), `Missing carousel image: ${relativeAsset}`);
-    }
-    for (const filename of [
-      'RMC truck Banner .png',
-      'Calculator Banner.png',
-      'Cashfree Banner.png',
-      'KYC banner .png',
-      'Customer support Banner .png',
-    ]) {
-      assert.ok(carousel.includes(filename));
-    }
+    const filenames = ['Mixer.png', 'KYC-verification.png', 'Free-Calculator.png', 'Cashfree.png', 'CountryMap.png'];
+    const imports = carousel.split("\n").filter(line => line.includes('source: require('))
+      .map(line => line.split('assets/images/')[1]?.split('"')[0]);
+    assert.deepEqual(imports.map(file => path.basename(file)), filenames);
+    for (const file of imports) assert.ok(fs.existsSync(path.resolve(root, 'src/components', file)), file);
     assert.ok(carousel.includes('contentFit="contain"'));
+    assert.ok(!carousel.includes('support.png'));
   });
 
-  it('limits the India coverage banner to the approved launch regions', () => {
-    assert.ok(carousel.includes('Maharashtra, Goa & Karnataka'));
-    assert.ok(carousel.includes('Maharashtra · Goa · Karnataka'));
+  it('uses two theme backgrounds with a 35 percent image layer and glass card surfaces', () => {
+    const layout = fs.readFileSync(path.join(root, 'app/_layout.tsx'), 'utf8');
+    const colors = fs.readFileSync(path.join(root, 'src/theme/tokens.ts'), 'utf8');
+    const card = fs.readFileSync(path.join(root, 'src/components/ui/Card.tsx'), 'utf8');
+    for (const image of ['Background Light Theme.png', 'Background Dark Theme.png']) {
+      assert.ok(layout.includes(image));
+      assert.ok(fs.existsSync(path.join(root, 'assets/images', image)));
+    }
+    assert.ok(fs.existsSync(path.join(root, 'assets/images', 'Background Light Theme.PNG')));
+    assert.ok(layout.includes('themeArtwork: { opacity: 0.35 }'));
+    assert.ok(layout.includes('backgroundColor: "transparent"'));
+    assert.ok(colors.includes('surfaceSecondary: "rgba('));
+    assert.ok(card.includes('backgroundColor: colors.surfaceSecondary'));
   });
 });

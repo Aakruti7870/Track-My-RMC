@@ -3,6 +3,9 @@ import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
+
+const SUPPORT_BANNER = require("../assets/images/support.png");
 
 import { apiErrorDetail, apiPost } from "@/src/api/client";
 import { useAuth } from "@/src/auth/AuthContext";
@@ -106,6 +109,7 @@ export default function Support() {
 
   return <View style={{ flex: 1, backgroundColor: colors.surface }}><View style={{ height: insets.top }} />
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.page}>
+      <Image source={SUPPORT_BANNER} style={{ width: "100%", aspectRatio: 16 / 9, borderRadius: radius.lg }} contentFit="contain" cachePolicy="memory-disk" accessibilityLabel="TrackMyRMC customer support banner" />
       <View style={{ gap: spacing.sm }}><AppText variant="title">TrackMyRMC Support</AppText><AppText variant="bodyMuted">Tap the issue and get an instant answer. Type only when you need more help.</AppText>
         <Button testID="support-place-order" label="Place Order with Agent" variant="outline" onPress={() => router.push("/new-order?assistant=1" as never)}
           accessibilityHint="Prepares an order for review and requires explicit confirmation before placement" />

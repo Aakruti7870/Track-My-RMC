@@ -140,7 +140,7 @@ export default function CustomerMore() {
             >
               <View style={[styles.moduleIcon, { backgroundColor: colors.brandSoft }]}>
                 {module.symbol
-                  ? <VectorSymbol name={module.symbol} size={37} />
+                  ? <VectorSymbol name={module.symbol} size={36} />
                   : <Ionicons name={module.icon} size={19} color={colors.brand} />}
               </View>
               <View style={{ flex: 1, gap: 2 }}>
@@ -182,7 +182,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   item: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 68, borderWidth: 1, borderRadius: radius.md, padding: spacing.md },
-  moduleIcon: { width: 38, height: 38, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
+  moduleIcon: { width: 42, height: 42, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
   logout: {
     flexDirection: "row",
     alignItems: "center",
