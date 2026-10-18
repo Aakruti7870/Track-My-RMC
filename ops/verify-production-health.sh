@@ -3,9 +3,9 @@
 # the exact deployed release and web/API assets through the trusted EC2 origin.
 set -euo pipefail
 
-: "\${AWS_REGION:?Missing AWS_REGION}"
-: "\${INSTANCE_ID:?Missing INSTANCE_ID}"
-: "\${RELEASE_SHA:?Missing RELEASE_SHA}"
+: "${AWS_REGION:?Missing AWS_REGION}"
+: "${INSTANCE_ID:?Missing INSTANCE_ID}"
+: "${RELEASE_SHA:?Missing RELEASE_SHA}"
 [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Invalid release SHA' >&2; exit 1; }
 
 BASE_URL='https://trackmyrmc.com'
@@ -45,33 +45,33 @@ set -euo pipefail
 service='trackmyrmc-backend.service'
 [[ "$(systemctl is-active "$service")" == 'active' ]] || { echo 'Backend service not active' >&2; exit 1; }
 exec_line="$(systemctl show "$service" -p ExecStart --value)"
-[[ "$exec_line" == *"/opt/trackmyrmc/releases/backend-\${EXPECTED_SHA}"* ]] || {
+[[ "$exec_line" == *"/opt/trackmyrmc/releases/backend-${EXPECTED_SHA}"* ]] || {
   echo 'Running backend release does not match verified main commit' >&2
   exit 1
 }
 base='https://trackmyrmc.com'
 curl_opts=(--fail --silent --show-error --max-time 15 --resolve 'trackmyrmc.com:443:127.0.0.1')
-health="$(curl "\${curl_opts[@]}" "$base/health")"
+health="$(curl "${curl_opts[@]}" "$base/health")"
 if ! printf '%s' "$health" | jq -e '.status == "ok" and .database == "connected"' >/dev/null; then
   echo 'Origin health JSON is not healthy' >&2
   exit 1
 fi
-healthz="$(curl "\${curl_opts[@]}" "$base/healthz")"
+healthz="$(curl "${curl_opts[@]}" "$base/healthz")"
 [[ "$healthz" == 'ok' ]] || { echo 'Origin /healthz mismatch' >&2; exit 1; }
-home_html="$(curl "\${curl_opts[@]}" "$base/")"
+home_html="$(curl "${curl_opts[@]}" "$base/")"
 [[ "$home_html" == *'_expo/static/'* ]] || { echo 'Expo bundle missing at origin' >&2; exit 1; }
-admin_html="$(curl "\${curl_opts[@]}" "$base/admin/")"
+admin_html="$(curl "${curl_opts[@]}" "$base/admin/")"
 if [[ "$admin_html" =~ src=\"(/admin/assets/[^\"]+\.js)\" ]]; then
-  admin_js="\${BASH_REMATCH[1]}"
+  admin_js="${BASH_REMATCH[1]}"
 else
   echo 'Admin JS asset reference missing' >&2
   exit 1
 fi
-curl "\${curl_opts[@]}" -o /dev/null "$base$admin_js"
+curl "${curl_opts[@]}" -o /dev/null "$base$admin_js"
 echo "Trusted origin verification passed: release $EXPECTED_SHA, API, Expo and admin asset."
 REMOTE
 )"
-REMOTE_COMMAND="EXPECTED_SHA='\${RELEASE_SHA}'"$'\n'"$ORIGIN_SCRIPT"
+REMOTE_COMMAND="EXPECTED_SHA='${RELEASE_SHA}'"$'\n'"$ORIGIN_SCRIPT"
 PARAMS="$(jq -nc --arg command "$REMOTE_COMMAND" '{commands: [$command]}')"
 COMMAND_ID="$(aws ssm send-command \
   --region "$AWS_REGION" \
