@@ -267,7 +267,7 @@ pub async fn save_driver_profile(
 
     let mut tx = state.db.begin().await?;
     let driver_id: Uuid = sqlx::query_scalar(
-        "SELECT id FROM users WHERE regexp_replace(phone, '[^0-9]', '', 'g') = $1 AND role='driver' AND is_active=TRUE",
+        "SELECT id FROM users WHERE regexp_replace(phone, '[^0-9]', '', 'g') = $1 AND role='driver' AND is_active=TRUE AND is_verified=TRUE FOR UPDATE",
     ).bind(&phone).fetch_optional(&mut *tx).await?
         .ok_or_else(|| AppError::NotFound("Registered active driver not found; complete driver WhatsApp registration first".into()))?;
 
