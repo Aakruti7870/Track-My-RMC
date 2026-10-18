@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 import { PlantData } from "./PlantCard";
 import { AppText } from "./ui/AppText";
+import { useTheme } from "@/src/theme/ThemeProvider";
 import { LatLng, validLatLng } from "@/src/maps/geo";
 import { loadGoogleMaps, onMapsAuthFailure, MapsApi, MapsMap, MapsMarker } from "@/src/maps/googleMapsLoader";
 
@@ -16,6 +17,7 @@ type Props = {
 const KEY = (process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY || "").trim();
 
 export function PlantMap({ plants, userLocation, selectedPlantId, onSelectPlant, onRegionChange }: Props) {
+  const { colors } = useTheme();
   const host = useRef<HTMLDivElement | null>(null);
   const map = useRef<MapsMap | null>(null);
   const markers = useRef<MapsMarker[]>([]);
@@ -106,10 +108,10 @@ export function PlantMap({ plants, userLocation, selectedPlantId, onSelectPlant,
       style: { position: "absolute", inset: 0, width: "100%", height: "100%" },
     })}
     {!api || error ? <View accessibilityRole={error ? "alert" : undefined}
-      style={{ position: "absolute", inset: 0, padding: 16, backgroundColor: "#F6F8FA", justifyContent: "center", gap: 12 }}>
+      style={{ position: "absolute", inset: 0, padding: 16, backgroundColor: colors.surfaceElevated, justifyContent: "center", gap: 12 }}>
       <AppText>{error || "Loading Google Maps…"}</AppText>
       {error ? <Pressable accessibilityRole="button" onPress={() => window.location.reload()}>
-        <AppText style={{ color: "#F25C05" }}>Reload map</AppText>
+        <AppText style={{ color: colors.brand }}>Reload map</AppText>
       </Pressable> : null}
     </View> : null}
   </View>;
