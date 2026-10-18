@@ -335,6 +335,22 @@ pub async fn add_plant_staff(
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
+    // Staff linking only: never create users, grant a different global role, or
+    // enrol drivers in the email-OTP plant_staff system.
+    const allowed = ["dispatcher", "operator", "supervisor", "accountant",
+                     "quality_engineer", "fleet_manager", "store_manager"];
+    if !allowed.contains(&payload.role.as_str()) {
+        return Err(AppError::BadRequest("Select an existing non-privileged plant staff role".into()));
+    }
+    let stored_role: Option<String> = sqlx::query_scalar(
+        "SELECT role FROM users WHERE id=$1 AND is_active=TRUE",
+    ).bind(payload.user_id).fetch_optional(&state.db).await?;
+    if stored_role.as_deref() != Some(payload.role.as_str()) {
+        return Err(AppError::Conflict(
+            "The selected existing user must already have the chosen staff role".into(),
+        ));
+    }
+
     sqlx::query(
         r#"
         INSERT INTO plant_staff (plant_id, user_id, role, is_active)
