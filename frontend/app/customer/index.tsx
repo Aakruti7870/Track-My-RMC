@@ -95,7 +95,7 @@ export default function CustomerHome() {
             accessibilityRole="button"
             accessibilityLabel={action.label}
             onPress={() => onAction(action.key)}
-            style={({ pressed }) => [styles.tile, styles.quickTile, { width: fourQuickColumns ? "24%" : "49%", backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.75 : 1 }]}
+            style={({ pressed }) => [styles.tile, styles.quickTile, { width: fourQuickColumns ? "24.25%" : "49%", backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.75 : 1 }]}
           >
             <VectorSymbol name={action.symbol} size={75} />
             <AppText numberOfLines={2} style={[styles.tileLabel, { color: colors.onSurface }]}>{action.label}</AppText>
@@ -116,7 +116,7 @@ export default function CustomerHome() {
             accessibilityRole="button"
             accessibilityLabel={module.label}
             onPress={() => router.push(module.route)}
-            style={({ pressed }) => [styles.tile, styles.toolTile, { width: fourToolColumns ? "24%" : "49%", backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.75 : 1 }]}
+            style={({ pressed }) => [styles.tile, styles.toolTile, { width: fourToolColumns ? "24.25%" : "49%", backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.75 : 1 }]}
           >
             {module.symbol ? <VectorSymbol name={module.symbol} size={52} /> : <Ionicons name={module.icon} size={52} color={colors.brand} />}
             <AppText numberOfLines={3} style={[styles.tileLabel, { color: colors.onSurface }]}>{module.key === "projects" ? "Project Hub" : module.label}</AppText>
@@ -137,7 +137,7 @@ export default function CustomerHome() {
             accessibilityRole="button"
             accessibilityLabel={`${service.label} enquiry`}
             onPress={() => openService(service.key)}
-            style={({ pressed }) => [styles.tile, styles.serviceTile, { width: "32%", backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.75 : 1 }]}
+            style={({ pressed }) => [styles.tile, styles.serviceTile, { width: "32.5%", backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.75 : 1 }]}
           >
             <VectorSymbol name={service.symbol} size={58} />
             <AppText numberOfLines={2} style={[styles.serviceLabel, { color: colors.onSurface }]}>{service.label}</AppText>
