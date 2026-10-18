@@ -35,7 +35,6 @@ function ThemedNavigator() {
           : require("../assets/images/Background Light Theme.PNG")}
         style={[StyleSheet.absoluteFill, styles.themeArtwork]}
         resizeMode="cover"
-        pointerEvents="none"
         accessible={false}
       />
       <Stack screenOptions={{ headerShown: false, animation: "fade", contentStyle: { backgroundColor: "transparent" } }} />
