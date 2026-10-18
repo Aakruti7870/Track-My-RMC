@@ -9,8 +9,8 @@ pub mod customer_routes;
 pub mod customer_services;
 pub mod discovery;
 pub mod dispatcher_routes;
-pub mod driver_routes;
 pub mod driver_profile_routes;
+pub mod driver_routes;
 pub mod finance_ops_routes;
 pub mod health;
 pub mod hr_routes;
@@ -279,7 +279,8 @@ pub fn build_app_router(state: AppState) -> Router {
         )
         .route(
             "/api/business/plants/:plant_id/drivers",
-            get(driver_profile_routes::list_plant_drivers).put(driver_profile_routes::save_driver_profile),
+            get(driver_profile_routes::list_plant_drivers)
+                .put(driver_profile_routes::save_driver_profile),
         )
         .route(
             "/api/business/plants/:plant_id/customers",
@@ -426,7 +427,10 @@ pub fn build_app_router(state: AppState) -> Router {
         )
         // --- Driver Domain ---
         .route("/api/driver/home", get(driver_routes::get_driver_home))
-        .route("/api/driver/identity", get(driver_profile_routes::get_driver_identity))
+        .route(
+            "/api/driver/identity",
+            get(driver_profile_routes::get_driver_identity),
+        )
         .route(
             "/api/driver/attendance",
             get(driver_routes::get_driver_attendance),
