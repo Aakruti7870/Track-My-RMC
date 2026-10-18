@@ -214,8 +214,7 @@ pub async fn send_signed_in_otp(
     let identifier = deletion_identifier(&user.role, &user.phone, user.email.as_deref())?;
     let (destination, channel) = normalize_identifier(&identifier)?;
     // The signed-in flow reports cooldown errors instead of claiming a code was sent.
-    OtpEngine::check_rate_limit(&state.db, &destination, state.config.otp_cooldown_seconds)
-        .await?;
+    OtpEngine::check_rate_limit(&state.db, &destination, state.config.otp_cooldown_seconds).await?;
     send_deletion_otp(&state, &destination, channel).await?;
     Ok(Json(json!({"success":true,"channel":channel})))
 }
