@@ -64,10 +64,8 @@ async fn existing_installation_upgrades_without_changing_checksums_or_records(po
     .fetch_all(&pool)
     .await
     .unwrap();
-    assert_eq!(
-        versions,
-        vec![19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]
-    );
+    let expected_versions: Vec<i64> = all.iter().filter(|migration| migration.version > 18).map(|migration| migration.version).collect();
+    assert_eq!(versions, expected_versions, "Every available forward migration must apply");
 }
 
 #[tokio::test]
@@ -94,6 +92,8 @@ async fn migrations_apply_from_an_empty_database() {
         "plant_listing_requests",
         "google_plant_quote_interests",
         "customer_service_enquiries",
+        "driver_employment_profiles",
+        "driver_employment_audit",
         "play_review_fixtures",
         "play_review_login_attempts",
     ] {
