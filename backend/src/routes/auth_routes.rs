@@ -55,7 +55,8 @@ pub async fn get_me(
     // They have no TOTP enrollment challenge; marking them as ordinary staff
     // incorrectly sends the Play Review Owner to /mfa-setup with a login JWT.
     // Do not change MFA policy for any real Plant Staff or owner account.
-    let review_fixture = crate::services::play_review::is_review_fixture(&state, auth_user.user_id).await?;
+    let review_fixture =
+        crate::services::play_review::is_review_fixture(&state, auth_user.user_id).await?;
     let role_label = match user_resp.role.as_str() {
         "owner" | "plant_owner" => "Plant Owner".to_string(),
         other => other
