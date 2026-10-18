@@ -20,14 +20,14 @@ export function Card({ children, style, padded = true, variant = "default", test
   const visual = {
     default: {
       backgroundColor: colors.surfaceSecondary,
-      borderColor: colors.isDark ? "rgba(255,255,255,0.20)" : "rgba(255,255,255,0.92)",
-      shadowOpacity: colors.isDark ? 0.2 : 0.06,
+      borderColor: colors.isDark ? "rgba(255,154,61,0.28)" : "rgba(255,255,255,0.92)",
+      shadowOpacity: colors.isDark ? 0.13 : 0.06,
       elevation: colors.isDark ? 2 : 1,
     },
     elevated: {
       backgroundColor: colors.surfaceElevated,
-      borderColor: colors.isDark ? "rgba(255,255,255,0.26)" : "rgba(255,255,255,0.96)",
-      shadowOpacity: colors.isDark ? 0.34 : 0.11,
+      borderColor: colors.isDark ? "rgba(255,154,61,0.38)" : "rgba(255,255,255,0.96)",
+      shadowOpacity: colors.isDark ? 0.19 : 0.11,
       elevation: 5,
     },
     muted: {
@@ -58,7 +58,7 @@ export function Card({ children, style, padded = true, variant = "default", test
         visual,
         {
           padding: padded ? spacing.lg : 0,
-          shadowColor: colors.shadow,
+          shadowColor: colors.isDark ? "#FF9A3D" : colors.shadow,
         },
         style,
       ]}
