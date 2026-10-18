@@ -645,7 +645,7 @@ async fn play_review_owner_session_skips_staff_enrollment_without_weakening_staf
     assert_eq!(review_me["role"], "owner");
     assert_eq!(review_me["mfa_enabled"], false);
     assert_eq!(review_me["mfa_configured"], false);
-    assert_eq!(review_me["plant_id"].is_null(), false);
+    assert!(!review_me["plant_id"].is_null());
 
     // A review session token is NOT an MFA enrollment challenge. The backend
     // stays fail-closed even though its /me response no longer triggers the UI.
