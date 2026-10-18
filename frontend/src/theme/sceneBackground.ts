@@ -1,4 +1,4 @@
-import { Image, Platform, type ViewStyle } from "react-native";
+import { Platform, type ViewStyle } from "react-native";
 import type { ThemeColors } from "@/src/theme/tokens";
 
 /**
@@ -19,7 +19,11 @@ export function getThemedSceneStyle(colors: ThemeColors): ViewStyle {
   const asset = colors.isDark
     ? require("../../assets/images/Background Dark Theme.png")
     : require("../../assets/images/Background Light Theme.png");
-  const uri = Image.resolveAssetSource(asset).uri;
+  // Metro's web asset modules expose a URL directly or in a { uri } object.
+  // React Native Web's Image does NOT implement Image.resolveAssetSource.
+  const source = asset as string | { uri?: string; default?: { uri?: string } };
+  const uri = typeof source === "string" ? source : source?.uri ?? source?.default?.uri;
+  if (!uri) return { backgroundColor };
   const veil = colors.isDark ? "rgba(14,17,22,0.65)" : "rgba(247,248,249,0.65)";
   return {
     backgroundColor,
