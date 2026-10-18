@@ -676,7 +676,7 @@ const styles = StyleSheet.create({
   screenshotCard:{borderWidth:1,borderRadius:22,padding:16,gap:14,elevation:2,shadowOffset:{width:0,height:8},shadowOpacity:0.07,shadowRadius:18},
   googleListingCard:{backgroundColor:"#FFFFFF",borderWidth:1,borderColor:"#E2E8F0",borderRadius:16,padding:14,gap:8},
   googleListingCaption:{fontFamily:fonts.medium,fontSize:12,color:"#64748B",marginBottom:5},
-  googlePlaceLink:{minHeight:42,flexDirection:"row",gap:7,alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:"#F25C05",borderRadius:10},
+  googlePlaceLink:{minHeight:42,flexDirection:"row",gap:7,alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:referenceLightTheme.buttonBorder,borderRadius:10},
   screenshotPlantName:{fontFamily:fonts.bold,fontSize:17,lineHeight:22},
   screenshotAddress:{flex:1,fontFamily:fonts.medium,fontSize:13,lineHeight:19},
   plantTopRow:{flexDirection:"row",alignItems:"flex-start",gap:12},
