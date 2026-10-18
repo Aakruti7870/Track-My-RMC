@@ -153,6 +153,7 @@ jobs:
         run: |
           set -euo pipefail
           bash -n ops/aws-deploy-ec2.sh
+          bash -n ops/verify-production-health.sh
 
       - name: Rust formatting
         working-directory: backend
@@ -388,53 +389,8 @@ jobs:
 
           echo "SSM deployment completed."
 
-      - name: Verify public production health
-        run: |
-          set -euo pipefail
-
-          BASE_URL="https://trackmyrmc.com"
-
-          curl \
-            --retry 10 \
-            --retry-all-errors \
-            --retry-delay 3 \
-            -fsS "${BASE_URL}/health"
-
-          curl \
-            --retry 10 \
-            --retry-all-errors \
-            --retry-delay 3 \
-            -fsS "${BASE_URL}/" \
-            | grep -F '_expo/static/' >/dev/null
-
-          curl \
-            --retry 10 \
-            --retry-all-errors \
-            --retry-delay 3 \
-            -fsSI "${BASE_URL}/" \
-            | grep -Eiq '^HTTP/[^ ]+ 200'
-
-          ADMIN_HTML="$(curl \
-            --retry 10 \
-            --retry-all-errors \
-            --retry-delay 3 \
-            -fsS "${BASE_URL}/admin/")"
-
-          ADMIN_JS="$(printf '%s' "$ADMIN_HTML" \
-            | grep -Eo 'src="/admin/assets/[^"]+\.js"' \
-            | head -n 1 \
-            | cut -d '"' -f 2)"
-
-          test -n "$ADMIN_JS"
-
-          curl \
-            --retry 10 \
-            --retry-all-errors \
-            --retry-delay 3 \
-            -fsSI "${BASE_URL}${ADMIN_JS}" \
-            | grep -Eiq '^HTTP/[^ ]+ 200'
-
-          echo "Production health checks passed."
+      - name: Verify production release via trusted origin and Cloudflare edge
+        run: bash ops/verify-production-health.sh
 
       - name: Deployment summary
         if: success()
