@@ -50,9 +50,7 @@ export function KycBanner({ status }: { status: string }) {
         },
       ]}
     >
-      <View style={[styles.icon, { backgroundColor: isVerified ? tone : colors.surfaceSecondary, borderColor: tone + "32" }]}>
-        <VectorSymbol name={cfg.symbol} size={34} />
-      </View>
+      <VectorSymbol name={cfg.symbol} size={45} />
       <View style={styles.copy}>
         <AppText variant="eyebrow" color={tone}>{isVerified ? "IDENTITY STATUS" : "VERIFICATION"}</AppText>
         <AppText style={{ fontFamily: fonts.bold, fontSize: fontSize.base, lineHeight: 20, color: isVerified ? tone : colors.onSurface }}>
@@ -80,14 +78,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     shadowRadius: 16,
     elevation: 0,
-  },
-  icon: {
-    width: 42,
-    height: 42,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
   },
   copy: { minWidth: 0, flex: 1, gap: 1 },
   trailing: {
