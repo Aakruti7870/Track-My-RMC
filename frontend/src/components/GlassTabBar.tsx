@@ -66,9 +66,7 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick" }: 
         }}
       >
         <View style={[styles.activeIndicator, { backgroundColor: focused ? colors.brand : "transparent" }]} />
-        <View style={[styles.iconWrap, focused && { backgroundColor: colors.brandSoft, borderColor: colors.brand + "38" }]}>
-          {symbol ? <VectorSymbol name={symbol} size={31} /> : <Ionicons name={focused ? tab.active : tab.icon} size={22} color={focused ? colors.brand : colors.onSurfaceTertiary} />}
-        </View>
+        {symbol ? <VectorSymbol name={symbol} size={35} /> : <Ionicons name={focused ? tab.active : tab.icon} size={35} color={focused ? colors.brand : colors.onSurfaceTertiary} />}
         <AppText
           numberOfLines={1}
           style={{
@@ -99,7 +97,7 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick" }: 
             },
           ]}
         >
-          {leftRoutes.map(renderTab)}
+          <View style={styles.tabSide}>{leftRoutes.map(renderTab)}</View>
 
           <View style={styles.centerSlot}>
             <Pressable
@@ -125,7 +123,7 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick" }: 
             <AppText style={[styles.centerLabel, { color: colors.brand }]}>{centerLabel}</AppText>
           </View>
 
-          {rightRoutes.map(renderTab)}
+          <View style={styles.tabSide}>{rightRoutes.map(renderTab)}</View>
         </BlurView>
       </View>
 
@@ -149,9 +147,9 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 18,
   },
-  item: { flex: 1, minHeight: 58, alignItems: "center", justifyContent: "flex-end", gap: 3, paddingVertical: 2, minWidth: 0 },
+  tabSide: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "flex-end" },
+  item: { flex: 1, minWidth: 0, minHeight: 58, alignItems: "center", justifyContent: "flex-end", gap: 3, paddingVertical: 2 },
   activeIndicator: { width: 18, height: 3, borderRadius: radius.pill, marginBottom: 1 },
-  iconWrap: { width: 44, height: 34, borderRadius: radius.md, borderWidth: 1, borderColor: "transparent", alignItems: "center", justifyContent: "center" },
   centerSlot: { width: 72, minHeight: 60, alignItems: "center", justifyContent: "flex-end", marginTop: -30 },
   centerButton: {
     width: 58,
