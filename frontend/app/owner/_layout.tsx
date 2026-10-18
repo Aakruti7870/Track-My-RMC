@@ -3,6 +3,8 @@ import { Redirect, Tabs } from "expo-router";
 
 import { useAuth } from "@/src/auth/AuthContext";
 import { GlassTabBar, TabDef } from "@/src/components/GlassTabBar";
+import { useTheme } from "@/src/theme/ThemeProvider";
+import { getThemedSceneStyle } from "@/src/theme/sceneBackground";
 
 const TABS: TabDef[] = [
   { name: "index", label: "Home", icon: "home-outline", active: "home" },
@@ -13,6 +15,7 @@ const TABS: TabDef[] = [
 
 export default function OwnerLayout() {
   const { hydrating, token, user } = useAuth();
+  const { colors } = useTheme();
   if (hydrating) return null;
   if (!token || !user) return <Redirect href="/login" />;
   // The Rust API still persists the legacy "owner" alias for plant_owner.
@@ -20,7 +23,7 @@ export default function OwnerLayout() {
   if (user.role !== "plant_owner" && user.role !== "owner") return <Redirect href="/role-home" />;
 
   return (
-    <Tabs screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: 'transparent' } }} tabBar={(props) => <GlassTabBar {...props} tabs={TABS} />}>
+    <Tabs screenOptions={{ headerShown: false, sceneStyle: getThemedSceneStyle(colors) }} tabBar={(props) => <GlassTabBar {...props} tabs={TABS} />}>
       {TABS.map((t) => (
         <Tabs.Screen key={t.name} name={t.name} />
       ))}

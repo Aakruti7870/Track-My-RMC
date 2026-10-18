@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 
 import { useTheme } from "@/src/theme/ThemeProvider";
+import { ThemedScreen } from "@/src/components/ThemedScreen";
 import { useGet } from "@/src/hooks/useApi";
 import { AppText } from "@/src/components/ui/AppText";
 import { Skeleton } from "@/src/components/ui/Skeleton";
@@ -32,6 +33,7 @@ export default function CustomerOrders() {
   const filtered = (data?.orders || []).filter((order) => filter.match(order.status.toUpperCase()));
 
   return (
+    <ThemedScreen>
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
       <View style={{ height: insets.top }} />
       {/* Sticky header + chip row */}
@@ -108,6 +110,7 @@ export default function CustomerOrders() {
         />
       )}
     </View>
+    </ThemedScreen>
   );
 }
 

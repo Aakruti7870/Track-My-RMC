@@ -3,6 +3,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { useCallback, useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Image, StyleSheet, View } from "react-native";
+import { getThemedSceneStyle } from "@/src/theme/sceneBackground";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { useFonts } from "expo-font";
@@ -29,15 +30,8 @@ function ThemedNavigator() {
   const { colors } = useTheme();
   return (
     <View style={[styles.appCanvas, { backgroundColor: colors.isDark ? "#0E1116" : "#F7F8F9" }]}>
-      <Image
-        source={colors.isDark
-          ? require("../assets/images/Background Dark Theme.png")
-          : require("../assets/images/Background Light Theme.png")}
-        style={[StyleSheet.absoluteFill, styles.themeArtwork]}
-        resizeMode="cover"
-        accessible={false}
-      />
-      <Stack screenOptions={{ headerShown: false, animation: "fade", contentStyle: { backgroundColor: "transparent" } }} />
+      {/* Opaque route scenes prevent a previously visited page from bleeding through. */}
+      <Stack screenOptions={{ headerShown: false, animation: "fade", contentStyle: getThemedSceneStyle(colors) }} />
     </View>
   );
 }
@@ -106,7 +100,6 @@ export default function RootLayout() {
 
 const styles = StyleSheet.create({
   appCanvas: { flex: 1 },
-  themeArtwork: { opacity: 0.35 },
   openingSplash: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
