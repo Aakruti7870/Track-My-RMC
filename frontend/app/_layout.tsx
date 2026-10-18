@@ -32,7 +32,7 @@ function ThemedNavigator() {
       <Image
         source={colors.isDark
           ? require("../assets/images/Background Dark Theme.png")
-          : require("../assets/images/Background Light Theme.PNG")}
+          : require("../assets/images/Background Light Theme.png")}
         style={[StyleSheet.absoluteFill, styles.themeArtwork]}
         resizeMode="cover"
         accessible={false}

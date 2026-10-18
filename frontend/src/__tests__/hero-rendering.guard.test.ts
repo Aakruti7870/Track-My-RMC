@@ -55,10 +55,11 @@ describe('final login and customer hero guards', () => {
     const layout = fs.readFileSync(path.join(root, 'app/_layout.tsx'), 'utf8');
     const colors = fs.readFileSync(path.join(root, 'src/theme/tokens.ts'), 'utf8');
     const card = fs.readFileSync(path.join(root, 'src/components/ui/Card.tsx'), 'utf8');
-    for (const image of ['Background Light Theme.PNG', 'Background Dark Theme.png']) {
+    for (const image of ['Background Light Theme.png', 'Background Dark Theme.png']) {
       assert.ok(layout.includes(image));
       assert.ok(fs.existsSync(path.join(root, 'assets/images', image)));
     }
+    assert.ok(fs.existsSync(path.join(root, 'assets/images', 'Background Light Theme.PNG')));
     assert.ok(layout.includes('themeArtwork: { opacity: 0.35 }'));
     assert.ok(layout.includes('backgroundColor: "transparent"'));
     assert.ok(colors.includes('surfaceSecondary: "rgba('));
