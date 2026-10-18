@@ -18,15 +18,18 @@ export function GlassCardArtwork({
 }) {
   const { colors } = useTheme();
   return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+    <View
+      pointerEvents="none"
+      style={[StyleSheet.absoluteFillObject, { borderRadius: cornerRadius, overflow: "hidden" }]}
+    >
       <Image
-      accessible={false}
-      source={colors.isDark
+        accessible={false}
+        source={colors.isDark
         ? require("../../../assets/images/trackmyrmc-dark-glass-card.webp")
         : require("../../../assets/images/trackmyrmc-glass-card-light.webp")}
-      resizeMode="stretch"
-      fadeDuration={0}
-      style={[StyleSheet.absoluteFillObject, { borderRadius: cornerRadius, opacity }]}
+        resizeMode="stretch"
+        fadeDuration={0}
+        style={{ width: "100%", height: "100%", opacity }}
       />
     </View>
   );
