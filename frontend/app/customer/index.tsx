@@ -55,6 +55,9 @@ const SERVICES: readonly { key: ServiceKey; label: string; symbol: VectorSymbolN
 
 export default function CustomerHome() {
   const { colors } = useTheme();
+  const [quickGridWidth, setQuickGridWidth] = React.useState(0);
+  // At small viewports, two columns preserve the requested 75-unit SVGs without clipping.
+  const fourQuickColumns = quickGridWidth >= 355;
   const { user } = useAuth();
   const router = useRouter();
   const toast = useToast();
@@ -81,7 +84,10 @@ export default function CustomerHome() {
   const quickActions = (
     <Card testID="home-quick-actions" style={styles.groupCard}>
       <AppText style={[styles.sectionTitle, { color: colors.onSurface }]}>Quick Actions</AppText>
-      <View style={styles.grid}>
+      <View style={styles.grid} onLayout={event => {
+        const width = event.nativeEvent.layout.width;
+        setQuickGridWidth(previous => Math.abs(previous - width) > 1 ? width : previous);
+      }}>
         {ACTIONS.map((action) => (
           <Pressable
             key={action.key}
@@ -89,11 +95,9 @@ export default function CustomerHome() {
             accessibilityRole="button"
             accessibilityLabel={action.label}
             onPress={() => onAction(action.key)}
-            style={({ pressed }) => [styles.tile, { width: "23.5%", backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.75 : 1 }]}
+            style={({ pressed }) => [styles.tile, styles.quickTile, { width: fourQuickColumns ? "23.5%" : "48.5%", backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.75 : 1 }]}
           >
-            <View style={[styles.actionIcon, { backgroundColor: colors.glassTint }]}>
-              <VectorSymbol name={action.symbol} size={42} />
-            </View>
+            <VectorSymbol name={action.symbol} size={75} />
             <AppText numberOfLines={2} style={[styles.tileLabel, { color: colors.onSurface }]}>{action.label}</AppText>
           </Pressable>
         ))}
@@ -114,9 +118,7 @@ export default function CustomerHome() {
             onPress={() => router.push(module.route)}
             style={({ pressed }) => [styles.tile, { width: "23.5%", backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.75 : 1 }]}
           >
-            <View style={[styles.toolIcon, { backgroundColor: colors.surfaceTertiary, borderColor: colors.border }]}>
-              {module.symbol ? <VectorSymbol name={module.symbol} size={42} /> : <Ionicons name={module.icon} size={31} color={colors.brand} />}
-            </View>
+            {module.symbol ? <VectorSymbol name={module.symbol} size={52} /> : <Ionicons name={module.icon} size={52} color={colors.brand} />}
             <AppText numberOfLines={3} style={[styles.tileLabel, { color: colors.onSurface }]}>{module.key === "projects" ? "Project Hub" : module.label}</AppText>
           </Pressable>
         ))}
@@ -137,9 +139,7 @@ export default function CustomerHome() {
             onPress={() => openService(service.key)}
             style={({ pressed }) => [styles.tile, { width: "31.5%", backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.75 : 1 }]}
           >
-            <View style={styles.serviceIcon}>
-              <VectorSymbol name={service.symbol} size={42} />
-            </View>
+            <VectorSymbol name={service.symbol} size={58} />
             <AppText numberOfLines={2} style={[styles.serviceLabel, { color: colors.onSurface }]}>{service.label}</AppText>
           </Pressable>
         ))}
@@ -212,10 +212,8 @@ const styles = StyleSheet.create({
   groupCard: { padding: 12, gap: 12 },
   sectionTitle: { fontFamily: fonts.displayBold, fontSize: 19, paddingHorizontal: 4 },
   grid: { flexDirection: "row", flexWrap: "wrap", width: "100%", justifyContent: "space-between", rowGap: 8 },
-  tile: { minHeight: 102, alignItems: "center", justifyContent: "flex-start", paddingHorizontal: 3, paddingVertical: 8, gap: 7, borderWidth: 1, borderRadius: radius.md },
-  actionIcon: { width: 52, height: 52, borderRadius: 17, alignItems: "center", justifyContent: "center" },
-  toolIcon: { width: 52, height: 52, borderRadius: 15, borderWidth: 1, alignItems: "center", justifyContent: "center" },
-  serviceIcon: { width: 58, height: 58, alignItems: "center", justifyContent: "center" },
+  tile: { minHeight: 120, alignItems: "center", justifyContent: "flex-start", paddingHorizontal: 3, paddingVertical: 8, gap: 7, borderWidth: 1, borderRadius: radius.md },
+  quickTile: { minHeight: 132 },
   tileLabel: { fontFamily: fonts.semibold, fontSize: 11, lineHeight: 14, textAlign: "center" },
   serviceLabel: { fontFamily: fonts.semibold, fontSize: 12, lineHeight: 15, textAlign: "center" },
 });

@@ -18,6 +18,34 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  });
  page.on('pageerror',e=>console.error(e.message));
  await page.goto('http://127.0.0.1:8765/customer/');
+ // Verify real SVG layout (rather than PNG pixel dimensions) at mobile and desktop widths.
+ await page.getByTestId('action-new').waitFor({timeout:30000});
+ const actualVectorSize = async (testId) => page.getByTestId(testId).locator('svg').first()
+   .evaluate(node => [Math.round(node.getBoundingClientRect().width), Math.round(node.getBoundingClientRect().height)]);
+ for(const id of ['action-new','action-track','action-plants','action-orders']) {
+   const size = await actualVectorSize(id);
+   if(size[0]!==75||size[1]!==75)throw Error(`Quick Action SVG size: ${id} ${size}`);
+ }
+ for(const id of ['customer-module-projects','customer-module-free-tools']) {
+   const size=await actualVectorSize(id);
+   if(size[0]!==52||size[1]!==52)throw Error(`RMC Tools SVG size: ${id} ${size}`);
+ }
+ for(const id of ['service-cement','service-labour','service-material']) {
+   const size=await actualVectorSize(id);
+   if(size[0]!==58||size[1]!==58)throw Error(`Service SVG size: ${id} ${size}`);
+ }
+ const actionBoxes=await Promise.all(['action-new','action-track','action-plants','action-orders'].map(id=>page.getByTestId(id).boundingBox()));
+ const fourAcross=width>=430;
+ if(fourAcross && Math.max(...actionBoxes.map(box=>box.y))-Math.min(...actionBoxes.map(box=>box.y))>2)throw Error('Wide Quick Actions must remain four columns');
+ if(!fourAcross && !(actionBoxes[2].y>actionBoxes[0].y+50))throw Error('Narrow Quick Actions must use two rows, preserving 75-unit icons');
+ const tabIds=['tab-home','tab-orders','tab-plants','tab-more'];
+ for(const id of tabIds){const size=await actualVectorSize(id);if(size[0]!==35||size[1]!==35)throw Error(`Tab SVG size: ${id} ${size}`);}
+ const tabBoxes=await Promise.all(tabIds.map(id=>page.getByTestId(id).boundingBox()));
+ const centerBox=await page.getByTestId('tab-quick-actions').boundingBox();
+ const centers=tabBoxes.map(box=>box.x+box.width/2);
+ const mid=centerBox.x+centerBox.width/2;
+ if(!(centers[0]<centers[1]&&centers[1]<mid&&mid<centers[2]&&centers[2]<centers[3]))throw Error('Tab ordering around center icon');
+ if(Math.abs((mid-centers[1])-(centers[2]-mid))>4 || Math.abs((mid-centers[0])-(centers[3]-mid))>4)throw Error('Tab spacing is not symmetric');
  const card=page.getByTestId('demo-tracking-card'); try { await card.waitFor({timeout:30000}); } catch(e) { await page.screenshot({path:`tracking-previews/failure-${width}.png`,fullPage:true}); console.error(await page.locator('body').innerText()); throw e; }
  await card.evaluate(el=>el.scrollIntoView({block:'start'}));
  const b=await card.boundingBox();const m=await page.getByTestId('demo-tracking-map').boundingBox();

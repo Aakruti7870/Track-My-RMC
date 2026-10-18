@@ -106,9 +106,7 @@ export function QuickActionHub({ visible, onClose, tabs, role, navigation }: Pro
                 ]}
               >
                 <View style={styles.actionTopRow}>
-                  <View style={[styles.actionIcon, { backgroundColor: colors.brandSoft, borderColor: colors.brand + "28" }]}>
-                    {tabVectorSymbol(tab.label, role) ? <VectorSymbol name={tabVectorSymbol(tab.label, role)!} size={42} /> : <Ionicons name={tab.active} size={23} color={colors.brand} />}
-                  </View>
+                  {tabVectorSymbol(tab.label, role) ? <VectorSymbol name={tabVectorSymbol(tab.label, role)!} size={75} /> : <Ionicons name={tab.active} size={75} color={colors.brand} />}
                   <AppText style={[styles.index, { color: colors.onSurfaceTertiary }]}>{String(index + 1).padStart(2, "0")}</AppText>
                 </View>
                 <View style={styles.actionCopy}>
@@ -173,21 +171,13 @@ const styles = StyleSheet.create({
   },
   action: {
     width: "48%",
-    minHeight: 118,
+    minHeight: 144,
     borderRadius: radius.lg,
     borderWidth: 1,
     padding: spacing.md,
     justifyContent: "space-between",
   },
   actionTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
-  actionIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   index: { fontFamily: fonts.bold, fontSize: 9, letterSpacing: 0.6 },
   actionCopy: {
     flexDirection: "row",

@@ -102,5 +102,19 @@ assert.ok(registry.includes('import { set8 } from "./vector-symbols/set8";') && 
 for (const [key, symbol] of [["cement", "cement"], ["labour", "labour-contractor"], ["material", "building-material"]]) {
   assert.ok(homeSource.includes(`key: "${key}"`) && homeSource.includes(`symbol: "${symbol}"`), `Customer service ${key} missing vector assignment`);
 }
-assert.ok(homeSource.includes('<VectorSymbol name={service.symbol} size={42} />'), "Other Services must render the assigned vector, not a generic Ionicon");
+assert.ok(homeSource.includes('<VectorSymbol name={service.symbol} size={58} />'), "Other Services must render 58-unit vectors, not generic Ionicons");
+assert.ok(homeSource.includes('<VectorSymbol name={action.symbol} size={75} />'), "Quick Actions must render 75-unit vectors");
+assert.ok(homeSource.includes('<VectorSymbol name={module.symbol} size={52} />'), "RMC Tools must render 52-unit vectors");
+assert.ok(!/styles\.(actionIcon|toolIcon|serviceIcon)/.test(homeSource), "Remove all decorative home icon wrappers");
+const nav = read("src/components/GlassTabBar.tsx");
+assert.ok(nav.includes('<VectorSymbol name={symbol} size={35} />'), "Navigation SVG icons must be 35 units");
+assert.ok(nav.includes('styles.tabSide}>{leftRoutes.map(renderTab)') && nav.includes('styles.tabSide}>{rightRoutes.map(renderTab)'), "Two symmetric side groups must flank New Order");
+assert.ok(!nav.includes("styles.iconWrap"), "Navigation icon plates must be absent");
+const kyc = read("src/components/KycBanner.tsx");
+assert.ok(kyc.includes('<VectorSymbol name={cfg.symbol} size={45} />'), "KYC artwork must be 45 units");
+assert.ok(!kyc.includes("styles.icon"), "KYC icon plate must be absent");
+const header = read("src/components/customer/CustomerHomeHeader.tsx");
+for (const expected of ['name="shield-outline" size={35}', 'name="scan-outline" size={32}', 'name="qr-code-outline" size={19}', 'name="notifications-outline" size={26}']) {
+  assert.ok(header.includes(expected), `Header size changed unexpectedly: ${expected}`);
+}
 console.log(`PASS: ${masters.length}/${masters.length} SVG masters, original 88 preserved, 3 Other Services symbols rendered; ${mapped}/${MODULE_CATALOG.length} role modules; tabs and quick actions connected`);

@@ -177,7 +177,7 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
     <View style={[styles.safeArea, { paddingTop: insets.top, backgroundColor: glassSurface, borderColor: glassBorder, shadowColor: colors.shadow }]}>
       <View testID="customer-home-header" style={styles.row}>
         <Pressable testID="header-kyc" accessibilityRole="button" accessibilityLabel={`KYC status: ${status.replace(/_/g, " ")}`} onPress={() => setSheet("kyc")} style={styles.target}>
-          {verified ? <VerifiedBadge color={colors.verified} /> : <Ionicons name="shield-outline" size={30} color={colors.onSurfaceTertiary} />}
+          {verified ? <VerifiedBadge color={colors.verified} /> : <Ionicons name="shield-outline" size={35} color={colors.onSurfaceTertiary} />}
         </Pressable>
         <Pressable testID="header-location" accessibilityRole="button" accessibilityLabel={`Location: ${label}. Refresh or select location`} onPress={() => setSheet("location")} style={styles.location}>
           <IndianFlag />
@@ -185,8 +185,8 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
           <Ionicons name="chevron-down" size={16} color={colors.onSurface} />
         </Pressable>
         <Pressable testID="header-qr-disabled" disabled accessibilityRole="button" accessibilityState={{ disabled: true }} accessibilityLabel="QR Scanner — Coming Soon" style={styles.target}>
-          <Ionicons name="scan-outline" size={26} color={colors.disabledContent} />
-          <View pointerEvents="none" style={styles.qrInner}><Ionicons name="qr-code-outline" size={17} color={colors.disabledContent} /></View>
+          <Ionicons name="scan-outline" size={32} color={colors.disabledContent} />
+          <View pointerEvents="none" style={styles.qrInner}><Ionicons name="qr-code-outline" size={19} color={colors.disabledContent} /></View>
         </Pressable>
         <Pressable testID="notifications-bell" accessibilityRole="button" accessibilityLabel={unread ? `${feed!.unread} unread notifications` : "Notifications"} onPress={() => router.push("/notifications")} style={styles.target}>
           <Ionicons name="notifications-outline" size={26} color={colors.onSurface} />
