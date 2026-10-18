@@ -24,7 +24,7 @@ import { ErrorView } from "@/src/components/StateViews";
 import { requestNearbyPlantsLocationConsent } from "@/src/location/BackgroundLocationConsent";
 import { distanceKm, LatLng, validLatLng } from "@/src/maps/geo";
 import { EMPTY_PLANT_GEO, cleanPlantGeo, hasPlantGeoFilters, isValidPlantGeo, plantGeoLocationLabel, PlantGeoFilters } from "@/src/domain/plantGeoFilters";
-import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
+import { fonts, fontSize, radius, spacing, referenceLightTheme } from "@/src/theme/tokens";
 
 type NearbyLocationStatus = "ok" | "denied" | "services-disabled" | "timeout" | "unavailable";
 type NearbyLocationResult = { status: NearbyLocationStatus; coords: LatLng | null; fromCache?: boolean; canAskAgain?: boolean };
@@ -350,7 +350,7 @@ export default function CustomerPlants() {
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
       <View style={{ height: insets.top }} />
       <View style={styles.titleRow}>
-        <AppText variant="title">Nearby Plants</AppText>
+        <View style={{flexDirection:"row",flexWrap:"wrap"}}><AppText variant="title">Nearby </AppText><AppText variant="title" color={colors.isDark?colors.onSurface:referenceLightTheme.primaryButton}>Plants</AppText></View>
         <AppText variant="caption">Find registered plants and nearby RMC businesses listed on Google Maps.</AppText>
       </View>
 
@@ -365,7 +365,7 @@ export default function CustomerPlants() {
           contentContainerStyle={{ width:"100%",maxWidth:1100,alignSelf:"center",paddingHorizontal: 16, paddingTop: 12, paddingBottom: 120, gap: 14, flexGrow: 1 }}
           ListHeaderComponent={
             <View style={{ gap: spacing.sm, marginBottom: spacing.xs }}>
-              <View style={styles.mapShell}>
+              <View style={[styles.mapShell,{borderColor:colors.border}]}>
                 <PlantMap plants={mappedPlants} userLocation={userLocation} selectedPlantId={selectedPlantId} onSelectPlant={(plant) => {
                   setSelectedPlantId(plant.id);
                   if (plant.id.startsWith("google:")) {
@@ -379,16 +379,16 @@ export default function CustomerPlants() {
               </View>
 
               <View style={styles.searchRow}>
-                <View style={[styles.searchBar,{backgroundColor:"#FFFFFF",borderColor:"#E2E8F0"}]}>
+                <View style={[styles.searchBar,{backgroundColor:colors.surfaceElevated,borderColor:colors.border}]}>
                   <VectorSymbol name="search" size={29} />
                   <TextInput testID="plants-search" value={q}
                     onChangeText={value=>{setQ(value);setPage(1);setFilters(current=>({...current,q:value}));}}
                     placeholder="Search plant by name" placeholderTextColor="#94A3B8"
-                    returnKeyType="search" style={styles.searchInput} />
+                    returnKeyType="search" style={[styles.searchInput,{color:colors.onSurface}]} />
                   {q ? <Pressable onPress={()=>{setQ("");setPage(1);setFilters(current=>({...current,q:""}));}} accessibilityLabel="Clear search"><Ionicons name="close" size={20} color="#94A3B8" /></Pressable> : null}
                 </View>
-                <Pressable testID="plants-filter-toggle" accessibilityLabel={showFilters ? "Hide location filters" : "Location filters"} onPress={()=>setShowFilters(v=>!v)} style={styles.orangeFilter} accessibilityRole="button">
-                  <VectorSymbol name="filter" size={28} /><AppText style={styles.orangeFilterText}>Filters</AppText>
+                <Pressable testID="plants-filter-toggle" accessibilityLabel={showFilters ? "Hide location filters" : "Location filters"} onPress={()=>setShowFilters(v=>!v)} style={[styles.orangeFilter,{backgroundColor:colors.brand,borderColor:colors.isDark?colors.brand:referenceLightTheme.buttonBorder}]} accessibilityRole="button">
+                  <VectorSymbol name="filter" size={28} /><AppText style={[styles.orangeFilterText,{color:colors.onBrand}]}>Filters</AppText>
                 </Pressable>
               </View>
               {showFilters ? <Card testID="plants-geo-filters" style={{gap:12}}>
@@ -398,28 +398,28 @@ export default function CustomerPlants() {
                     <TextInput testID="plants-filter-state" accessibilityLabel="State" placeholder="State, e.g. Maharashtra"
                       value={geoDraft.state}
                       onChangeText={state=>setGeoDraft({state,district:"",taluka:"",city:""})}
-                      style={styles.geoFilterInput} autoCapitalize="words" maxLength={80} />
+                      style={[styles.geoFilterInput,{backgroundColor:colors.surfaceElevated,borderColor:colors.border,color:colors.onSurface}]} autoCapitalize="words" maxLength={80} />
                   </View>
                   <View style={styles.geoFilterField}>
                     <AppText variant="caption">District</AppText>
                     <TextInput testID="plants-filter-district" accessibilityLabel="District" placeholder="District, e.g. Pune"
                       value={geoDraft.district}
                       onChangeText={district=>setGeoDraft(previous=>({...previous,district,taluka:"",city:""}))}
-                      style={styles.geoFilterInput} autoCapitalize="words" maxLength={80} />
+                      style={[styles.geoFilterInput,{backgroundColor:colors.surfaceElevated,borderColor:colors.border,color:colors.onSurface}]} autoCapitalize="words" maxLength={80} />
                   </View>
                   <View style={styles.geoFilterField}>
                     <AppText variant="caption">Taluka</AppText>
                     <TextInput testID="plants-filter-taluka" accessibilityLabel="Taluka" placeholder="Taluka, e.g. Haveli"
                       value={geoDraft.taluka}
                       onChangeText={taluka=>setGeoDraft(previous=>({...previous,taluka,city:""}))}
-                      style={styles.geoFilterInput} autoCapitalize="words" maxLength={80} />
+                      style={[styles.geoFilterInput,{backgroundColor:colors.surfaceElevated,borderColor:colors.border,color:colors.onSurface}]} autoCapitalize="words" maxLength={80} />
                   </View>
                   <View style={styles.geoFilterField}>
                     <AppText variant="caption">City</AppText>
                     <TextInput testID="plants-filter-city" accessibilityLabel="City" placeholder="City, e.g. Ravet"
                       value={geoDraft.city}
                       onChangeText={city=>setGeoDraft(previous=>({...previous,city}))}
-                      style={styles.geoFilterInput} autoCapitalize="words" maxLength={80} />
+                      style={[styles.geoFilterInput,{backgroundColor:colors.surfaceElevated,borderColor:colors.border,color:colors.onSurface}]} autoCapitalize="words" maxLength={80} />
                   </View>
                 </View>
               </Card> : null}
@@ -495,7 +495,7 @@ export default function CustomerPlants() {
       )}
       <Modal visible={!!details} animationType="slide" onRequestClose={() => setDetails(null)}>
         <ScrollView contentContainerStyle={{padding:24,paddingTop:56,gap:16,backgroundColor:colors.surface,flexGrow:1}}>
-          {details ? <><AppText variant="title">{details.status === "google_listing" ? "Plant Details" : "Plant Specifications"}</AppText><AppText style={{color:"#F25C05"}}>{details.name}</AppText><AppText>{details.address}</AppText>
+          {details ? <><AppText variant="title">{details.status === "google_listing" ? "Plant Details" : "Plant Specifications"}</AppText><AppText style={{color:colors.brand}}>{details.name}</AppText><AppText>{details.address}</AppText>
           {details.status === "google_listing" ? (
             <AppText accessibilityLabel="Google Maps" style={{fontSize:14,color:"#5E5E5E"}}>
               Google Maps · Public business listing · Not TrackMyRMC verified
@@ -528,27 +528,72 @@ export default function CustomerPlants() {
   );
 }
 
-const PLANT_ORANGE = "#F25C05";
+// Reference light-theme values live in src/theme/tokens.ts.
 function DetailLine({label,value}:{label:string;value:string}) {
-  return <View style={{gap:4,borderBottomWidth:1,borderColor:"#E2E8F0",paddingVertical:10}}><AppText variant="caption">{label}</AppText><AppText>{value}</AppText></View>;
+  const {colors}=useTheme();
+  return <View style={{gap:4,borderBottomWidth:1,borderColor:colors.divider,paddingVertical:10}}><AppText variant="caption">{label}</AppText><AppText>{value}</AppText></View>;
 }
 function ScreenshotPlantCard({plant,onDetails,onQuotation,onOrder,quoteSubmitting=false,onSelect}:{plant:PlantData;onSelect:()=>void;onDetails:()=>void;onQuotation:()=>void;onOrder:()=>void;quoteSubmitting?:boolean}) {
+  const {colors}=useTheme();
   const active=(plant.status||"active").toLowerCase()==="active";
-  const isGoogleListing=plant.status === "google_listing";
-  const eligible=plant.order_enabled ?? (active && plant.verified);
-  return <View style={styles.screenshotCard}>
-    <Pressable accessibilityRole="button" accessibilityLabel={`Show ${plant.name} on map`} onPress={onSelect} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}><VectorSymbol name={plant.verified ? "verified-plant" : "unverified-plant"} size={29} /><AppText style={[styles.screenshotPlantName, { flex: 1 }]}>{plant.name}</AppText></Pressable>
-    <AppText style={styles.screenshotAddress}>{plant.address || [plant.city,plant.district].filter(Boolean).join(", ")}</AppText>
-    {isGoogleListing ? (
-      <AppText accessibilityLabel="Google Maps listing, not TrackMyRMC verified" style={styles.googleListingCaption}>
-        {plant.distance_km != null ? `${plant.distance_km.toFixed(1)} km away · ` : ""}Google Maps · Not TrackMyRMC verified
-      </AppText>
-    ) : null}
+  const isGoogleListing=plant.status==="google_listing";
+  const eligible=!isGoogleListing && (plant.order_enabled??(active&&plant.verified));
+  const distance=plant.distance_km!=null&&Number.isFinite(plant.distance_km)?`${plant.distance_km.toFixed(1)} km away`:null;
+  const outlineColor=colors.isDark?colors.brand:referenceLightTheme.buttonBorder;
+  const outlineText=colors.isDark?colors.brand:"#92400E";
+  return <View style={[styles.screenshotCard,{backgroundColor:colors.surfaceSecondary,borderColor:colors.border,shadowColor:colors.shadow}]}>
+    <View style={styles.plantTopRow}>
+      <View style={[styles.plantIconTile,{backgroundColor:colors.surfaceElevated,borderColor:colors.border}]}>
+        <VectorSymbol name="plants" size={38}/>
+      </View>
+      <View style={styles.plantInfo}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Show ${plant.name} on map`} onPress={onSelect}>
+          <AppText style={[styles.screenshotPlantName,{color:colors.onSurface}]} numberOfLines={2}>{plant.name}</AppText>
+        </Pressable>
+        <View style={styles.plantAddressRow}>
+          <Ionicons name="location" size={17} color={colors.onSurfaceTertiary}/>
+          <AppText style={[styles.screenshotAddress,{color:colors.onSurfaceTertiary}]} numberOfLines={3}>{plant.address||[plant.city,plant.district].filter(Boolean).join(", ")}</AppText>
+        </View>
+      </View>
+      <View style={[styles.plantShield,{backgroundColor:plant.verified?colors.verifiedSoft:colors.disabledSurface}]}
+        accessibilityLabel={plant.verified?"TrackMyRMC verified":"Not TrackMyRMC verified"}>
+        <Ionicons name={plant.verified?"shield-checkmark":"shield-outline"} size={23} color={plant.verified?colors.verified:colors.onSurfaceTertiary}/>
+      </View>
+    </View>
+    <View style={styles.plantChips}>
+      {distance?<View style={[styles.plantChip,{backgroundColor:colors.isDark?colors.brandSoft:referenceLightTheme.distanceChip}]}>
+        <Ionicons name="location" size={15} color={colors.brand}/><AppText style={[styles.plantChipText,{color:colors.onSurface}]}>{distance}</AppText>
+      </View>:null}
+      {isGoogleListing?<View style={[styles.plantChip,{backgroundColor:colors.isDark?colors.surfaceTertiary:referenceLightTheme.googleMapsChip}]}>
+        <Ionicons name="map" size={15} color={colors.isDark?"#93C5FD":"#1565C0"}/>
+        <AppText style={[styles.plantChipText,{color:colors.isDark?colors.onSurface:"#1565C0"}]}>Google Maps</AppText>
+      </View>:null}
+      <View style={[styles.plantChip,{backgroundColor:plant.verified?colors.verifiedSoft:colors.disabledSurface}]}>
+        <Ionicons name={plant.verified?"shield-checkmark":"shield-outline"} size={15} color={plant.verified?colors.verified:colors.onSurfaceTertiary}/>
+        <AppText style={[styles.plantChipText,{color:plant.verified?colors.verified:colors.onSurfaceTertiary}]}>
+          {plant.verified?"TrackMyRMC verified":"Not TrackMyRMC verified"}
+        </AppText>
+      </View>
+    </View>
     <View style={styles.screenshotActions}>
-      <Pressable accessibilityRole="button" disabled={quoteSubmitting} onPress={onQuotation} style={styles.screenshotOutline}><AppText numberOfLines={2} style={styles.screenshotOutlineText}>{quoteSubmitting?"Saving…":"Request Quotation"}</AppText></Pressable>
-      <Pressable accessibilityRole="button" onPress={onDetails} accessibilityLabel="View Details" style={styles.screenshotOutline}><AppText numberOfLines={2} style={styles.screenshotOutlineText}>Plant Details</AppText></Pressable>
-      <Pressable accessibilityRole="button" disabled={!eligible} accessibilityState={{disabled:!eligible}} accessibilityLabel={!eligible ? "Place Order unavailable until plant is verified" : "Place Order"} onPress={onOrder} style={[styles.screenshotSolid,!eligible&&{backgroundColor:"#CBD5E1",borderColor:"#CBD5E1"}]}>
-        <AppText numberOfLines={2} style={styles.screenshotSolidText}>Place Order</AppText>
+      <Pressable accessibilityRole="button" disabled={quoteSubmitting} accessibilityState={{disabled:quoteSubmitting}}
+        onPress={onQuotation}
+        style={({pressed})=>[styles.screenshotOutline,{borderColor:outlineColor,backgroundColor:pressed?colors.brandSoft:colors.surfaceElevated}]}>
+        <Ionicons name="chatbubble-ellipses-outline" size={16} color={outlineText}/>
+        <AppText numberOfLines={2} style={[styles.screenshotOutlineText,{color:outlineText}]}>{quoteSubmitting?"Saving…":"Request Quotation"}</AppText>
+      </Pressable>
+      <Pressable accessibilityRole="button" onPress={onDetails} accessibilityLabel="Plant Details"
+        style={({pressed})=>[styles.screenshotOutline,{borderColor:outlineColor,backgroundColor:pressed?colors.brandSoft:colors.surfaceElevated}]}>
+        <Ionicons name="document-text-outline" size={16} color={outlineText}/>
+        <AppText numberOfLines={2} style={[styles.screenshotOutlineText,{color:outlineText}]}>Plant Details</AppText>
+      </Pressable>
+      <Pressable accessibilityRole="button" disabled={!eligible} accessibilityState={{disabled:!eligible}}
+        accessibilityLabel={!eligible?"Place Order unavailable until plant is approved":"Place Order"} onPress={onOrder}
+        style={({pressed})=>[styles.screenshotSolid,{
+          backgroundColor:!eligible?colors.disabledSurface:pressed?colors.brandPressed:colors.brand,
+          borderColor:!eligible?colors.disabledSurface:colors.isDark?colors.brand:referenceLightTheme.buttonBorder}]}>
+        <Ionicons name="cart-outline" size={16} color={eligible?colors.onBrand:colors.disabledContent}/>
+        <AppText numberOfLines={2} style={[styles.screenshotSolidText,{color:eligible?colors.onBrand:colors.disabledContent}]}>Place Order</AppText>
       </Pressable>
     </View>
   </View>;
@@ -620,25 +665,33 @@ function LocationBanner({ status, locating, onEnable, onRetry }: {
 
 const styles = StyleSheet.create({
   titleRow: { paddingHorizontal: 18, paddingTop: 16, paddingBottom: 8, gap: 3 },
-  mapShell:{height:242,borderRadius:16,overflow:"hidden",borderWidth:1,borderColor:"#E2E8F0",position:"relative"},
+  mapShell:{height:242,borderRadius:24,overflow:"hidden",borderWidth:1.5,position:"relative"},
   mapPill:{position:"absolute",top:10,right:10,backgroundColor:"#FFFFFF",borderRadius:24,paddingVertical:7,paddingHorizontal:13,flexDirection:"row",alignItems:"center",gap:6,elevation:3},
   mapPillText:{color:"#1E293B",fontFamily:fonts.bold,fontSize:13},
   searchRow:{flexDirection:"row",gap:10,alignItems:"center"},
   geoFilterField:{flexGrow:1,flexBasis:"45%",minWidth:130,gap:5},
   geoFilterInput:{minHeight:44,borderWidth:1,borderColor:"#E2E8F0",backgroundColor:"#FFFFFF",borderRadius:10,paddingHorizontal:10,fontFamily:fonts.medium,fontSize:13,color:"#1E293B"},
-  orangeFilter:{backgroundColor:"#F25C05",borderRadius:12,height:46,paddingHorizontal:14,flexDirection:"row",alignItems:"center",gap:6},
+  orangeFilter:{borderWidth:1,borderRadius:14,height:46,paddingHorizontal:14,flexDirection:"row",alignItems:"center",gap:6},
   orangeFilterText:{fontFamily:fonts.semibold,fontSize:14,color:"#FFFFFF"},
-  screenshotCard:{backgroundColor:"#FFFFFF",borderWidth:1,borderColor:"#E2E8F0",borderRadius:16,padding:16,gap:7,elevation:2},
+  screenshotCard:{borderWidth:1,borderRadius:22,padding:16,gap:14,elevation:2,shadowOffset:{width:0,height:8},shadowOpacity:0.07,shadowRadius:18},
   googleListingCard:{backgroundColor:"#FFFFFF",borderWidth:1,borderColor:"#E2E8F0",borderRadius:16,padding:14,gap:8},
   googleListingCaption:{fontFamily:fonts.medium,fontSize:12,color:"#64748B",marginBottom:5},
-  googlePlaceLink:{minHeight:42,flexDirection:"row",gap:7,alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:"#F25C05",borderRadius:10},
-  screenshotPlantName:{fontFamily:fonts.bold,fontSize:17,color:"#0F172A"},
-  screenshotAddress:{fontFamily:fonts.medium,fontSize:13,lineHeight:19,color:"#475569",marginBottom:8},
-  screenshotActions:{flexDirection:"row",gap:8},
-  screenshotOutline:{flex:1,minHeight:42,borderWidth:1.5,borderColor:"#F25C05",borderRadius:10,alignItems:"center",justifyContent:"center",paddingHorizontal:3},
-  screenshotOutlineText:{fontFamily:fonts.semibold,fontSize:11,color:"#F25C05",textAlign:"center"},
-  screenshotSolid:{flex:1,minHeight:42,backgroundColor:"#F25C05",borderWidth:1.5,borderColor:"#F25C05",borderRadius:10,alignItems:"center",justifyContent:"center",paddingHorizontal:3},
-  screenshotSolidText:{fontFamily:fonts.semibold,fontSize:11,color:"#FFFFFF",textAlign:"center"},
+  googlePlaceLink:{minHeight:42,flexDirection:"row",gap:7,alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:referenceLightTheme.buttonBorder,borderRadius:10},
+  screenshotPlantName:{fontFamily:fonts.bold,fontSize:17,lineHeight:22},
+  screenshotAddress:{flex:1,fontFamily:fonts.medium,fontSize:13,lineHeight:19},
+  plantTopRow:{flexDirection:"row",alignItems:"flex-start",gap:12},
+  plantIconTile:{width:54,height:54,borderRadius:14,borderWidth:1,alignItems:"center",justifyContent:"center"},
+  plantInfo:{flex:1,minWidth:0,gap:6},
+  plantAddressRow:{flexDirection:"row",alignItems:"flex-start",gap:5},
+  plantShield:{width:36,height:36,borderRadius:14,alignItems:"center",justifyContent:"center"},
+  plantChips:{flexDirection:"row",flexWrap:"wrap",gap:7},
+  plantChip:{minHeight:30,borderRadius:9,flexDirection:"row",alignItems:"center",gap:5,paddingVertical:5,paddingHorizontal:10},
+  plantChipText:{fontFamily:fonts.medium,fontSize:11,lineHeight:16},
+  screenshotActions:{flexDirection:"row",flexWrap:"wrap",gap:8},
+  screenshotOutline:{flexGrow:1,flexBasis:"28%",minWidth:92,minHeight:48,borderWidth:1.5,borderRadius:12,alignItems:"center",justifyContent:"center",flexDirection:"row",gap:5,paddingHorizontal:5},
+  screenshotOutlineText:{fontFamily:fonts.semibold,fontSize:11,textAlign:"center",flexShrink:1},
+  screenshotSolid:{flexGrow:1,flexBasis:"28%",minWidth:92,minHeight:48,borderWidth:1.5,borderRadius:12,alignItems:"center",justifyContent:"center",flexDirection:"row",gap:5,paddingHorizontal:5},
+  screenshotSolidText:{fontFamily:fonts.semibold,fontSize:11,textAlign:"center",flexShrink:1},
   searchBar: { flex:1,minHeight:46, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", gap: 8 },
   searchInput: { flex: 1, minHeight: 44, fontFamily: fonts.medium, fontSize: 14, paddingVertical: 0,color:"#1E293B" },
   refreshButton: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center" },

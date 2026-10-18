@@ -75,7 +75,7 @@ export function Button({
   }[variant];
 
   const borderColor = {
-    primary: colors.brand,
+    primary: colors.isDark ? colors.brand : colors.borderStrong,
     secondary: colors.border,
     outline: colors.borderStrong,
     ghost: "transparent",

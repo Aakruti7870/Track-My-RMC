@@ -20,6 +20,7 @@
     "doctor": "expo-doctor",
     "build:preview": "expo export --platform web --output-dir dist",
     "check:vector-symbols": "node ./scripts/check-vector-symbols.mjs",
+    "check:light-theme": "node ./scripts/check-light-theme-contract.mjs",
     "test:maps": "node --test scripts/test-google-maps.cjs"
   },
   "dependencies": {
