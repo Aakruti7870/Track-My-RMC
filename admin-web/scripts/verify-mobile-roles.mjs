@@ -218,8 +218,9 @@ try {
       await page.reload();
       await expect(page.getByTestId('plants-list')).toBeVisible();
       await expect(page.getByTestId('permission-introduction')).not.toBeVisible();
-      phase = 'four-field automatic geographic plant search';
+      phase = 'four-field search: open filters';
       await page.getByRole('button',{name:'Location filters',exact:true}).click();
+      phase = 'four-field search: validate filter fields';
       for (const field of ['State','District','Taluka','City']) {
         await expect(page.getByTestId('plants-filter-' + field.toLowerCase())).toBeVisible();
       }
@@ -230,6 +231,7 @@ try {
       // Real Google geocoding is not needed in a self-contained CI fixture.
       // Intercept only geocoding; the resulting registered-plant search must
       // still use the real Rust API and PostgreSQL records.
+      phase = 'four-field search: install geocoding fixture';
       await page.route('**/api/customer/plants/locate',route => route.fulfill({
         status:200,
         contentType:'application/json',
@@ -242,13 +244,17 @@ try {
         contentType:'application/json',
         body:JSON.stringify({places:[],source:'google_places',attribution:'Google Maps',radius_km:50}),
       }));
+      phase = 'four-field search: await API search with state and coordinates';
       const filteredGeoSearch = page.waitForResponse(response => {
         if (new URL(response.url()).pathname !== '/api/customer/plants/search' || response.status() !== 200) return false;
         const body = response.request().postDataJSON();
         return body?.state === 'Maharashtra' && body?.lat === 19.076 && body?.lng === 72.877;
       });
+      phase = 'four-field search: enter Maharashtra';
       await page.getByTestId('plants-filter-state').fill('Maharashtra');
+      phase = 'four-field search: await geocoded registered-plant response';
       await filteredGeoSearch;
+      phase = 'four-field search: verify returned plant';
       await expect(page.getByText('Browser staging plant',{exact:true}).first()).toBeVisible();
       await page.getByRole('button',{name:'Hide location filters',exact:true}).click();
       await page.getByRole('button',{name:'View Details',exact:true}).click();
