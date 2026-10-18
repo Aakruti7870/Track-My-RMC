@@ -33,9 +33,9 @@ CREATE INDEX IF NOT EXISTS driver_employment_driver_lookup
 -- Audit without copying sensitive contact numbers or medical data into logs.
 CREATE TABLE IF NOT EXISTS driver_employment_audit (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    plant_id UUID NOT NULL REFERENCES rmc_plants(id) ON DELETE RESTRICT,
-    driver_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-    actor_user_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    plant_id UUID NOT NULL REFERENCES rmc_plants(id) ON DELETE CASCADE,
+    driver_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    actor_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     action VARCHAR(20) NOT NULL CHECK (action IN ('CREATED','UPDATED')),
     changed_fields TEXT[] NOT NULL DEFAULT '{}',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
