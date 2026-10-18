@@ -160,7 +160,11 @@ async fn record_request(
 }
 
 // Reuse the same deletion-purpose OTP creation and delivery in both flows.
-async fn send_deletion_otp(state: &AppState, destination: &str, channel: &str) -> Result<(), AppError> {
+async fn send_deletion_otp(
+    state: &AppState,
+    destination: &str,
+    channel: &str,
+) -> Result<(), AppError> {
     state.otp_delivery.validate(channel)?;
     let (otp, salt, hashed_otp) = OtpEngine::generate_secure_otp(&state.config.otp_pepper);
     let session_id = OtpEngine::create_pending_session(
