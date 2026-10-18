@@ -29,12 +29,6 @@ export function KycBanner({ status }: { status: string }) {
     warning: colors.warning,
     error: colors.error,
   }[cfg.tone];
-  const soft = {
-    verified: colors.verifiedSoft,
-    brand: colors.brandSoft,
-    warning: colors.warning + "14",
-    error: colors.errorSoft,
-  }[cfg.tone];
   const isVerified = status === "VERIFIED";
 
   return (
@@ -48,7 +42,7 @@ export function KycBanner({ status }: { status: string }) {
       style={({ pressed }) => [
         styles.wrap,
         {
-          backgroundColor: soft,
+          backgroundColor: colors.surfaceSecondary,
           borderColor: isVerified ? tone + "60" : tone + "34",
           transform: [{ scale: pressed && !isVerified ? 0.992 : 1 }],
           shadowColor: isVerified ? tone : colors.shadow,
