@@ -3,7 +3,7 @@ const fs=require('node:fs');
 fs.mkdirSync('tracking-previews',{recursive:true});
 (async()=>{
  const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
- for(const width of [390,1440]){
+ for(const width of [320,390,1440]){
  let mode='demo';
  const page=await browser.newPage({viewport:{width,height:1000}});
  await page.addInitScript(()=>localStorage.setItem('tmrmc_token',JSON.stringify('isolated-browser-fixture')));
@@ -35,9 +35,39 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    if(size[0]!==58||size[1]!==58)throw Error(`Service SVG size: ${id} ${size}`);
  }
  const actionBoxes=await Promise.all(['action-new','action-track','action-plants','action-orders'].map(id=>page.getByTestId(id).boundingBox()));
- const fourAcross=width>=430;
+ const fourAcross=width>=390;
  if(fourAcross && Math.max(...actionBoxes.map(box=>box.y))-Math.min(...actionBoxes.map(box=>box.y))>2)throw Error('Wide Quick Actions must remain four columns');
  if(!fourAcross && !(actionBoxes[2].y>actionBoxes[0].y+50))throw Error('Narrow Quick Actions must use two rows, preserving 75-unit icons');
+
+ // Compact sections have no second border. Keep the individual cards narrow,
+ // close together, and short while preserving full-sized SVGs and readable text.
+ for (const section of ['home-quick-actions','customer-module-grid','home-other-services']) {
+   const locator=page.getByTestId(section);
+   const bounds=await locator.boundingBox();
+   const border=await locator.evaluate(node=>getComputedStyle(node).borderTopWidth);
+   if(border!=='0px')throw Error(`Redundant outer section border on ${section}: ${border}`);
+   if(bounds.width>620.5)throw Error(`Oversized desktop outer section: ${section} ${bounds.width}`);
+   if(bounds.x<0||bounds.x+bounds.width>width+1)throw Error(`Outer section overflow: ${section}`);
+ }
+ const boundsOf=async (container,prefix)=>page.getByTestId(container).locator(`[data-testid^="${prefix}"]`)
+   .evaluateAll(nodes=>nodes.map(node=>{const box=node.getBoundingClientRect();return {x:box.x,y:box.y,w:box.width,h:box.height,scrollHeight:node.scrollHeight};}));
+ const toolBoxes=await boundsOf('customer-module-grid','customer-module-');
+ const serviceBoxes=await boundsOf('home-other-services','service-');
+ if(toolBoxes.length!==8||serviceBoxes.length!==3)throw Error('Missing compact Home cards');
+ const expectedToolColumns=width>=360?4:2;
+ if(Math.abs(toolBoxes[expectedToolColumns].y-toolBoxes[0].y)<50)throw Error('RMC Tools responsive row arrangement');
+ for (const [kind,boxes,minHeight,maxHeight] of [['Quick Action',actionBoxes.map(box=>({h:box.height,x:box.x,y:box.y,w:box.width})),102,132],['RMC Tool',toolBoxes,90,134],['Other Service',serviceBoxes,92,120]]) {
+   for(const box of boxes){
+     if(box.h<minHeight||box.h>maxHeight)throw Error(`${kind} card height ${box.h} outside ${minHeight}-${maxHeight}`);
+     if(box.x<0||box.x+box.w>width+1)throw Error(`${kind} card overflows the viewport`);
+     if(box.scrollHeight&&box.scrollHeight>box.h+1)throw Error(`${kind} text or SVG is clipped`);
+   }
+   const firstRow=boxes.filter(box=>Math.abs(box.y-boxes[0].y)<2).sort((a,b)=>a.x-b.x);
+   for(let i=1;i<firstRow.length;i++) {
+     const gap=firstRow[i].x-(firstRow[i-1].x+firstRow[i-1].w);
+     if(gap>11||gap<0)throw Error(`${kind} card gap ${gap} violates compact spacing`);
+   }
+ }
  const tabIds=['tab-home','tab-orders','tab-plants','tab-more'];
  for(const id of tabIds){const size=await actualVectorSize(id);if(size[0]!==35||size[1]!==35)throw Error(`Tab SVG size: ${id} ${size}`);}
  const tabBoxes=await Promise.all(tabIds.map(id=>page.getByTestId(id).boundingBox()));
