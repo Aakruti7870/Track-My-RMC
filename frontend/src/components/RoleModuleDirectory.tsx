@@ -4,7 +4,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 
 import { AppText } from "@/src/components/ui/AppText";
-import { GlassCardArtwork } from "@/src/components/ui/GlassCardArtwork";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
@@ -52,7 +51,6 @@ export function RoleModuleDirectory({ role, title = "Your Modules" }: {
                     },
                   ]}
                 >
-                  <GlassCardArtwork cornerRadius={radius.md} />
                   <View style={[styles.icon, { backgroundColor: colors.brandSoft }]}>
                     {module.symbol ? <VectorSymbol name={module.symbol} size={36} /> : <Ionicons name={module.icon} size={19} color={colors.brand} />}
                   </View>

@@ -3,7 +3,6 @@ import { StyleProp, StyleSheet, View, ViewStyle } from "react-native";
 
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { radius, spacing } from "@/src/theme/tokens";
-import { GlassCardArtwork } from "./GlassCardArtwork";
 
 type Variant = "default" | "elevated" | "muted" | "outline" | "brand";
 
@@ -64,9 +63,6 @@ export function Card({ children, style, padded = true, variant = "default", test
         style,
       ]}
     >
-      {(variant === "default" || variant === "elevated") ? (
-        <GlassCardArtwork cornerRadius={radius.lg} />
-      ) : null}
       {children}
     </View>
   );

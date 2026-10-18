@@ -5,7 +5,6 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 
 import { AppText } from "@/src/components/ui/AppText";
-import { GlassCardArtwork } from "@/src/components/ui/GlassCardArtwork";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { control, fonts, radius, spacing } from "@/src/theme/tokens";
 import type { TabDef } from "@/src/components/GlassTabBar";
@@ -106,7 +105,6 @@ export function QuickActionHub({ visible, onClose, tabs, role, navigation }: Pro
                   },
                 ]}
               >
-                <GlassCardArtwork cornerRadius={radius.lg} />
                 <View style={styles.actionTopRow}>
                   {tabVectorSymbol(tab.label, role) ? <VectorSymbol name={tabVectorSymbol(tab.label, role)!} size={75} /> : <Ionicons name={tab.active} size={75} color={colors.brand} />}
                   <AppText style={[styles.index, { color: colors.onSurfaceTertiary }]}>{String(index + 1).padStart(2, "0")}</AppText>
