@@ -210,7 +210,7 @@ const styles = StyleSheet.create({
   dot: { position: "absolute", top: 7, right: 7, width: 8, height: 8, borderRadius: 4 },
   scrollContent: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 190, gap: 11, maxWidth: 1100, alignSelf: "center", width: "100%" },
   // No second oversized glass perimeter: individual compact tiles carry the only border.
-  groupCard: { paddingHorizontal: 0, paddingVertical: 2, gap: 7 },
+  groupCard: { width: "100%", maxWidth: 620, alignSelf: "center", paddingHorizontal: 0, paddingVertical: 2, gap: 7 },
   sectionTitle: { fontFamily: fonts.displayBold, fontSize: 19, paddingHorizontal: 2 },
   grid: { flexDirection: "row", flexWrap: "wrap", width: "100%", justifyContent: "space-between", rowGap: 5 },
   tile: { alignItems: "center", justifyContent: "center", paddingHorizontal: 1, paddingVertical: 5, gap: 4, borderWidth: 1, borderRadius: radius.md },
