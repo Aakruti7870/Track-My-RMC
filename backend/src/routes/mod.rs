@@ -74,6 +74,10 @@ pub fn build_app_router(state: AppState) -> Router {
             post(account_deletion::send_public_otp),
         )
         .route(
+            "/api/account-deletion/otp/send-authenticated",
+            post(account_deletion::send_signed_in_otp),
+        )
+        .route(
             "/api/account-deletion/public-request",
             post(account_deletion::submit_public_request),
         )

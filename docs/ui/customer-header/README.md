@@ -2,7 +2,7 @@
 
 The approved header replaces only the Customer Home wordmark/status row. Existing Home modules and artwork are unchanged.
 
-- Purple in both themes; five controls with a flexible, truncating city label and 44 × 48 minimum icon targets.
+- Theme-aware frosted-glass header (white-tinted light / graphite-tinted dark) using shared glass tokens; orange stays the brand accent and green indicates verification and unread notifications. Five controls have a flexible, truncating city label and 44 × 48 minimum icon targets.
 - KYC comes from authenticated `/me`; a failed status refresh produces a neutral indicator. No document data is rendered.
 - Unread state comes from `/notifications?limit=1`. Focus, foreground, native push arrival and visible-screen polling refresh the status; existing backend read actions remain authoritative.
 - Location respects existing consent, uses one foreground fix, and resolves a city through authenticated `/maps/geocode`. Manual city/locality/PIN lookup uses the same endpoint. Missing configuration, provider failures, denied permissions and GPS failure never produce a fabricated city.
@@ -11,12 +11,7 @@ The approved header replaces only the Customer Home wordmark/status row. Existin
 
 ## Rendered evidence
 
-Captured from the real Expo web build with isolated synthetic API fixtures. These images are not live customer data. Header colors intentionally stay the same in both themes.
-
-| Light | Dark |
-| --- | --- |
-| ![Light header](light.png) | ![Dark header](dark.png) |
-| ![Light help](help-light.png) | ![Dark help](help-dark.png) |
+Frontend CI uploads `customer-header-theme-previews` captured from the Expo web build with synthetic API fixtures. Inspect the artifact from the latest passing Frontend CI run for current light/dark header and help sheet screenshots. The superseded solid-color screenshots are removed.
 
 ## Validation
 

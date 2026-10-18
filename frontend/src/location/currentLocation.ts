@@ -20,12 +20,14 @@ export type CurrentLocationResult =
   | { ok: true; location: CurrentDeviceLocation; source: "native" | "expo" }
   | { ok: false; reason: "permission-denied" | "services-disabled" | "unavailable" };
 
-async function boundedDiscoveryFix<T>(promise: Promise<T>, discovery: boolean): Promise<T> {
-  if (!discovery) return promise;
+async function boundedDiscoveryFix<T>(promise: Promise<T>, deadline?: number): Promise<T> {
+  if (deadline === undefined) return promise;
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) throw new Error("Location timed out");
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([promise, new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error("Location timed out")), 12000);
+      timer = setTimeout(() => reject(new Error("Location timed out")), remaining);
     })]);
   } finally { if (timer) clearTimeout(timer); }
 }
@@ -54,10 +56,12 @@ export async function getCurrentDeviceLocation(purpose: "attendance" | "sos" | "
       return { ok: false, reason: "permission-denied" };
     }
 
+    // One deadline applies to both native and Expo fixes, avoiding two full timeouts.
+    const discoveryDeadline = purpose === "discovery" ? Date.now() + 12000 : undefined;
     if (Platform.OS === "android" && NativeTripLocation) {
       try {
         if (NativeTripLocation.isAvailable()) {
-          const nativeLocation = await boundedDiscoveryFix(NativeTripLocation.getCurrentLocation(), purpose === "discovery");
+          const nativeLocation = await boundedDiscoveryFix(NativeTripLocation.getCurrentLocation(), discoveryDeadline);
           if (
             Number.isFinite(nativeLocation.latitude) &&
             Number.isFinite(nativeLocation.longitude) &&
@@ -86,7 +90,7 @@ export async function getCurrentDeviceLocation(purpose: "attendance" | "sos" | "
 
     const expoLocation = await boundedDiscoveryFix(Location.getCurrentPositionAsync({
       accuracy: Location.Accuracy.High,
-    }), purpose === "discovery");
+    }), discoveryDeadline);
     return {
       ok: true,
       source: "expo",

@@ -56,10 +56,10 @@ export default function AccountDeletion() {
     if (!token || !signedIdentifier) return toast("Registered contact unavailable. Please sign in again.", "error");
     setBusy(true);
     try {
-      await apiPublicPost("/account-deletion/otp/send", { identifier: signedIdentifier });
+      await apiPost("/account-deletion/otp/send-authenticated", token);
       setCode("");
       setSignedCodeSent(true);
-      toast("Deletion verification code requested", "success");
+      toast("Deletion verification code sent", "success");
     } catch (e: any) {
       toast(e.detail || "Could not send verification code", "error");
     } finally { setBusy(false); }

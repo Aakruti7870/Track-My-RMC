@@ -208,10 +208,20 @@ fn geocode_lookup(q: &GeocodeQuery) -> Result<(&'static str, String), AppError> 
 }
 
 fn geocode_result(result: &serde_json::Value) -> Result<serde_json::Value, AppError> {
-    if result["status"] != "OK" {
-        return Err(AppError::NotFound(
-            "Location could not be resolved. Try a city or PIN code.".into(),
-        ));
+    match result["status"].as_str() {
+        Some("OK") => {}
+        Some("ZERO_RESULTS") => {
+            return Err(AppError::NotFound(
+                "Location could not be resolved. Try a city or PIN code.".into(),
+            ));
+        }
+        _ => {
+            // Do not conflate provider quota or configuration failures with no results.
+            // Never surface provider error_message, which can contain sensitive data.
+            return Err(AppError::InternalError(
+                "Location provider is temporarily unavailable. Please retry.".into(),
+            ));
+        }
     }
     let results = result["results"]
         .as_array()
@@ -280,11 +290,16 @@ mod geocode_tests {
 
     #[test]
     fn prefers_city_and_never_fabricates_a_location() {
-        assert!(geocode_result(&json!({"status":"ZERO_RESULTS","results":[]})).is_err());
-        assert!(
-            geocode_result(&json!({"status":"REQUEST_DENIED","error_message":"sensitive"}))
-                .is_err()
-        );
+        assert!(matches!(
+            geocode_result(&json!({"status":"ZERO_RESULTS","results":[]})),
+            Err(AppError::NotFound(_))
+        ));
+        for status in ["REQUEST_DENIED", "OVER_QUERY_LIMIT", "UNKNOWN_ERROR"] {
+            assert!(matches!(
+                geocode_result(&json!({"status":status,"error_message":"sensitive"})),
+                Err(AppError::InternalError(_))
+            ));
+        }
         let result = json!({"status":"OK","results":[{
             "geometry":{"location":{"lat":18.99,"lng":73.11}},
             "formatted_address":"Street, Panvel",
