@@ -58,7 +58,7 @@ export function ActiveTransitMixerCard({ order, onNewOrder, onRefreshHome }: {
       <View style={{ flex: 1, minWidth: 0 }}>
         {!order ? <View><DemoTrackingPreview /><View style={styles.badge}><AppText style={styles.badgeText}>{t.liveTracking}</AppText></View></View> : <>
           <View style={styles.realMap}>
-            {location ? <LiveMap origin={validPoint(tracking?.origin) ? tracking.origin : null} destination={validPoint(tracking?.destination) ? tracking.destination : null} mixer={location} polyline={load?.route?.polyline} style={{ flex: 1, minHeight: 0 }} /> : <View style={[styles.waiting, { backgroundColor: colors.surfaceTertiary }]}<Ionicons name="time-outline" size={32} color={colors.brand} /><AppText>{["DELIVERED", "CANCELLED", "REJECTED"].includes(order.status.toUpperCase()) ? order.status.replace(/_/g, " ") : tracking?.active ? t.locationUnavailable : t.waitingForDispatch}</AppText></View>}
+            {location ? <LiveMap origin={validPoint(tracking?.origin) ? tracking.origin : null} destination={validPoint(tracking?.destination) ? tracking.destination : null} mixer={location} polyline={load?.route?.polyline} style={{ flex: 1, minHeight: 0 }} /> : <View style={[styles.waiting, { backgroundColor: colors.surfaceTertiary }]}><Ionicons name="time-outline" size={32} color={colors.brand} /><AppText>{["DELIVERED", "CANCELLED", "REJECTED"].includes(order.status.toUpperCase()) ? order.status.replace(/_/g, " ") : tracking?.active ? t.locationUnavailable : t.waitingForDispatch}</AppText></View>}
           </View>
           <View style={styles.realStatus}>
             <AppText style={{ fontFamily: fonts.semibold }}>{live ? t.liveTracking : location ? t.lastKnown : order.status.replace(/_/g, " ")}</AppText>
