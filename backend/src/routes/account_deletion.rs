@@ -170,7 +170,7 @@ async fn send_deletion_otp(
     let session_id = OtpEngine::create_pending_session(
         &state.db,
         crate::auth::otp::OtpSessionInput {
-            destination: destination,
+            destination,
             channel,
             purpose: DELETION_OTP_PURPOSE,
             salt: &salt,
