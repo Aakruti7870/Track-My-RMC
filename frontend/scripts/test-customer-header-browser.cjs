@@ -33,8 +33,9 @@ const out=process.env.HEADER_PREVIEW_DIR||'header-previews';fs.mkdirSync(out,{re
   const home=async()=>{await page.goto('http://127.0.0.1:8765/customer/');await page.getByTestId('customer-home-header').waitFor();};
   await home();const header=page.getByTestId('customer-home-header');
   await page.getByTestId('header-unread-dot').waitFor();
+  // Light glass cards now use 86% opacity per the shared reference palette.
   const headerSurface=await header.evaluate(node=>getComputedStyle(node.parentElement).backgroundColor);
-  assert.match(headerSurface,scheme==='light'?/rgba\(255,\s*255,\s*255,\s*0\.78\)/:/rgba\(20,\s*24,\s*31,\s*0\.76\)/,`theme-aware glass surface expected at ${width}px, got ${headerSurface}`);
+  assert.match(headerSurface,scheme==='light'?/rgba\(255,\s*255,\s*255,\s*0\.86\)/:/rgba\(20,\s*24,\s*31,\s*0\.76\)/,`theme-aware glass surface expected at ${width}px, got ${headerSurface}`);
 
   assert.equal(await page.evaluate(()=>window.headerGeoCalls),0,'manual consent triggered GPS');
   let previousRight=0;
