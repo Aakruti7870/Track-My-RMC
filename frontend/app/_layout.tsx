@@ -11,7 +11,7 @@ import { useFonts } from "expo-font";
 // mounts. TaskManager requires this for Android background execution.
 import "@/src/location/tripTracking";
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
-import { ThemeProvider } from "@/src/theme/ThemeProvider";
+import { ThemeProvider, useTheme } from "@/src/theme/ThemeProvider";
 import { AuthProvider } from "@/src/auth/AuthContext";
 import { ToastProvider } from "@/src/components/ui/Toast";
 import { PushNotificationBridge } from "@/src/notifications/PushNotificationBridge";
@@ -23,6 +23,25 @@ import { RootBackHandler } from "@/src/navigation/RootBackHandler";
 // Keep the native splash visible from cold start until fonts, theme preference,
 // and the branded opening artwork are ready. Development warnings remain enabled.
 void SplashScreen.preventAutoHideAsync();
+
+// One image per navigation tree, not one image per screen or glass card.
+function ThemedNavigator() {
+  const { colors } = useTheme();
+  return (
+    <View style={[styles.appCanvas, { backgroundColor: colors.isDark ? "#0E1116" : "#F7F8F9" }]}>
+      <Image
+        source={colors.isDark
+          ? require("../assets/images/Background Dark Theme.png")
+          : require("../assets/images/Background Light Theme.PNG")}
+        style={[StyleSheet.absoluteFill, styles.themeArtwork]}
+        resizeMode="cover"
+        pointerEvents="none"
+        accessible={false}
+      />
+      <Stack screenOptions={{ headerShown: false, animation: "fade", contentStyle: { backgroundColor: "transparent" } }} />
+    </View>
+  );
+}
 
 export default function RootLayout() {
   const [themeReady, setThemeReady] = useState(false);
@@ -61,7 +80,7 @@ export default function RootLayout() {
                   <BackgroundLocationConsentProvider />
                   <PermissionProvider>
                   <RootBackHandler />
-                  <Stack screenOptions={{ headerShown: false, animation: "fade" }} />
+                  <ThemedNavigator />
                   <SupportWidgetBridge />
                   </PermissionProvider>
                 </ToastProvider>
@@ -87,6 +106,8 @@ export default function RootLayout() {
 }
 
 const styles = StyleSheet.create({
+  appCanvas: { flex: 1 },
+  themeArtwork: { opacity: 0.35 },
   openingSplash: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",

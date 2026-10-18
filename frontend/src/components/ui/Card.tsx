@@ -20,13 +20,13 @@ export function Card({ children, style, padded = true, variant = "default", test
   const visual = {
     default: {
       backgroundColor: colors.surfaceSecondary,
-      borderColor: colors.isDark ? "rgba(255,255,255,0.08)" : colors.border,
+      borderColor: colors.isDark ? "rgba(255,255,255,0.20)" : "rgba(255,255,255,0.92)",
       shadowOpacity: colors.isDark ? 0.2 : 0.06,
       elevation: colors.isDark ? 2 : 1,
     },
     elevated: {
       backgroundColor: colors.surfaceElevated,
-      borderColor: colors.isDark ? "rgba(255,255,255,0.11)" : colors.border,
+      borderColor: colors.isDark ? "rgba(255,255,255,0.26)" : "rgba(255,255,255,0.96)",
       shadowOpacity: colors.isDark ? 0.34 : 0.11,
       elevation: 5,
     },
@@ -37,13 +37,13 @@ export function Card({ children, style, padded = true, variant = "default", test
       elevation: 0,
     },
     outline: {
-      backgroundColor: "transparent",
+      backgroundColor: colors.glassTint,
       borderColor: colors.borderStrong,
       shadowOpacity: 0,
       elevation: 0,
     },
     brand: {
-      backgroundColor: colors.brandSoft,
+      backgroundColor: colors.glassTint,
       borderColor: colors.isDark ? `${colors.brand}72` : `${colors.brand}3D`,
       shadowOpacity: 0,
       elevation: 0,
