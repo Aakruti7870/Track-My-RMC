@@ -590,7 +590,7 @@ function ScreenshotPlantCard({plant,onDetails,onQuotation,onOrder,quoteSubmittin
           <Ionicons name="chatbubble-ellipses-outline" size={17} color={outlineText}/>
           <AppText numberOfLines={2} style={[styles.screenshotOutlineText,{color:outlineText}]}>{quoteSubmitting ? "Saving…" : "Request Quotation"}</AppText>
         </Pressable>
-        <Pressable accessibilityRole="button" onPress={onDetails} accessibilityLabel="Plant Details"
+        <Pressable accessibilityRole="button" onPress={onDetails} accessibilityLabel="View Details"
           style={[styles.screenshotOutline,{backgroundColor:colors.isDark ? "rgba(255,138,0,0.08)" : "rgba(255,255,255,0.85)",borderColor:orange}]}>
           <Ionicons name="document-text-outline" size={17} color={outlineText}/>
           <AppText numberOfLines={2} style={[styles.screenshotOutlineText,{color:outlineText}]}>Plant Details</AppText>
