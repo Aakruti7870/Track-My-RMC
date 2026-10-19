@@ -216,13 +216,11 @@ async fn owner_controls_dispatcher_only_with_tenant_isolation_and_live_revocatio
         "SELECT COUNT(*) FROM plant_staff_module_permission_audit WHERE plant_id=$1 AND staff_user_id=$2"
     ).bind(mine).bind(dispatcher).fetch_one(&db).await.unwrap();
     assert_eq!(audit_count, 6);
-    assert!(matches!(
-        sqlx::query("DELETE FROM plant_staff_module_permission_audit WHERE plant_id=$1")
-            .bind(mine)
-            .execute(&db)
-            .await,
-        Err(_)
-    ));
+    assert!(sqlx::query("DELETE FROM plant_staff_module_permission_audit WHERE plant_id=$1")
+        .bind(mine)
+        .execute(&db)
+        .await
+        .is_err());
     sqlx::query("UPDATE plant_staff SET is_active=FALSE WHERE plant_id=$1 AND user_id=$2")
         .bind(mine)
         .bind(dispatcher)
