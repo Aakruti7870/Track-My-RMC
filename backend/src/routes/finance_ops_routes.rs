@@ -194,6 +194,7 @@ pub async fn list_plant_expenses(
     Path(plant_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
+    check_role(&auth_user, &["owner", "plant_owner", "admin", "accountant"])?;
 
     let rows = sqlx::query(
         r#"
