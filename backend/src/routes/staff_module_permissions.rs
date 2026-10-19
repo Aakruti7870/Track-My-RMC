@@ -460,6 +460,45 @@ mod tests {
         }
     }
     #[test]
+    fn all_roles_have_bounded_scope_and_view_only_separation() {
+        assert_eq!(STAFF_ROLES.len(), 8);
+        for role in STAFF_ROLES {
+            assert!(!role_modules(role).is_empty());
+            assert!(role_modules(role).iter().all(|(key, _, grant)| {
+                grant.within(role_ceiling(role, key).unwrap())
+            }));
+            assert!(role_modules(role).iter().all(|(_, _, grant)| !grant.approve));
+        }
+        assert_eq!(
+            role_ceiling("operator", "mix_designs"),
+            Some(Grant::new(true, false, false))
+        );
+        assert_eq!(
+            role_ceiling("supervisor", "payroll"),
+            Some(Grant::new(false, false, false))
+        );
+        assert_eq!(
+            role_ceiling("accountant", "billing_ledger"),
+            Some(Grant::new(true, true, false))
+        );
+        assert_eq!(
+            role_ceiling("quality_engineer", "mix_designs"),
+            Some(Grant::new(true, true, false))
+        );
+        assert_eq!(
+            role_ceiling("fleet_manager", "fleet_availability"),
+            Some(Grant::new(true, true, false))
+        );
+        assert_eq!(
+            role_ceiling("store_manager", "material_inventory"),
+            Some(Grant::new(true, true, false))
+        );
+        for role in ["driver", "customer", "owner", "central_admin"] {
+            assert!(role_modules(role).is_empty());
+            assert!(role_ceiling(role, "payroll").is_none());
+        }
+    }
+    #[test]
     fn escalation_and_inconsistent_grants_fail_closed() {
         let ceiling = dispatcher_ceiling("material_inventory").unwrap();
         assert!(!Grant::new(true, true, false).within(ceiling));
