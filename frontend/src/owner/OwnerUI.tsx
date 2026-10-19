@@ -54,13 +54,13 @@ export function OwnerList({ children }: { children: React.ReactNode }) {
   const bottom = useOwnerBottomSpace();
   return <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[ui.content, { paddingBottom: bottom }]}>{children}</ScrollView>;
 }
-export function OwnerModuleRow({ module }: { module: RoleModule }) {
+export function OwnerModuleRow({ module, compact = false }: { module: RoleModule; compact?: boolean }) {
   const p = useOwnerPalette();
   const router = useRouter();
   return <Pressable testID={`role-module-${module.key}`} accessibilityRole="button" accessibilityLabel={module.label} onPress={() => router.push(ownerDestination(module))} style={({ pressed }) => ({ opacity: pressed ? 0.72 : 1 })}>
-    <OwnerGlass style={ui.moduleRow}>
-      {module.symbol ? <VectorSymbol name={module.symbol} size={44} warmAccent /> : <Ionicons name={module.icon} size={30} color={p.accent} />}
-      <View style={{ flex: 1, minWidth: 0, gap: 3 }}><AppText style={{ fontFamily: fonts.semibold, fontSize: 14, color: p.text }}>{module.label}</AppText><AppText numberOfLines={1} style={{ fontSize: 11, color: p.muted }}>{module.description}</AppText></View>
+    <OwnerGlass style={[ui.moduleRow, compact && { minHeight: 50, paddingVertical: 5 }]}>
+      {module.symbol ? <VectorSymbol name={module.symbol} size={compact ? 36 : 44} warmAccent /> : <Ionicons name={module.icon} size={30} color={p.accent} />}
+      <View style={{ flex: 1, minWidth: 0, gap: 3 }}><AppText style={{ fontFamily: fonts.semibold, fontSize: 14, lineHeight: 18, color: p.text }}>{module.label}</AppText><AppText numberOfLines={1} style={{ fontSize: 11, lineHeight: 15, color: p.muted }}>{module.description}</AppText></View>
       <Ionicons name="chevron-forward" size={17} color={p.text} />
     </OwnerGlass>
   </Pressable>;

@@ -23,8 +23,8 @@ export default function OwnerMore() {
     { title: "Driver Management", entries: [DRIVER_MODULE] },
   ];
   return <OwnerFrame title={directory === "1" ? "All Plant Modules" : "More"} subtitle="Account, workforce, payroll and other settings">
-    <OwnerList><View testID="role-module-directory" style={{ gap: 10 }}>
-      {groups.map(group => <React.Fragment key={group.title}><AppText style={[ui.section, { color: p.text }]}>{group.title}</AppText>{group.entries.filter(module => available.has(module.key) || module.key === DRIVER_MODULE.key).map(module => <OwnerModuleRow key={module.key} module={module} />)}</React.Fragment>)}
+    <OwnerList><View testID="role-module-directory" style={{ gap: 6 }}>
+      {groups.map(group => <React.Fragment key={group.title}><AppText style={[ui.section, { color: p.text }]}>{group.title}</AppText>{group.entries.filter(module => available.has(module.key) || module.key === DRIVER_MODULE.key).map(module => <OwnerModuleRow key={module.key} module={module} compact />)}</React.Fragment>)}
       <OwnerInsights />
       <AppText style={[ui.section, { color: p.text }]}>Appearance</AppText>
       <OwnerGlass style={{ padding: 12, flexDirection: "row", gap: 8 }}>
