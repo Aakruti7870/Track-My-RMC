@@ -31,6 +31,7 @@ pub async fn get_plant_fleet(
         &["dispatcher", "owner", "fleet_manager", "admin"],
     )?;
     ensure_plant_access(&state, &auth_user, plant_id).await?;
+    super::staff_module_permissions::require(&state, &auth_user, plant_id, "fleet_availability", super::staff_module_permissions::Action::View).await?;
     let fleet = dispatch_repo::list_plant_mixers(&state.db, plant_id).await?;
     Ok(Json(json!({ "success": true, "fleet": fleet })))
 }
@@ -47,6 +48,7 @@ pub async fn assign_load(
         .await?
         .ok_or_else(|| AppError::NotFound("Order not found".to_string()))?;
     ensure_plant_access(&state, &auth_user, plant_id).await?;
+    super::staff_module_permissions::require(&state, &auth_user, plant_id, "dispatch_queue", super::staff_module_permissions::Action::Edit).await?;
     let load = dispatch_repo::assign_order_load(
         &state.db,
         payload.order_id,
