@@ -76,24 +76,58 @@ pub fn dispatcher_ceiling(key: &str) -> Option<Grant> {
 // Policy bounds are independent from PostgreSQL overrides and never grant
 // privileges beyond the existing Rust role checks.
 pub const STAFF_ROLES: [&str; 8] = [
-    "admin", "dispatcher", "operator", "supervisor", "accountant",
-    "quality_engineer", "fleet_manager", "store_manager",
+    "admin",
+    "dispatcher",
+    "operator",
+    "supervisor",
+    "accountant",
+    "quality_engineer",
+    "fleet_manager",
+    "store_manager",
 ];
 const ALL_KEYS: [&str; 20] = [
-    "dispatch_queue", "fleet_availability", "challan_gate_pass",
-    "material_inventory", "billing_ledger", "payroll",
-    "production_queue", "quality_register", "mix_designs",
-    "diesel_ledger", "suppliers", "purchases", "quotations",
-    "expenses", "rate_cards", "workforce", "incidents",
-    "plant_reports", "driver_roster", "employee_master",
+    "dispatch_queue",
+    "fleet_availability",
+    "challan_gate_pass",
+    "material_inventory",
+    "billing_ledger",
+    "payroll",
+    "production_queue",
+    "quality_register",
+    "mix_designs",
+    "diesel_ledger",
+    "suppliers",
+    "purchases",
+    "quotations",
+    "expenses",
+    "rate_cards",
+    "workforce",
+    "incidents",
+    "plant_reports",
+    "driver_roster",
+    "employee_master",
 ];
 const ALL_LABELS: [&str; 20] = [
-    "Dispatch Queue", "Fleet Availability", "Challan & Gate Pass",
-    "Material Inventory", "Billing & Ledger", "Payroll",
-    "Production Queue", "Quality Register", "Mix Designs",
-    "Diesel Ledger", "Suppliers", "Purchases", "Quotations",
-    "Expenses", "Rate Cards", "Workforce & Attendance", "Incidents / SOS",
-    "Plant Reports", "Drivers & Fleet Rosters", "Employee Master",
+    "Dispatch Queue",
+    "Fleet Availability",
+    "Challan & Gate Pass",
+    "Material Inventory",
+    "Billing & Ledger",
+    "Payroll",
+    "Production Queue",
+    "Quality Register",
+    "Mix Designs",
+    "Diesel Ledger",
+    "Suppliers",
+    "Purchases",
+    "Quotations",
+    "Expenses",
+    "Rate Cards",
+    "Workforce & Attendance",
+    "Incidents / SOS",
+    "Plant Reports",
+    "Drivers & Fleet Rosters",
+    "Employee Master",
 ];
 fn is_staff_role(role: &str) -> bool {
     STAFF_ROLES.contains(&role)
@@ -106,38 +140,54 @@ pub fn role_ceiling(role: &str, key: &str) -> Option<Grant> {
         return None;
     }
     let ceiling = match (role, key) {
-        ("admin", "dispatch_queue" | "fleet_availability" | "challan_gate_pass" |
-            "material_inventory" | "billing_ledger" | "payroll" | "production_queue" |
-            "mix_designs" | "diesel_ledger" | "suppliers" | "purchases" |
-            "quotations" | "expenses" | "rate_cards" | "workforce" |
-            "incidents" | "driver_roster") => Grant::new(true, true, false),
+        (
+            "admin",
+            "dispatch_queue" | "fleet_availability" | "challan_gate_pass" | "material_inventory"
+            | "billing_ledger" | "payroll" | "production_queue" | "mix_designs" | "diesel_ledger"
+            | "suppliers" | "purchases" | "quotations" | "expenses" | "rate_cards" | "workforce"
+            | "incidents" | "driver_roster",
+        ) => Grant::new(true, true, false),
         ("operator", "production_queue" | "challan_gate_pass") => Grant::new(true, true, false),
-        ("operator", "material_inventory" | "fleet_availability" | "mix_designs" |
-            "dispatch_queue" |
-            "workforce" | "plant_reports") => Grant::new(true, false, false),
-        ("supervisor", "production_queue" | "dispatch_queue" | "challan_gate_pass" |
-            "material_inventory" | "workforce" | "incidents") => Grant::new(true, true, false),
-        ("supervisor", "quality_register" | "mix_designs" |
-            "fleet_availability" | "plant_reports") => Grant::new(true, false, false),
-        ("accountant", "billing_ledger" | "payroll" | "quotations" |
-            "expenses" | "rate_cards") => Grant::new(true, true, false),
-        ("accountant", "workforce" | "plant_reports" | "employee_master" |
-            "purchases") => Grant::new(true, false, false),
-        ("quality_engineer", "quality_register" | "mix_designs" |
-            "challan_gate_pass") =>
-            Grant::new(true, true, false),
-        ("quality_engineer", "dispatch_queue" | "material_inventory" | "production_queue" |
-            "plant_reports" | "workforce") => Grant::new(true, false, false),
-        ("fleet_manager", "fleet_availability" | "dispatch_queue" |
-            "diesel_ledger" | "driver_roster") => Grant::new(true, true, false),
-        ("fleet_manager", "plant_reports" | "workforce") =>
-            Grant::new(true, false, false),
-        ("store_manager", "material_inventory" | "suppliers" | "purchases" |
-            "diesel_ledger") => Grant::new(true, true, false),
-        ("store_manager", "plant_reports" | "workforce") =>
-            Grant::new(true, false, false),
-        ("admin", "quality_register" | "plant_reports" | "employee_master") =>
-            Grant::new(true, false, false),
+        (
+            "operator",
+            "material_inventory" | "fleet_availability" | "mix_designs" | "dispatch_queue"
+            | "workforce" | "plant_reports",
+        ) => Grant::new(true, false, false),
+        (
+            "supervisor",
+            "production_queue" | "dispatch_queue" | "challan_gate_pass" | "material_inventory"
+            | "workforce" | "incidents",
+        ) => Grant::new(true, true, false),
+        (
+            "supervisor",
+            "quality_register" | "mix_designs" | "fleet_availability" | "plant_reports",
+        ) => Grant::new(true, false, false),
+        ("accountant", "billing_ledger" | "payroll" | "quotations" | "expenses" | "rate_cards") => {
+            Grant::new(true, true, false)
+        }
+        ("accountant", "workforce" | "plant_reports" | "employee_master" | "purchases") => {
+            Grant::new(true, false, false)
+        }
+        ("quality_engineer", "quality_register" | "mix_designs" | "challan_gate_pass") => {
+            Grant::new(true, true, false)
+        }
+        (
+            "quality_engineer",
+            "dispatch_queue" | "material_inventory" | "production_queue" | "plant_reports"
+            | "workforce",
+        ) => Grant::new(true, false, false),
+        (
+            "fleet_manager",
+            "fleet_availability" | "dispatch_queue" | "diesel_ledger" | "driver_roster",
+        ) => Grant::new(true, true, false),
+        ("fleet_manager", "plant_reports" | "workforce") => Grant::new(true, false, false),
+        ("store_manager", "material_inventory" | "suppliers" | "purchases" | "diesel_ledger") => {
+            Grant::new(true, true, false)
+        }
+        ("store_manager", "plant_reports" | "workforce") => Grant::new(true, false, false),
+        ("admin", "quality_register" | "plant_reports" | "employee_master") => {
+            Grant::new(true, false, false)
+        }
         _ => Grant::new(false, false, false),
     };
     if ALL_KEYS.contains(&key) {
@@ -147,14 +197,18 @@ pub fn role_ceiling(role: &str, key: &str) -> Option<Grant> {
     }
 }
 fn role_modules(role: &str) -> Vec<(&'static str, &'static str, Grant)> {
-    ALL_KEYS.iter().zip(ALL_LABELS.iter()).filter_map(|(key, label)| {
-        let ceiling = role_ceiling(role, key)?;
-        if role == "dispatcher" || ceiling.view {
-            Some((*key, *label, ceiling))
-        } else {
-            None
-        }
-    }).collect()
+    ALL_KEYS
+        .iter()
+        .zip(ALL_LABELS.iter())
+        .filter_map(|(key, label)| {
+            let ceiling = role_ceiling(role, key)?;
+            if role == "dispatcher" || ceiling.view {
+                Some((*key, *label, ceiling))
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 #[derive(Serialize)]
@@ -204,10 +258,16 @@ async fn active_staff_role(db: &PgPool, plant: Uuid, user: Uuid) -> Result<Strin
          JOIN rmc_plants p ON p.id=ps.plant_id \
          WHERE ps.plant_id=$1 AND ps.user_id=$2 AND ps.is_active=TRUE \
          AND u.is_active=TRUE AND u.role=ps.role AND p.is_active=TRUE",
-    ).bind(plant).bind(user).fetch_optional(db).await?;
+    )
+    .bind(plant)
+    .bind(user)
+    .fetch_optional(db)
+    .await?;
     match role {
         Some(role) if is_staff_role(&role) => Ok(role),
-        _ => Err(AppError::Forbidden("Active plant staff assignment required".into())),
+        _ => Err(AppError::Forbidden(
+            "Active plant staff assignment required".into(),
+        )),
     }
 }
 async fn resolved(db: &PgPool, plant: Uuid, user: Uuid) -> Result<Vec<ModuleGrant>, AppError> {
@@ -318,7 +378,9 @@ pub async fn get_mine(
     user: AuthUser,
 ) -> Result<Json<Value>, AppError> {
     if !is_staff_role(&user.role) {
-        return Err(AppError::Forbidden("Plant staff permission endpoint only".into()));
+        return Err(AppError::Forbidden(
+            "Plant staff permission endpoint only".into(),
+        ));
     }
     let plants: Vec<Uuid> = sqlx::query_scalar(
         "SELECT ps.plant_id FROM plant_staff ps JOIN rmc_plants p ON p.id=ps.plant_id \
@@ -355,11 +417,15 @@ pub async fn replace_staff(
     let target_role = active_staff_role(&state.db, plant, staff).await?;
     let allowed = role_modules(&target_role);
     if request.permissions.len() != allowed.len() {
-        return Err(AppError::BadRequest("Submit each role module exactly once".into()));
+        return Err(AppError::BadRequest(
+            "Submit each role module exactly once".into(),
+        ));
     }
     let mut seen = std::collections::HashSet::new();
     for edit in &request.permissions {
-        let ceiling = allowed.iter().find(|(key, _, _)| *key == edit.key)
+        let ceiling = allowed
+            .iter()
+            .find(|(key, _, _)| *key == edit.key)
             .map(|(_, _, limit)| *limit)
             .ok_or_else(|| AppError::BadRequest("Module is outside this role ceiling".into()))?;
         let grant = Grant::new(edit.view, edit.edit, edit.approve);
@@ -376,9 +442,15 @@ pub async fn replace_staff(
          JOIN rmc_plants p ON p.id=ps.plant_id \
          WHERE ps.plant_id=$1 AND ps.user_id=$2 AND ps.is_active=TRUE \
          AND u.is_active=TRUE AND p.is_active=TRUE AND u.role=ps.role FOR UPDATE OF ps",
-    ).bind(plant).bind(staff).fetch_optional(&mut *tx).await?;
+    )
+    .bind(plant)
+    .bind(staff)
+    .fetch_optional(&mut *tx)
+    .await?;
     if current_role.as_deref() != Some(target_role.as_str()) {
-        return Err(AppError::Forbidden("Inactive or changed staff assignment".into()));
+        return Err(AppError::Forbidden(
+            "Inactive or changed staff assignment".into(),
+        ));
     }
     for edit in &request.permissions {
         let old: Option<(bool, bool, bool)> = sqlx::query_as(
@@ -464,10 +536,12 @@ mod tests {
         assert_eq!(STAFF_ROLES.len(), 8);
         for role in STAFF_ROLES {
             assert!(!role_modules(role).is_empty());
-            assert!(role_modules(role).iter().all(|(key, _, grant)| {
-                grant.within(role_ceiling(role, key).unwrap())
-            }));
-            assert!(role_modules(role).iter().all(|(_, _, grant)| !grant.approve));
+            assert!(role_modules(role)
+                .iter()
+                .all(|(key, _, grant)| { grant.within(role_ceiling(role, key).unwrap()) }));
+            assert!(role_modules(role)
+                .iter()
+                .all(|(_, _, grant)| !grant.approve));
         }
         assert_eq!(
             role_ceiling("operator", "mix_designs"),
