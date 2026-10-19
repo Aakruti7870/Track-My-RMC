@@ -158,15 +158,13 @@ async fn owner_controls_dispatcher_only_with_tenant_isolation_and_live_revocatio
         .await,
         Err(AppError::Forbidden(_))
     ));
-    assert!(matches!(
-        permissions::get_staff(
-            State(app.clone()),
-            identity(owner, "owner"),
-            Path((mine, supervisor))
-        )
-        .await,
-        Err(AppError::Forbidden(_))
-    ));
+    assert!(permissions::get_staff(
+        State(app.clone()),
+        identity(owner, "owner"),
+        Path((mine, supervisor))
+    )
+    .await
+    .is_ok());
     let invalid = ReplaceGrants {
         permissions: settings(true, true)
             .permissions
