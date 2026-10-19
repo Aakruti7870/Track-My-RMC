@@ -3,7 +3,7 @@ use crate::{auth::AuthUser, error::AppError, state::AppState};
 use axum::{extract::{Path, State}, Json};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sqlx::{PgPool, Postgres, Row, Transaction};
+use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 pub const KEYS: [&str; 6] = [
