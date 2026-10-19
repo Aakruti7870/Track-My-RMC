@@ -82,6 +82,89 @@ pub fn dispatcher_ceiling(key: &str) -> Option<Grant> {
         _ => None,
     }
 }
+// Policy bounds are independent from PostgreSQL overrides and never grant
+// privileges beyond the existing Rust role checks.
+pub const STAFF_ROLES: [&str; 8] = [
+    "admin", "dispatcher", "operator", "supervisor", "accountant",
+    "quality_engineer", "fleet_manager", "store_manager",
+];
+const ALL_KEYS: [&str; 20] = [
+    "dispatch_queue", "fleet_availability", "challan_gate_pass",
+    "material_inventory", "billing_ledger", "payroll",
+    "production_queue", "quality_register", "mix_designs",
+    "diesel_ledger", "suppliers", "purchases", "quotations",
+    "expenses", "rate_cards", "workforce", "incidents",
+    "plant_reports", "driver_roster", "employee_master",
+];
+const ALL_LABELS: [&str; 20] = [
+    "Dispatch Queue", "Fleet Availability", "Challan & Gate Pass",
+    "Material Inventory", "Billing & Ledger", "Payroll",
+    "Production Queue", "Quality Register", "Mix Designs",
+    "Diesel Ledger", "Suppliers", "Purchases", "Quotations",
+    "Expenses", "Rate Cards", "Workforce & Attendance", "Incidents / SOS",
+    "Plant Reports", "Drivers & Fleet Rosters", "Employee Master",
+];
+fn is_staff_role(role: &str) -> bool {
+    STAFF_ROLES.contains(&role)
+}
+pub fn role_ceiling(role: &str, key: &str) -> Option<Grant> {
+    if role == "dispatcher" {
+        return dispatcher_ceiling(key);
+    }
+    if !is_staff_role(role) {
+        return None;
+    }
+    let mut ceiling = match (role, key) {
+        ("admin", "dispatch_queue" | "fleet_availability" | "challan_gate_pass" |
+            "material_inventory" | "billing_ledger" | "payroll" | "production_queue" |
+            "mix_designs" | "diesel_ledger" | "suppliers" | "purchases" |
+            "quotations" | "expenses" | "rate_cards" | "workforce" |
+            "incidents" | "driver_roster") => Grant::new(true, true, false),
+        ("operator", "production_queue" | "challan_gate_pass") => Grant::new(true, true, false),
+        ("operator", "material_inventory" | "fleet_availability" | "mix_designs" |
+            "workforce" | "plant_reports") => Grant::new(true, false, false),
+        ("supervisor", "production_queue" | "dispatch_queue" | "challan_gate_pass" |
+            "material_inventory" | "workforce" | "incidents") => Grant::new(true, true, false),
+        ("supervisor", "quality_register" | "mix_designs" |
+            "fleet_availability" | "plant_reports") => Grant::new(true, false, false),
+        ("accountant", "billing_ledger" | "payroll" | "quotations" |
+            "expenses" | "rate_cards") => Grant::new(true, true, false),
+        ("accountant", "workforce" | "plant_reports" | "employee_master" |
+            "purchases") => Grant::new(true, false, false),
+        ("quality_engineer", "quality_register" | "mix_designs") =>
+            Grant::new(true, true, false),
+        ("quality_engineer", "material_inventory" | "production_queue" |
+            "plant_reports" | "workforce") => Grant::new(true, false, false),
+        ("fleet_manager", "fleet_availability" | "dispatch_queue" |
+            "diesel_ledger" | "driver_roster") => Grant::new(true, true, false),
+        ("fleet_manager", "plant_reports" | "workforce") =>
+            Grant::new(true, false, false),
+        ("store_manager", "material_inventory" | "suppliers" | "purchases" |
+            "diesel_ledger") => Grant::new(true, true, false),
+        ("store_manager", "plant_reports" | "workforce") =>
+            Grant::new(true, false, false),
+        _ => Grant::new(false, false, false),
+    };
+    if role == "admin" && matches!(key, "quality_register" | "plant_reports" | "employee_master") {
+        ceiling = Grant::new(true, false, false);
+    }
+    if ALL_KEYS.contains(&key) {
+        Some(ceiling)
+    } else {
+        None
+    }
+}
+fn role_modules(role: &str) -> Vec<(&'static str, &'static str, Grant)> {
+    ALL_KEYS.iter().zip(ALL_LABELS.iter()).filter_map(|(key, label)| {
+        let ceiling = role_ceiling(role, key)?;
+        if role == "dispatcher" || ceiling.view {
+            Some((*key, *label, ceiling))
+        } else {
+            None
+        }
+    }).collect()
+}
+
 #[derive(Serialize)]
 pub struct ModuleGrant {
     key: &'static str,
@@ -123,25 +206,20 @@ async fn owned_plant(state: &AppState, owner: &AuthUser, plant_id: Uuid) -> Resu
     }
     Ok(())
 }
-async fn dispatcher_assigned(db: &PgPool, plant: Uuid, user: Uuid) -> Result<(), AppError> {
-    let ok: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM plant_staff ps JOIN users u ON u.id=ps.user_id \
-        WHERE ps.plant_id=$1 AND ps.user_id=$2 AND ps.is_active=TRUE \
-        AND u.is_active=TRUE AND ps.role='dispatcher' AND u.role='dispatcher')",
-    )
-    .bind(plant)
-    .bind(user)
-    .fetch_one(db)
-    .await?;
-    if !ok {
-        return Err(AppError::Forbidden(
-            "Active Dispatcher assignment required".into(),
-        ));
+async fn active_staff_role(db: &PgPool, plant: Uuid, user: Uuid) -> Result<String, AppError> {
+    let role: Option<String> = sqlx::query_scalar(
+        "SELECT ps.role FROM plant_staff ps JOIN users u ON u.id=ps.user_id \
+         JOIN rmc_plants p ON p.id=ps.plant_id \
+         WHERE ps.plant_id=$1 AND ps.user_id=$2 AND ps.is_active=TRUE \
+         AND u.is_active=TRUE AND u.role=ps.role AND p.is_active=TRUE",
+    ).bind(plant).bind(user).fetch_optional(db).await?;
+    match role {
+        Some(role) if is_staff_role(&role) => Ok(role),
+        _ => Err(AppError::Forbidden("Active plant staff assignment required".into())),
     }
-    Ok(())
 }
 async fn resolved(db: &PgPool, plant: Uuid, user: Uuid) -> Result<Vec<ModuleGrant>, AppError> {
-    dispatcher_assigned(db, plant, user).await?;
+    let role = active_staff_role(db, plant, user).await?;
     let rows = sqlx::query(
         "SELECT module_key,can_view,can_edit,can_approve FROM plant_staff_module_permissions \
          WHERE plant_id=$1 AND user_id=$2",
@@ -150,9 +228,9 @@ async fn resolved(db: &PgPool, plant: Uuid, user: Uuid) -> Result<Vec<ModuleGran
     .bind(user)
     .fetch_all(db)
     .await?;
-    let mut result = Vec::with_capacity(KEYS.len());
-    for (i, key) in KEYS.iter().enumerate() {
-        let ceiling = dispatcher_ceiling(key).expect("registered key");
+    let modules = role_modules(&role);
+    let mut result = Vec::with_capacity(modules.len());
+    for (key, label, ceiling) in modules {
         let override_row = rows
             .iter()
             .find(|r| r.get::<String, _>("module_key") == *key);
@@ -160,7 +238,7 @@ async fn resolved(db: &PgPool, plant: Uuid, user: Uuid) -> Result<Vec<ModuleGran
             .map(|r| Grant::new(r.get("can_view"), r.get("can_edit"), r.get("can_approve")));
         result.push(ModuleGrant {
             key,
-            label: LABELS[i],
+            label,
             effective: override_grant.unwrap_or(ceiling).intersect(ceiling),
             ceiling,
             overridden: override_row.is_some(),
@@ -170,7 +248,7 @@ async fn resolved(db: &PgPool, plant: Uuid, user: Uuid) -> Result<Vec<ModuleGran
 }
 
 /// To retain existing role gates, call *after* check_role and plant/order scope checks.
-/// For other roles this helper never adds authority; it only restricts Dispatchers.
+/// This helper restricts all eight plant staff roles; it does not elevate an existing role.
 pub async fn require(
     state: &AppState,
     user: &AuthUser,
@@ -178,12 +256,15 @@ pub async fn require(
     module: &str,
     action: Action,
 ) -> Result<(), AppError> {
-    if user.role != "dispatcher" {
+    if !is_staff_role(&user.role) {
         return Ok(());
     }
-    let ceiling = dispatcher_ceiling(module)
+    let ceiling = role_ceiling(&user.role, module)
         .ok_or_else(|| AppError::Forbidden("Unknown module permission".into()))?;
-    dispatcher_assigned(&state.db, plant, user.user_id).await?;
+    let active_role = active_staff_role(&state.db, plant, user.user_id).await?;
+    if active_role != user.role {
+        return Err(AppError::Forbidden("Assigned plant role mismatch".into()));
+    }
     let row: Option<(bool, bool, bool)> = sqlx::query_as(
         "SELECT can_view,can_edit,can_approve FROM plant_staff_module_permissions \
          WHERE plant_id=$1 AND user_id=$2 AND module_key=$3",
@@ -211,7 +292,7 @@ pub async fn require_order(
     module: &str,
     action: Action,
 ) -> Result<(), AppError> {
-    if user.role != "dispatcher" {
+    if !is_staff_role(&user.role) {
         return Ok(());
     }
     let plant: Uuid = sqlx::query_scalar("SELECT plant_id FROM orders WHERE id=$1")
@@ -228,7 +309,7 @@ pub async fn require_load(
     module: &str,
     action: Action,
 ) -> Result<(), AppError> {
-    if user.role != "dispatcher" {
+    if !is_staff_role(&user.role) {
         return Ok(());
     }
     let plant: Uuid = sqlx::query_scalar(
@@ -244,22 +325,20 @@ pub async fn get_mine(
     State(state): State<AppState>,
     user: AuthUser,
 ) -> Result<Json<Value>, AppError> {
-    if user.role != "dispatcher" {
-        return Err(AppError::Forbidden(
-            "Dispatcher-only permission endpoint".into(),
-        ));
+    if !is_staff_role(&user.role) {
+        return Err(AppError::Forbidden("Plant staff permission endpoint only".into()));
     }
     let plants: Vec<Uuid> = sqlx::query_scalar(
         "SELECT ps.plant_id FROM plant_staff ps JOIN rmc_plants p ON p.id=ps.plant_id \
-        WHERE ps.user_id=$1 AND ps.is_active=TRUE AND ps.role='dispatcher' AND p.is_active=TRUE ORDER BY ps.plant_id LIMIT 2"
-    ).bind(user.user_id).fetch_all(&state.db).await?;
+        WHERE ps.user_id=$1 AND ps.is_active=TRUE AND ps.role=$2 AND p.is_active=TRUE ORDER BY ps.plant_id LIMIT 2"
+    ).bind(user.user_id).bind(&user.role).fetch_all(&state.db).await?;
     if plants.len() != 1 {
         return Err(AppError::Forbidden(
-            "Exactly one active Dispatcher plant assignment is required".into(),
+            "Exactly one active plant staff assignment is required".into(),
         ));
     }
     Ok(Json(
-        json!({"plant_id":plants[0],"permissions":resolved(&state.db,plants[0],user.user_id).await?}),
+        json!({"plant_id":plants[0],"role":user.role,"permissions":resolved(&state.db,plants[0],user.user_id).await?}),
     ))
 }
 pub async fn get_staff(
@@ -268,9 +347,10 @@ pub async fn get_staff(
     Path((plant, staff)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<Value>, AppError> {
     owned_plant(&state, &owner, plant).await?;
+    let role = active_staff_role(&state.db, plant, staff).await?;
     let permissions = resolved(&state.db, plant, staff).await?;
     Ok(Json(
-        json!({"plant_id":plant,"staff_user_id":staff,"permissions":permissions}),
+        json!({"plant_id":plant,"staff_user_id":staff,"role":role,"permissions":permissions}),
     ))
 }
 pub async fn replace_staff(
@@ -280,15 +360,16 @@ pub async fn replace_staff(
     Json(request): Json<ReplaceGrants>,
 ) -> Result<Json<Value>, AppError> {
     owned_plant(&state, &owner, plant).await?;
-    if request.permissions.len() != KEYS.len() {
-        return Err(AppError::BadRequest(
-            "Submit each of the six permissions exactly once".into(),
-        ));
+    let target_role = active_staff_role(&state.db, plant, staff).await?;
+    let allowed = role_modules(&target_role);
+    if request.permissions.len() != allowed.len() {
+        return Err(AppError::BadRequest("Submit each role module exactly once".into()));
     }
     let mut seen = std::collections::HashSet::new();
     for edit in &request.permissions {
-        let ceiling = dispatcher_ceiling(&edit.key)
-            .ok_or_else(|| AppError::BadRequest("Unknown module key".into()))?;
+        let ceiling = allowed.iter().find(|(key, _, _)| *key == edit.key)
+            .map(|(_, _, limit)| *limit)
+            .ok_or_else(|| AppError::BadRequest("Module is outside this role ceiling".into()))?;
         let grant = Grant::new(edit.view, edit.edit, edit.approve);
         if !seen.insert(edit.key.as_str()) || !grant.within(ceiling) {
             return Err(AppError::BadRequest(
@@ -298,26 +379,15 @@ pub async fn replace_staff(
     }
     let mut tx = state.db.begin().await?;
     // Lock assignment so suspension cannot race with privilege writes.
-    let active: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM plant_staff ps JOIN users u ON u.id=ps.user_id \
-         WHERE ps.plant_id=$1 AND ps.user_id=$2 AND ps.role='dispatcher' \
-         AND u.role='dispatcher' AND ps.is_active=TRUE AND u.is_active=TRUE)",
-    )
-    .bind(plant)
-    .bind(staff)
-    .fetch_one(&mut *tx)
-    .await?;
-    if !active {
-        return Err(AppError::Forbidden(
-            "Inactive or non-Dispatcher assignment".into(),
-        ));
+    let current_role: Option<String> = sqlx::query_scalar(
+        "SELECT ps.role FROM plant_staff ps JOIN users u ON u.id=ps.user_id \
+         JOIN rmc_plants p ON p.id=ps.plant_id \
+         WHERE ps.plant_id=$1 AND ps.user_id=$2 AND ps.is_active=TRUE \
+         AND u.is_active=TRUE AND p.is_active=TRUE AND u.role=ps.role FOR UPDATE OF ps",
+    ).bind(plant).bind(staff).fetch_optional(&mut *tx).await?;
+    if current_role.as_deref() != Some(target_role.as_str()) {
+        return Err(AppError::Forbidden("Inactive or changed staff assignment".into()));
     }
-    // The previous existence query does not lock; lock the precise row for this transaction.
-    sqlx::query("SELECT id FROM plant_staff WHERE plant_id=$1 AND user_id=$2 FOR UPDATE")
-        .bind(plant)
-        .bind(staff)
-        .fetch_one(&mut *tx)
-        .await?;
     for edit in &request.permissions {
         let old: Option<(bool, bool, bool)> = sqlx::query_as(
             "SELECT can_view,can_edit,can_approve FROM plant_staff_module_permissions \
@@ -364,7 +434,7 @@ pub async fn replace_staff(
     }
     tx.commit().await?;
     Ok(Json(
-        json!({"plant_id":plant,"staff_user_id":staff,"permissions":resolved(&state.db,plant,staff).await?}),
+        json!({"plant_id":plant,"staff_user_id":staff,"role":target_role,"permissions":resolved(&state.db,plant,staff).await?}),
     ))
 }
 
