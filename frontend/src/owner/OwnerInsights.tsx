@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Pressable, View } from "react-native";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { AppText } from "@/src/components/ui/AppText";
 import { WeeklyInsights } from "@/src/components/WeeklyInsights";
 import { useGet } from "@/src/hooks/useApi";
@@ -16,5 +17,5 @@ function PlantOverview() {
 export function OwnerInsights() {
   const [open, setOpen] = useState(false);
   const p = useOwnerPalette();
-  return <View style={{ gap: 10 }}><Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={() => setOpen(value => !value)}><OwnerGlass style={{ padding: 16 }}><AppText color={p.text}>Plant Overview & Weekly Insights {open ? "−" : "+"}</AppText></OwnerGlass></Pressable>{open ? <PlantOverview /> : null}</View>;
+  return <View style={{ gap: 10 }}><Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={() => setOpen(value => !value)}><OwnerGlass style={{ padding: 12, flexDirection: "row", alignItems: "center", gap: 10 }}><VectorSymbol name="production-report" size={36} warmAccent /><AppText color={p.text}>Plant Overview & Weekly Insights {open ? "−" : "+"}</AppText></OwnerGlass></Pressable>{open ? <PlantOverview /> : null}</View>;
 }

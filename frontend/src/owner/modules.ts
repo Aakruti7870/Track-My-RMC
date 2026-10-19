@@ -6,7 +6,7 @@ export const WORKFORCE_KEYS = ["business-payroll", "business-attendance", "busin
 export const ACCOUNT_KEYS = ["account-kyc", "owner-premium", "business-profile", "notifications"];
 export const COMMERCIAL_KEYS = ["owner-billing", "owner-billing-history", "owner-quotation-requests", "business-rates", "business-quotations", "business-expenses", "business-customers"];
 export function ownerModules(keys: string[]): RoleModule[] {
-  return keys.flatMap(key => catalog.filter(module => module.key === key));
+  return keys.flatMap(key => catalog.filter(module => module.key === key)).map(module => module.key === "business-purchases" ? { ...module, symbol: "material-receipts" as const } : module);
 }
 export function ownerDestination(module: RoleModule) {
   // Production actions already live inside the existing order detail workflow.

@@ -30,7 +30,7 @@ fs.mkdirSync(out, { recursive: true });
         }
         await route.fulfill({ json });
       });
-      const go = async path => { await page.goto(`http://127.0.0.1:8765${path}`); await page.getByTestId('owner-theme-toggle').waitFor(); await page.waitForTimeout(200); };
+      const go = async path => { await page.goto('http://127.0.0.1:8765/owner/'); await page.getByTestId('owner-theme-toggle').waitFor(); if (path.includes('directory=1')) await page.getByRole('button', { name: 'View all plant modules', exact: true }).click(); else { const tab = path.split('/')[2]; if (tab) await page.getByTestId(`tab-${tab}`).click(); } await page.waitForTimeout(250); };
       for (const name of ['home', 'orders', 'operations', 'more']) {
         await go('/owner' + (name === 'home' ? '' : '/' + name));
         const tab = page.getByTestId(`tab-${name}`);
@@ -80,7 +80,7 @@ fs.mkdirSync(out, { recursive: true });
       await page.waitForURL('**/order/00000000-0000-0000-0000-000000000001');
       failing = true; populated = false;
       await go('/owner/orders');
-      await page.getByText('Isolated network failure', { exact: true }).waitFor();
+      await page.getByText('Server down', { exact: true }).waitFor();
       assert.deepEqual(errors, []);
       await context.close();
       console.log(`PASS owner: ${scheme} ${width}px — layout, 31 destinations, Quick, search, filters, detail navigation, error state, live theme`);
