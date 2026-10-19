@@ -46,8 +46,8 @@ export function RoleModuleDirectory({ role, title = "Your Modules" }: {
     "business-suppliers": "suppliers", "business-purchases": "purchases",
     "business-fleet": "fleet_availability", "business-diesel": "diesel_ledger",
     "business-quotations": "quotations", "business-expenses": "expenses",
-    "business-payroll": "payroll", "business-attendance": "workforce",
-    "business-reports": "plant_reports", "workforce": "workforce",
+    "business-payroll": "payroll",
+    "business-reports": "plant_reports",
     "workforce-reports": "workforce", "employee-master": "employee_master",
     "payroll-closure": "payroll",
   };
