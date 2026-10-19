@@ -316,7 +316,14 @@ pub async fn list_mix_designs(
     Path(plant_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
-    super::staff_module_permissions::require(&state, &auth_user, plant_id, "mix_designs", super::staff_module_permissions::Action::View).await?;
+    super::staff_module_permissions::require(
+        &state,
+        &auth_user,
+        plant_id,
+        "mix_designs",
+        super::staff_module_permissions::Action::View,
+    )
+    .await?;
 
     let rows = sqlx::query(
         r#"
@@ -387,7 +394,14 @@ pub async fn create_mix_design(
         ],
     )?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
-    super::staff_module_permissions::require(&state, &auth_user, plant_id, "mix_designs", super::staff_module_permissions::Action::Edit).await?;
+    super::staff_module_permissions::require(
+        &state,
+        &auth_user,
+        plant_id,
+        "mix_designs",
+        super::staff_module_permissions::Action::Edit,
+    )
+    .await?;
 
     let id: Uuid = sqlx::query_scalar(
         r#"
@@ -553,7 +567,14 @@ pub async fn list_plant_suppliers(
     Path(plant_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
-    super::staff_module_permissions::require(&state, &auth_user, plant_id, "suppliers", super::staff_module_permissions::Action::View).await?;
+    super::staff_module_permissions::require(
+        &state,
+        &auth_user,
+        plant_id,
+        "suppliers",
+        super::staff_module_permissions::Action::View,
+    )
+    .await?;
 
     let rows = sqlx::query(
         "SELECT id, name, gstin, phone, email, address, active FROM plant_suppliers WHERE plant_id = $1 ORDER BY name",
@@ -605,7 +626,14 @@ pub async fn create_plant_supplier(
         ],
     )?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
-    super::staff_module_permissions::require(&state, &auth_user, plant_id, "suppliers", super::staff_module_permissions::Action::Edit).await?;
+    super::staff_module_permissions::require(
+        &state,
+        &auth_user,
+        plant_id,
+        "suppliers",
+        super::staff_module_permissions::Action::Edit,
+    )
+    .await?;
 
     let id: Uuid = sqlx::query_scalar(
         "INSERT INTO plant_suppliers (plant_id, name, gstin, phone, email, address) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
