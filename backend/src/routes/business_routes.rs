@@ -60,6 +60,14 @@ pub async fn list_materials(
     Path(plant_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
+    super::staff_module_permissions::require(
+        &state,
+        &auth_user,
+        plant_id,
+        "material_inventory",
+        super::staff_module_permissions::Action::View,
+    )
+    .await?;
 
     let rows = sqlx::query(
         "SELECT id, name, material_type, unit, current_stock, minimum_stock FROM plant_materials WHERE plant_id = $1 ORDER BY name",
@@ -206,6 +214,14 @@ pub async fn list_vehicles(
     Path(plant_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
+    super::staff_module_permissions::require(
+        &state,
+        &auth_user,
+        plant_id,
+        "fleet_availability",
+        super::staff_module_permissions::Action::View,
+    )
+    .await?;
 
     let rows = sqlx::query(
         r#"
@@ -263,6 +279,14 @@ pub async fn create_vehicle(
         ],
     )?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
+    super::staff_module_permissions::require(
+        &state,
+        &auth_user,
+        plant_id,
+        "fleet_availability",
+        super::staff_module_permissions::Action::Edit,
+    )
+    .await?;
 
     let cap = payload.capacity_m3.unwrap_or(6.0);
 
@@ -307,6 +331,14 @@ pub async fn update_vehicle_status(
         ],
     )?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
+    super::staff_module_permissions::require(
+        &state,
+        &auth_user,
+        plant_id,
+        "fleet_availability",
+        super::staff_module_permissions::Action::Edit,
+    )
+    .await?;
 
     sqlx::query("UPDATE transit_mixers SET status = $1 WHERE id = $2 AND plant_id = $3")
         .bind(&payload.status)

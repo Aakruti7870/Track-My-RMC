@@ -198,6 +198,14 @@ pub async fn list_staff_fleet(
         ],
     )?;
     let plant_id = get_staff_plant_id(&state, &auth_user).await?;
+    super::staff_module_permissions::require(
+        &state,
+        &auth_user,
+        plant_id,
+        "fleet_availability",
+        super::staff_module_permissions::Action::View,
+    )
+    .await?;
 
     let rows = sqlx::query(
         r#"
@@ -259,6 +267,14 @@ pub async fn list_staff_drivers(
         ],
     )?;
     let plant_id = get_staff_plant_id(&state, &auth_user).await?;
+    super::staff_module_permissions::require(
+        &state,
+        &auth_user,
+        plant_id,
+        "fleet_availability",
+        super::staff_module_permissions::Action::View,
+    )
+    .await?;
 
     let rows = sqlx::query(
         r#"
@@ -318,6 +334,14 @@ pub async fn get_staff_order(
     )?;
 
     super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
+    super::staff_module_permissions::require_order(
+        &state,
+        &auth_user,
+        order_id,
+        "dispatch_queue",
+        super::staff_module_permissions::Action::View,
+    )
+    .await?;
     let order_row = sqlx::query(
         r#"
         SELECT o.id, o.order_number, o.plant_id, o.customer_id, o.concrete_grade,
@@ -435,6 +459,14 @@ pub async fn assign_tm_to_order(
     )?;
 
     super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
+    super::staff_module_permissions::require_order(
+        &state,
+        &auth_user,
+        order_id,
+        "dispatch_queue",
+        super::staff_module_permissions::Action::Edit,
+    )
+    .await?;
     let load_id: Uuid = match payload.load_id {
         Some(id) => id,
         None => {
@@ -500,6 +532,14 @@ pub async fn assign_driver_to_order(
     )?;
 
     super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
+    super::staff_module_permissions::require_order(
+        &state,
+        &auth_user,
+        order_id,
+        "dispatch_queue",
+        super::staff_module_permissions::Action::Edit,
+    )
+    .await?;
     let load_id: Uuid = match payload.load_id {
         Some(id) => id,
         None => {
@@ -562,6 +602,14 @@ pub async fn generate_order_challan(
     )?;
 
     super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
+    super::staff_module_permissions::require_order(
+        &state,
+        &auth_user,
+        order_id,
+        "challan_gate_pass",
+        super::staff_module_permissions::Action::Edit,
+    )
+    .await?;
     let load:Uuid=sqlx::query_scalar("SELECT id FROM order_loads WHERE order_id=$1 AND status<>'cancelled' ORDER BY load_number LIMIT 1").bind(order_id).fetch_optional(&state.db).await?.ok_or_else(||AppError::NotFound("No active load for this order".into()))?;
     crate::services::load_lifecycle::advance(&state.db, load, auth_user.user_id, "prepare").await?;
     let (id, number): (Uuid, String) =
@@ -585,6 +633,14 @@ pub async fn dispatch_order(
     )?;
 
     super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
+    super::staff_module_permissions::require_order(
+        &state,
+        &auth_user,
+        order_id,
+        "dispatch_queue",
+        super::staff_module_permissions::Action::Edit,
+    )
+    .await?;
     let loads:Vec<Uuid>=sqlx::query_scalar("SELECT id FROM order_loads WHERE order_id=$1 AND status NOT IN ('cancelled','completed','delivered') ORDER BY load_number").bind(order_id).fetch_all(&state.db).await?;
     if loads.len() != 1 {
         return Err(AppError::Conflict(

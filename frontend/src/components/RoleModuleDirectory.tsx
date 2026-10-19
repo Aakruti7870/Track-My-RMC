@@ -1,7 +1,9 @@
-import React from "react";
+import React, { useCallback, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
+import { apiGet } from "@/src/api/client";
+import { useAuth } from "@/src/auth/AuthContext";
 
 import { AppText } from "@/src/components/ui/AppText";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
@@ -19,7 +21,27 @@ export function RoleModuleDirectory({ role, title = "Your Modules" }: {
 }) {
   const { colors } = useTheme();
   const router = useRouter();
-  const modules = modulesForRole(role);
+  const { token } = useAuth();
+  const [allowed, setAllowed] = useState<string[] | null>(null);
+  // A hidden link is never the permission boundary; Rust checks every action.
+  // Fail closed for guarded links until the server confirms effective grants.
+  useFocusEffect(useCallback(() => {
+    if (role !== "dispatcher" || !token) { setAllowed(null); return; }
+    let active = true;
+    setAllowed(null);
+    apiGet<{ permissions: Array<{key: string; view: boolean}> }>("/staff/module-permissions", token)
+      .then(r => { if (active) setAllowed(r.permissions.filter(p => p.view).map(p => p.key)); })
+      .catch(() => { if (active) setAllowed([]); });
+    return () => { active = false; };
+  }, [role, token]));
+  const dispatcherModuleKey: Record<string, string> = {
+    "dispatcher-queue": "dispatch_queue",
+    "dispatcher-fleet": "fleet_availability",
+    "dispatcher-challan": "challan_gate_pass",
+    "business-inventory": "material_inventory",
+  };
+  const modules = modulesForRole(role).filter(m => role !== "dispatcher"
+    || !dispatcherModuleKey[m.key] || (allowed || []).includes(dispatcherModuleKey[m.key]));
 
   if (modules.length === 0) return null;
   return (

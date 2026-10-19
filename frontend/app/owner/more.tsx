@@ -25,6 +25,12 @@ export default function OwnerMore() {
   return <OwnerFrame title={directory === "1" ? "All Plant Modules" : "More"} subtitle="Account, workforce, payroll and other settings">
     <OwnerList><View testID="role-module-directory" style={{ gap: 6 }}>
       {groups.map(group => <React.Fragment key={group.title}><AppText style={[ui.section, { color: p.text }]}>{group.title}</AppText>{group.entries.filter(module => available.has(module.key) || module.key === DRIVER_MODULE.key).map(module => <OwnerModuleRow key={module.key} module={module} compact />)}</React.Fragment>)}
+      <Pressable testID="owner-staff-module-access" accessibilityRole="button" accessibilityLabel="Manage Staff Module Access" onPress={() => router.push("/staff-module-access")} style={{ marginVertical: 8 }}>
+        <OwnerGlass style={{ padding: 15, gap: 4 }}>
+          <AppText style={{ color: p.text, fontSize: 15, fontWeight: "700" }}>Manage Staff Module Access</AppText>
+          <AppText style={{ color: p.muted, fontSize: 12 }}>Dispatcher view and edit permissions, audited per plant</AppText>
+        </OwnerGlass>
+      </Pressable>
       <OwnerInsights />
       <AppText style={[ui.section, { color: p.text }]}>Appearance</AppText>
       <OwnerGlass style={{ padding: 12, flexDirection: "row", gap: 8 }}>

@@ -553,7 +553,7 @@ export function BusinessModule({ kind }: { kind: string }) {
                 {kind === "fleet" && ["available", "maintenance"].includes(r.raw?.status) ? (
                   <Button label={r.raw?.status === "maintenance" ? "Set Available" : "Set Maintenance"} variant="outline" onPress={() => toggleFleet(r)} />
                 ) : null}
-                {kind === "inventory" ? (
+                {kind === "inventory" && user?.role !== "dispatcher" ? (
                   <View style={{ flexDirection: "row", gap: spacing.sm }}>
                     <View style={{ flex: 1 }}><Button label="Stock In" onPress={() => openAdjustment(r, 1)} /></View>
                     <View style={{ flex: 1 }}><Button label="Stock Out" variant="outline" onPress={() => openAdjustment(r, -1)} /></View>
@@ -572,7 +572,7 @@ export function BusinessModule({ kind }: { kind: string }) {
             <View style={{ flex: 1 }}><Button label="Check In" onPress={() => attendanceAction("checkin")} loading={saving} /></View>
             <View style={{ flex: 1 }}><Button label="Check Out" variant="outline" onPress={() => attendanceAction("checkout")} /></View>
           </View>
-        ) : def.addLabel && plantId ? <Button label={def.addLabel} onPress={openForm} /> : null}
+        ) : def.addLabel && plantId && !(kind === "inventory" && user?.role === "dispatcher") ? <Button label={def.addLabel} onPress={openForm} /> : null}
 
         {(kind === "purchases" || kind === "payroll" || kind === "diesel") && resources ? (
           <Card style={{ gap: spacing.sm }}>
