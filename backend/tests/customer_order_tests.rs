@@ -1873,3 +1873,84 @@ async fn home_tracking_selects_pending_and_preserves_completed_history(db: PgPoo
     assert!(home["active_order"].is_null());
     assert_eq!(home["recent_orders"][0]["id"], id.to_string());
 }
+
+#[sqlx::test]
+async fn owner_dashboard_filters_are_paginated_and_plant_scoped(db: PgPool) {
+    let (state, app, _, plant, customer_token) = fixture(&db).await;
+    let owner: Uuid = sqlx::query_scalar("SELECT owner_id FROM rmc_plants WHERE id=$1")
+        .bind(plant)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    let token = generate_token(owner, "owner", "", None, &state.config.jwt_secret, 1).unwrap();
+    let mut ids = Vec::new();
+    for key in ["owner-page-a", "owner-page-b", "owner-page-c"] {
+        let (_, body) = call(
+            &app,
+            "/api/customer/orders",
+            Some(order(plant, key)),
+            &customer_token,
+        )
+        .await;
+        ids.push(body["id"].as_str().unwrap().parse::<Uuid>().unwrap());
+    }
+    sqlx::query("UPDATE orders SET status='in_production' WHERE id=$1")
+        .bind(ids[0])
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE orders SET status='completed' WHERE id=$1")
+        .bind(ids[1])
+        .execute(&db)
+        .await
+        .unwrap();
+    let (status, first) = call(&app, "/api/owner/orders?limit=1", None, &token).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(first["orders"].as_array().unwrap().len(), 1);
+    assert_eq!(first["has_more"], true);
+    let (_, second) = call(&app, "/api/owner/orders?limit=1&offset=1", None, &token).await;
+    assert_ne!(first["orders"][0]["id"], second["orders"][0]["id"]);
+    for (filter, expected) in [
+        ("processing", ids[0]),
+        ("delivered", ids[1]),
+        ("pending", ids[2]),
+    ] {
+        let (_, body) = call(
+            &app,
+            &format!("/api/owner/orders?status={filter}&q=Site&grade=M25"),
+            None,
+            &token,
+        )
+        .await;
+        assert_eq!(body["orders"].as_array().unwrap().len(), 1);
+        assert_eq!(body["orders"][0]["id"], json!(expected));
+    }
+    let (_, literal) = call(&app, "/api/owner/orders?q=%25", None, &token).await;
+    assert_eq!(literal["orders"], json!([]));
+    let other = identity(&db, "owner").await;
+    let other_token =
+        generate_token(other, "owner", "", None, &state.config.jwt_secret, 1).unwrap();
+    let (_, scoped) = call(
+        &app,
+        &format!("/api/owner/orders?plant_id={plant}&q=Site"),
+        None,
+        &other_token,
+    )
+    .await;
+    assert_eq!(scoped["orders"], json!([]));
+    assert_eq!(
+        call(&app, "/api/owner/orders", None, &customer_token)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        call(&app, "/api/owner/orders?status=unknown", None, &token)
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+    let (_, home) = call(&app, "/api/owner/home", None, &token).await;
+    assert_eq!(home["cards"]["active_staff"], 0);
+    assert_eq!(home["cards"]["dispatched_loads"], 0);
+}

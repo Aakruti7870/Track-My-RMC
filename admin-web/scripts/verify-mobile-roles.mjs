@@ -311,6 +311,7 @@ try {
       await expect(page.getByTestId('customer-module-grid')).toBeVisible();
       await page.getByText('More', { exact: true }).last().click();
     }
+    if (user.role === 'plant_owner') await page.getByRole('button', { name: 'View all plant modules', exact: true }).click();
     await expect(page.getByTestId('role-module-directory')).toBeVisible();
     const visibleKeys = user.role === 'customer'
       ? ['account-deletion', 'customer-support', 'notifications', 'quotations', 'documents']

@@ -6,7 +6,7 @@ use crate::{
     state::AppState,
 };
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     response::IntoResponse,
     Json,
 };
@@ -144,6 +144,8 @@ pub async fn get_owner_home(
         'ordered_qty',(SELECT coalesce(sum(total_quantity_m3),0)::double precision FROM orders WHERE plant_id=ANY($1) AND delivery_date=CURRENT_DATE AND lower(status) NOT IN('draft','cancelled','rejected')),
         'dispatched_qty',(SELECT coalesce(sum(l.quantity_m3),0)::double precision FROM order_loads l JOIN orders o ON o.id=l.order_id WHERE o.plant_id=ANY($1) AND l.dispatched_at::date=CURRENT_DATE),
         'delivered_qty',(SELECT coalesce(sum(d.delivered_quantity),0)::double precision FROM proof_of_deliveries d JOIN order_loads l ON l.id=d.load_id JOIN orders o ON o.id=l.order_id WHERE o.plant_id=ANY($1) AND d.delivered_at::date=CURRENT_DATE),
+        'dispatched_loads',(SELECT count(*) FROM order_loads l JOIN orders o ON o.id=l.order_id WHERE o.plant_id=ANY($1) AND l.dispatched_at::date=CURRENT_DATE),
+        'active_staff',(SELECT count(DISTINCT user_id) FROM plant_staff WHERE plant_id=ANY($1) AND is_active=TRUE),
         'active_mixers',(SELECT count(*) FROM transit_mixers WHERE plant_id=ANY($1) AND status IN('dispatched','in_transit','pouring'))
     )"#).bind(&ids).fetch_one(&state.db).await?;
     let query=format!("{} WHERE o.plant_id=ANY($1) AND lower(o.status)='pending' ORDER BY o.created_at,o.id LIMIT 50",crate::services::order_service::MOBILE_ORDER_SELECT);
@@ -157,19 +159,125 @@ pub async fn get_owner_home(
     ))
 }
 
+/// Optional filters retain the legacy 500-record response for existing callers.
+/// The owner dashboard opts into bounded 30-record pages. All predicates are
+/// parameterized and remain inside the original owner/admin plant boundary.
+#[derive(Debug, Default, Deserialize)]
+pub struct OwnerOrderQuery {
+    limit: Option<i64>,
+    offset: Option<i64>,
+    status: Option<String>,
+    q: Option<String>,
+    date_from: Option<chrono::NaiveDate>,
+    date_to: Option<chrono::NaiveDate>,
+    plant_id: Option<Uuid>,
+    grade: Option<String>,
+    today: Option<bool>,
+}
+
+fn owner_order_states(status: &str) -> Result<Vec<String>, AppError> {
+    let states: &[&str] = match status {
+        "all" | "" => &[],
+        "pending" => &["pending"],
+        "processing" => &[
+            "confirmed",
+            "accepted",
+            "scheduled",
+            "in_production",
+            "produced",
+            "production_complete",
+            "tm_assigned",
+            "driver_assigned",
+            "ready_to_dispatch",
+            "dispatched",
+            "in_transit",
+            "en_route",
+            "at_site",
+            "pouring",
+            "unloading",
+            "pod_pending",
+        ],
+        "delivered" => &["completed", "delivered"],
+        "cancelled" => &["cancelled", "rejected"],
+        "draft" => &["draft"],
+        _ => return Err(AppError::BadRequest("Unsupported order filter".into())),
+    };
+    Ok(states.iter().map(|state| (*state).to_string()).collect())
+}
+
 pub async fn list_owner_orders(
     State(state): State<AppState>,
     auth_user: AuthUser,
+    Query(filters): Query<OwnerOrderQuery>,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
-
-    let query=format!("{} WHERE p.owner_id=$1 OR ($2='admin' AND EXISTS(SELECT 1 FROM plant_staff ps WHERE ps.plant_id=p.id AND ps.user_id=$1 AND ps.is_active=TRUE)) ORDER BY o.created_at DESC LIMIT 500",crate::services::order_service::MOBILE_ORDER_SELECT);
-    let orders: Vec<serde_json::Value> = sqlx::query_scalar(&query)
+    let limit = filters.limit.unwrap_or(500).clamp(1, 500);
+    let offset = filters.offset.unwrap_or(0).max(0);
+    let statuses = owner_order_states(filters.status.as_deref().unwrap_or("all"))?;
+    if filters
+        .date_from
+        .zip(filters.date_to)
+        .is_some_and(|(from, to)| from > to)
+    {
+        return Err(AppError::BadRequest("Invalid delivery date range".into()));
+    }
+    let search = filters.q.unwrap_or_default().trim().to_lowercase();
+    // strpos treats percent/underscore literally, unlike an unescaped LIKE query.
+    let query = format!(
+        r#"{} WHERE
+        (p.owner_id=$1 OR ($2='admin' AND EXISTS(SELECT 1 FROM plant_staff ps WHERE ps.plant_id=p.id AND ps.user_id=$1 AND ps.is_active=TRUE)))
+        AND (cardinality($3::text[])=0 OR lower(o.status)=ANY($3))
+        AND ($4='' OR strpos(lower(concat_ws(' ',o.order_number,u.full_name,s.name,s.address_line)), $4)>0)
+        AND ($5::date IS NULL OR o.delivery_date >= $5)
+        AND ($6::date IS NULL OR o.delivery_date <= $6)
+        AND ($7::uuid IS NULL OR o.plant_id=$7)
+        AND ($8::text IS NULL OR lower(o.concrete_grade)=lower($8))
+        AND (NOT $9::boolean OR o.delivery_date=CURRENT_DATE)
+        ORDER BY o.created_at DESC,o.id DESC LIMIT $10 OFFSET $11"#,
+        crate::services::order_service::MOBILE_ORDER_SELECT
+    );
+    let mut orders: Vec<serde_json::Value> = sqlx::query_scalar(&query)
         .bind(auth_user.user_id)
         .bind(&auth_user.role)
+        .bind(&statuses)
+        .bind(&search)
+        .bind(filters.date_from)
+        .bind(filters.date_to)
+        .bind(filters.plant_id)
+        .bind(filters.grade.filter(|grade| !grade.trim().is_empty()))
+        .bind(filters.today.unwrap_or(false))
+        .bind(limit + 1)
+        .bind(offset)
         .fetch_all(&state.db)
         .await?;
-    Ok(Json(json!({"success":true,"orders":orders})))
+    let has_more = orders.len() > limit as usize;
+    orders.truncate(limit as usize);
+    Ok(Json(
+        json!({"success":true,"orders":orders,"has_more":has_more,"limit":limit,"offset":offset}),
+    ))
+}
+
+#[cfg(test)]
+mod owner_dashboard_tests {
+    use super::owner_order_states;
+
+    #[test]
+    fn processing_excludes_pending_and_terminal_states() {
+        let states = owner_order_states("processing").unwrap();
+        for status in [
+            "confirmed",
+            "in_production",
+            "produced",
+            "in_transit",
+            "pouring",
+        ] {
+            assert!(states.iter().any(|state| state == status));
+        }
+        for status in ["pending", "completed", "delivered", "cancelled", "rejected"] {
+            assert!(!states.iter().any(|state| state == status));
+        }
+        assert!(owner_order_states("unknown").is_err());
+    }
 }
 
 pub async fn approve_order(
