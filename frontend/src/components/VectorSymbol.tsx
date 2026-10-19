@@ -31,6 +31,8 @@ const symbols = {
 export type VectorSymbolName = keyof typeof symbols;
 
 /** Decorative artwork; its surrounding control provides the accessible label. */
-export function VectorSymbol({ name, size = 32 }: { name: VectorSymbolName; size?: number }) {
-  return <SvgXml xml={symbols[name]} width={size} height={size} />;
+export function VectorSymbol({ name, size = 32, warmAccent = false }: { name: VectorSymbolName; size?: number; warmAccent?: boolean }) {
+  // Owner-only recoloring preserves the uploaded geometry and other role artwork.
+  const xml = warmAccent ? symbols[name].replace(/#(?:A78BFA|7C3AED|8B5CF6|C4B5FD|DDD6FE|6D28D9|9333EA|A855F7)/gi, color => ({ "#A78BFA": "#FBBF24", "#C4B5FD": "#FDE68A", "#DDD6FE": "#FFF2D6" }[color.toUpperCase()] ?? "#D97706")) : symbols[name];
+  return <SvgXml xml={xml} width={size} height={size} />;
 }

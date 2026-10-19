@@ -2,7 +2,8 @@ import React from "react";
 import { Redirect, Tabs } from "expo-router";
 
 import { useAuth } from "@/src/auth/AuthContext";
-import { GlassTabBar, TabDef } from "@/src/components/GlassTabBar";
+import { TabDef } from "@/src/components/GlassTabBar";
+import { OwnerTabBar } from "@/src/owner/OwnerTabBar";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { getThemedSceneStyle } from "@/src/theme/sceneBackground";
 
@@ -23,7 +24,7 @@ export default function OwnerLayout() {
   if (user.role !== "plant_owner" && user.role !== "owner") return <Redirect href="/role-home" />;
 
   return (
-    <Tabs screenOptions={{ headerShown: false, sceneStyle: getThemedSceneStyle(colors) }} tabBar={(props) => <GlassTabBar {...props} tabs={TABS} />}>
+    <Tabs screenOptions={{ headerShown: false, sceneStyle: getThemedSceneStyle(colors) }} tabBar={(props) => <OwnerTabBar {...props} tabs={TABS} />}>
       {TABS.map((t) => (
         <Tabs.Screen key={t.name} name={t.name} />
       ))}
