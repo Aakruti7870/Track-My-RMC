@@ -18,7 +18,14 @@ pub async fn list_order_loads(
     Path(order_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     ensure_order_access(&state, &auth_user, order_id, true).await?;
-    super::staff_module_permissions::require_order(&state, &auth_user, order_id, "dispatch_queue", super::staff_module_permissions::Action::View).await?;
+    super::staff_module_permissions::require_order(
+        &state,
+        &auth_user,
+        order_id,
+        "dispatch_queue",
+        super::staff_module_permissions::Action::View,
+    )
+    .await?;
     let data: serde_json::Value = sqlx::query_scalar(
         "SELECT jsonb_build_object('success',TRUE,'order_id',o.id,
           'ordered_quantity_m3',o.total_quantity_m3::DOUBLE PRECISION,
@@ -63,7 +70,14 @@ pub async fn create_order_load(
     )?;
 
     ensure_order_access(&state, &auth_user, order_id, false).await?;
-    super::staff_module_permissions::require_order(&state, &auth_user, order_id, "dispatch_queue", super::staff_module_permissions::Action::Edit).await?;
+    super::staff_module_permissions::require_order(
+        &state,
+        &auth_user,
+        order_id,
+        "dispatch_queue",
+        super::staff_module_permissions::Action::Edit,
+    )
+    .await?;
     if !payload.quantity_m3.is_finite() || payload.quantity_m3 <= 0.0 {
         return Err(AppError::BadRequest(
             "A positive load quantity is required".into(),
@@ -139,7 +153,14 @@ pub async fn assign_load_mixer_driver(
     )?;
 
     ensure_load_access(&state, &auth_user, load_id).await?;
-    super::staff_module_permissions::require_load(&state, &auth_user, load_id, "dispatch_queue", super::staff_module_permissions::Action::Edit).await?;
+    super::staff_module_permissions::require_load(
+        &state,
+        &auth_user,
+        load_id,
+        "dispatch_queue",
+        super::staff_module_permissions::Action::Edit,
+    )
+    .await?;
     let mixer = payload
         .mixer_id
         .or(payload.vehicle_id)
@@ -210,7 +231,14 @@ pub async fn prepare_load(
     )?;
 
     ensure_load_access(&state, &auth_user, load_id).await?;
-    super::staff_module_permissions::require_load(&state, &auth_user, load_id, "challan_gate_pass", super::staff_module_permissions::Action::Edit).await?;
+    super::staff_module_permissions::require_load(
+        &state,
+        &auth_user,
+        load_id,
+        "challan_gate_pass",
+        super::staff_module_permissions::Action::Edit,
+    )
+    .await?;
     let status =
         crate::services::load_lifecycle::advance(&state.db, load_id, auth_user.user_id, "prepare")
             .await?;
@@ -231,7 +259,14 @@ pub async fn dispatch_load(
     )?;
 
     ensure_load_access(&state, &auth_user, load_id).await?;
-    super::staff_module_permissions::require_load(&state, &auth_user, load_id, "dispatch_queue", super::staff_module_permissions::Action::Edit).await?;
+    super::staff_module_permissions::require_load(
+        &state,
+        &auth_user,
+        load_id,
+        "dispatch_queue",
+        super::staff_module_permissions::Action::Edit,
+    )
+    .await?;
     let status =
         crate::services::load_lifecycle::advance(&state.db, load_id, auth_user.user_id, "dispatch")
             .await?;
@@ -252,7 +287,14 @@ pub async fn cancel_load(
     )?;
 
     ensure_load_access(&state, &auth_user, load_id).await?;
-    super::staff_module_permissions::require_load(&state, &auth_user, load_id, "dispatch_queue", super::staff_module_permissions::Action::Edit).await?;
+    super::staff_module_permissions::require_load(
+        &state,
+        &auth_user,
+        load_id,
+        "dispatch_queue",
+        super::staff_module_permissions::Action::Edit,
+    )
+    .await?;
     let status =
         crate::services::load_lifecycle::advance(&state.db, load_id, auth_user.user_id, "cancel")
             .await?;
@@ -280,7 +322,14 @@ pub async fn issue_gate_pass(
     )?;
 
     ensure_load_access(&state, &auth_user, payload.load_id).await?;
-    super::staff_module_permissions::require_load(&state, &auth_user, payload.load_id, "challan_gate_pass", super::staff_module_permissions::Action::Edit).await?;
+    super::staff_module_permissions::require_load(
+        &state,
+        &auth_user,
+        payload.load_id,
+        "challan_gate_pass",
+        super::staff_module_permissions::Action::Edit,
+    )
+    .await?;
     let eligible: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM order_loads l JOIN challans c ON c.load_id=l.id WHERE l.id=$1 AND l.status='ready_to_dispatch')")
         .bind(payload.load_id).fetch_one(&state.db).await?;
     if !eligible {
