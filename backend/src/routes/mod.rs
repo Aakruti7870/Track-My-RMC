@@ -25,8 +25,8 @@ pub mod plant_onboarding;
 pub mod plant_plans_routes;
 pub mod play_review;
 pub mod staff_collections;
-pub mod staff_routes;
 pub mod staff_module_permissions;
+pub mod staff_routes;
 pub mod storage_routes;
 pub mod well_known;
 pub mod workforce_reports;
@@ -525,7 +525,10 @@ pub fn build_app_router(state: AppState) -> Router {
         )
         .route("/api/loads/gate-pass", post(loads_routes::issue_gate_pass))
         // --- Staff Operations Domain ---
-        .route("/api/staff/module-permissions", get(staff_module_permissions::get_mine))
+        .route(
+            "/api/staff/module-permissions",
+            get(staff_module_permissions::get_mine),
+        )
         .route(
             "/api/owner/plants/:plant_id/staff/:staff_id/module-permissions",
             get(staff_module_permissions::get_staff).put(staff_module_permissions::replace_staff),
