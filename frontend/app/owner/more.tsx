@@ -4,6 +4,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { OwnerInsights } from "@/src/owner/OwnerInsights";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { AppText } from "@/src/components/ui/AppText";
 import { modulesForRole } from "@/src/navigation/moduleCatalog";
 import { OwnerFrame, OwnerList, OwnerModuleRow, OwnerGlass, ui, useOwnerPalette } from "@/src/owner/OwnerUI";
@@ -26,9 +27,12 @@ export default function OwnerMore() {
     <OwnerList><View testID="role-module-directory" style={{ gap: 6 }}>
       {groups.map(group => <React.Fragment key={group.title}><AppText style={[ui.section, { color: p.text }]}>{group.title}</AppText>{group.entries.filter(module => available.has(module.key) || module.key === DRIVER_MODULE.key).map(module => <OwnerModuleRow key={module.key} module={module} compact />)}</React.Fragment>)}
       <Pressable testID="owner-staff-module-access" accessibilityRole="button" accessibilityLabel="Manage Staff Module Access" onPress={() => router.push("/staff-module-access")} style={{ marginVertical: 8 }}>
-        <OwnerGlass style={{ padding: 15, gap: 4 }}>
+        <OwnerGlass style={{ padding: 15, gap: 10, flexDirection: "row", alignItems: "center" }}>
+          <VectorSymbol name="plant-staff" size={52} warmAccent />
+          <View style={{ flex: 1, gap: 3 }}>
           <AppText style={{ color: p.text, fontSize: 15, fontWeight: "700" }}>Manage Staff Module Access</AppText>
-          <AppText style={{ color: p.muted, fontSize: 12 }}>Dispatcher view and edit permissions, audited per plant</AppText>
+          <AppText style={{ color: p.muted, fontSize: 12 }}>All eight roles · plant-scoped · audited access</AppText>
+          </View>
         </OwnerGlass>
       </Pressable>
       <OwnerInsights />

@@ -116,6 +116,14 @@ pub async fn create_material(
         ],
     )?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
+    super::staff_module_permissions::require(
+        &state,
+        &auth_user,
+        plant_id,
+        "material_inventory",
+        super::staff_module_permissions::Action::Edit,
+    )
+    .await?;
 
     let unit = payload.unit.unwrap_or_else(|| "kg".to_string());
     let current = payload.current_stock.unwrap_or(0.0);
@@ -165,6 +173,14 @@ pub async fn adjust_material_stock(
         ],
     )?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
+    super::staff_module_permissions::require(
+        &state,
+        &auth_user,
+        plant_id,
+        "material_inventory",
+        super::staff_module_permissions::Action::Edit,
+    )
+    .await?;
 
     let mut tx = state.db.begin().await?;
 

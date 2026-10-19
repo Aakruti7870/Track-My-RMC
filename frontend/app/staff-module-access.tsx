@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Pressable, Switch, View } from "react-native";
 import { Redirect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
+import type { VectorSymbolName } from "@/src/components/VectorSymbol";
 import { apiGet, apiPut } from "@/src/api/client";
 import { useAuth } from "@/src/auth/AuthContext";
 import { AppText } from "@/src/components/ui/AppText";
@@ -15,6 +17,28 @@ type Flags = { view: boolean; edit: boolean; approve: boolean };
 type Grant = Flags & { key: string; label: string; ceiling: Flags; overridden: boolean };
 type GrantsResponse = { permissions: Grant[] };
 type GrantEdit = Flags & { key: string };
+const MODULE_SYMBOLS: Record<string, VectorSymbolName> = {
+  dispatch_queue: "dispatch-queue",
+  fleet_availability: "fleet-availability",
+  challan_gate_pass: "delivery-challan",
+  material_inventory: "material-inventory",
+  billing_ledger: "billing",
+  payroll: "payroll",
+  production_queue: "production-queue",
+  quality_register: "quality-register",
+  mix_designs: "mix-designs",
+  diesel_ledger: "diesel-ledger",
+  suppliers: "suppliers",
+  purchases: "purchases",
+  quotations: "quotations",
+  expenses: "expenses",
+  rate_cards: "rate-cards",
+  workforce: "attendance",
+  incidents: "incident-register",
+  plant_reports: "plant-reports",
+  driver_roster: "drivers",
+  employee_master: "employee-master-salary",
+};
 
 export default function StaffModuleAccess() {
   const { hydrating, token, user } = useAuth();
@@ -49,10 +73,13 @@ export default function StaffModuleAccess() {
     setStaffId(""); setStaff([]); setGrants([]); setError(""); setLoading(true);
     apiGet<{ people: Staff[] }>("/master/plants/" + plant + "/people", token).then(r => {
       if (!active) return;
-      const dispatchers = (r.people || []).filter(s => s.role === "dispatcher" && s.active);
-      setStaff(dispatchers);
-      setStaffId(dispatchers[0]?.id || "");
-      if (!dispatchers.length) setLoading(false);
+      const team = (r.people || []).filter(s => s.active && [
+        "admin","dispatcher","operator","supervisor","accountant",
+        "quality_engineer","fleet_manager","store_manager",
+      ].includes(s.role));
+      setStaff(team);
+      setStaffId(team[0]?.id || "");
+      if (!team.length) setLoading(false);
     }).catch((e: any) => { if (active) { setLoading(false); setError(e.detail || "Could not load staff"); } });
     return () => { active = false; };
   }, [token, plant]);
@@ -84,7 +111,7 @@ export default function StaffModuleAccess() {
     }));
   };
   const save = async () => {
-    if (!token || !plant || !staffId || grants.length !== 6 || !dirty) return;
+    if (!token || !plant || !staffId || grants.length === 0 || !dirty) return;
     setSaving(true);
     try {
       const permissions: GrantEdit[] = grants.map(g => ({
@@ -105,7 +132,7 @@ export default function StaffModuleAccess() {
   if (!isOwner) return <Redirect href="/role-home" />;
 
   return (
-    <OwnerFrame title="Staff Module Access" subtitle="Plant Owner · Dispatcher pilot · audited restrictions">
+    <OwnerFrame title="Staff Module Access" subtitle="Plant Owner · Eight staff roles · plant-scoped audited restrictions">
       <OwnerList>
         <Button label="Back to Workforce" variant="ghost" size="sm" fullWidth={false} onPress={() => router.back()} />
         <OwnerGlass style={{ padding: 14, gap: 10 }}>
@@ -119,17 +146,17 @@ export default function StaffModuleAccess() {
               </Pressable>
             ))}
           </View>
-          <AppText style={{ color: p.text, fontWeight: "700" }}>Active Dispatchers</AppText>
+          <AppText style={{ color: p.text, fontWeight: "700" }}>Active Plant Staff</AppText>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
             {staff.map(member => (
               <Pressable key={member.id} testID={"permission-staff-" + member.id}
                 onPress={() => { if (dirty) { toast("Save or discard current changes first", "info"); return; } setStaffId(member.id); }}
                 style={{ backgroundColor: staffId === member.id ? p.accent : p.glass, padding: 11, borderRadius: 12, borderWidth: 1, borderColor: p.border }}>
-                <AppText style={{ color: staffId === member.id ? "#FFFFFF" : p.text }}>{member.name}</AppText>
+                <AppText style={{ color: staffId === member.id ? "#FFFFFF" : p.text }}>{member.name} · {member.role.replace(/_/g, " ")}</AppText>
               </Pressable>
             ))}
           </View>
-          {!staff.length && !loading ? <AppText style={{ color: p.muted }}>No active Dispatcher is linked to this plant.</AppText> : null}
+          {!staff.length && !loading ? <AppText style={{ color: p.muted }}>No active staff with an eligible plant role is linked to this plant.</AppText> : null}
         </OwnerGlass>
         {error ? <OwnerGlass style={{ padding: 14, gap: 8 }}><AppText style={{ color: "#CF342A" }}>{error}</AppText><Button label="Retry" onPress={() => void refresh()} /></OwnerGlass> : null}
         {loading ? <AppText style={{ color: p.muted }}>Loading staff permissions…</AppText> : null}
@@ -138,15 +165,15 @@ export default function StaffModuleAccess() {
             <OwnerGlass style={{ padding: 14, gap: 7 }}>
               <AppText style={{ color: p.text, fontWeight: "700" }}>Permission matrix</AppText>
               <AppText style={{ color: p.muted, fontSize: 12 }}>
-                Permissions cannot exceed the Dispatcher role ceiling. Approvals, billing and payroll cannot be granted here. Changes affect the next authorized API request.
+                Permissions are restricted to each staff role’s server-side ceiling; this screen never grants Plant Owner or Central Admin privileges. Changes affect subsequent authorized API requests.
               </AppText>
             </OwnerGlass>
             {grants.map(g => (
               <OwnerGlass key={g.key} style={{ padding: 14, gap: 12 }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <Ionicons name="shield-checkmark-outline" size={20} color={p.accent} />
+                  <VectorSymbol name={MODULE_SYMBOLS[g.key] || "settings"} size={49} warmAccent />
                   <AppText style={{ color: p.text, fontSize: 15, fontWeight: "700", flex: 1 }}>{g.label}</AppText>
-                  {g.overridden ? <AppText style={{ color: p.muted, fontSize: 11 }}>Customized</AppText> : null}
+                  {g.overridden ? <AppText style={{ color: p.accent, fontSize: 11 }}>Customized</AppText> : null}
                 </View>
                 <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
                   {(["view", "edit", "approve"] as const).map(action => {

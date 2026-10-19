@@ -306,6 +306,25 @@ export function BusinessModule({ kind }: { kind: string }) {
   const [adjustAmount, setAdjustAmount] = useState("");
   const [adjustNote, setAdjustNote] = useState("");
   const [adjustSign, setAdjustSign] = useState<1 | -1>(1);
+  const [permissionEdits, setPermissionEdits] = useState<Record<string, boolean>>({});
+  const isDelegatedStaff = !!user?.role && ["admin","dispatcher","operator","supervisor","accountant",
+    "quality_engineer","fleet_manager","store_manager"].includes(user.role);
+  React.useEffect(() => {
+    if (!isDelegatedStaff || !token) return;
+    let active = true;
+    setPermissionEdits({});
+    apiGet<{ permissions: Array<{ key: string; edit: boolean }> }>("/staff/module-permissions", token)
+      .then(result => {
+        if (active) setPermissionEdits(Object.fromEntries(result.permissions.map(item => [item.key, item.edit])));
+      }).catch(() => { if (active) setPermissionEdits({}); });
+    return () => { active = false; };
+  }, [token, isDelegatedStaff]);
+  const kindGrant: Record<string, string> = {
+    mixes: "mix_designs", inventory: "material_inventory", fleet: "fleet_availability",
+    rates: "rate_cards", quotations: "quotations", expenses: "expenses",
+    purchases: "purchases", diesel: "diesel_ledger", suppliers: "suppliers", payroll: "payroll",
+  };
+  const canEditModule = !isDelegatedStaff || !kindGrant[kind] || permissionEdits[kindGrant[kind]] === true;
 
   const loadPlants = useCallback(async () => {
     if (!token) return;
@@ -550,10 +569,10 @@ export function BusinessModule({ kind }: { kind: string }) {
                   {r.subtitle ? <AppText variant="caption">{r.subtitle}</AppText> : null}
                   {r.meta ? <AppText style={{ fontFamily: fonts.regular, fontSize: 11, color: colors.onSurfaceTertiary }}>{r.meta}</AppText> : null}
                 </View>
-                {kind === "fleet" && ["available", "maintenance"].includes(r.raw?.status) ? (
+                {kind === "fleet" && canEditModule && ["available", "maintenance"].includes(r.raw?.status) ? (
                   <Button label={r.raw?.status === "maintenance" ? "Set Available" : "Set Maintenance"} variant="outline" onPress={() => toggleFleet(r)} />
                 ) : null}
-                {kind === "inventory" && user?.role !== "dispatcher" ? (
+                {kind === "inventory" && canEditModule ? (
                   <View style={{ flexDirection: "row", gap: spacing.sm }}>
                     <View style={{ flex: 1 }}><Button label="Stock In" onPress={() => openAdjustment(r, 1)} /></View>
                     <View style={{ flex: 1 }}><Button label="Stock Out" variant="outline" onPress={() => openAdjustment(r, -1)} /></View>
@@ -572,7 +591,7 @@ export function BusinessModule({ kind }: { kind: string }) {
             <View style={{ flex: 1 }}><Button label="Check In" onPress={() => attendanceAction("checkin")} loading={saving} /></View>
             <View style={{ flex: 1 }}><Button label="Check Out" variant="outline" onPress={() => attendanceAction("checkout")} /></View>
           </View>
-        ) : def.addLabel && plantId && !(kind === "inventory" && user?.role === "dispatcher") ? <Button label={def.addLabel} onPress={openForm} /> : null}
+        ) : def.addLabel && plantId && canEditModule ? <Button label={def.addLabel} onPress={openForm} /> : null}
 
         {(kind === "purchases" || kind === "payroll" || kind === "diesel") && resources ? (
           <Card style={{ gap: spacing.sm }}>

@@ -313,11 +313,18 @@ try {
     }
     if (user.role === 'plant_owner') await page.getByRole('button', { name: 'View all plant modules', exact: true }).click();
     await expect(page.getByTestId('role-module-directory')).toBeVisible();
+    // The typed catalog describes implemented routes. Effective per-user grants
+    // additionally hide restricted modules. In the seeded Dispatcher account,
+    // Plant Reports are deliberately unavailable (no plant_reports ceiling).
+    const disabledKeys = user.role === 'dispatcher' ? ['business-reports'] : [];
     const visibleKeys = user.role === 'customer'
       ? ['account-deletion', 'customer-support', 'notifications', 'quotations', 'documents']
-      : modulesForRole(user.role).map(module => module.key);
+      : modulesForRole(user.role).map(module => module.key).filter(key => !disabledKeys.includes(key));
     for (const key of visibleKeys) {
       await expect(page.getByTestId('role-module-' + key)).toBeVisible();
+    }
+    for (const key of disabledKeys) {
+      await expect(page.getByTestId('role-module-' + key)).toHaveCount(0);
     }
     if (user.role === 'customer') {
       await expect(page.getByTestId('role-module-directory').locator('[data-testid^="role-module-"]')).toHaveCount(5);
