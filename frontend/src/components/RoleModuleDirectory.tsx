@@ -26,7 +26,7 @@ export function RoleModuleDirectory({ role, title = "Your Modules" }: {
   // A hidden link is never the permission boundary; Rust checks every action.
   // Fail closed for guarded links until the server confirms effective grants.
   useFocusEffect(useCallback(() => {
-    if (role !== "dispatcher" || !token) { setAllowed(null); return; }
+    if (!role || !["admin","dispatcher","operator","supervisor","accountant","quality_engineer","fleet_manager","store_manager"].includes(role) || !token) { setAllowed(null); return; }
     let active = true;
     setAllowed(null);
     apiGet<{ permissions: Array<{key: string; view: boolean}> }>("/staff/module-permissions", token)
@@ -34,14 +34,26 @@ export function RoleModuleDirectory({ role, title = "Your Modules" }: {
       .catch(() => { if (active) setAllowed([]); });
     return () => { active = false; };
   }, [role, token]));
-  const dispatcherModuleKey: Record<string, string> = {
-    "dispatcher-queue": "dispatch_queue",
-    "dispatcher-fleet": "fleet_availability",
-    "dispatcher-challan": "challan_gate_pass",
-    "business-inventory": "material_inventory",
+  const moduleKey: Record<string, string> = {
+    "admin-orders": "dispatch_queue", "admin-fleet": "fleet_availability",
+    "dispatcher-queue": "dispatch_queue", "dispatcher-fleet": "fleet_availability",
+    "operator-production": "production_queue", "supervisor-operations": "production_queue",
+    "supervisor-incidents": "incidents", "accountant-billing": "billing_ledger",
+    "accountant-ledger": "billing_ledger", "engineer-quality": "quality_register",
+    "fleet-manager-fleet": "fleet_availability", "fleet-manager-drivers": "driver_roster",
+    "store-manager-stock": "material_inventory", "business-rates": "rate_cards",
+    "business-mixes": "mix_designs", "business-inventory": "material_inventory",
+    "business-suppliers": "suppliers", "business-purchases": "purchases",
+    "business-fleet": "fleet_availability", "business-diesel": "diesel_ledger",
+    "business-quotations": "quotations", "business-expenses": "expenses",
+    "business-payroll": "payroll", "business-attendance": "workforce",
+    "business-reports": "plant_reports", "workforce": "workforce",
+    "workforce-reports": "workforce", "employee-master": "employee_master",
+    "payroll-closure": "payroll",
   };
-  const modules = modulesForRole(role).filter(m => role !== "dispatcher"
-    || !dispatcherModuleKey[m.key] || (allowed || []).includes(dispatcherModuleKey[m.key]));
+  const guardedRole = !!role && ["admin","dispatcher","operator","supervisor","accountant","quality_engineer","fleet_manager","store_manager"].includes(role);
+  const modules = modulesForRole(role).filter(m => !guardedRole
+    || !moduleKey[m.key] || (allowed || []).includes(moduleKey[m.key]));
 
   if (modules.length === 0) return null;
   return (
@@ -56,7 +68,7 @@ export function RoleModuleDirectory({ role, title = "Your Modules" }: {
         return (
           <View key={group} style={{ gap: spacing.sm }}>
             <AppText variant="label">{group}</AppText>
-            <View style={{ gap: spacing.sm }}>
+            <View style={styles.cards}>
               {entries.map(module => (
                 <Pressable
                   key={module.key}
@@ -67,20 +79,17 @@ export function RoleModuleDirectory({ role, title = "Your Modules" }: {
                   style={({ pressed }) => [
                     styles.item,
                     {
-                      backgroundColor: colors.surfaceSecondary,
-                      borderColor: colors.border,
-                      opacity: pressed ? 0.8 : 1,
+                      backgroundColor: colors.isDark ? "rgba(31,34,39,0.86)" : "rgba(255,255,255,0.84)",
+                      borderColor: colors.isDark ? "rgba(255,161,93,0.25)" : "rgba(255,255,255,0.96)",
+                      opacity: pressed ? 0.76 : 1,
                     },
                   ]}
                 >
-                  <View style={[styles.icon, { backgroundColor: colors.brandSoft }]}>
-                    {module.symbol ? <VectorSymbol name={module.symbol} size={36} /> : <Ionicons name={module.icon} size={19} color={colors.brand} />}
+                  <View style={styles.artwork}>
+                    {module.symbol ? <VectorSymbol name={module.symbol} size={52} warmAccent /> : <Ionicons name={module.icon} size={38} color={colors.brand} />}
                   </View>
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <AppText style={{ fontFamily: fonts.semibold, color: colors.onSurface }}>{module.label}</AppText>
-                    <AppText variant="caption" numberOfLines={2}>{module.description}</AppText>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color={colors.onSurfaceTertiary} />
+                  <AppText style={{ fontFamily: fonts.semibold, color: colors.onSurface, fontSize: 13, textAlign: "center" }} numberOfLines={2}>{module.label}</AppText>
+                  <AppText variant="caption" style={{ textAlign: "center", fontSize: 11 }} numberOfLines={2}>{module.description}</AppText>
                 </Pressable>
               ))}
             </View>
@@ -93,6 +102,10 @@ export function RoleModuleDirectory({ role, title = "Your Modules" }: {
 
 const styles = StyleSheet.create({
   heading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
-  item: { flexDirection: "row", gap: spacing.md, alignItems: "center", minHeight: 68, borderWidth: 1, borderRadius: radius.md, padding: spacing.md },
-  icon: { width: 42, height: 42, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
+  cards: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  item: { width: "48%", minWidth: 142, flexGrow: 1, minHeight: 154, alignItems: "center",
+    justifyContent: "center", gap: 7, borderWidth: 1, borderRadius: 20, padding: 12,
+    shadowColor: "#AB6A3A", shadowOpacity: 0.11, shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 }, elevation: 2 },
+  artwork: { height: 58, alignItems: "center", justifyContent: "center" },
 });
