@@ -17,15 +17,6 @@ pub const KEYS: [&str; 6] = [
     "billing_ledger",
     "payroll",
 ];
-const LABELS: [&str; 6] = [
-    "Dispatch Queue",
-    "Fleet Availability",
-    "Challan & Gate Pass",
-    "Material Inventory",
-    "Billing & Ledger",
-    "Payroll",
-];
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Grant {
     pub view: bool,
@@ -114,7 +105,7 @@ pub fn role_ceiling(role: &str, key: &str) -> Option<Grant> {
     if !is_staff_role(role) {
         return None;
     }
-    let mut ceiling = match (role, key) {
+    let ceiling = match (role, key) {
         ("admin", "dispatch_queue" | "fleet_availability" | "challan_gate_pass" |
             "material_inventory" | "billing_ledger" | "payroll" | "production_queue" |
             "mix_designs" | "diesel_ledger" | "suppliers" | "purchases" |
@@ -122,6 +113,7 @@ pub fn role_ceiling(role: &str, key: &str) -> Option<Grant> {
             "incidents" | "driver_roster") => Grant::new(true, true, false),
         ("operator", "production_queue" | "challan_gate_pass") => Grant::new(true, true, false),
         ("operator", "material_inventory" | "fleet_availability" | "mix_designs" |
+            "dispatch_queue" |
             "workforce" | "plant_reports") => Grant::new(true, false, false),
         ("supervisor", "production_queue" | "dispatch_queue" | "challan_gate_pass" |
             "material_inventory" | "workforce" | "incidents") => Grant::new(true, true, false),
@@ -131,9 +123,10 @@ pub fn role_ceiling(role: &str, key: &str) -> Option<Grant> {
             "expenses" | "rate_cards") => Grant::new(true, true, false),
         ("accountant", "workforce" | "plant_reports" | "employee_master" |
             "purchases") => Grant::new(true, false, false),
-        ("quality_engineer", "quality_register" | "mix_designs") =>
+        ("quality_engineer", "quality_register" | "mix_designs" |
+            "challan_gate_pass") =>
             Grant::new(true, true, false),
-        ("quality_engineer", "material_inventory" | "production_queue" |
+        ("quality_engineer", "dispatch_queue" | "material_inventory" | "production_queue" |
             "plant_reports" | "workforce") => Grant::new(true, false, false),
         ("fleet_manager", "fleet_availability" | "dispatch_queue" |
             "diesel_ledger" | "driver_roster") => Grant::new(true, true, false),
@@ -143,11 +136,10 @@ pub fn role_ceiling(role: &str, key: &str) -> Option<Grant> {
             "diesel_ledger") => Grant::new(true, true, false),
         ("store_manager", "plant_reports" | "workforce") =>
             Grant::new(true, false, false),
+        ("admin", "quality_register" | "plant_reports" | "employee_master") =>
+            Grant::new(true, false, false),
         _ => Grant::new(false, false, false),
     };
-    if role == "admin" && matches!(key, "quality_register" | "plant_reports" | "employee_master") {
-        ceiling = Grant::new(true, false, false);
-    }
     if ALL_KEYS.contains(&key) {
         Some(ceiling)
     } else {
