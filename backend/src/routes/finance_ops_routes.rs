@@ -47,7 +47,14 @@ pub async fn list_plant_quotations(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin", "accountant"])?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
-    super::staff_module_permissions::require(&state, &auth_user, plant_id, "quotations", super::staff_module_permissions::Action::View).await?;
+    super::staff_module_permissions::require(
+        &state,
+        &auth_user,
+        plant_id,
+        "quotations",
+        super::staff_module_permissions::Action::View,
+    )
+    .await?;
     let rows:Vec<serde_json::Value>=sqlx::query_scalar("SELECT to_jsonb(q)||jsonb_build_object('quantity_m3',q.quantity_m3::DOUBLE PRECISION,'rate_per_m3',q.rate_per_m3::DOUBLE PRECISION,'gst_rate',q.gst_rate::DOUBLE PRECISION,'transport_amount',q.transport_amount::DOUBLE PRECISION,'pumping_amount',q.pumping_amount::DOUBLE PRECISION,'total',q.total_amount::DOUBLE PRECISION,'total_amount',q.total_amount::DOUBLE PRECISION,'customer_response_reason',q.decline_reason,'order_number',o.order_number) FROM plant_quotations q LEFT JOIN orders o ON o.quotation_id=q.id WHERE q.plant_id=$1 ORDER BY q.created_at DESC LIMIT 500")
         .bind(plant_id).fetch_all(&state.db).await?;
     Ok(Json(json!({"success":true,"quotations":rows})))
@@ -61,7 +68,14 @@ pub async fn create_plant_quotation(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin", "accountant"])?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
-    super::staff_module_permissions::require(&state, &auth_user, plant_id, "quotations", super::staff_module_permissions::Action::Edit).await?;
+    super::staff_module_permissions::require(
+        &state,
+        &auth_user,
+        plant_id,
+        "quotations",
+        super::staff_module_permissions::Action::Edit,
+    )
+    .await?;
     Ok(Json(
         crate::services::commercial_service::issue(&state, auth_user.user_id, plant_id, payload)
             .await?,
@@ -75,7 +89,14 @@ pub async fn list_plant_quotation_requests(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin", "accountant"])?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
-    super::staff_module_permissions::require(&state, &auth_user, plant_id, "quotations", super::staff_module_permissions::Action::View).await?;
+    super::staff_module_permissions::require(
+        &state,
+        &auth_user,
+        plant_id,
+        "quotations",
+        super::staff_module_permissions::Action::View,
+    )
+    .await?;
     let rows:Vec<serde_json::Value>=sqlx::query_scalar("SELECT to_jsonb(r)-'response_payload'||jsonb_build_object('customer_name',u.full_name,'customer_mobile',u.phone,'site_name',s.name,'site_address',s.address_line,'quantity',r.quantity_m3::DOUBLE PRECISION,'quantity_m3',r.quantity_m3::DOUBLE PRECISION,'status',CASE r.status WHEN 'PENDING' THEN 'REQUESTED' ELSE r.status END,'quotation_number',q.quotation_number,'quoted_total',q.total_amount::DOUBLE PRECISION) FROM customer_quotation_requests r JOIN users u ON u.id=r.customer_id LEFT JOIN customer_sites s ON s.id=r.site_id AND s.customer_id=r.customer_id LEFT JOIN LATERAL(SELECT quotation_number,total_amount FROM plant_quotations WHERE request_id=r.id ORDER BY created_at LIMIT 1) q ON TRUE WHERE r.plant_id=$1 ORDER BY r.created_at DESC LIMIT 500")
         .bind(plant_id).fetch_all(&state.db).await?;
     Ok(Json(json!({"success":true,"requests":rows})))
@@ -101,7 +122,14 @@ pub async fn respond_quotation_request(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin", "accountant"])?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
-    super::staff_module_permissions::require(&state, &auth_user, plant_id, "quotations", super::staff_module_permissions::Action::Edit).await?;
+    super::staff_module_permissions::require(
+        &state,
+        &auth_user,
+        plant_id,
+        "quotations",
+        super::staff_module_permissions::Action::Edit,
+    )
+    .await?;
     Ok(Json(
         crate::services::commercial_service::respond(
             &state,
@@ -198,7 +226,14 @@ pub async fn list_plant_expenses(
     Path(plant_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
-    super::staff_module_permissions::require(&state, &auth_user, plant_id, "expenses", super::staff_module_permissions::Action::View).await?;
+    super::staff_module_permissions::require(
+        &state,
+        &auth_user,
+        plant_id,
+        "expenses",
+        super::staff_module_permissions::Action::View,
+    )
+    .await?;
     check_role(&auth_user, &["owner", "plant_owner", "admin", "accountant"])?;
 
     let rows = sqlx::query(
@@ -249,7 +284,14 @@ pub async fn record_plant_expense(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin", "accountant"])?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
-    super::staff_module_permissions::require(&state, &auth_user, plant_id, "expenses", super::staff_module_permissions::Action::Edit).await?;
+    super::staff_module_permissions::require(
+        &state,
+        &auth_user,
+        plant_id,
+        "expenses",
+        super::staff_module_permissions::Action::Edit,
+    )
+    .await?;
 
     let dt = match payload.expense_date {
         Some(s) => NaiveDate::parse_from_str(&s, "%Y-%m-%d")
@@ -301,7 +343,14 @@ pub async fn list_diesel_transactions(
     Path(plant_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
-    super::staff_module_permissions::require(&state, &auth_user, plant_id, "diesel_ledger", super::staff_module_permissions::Action::View).await?;
+    super::staff_module_permissions::require(
+        &state,
+        &auth_user,
+        plant_id,
+        "diesel_ledger",
+        super::staff_module_permissions::Action::View,
+    )
+    .await?;
 
     let rows = sqlx::query(
         r#"
@@ -372,7 +421,14 @@ pub async fn record_diesel_transaction(
         ],
     )?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
-    super::staff_module_permissions::require(&state, &auth_user, plant_id, "diesel_ledger", super::staff_module_permissions::Action::Edit).await?;
+    super::staff_module_permissions::require(
+        &state,
+        &auth_user,
+        plant_id,
+        "diesel_ledger",
+        super::staff_module_permissions::Action::Edit,
+    )
+    .await?;
 
     let id: Uuid = sqlx::query_scalar(
         r#"
@@ -420,7 +476,14 @@ pub async fn list_purchase_receipts(
     Path(plant_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
-    super::staff_module_permissions::require(&state, &auth_user, plant_id, "purchases", super::staff_module_permissions::Action::View).await?;
+    super::staff_module_permissions::require(
+        &state,
+        &auth_user,
+        plant_id,
+        "purchases",
+        super::staff_module_permissions::Action::View,
+    )
+    .await?;
 
     let rows = sqlx::query(
         r#"
@@ -486,7 +549,14 @@ pub async fn record_purchase_receipt(
         ],
     )?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
-    super::staff_module_permissions::require(&state, &auth_user, plant_id, "purchases", super::staff_module_permissions::Action::Edit).await?;
+    super::staff_module_permissions::require(
+        &state,
+        &auth_user,
+        plant_id,
+        "purchases",
+        super::staff_module_permissions::Action::Edit,
+    )
+    .await?;
 
     let dt = match payload.receipt_date {
         Some(s) => NaiveDate::parse_from_str(&s, "%Y-%m-%d")
