@@ -288,6 +288,26 @@ pub async fn get_staff_collection(
         return Err(AppError::Forbidden("No assigned active plant".to_owned()));
     }
 
+    if auth_user.role == "dispatcher" {
+        let module = match kind.as_str() {
+            "dispatch" => Some("dispatch_queue"),
+            "fleet" | "drivers" => Some("fleet_availability"),
+            "inventory" => Some("material_inventory"),
+            _ => None,
+        };
+        if let Some(module) = module {
+            let plants: Vec<uuid::Uuid> = sqlx::query_scalar(
+                "SELECT ps.plant_id FROM plant_staff ps JOIN rmc_plants p ON p.id=ps.plant_id                  WHERE ps.user_id=$1 AND ps.is_active=TRUE AND ps.role='dispatcher'                  AND p.is_active=TRUE ORDER BY ps.plant_id LIMIT 2"
+            ).bind(auth_user.user_id).fetch_all(&state.db).await?;
+            if plants.len() != 1 {
+                return Err(AppError::Forbidden("Ambiguous or inactive Dispatcher assignment".into()));
+            }
+            super::staff_module_permissions::require(
+                &state, &auth_user, plants[0], module, super::staff_module_permissions::Action::View
+            ).await?;
+        }
+    }
+
     let sql = format!(
         "{} {}",
         SCOPE,
