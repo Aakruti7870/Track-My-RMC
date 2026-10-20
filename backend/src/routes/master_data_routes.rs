@@ -446,12 +446,25 @@ pub async fn get_plant_resources(
 ) -> Result<impl IntoResponse, AppError> {
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
 
+    // This shared supporting endpoint is loaded by many pages. Keep its shape
+    // but do not leak fleet or raw stock data when the Owner has revoked
+    // that specific module's read permission for a plant staff member.
+    let fleet_visible = super::staff_module_permissions::require(
+        &state, &auth_user, plant_id, "fleet_availability",
+        super::staff_module_permissions::Action::View,
+    ).await.is_ok();
+    let stock_visible = super::staff_module_permissions::require(
+        &state, &auth_user, plant_id, "material_inventory",
+        super::staff_module_permissions::Action::View,
+    ).await.is_ok();
+
     let mixers = sqlx::query(
         "SELECT id, registration_number, capacity_m3, status FROM transit_mixers WHERE plant_id = $1 ORDER BY registration_number",
     )
     .bind(plant_id)
     .fetch_all(&state.db)
     .await?;
+    let mixers = if fleet_visible { mixers } else { Vec::new() };
 
     let materials = sqlx::query(
         "SELECT id, name, material_type, unit, current_stock, minimum_stock FROM plant_materials WHERE plant_id = $1 ORDER BY name",
@@ -459,6 +472,7 @@ pub async fn get_plant_resources(
     .bind(plant_id)
     .fetch_all(&state.db)
     .await?;
+    let materials = if stock_visible { materials } else { Vec::new() };
 
     let staff_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM plant_staff WHERE plant_id = $1 AND is_active = TRUE",
