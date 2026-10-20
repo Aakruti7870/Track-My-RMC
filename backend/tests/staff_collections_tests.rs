@@ -7,7 +7,7 @@ use trackmyrmc_backend::{
     auth::AuthUser,
     config::AppConfig,
     error::AppError,
-    routes::{master_data_routes, staff_collections, staff_routes},
+    routes::{hr_routes, master_data_routes, staff_collections, staff_routes},
     state::AppState,
 };
 use uuid::Uuid;
@@ -320,4 +320,44 @@ async fn scoped_reports_show_real_counts_and_respect_owner_revocation(db: PgPool
     assert!(master_data_routes::get_plant_summary(
         State(app), user(owner, "owner"), Path(plant)
     ).await.is_ok());
+}
+
+#[sqlx::test]
+async fn supervisors_see_roster_without_salaries_and_accountants_keep_pay_access(db: PgPool) {
+    let owner = create_user(&db, "owner").await;
+    let supervisor = create_user(&db, "supervisor").await;
+    let accountant = create_user(&db, "accountant").await;
+    let plant = create_plant(&db, owner).await;
+    for (staff, role) in [(supervisor, "supervisor"), (accountant, "accountant")] {
+        sqlx::query("INSERT INTO plant_staff(plant_id,user_id,role,is_active) VALUES($1,$2,$3,TRUE)")
+            .bind(plant).bind(staff).bind(role).execute(&db).await.unwrap();
+    }
+    let app = state(db);
+
+    let response = hr_routes::list_employees(
+        State(app.clone()), user(supervisor, "supervisor"),
+    ).await.unwrap().into_response();
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(response.into_body(), 20000).await.unwrap()
+    ).unwrap();
+    for staff in body["plants"][0]["employees"].as_array().unwrap() {
+        assert!(staff["current_salary"].is_null());
+        assert!(staff["salary_totals"].is_null());
+        assert!(staff["profile"].is_object());
+    }
+    let response = hr_routes::get_employee_hr_profile(
+        State(app.clone()), user(supervisor, "supervisor"),
+        Path((plant, accountant)),
+    ).await.unwrap().into_response();
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(response.into_body(), 10000).await.unwrap()
+    ).unwrap();
+    assert!(body["employee"]["salary"].is_null());
+    let response = hr_routes::get_employee_hr_profile(
+        State(app), user(accountant, "accountant"), Path((plant, supervisor)),
+    ).await.unwrap().into_response();
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(response.into_body(), 10000).await.unwrap()
+    ).unwrap();
+    assert!(body["employee"]["salary"].is_object());
 }
