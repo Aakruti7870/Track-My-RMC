@@ -698,7 +698,6 @@ pub async fn delete_customer_site(
     Ok(Json(json!({"success":true,"status":"deleted"})))
 }
 
-
 /// Real, plant-scoped operational figures for the existing Plant Reports card.
 /// Does not expose invoice, payroll, salary, supplier bank or platform-wide data.
 pub async fn get_plant_summary(
@@ -709,8 +708,15 @@ pub async fn get_plant_summary(
     check_role(
         &auth_user,
         &[
-            "owner", "plant_owner", "admin", "operator", "supervisor",
-            "accountant", "quality_engineer", "fleet_manager", "store_manager",
+            "owner",
+            "plant_owner",
+            "admin",
+            "operator",
+            "supervisor",
+            "accountant",
+            "quality_engineer",
+            "fleet_manager",
+            "store_manager",
         ],
     )?;
     ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
@@ -720,20 +726,31 @@ pub async fn get_plant_summary(
         plant_id,
         "plant_reports",
         super::staff_module_permissions::Action::View,
-    ).await?;
+    )
+    .await?;
 
-    let orders: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM orders WHERE plant_id=$1",
-    ).bind(plant_id).fetch_one(&state.db).await?;
+    let orders: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM orders WHERE plant_id=$1")
+        .bind(plant_id)
+        .fetch_one(&state.db)
+        .await?;
     let pending: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM orders WHERE plant_id=$1 AND status IN ('pending','confirmed')",
-    ).bind(plant_id).fetch_one(&state.db).await?;
+    )
+    .bind(plant_id)
+    .fetch_one(&state.db)
+    .await?;
     let available_mixers: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM transit_mixers WHERE plant_id=$1 AND status IN ('idle','available')",
-    ).bind(plant_id).fetch_one(&state.db).await?;
+    )
+    .bind(plant_id)
+    .fetch_one(&state.db)
+    .await?;
     let low_stock: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM plant_materials WHERE plant_id=$1 AND current_stock <= minimum_stock",
-    ).bind(plant_id).fetch_one(&state.db).await?;
+    )
+    .bind(plant_id)
+    .fetch_one(&state.db)
+    .await?;
 
     Ok(Json(json!({
         "success": true,
