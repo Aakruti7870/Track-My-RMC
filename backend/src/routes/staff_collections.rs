@@ -63,8 +63,14 @@ fn collection_policy(kind: &str, role: &str) -> Option<(&'static str, &'static s
         "invoices" | "ledger" => owners.contains(&role) || role == "accountant",
         "inventory" => {
             owners.contains(&role)
-                || ["store_manager", "operator", "supervisor", "dispatcher", "quality_engineer"]
-                    .contains(&role)
+                || [
+                    "store_manager",
+                    "operator",
+                    "supervisor",
+                    "dispatcher",
+                    "quality_engineer",
+                ]
+                .contains(&role)
         }
         "plants" => {
             owners.contains(&role)
