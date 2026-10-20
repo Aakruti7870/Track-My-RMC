@@ -7,7 +7,7 @@ use trackmyrmc_backend::{
     auth::AuthUser,
     config::AppConfig,
     error::AppError,
-    routes::{staff_collections, staff_routes},
+    routes::{master_data_routes, staff_collections, staff_routes},
     state::AppState,
 };
 use uuid::Uuid;
@@ -277,4 +277,47 @@ async fn owner_disabled_grants_block_staff_collections_but_not_owner(db: PgPool)
         State(app), user(owner, "owner"), Path("orders".to_string())
     ).await.unwrap().0;
     assert_eq!(owner_view["items"].as_array().unwrap().len(), 1);
+}
+
+#[sqlx::test]
+async fn scoped_reports_show_real_counts_and_respect_owner_revocation(db: PgPool) {
+    let owner = create_user(&db, "owner").await;
+    let other_owner = create_user(&db, "owner").await;
+    let supervisor = create_user(&db, "supervisor").await;
+    let customer = create_user(&db, "customer").await;
+    let plant = create_plant(&db, owner).await;
+    let other = create_plant(&db, other_owner).await;
+    create_order(&db, customer, plant).await;
+    sqlx::query("INSERT INTO plant_staff(plant_id,user_id,role,is_active) VALUES($1,$2,'supervisor',TRUE)")
+        .bind(plant).bind(supervisor).execute(&db).await.unwrap();
+    let app = state(db.clone());
+    let response = master_data_routes::get_plant_summary(
+        State(app.clone()), user(supervisor, "supervisor"), Path(plant),
+    ).await.unwrap().into_response();
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(response.into_body(), 20000).await.unwrap()
+    ).unwrap();
+    assert_eq!(body["reports"][0]["status"], "1 total");
+    assert_eq!(body["reports"].as_array().unwrap().len(), 4);
+    assert!(body.get("salary").is_none());
+    assert!(matches!(
+        master_data_routes::get_plant_summary(
+            State(app.clone()), user(supervisor, "supervisor"), Path(other)
+        ).await,
+        Err(AppError::Forbidden(_))
+    ));
+    sqlx::query(
+        "INSERT INTO plant_staff_module_permissions \
+         (plant_id,user_id,module_key,can_view,can_edit,can_approve,updated_by) \
+         VALUES($1,$2,'plant_reports',FALSE,FALSE,FALSE,$3)"
+    ).bind(plant).bind(supervisor).bind(owner).execute(&db).await.unwrap();
+    assert!(matches!(
+        master_data_routes::get_plant_summary(
+            State(app.clone()), user(supervisor, "supervisor"), Path(plant)
+        ).await,
+        Err(AppError::Forbidden(_))
+    ));
+    assert!(master_data_routes::get_plant_summary(
+        State(app), user(owner, "owner"), Path(plant)
+    ).await.is_ok());
 }
