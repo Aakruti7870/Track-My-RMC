@@ -166,12 +166,17 @@ pub async fn list_employees(
                 "email": email,
                 "phone": phone,
                 "profile": profile_obj,
-                "current_salary": salary_obj,
-                "salary_totals": {
-                    "allowances": total_allowances,
-                    "deductions": total_deductions,
-                    "gross": gross,
-                    "net_before_overtime": net_before_ot
+                // Supervisors may need roster identity, not employee pay.
+                "current_salary": if auth_user.role == "supervisor" { serde_json::Value::Null } else { salary_obj },
+                "salary_totals": if auth_user.role == "supervisor" {
+                    serde_json::Value::Null
+                } else {
+                    json!({
+                        "allowances": total_allowances,
+                        "deductions": total_deductions,
+                        "gross": gross,
+                        "net_before_overtime": net_before_ot
+                    })
                 }
             }));
         }
@@ -502,7 +507,9 @@ pub async fn get_employee_hr_profile(
                 "emergency_contact_phone": em_phone,
                 "document_references": doc_refs
             },
-            "salary": {
+            "salary": if auth_user.role == "supervisor" {
+                serde_json::Value::Null
+            } else { json!({
                 "effective_from": eff_from.map(|d| d.to_string()),
                 "pay_basis": pay_basis,
                 "basic_amount": basic.map(|b| b.to_string().parse::<f64>().unwrap_or(0.0)),
@@ -514,7 +521,7 @@ pub async fn get_employee_hr_profile(
                 "employee_esi": esi.map(|b| b.to_string().parse::<f64>().unwrap_or(0.0)),
                 "professional_tax": pt.map(|b| b.to_string().parse::<f64>().unwrap_or(0.0)),
                 "tds": tds.map(|b| b.to_string().parse::<f64>().unwrap_or(0.0))
-            }
+            }) }
         }
     })))
 }
