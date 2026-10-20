@@ -234,48 +234,78 @@ async fn owner_disabled_grants_block_staff_collections_but_not_owner(db: PgPool)
         ("store_manager", "inventory", "material_inventory"),
     ] {
         let staff = create_user(&db, role).await;
-        sqlx::query("INSERT INTO plant_staff(plant_id,user_id,role,is_active) VALUES($1,$2,$3,TRUE)")
-            .bind(plant)
-            .bind(staff)
-            .bind(role)
-            .execute(&db)
-            .await
-            .unwrap();
+        sqlx::query(
+            "INSERT INTO plant_staff(plant_id,user_id,role,is_active) VALUES($1,$2,$3,TRUE)",
+        )
+        .bind(plant)
+        .bind(staff)
+        .bind(role)
+        .execute(&db)
+        .await
+        .unwrap();
 
         // Default role ceiling permits the primary collection.
         staff_collections::get_staff_collection(
-            State(app.clone()), user(staff, role), Path(kind.to_string()),
-        ).await.expect("default role collection read");
+            State(app.clone()),
+            user(staff, role),
+            Path(kind.to_string()),
+        )
+        .await
+        .expect("default role collection read");
 
         sqlx::query(
             "INSERT INTO plant_staff_module_permissions \
              (plant_id,user_id,module_key,can_view,can_edit,can_approve,updated_by) \
-             VALUES($1,$2,$3,FALSE,FALSE,FALSE,$4)"
-        ).bind(plant).bind(staff).bind(permission).bind(owner)
-         .execute(&db).await.unwrap();
+             VALUES($1,$2,$3,FALSE,FALSE,FALSE,$4)",
+        )
+        .bind(plant)
+        .bind(staff)
+        .bind(permission)
+        .bind(owner)
+        .execute(&db)
+        .await
+        .unwrap();
 
-        assert!(matches!(
-            staff_collections::get_staff_collection(
-                State(app.clone()), user(staff, role), Path(kind.to_string())
-            ).await,
-            Err(AppError::Forbidden(_))
-        ), "owner revocation must immediately deny collection: {role}/{kind}");
+        assert!(
+            matches!(
+                staff_collections::get_staff_collection(
+                    State(app.clone()),
+                    user(staff, role),
+                    Path(kind.to_string())
+                )
+                .await,
+                Err(AppError::Forbidden(_))
+            ),
+            "owner revocation must immediately deny collection: {role}/{kind}"
+        );
 
         // A second plant/owner cannot impersonate this staff member.
         sqlx::query("UPDATE plant_staff SET is_active=FALSE WHERE plant_id=$1 AND user_id=$2")
-            .bind(plant).bind(staff).execute(&db).await.unwrap();
+            .bind(plant)
+            .bind(staff)
+            .execute(&db)
+            .await
+            .unwrap();
         assert!(matches!(
             staff_collections::get_staff_collection(
-                State(app.clone()), user(staff, role), Path(kind.to_string())
-            ).await,
+                State(app.clone()),
+                user(staff, role),
+                Path(kind.to_string())
+            )
+            .await,
             Err(AppError::Forbidden(_))
         ));
     }
 
     // Existing Owner reads must remain available, independently of staff grants.
     let owner_view = staff_collections::get_staff_collection(
-        State(app), user(owner, "owner"), Path("orders".to_string())
-    ).await.unwrap().0;
+        State(app),
+        user(owner, "owner"),
+        Path("orders".to_string()),
+    )
+    .await
+    .unwrap()
+    .0;
     assert_eq!(owner_view["items"].as_array().unwrap().len(), 1);
 }
 
@@ -288,38 +318,66 @@ async fn scoped_reports_show_real_counts_and_respect_owner_revocation(db: PgPool
     let plant = create_plant(&db, owner).await;
     let other = create_plant(&db, other_owner).await;
     create_order(&db, customer, plant).await;
-    sqlx::query("INSERT INTO plant_staff(plant_id,user_id,role,is_active) VALUES($1,$2,'supervisor',TRUE)")
-        .bind(plant).bind(supervisor).execute(&db).await.unwrap();
+    sqlx::query(
+        "INSERT INTO plant_staff(plant_id,user_id,role,is_active) VALUES($1,$2,'supervisor',TRUE)",
+    )
+    .bind(plant)
+    .bind(supervisor)
+    .execute(&db)
+    .await
+    .unwrap();
     let app = state(db.clone());
     let response = master_data_routes::get_plant_summary(
-        State(app.clone()), user(supervisor, "supervisor"), Path(plant),
-    ).await.unwrap().into_response();
+        State(app.clone()),
+        user(supervisor, "supervisor"),
+        Path(plant),
+    )
+    .await
+    .unwrap()
+    .into_response();
     let body: serde_json::Value = serde_json::from_slice(
-        &axum::body::to_bytes(response.into_body(), 20000).await.unwrap()
-    ).unwrap();
+        &axum::body::to_bytes(response.into_body(), 20000)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(body["reports"][0]["status"], "1 total");
     assert_eq!(body["reports"].as_array().unwrap().len(), 4);
     assert!(body.get("salary").is_none());
     assert!(matches!(
         master_data_routes::get_plant_summary(
-            State(app.clone()), user(supervisor, "supervisor"), Path(other)
-        ).await,
+            State(app.clone()),
+            user(supervisor, "supervisor"),
+            Path(other)
+        )
+        .await,
         Err(AppError::Forbidden(_))
     ));
     sqlx::query(
         "INSERT INTO plant_staff_module_permissions \
          (plant_id,user_id,module_key,can_view,can_edit,can_approve,updated_by) \
-         VALUES($1,$2,'plant_reports',FALSE,FALSE,FALSE,$3)"
-    ).bind(plant).bind(supervisor).bind(owner).execute(&db).await.unwrap();
+         VALUES($1,$2,'plant_reports',FALSE,FALSE,FALSE,$3)",
+    )
+    .bind(plant)
+    .bind(supervisor)
+    .bind(owner)
+    .execute(&db)
+    .await
+    .unwrap();
     assert!(matches!(
         master_data_routes::get_plant_summary(
-            State(app.clone()), user(supervisor, "supervisor"), Path(plant)
-        ).await,
+            State(app.clone()),
+            user(supervisor, "supervisor"),
+            Path(plant)
+        )
+        .await,
         Err(AppError::Forbidden(_))
     ));
-    assert!(master_data_routes::get_plant_summary(
-        State(app), user(owner, "owner"), Path(plant)
-    ).await.is_ok());
+    assert!(
+        master_data_routes::get_plant_summary(State(app), user(owner, "owner"), Path(plant))
+            .await
+            .is_ok()
+    );
 }
 
 #[sqlx::test]
