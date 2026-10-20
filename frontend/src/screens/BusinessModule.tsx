@@ -262,6 +262,7 @@ function unpackRows(kind: string, data: any): Row[] {
     : kind === "customers" ? data?.customers
     : kind === "fleet" ? data?.vehicles
     : kind === "inventory" ? data?.materials
+    : kind === "reports" ? data?.reports
     : [];
   return (arr || []).map((d: any, idx: number) => {
     let row: Row;
