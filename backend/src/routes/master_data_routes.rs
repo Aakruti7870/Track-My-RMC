@@ -683,3 +683,52 @@ pub async fn delete_customer_site(
     tx.commit().await?;
     Ok(Json(json!({"success":true,"status":"deleted"})))
 }
+
+
+/// Real, plant-scoped operational figures for the existing Plant Reports card.
+/// Does not expose invoice, payroll, salary, supplier bank or platform-wide data.
+pub async fn get_plant_summary(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Path(plant_id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    check_role(
+        &auth_user,
+        &[
+            "owner", "plant_owner", "admin", "operator", "supervisor",
+            "accountant", "quality_engineer", "fleet_manager", "store_manager",
+        ],
+    )?;
+    ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
+    super::staff_module_permissions::require(
+        &state,
+        &auth_user,
+        plant_id,
+        "plant_reports",
+        super::staff_module_permissions::Action::View,
+    ).await?;
+
+    let orders: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM orders WHERE plant_id=$1",
+    ).bind(plant_id).fetch_one(&state.db).await?;
+    let pending: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM orders WHERE plant_id=$1 AND status IN ('pending','confirmed')",
+    ).bind(plant_id).fetch_one(&state.db).await?;
+    let available_mixers: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM transit_mixers WHERE plant_id=$1 AND status IN ('idle','available')",
+    ).bind(plant_id).fetch_one(&state.db).await?;
+    let low_stock: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM plant_materials WHERE plant_id=$1 AND current_stock <= minimum_stock",
+    ).bind(plant_id).fetch_one(&state.db).await?;
+
+    Ok(Json(json!({
+        "success": true,
+        "plant_id": plant_id,
+        "reports": [
+            { "id": "order_total", "name": "Plant orders", "status": format!("{orders} total") },
+            { "id": "orders_pending", "name": "Pending / confirmed", "status": format!("{pending} orders") },
+            { "id": "fleet_available", "name": "Available transit mixers", "status": format!("{available_mixers} ready") },
+            { "id": "stock_low", "name": "Materials at reorder level", "status": format!("{low_stock} items") }
+        ]
+    })))
+}
