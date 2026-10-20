@@ -450,13 +450,23 @@ pub async fn get_plant_resources(
     // but do not leak fleet or raw stock data when the Owner has revoked
     // that specific module's read permission for a plant staff member.
     let fleet_visible = super::staff_module_permissions::require(
-        &state, &auth_user, plant_id, "fleet_availability",
+        &state,
+        &auth_user,
+        plant_id,
+        "fleet_availability",
         super::staff_module_permissions::Action::View,
-    ).await.is_ok();
+    )
+    .await
+    .is_ok();
     let stock_visible = super::staff_module_permissions::require(
-        &state, &auth_user, plant_id, "material_inventory",
+        &state,
+        &auth_user,
+        plant_id,
+        "material_inventory",
         super::staff_module_permissions::Action::View,
-    ).await.is_ok();
+    )
+    .await
+    .is_ok();
 
     let mixers = sqlx::query(
         "SELECT id, registration_number, capacity_m3, status FROM transit_mixers WHERE plant_id = $1 ORDER BY registration_number",
