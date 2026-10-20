@@ -214,3 +214,67 @@ async fn multi_plant_owner_sees_only_owned_plants_and_orders(db: PgPool) {
     .0;
     assert_eq!(plants["items"].as_array().unwrap().len(), 2);
 }
+
+#[sqlx::test]
+async fn owner_disabled_grants_block_staff_collections_but_not_owner(db: PgPool) {
+    let owner = create_user(&db, "owner").await;
+    let customer = create_user(&db, "customer").await;
+    let plant = create_plant(&db, owner).await;
+    create_order(&db, customer, plant).await;
+    let app = state(db.clone());
+
+    for (role, kind, permission) in [
+        ("admin", "orders", "dispatch_queue"),
+        ("dispatcher", "dispatch", "dispatch_queue"),
+        ("operator", "production", "production_queue"),
+        ("supervisor", "incidents", "incidents"),
+        ("accountant", "invoices", "billing_ledger"),
+        ("quality_engineer", "quality", "quality_register"),
+        ("fleet_manager", "fleet", "fleet_availability"),
+        ("store_manager", "inventory", "material_inventory"),
+    ] {
+        let staff = create_user(&db, role).await;
+        sqlx::query("INSERT INTO plant_staff(plant_id,user_id,role,is_active) VALUES($1,$2,$3,TRUE)")
+            .bind(plant)
+            .bind(staff)
+            .bind(role)
+            .execute(&db)
+            .await
+            .unwrap();
+
+        // Default role ceiling permits the primary collection.
+        staff_collections::get_staff_collection(
+            State(app.clone()), user(staff, role), Path(kind.to_string()),
+        ).await.expect("default role collection read");
+
+        sqlx::query(
+            "INSERT INTO plant_staff_module_permissions \
+             (plant_id,user_id,module_key,can_view,can_edit,can_approve,updated_by) \
+             VALUES($1,$2,$3,FALSE,FALSE,FALSE,$4)"
+        ).bind(plant).bind(staff).bind(permission).bind(owner)
+         .execute(&db).await.unwrap();
+
+        assert!(matches!(
+            staff_collections::get_staff_collection(
+                State(app.clone()), user(staff, role), Path(kind.to_string())
+            ).await,
+            Err(AppError::Forbidden(_))
+        ), "owner revocation must immediately deny collection: {role}/{kind}");
+
+        // A second plant/owner cannot impersonate this staff member.
+        sqlx::query("UPDATE plant_staff SET is_active=FALSE WHERE plant_id=$1 AND user_id=$2")
+            .bind(plant).bind(staff).execute(&db).await.unwrap();
+        assert!(matches!(
+            staff_collections::get_staff_collection(
+                State(app.clone()), user(staff, role), Path(kind.to_string())
+            ).await,
+            Err(AppError::Forbidden(_))
+        ));
+    }
+
+    // Existing Owner reads must remain available, independently of staff grants.
+    let owner_view = staff_collections::get_staff_collection(
+        State(app), user(owner, "owner"), Path("orders".to_string())
+    ).await.unwrap().0;
+    assert_eq!(owner_view["items"].as_array().unwrap().len(), 1);
+}
