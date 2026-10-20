@@ -245,7 +245,7 @@ async fn owner_disabled_grants_block_staff_collections_but_not_owner(db: PgPool)
         .unwrap();
 
         // Default role ceiling permits the primary collection.
-        staff_collections::get_staff_collection(
+        let _ = staff_collections::get_staff_collection(
             State(app.clone()),
             user(staff, role),
             Path(kind.to_string()),
