@@ -387,35 +387,61 @@ async fn supervisors_see_roster_without_salaries_and_accountants_keep_pay_access
     let accountant = create_user(&db, "accountant").await;
     let plant = create_plant(&db, owner).await;
     for (staff, role) in [(supervisor, "supervisor"), (accountant, "accountant")] {
-        sqlx::query("INSERT INTO plant_staff(plant_id,user_id,role,is_active) VALUES($1,$2,$3,TRUE)")
-            .bind(plant).bind(staff).bind(role).execute(&db).await.unwrap();
+        sqlx::query(
+            "INSERT INTO plant_staff(plant_id,user_id,role,is_active) VALUES($1,$2,$3,TRUE)",
+        )
+        .bind(plant)
+        .bind(staff)
+        .bind(role)
+        .execute(&db)
+        .await
+        .unwrap();
     }
     let app = state(db);
 
-    let response = hr_routes::list_employees(
-        State(app.clone()), user(supervisor, "supervisor"),
-    ).await.unwrap().into_response();
+    let response = hr_routes::list_employees(State(app.clone()), user(supervisor, "supervisor"))
+        .await
+        .unwrap()
+        .into_response();
     let body: serde_json::Value = serde_json::from_slice(
-        &axum::body::to_bytes(response.into_body(), 20000).await.unwrap()
-    ).unwrap();
+        &axum::body::to_bytes(response.into_body(), 20000)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     for staff in body["plants"][0]["employees"].as_array().unwrap() {
         assert!(staff["current_salary"].is_null());
         assert!(staff["salary_totals"].is_null());
         assert!(staff["profile"].is_object());
     }
     let response = hr_routes::get_employee_hr_profile(
-        State(app.clone()), user(supervisor, "supervisor"),
+        State(app.clone()),
+        user(supervisor, "supervisor"),
         Path((plant, accountant)),
-    ).await.unwrap().into_response();
+    )
+    .await
+    .unwrap()
+    .into_response();
     let body: serde_json::Value = serde_json::from_slice(
-        &axum::body::to_bytes(response.into_body(), 10000).await.unwrap()
-    ).unwrap();
+        &axum::body::to_bytes(response.into_body(), 10000)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert!(body["employee"]["salary"].is_null());
     let response = hr_routes::get_employee_hr_profile(
-        State(app), user(accountant, "accountant"), Path((plant, supervisor)),
-    ).await.unwrap().into_response();
+        State(app),
+        user(accountant, "accountant"),
+        Path((plant, supervisor)),
+    )
+    .await
+    .unwrap()
+    .into_response();
     let body: serde_json::Value = serde_json::from_slice(
-        &axum::body::to_bytes(response.into_body(), 10000).await.unwrap()
-    ).unwrap();
+        &axum::body::to_bytes(response.into_body(), 10000)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert!(body["employee"]["salary"].is_object());
 }
