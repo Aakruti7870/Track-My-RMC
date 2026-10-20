@@ -62,7 +62,15 @@ fn collection_policy(kind: &str, role: &str) -> Option<(&'static str, &'static s
         }
         "invoices" | "ledger" => owners.contains(&role) || role == "accountant",
         "inventory" => {
-            owners.contains(&role) || ["store_manager", "operator", "supervisor"].contains(&role)
+            owners.contains(&role)
+                || [
+                    "store_manager",
+                    "operator",
+                    "supervisor",
+                    "dispatcher",
+                    "quality_engineer",
+                ]
+                .contains(&role)
         }
         "plants" => {
             owners.contains(&role)
@@ -288,20 +296,41 @@ pub async fn get_staff_collection(
         return Err(AppError::Forbidden("No assigned active plant".to_owned()));
     }
 
-    if auth_user.role == "dispatcher" {
+    // Grant enforcement is a separate server-side boundary from the module cards.
+    // Resolve the exact staff plant (never a client-supplied ID), then validate
+    // the effective Owner-configured grant on every collection request.
+    if super::staff_module_permissions::STAFF_ROLES.contains(&auth_user.role.as_str()) {
         let module = match kind.as_str() {
-            "dispatch" => Some("dispatch_queue"),
-            "fleet" | "drivers" => Some("fleet_availability"),
+            "orders" | "dispatch" => Some("dispatch_queue"),
+            "production" => Some("production_queue"),
+            "quality" => Some("quality_register"),
+            "incidents" => Some("incidents"),
+            "fleet" => Some("fleet_availability"),
+            "drivers" if auth_user.role == "fleet_manager" || auth_user.role == "admin" => {
+                Some("driver_roster")
+            }
+            "drivers" => Some("fleet_availability"),
+            "invoices" | "ledger" => Some("billing_ledger"),
             "inventory" => Some("material_inventory"),
+            // The plant directory is identity-scoped by its existing SQL query.
+            "plants" => None,
             _ => None,
         };
         if let Some(module) = module {
             let plants: Vec<uuid::Uuid> = sqlx::query_scalar(
-                "SELECT ps.plant_id FROM plant_staff ps JOIN rmc_plants p ON p.id=ps.plant_id                  WHERE ps.user_id=$1 AND ps.is_active=TRUE AND ps.role='dispatcher'                  AND p.is_active=TRUE ORDER BY ps.plant_id LIMIT 2"
-            ).bind(auth_user.user_id).fetch_all(&state.db).await?;
+                "SELECT ps.plant_id FROM plant_staff ps JOIN rmc_plants p ON p.id=ps.plant_id
+                 JOIN users u ON u.id=ps.user_id
+                 WHERE ps.user_id=$1 AND ps.is_active=TRUE AND ps.role=$2
+                 AND u.role=ps.role AND u.is_active=TRUE AND p.is_active=TRUE
+                 ORDER BY ps.plant_id LIMIT 2",
+            )
+            .bind(auth_user.user_id)
+            .bind(&auth_user.role)
+            .fetch_all(&state.db)
+            .await?;
             if plants.len() != 1 {
                 return Err(AppError::Forbidden(
-                    "Ambiguous or inactive Dispatcher assignment".into(),
+                    "A single active plant staff assignment is required".into(),
                 ));
             }
             super::staff_module_permissions::require(

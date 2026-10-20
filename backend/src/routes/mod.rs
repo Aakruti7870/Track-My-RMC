@@ -195,6 +195,10 @@ pub fn build_app_router(state: AppState) -> Router {
             get(master_data_routes::get_plant_resources),
         )
         .route(
+            "/api/master/plants/:plant_id/summary",
+            get(master_data_routes::get_plant_summary),
+        )
+        .route(
             "/api/master/plants/:plant_id/people",
             get(master_data_routes::list_plant_people),
         )

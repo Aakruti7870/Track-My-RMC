@@ -151,13 +151,22 @@ const connected = [
   "app/customer/index.tsx", "app/customer/more.tsx",
   "app/owner/index.tsx", "app/owner/more.tsx",
   "app/driver/index.tsx", "app/driver/more.tsx",
-  "src/screens/StaffHome.tsx", "src/screens/StaffMore.tsx",
 ];
 for (const file of connected) {
   const source = read(file);
   assert.ok(source.includes("moduleCatalog") || source.includes("<RoleModuleDirectory"),
     `Shared module catalog not connected: ${file}`);
 }
+for (const file of ["src/screens/StaffHome.tsx", "src/screens/StaffMore.tsx"]) {
+  assert.ok(read(file).includes("<StaffModuleDirectory"),
+    `Staff module catalog not connected through staff-only directory: ${file}`);
+}
+const staffDirectory = read("src/screens/StaffModuleDirectory.tsx");
+assert.ok(staffDirectory.includes('modulesForRole(role)') &&
+  staffDirectory.includes('"/staff/module-permissions"') &&
+  staffDirectory.includes('testID={"role-module-" + module.key}') &&
+  staffDirectory.includes('testID="role-module-directory"'),
+  "Staff modules must use catalog, server-effective permissions and stable UI IDs.");
 assert.ok(read("src/components/RoleModuleDirectory.tsx").includes('testID={`role-module-${module.key}`}'),
-  "Each module needs a stable UI test identifier.");
+  "Existing Driver module cards must retain their stable UI test identifiers.");
 console.log(`PASS: ${MODULE_CATALOG.length} unique module routes; Home/More discovery connected; privileged mobile roles excluded`);

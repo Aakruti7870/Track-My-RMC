@@ -7,7 +7,7 @@ use trackmyrmc_backend::{
     auth::AuthUser,
     config::AppConfig,
     error::AppError,
-    routes::{staff_collections, staff_routes},
+    routes::{hr_routes, master_data_routes, staff_collections, staff_routes},
     state::AppState,
 };
 use uuid::Uuid;
@@ -213,4 +213,235 @@ async fn multi_plant_owner_sees_only_owned_plants_and_orders(db: PgPool) {
     .unwrap()
     .0;
     assert_eq!(plants["items"].as_array().unwrap().len(), 2);
+}
+
+#[sqlx::test]
+async fn owner_disabled_grants_block_staff_collections_but_not_owner(db: PgPool) {
+    let owner = create_user(&db, "owner").await;
+    let customer = create_user(&db, "customer").await;
+    let plant = create_plant(&db, owner).await;
+    create_order(&db, customer, plant).await;
+    let app = state(db.clone());
+
+    for (role, kind, permission) in [
+        ("admin", "orders", "dispatch_queue"),
+        ("dispatcher", "dispatch", "dispatch_queue"),
+        ("operator", "production", "production_queue"),
+        ("supervisor", "incidents", "incidents"),
+        ("accountant", "invoices", "billing_ledger"),
+        ("quality_engineer", "quality", "quality_register"),
+        ("fleet_manager", "fleet", "fleet_availability"),
+        ("store_manager", "inventory", "material_inventory"),
+    ] {
+        let staff = create_user(&db, role).await;
+        sqlx::query(
+            "INSERT INTO plant_staff(plant_id,user_id,role,is_active) VALUES($1,$2,$3,TRUE)",
+        )
+        .bind(plant)
+        .bind(staff)
+        .bind(role)
+        .execute(&db)
+        .await
+        .unwrap();
+
+        // Default role ceiling permits the primary collection.
+        let _ = staff_collections::get_staff_collection(
+            State(app.clone()),
+            user(staff, role),
+            Path(kind.to_string()),
+        )
+        .await
+        .expect("default role collection read");
+
+        sqlx::query(
+            "INSERT INTO plant_staff_module_permissions \
+             (plant_id,user_id,module_key,can_view,can_edit,can_approve,updated_by) \
+             VALUES($1,$2,$3,FALSE,FALSE,FALSE,$4)",
+        )
+        .bind(plant)
+        .bind(staff)
+        .bind(permission)
+        .bind(owner)
+        .execute(&db)
+        .await
+        .unwrap();
+
+        assert!(
+            matches!(
+                staff_collections::get_staff_collection(
+                    State(app.clone()),
+                    user(staff, role),
+                    Path(kind.to_string())
+                )
+                .await,
+                Err(AppError::Forbidden(_))
+            ),
+            "owner revocation must immediately deny collection: {role}/{kind}"
+        );
+
+        // A second plant/owner cannot impersonate this staff member.
+        sqlx::query("UPDATE plant_staff SET is_active=FALSE WHERE plant_id=$1 AND user_id=$2")
+            .bind(plant)
+            .bind(staff)
+            .execute(&db)
+            .await
+            .unwrap();
+        assert!(matches!(
+            staff_collections::get_staff_collection(
+                State(app.clone()),
+                user(staff, role),
+                Path(kind.to_string())
+            )
+            .await,
+            Err(AppError::Forbidden(_))
+        ));
+    }
+
+    // Existing Owner reads must remain available, independently of staff grants.
+    let owner_view = staff_collections::get_staff_collection(
+        State(app),
+        user(owner, "owner"),
+        Path("orders".to_string()),
+    )
+    .await
+    .unwrap()
+    .0;
+    assert_eq!(owner_view["items"].as_array().unwrap().len(), 1);
+}
+
+#[sqlx::test]
+async fn scoped_reports_show_real_counts_and_respect_owner_revocation(db: PgPool) {
+    let owner = create_user(&db, "owner").await;
+    let other_owner = create_user(&db, "owner").await;
+    let supervisor = create_user(&db, "supervisor").await;
+    let customer = create_user(&db, "customer").await;
+    let plant = create_plant(&db, owner).await;
+    let other = create_plant(&db, other_owner).await;
+    create_order(&db, customer, plant).await;
+    sqlx::query(
+        "INSERT INTO plant_staff(plant_id,user_id,role,is_active) VALUES($1,$2,'supervisor',TRUE)",
+    )
+    .bind(plant)
+    .bind(supervisor)
+    .execute(&db)
+    .await
+    .unwrap();
+    let app = state(db.clone());
+    let response = master_data_routes::get_plant_summary(
+        State(app.clone()),
+        user(supervisor, "supervisor"),
+        Path(plant),
+    )
+    .await
+    .unwrap()
+    .into_response();
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(response.into_body(), 20000)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(body["reports"][0]["status"], "1 total");
+    assert_eq!(body["reports"].as_array().unwrap().len(), 4);
+    assert!(body.get("salary").is_none());
+    assert!(matches!(
+        master_data_routes::get_plant_summary(
+            State(app.clone()),
+            user(supervisor, "supervisor"),
+            Path(other)
+        )
+        .await,
+        Err(AppError::Forbidden(_))
+    ));
+    sqlx::query(
+        "INSERT INTO plant_staff_module_permissions \
+         (plant_id,user_id,module_key,can_view,can_edit,can_approve,updated_by) \
+         VALUES($1,$2,'plant_reports',FALSE,FALSE,FALSE,$3)",
+    )
+    .bind(plant)
+    .bind(supervisor)
+    .bind(owner)
+    .execute(&db)
+    .await
+    .unwrap();
+    assert!(matches!(
+        master_data_routes::get_plant_summary(
+            State(app.clone()),
+            user(supervisor, "supervisor"),
+            Path(plant)
+        )
+        .await,
+        Err(AppError::Forbidden(_))
+    ));
+    assert!(
+        master_data_routes::get_plant_summary(State(app), user(owner, "owner"), Path(plant))
+            .await
+            .is_ok()
+    );
+}
+
+#[sqlx::test]
+async fn supervisors_see_roster_without_salaries_and_accountants_keep_pay_access(db: PgPool) {
+    let owner = create_user(&db, "owner").await;
+    let supervisor = create_user(&db, "supervisor").await;
+    let accountant = create_user(&db, "accountant").await;
+    let plant = create_plant(&db, owner).await;
+    for (staff, role) in [(supervisor, "supervisor"), (accountant, "accountant")] {
+        sqlx::query(
+            "INSERT INTO plant_staff(plant_id,user_id,role,is_active) VALUES($1,$2,$3,TRUE)",
+        )
+        .bind(plant)
+        .bind(staff)
+        .bind(role)
+        .execute(&db)
+        .await
+        .unwrap();
+    }
+    let app = state(db);
+
+    let response = hr_routes::list_employees(State(app.clone()), user(supervisor, "supervisor"))
+        .await
+        .unwrap()
+        .into_response();
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(response.into_body(), 20000)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    for staff in body["plants"][0]["employees"].as_array().unwrap() {
+        assert!(staff["current_salary"].is_null());
+        assert!(staff["salary_totals"].is_null());
+        assert!(staff["profile"].is_object());
+    }
+    let response = hr_routes::get_employee_hr_profile(
+        State(app.clone()),
+        user(supervisor, "supervisor"),
+        Path((plant, accountant)),
+    )
+    .await
+    .unwrap()
+    .into_response();
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(response.into_body(), 10000)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(body["employee"]["salary"].is_null());
+    let response = hr_routes::get_employee_hr_profile(
+        State(app),
+        user(accountant, "accountant"),
+        Path((plant, supervisor)),
+    )
+    .await
+    .unwrap()
+    .into_response();
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(response.into_body(), 10000)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(body["employee"]["salary"].is_object());
 }

@@ -58,6 +58,11 @@ pub async fn get_staff_home(
     )?;
 
     let plant_id = get_staff_plant_id(&state, &auth_user).await?;
+    let plant_name: String =
+        sqlx::query_scalar("SELECT name FROM rmc_plants WHERE id = $1 AND is_active = TRUE")
+            .bind(plant_id)
+            .fetch_one(&state.db)
+            .await?;
     let display_name: String = sqlx::query_scalar("SELECT full_name FROM users WHERE id = $1")
         .bind(auth_user.user_id)
         .fetch_one(&state.db)
@@ -168,6 +173,7 @@ pub async fn get_staff_home(
         "success": true,
         "role": auth_user.role,
         "role_label": role_label,
+        "plant_name": plant_name,
         "name": display_name,
         "primary": { "title": title, "kind": kind },
         "kpis": kpis,
