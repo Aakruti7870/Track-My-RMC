@@ -20,6 +20,7 @@ type HomeData = {
   role: string;
   role_label: string;
   name: string;
+  plant_name?: string;
   kpis: Kpi[];
   primary: { title: string; kind: string };
 };
