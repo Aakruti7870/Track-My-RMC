@@ -1,6 +1,55 @@
 //! Exercises the complete embedded SQLx migration chain against the CI PostgreSQL service.
 //! The test skips only when DATABASE_URL is absent (for lightweight local unit-test runs).
 #[sqlx::test(migrations = false)]
+async fn sqlx_07_history_and_application_rows_survive_driver_upgrade(pool: sqlx::PgPool) {
+    // Metadata DDL from sqlx-postgres 0.7.4. Populate a previous installation
+    // independently of the new migrator, then prove startup is a no-op.
+    sqlx::raw_sql(
+        "CREATE TABLE _sqlx_migrations (version BIGINT PRIMARY KEY, description TEXT NOT NULL, \
+         installed_on TIMESTAMPTZ NOT NULL DEFAULT now(), success BOOLEAN NOT NULL, \
+         checksum BYTEA NOT NULL, execution_time BIGINT NOT NULL)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let all = sqlx::migrate!("./migrations");
+    for migration in all.iter() {
+        sqlx::raw_sql(&migration.sql).execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO _sqlx_migrations(version,description,success,checksum,execution_time) VALUES($1,$2,TRUE,$3,0)")
+            .bind(migration.version).bind(migration.description.as_ref()).bind(migration.checksum.as_ref())
+            .execute(&pool).await.unwrap();
+    }
+    let user: uuid::Uuid = sqlx::query_scalar("INSERT INTO users(phone,hashed_password,full_name,role) VALUES('sqlx07-preserved','unused','Preserved Customer','customer') RETURNING id")
+        .fetch_one(&pool).await.unwrap();
+    let before: Vec<(i64, Vec<u8>, chrono::DateTime<chrono::Utc>, i64)> = sqlx::query_as(
+        "SELECT version,checksum,installed_on,execution_time FROM _sqlx_migrations ORDER BY version",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    all.run(&pool).await.unwrap();
+    all.run(&pool).await.unwrap();
+    let after: Vec<(i64, Vec<u8>, chrono::DateTime<chrono::Utc>, i64)> = sqlx::query_as(
+        "SELECT version,checksum,installed_on,execution_time FROM _sqlx_migrations ORDER BY version",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(before, after);
+    let name: String = sqlx::query_scalar("SELECT full_name FROM users WHERE id=$1")
+        .bind(user)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(name, "Preserved Customer");
+    let amount: bigdecimal::BigDecimal = sqlx::query_scalar("SELECT 1234567890.12::NUMERIC")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(amount.to_string(), "1234567890.12");
+}
+
+#[sqlx::test(migrations = false)]
 async fn existing_installation_upgrades_without_changing_checksums_or_records(pool: sqlx::PgPool) {
     use std::borrow::Cow;
     let all = sqlx::migrate!("./migrations");
