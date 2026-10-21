@@ -47,6 +47,12 @@ Do NOT mark these flags true just to pass CI. This is an evidence-inventory chec
 
 The same AWS audit confirmed configured fields are present for WhatsApp OTP, staff email, KYC, Cashfree, Maps, and Play reviewer access. Presence of credentials is not evidence of successful live delivery or payment acceptance.
 
+## Monitoring design (not activated)
+
+A further AWS read-only audit found **no CloudWatch metric alarms with TrackMyRMC naming and no CloudWatch Logs groups** in ap-south-1. Production RDS ingress was limited to a security-group reference, not public internet; EC2 ports 80 and 443 are publicly accessible as intended and SSH was not open to the entire internet.
+
+The proposed infrastructure-as-code template at ops/monitoring/trackmyrmc-production-alarms.yml defines four opt-in EC2 status and RDS CPU/storage alarms requiring an **existing SNS topic with an active, verified subscriber**. It has NOT been deployed, and AWS alarm/SNS/log-ingestion charges require review. Configure and test CloudWatch Logs ingestion from systemd/Nginx separately; creating a log group without installing a collector would not establish production log monitoring.
+
 ## Remaining mandatory launch gates
 
 1. **Recovery and data**: reconcile the live postgres database against intended trackmyrmc, verify migration history and actual records, independently test isolated restoration, rotate exposed database credentials and rehearse rollback. Existing draft PR #42 remains unapproved.
