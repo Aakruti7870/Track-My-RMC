@@ -18,7 +18,7 @@ def fixture():
         "LatestRestorableTime": (NOW - timedelta(minutes=15)).isoformat()}]}
     snaps = {"DBSnapshots": [{
         "DBSnapshotIdentifier": "manual-restored", "DBInstanceIdentifier": "trackmyrmc-postgres",
-        "Status": "available", "Encrypted": True,
+        "Status": "available", "Encrypted": True, "SnapshotType": "manual",
         "SnapshotCreateTime": (NOW - timedelta(hours=2)).isoformat()}]}
     evidence = {"source_instance": "trackmyrmc-postgres", "snapshot_id": "manual-restored",
         "restored_instance": "isolated-restore-not-production", "verified_by": "reviewer",
@@ -66,6 +66,17 @@ class RecoveryGateTests(unittest.TestCase):
 
     def test_unencrypted_snapshot_blocks(self):
         self.assertFalse(self.check(lambda r,s,e: s["DBSnapshots"][0].update(Encrypted=False))["ready"])
+
+    def test_automated_snapshot_does_not_satisfy_manual_recovery_gate(self):
+        self.assertFalse(self.check(lambda r,s,e: s["DBSnapshots"][0].update(SnapshotType="automated"))["ready"])
+
+    def test_unknown_snapshot_type_blocks(self):
+        self.assertFalse(self.check(lambda r,s,e: s["DBSnapshots"][0].pop("SnapshotType"))["ready"])
+
+    def test_malformed_restore_checks_fail_closed(self):
+        for invalid in (True, "all passed", [True], 1):
+            with self.subTest(checks=invalid):
+                self.assertFalse(self.check(lambda r,s,e: e.update(checks=invalid))["ready"])
 
     def test_no_isolated_restore_blocks(self):
         self.assertFalse(self.check(lambda r,s,e: e.update(
