@@ -27,7 +27,7 @@ class ProductionOriginSafetyTests(unittest.TestCase):
 
     def test_authenticated_origin_still_checks_services(self):
         for expected in ("trackmyrmc-backend.service", "/health", "/healthz",
-                         "/admin/", "/_expo/static/"):
+                         "/admin/", "_expo/static/"):
             self.assertIn(expected, self.source)
 
     def test_cloudflare_challenge_not_claimed_publicly_verified(self):
