@@ -371,14 +371,13 @@ jobs:
             --instance-id "$INSTANCE_ID" \
             --output json || true)"
 
-          echo "=== SSM invocation JSON ==="
-          printf '%s\n' "$INVOCATION_JSON"
-
-          echo "=== SSM Stdout ==="
-          printf '%s\n' "$INVOCATION_JSON" | jq -r '.StandardOutputContent // "<no stdout>"'
-
-          echo "=== SSM Stderr ===" >&2
-          printf '%s\n' "$INVOCATION_JSON" | jq -r '.StandardErrorContent // "<no stderr>"' >&2
+          # Never publish remote stdout/stderr or the full invocation JSON to
+          # GitHub Actions logs. Deployment scripts and future tooling can emit
+          # sensitive diagnostics. The SSM command ID is already logged above;
+          # authorized operators can inspect remote logs within AWS if needed.
+          echo "=== SSM invocation result (metadata only) ==="
+          printf '%s\n' "$INVOCATION_JSON" | jq -c '{Status, ResponseCode}'
+          echo "Raw SSM command stdout/stderr intentionally withheld from CI logs."
 
           STATUS="$(printf '%s\n' "$INVOCATION_JSON" | jq -r '.Status // "Unknown"')"
 

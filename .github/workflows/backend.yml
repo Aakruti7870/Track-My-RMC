@@ -53,6 +53,11 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Test recovery release safety gates (offline fixtures)
+        run: |
+          python3 -m unittest discover -s ops/tests -p 'test_*.py' -v
+          bash -n ops/release/audit-aws-recovery.sh
+
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
         with:
