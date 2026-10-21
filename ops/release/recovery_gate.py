@@ -68,7 +68,8 @@ def evaluate(rds, snapshots, runtime_db=None, evidence=None, instance=DEFAULT_IN
                     evidence.get("snapshot_id") in snapshot_ids and
                     bool(evidence.get("restored_instance")) and
                     evidence.get("restored_instance") != instance and
-                    bool((evidence.get("verified_by") or "").strip()) and
+                    isinstance(evidence.get("verified_by"), str) and
+                    bool(evidence["verified_by"].strip()) and
                     timestamp is not None and timedelta(0) <= clock - timestamp <= timedelta(days=7)
                     and all(flags.get(key) is True for key in (
                         "restored_instance_healthy", "schema_migration_parity",
