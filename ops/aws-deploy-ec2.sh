@@ -258,7 +258,9 @@ print(name)
 PY
 )"
 fi
-if [[ -n "$CURRENT_DB_NAME" && "$CURRENT_DB_NAME" != "$DB_NAME" && "${ALLOW_DATABASE_CUTOVER:-false}" != "true" ]]; then
+# Production database cutovers are NEVER authorized through a web release flag.
+# Reconcile data and migrations out of band, after isolated restore evidence.
+if [[ -n "$CURRENT_DB_NAME" && "$CURRENT_DB_NAME" != "$DB_NAME" ]]; then
   echo "Database cutover is blocked: runtime currently uses '$CURRENT_DB_NAME' while secret DB_NAME is '$DB_NAME'. Preserving '$CURRENT_DB_NAME' until a verified backup and data/migration parity check authorizes cutover."
   DB_NAME="$CURRENT_DB_NAME"
 fi
