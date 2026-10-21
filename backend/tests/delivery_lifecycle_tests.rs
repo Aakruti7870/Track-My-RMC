@@ -832,6 +832,104 @@ async fn concurrent_payments_cannot_exceed_balance_and_foreign_admin_is_denied(p
     assert_eq!(total, 60.0);
 }
 #[sqlx::test]
+async fn revoked_billing_edit_blocks_invoice_and_payment_aliases_without_writes(pool: PgPool) {
+    use axum::{body::Body, http::Request, http::StatusCode};
+    use tower::ServiceExt;
+    use trackmyrmc_backend::{auth::jwt::generate_token, routes, services::billing_service};
+    let (owner, order, _, _) = fixture(&pool).await;
+    sqlx::query("UPDATE users SET role='owner' WHERE id=$1")
+        .bind(owner)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE orders SET status='delivered',total_amount=100,tax_amount=0 WHERE id=$1")
+        .bind(order)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let plant: Uuid = sqlx::query_scalar("SELECT plant_id FROM orders WHERE id=$1")
+        .bind(order)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let app_state = state(pool.clone());
+    let owner_user = trackmyrmc_backend::auth::AuthUser {
+        user_id: owner,
+        role: "owner".into(),
+        phone: "test".into(),
+        email: None,
+    };
+    let app = routes::build_app_router(app_state.clone());
+    for role in ["admin", "accountant"] {
+        let staff: Uuid = sqlx::query_scalar("INSERT INTO users(phone,hashed_password,full_name,role) VALUES($1,'unused','Billing Test',$2) RETURNING id")
+            .bind(format!("billing-{role}")).bind(role).fetch_one(&pool).await.unwrap();
+        sqlx::query("INSERT INTO plant_staff(plant_id,user_id,role) VALUES($1,$2,$3)")
+            .bind(plant)
+            .bind(staff)
+            .bind(role)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO plant_staff_module_permissions(plant_id,user_id,module_key,can_view,can_edit,can_approve,updated_by) VALUES($1,$2,'billing_ledger',TRUE,FALSE,FALSE,$3)")
+            .bind(plant).bind(staff).bind(owner).execute(&pool).await.unwrap();
+        let token =
+            generate_token(staff, role, "test", None, &app_state.config.jwt_secret, 1).unwrap();
+        for prefix in ["owner", "staff"] {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::post(format!("/api/{prefix}/orders/{order}/invoice"))
+                        .header("authorization", format!("Bearer {token}"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        }
+        let invoice = billing_service::create_invoice(&app_state, &owner_user, order)
+            .await
+            .unwrap();
+        let invoice: Uuid = serde_json::from_value(invoice["invoice_id"].clone()).unwrap();
+        for path in [
+            format!("/api/owner/invoices/{invoice}/payment"),
+            format!("/api/staff/invoices/{invoice}/payment"),
+            "/api/owner/payments".into(),
+        ] {
+            let response = app.clone().oneshot(Request::post(path)
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::json!({"invoice_id":invoice,"amount":10,"request_id":format!("revoked-{role}")}).to_string())).unwrap()).await.unwrap();
+            assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        }
+    }
+    let payments: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM plant_payments")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(payments, 0);
+    let invoices: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM plant_invoices WHERE order_id=$1")
+        .bind(order)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(invoices, 1);
+    // The Owner retains the existing workflow; revoked staff cannot replay it.
+    billing_service::payment(
+        &app_state,
+        &owner_user,
+        sqlx::query_scalar("SELECT id FROM plant_invoices WHERE order_id=$1")
+            .bind(order)
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        payment_input(10.0, "owner-after-revocation"),
+    )
+    .await
+    .unwrap();
+}
+
+#[sqlx::test]
 async fn legacy_order_routes_enforce_tenancy_and_lifecycle(pool: PgPool) {
     use axum::{
         extract::{Path, State},
