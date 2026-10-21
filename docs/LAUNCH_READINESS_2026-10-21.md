@@ -46,6 +46,9 @@ After those tests have **actually been performed**, a reviewer may create a JSON
 Do NOT mark these flags true just to pass CI. This is an evidence-inventory check, not cryptographic attestation. An RDS test restore may incur charges, so it requires explicit cost approval.
 
 The same AWS audit confirmed configured fields are present for WhatsApp OTP, staff email, KYC, Cashfree, Maps, and Play reviewer access. Presence of credentials is not evidence of successful live delivery or payment acceptance.
+**Payment environment:** the AWS production application's Cashfree environment selector is currently SANDBOX. This is appropriate for acceptance testing but does not authorize or enable real-money payment processing. Do not silently switch to production credentials or callbacks before controlled tests and sign-off.
+
+**Deployment log security:** raw SSM invocation/stdout/stderr are now intentionally excluded from GitHub Actions logs in the proposed PR, leaving only status metadata and AWS command ID for authorized diagnostic retrieval.
 
 ## Monitoring design (not activated)
 
