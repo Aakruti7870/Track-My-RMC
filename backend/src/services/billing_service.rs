@@ -1,6 +1,7 @@
 use crate::{
     auth::{middleware::check_role, AuthUser},
     error::AppError,
+    routes::staff_module_permissions::{self, Action},
     state::AppState,
 };
 use bigdecimal::BigDecimal;
@@ -25,6 +26,8 @@ pub async fn create_invoice(
 ) -> Result<Value, AppError> {
     check_role(user, &["owner", "plant_owner", "admin", "accountant"])?;
     super::super::routes::loads_routes::ensure_order_access(state, user, order, false).await?;
+    staff_module_permissions::require_order(state, user, order, "billing_ledger", Action::Edit)
+        .await?;
     let mut tx = state.db.begin().await?;
     let row=sqlx::query("SELECT plant_id,customer_id,status,total_amount,tax_amount FROM orders WHERE id=$1 FOR UPDATE").bind(order).fetch_one(&mut *tx).await?;
     let status: String = row.get("status");
@@ -106,6 +109,7 @@ pub async fn payment(
         .await?
         .ok_or_else(|| AppError::NotFound("Invoice not found".into()))?;
     crate::routes::business_routes::ensure_plant_staff_or_owner(state, user, plant).await?;
+    staff_module_permissions::require(state, user, plant, "billing_ledger", Action::Edit).await?;
     let amount: BigDecimal = format!("{:.2}", input.amount)
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid payment amount".into()))?;
