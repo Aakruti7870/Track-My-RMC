@@ -12,6 +12,7 @@ on:
       - "admin-web/**"
       - "ops/**"
       - ".github/workflows/frontend.yml"
+      - ".github/workflows/android-build.yml"
       - ".github/workflows/deploy-aws-production.yml"
 
 jobs:

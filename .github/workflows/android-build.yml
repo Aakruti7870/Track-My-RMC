@@ -3,10 +3,15 @@ name: Android Signed Release AAB
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/android-build.yml"
     tags:
       - "android-v*"
-  # Signed release artifacts are generated on demand, not on every frontend PR/merge.
-  # Keep lightweight Android policy/layout checks in Frontend CI.
+  # A reviewed release-workflow change on main deliberately requests a signed
+  # candidate, without granting signing secrets to pull requests. Ordinary app
+  # merges do not trigger this build. Tags and manual dispatch remain available.
 
 permissions:
   contents: read
