@@ -37,6 +37,8 @@ jobs:
         run: npm run typecheck
       - name: API base path regressions
         run: npm run test:api-base
+      - name: Image parser security and Metro asset compatibility
+        run: node --test scripts/test-image-size.cjs
       - name: Home tracking state regressions
         run: node --test scripts/test-home-tracking.cjs
       - name: Google Maps loader regressions
