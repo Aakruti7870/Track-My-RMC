@@ -255,7 +255,7 @@ pub async fn record_pod(
     .ok_or_else(|| AppError::NotFound("Assigned trip not found".to_string()))?;
     let quantity = BigDecimal::from_f64(delivered_quantity)
         .ok_or_else(|| AppError::BadRequest("Invalid delivered quantity".to_string()))?;
-    if quantity <= BigDecimal::from(0) || quantity > planned {
+    if quantity <= 0 || quantity > planned {
         return Err(AppError::BadRequest(
             "Delivered quantity must be positive and cannot exceed the load".to_string(),
         ));

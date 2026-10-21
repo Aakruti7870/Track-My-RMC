@@ -335,7 +335,7 @@ mv /opt/trackmyrmc/admin-web.new /opt/trackmyrmc/admin-web
 cleanup_release_archives
 find "$DEPLOY_CACHE_DIR" -maxdepth 1 -name '*.tgz' -type f -mtime +1 -delete 2>/dev/null || true
 
-printf '%s\\n' "$RELEASE_SHA" > /opt/trackmyrmc/DEPLOYED_RELEASE_SHA
+printf '%s\n' "$RELEASE_SHA" > /opt/trackmyrmc/DEPLOYED_RELEASE_SHA
 
 install -d -m 0750 /etc/trackmyrmc
 cat > /etc/trackmyrmc/app.env <<EOF

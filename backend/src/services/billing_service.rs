@@ -53,7 +53,7 @@ pub async fn create_invoice(
     }
     let total: BigDecimal = row.get("total_amount");
     let tax: BigDecimal = row.get("tax_amount");
-    if total <= BigDecimal::from(0) || tax < BigDecimal::from(0) || tax > total {
+    if total <= 0 || tax < 0 || tax > total {
         return Err(AppError::Conflict(
             "Order pricing requires reconciliation before invoicing".into(),
         ));

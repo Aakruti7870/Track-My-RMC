@@ -92,11 +92,11 @@ pub async fn issue(
     let gst = decimal(payload.gst_rate.unwrap_or(18.0), "GST rate")?;
     let transport = decimal(payload.transport_amount.unwrap_or(0.0), "Transport")?;
     let pump = decimal(payload.pumping_amount.unwrap_or(0.0), "Pumping")?;
-    if quantity <= BigDecimal::from(0)
-        || quantity > BigDecimal::from(10000)
-        || rate <= BigDecimal::from(0)
+    if quantity <= 0
+        || quantity > 10000
+        || rate <= 0
         || rate > "99999999.99".parse::<BigDecimal>().expect("numeric bound")
-        || gst > BigDecimal::from(100)
+        || gst > 100
     {
         return Err(AppError::BadRequest(
             "Quotation quantity, rate or GST is outside supported bounds".into(),
@@ -153,7 +153,7 @@ pub async fn request(
         .or(payload.quantity)
         .ok_or_else(|| AppError::BadRequest("Quantity is required".into()))?;
     let quantity = decimal(quantity, "Quantity")?;
-    if quantity <= BigDecimal::from(0) || quantity > BigDecimal::from(10000) {
+    if quantity <= 0 || quantity > 10000 {
         return Err(AppError::BadRequest(
             "Quantity must be greater than zero and at most 10000".into(),
         ));
@@ -282,7 +282,7 @@ pub async fn respond(
         let gst = decimal(payload.gst_rate.unwrap_or(18.0), "GST rate")?;
         let transport = decimal(payload.transport_amount.unwrap_or(0.0), "Transport")?;
         let pump = decimal(payload.pumping_amount.unwrap_or(0.0), "Pumping")?;
-        if rate <= BigDecimal::from(0) || gst > BigDecimal::from(100) {
+        if rate <= 0 || gst > 100 {
             return Err(AppError::BadRequest(
                 "Rate must be positive and GST at most 100 percent".into(),
             ));

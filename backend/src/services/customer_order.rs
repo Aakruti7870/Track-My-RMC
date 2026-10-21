@@ -174,7 +174,7 @@ async fn validate(
         let tax = (&subtotal * &gst / BigDecimal::from(100)).round(2);
         if rate <= zero
             || gst < zero
-            || gst > BigDecimal::from(100)
+            || gst > 100
             || transport < zero
             || pump < zero
             || total != (&subtotal + &tax).round(2)
@@ -201,11 +201,7 @@ async fn validate(
             let gst: BigDecimal = row.get("gst_rate");
             let transport_rate: BigDecimal = row.get("transport_rate_per_km");
             let pump_rate: BigDecimal = row.get("pumping_rate_per_m3");
-            if rate <= zero
-                || gst < zero
-                || gst > BigDecimal::from(100)
-                || transport_rate < zero
-                || pump_rate < zero
+            if rate <= zero || gst < zero || gst > 100 || transport_rate < zero || pump_rate < zero
             {
                 return Err(AppError::Conflict(
                     "Plant rate card requires reconciliation".into(),
@@ -254,7 +250,7 @@ async fn validate(
             ));
         }
     };
-    if total < BigDecimal::from(0)
+    if total < 0
         || total
             > "9999999999.99"
                 .parse::<BigDecimal>()
