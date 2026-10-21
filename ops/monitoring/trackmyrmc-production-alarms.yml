@@ -1,0 +1,104 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  TrackMyRMC production infrastructure alarms. REVIEW/COST APPROVAL REQUIRED.
+  This template does not install a CloudWatch Logs agent or alter any existing app.
+Parameters:
+  Ec2InstanceId:
+    Type: AWS::EC2::Instance::Id
+    Default: i-0598aad6e6d729c69
+  RdsInstanceIdentifier:
+    Type: String
+    Default: trackmyrmc-postgres
+  AlertTopicArn:
+    Type: String
+    Description: Existing SNS topic with a verified subscriber; mandatory for alert delivery
+    AllowedPattern: '^arn:aws:sns:[a-z0-9-]+:[0-9]{12}:[A-Za-z0-9_-]+$'
+Resources:
+  TrackMyRmcEc2SystemStatusAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: trackmyrmc-prod-ec2-system-status-failed
+      AlarmDescription: EC2 host status failure; investigate immediately
+      Namespace: AWS/EC2
+      MetricName: StatusCheckFailed_System
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: breaching
+      Dimensions:
+        - Name: InstanceId
+          Value: !Ref Ec2InstanceId
+      AlarmActions:
+        - !Ref AlertTopicArn
+      OKActions:
+        - !Ref AlertTopicArn
+  TrackMyRmcEc2InstanceStatusAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: trackmyrmc-prod-ec2-instance-status-failed
+      AlarmDescription: EC2 instance status failure; investigate immediately
+      Namespace: AWS/EC2
+      MetricName: StatusCheckFailed_Instance
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: breaching
+      Dimensions:
+        - Name: InstanceId
+          Value: !Ref Ec2InstanceId
+      AlarmActions:
+        - !Ref AlertTopicArn
+      OKActions:
+        - !Ref AlertTopicArn
+  TrackMyRmcRdsLowStorageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: trackmyrmc-prod-rds-low-free-storage
+      AlarmDescription: RDS volume has less than 2 GiB free; investigate and plan capacity
+      Namespace: AWS/RDS
+      MetricName: FreeStorageSpace
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 2147483648
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      Dimensions:
+        - Name: DBInstanceIdentifier
+          Value: !Ref RdsInstanceIdentifier
+      AlarmActions:
+        - !Ref AlertTopicArn
+      OKActions:
+        - !Ref AlertTopicArn
+  TrackMyRmcRdsHighCpuAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: trackmyrmc-prod-rds-high-cpu
+      AlarmDescription: RDS CPU above 90 percent for at least 15 minutes
+      Namespace: AWS/RDS
+      MetricName: CPUUtilization
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 3
+      DatapointsToAlarm: 3
+      Threshold: 90
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: missing
+      Dimensions:
+        - Name: DBInstanceIdentifier
+          Value: !Ref RdsInstanceIdentifier
+      AlarmActions:
+        - !Ref AlertTopicArn
+      OKActions:
+        - !Ref AlertTopicArn
+Outputs:
+  ActivationReminder:
+    Description: Alarm actions deliver only after the SNS subscription is confirmed
+    Value: Verify SNS delivery, CloudWatch Logs ingestion, and budget before launch
