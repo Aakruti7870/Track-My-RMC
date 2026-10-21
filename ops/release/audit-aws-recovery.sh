@@ -7,7 +7,12 @@ REGION="$(printenv AWS_REGION || echo ap-south-1)"
 EC2="$(printenv TRACKMYRMC_EC2_INSTANCE_ID || echo i-0598aad6e6d729c69)"
 RDS="$(printenv TRACKMYRMC_RDS_INSTANCE_ID || echo trackmyrmc-postgres)"
 EXPECTED_DB="$(printenv TRACKMYRMC_EXPECTED_DATABASE || echo trackmyrmc)"
-EVIDENCE="$(echo "$@" | awk '{print $1}')"
+if (( $# > 1 )); then
+  echo "At most one restore evidence path is accepted" >&2
+  exit 2
+fi
+EVIDENCE=""
+if (( $# == 1 )); then EVIDENCE="$1"; fi
 HERE="$(cd "$(dirname "$0")" && pwd)"
 for tool in aws jq python3; do
   command -v "$tool" >/dev/null || { echo "Missing $tool" >&2; exit 2; }
