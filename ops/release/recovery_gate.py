@@ -51,6 +51,7 @@ def evaluate(rds, snapshots, runtime_db=None, evidence=None, instance=DEFAULT_IN
 
     candidates = [s for s in snapshots.get("DBSnapshots", [])
                   if s.get("DBInstanceIdentifier") == instance and
+                  s.get("SnapshotType") == "manual" and
                   s.get("Status") == "available" and s.get("Encrypted") is True and
                   date_utc(s.get("SnapshotCreateTime")) is not None and
                   timedelta(0) <= clock - date_utc(s["SnapshotCreateTime"]) <= timedelta(days=7)]
@@ -63,7 +64,8 @@ def evaluate(rds, snapshots, runtime_db=None, evidence=None, instance=DEFAULT_IN
     if isinstance(evidence, dict):
         snapshot_ids = {s["DBSnapshotIdentifier"] for s in candidates}
         timestamp = date_utc(evidence.get("verified_at"))
-        flags = evidence.get("checks") or {}
+        flags = evidence.get("checks")
+        flags = flags if isinstance(flags, dict) else {}
         verified = (evidence.get("source_instance") == instance and
                     evidence.get("snapshot_id") in snapshot_ids and
                     bool(evidence.get("restored_instance")) and
