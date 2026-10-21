@@ -13,7 +13,7 @@ Web/API production at commit f69ee16 (GitHub deployment 39406812502) passed trus
 | Manual snapshot | trackmyrmc-pre-url-recovery-20261016, available | Isolated restore NOT verified |
 | EC2 / SSM | i-0598aad6e6d729c69, running / online | Connected |
 | Configured RDS initial DBName | trackmyrmc | Does not prove the active DB |
-| Last deployment runtime DB | postgres, preserved due to name mismatch | Cutover blocked |
+| Direct read-only SSM runtime audit, 21 October | postgres (intended name: trackmyrmc) | Mismatch **confirmed**, no cutover |
 | Cloudflare public edge | GitHub runner was challenged with HTTP 403 | Independent browser smoke required |
 
 ## Read-only recovery gate
@@ -44,6 +44,8 @@ After those tests have **actually been performed**, a reviewer may create a JSON
     }
 
 Do NOT mark these flags true just to pass CI. This is an evidence-inventory check, not cryptographic attestation. An RDS test restore may incur charges, so it requires explicit cost approval.
+
+The same AWS audit confirmed configured fields are present for WhatsApp OTP, staff email, KYC, Cashfree, Maps, and Play reviewer access. Presence of credentials is not evidence of successful live delivery or payment acceptance.
 
 ## Remaining mandatory launch gates
 
