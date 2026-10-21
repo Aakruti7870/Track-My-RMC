@@ -90,6 +90,37 @@ async fn call(app: &Router, path: &str, body: Option<Value>, token: &str) -> (St
 }
 
 #[sqlx::test]
+async fn map_endpoints_never_fabricate_places_routes_or_provider_health(db: PgPool) {
+    let (_, app, _, _, token) = fixture(&db).await;
+    let (status, body) = call(&app, "/api/maps/status", None, &token).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["status"], "unavailable");
+    assert_eq!(body["google_places_configured"], false);
+    for path in [
+        "/api/maps/place/ChIJ_test",
+        "/api/maps/autocomplete?input=Panvel",
+        "/api/maps/route?origin_lat=19&origin_lng=73&dest_lat=19.1&dest_lng=73.1",
+    ] {
+        let (status, body) = call(&app, path, None, &token).await;
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{path}");
+        assert_eq!(body["success"], false);
+        assert!(body.get("lat").is_none());
+        assert!(body.get("polyline").is_none());
+        assert!(body.get("predictions").is_none());
+        let (status, _) = call(&app, path, None, "invalid-token").await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+    for path in [
+        "/api/maps/place/not%20a%20place",
+        "/api/maps/autocomplete?input=x",
+        "/api/maps/route?origin_lat=91&origin_lng=73&dest_lat=19&dest_lng=73",
+    ] {
+        let (status, _) = call(&app, path, None, &token).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{path}");
+    }
+}
+
+#[sqlx::test]
 async fn nearby_search_route_filters_radius_grade_and_enforces_authentication(db: PgPool) {
     let (_, app, _, plant, token) = fixture(&db).await;
     let search =

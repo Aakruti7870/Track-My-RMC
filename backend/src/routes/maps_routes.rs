@@ -6,7 +6,6 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::json;
-use sqlx::Row;
 
 #[derive(Debug, Deserialize)]
 pub struct AutocompleteQuery {
@@ -35,113 +34,57 @@ pub async fn get_maps_status(
 ) -> Result<impl IntoResponse, AppError> {
     let has_google_key = state.config.google_places_api_key.is_some();
     Ok(Json(json!({
-        "status": "operational",
-        "provider": if has_google_key { "google_places" } else { "embedded_geocoder" },
+        "status": if has_google_key { "configured" } else { "unavailable" },
+        "provider": if has_google_key { Some("google_places") } else { None },
         "google_places_configured": has_google_key
     })))
 }
 
 pub async fn get_place_details(
     State(state): State<AppState>,
-    _auth_user: AuthUser,
+    auth_user: AuthUser,
     Path(place_id): Path<String>,
 ) -> Result<impl IntoResponse, AppError> {
-    // If google places API key is configured, query Google Places, otherwise use embedded fallback
-    if let Some(api_key) = &state.config.google_places_api_key {
-        let url = format!(
-            "https://maps.googleapis.com/maps/api/place/details/json?place_id={}&key={}",
-            place_id, api_key
-        );
-        let client = reqwest::Client::new();
-        if let Ok(res) = client.get(&url).send().await {
-            if let Ok(data) = res.json::<serde_json::Value>().await {
-                if let Some(result) = data.get("result") {
-                    let lat = result
-                        .pointer("/geometry/location/lat")
-                        .and_then(|v| v.as_f64())
-                        .unwrap_or(19.0760);
-                    let lng = result
-                        .pointer("/geometry/location/lng")
-                        .and_then(|v| v.as_f64())
-                        .unwrap_or(72.8777);
-                    let address = result
-                        .get("formatted_address")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
-                    return Ok(Json(json!({
-                        "success": true,
-                        "place_id": place_id,
-                        "lat": lat,
-                        "lng": lng,
-                        "address": address
-                    })));
-                }
-            }
-        }
+    if place_id.is_empty()
+        || place_id.len() > 256
+        || !place_id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+    {
+        return Err(AppError::BadRequest("Invalid Google Place ID".into()));
     }
-
-    // Default fallback coordinates (Mumbai region)
-    Ok(Json(json!({
-        "success": true,
-        "place_id": place_id,
-        "lat": 19.0760,
-        "lng": 72.8777,
-        "address": "Industrial Zone, Mumbai"
-    })))
+    let (client, key) = google_client(&state, &auth_user)?;
+    let response = google_response(
+        client
+            .get(format!(
+                "https://places.googleapis.com/v1/places/{place_id}"
+            ))
+            .header("X-Goog-Api-Key", key)
+            .header("X-Goog-FieldMask", "id,formattedAddress,location"),
+    )
+    .await?;
+    Ok(Json(place_result(&place_id, &response)?))
 }
 
 pub async fn autocomplete_places(
     State(state): State<AppState>,
-    _auth_user: AuthUser,
+    auth_user: AuthUser,
     Query(q): Query<AutocompleteQuery>,
 ) -> Result<impl IntoResponse, AppError> {
     let input = q.input.or(q.q).unwrap_or_default();
-
-    if let Some(api_key) = &state.config.google_places_api_key {
-        let url = format!(
-            "https://maps.googleapis.com/maps/api/place/autocomplete/json?input={}&components=country:in&key={}",
-            urlencoding::encode(&input),
-            api_key
-        );
-        let client = reqwest::Client::new();
-        if let Ok(res) = client.get(&url).send().await {
-            if let Ok(data) = res.json::<serde_json::Value>().await {
-                if let Some(preds) = data.get("predictions") {
-                    return Ok(Json(json!({
-                        "success": true,
-                        "predictions": preds
-                    })));
-                }
-            }
-        }
+    let input = input.trim();
+    if !(2..=200).contains(&input.len()) || input.chars().any(char::is_control) {
+        return Err(AppError::BadRequest(
+            "Enter a place between 2 and 200 characters".into(),
+        ));
     }
-
-    // Embedded fallback suggestions based on active plants
-    let plants = sqlx::query(
-        "SELECT name, city, address_line FROM rmc_plants WHERE is_active = TRUE LIMIT 5",
-    )
-    .fetch_all(&state.db)
-    .await?;
-
-    let predictions: Vec<_> = plants
-        .into_iter()
-        .map(|p| {
-            let name: String = p.get("name");
-            let city: String = p.get("city");
-            let address_line: Option<String> = p.get("address_line");
-            let addr = address_line.unwrap_or_default();
-            json!({
-                "place_id": format!("tm-place-{}", city.to_lowercase()),
-                "description": format!("{}, {}, {}", name, addr, city),
-                "structured_formatting": {
-                    "main_text": name,
-                    "secondary_text": format!("{}, {}", addr, city)
-                }
-            })
-        })
-        .collect();
-
-    Ok(Json(json!({ "success": true, "predictions": predictions })))
+    let (client, key) = google_client(&state, &auth_user)?;
+    let response = google_response(client
+        .post("https://places.googleapis.com/v1/places:autocomplete")
+        .header("X-Goog-Api-Key", key)
+        .header("X-Goog-FieldMask", "suggestions.placePrediction.placeId,suggestions.placePrediction.text,suggestions.placePrediction.structuredFormat")
+        .json(&json!({"input":input,"includedRegionCodes":["in"]}))).await?;
+    Ok(Json(autocomplete_result(&response)?))
 }
 
 pub async fn geocode_address(
@@ -310,31 +253,229 @@ mod geocode_tests {
 }
 
 pub async fn calculate_route(
-    State(_state): State<AppState>,
-    _auth_user: AuthUser,
+    State(state): State<AppState>,
+    auth_user: AuthUser,
     Query(q): Query<RouteQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    let d_lat = (q.dest_lat - q.origin_lat).to_radians();
-    let d_lng = (q.dest_lng - q.origin_lng).to_radians();
-    let a = (d_lat / 2.0).sin().powi(2)
-        + q.origin_lat.to_radians().cos()
-            * q.dest_lat.to_radians().cos()
-            * (d_lng / 2.0).sin().powi(2);
-    let c = 2.0 * a.sqrt().atan2((1.0 - a).sqrt());
-    let distance_km = 6371.0 * c;
-
-    let duration_minutes = (distance_km / 25.0 * 60.0).max(10.0);
-
-    Ok(Json(json!({
-        "success": true,
-        "distance_km": (distance_km * 10.0).round() / 10.0,
-        "duration_minutes": duration_minutes.round() as i32,
-        "polyline": "encoded_polyline_points"
-    })))
+    if !valid_coordinates(q.origin_lat, q.origin_lng) || !valid_coordinates(q.dest_lat, q.dest_lng)
+    {
+        return Err(AppError::BadRequest(
+            "Provide valid route coordinates".into(),
+        ));
+    }
+    let (client, key) = google_client(&state, &auth_user)?;
+    let response = google_response(client
+        .post("https://routes.googleapis.com/directions/v2:computeRoutes")
+        .header("X-Goog-Api-Key", key)
+        .header("X-Goog-FieldMask", "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline")
+        .json(&json!({
+            "origin":{"location":{"latLng":{"latitude":q.origin_lat,"longitude":q.origin_lng}}},
+            "destination":{"location":{"latLng":{"latitude":q.dest_lat,"longitude":q.dest_lng}}},
+            "travelMode":"DRIVE","routingPreference":"TRAFFIC_UNAWARE","computeAlternativeRoutes":false
+        }))).await?;
+    Ok(Json(route_result(&response)?))
 }
 
-mod urlencoding {
-    pub fn encode(s: &str) -> String {
-        s.replace(' ', "%20")
+fn valid_coordinates(lat: f64, lng: f64) -> bool {
+    lat.is_finite()
+        && lng.is_finite()
+        && (-90.0..=90.0).contains(&lat)
+        && (-180.0..=180.0).contains(&lng)
+}
+
+fn google_client(state: &AppState, user: &AuthUser) -> Result<(reqwest::Client, String), AppError> {
+    let key = state
+        .config
+        .google_places_api_key
+        .as_deref()
+        .filter(|key| !key.trim().is_empty())
+        .ok_or_else(|| AppError::InternalError("Map provider is not configured".into()))?;
+    if !super::discovery::allow_search(user.user_id) {
+        return Err(AppError::RateLimited(
+            "Please wait before searching again".into(),
+        ));
+    }
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|_| AppError::InternalError("Map provider unavailable".into()))?;
+    Ok((client, key.to_string()))
+}
+
+async fn google_response(request: reqwest::RequestBuilder) -> Result<serde_json::Value, AppError> {
+    // Neither reqwest errors (which may contain URLs) nor provider response
+    // bodies/error messages are logged or reflected to clients.
+    let response = request
+        .send()
+        .await
+        .map_err(|_| AppError::InternalError("Map provider could not connect".into()))?;
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Err(AppError::NotFound("Place or route not found".into()));
+    }
+    let response = response
+        .error_for_status()
+        .map_err(|_| AppError::InternalError("Map provider is temporarily unavailable".into()))?;
+    let result: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|_| AppError::InternalError("Invalid map provider response".into()))?;
+    if !result.is_object() || result.get("error").is_some() {
+        return Err(AppError::InternalError(
+            "Invalid map provider response".into(),
+        ));
+    }
+    Ok(result)
+}
+
+fn place_result(place_id: &str, result: &serde_json::Value) -> Result<serde_json::Value, AppError> {
+    if result["id"].as_str() != Some(place_id) {
+        return Err(AppError::InternalError(
+            "Place provider identity mismatch".into(),
+        ));
+    }
+    let lat = result["location"]["latitude"].as_f64();
+    let lng = result["location"]["longitude"].as_f64();
+    let address = result["formattedAddress"]
+        .as_str()
+        .filter(|s| !s.trim().is_empty());
+    match (lat, lng, address) {
+        (Some(lat), Some(lng), Some(address)) if valid_coordinates(lat, lng) => {
+            Ok(json!({"success":true,"place_id":place_id,"lat":lat,"lng":lng,"address":address}))
+        }
+        _ => Err(AppError::NotFound(
+            "Place has no usable address and coordinates".into(),
+        )),
+    }
+}
+
+fn autocomplete_result(result: &serde_json::Value) -> Result<serde_json::Value, AppError> {
+    if result.get("error").is_some() || !result.is_object() {
+        return Err(AppError::InternalError(
+            "Invalid place prediction response".into(),
+        ));
+    }
+    // Google returns an empty object when there are no suggestions.
+    let Some(raw) = result.get("suggestions") else {
+        return Ok(json!({"success":true,"predictions":[]}));
+    };
+    let raw = raw
+        .as_array()
+        .ok_or_else(|| AppError::InternalError("Invalid place prediction response".into()))?;
+    let mut predictions = Vec::new();
+    for suggestion in raw {
+        let p = &suggestion["placePrediction"];
+        let id = p["placeId"].as_str().filter(|s| !s.is_empty());
+        let description = p["text"]["text"].as_str().filter(|s| !s.is_empty());
+        let (Some(id), Some(description)) = (id, description) else {
+            return Err(AppError::InternalError(
+                "Invalid place prediction response".into(),
+            ));
+        };
+        predictions.push(json!({"place_id":id,"description":description,"structured_formatting":{
+            "main_text":p["structuredFormat"]["mainText"]["text"].as_str().unwrap_or(description),
+            "secondary_text":p["structuredFormat"]["secondaryText"]["text"].as_str().unwrap_or("")
+        }}));
+    }
+    Ok(json!({"success":true,"predictions":predictions}))
+}
+
+fn route_result(result: &serde_json::Value) -> Result<serde_json::Value, AppError> {
+    if result.get("error").is_some() {
+        return Err(AppError::InternalError(
+            "Route provider is temporarily unavailable".into(),
+        ));
+    }
+    let routes = result["routes"]
+        .as_array()
+        .ok_or_else(|| AppError::NotFound("No driving route found".into()))?;
+    let route = routes
+        .first()
+        .ok_or_else(|| AppError::NotFound("No driving route found".into()))?;
+    let meters = route["distanceMeters"]
+        .as_f64()
+        .filter(|d| d.is_finite() && *d >= 0.0);
+    let seconds = route["duration"]
+        .as_str()
+        .and_then(|s| s.strip_suffix('s'))
+        .and_then(|s| s.parse::<f64>().ok())
+        .filter(|s| s.is_finite() && *s >= 0.0 && *s <= 1_000_000_000.0);
+    let polyline = route["polyline"]["encodedPolyline"].as_str().filter(|s| {
+        !s.is_empty() && s.len() <= 250_000 && s.bytes().all(|b| (63..=126).contains(&b))
+    });
+    match (meters, seconds, polyline) {
+        (Some(meters), Some(seconds), Some(polyline)) => Ok(json!({
+            "success":true,"distance_km":(meters / 100.0).round()/10.0,
+            "duration_minutes":(seconds/60.0).ceil() as i64,"polyline":polyline,
+            "provider":"google_routes","traffic_aware":false
+        })),
+        _ => Err(AppError::InternalError(
+            "Route provider returned incomplete route data".into(),
+        )),
+    }
+}
+
+#[cfg(test)]
+mod provider_tests {
+    use super::*;
+
+    #[test]
+    fn real_place_coordinates_are_required_without_a_city_fallback() {
+        let valid = json!({"id":"ChIJ_test","formattedAddress":"Panvel, India","location":{"latitude":18.99,"longitude":73.11}});
+        assert_eq!(place_result("ChIJ_test", &valid).unwrap()["lat"], 18.99);
+        for invalid in [
+            json!({}),
+            json!({"id":"wrong"}),
+            json!({"id":"ChIJ_test","formattedAddress":"Panvel","location":{"latitude":91,"longitude":73}}),
+        ] {
+            assert!(place_result("ChIJ_test", &invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn predictions_preserve_google_identity_and_never_invent_plant_ids() {
+        let response = json!({"suggestions":[{"placePrediction":{"placeId":"ChIJ_test","text":{"text":"Panvel, India"},"structuredFormat":{"mainText":{"text":"Panvel"},"secondaryText":{"text":"India"}}}}]});
+        let result = autocomplete_result(&response).unwrap();
+        assert_eq!(result["predictions"][0]["place_id"], "ChIJ_test");
+        assert_eq!(
+            result["predictions"][0]["structured_formatting"]["main_text"],
+            "Panvel"
+        );
+        assert_eq!(
+            autocomplete_result(&json!({})).unwrap()["predictions"],
+            json!([])
+        );
+        assert!(autocomplete_result(&json!({"suggestions":[{}]})).is_err());
+        assert!(
+            autocomplete_result(&json!({"error":{"message":"private provider details"}})).is_err()
+        );
+    }
+
+    #[test]
+    fn routes_require_provider_distance_duration_and_polyline() {
+        let response = json!({"routes":[{"distanceMeters":12345,"duration":"123.5s","polyline":{"encodedPolyline":"??"}}]});
+        let parsed = route_result(&response).unwrap();
+        assert_eq!(parsed["distance_km"], 12.3);
+        assert_eq!(parsed["duration_minutes"], 3);
+        assert_eq!(parsed["polyline"], "??");
+        assert_eq!(parsed["traffic_aware"], false);
+        for invalid in [
+            json!({}),
+            json!({"routes":[]}),
+            json!({"routes":[{"distanceMeters":-1,"duration":"60s","polyline":{"encodedPolyline":"??"}}]}),
+            json!({"routes":[{"distanceMeters":1,"duration":"NaNs","polyline":{"encodedPolyline":"??"}}]}),
+            json!({"routes":[{"distanceMeters":1,"duration":"60s"}]}),
+        ] {
+            assert!(route_result(&invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn route_coordinates_reject_non_finite_and_out_of_range_values() {
+        assert!(valid_coordinates(0.0, 0.0));
+        assert!(valid_coordinates(18.99, 73.11));
+        assert!(!valid_coordinates(f64::NAN, 73.11));
+        assert!(!valid_coordinates(18.99, f64::INFINITY));
+        assert!(!valid_coordinates(-91.0, 73.11));
+        assert!(!valid_coordinates(18.99, 181.0));
     }
 }
