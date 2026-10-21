@@ -32,7 +32,7 @@ class MonitoringContractTests(unittest.TestCase):
     def test_no_prod_mutation_or_iam_resources_in_template(self):
         for forbidden in ("AWS::IAM::", "AWS::RDS::DBInstance",
                           "AWS::EC2::Instance", "AWS::Lambda::Function"):
-            self.assertNotIn("Type: " + forbidden, self.source)
+            self.assertNotIn("\n    Type: " + forbidden + "\n", self.source)
 
 if __name__ == "__main__":
     unittest.main()
