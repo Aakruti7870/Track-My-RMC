@@ -46,7 +46,12 @@ async fn sqlx_07_history_and_application_rows_survive_driver_upgrade(pool: sqlx:
         .fetch_one(&pool)
         .await
         .unwrap();
-    assert_eq!(amount.to_string(), "1234567890.12");
+    // PostgreSQL numeric wire groups can preserve extra trailing zeroes.
+    // Compare the exact decimal value, not an incidental display scale.
+    assert_eq!(
+        amount,
+        "1234567890.12".parse::<bigdecimal::BigDecimal>().unwrap()
+    );
 }
 
 #[sqlx::test(migrations = false)]
