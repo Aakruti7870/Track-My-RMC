@@ -49,6 +49,11 @@ exec_line="$(systemctl show "$service" -p ExecStart --value)"
   echo 'Running backend release does not match verified main commit' >&2
   exit 1
 }
+# Durable release identity must agree with the SHA-pinned running backend.
+marker_file='/opt/trackmyrmc/DEPLOYED_RELEASE_SHA'
+[[ -f "$marker_file" ]] || { echo 'Deployment release marker missing' >&2; exit 1; }
+[[ "$(wc -c < "$marker_file")" -eq 41 ]] || { echo 'Release marker length invalid' >&2; exit 1; }
+[[ "$(cat "$marker_file")" == "$EXPECTED_SHA" ]] || { echo 'Release marker SHA mismatch' >&2; exit 1; }
 base='https://trackmyrmc.com'
 curl_opts=(--fail --silent --show-error --max-time 15 --resolve 'trackmyrmc.com:443:127.0.0.1')
 health="$(curl "${curl_opts[@]}" "$base/health")"
@@ -89,10 +94,13 @@ aws ssm wait command-executed --region "$AWS_REGION" \
 INVOCATION="$(aws ssm get-command-invocation --region "$AWS_REGION" \
   --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --output json)"
 STATUS="$(jq -r '.Status // "Unknown"' <<< "$INVOCATION")"
-jq -r '.StandardOutputContent // ""' <<< "$INVOCATION"
+# Raw SSM stdout and stderr are privileged diagnostics and must not appear
+# in public repository CI logs, even if the health script is changed later.
+echo 'Trusted-origin SSM invocation (metadata only):'
+jq -c '{Status, ResponseCode}' <<< "$INVOCATION"
 if [[ "$STATUS" != 'Success' ]]; then
-  jq -r '.StandardErrorContent // ""' <<< "$INVOCATION" >&2
   echo "Trusted origin health verification failed: $STATUS" >&2
+  echo 'Inspect the command directly in AWS Systems Manager for diagnostics.' >&2
   exit 1
 fi
 
