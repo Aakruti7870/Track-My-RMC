@@ -334,6 +334,7 @@ test -x "$(command -v psql)"
 install -d -m 0755 /opt/trackmyrmc/release-tools
 install -m 0755 /opt/trackmyrmc/source/ops/release/recover-managed-rds-credential.py \
     /opt/trackmyrmc/release-tools/recover-managed-rds-credential.py
+python3 -m py_compile /opt/trackmyrmc/release-tools/recover-managed-rds-credential.py
 
 cat > /etc/systemd/system/trackmyrmc-rds-recovery.service <<'ROTATION_SERVICE'
 [Unit]
@@ -442,6 +443,7 @@ systemctl enable trackmyrmc-backend
 systemctl restart trackmyrmc-backend
 systemctl enable --now trackmyrmc-rds-recovery.timer
 systemctl is-enabled --quiet trackmyrmc-rds-recovery.timer
+systemctl is-active --quiet trackmyrmc-rds-recovery.timer
 systemctl enable nginx
 systemctl restart nginx
 if systemctl list-unit-files certbot.timer --no-legend | grep -q certbot.timer; then
