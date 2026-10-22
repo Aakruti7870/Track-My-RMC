@@ -1096,13 +1096,12 @@ mod authority_kyc_customer_scope_tests {
         .fetch_one(&pool)
         .await
         .unwrap();
-        let profile: Uuid = sqlx::query_scalar(
-            "INSERT INTO user_profiles(user_id) VALUES($1) RETURNING id",
-        )
-        .bind(customer)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+        let profile: Uuid =
+            sqlx::query_scalar("INSERT INTO user_profiles(user_id) VALUES($1) RETURNING id")
+                .bind(customer)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
         sqlx::query("INSERT INTO user_profiles(user_id) VALUES($1)")
             .bind(owner)
             .execute(&pool)
