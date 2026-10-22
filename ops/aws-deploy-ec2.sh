@@ -2,6 +2,12 @@
 set -euo pipefail
 
 : "${RELEASE_SHA:?RELEASE_SHA is required}"
+# The recovery timer and deployments must never rewrite app.env concurrently.
+# Take the lock before changing certificates, binaries, or runtime credentials.
+install -d -m 0755 /run/lock
+exec 200>/run/lock/trackmyrmc-production.lock
+flock -x 200
+
 REGION="ap-south-1"
 BUCKET="trackmyrmc-prod-artifacts-260234292958-ap-south-1"
 RDS_SECRET="arn:aws:secretsmanager:ap-south-1:260234292958:secret:rds!db-725487fe-ba11-4b7a-acdd-6c60010aa20f-CdtJlW"
@@ -321,6 +327,47 @@ if [ -d /opt/trackmyrmc/source ]; then
 fi
 mv /opt/trackmyrmc/source.new /opt/trackmyrmc/source
 
+
+# Install the lightweight, local-only RDS rotation health watch. No new AWS
+# infrastructure is created. Secrets Manager is queried only if /health fails.
+test -x "$(command -v psql)"
+install -d -m 0755 /opt/trackmyrmc/release-tools
+install -m 0755 /opt/trackmyrmc/source/ops/release/recover-managed-rds-credential.py \
+    /opt/trackmyrmc/release-tools/recover-managed-rds-credential.py
+
+cat > /etc/systemd/system/trackmyrmc-rds-recovery.service <<'ROTATION_SERVICE'
+[Unit]
+Description=TrackMyRMC RDS managed-secret rotation health recovery
+After=network-online.target trackmyrmc-backend.service
+Wants=network-online.target
+ConditionPathExists=/etc/trackmyrmc/app.env
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ExecStart=/usr/bin/python3 /opt/trackmyrmc/release-tools/recover-managed-rds-credential.py
+ROTATION_SERVICE
+
+cat > /etc/systemd/system/trackmyrmc-rds-recovery.timer <<'ROTATION_TIMER'
+[Unit]
+Description=Local TrackMyRMC database health check and rotation recovery
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=1min
+AccuracySec=15s
+Persistent=false
+Unit=trackmyrmc-rds-recovery.service
+
+[Install]
+WantedBy=timers.target
+ROTATION_TIMER
+
+
 rm -rf /opt/trackmyrmc/admin-web.new
 install -d -o trackmyrmc -g trackmyrmc /opt/trackmyrmc/admin-web.new
 tar -xzf "$DEPLOY_CACHE_DIR/admin-web-$RELEASE_SHA.tgz" -C /opt/trackmyrmc/admin-web.new
@@ -393,6 +440,8 @@ chown -R trackmyrmc:trackmyrmc /opt/trackmyrmc
 systemctl daemon-reload
 systemctl enable trackmyrmc-backend
 systemctl restart trackmyrmc-backend
+systemctl enable --now trackmyrmc-rds-recovery.timer
+systemctl is-enabled --quiet trackmyrmc-rds-recovery.timer
 systemctl enable nginx
 systemctl restart nginx
 if systemctl list-unit-files certbot.timer --no-legend | grep -q certbot.timer; then
