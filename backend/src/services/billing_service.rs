@@ -19,6 +19,25 @@ pub struct PaymentInput {
     pub request_id: Option<String>,
 }
 
+
+fn validated_payment_request_id(value: Option<&str>) -> Result<&str, AppError> {
+    let Some(key) = value else {
+        return Err(AppError::BadRequest(
+            "Payment request_id is required to prevent duplicate charges".into(),
+        ));
+    };
+    // The client reuses this opaque key on retries. An empty/invalid key must
+    // never reach the nullable request_id column or its partial unique index.
+    if !(8..=128).contains(&key.len())
+        || !key
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.' | b':'))
+    {
+        return Err(AppError::BadRequest("Invalid payment request_id".into()));
+    }
+    Ok(key)
+}
+
 pub async fn create_invoice(
     state: &AppState,
     user: &AuthUser,
@@ -85,12 +104,9 @@ pub async fn payment(
             "Payment must be a positive amount with at most two decimal places".into(),
         ));
     }
+    let request_id = validated_payment_request_id(input.request_id.as_deref())?;
     if input
-        .request_id
-        .as_ref()
-        .is_some_and(|s| s.len() < 8 || s.len() > 128)
-        || input
-            .transaction_ref
+        .transaction_ref
             .as_ref()
             .is_some_and(|s| s.len() > 160)
         || input.notes.as_ref().is_some_and(|s| s.len() > 4000)
@@ -131,7 +147,7 @@ pub async fn payment(
         .await?;
     let total: BigDecimal = row.get("total_amount");
     let status: String = row.get("status");
-    let previous=sqlx::query("SELECT id,amount,payment_method,transaction_ref,notes FROM plant_payments WHERE invoice_id=$1 AND request_id=$2").bind(invoice).bind(&input.request_id).fetch_optional(&mut *tx).await?;
+    let previous=sqlx::query("SELECT id,amount,payment_method,transaction_ref,notes FROM plant_payments WHERE invoice_id=$1 AND request_id=$2").bind(invoice).bind(request_id).fetch_optional(&mut *tx).await?;
     if let Some(p) = previous {
         if p.get::<BigDecimal, _>("amount") != amount
             || p.get::<String, _>("payment_method") != method
@@ -164,7 +180,7 @@ pub async fn payment(
         ));
     }
     let id:Uuid=sqlx::query_scalar("INSERT INTO plant_payments(invoice_id,order_id,plant_id,amount,payment_method,transaction_ref,notes,request_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id")
-  .bind(invoice).bind(order).bind(plant).bind(amount).bind(method).bind(input.transaction_ref).bind(input.notes).bind(input.request_id).fetch_one(&mut *tx).await?;
+  .bind(invoice).bind(order).bind(plant).bind(amount).bind(method).bind(input.transaction_ref).bind(input.notes).bind(request_id).fetch_one(&mut *tx).await?;
     let status = if next == total {
         "PAID"
     } else {
@@ -189,4 +205,39 @@ pub async fn payment(
     sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'invoice_payment','invoice',$2,$3)").bind(user.user_id).bind(invoice.to_string()).bind(json!({"payment_id":id,"status":status})).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(json!({"success":true,"payment_id":id,"status":status}))
+}
+
+
+#[cfg(test)]
+mod payment_request_id_tests {
+    use super::validated_payment_request_id;
+
+    #[test]
+    fn mandatory_retry_key_rejects_null_empty_short_or_unsafe_values() {
+        for key in [
+            None,
+            Some(""),
+            Some(" "),
+            Some("short"),
+            Some("abcdefgh\nX"),
+            Some("abcdefgh;DROP"),
+            Some(" payment-request-1 "),
+        ] {
+            assert!(validated_payment_request_id(key).is_err(), "{key:?}");
+        }
+        assert!(validated_payment_request_id(Some(&"a".repeat(129))).is_err());
+    }
+
+    #[test]
+    fn retry_key_accepts_existing_owner_ui_and_external_uuid_formats() {
+        for key in [
+            "1729548845123-abc123",
+            "550e8400-e29b-41d4-a716-446655440000",
+            "cashfree:order_001.payment-2026",
+            "payment_retry_2026",
+        ] {
+            assert_eq!(validated_payment_request_id(Some(key)).unwrap(), key);
+        }
+        assert_eq!(validated_payment_request_id(Some(&"x".repeat(128))).unwrap().len(), 128);
+    }
 }
