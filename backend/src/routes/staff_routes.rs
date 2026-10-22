@@ -971,64 +971,76 @@ pub async fn record_invoice_payment(
     ))
 }
 
+// Only the Authority's independently approved review session may invoke this
+// helper. The public route contains a *customer user ID*, not user_profiles.id.
+// Keep the update and immutable audit record in one transaction.
+async fn update_reviewed_customer_kyc(
+    state: &AppState,
+    actor: Uuid,
+    customer_id: Uuid,
+    new_status: &'static str,
+) -> Result<(), AppError> {
+    let mut tx = state.db.begin().await?;
+    let updated: Option<Uuid> = sqlx::query_scalar(
+        "UPDATE user_profiles AS p SET kyc_status=$2, updated_at=NOW()
+         FROM users AS u
+         WHERE p.user_id=$1 AND u.id=p.user_id
+           AND u.role='customer' AND u.is_active=TRUE
+         RETURNING p.user_id",
+    )
+    .bind(customer_id)
+    .bind(new_status)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if updated != Some(customer_id) {
+        return Err(AppError::NotFound(
+            "Active customer KYC profile not found".into(),
+        ));
+    }
+    sqlx::query(
+        "INSERT INTO audit_logs (user_id, action, resource_type, resource_id, metadata)
+         VALUES ($1,'authority.kyc.review','customer',$2,$3)",
+    )
+    .bind(actor)
+    .bind(customer_id.to_string())
+    .bind(json!({"kyc_status": new_status}))
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
 pub async fn approve_customer_kyc(
     State(state): State<AppState>,
     auth_user: AuthUser,
     headers: axum::http::HeaderMap,
-    Path(profile_id): Path<Uuid>,
+    Path(customer_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     ensure_authority_review_session(&state, &auth_user, &headers).await?;
-
-    sqlx::query(
-        "UPDATE user_profiles SET kyc_status = 'verified', updated_at = NOW() WHERE id = $1",
-    )
-    .bind(profile_id)
-    .execute(&state.db)
-    .await?;
-
-    Ok(Json(
-        json!({ "success": true, "message": "KYC profile approved" }),
-    ))
+    update_reviewed_customer_kyc(&state, auth_user.user_id, customer_id, "verified").await?;
+    Ok(Json(json!({ "success": true, "message": "KYC profile approved" })))
 }
 
 pub async fn reject_customer_kyc(
     State(state): State<AppState>,
     auth_user: AuthUser,
     headers: axum::http::HeaderMap,
-    Path(profile_id): Path<Uuid>,
+    Path(customer_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     ensure_authority_review_session(&state, &auth_user, &headers).await?;
-
-    sqlx::query(
-        "UPDATE user_profiles SET kyc_status = 'rejected', updated_at = NOW() WHERE id = $1",
-    )
-    .bind(profile_id)
-    .execute(&state.db)
-    .await?;
-
-    Ok(Json(
-        json!({ "success": true, "message": "KYC profile rejected" }),
-    ))
+    update_reviewed_customer_kyc(&state, auth_user.user_id, customer_id, "rejected").await?;
+    Ok(Json(json!({ "success": true, "message": "KYC profile rejected" })))
 }
 
 pub async fn reset_customer_kyc(
     State(state): State<AppState>,
     auth_user: AuthUser,
     headers: axum::http::HeaderMap,
-    Path(profile_id): Path<Uuid>,
+    Path(customer_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     ensure_authority_review_session(&state, &auth_user, &headers).await?;
-
-    sqlx::query(
-        "UPDATE user_profiles SET kyc_status = 'unverified', updated_at = NOW() WHERE id = $1",
-    )
-    .bind(profile_id)
-    .execute(&state.db)
-    .await?;
-
-    Ok(Json(
-        json!({ "success": true, "message": "KYC profile reset for re-verification" }),
-    ))
+    update_reviewed_customer_kyc(&state, auth_user.user_id, customer_id, "unverified").await?;
+    Ok(Json(json!({ "success": true, "message": "KYC profile reset for re-verification" })))
 }
 
 async fn ensure_authority_review_session(
