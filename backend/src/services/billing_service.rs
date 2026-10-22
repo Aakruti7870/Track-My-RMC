@@ -19,7 +19,6 @@ pub struct PaymentInput {
     pub request_id: Option<String>,
 }
 
-
 fn validated_payment_request_id(value: Option<&str>) -> Result<&str, AppError> {
     let Some(key) = value else {
         return Err(AppError::BadRequest(
@@ -107,8 +106,8 @@ pub async fn payment(
     let request_id = validated_payment_request_id(input.request_id.as_deref())?;
     if input
         .transaction_ref
-            .as_ref()
-            .is_some_and(|s| s.len() > 160)
+        .as_ref()
+        .is_some_and(|s| s.len() > 160)
         || input.notes.as_ref().is_some_and(|s| s.len() > 4000)
     {
         return Err(AppError::BadRequest("Invalid payment reference".into()));
@@ -207,7 +206,6 @@ pub async fn payment(
     Ok(json!({"success":true,"payment_id":id,"status":status}))
 }
 
-
 #[cfg(test)]
 mod payment_request_id_tests {
     use super::validated_payment_request_id;
@@ -238,6 +236,11 @@ mod payment_request_id_tests {
         ] {
             assert_eq!(validated_payment_request_id(Some(key)).unwrap(), key);
         }
-        assert_eq!(validated_payment_request_id(Some(&"x".repeat(128))).unwrap().len(), 128);
+        assert_eq!(
+            validated_payment_request_id(Some(&"x".repeat(128)))
+                .unwrap()
+                .len(),
+            128
+        );
     }
 }
