@@ -730,6 +730,28 @@ async fn delivered_invoice_is_idempotent_and_partial_payments_reconcile(pool: Pg
     let first = first.unwrap();
     assert_eq!(first["invoice_id"], retry.unwrap()["invoice_id"]);
     let invoice: Uuid = serde_json::from_value(first["invoice_id"].clone()).unwrap();
+
+    // Missing or malformed retry keys must fail before any financial row is written.
+    let mut missing_key = payment_input(18.0, "missing-payment-key");
+    missing_key.request_id = None;
+    assert!(matches!(
+        billing_service::payment(&app, &user, invoice, missing_key).await,
+        Err(AppError::BadRequest(_))
+    ));
+    let mut invalid_key = payment_input(18.0, "invalid-payment-key");
+    invalid_key.request_id = Some(" ".into());
+    assert!(matches!(
+        billing_service::payment(&app, &user, invoice, invalid_key).await,
+        Err(AppError::BadRequest(_))
+    ));
+    let unkeyed_payments: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM plant_payments WHERE invoice_id=$1")
+            .bind(invoice)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(unkeyed_payments, 0);
+
     let (one, two) = tokio::join!(
         billing_service::payment(&app, &user, invoice, payment_input(18.0, "same-payment")),
         billing_service::payment(&app, &user, invoice, payment_input(18.0, "same-payment"))
