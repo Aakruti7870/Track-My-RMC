@@ -69,7 +69,7 @@ fn supported_pod_image(content_type: &str, data: &[u8]) -> bool {
         "image/gif" => data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a"),
         "image/heic" | "image/heif" => data.len() >= 12
             && &data[4..8] == b"ftyp"
-            && matches!(&data[8..12], b"heic" | b"heix" | b"hevc" | b"hevx" | b"mif1"),
+            && [b"heic", b"heix", b"hevc", b"hevx", b"mif1"].iter().any(|brand| &data[8..12] == &brand[..]),
         _ => false,
     }
 }
