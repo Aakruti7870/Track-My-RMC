@@ -79,7 +79,7 @@ fn supported_pod_image(content_type: &str, data: &[u8]) -> bool {
                 && &data[4..8] == b"ftyp"
                 && [b"heic", b"heix", b"hevc", b"hevx", b"mif1"]
                     .iter()
-                    .any(|brand| &data[8..12] == &brand[..])
+                    .any(|brand| data[8..12] == brand[..])
         }
         _ => false,
     }
