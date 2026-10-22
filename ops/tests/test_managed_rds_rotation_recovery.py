@@ -135,12 +135,11 @@ class RotationWatchTests(unittest.TestCase):
 
 class InstallationContractTests(unittest.TestCase):
     def test_service_timer_and_deploy_share_a_lock(self):
-        installer = (MODULE.parents[2] / 'aws-deploy-ec2.sh')
-        if installer.exists():
-            content = installer.read_text()
-            self.assertIn('trackmyrmc-production.lock', content)
-            self.assertIn('trackmyrmc-rds-recovery.timer', content)
-            self.assertIn('recover-managed-rds-credential.py', content)
+        installer = MODULE.parents[1] / 'aws-deploy-ec2.sh'
+        content = installer.read_text()
+        self.assertIn('trackmyrmc-production.lock', content)
+        self.assertIn('trackmyrmc-rds-recovery.timer', content)
+        self.assertIn('recover-managed-rds-credential.py', content)
 
 
 if __name__ == '__main__':
