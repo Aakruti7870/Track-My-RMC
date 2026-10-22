@@ -8,7 +8,6 @@ use axum::{
 use serde_json::json;
 use uuid::Uuid;
 
-
 // Uploaded filename and MIME metadata are untrusted. Use an allowlisted
 // extension for the generated storage key, never unescaped user input.
 const MAX_UPLOAD_NAME_BYTES: usize = 255;
@@ -19,8 +18,11 @@ fn checked_upload_filename(value: Option<String>) -> Result<String, AppError> {
     let name = value.unwrap_or_else(|| "file.bin".to_owned());
     if name.is_empty()
         || name.len() > MAX_UPLOAD_NAME_BYTES
-        || name.chars().any(|c| c.is_control() || matches!(c, '/' | '\\'))
-        || name == "." || name == ".."
+        || name
+            .chars()
+            .any(|c| c.is_control() || matches!(c, '/' | '\\'))
+        || name == "."
+        || name == ".."
     {
         return Err(AppError::BadRequest("Invalid upload filename".into()));
     }
@@ -28,7 +30,10 @@ fn checked_upload_filename(value: Option<String>) -> Result<String, AppError> {
 }
 
 fn safe_upload_extension(name: &str) -> &'static str {
-    let extension = name.rsplit_once('.').map(|(_, extension)| extension).unwrap_or("");
+    let extension = name
+        .rsplit_once('.')
+        .map(|(_, extension)| extension)
+        .unwrap_or("");
     match extension.to_ascii_lowercase().as_str() {
         "jpg" => "jpg",
         "jpeg" => "jpeg",
@@ -49,9 +54,12 @@ fn checked_upload_content_type(value: &str) -> Result<(), AppError> {
     let major = parts.next().unwrap_or("");
     let minor = parts.next().unwrap_or("");
     if value.len() > MAX_UPLOAD_CONTENT_TYPE_BYTES
-        || major.is_empty() || minor.is_empty() || parts.next().is_some()
-        || !value.bytes().all(|c| c.is_ascii_alphanumeric()
-            || matches!(c, b'/' | b'+' | b'-' | b'.'))
+        || major.is_empty()
+        || minor.is_empty()
+        || parts.next().is_some()
+        || !value
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'/' | b'+' | b'-' | b'.'))
     {
         return Err(AppError::BadRequest("Invalid upload content type".into()));
     }
@@ -64,12 +72,15 @@ fn supported_pod_image(content_type: &str, data: &[u8]) -> bool {
     match content_type.to_ascii_lowercase().as_str() {
         "image/jpeg" => data.starts_with(&[0xff, 0xd8, 0xff]),
         "image/png" => data.starts_with(b"\x89PNG\r\n\x1a\n"),
-        "image/webp" => data.len() >= 12
-            && data.starts_with(b"RIFF") && &data[8..12] == b"WEBP",
+        "image/webp" => data.len() >= 12 && data.starts_with(b"RIFF") && &data[8..12] == b"WEBP",
         "image/gif" => data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a"),
-        "image/heic" | "image/heif" => data.len() >= 12
-            && &data[4..8] == b"ftyp"
-            && [b"heic", b"heix", b"hevc", b"hevx", b"mif1"].iter().any(|brand| &data[8..12] == &brand[..]),
+        "image/heic" | "image/heif" => {
+            data.len() >= 12
+                && &data[4..8] == b"ftyp"
+                && [b"heic", b"heix", b"hevc", b"hevx", b"mif1"]
+                    .iter()
+                    .any(|brand| &data[8..12] == &brand[..])
+        }
         _ => false,
     }
 }
@@ -236,10 +247,12 @@ pub async fn get_file(
     Ok(response)
 }
 
-
 #[cfg(test)]
 mod tests {
-    use super::{checked_upload_content_type, checked_upload_filename, safe_upload_extension, supported_pod_image};
+    use super::{
+        checked_upload_content_type, checked_upload_filename, safe_upload_extension,
+        supported_pod_image,
+    };
 
     #[test]
     fn upload_key_extension_is_bounded_to_known_types() {
@@ -253,23 +266,48 @@ mod tests {
 
     #[test]
     fn unsafe_and_unbounded_original_names_are_rejected() {
-        for filename in ["../proof.jpg", "dir/proof.jpg", r"dir\proof.jpg", "\r\ninjection.jpg", ".",
-                         "..", "", "photo\u{0000}.png"] {
-            assert!(checked_upload_filename(Some(filename.into())).is_err(), "{filename:?}");
+        for filename in [
+            "../proof.jpg",
+            "dir/proof.jpg",
+            r"dir\proof.jpg",
+            "\r\ninjection.jpg",
+            ".",
+            "..",
+            "",
+            "photo\u{0000}.png",
+        ] {
+            assert!(
+                checked_upload_filename(Some(filename.into())).is_err(),
+                "{filename:?}"
+            );
         }
         assert!(checked_upload_filename(Some("x".repeat(256))).is_err());
         assert_eq!(checked_upload_filename(None).unwrap(), "file.bin");
-        assert_eq!(checked_upload_filename(Some("site photo.jpg".into())).unwrap(), "site photo.jpg");
+        assert_eq!(
+            checked_upload_filename(Some("site photo.jpg".into())).unwrap(),
+            "site photo.jpg"
+        );
     }
 
     #[test]
     fn mime_metadata_is_safe_to_use_as_an_http_header() {
-        for valid in ["image/jpeg", "image/png", "image/webp", "application/pdf",
-                      "application/octet-stream"] {
+        for valid in [
+            "image/jpeg",
+            "image/png",
+            "image/webp",
+            "application/pdf",
+            "application/octet-stream",
+        ] {
             assert!(checked_upload_content_type(valid).is_ok(), "{valid}");
         }
-        for invalid in ["", "image/", "/jpeg", "text/html; charset=utf-8", "image/jpeg\r\nX: bad",
-                        "image/jpeg/other"] {
+        for invalid in [
+            "",
+            "image/",
+            "/jpeg",
+            "text/html; charset=utf-8",
+            "image/jpeg\r\nX: bad",
+            "image/jpeg/other",
+        ] {
             assert!(checked_upload_content_type(invalid).is_err(), "{invalid:?}");
         }
         assert!(checked_upload_content_type(&"a".repeat(128)).is_err());
@@ -281,8 +319,14 @@ mod tests {
         assert!(supported_pod_image("image/png", b"\x89PNG\r\n\x1a\nrest"));
         assert!(supported_pod_image("image/webp", b"RIFF1234WEBP"));
         assert!(supported_pod_image("image/gif", b"GIF89a"));
-        assert!(supported_pod_image("image/heic", b"\x00\x00\x00\x18ftypheic"));
-        assert!(!supported_pod_image("image/jpeg", b"<script>alert(1)</script>"));
+        assert!(supported_pod_image(
+            "image/heic",
+            b"\x00\x00\x00\x18ftypheic"
+        ));
+        assert!(!supported_pod_image(
+            "image/jpeg",
+            b"<script>alert(1)</script>"
+        ));
         assert!(!supported_pod_image("image/svg+xml", b"<svg/>"));
         assert!(!supported_pod_image("image/png", &[0xff, 0xd8, 0xff, 0x00]));
     }
