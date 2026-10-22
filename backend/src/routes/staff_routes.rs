@@ -975,12 +975,12 @@ pub async fn record_invoice_payment(
 // helper. The public route contains a *customer user ID*, not user_profiles.id.
 // Keep the update and immutable audit record in one transaction.
 async fn update_reviewed_customer_kyc(
-    state: &AppState,
+    db: &sqlx::PgPool,
     actor: Uuid,
     customer_id: Uuid,
     new_status: &'static str,
 ) -> Result<(), AppError> {
-    let mut tx = state.db.begin().await?;
+    let mut tx = db.begin().await?;
     let updated: Option<Uuid> = sqlx::query_scalar(
         "UPDATE user_profiles AS p SET kyc_status=$2, updated_at=NOW()
          FROM users AS u
@@ -1017,7 +1017,7 @@ pub async fn approve_customer_kyc(
     Path(customer_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     ensure_authority_review_session(&state, &auth_user, &headers).await?;
-    update_reviewed_customer_kyc(&state, auth_user.user_id, customer_id, "verified").await?;
+    update_reviewed_customer_kyc(&state.db, auth_user.user_id, customer_id, "verified").await?;
     Ok(Json(json!({ "success": true, "message": "KYC profile approved" })))
 }
 
@@ -1028,7 +1028,7 @@ pub async fn reject_customer_kyc(
     Path(customer_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     ensure_authority_review_session(&state, &auth_user, &headers).await?;
-    update_reviewed_customer_kyc(&state, auth_user.user_id, customer_id, "rejected").await?;
+    update_reviewed_customer_kyc(&state.db, auth_user.user_id, customer_id, "rejected").await?;
     Ok(Json(json!({ "success": true, "message": "KYC profile rejected" })))
 }
 
@@ -1039,7 +1039,7 @@ pub async fn reset_customer_kyc(
     Path(customer_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     ensure_authority_review_session(&state, &auth_user, &headers).await?;
-    update_reviewed_customer_kyc(&state, auth_user.user_id, customer_id, "unverified").await?;
+    update_reviewed_customer_kyc(&state.db, auth_user.user_id, customer_id, "unverified").await?;
     Ok(Json(json!({ "success": true, "message": "KYC profile reset for re-verification" })))
 }
 
@@ -1057,4 +1057,71 @@ async fn ensure_authority_review_session(
         ));
     }
     Ok(())
+}
+
+
+#[cfg(test)]
+mod authority_kyc_customer_scope_tests {
+    use super::update_reviewed_customer_kyc;
+    use crate::error::AppError;
+    use uuid::Uuid;
+
+    #[sqlx::test]
+    async fn review_uses_customer_user_id_rejects_noncustomers_and_writes_audit(pool: sqlx::PgPool) {
+        let actor: Uuid = sqlx::query_scalar(
+            "INSERT INTO users(phone,hashed_password,full_name,role)
+             VALUES('authority-review-test','unused','Authority Reviewer','authority') RETURNING id",
+        )
+        .fetch_one(&pool).await.unwrap();
+        let customer: Uuid = sqlx::query_scalar(
+            "INSERT INTO users(phone,hashed_password,full_name,role)
+             VALUES('kyc-review-customer','unused','Customer','customer') RETURNING id",
+        )
+        .fetch_one(&pool).await.unwrap();
+        let owner: Uuid = sqlx::query_scalar(
+            "INSERT INTO users(phone,hashed_password,full_name,role)
+             VALUES('kyc-review-owner','unused','Plant Owner','plant_owner') RETURNING id",
+        )
+        .fetch_one(&pool).await.unwrap();
+        let profile: Uuid = sqlx::query_scalar(
+            "INSERT INTO user_profiles(user_id) VALUES($1) RETURNING id",
+        ).bind(customer).fetch_one(&pool).await.unwrap();
+        sqlx::query("INSERT INTO user_profiles(user_id) VALUES($1)")
+            .bind(owner).execute(&pool).await.unwrap();
+
+        // The route uses the customer's users.id, which differs from user_profiles.id.
+        assert_ne!(profile, customer);
+        update_reviewed_customer_kyc(&pool, actor, customer, "verified")
+            .await.unwrap();
+        let status: String = sqlx::query_scalar(
+            "SELECT kyc_status FROM user_profiles WHERE user_id=$1",
+        ).bind(customer).fetch_one(&pool).await.unwrap();
+        assert_eq!(status, "verified");
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM audit_logs
+             WHERE user_id=$1 AND resource_id=$2 AND action='authority.kyc.review'",
+        ).bind(actor).bind(customer.to_string()).fetch_one(&pool).await.unwrap();
+        assert_eq!(count, 1);
+
+        // Passing a profile primary key or a different role cannot approve KYC.
+        for id in [profile, owner, Uuid::new_v4()] {
+            assert!(matches!(
+                update_reviewed_customer_kyc(&pool, actor, id, "verified").await,
+                Err(AppError::NotFound(_))
+            ));
+        }
+        let owner_status: String = sqlx::query_scalar(
+            "SELECT kyc_status FROM user_profiles WHERE user_id=$1",
+        ).bind(owner).fetch_one(&pool).await.unwrap();
+        assert_eq!(owner_status, "unverified");
+        update_reviewed_customer_kyc(&pool, actor, customer, "rejected")
+            .await.unwrap();
+        update_reviewed_customer_kyc(&pool, actor, customer, "unverified")
+            .await.unwrap();
+        let audit_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM audit_logs
+             WHERE user_id=$1 AND resource_id=$2 AND action='authority.kyc.review'",
+        ).bind(actor).bind(customer.to_string()).fetch_one(&pool).await.unwrap();
+        assert_eq!(audit_count, 3);
+    }
 }
