@@ -140,6 +140,7 @@ class InstallationContractTests(unittest.TestCase):
         self.assertIn('trackmyrmc-production.lock', content)
         self.assertIn('trackmyrmc-rds-recovery.timer', content)
         self.assertIn('recover-managed-rds-credential.py', content)
+        self.assertIn('systemctl is-active --quiet trackmyrmc-rds-recovery.timer', content)
 
 
 if __name__ == '__main__':
