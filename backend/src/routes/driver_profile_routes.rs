@@ -191,7 +191,20 @@ fn bounded_optional(
     Ok(value)
 }
 fn normalized_phone(value: &str) -> Result<String, AppError> {
-    let phone: String = value.chars().filter(|c| c.is_ascii_digit()).collect();
+    // Discard visual formatting only, never arbitrary user-controlled characters:
+    // silently stripping letters can target a different verified driver account.
+    let trimmed = value.trim();
+    if !trimmed
+        .chars()
+        .all(|c| c.is_ascii_digit() || matches!(c, '+' | ' ' | '-' | '(' | ')'))
+        || trimmed.matches('+').count() > 1
+        || (trimmed.contains('+') && !trimmed.starts_with('+'))
+    {
+        return Err(AppError::BadRequest(
+            "Enter a valid registered driver mobile number".into(),
+        ));
+    }
+    let phone: String = trimmed.chars().filter(|c| c.is_ascii_digit()).collect();
     let canonical = if phone.len() == 10 {
         format!("91{phone}")
     } else {
@@ -384,5 +397,13 @@ mod tests {
             "919876543210"
         );
         assert!(super::normalized_phone("12").is_err());
+        assert_eq!(
+            super::normalized_phone("(98765) 43210").unwrap(),
+            "919876543210"
+        );
+        assert!(super::normalized_phone("hello9876543210").is_err());
+        assert!(super::normalized_phone("98765+43210").is_err());
+        assert!(super::normalized_phone("+91+9876543210").is_err());
+        assert!(super::normalized_phone("98765\\n43210").is_err());
     }
 }
