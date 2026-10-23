@@ -243,7 +243,21 @@ pub async fn checkout(
     )
     .bind(new_id).bind(user.user_id).bind(plant).bind(invoice).bind(&kind).bind(&sku)
     .bind(duration).bind(&input.idempotency_key).bind(&order_id).bind(&payable)
-    .execute(&mut *tx).await?;
+    .execute(&mut *tx)
+    .await
+    .map_err(|err| {
+        if err.as_database_error().is_some_and(|db| db.is_unique_violation()) {
+            AppError::Conflict(
+                "An invoice checkout is already pending; resume or reconcile it".into(),
+            )
+        } else {
+            err.into()
+        }
+    })?;
+    // Commit the stable provider order identity before making the network request.
+    // On timeout the next retry uses the same order ID and Cashfree idempotency key.
+    tx.commit().await?;
+    let mut tx = state.db.begin().await?;
     let row = sqlx::query(
         "SELECT id,plant_id,invoice_id,kind,sku,amount,gateway_order_id,session_id,status FROM cashfree_sandbox_intents WHERE requester_id=$1 AND request_key=$2 FOR UPDATE",
     ).bind(user.user_id).bind(&input.idempotency_key).fetch_one(&mut *tx).await?;
