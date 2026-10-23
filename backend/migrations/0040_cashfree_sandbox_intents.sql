@@ -26,6 +26,12 @@ CREATE TABLE IF NOT EXISTS cashfree_sandbox_intents (
     ),
     CONSTRAINT cashfree_idempotency UNIQUE (requester_id, request_key)
 );
+-- Prevent overlapping checkouts from charging the same invoice balance twice.
+-- Reconciliation/retry must reuse the original intent until review or expiry is final.
+CREATE UNIQUE INDEX IF NOT EXISTS cashfree_one_open_invoice_checkout
+    ON cashfree_sandbox_intents(invoice_id)
+    WHERE invoice_id IS NOT NULL
+      AND status IN ('PENDING','VERIFIED','REFUND_PENDING','REVIEW_REQUIRED');
 CREATE INDEX IF NOT EXISTS cashfree_intent_invoice_lookup ON cashfree_sandbox_intents(invoice_id);
 CREATE INDEX IF NOT EXISTS cashfree_intent_plant_lookup ON cashfree_sandbox_intents(plant_id, status);
 CREATE TABLE IF NOT EXISTS cashfree_approved_plan_prices (
