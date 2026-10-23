@@ -37,7 +37,9 @@ fn enabled() -> Result<(String, String), AppError> {
     let id = env::var("CASHFREE_SANDBOX_CLIENT_ID").unwrap_or_default();
     let secret = env::var("CASHFREE_SANDBOX_CLIENT_SECRET").unwrap_or_default();
     if id.trim().is_empty() || secret.len() < 16 {
-        return Err(AppError::Conflict("Cashfree sandbox credentials are not configured".into()));
+        return Err(AppError::Conflict(
+            "Cashfree sandbox credentials are not configured".into(),
+        ));
     }
     Ok((id, secret))
 }
@@ -51,7 +53,9 @@ fn http() -> Result<Client, AppError> {
 
 fn ensure_key(key: &str) -> Result<(), AppError> {
     if !(8..=100).contains(&key.len())
-        || !key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        || !key
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
     {
         return Err(AppError::BadRequest("Invalid idempotency_key".into()));
     }
@@ -62,12 +66,16 @@ fn verify_signature(secret: &str, timestamp: &str, signature: &str, body: &[u8])
     if body.is_empty() || body.len() > MAX_WEBHOOK_BYTES || timestamp.len() > 16 {
         return false;
     }
-    let Ok(ts) = timestamp.parse::<i64>() else { return false };
+    let Ok(ts) = timestamp.parse::<i64>() else {
+        return false;
+    };
     let seconds = if timestamp.len() == 13 { ts / 1000 } else { ts };
     if (Utc::now().timestamp() - seconds).abs() > 300 {
         return false;
     }
-    let Ok(expected) = STANDARD.decode(signature) else { return false };
+    let Ok(expected) = STANDARD.decode(signature) else {
+        return false;
+    };
     let Ok(mut mac) = HmacSha256::new_from_slice(secret.as_bytes()) else {
         return false;
     };
@@ -81,8 +89,10 @@ fn amount(value: &BigDecimal) -> Result<f64, AppError> {
         .to_string()
         .parse()
         .map_err(|_| AppError::Conflict("Invalid ledger amount".into()))?;
-    if !a.is_finite() || a < 1.0 || a > 10_000_000.0 ||
-        (a * 100.0 - (a * 100.0).round()).abs() > 0.0001
+    if !a.is_finite()
+        || a < 1.0
+        || a > 10_000_000.0
+        || (a * 100.0 - (a * 100.0).round()).abs() > 0.0001
     {
         return Err(AppError::Conflict("Unsupported checkout amount".into()));
     }
@@ -101,20 +111,34 @@ async fn cashfree_order(
         .header("x-api-version", "2025-01-01")
         .send()
         .await
-        .map_err(|_| AppError::Conflict("Cashfree sandbox order verification unavailable".into()))?;
+        .map_err(|_| {
+            AppError::Conflict("Cashfree sandbox order verification unavailable".into())
+        })?;
     if !response.status().is_success() {
-        return Err(AppError::Conflict("Cashfree sandbox order verification rejected".into()));
+        return Err(AppError::Conflict(
+            "Cashfree sandbox order verification rejected".into(),
+        ));
     }
-    response.json().await.map_err(|_| AppError::Conflict("Invalid Cashfree order response".into()))
+    response
+        .json()
+        .await
+        .map_err(|_| AppError::Conflict("Invalid Cashfree order response".into()))
 }
 
-fn provider_status(provider: &Value, expected_id: &str, expected_amount: f64) -> Result<&'static str, AppError> {
+fn provider_status(
+    provider: &Value,
+    expected_id: &str,
+    expected_amount: f64,
+) -> Result<&'static str, AppError> {
     if provider["order_id"].as_str() != Some(expected_id)
         || provider["order_currency"].as_str() != Some("INR")
-        || provider["order_amount"].as_f64()
+        || provider["order_amount"]
+            .as_f64()
             .is_none_or(|n| (n - expected_amount).abs() > 0.0001)
     {
-        return Err(AppError::Conflict("Cashfree order identity, amount or currency mismatch".into()));
+        return Err(AppError::Conflict(
+            "Cashfree order identity, amount or currency mismatch".into(),
+        ));
     }
     Ok(match provider["order_status"].as_str() {
         Some("PAID") => "VERIFIED",
@@ -147,38 +171,67 @@ pub async fn checkout(
         check_role(&user, &["owner", "plant_owner"])?;
         // Hard gate: catalog is empty until reviewed and approved; no hard-coded UI quote can charge.
         if env::var("CASHFREE_PLAN_PRICES_APPROVED").ok().as_deref() != Some("true") {
-            return Err(AppError::Conflict("Plan pricing awaits business approval".into()));
+            return Err(AppError::Conflict(
+                "Plan pricing awaits business approval".into(),
+            ));
         }
-        let plant = input.plant_id.ok_or_else(|| AppError::BadRequest("plant_id is required".into()))?;
-        let owner: Option<Uuid> = sqlx::query_scalar(
-            "SELECT owner_id FROM rmc_plants WHERE id=$1 AND is_active=TRUE",
-        )
-        .bind(plant).fetch_optional(&state.db).await?;
+        let plant = input
+            .plant_id
+            .ok_or_else(|| AppError::BadRequest("plant_id is required".into()))?;
+        let owner: Option<Uuid> =
+            sqlx::query_scalar("SELECT owner_id FROM rmc_plants WHERE id=$1 AND is_active=TRUE")
+                .bind(plant)
+                .fetch_optional(&state.db)
+                .await?;
         if owner != Some(user.user_id) {
-            return Err(AppError::Forbidden("Plant owner authorization required".into()));
+            return Err(AppError::Forbidden(
+                "Plant owner authorization required".into(),
+            ));
         }
-        let sku = input.sku.ok_or_else(|| AppError::BadRequest("sku is required".into()))?;
-        if sku.len() > 50 || !sku.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_') {
+        let sku = input
+            .sku
+            .ok_or_else(|| AppError::BadRequest("sku is required".into()))?;
+        if sku.len() > 50
+            || !sku
+                .bytes()
+                .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
+        {
             return Err(AppError::BadRequest("Invalid catalog SKU".into()));
         }
         let price = sqlx::query(
             "SELECT price_inr,duration_days FROM cashfree_approved_plan_prices WHERE sku=$1 AND is_active=TRUE",
         ).bind(&sku).fetch_optional(&state.db).await?
             .ok_or_else(|| AppError::Conflict("This plan has no approved price".into()))?;
-        (plant, None, Some(sku), Some(price.get::<i32, _>("duration_days")),
-            price.get::<BigDecimal, _>("price_inr"))
+        (
+            plant,
+            None,
+            Some(sku),
+            Some(price.get::<i32, _>("duration_days")),
+            price.get::<BigDecimal, _>("price_inr"),
+        )
     } else {
         check_role(&user, &["customer"])?;
-        let invoice = input.invoice_id.ok_or_else(|| AppError::BadRequest("invoice_id is required".into()))?;
+        let invoice = input
+            .invoice_id
+            .ok_or_else(|| AppError::BadRequest("invoice_id is required".into()))?;
         let row = sqlx::query(
             "SELECT i.plant_id,i.customer_id,i.total_amount,COALESCE((SELECT SUM(p.amount) FROM plant_payments p WHERE p.invoice_id=i.id),0) AS already_paid FROM plant_invoices i WHERE i.id=$1",
         ).bind(invoice).fetch_optional(&state.db).await?
             .ok_or_else(|| AppError::NotFound("Invoice not found".into()))?;
         if row.get::<Uuid, _>("customer_id") != user.user_id {
-            return Err(AppError::Forbidden("Invoice belongs to another customer".into()));
+            return Err(AppError::Forbidden(
+                "Invoice belongs to another customer".into(),
+            ));
         }
-        let remaining: BigDecimal = row.get::<BigDecimal, _>("total_amount") - row.get::<BigDecimal, _>("already_paid");
-        (row.get::<Uuid, _>("plant_id"), Some(invoice), None, None, remaining)
+        let remaining: BigDecimal =
+            row.get::<BigDecimal, _>("total_amount") - row.get::<BigDecimal, _>("already_paid");
+        (
+            row.get::<Uuid, _>("plant_id"),
+            Some(invoice),
+            None,
+            None,
+            remaining,
+        )
     };
     let a = amount(&payable)?;
     let mut tx = state.db.begin().await?;
@@ -200,19 +253,25 @@ pub async fn checkout(
         || row.get::<Option<String>, _>("sku") != sku
         || row.get::<BigDecimal, _>("amount") != payable
     {
-        return Err(AppError::Conflict("Idempotency key reused for different payment".into()));
+        return Err(AppError::Conflict(
+            "Idempotency key reused for different payment".into(),
+        ));
     }
     let intent: Uuid = row.get("id");
     let gateway: String = row.get("gateway_order_id");
     let existing_session: Option<String> = row.get("session_id");
     let status: String = row.get("status");
     if status != "PENDING" {
-        return Err(AppError::Conflict("Payment intent is no longer pending".into()));
+        return Err(AppError::Conflict(
+            "Payment intent is no longer pending".into(),
+        ));
     }
     if let Some(session) = existing_session {
         tx.commit().await?;
-        return Ok(Json(json!({"status":"PAYMENT_PENDING","order_number":gateway,
-            "payment_session_id":session,"cashfree_environment":"sandbox","payable":a})));
+        return Ok(Json(
+            json!({"status":"PAYMENT_PENDING","order_number":gateway,
+            "payment_session_id":session,"cashfree_environment":"sandbox","payable":a}),
+        ));
     }
 
     // Cashfree's idempotency key guarantees retrying this API request won't create a second charge.
@@ -235,41 +294,67 @@ pub async fn checkout(
                 "notify_url": "https://trackmyrmc.com/api/payments/cashfree/sandbox/webhook"
             }
         }))
-        .send().await
-        .map_err(|_| AppError::Conflict("Cashfree sandbox unavailable; retry with the same key".into()))?;
+        .send()
+        .await
+        .map_err(|_| {
+            AppError::Conflict("Cashfree sandbox unavailable; retry with the same key".into())
+        })?;
     if !response.status().is_success() {
-        return Err(AppError::Conflict("Cashfree sandbox rejected checkout".into()));
+        return Err(AppError::Conflict(
+            "Cashfree sandbox rejected checkout".into(),
+        ));
     }
-    let data: Value = response.json().await
+    let data: Value = response
+        .json()
+        .await
         .map_err(|_| AppError::Conflict("Cashfree checkout response invalid".into()))?;
     if data["order_id"].as_str() != Some(gateway.as_str())
-        || data["order_amount"].as_f64().is_none_or(|n| (n-a).abs()>0.0001)
+        || data["order_amount"]
+            .as_f64()
+            .is_none_or(|n| (n - a).abs() > 0.0001)
         || data["order_currency"].as_str() != Some("INR")
     {
-        return Err(AppError::Conflict("Gateway checkout metadata mismatch".into()));
+        return Err(AppError::Conflict(
+            "Gateway checkout metadata mismatch".into(),
+        ));
     }
-    let session = data["payment_session_id"].as_str()
+    let session = data["payment_session_id"]
+        .as_str()
         .filter(|s| !s.is_empty() && s.len() < 2048)
         .ok_or_else(|| AppError::Conflict("Cashfree did not return a payment session".into()))?;
     sqlx::query("UPDATE cashfree_sandbox_intents SET session_id=$2,updated_at=NOW() WHERE id=$1")
-        .bind(intent).bind(session).execute(&mut *tx).await?;
+        .bind(intent)
+        .bind(session)
+        .execute(&mut *tx)
+        .await?;
     tx.commit().await?;
-    Ok(Json(json!({"status":"PAYMENT_PENDING","order_number":gateway,
-        "payment_session_id":session,"cashfree_environment":"sandbox","payable":a})))
+    Ok(Json(
+        json!({"status":"PAYMENT_PENDING","order_number":gateway,
+        "payment_session_id":session,"cashfree_environment":"sandbox","payable":a}),
+    ))
 }
 
-async fn reconcile_intent(state: &AppState, intent: Uuid, credentials: &(String,String)) -> Result<Value, AppError> {
+async fn reconcile_intent(
+    state: &AppState,
+    intent: Uuid,
+    credentials: &(String, String),
+) -> Result<Value, AppError> {
     let row = sqlx::query(
         "SELECT gateway_order_id,amount,status FROM cashfree_sandbox_intents WHERE id=$1",
-    ).bind(intent).fetch_optional(&state.db).await?
-        .ok_or_else(|| AppError::NotFound("Payment intent not found".into()))?;
+    )
+    .bind(intent)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Payment intent not found".into()))?;
     let gateway: String = row.get("gateway_order_id");
     let a = amount(&row.get::<BigDecimal, _>("amount"))?;
     let provider = cashfree_order(&http()?, credentials, &gateway).await?;
     let state_value = provider_status(&provider, &gateway, a)?;
     let mut tx = state.db.begin().await?;
     let locked = sqlx::query("SELECT status FROM cashfree_sandbox_intents WHERE id=$1 FOR UPDATE")
-        .bind(intent).fetch_one(&mut *tx).await?;
+        .bind(intent)
+        .fetch_one(&mut *tx)
+        .await?;
     let previous: String = locked.get("status");
     // Never reverse a verified payment because of a stale/duplicate out-of-order webhook.
     if previous == "PENDING" && state_value != "PENDING" {
@@ -279,8 +364,10 @@ async fn reconcile_intent(state: &AppState, intent: Uuid, credentials: &(String,
     tx.commit().await?;
     // A verified sandbox receipt is deliberately NOT a live payment or an entitlement.
     // Pending fulfillment requires reviewed invoice-ledger / subscription policy and separate approval.
-    Ok(json!({"order_number":gateway,"status":if previous=="PENDING" {state_value} else {previous.as_str()},
-        "entitlement_activated":false,"ledger_posted":false}))
+    Ok(
+        json!({"order_number":gateway,"status":if previous=="PENDING" {state_value} else {previous.as_str()},
+        "entitlement_activated":false,"ledger_posted":false}),
+    )
 }
 
 pub async fn order_status(
@@ -289,13 +376,15 @@ pub async fn order_status(
     Path(id): Path<Uuid>,
 ) -> Result<Json<Value>, AppError> {
     let credentials = enabled()?;
-    let owner: Option<Uuid> = sqlx::query_scalar(
-        "SELECT requester_id FROM cashfree_sandbox_intents WHERE id=$1",
-    ).bind(id).fetch_optional(&state.db).await?;
+    let owner: Option<Uuid> =
+        sqlx::query_scalar("SELECT requester_id FROM cashfree_sandbox_intents WHERE id=$1")
+            .bind(id)
+            .fetch_optional(&state.db)
+            .await?;
     if owner != Some(user.user_id) {
         return Err(AppError::NotFound("Payment intent not found".into()));
     }
-    Ok(Json(reconcile_intent(&state,id,&credentials).await?))
+    Ok(Json(reconcile_intent(&state, id, &credentials).await?))
 }
 
 pub async fn webhook(
@@ -304,35 +393,52 @@ pub async fn webhook(
     body: Bytes,
 ) -> Result<Json<Value>, AppError> {
     let (_, secret) = enabled()?;
-    let timestamp = headers.get("x-webhook-timestamp").and_then(|v| v.to_str().ok()).unwrap_or("");
-    let signature = headers.get("x-webhook-signature").and_then(|v| v.to_str().ok()).unwrap_or("");
-    if !verify_signature(&secret,timestamp,signature,&body) {
-        return Err(AppError::Unauthorized("Invalid Cashfree webhook signature".into()));
+    let timestamp = headers
+        .get("x-webhook-timestamp")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let signature = headers
+        .get("x-webhook-signature")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if !verify_signature(&secret, timestamp, signature, &body) {
+        return Err(AppError::Unauthorized(
+            "Invalid Cashfree webhook signature".into(),
+        ));
     }
     let event: Value = serde_json::from_slice(&body)
         .map_err(|_| AppError::BadRequest("Invalid webhook JSON".into()))?;
-    let order_id = event.pointer("/data/order/order_id")
+    let order_id = event
+        .pointer("/data/order/order_id")
         .and_then(Value::as_str)
         .ok_or_else(|| AppError::BadRequest("Missing webhook order id".into()))?;
     if !order_id.starts_with("trmc_") || order_id.len() > 100 {
         return Err(AppError::BadRequest("Invalid payment order id".into()));
     }
-    let intent: Option<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM cashfree_sandbox_intents WHERE gateway_order_id=$1",
-    ).bind(order_id).fetch_optional(&state.db).await?;
+    let intent: Option<Uuid> =
+        sqlx::query_scalar("SELECT id FROM cashfree_sandbox_intents WHERE gateway_order_id=$1")
+            .bind(order_id)
+            .fetch_optional(&state.db)
+            .await?;
     let intent = intent.ok_or_else(|| AppError::NotFound("Unknown payment intent".into()))?;
     let credentials = enabled()?;
-    let verified = reconcile_intent(&state,intent,&credentials).await?;
+    let verified = reconcile_intent(&state, intent, &credentials).await?;
     let digest = hex::encode(Sha256::digest(&body));
     let event_kind = event["type"].as_str().unwrap_or("UNKNOWN");
-    let kind = if event_kind.len() <= 60 { event_kind } else { "UNKNOWN" };
+    let kind = if event_kind.len() <= 60 {
+        event_kind
+    } else {
+        "UNKNOWN"
+    };
     sqlx::query(
         "INSERT INTO cashfree_sandbox_events(intent_id,event_digest,event_kind,provider_status) VALUES($1,$2,$3,$4) ON CONFLICT(event_digest) DO NOTHING",
     )
     .bind(intent).bind(digest).bind(kind)
     .bind(verified["status"].as_str().unwrap_or("PENDING"))
     .execute(&state.db).await?;
-    Ok(Json(json!({"accepted":true,"fulfillment":"pending_business_approval"})))
+    Ok(Json(
+        json!({"accepted":true,"fulfillment":"pending_business_approval"}),
+    ))
 }
 
 #[derive(Deserialize)]
@@ -348,25 +454,33 @@ pub async fn propose_refund(
 ) -> Result<Json<Value>, AppError> {
     enabled()?;
     ensure_key(&input.refund_key)?;
-    let row = sqlx::query(
-        "SELECT requester_id,amount,status FROM cashfree_sandbox_intents WHERE id=$1",
-    ).bind(id).fetch_optional(&state.db).await?
-        .ok_or_else(|| AppError::NotFound("Payment not found".into()))?;
+    let row =
+        sqlx::query("SELECT requester_id,amount,status FROM cashfree_sandbox_intents WHERE id=$1")
+            .bind(id)
+            .fetch_optional(&state.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Payment not found".into()))?;
     if row.get::<Uuid, _>("requester_id") != user.user_id {
         return Err(AppError::NotFound("Payment not found".into()));
     }
     if row.get::<String, _>("status") != "VERIFIED" {
-        return Err(AppError::Conflict("Refund requires a verified payment".into()));
+        return Err(AppError::Conflict(
+            "Refund requires a verified payment".into(),
+        ));
     }
     sqlx::query(
         "INSERT INTO cashfree_sandbox_refunds(intent_id,refund_key,amount) VALUES($1,$2,$3) ON CONFLICT(refund_key) DO NOTHING",
     ).bind(id).bind(&input.refund_key).bind(row.get::<BigDecimal, _>("amount"))
       .execute(&state.db).await?;
-    let persisted = sqlx::query(
-        "SELECT intent_id,status FROM cashfree_sandbox_refunds WHERE refund_key=$1",
-    ).bind(&input.refund_key).fetch_one(&state.db).await?;
+    let persisted =
+        sqlx::query("SELECT intent_id,status FROM cashfree_sandbox_refunds WHERE refund_key=$1")
+            .bind(&input.refund_key)
+            .fetch_one(&state.db)
+            .await?;
     if persisted.get::<Uuid, _>("intent_id") != id {
-        return Err(AppError::Conflict("Refund key reused for a different payment".into()));
+        return Err(AppError::Conflict(
+            "Refund key reused for a different payment".into(),
+        ));
     }
     // Refund proposals NEVER initiate actual Cashfree or bank transfers.
     Ok(Json(json!({"status":persisted.get::<String, _>("status"),
@@ -389,23 +503,45 @@ mod tests {
         mac.update(time.as_bytes());
         mac.update(body);
         let signature = STANDARD.encode(mac.finalize().into_bytes());
-        assert!(verify_signature("sandbox_test_secret_123456",&time,&signature,body));
-        assert!(!verify_signature("sandbox_test_secret_123456",&time,&signature,
-            br#"{ "type": "PAYMENT_SUCCESS_WEBHOOK" }"#));
-        assert!(!verify_signature("different_secret_123456789",&time,&signature,body));
-        assert!(!verify_signature("sandbox_test_secret_123456", "1",&signature,body));
+        assert!(verify_signature(
+            "sandbox_test_secret_123456",
+            &time,
+            &signature,
+            body
+        ));
+        assert!(!verify_signature(
+            "sandbox_test_secret_123456",
+            &time,
+            &signature,
+            br#"{ "type": "PAYMENT_SUCCESS_WEBHOOK" }"#
+        ));
+        assert!(!verify_signature(
+            "different_secret_123456789",
+            &time,
+            &signature,
+            body
+        ));
+        assert!(!verify_signature(
+            "sandbox_test_secret_123456",
+            "1",
+            &signature,
+            body
+        ));
     }
 
     #[test]
     fn sandbox_order_identity_and_currency_enforced() {
         let valid = json!({"order_id":"trmc_123","order_amount":500.0,
             "order_currency":"INR","order_status":"PAID"});
-        assert_eq!(provider_status(&valid,"trmc_123",500.0).unwrap(),"VERIFIED");
-        assert!(provider_status(&valid,"trmc_fake",500.0).is_err());
-        assert!(provider_status(&valid,"trmc_123",501.0).is_err());
+        assert_eq!(
+            provider_status(&valid, "trmc_123", 500.0).unwrap(),
+            "VERIFIED"
+        );
+        assert!(provider_status(&valid, "trmc_fake", 500.0).is_err());
+        assert!(provider_status(&valid, "trmc_123", 501.0).is_err());
         let mut wrong = valid.clone();
         wrong["order_currency"] = json!("USD");
-        assert!(provider_status(&wrong,"trmc_123",500.0).is_err());
+        assert!(provider_status(&wrong, "trmc_123", 500.0).is_err());
     }
 
     #[test]
