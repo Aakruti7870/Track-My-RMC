@@ -4,6 +4,7 @@ pub mod assistant_routes;
 pub mod auth_routes;
 pub mod automation_routes;
 pub mod business_routes;
+pub mod cashfree_sandbox;
 pub mod control_center_routes;
 pub mod customer_routes;
 pub mod customer_services;
@@ -762,6 +763,24 @@ pub fn build_app_router(state: AppState) -> Router {
         .route(
             "/api/plant-plans/orders/:order_number",
             get(plant_plans_routes::get_payment_order_status),
+        )
+        // Cashfree PG sandbox. Disabled by default; credentials and pricing not deployed.
+        // No real payment, entitlement or invoice ledger can be posted by these handlers.
+        .route(
+            "/api/payments/cashfree/sandbox/checkout",
+            post(cashfree_sandbox::checkout),
+        )
+        .route(
+            "/api/payments/cashfree/sandbox/webhook",
+            post(cashfree_sandbox::webhook),
+        )
+        .route(
+            "/api/payments/cashfree/sandbox/orders/:id",
+            get(cashfree_sandbox::order_status),
+        )
+        .route(
+            "/api/payments/cashfree/sandbox/orders/:id/refund-proposals",
+            post(cashfree_sandbox::propose_refund),
         )
         // --- Maps & Location Intelligence ---
         .route("/api/maps/status", get(maps_routes::get_maps_status))
