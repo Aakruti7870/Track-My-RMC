@@ -1,14 +1,14 @@
 # Cashfree PG sandbox integration — review candidate
 
-Status: **DRAFT / NOT LAUNCH-READY**. Feature branch only. Do not merge/deploy into production without pricing review, migration approval, provider sandbox E2E, and a separately approved feature enablement.
+Status: **INERT CODE ONLY / NOT LAUNCH-READY**. Safe merge candidate: the sandbox adapter is hard-disabled when APP_ENV is production, and its SQL is staged outside automatic migrations at `ops/pending-migrations/cashfree_sandbox_intents.sql`. A merge automatically deploys code to production, but must not alter the production schema, merchant settings, invoices or transactions. A separate reviewed migration/staging enablement is required before any sandbox checkout can work.
 
 ## Security boundary
 
 - Gateway host is compiled to `https://sandbox.cashfree.com/pg`, not environment-selectable. No API method accesses `api.cashfree.com`.
-- All endpoints fail closed unless `CASHFREE_SANDBOX_ENABLED=true`, `CASHFREE_MODE=sandbox`, and both `CASHFREE_SANDBOX_CLIENT_ID` / `CASHFREE_SANDBOX_CLIENT_SECRET` exist (the server verifies minimum key presence, never returns credential contents).
-- These variables are **not set by this PR**. Add only after security review in the appropriate secret-managed staging environment; do not add to GitHub or frontend assets. The `CASHFREE_SANDBOX_*` names intentionally cannot accidentally use the existing production credential names.
+- All endpoints **also fail closed in APP_ENV=production**, even if flags and credentials exist; they otherwise fail closed unless `CASHFREE_SANDBOX_ENABLED=true`, `CASHFREE_MODE=sandbox`, and both `CASHFREE_SANDBOX_CLIENT_ID` / `CASHFREE_SANDBOX_CLIENT_SECRET` exist (the server verifies minimum key presence, never returns credential contents).
+- These variables are **not set by this PR**. The production mode hard stop is not controlled by a client request. Add only after security review in the appropriate secret-managed staging environment; do not add to GitHub or frontend assets. The `CASHFREE_SANDBOX_*` names intentionally cannot accidentally use the existing production credential names.
 - Plan checkout ALSO requires `CASHFREE_PLAN_PRICES_APPROVED=true` and a reviewed row in `cashfree_approved_plan_prices` with `is_active=TRUE`. Migration intentionally seeds **zero** plan prices. No UI quote or submitted amount is used for charge authorization.
-- The sandbox checkout serves both `PLAN` (authenticated and verified plant owner) and `INVOICE` (authenticated invoice customer only). The invoice amount is derived from the invoice outstanding balance, not a client amount.
+- Schema in `ops/pending-migrations/cashfree_sandbox_intents.sql` is **not** on the sqlx migration path; there are no new production database schema writes when this patch deploys. In staging, the schema must be installed only after separate approval and verification.\n- The sandbox checkout serves both `PLAN` (authenticated and verified plant owner) and `INVOICE` (authenticated invoice customer only). The invoice amount is derived from the invoice outstanding balance, not a client amount.
 - Provider creates/gets orders with Cashfree `x-api-version=2025-01-01`, server-only `x-client-id` / `x-client-secret`, HTTPS timeout and immutable server-generated gateway order ID. One payer + `idempotency_key` maps to one DB intent and a stable Cashfree `x-idempotency-key`. Different payloads with the same key are rejected.
 - The public webhook has a max-size guard, verifies `x-webhook-timestamp` within five minutes, base64/HMAC-SHA256 against **raw bytes** and constant-time MAC verification. Authenticated webhooks alone never activate funds or access. Cashfree's server-side GET order must match the intended order ID, INR currency, exact amount and `PAID` before `VERIFIED`.
 - Event digest uniqueness and per-intent status row lock prevent duplicate accounting of replayed events. A stale `ACTIVE` or `EXPIRED` provider response cannot downgrade a previously verified payment.
@@ -47,4 +47,4 @@ Before any actual sandbox session is enabled:
 5. Run actual authorized Cashfree SANDBOX E2E success/failure/payment retry/refund/reconciliation with test identities and collect redacted evidence.
 6. Only then consider any production credential/money-flow change under a separate explicit user approval.
 
-No secrets, payments, refunds, subscriptions, or production DB were changed in this PR.
+No secrets, payments, refunds, subscriptions, or production DB were changed in this PR. The migration was explicitly removed from the automatically executed `backend/migrations` directory in response to the requested safe merge.
