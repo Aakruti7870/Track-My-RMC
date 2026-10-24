@@ -28,6 +28,16 @@ const MAX_WEBHOOK_BYTES: usize = 65_536;
 type HmacSha256 = Hmac<Sha256>;
 
 fn enabled() -> Result<(String, String), AppError> {
+    // A merge to main triggers an automatic AWS production deployment. Refuse
+    // sandbox intent writes even if sandbox credentials are accidentally enabled.
+    if env::var("APP_ENV")
+        .unwrap_or_else(|_| "production".into())
+        .eq_ignore_ascii_case("production")
+    {
+        return Err(AppError::Conflict(
+            "Cashfree sandbox payment staging is unavailable in production".into(),
+        ));
+    }
     // Never permit a live Cashfree host even when a deployment mistakenly sets production flags.
     if env::var("CASHFREE_SANDBOX_ENABLED").ok().as_deref() != Some("true")
         || env::var("CASHFREE_MODE").ok().as_deref() != Some("sandbox")
