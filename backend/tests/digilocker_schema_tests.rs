@@ -33,44 +33,35 @@ async fn staged_kyc_schema_enforces_single_active_session_per_customer(db: PgPoo
     .await
     .unwrap();
 
-    let duplicate = sqlx::query(
-        "INSERT INTO customer_digilocker_sessions(user_id) VALUES($1)",
-    )
-    .bind(first_customer)
-    .execute(&db)
-    .await;
+    let duplicate = sqlx::query("INSERT INTO customer_digilocker_sessions(user_id) VALUES($1)")
+        .bind(first_customer)
+        .execute(&db)
+        .await;
     assert!(duplicate.is_err(), "second active session must be denied");
 
-    sqlx::query(
-        "UPDATE customer_digilocker_sessions SET status='PENDING' WHERE id=$1",
-    )
-    .bind(first_session)
-    .execute(&db)
-    .await
-    .unwrap();
+    sqlx::query("UPDATE customer_digilocker_sessions SET status='PENDING' WHERE id=$1")
+        .bind(first_session)
+        .execute(&db)
+        .await
+        .unwrap();
 
-    sqlx::query(
-        "INSERT INTO customer_digilocker_sessions(user_id) VALUES($1)",
-    )
-    .bind(first_customer)
-    .execute(&db)
-    .await
-    .unwrap();
-    sqlx::query(
-        "INSERT INTO customer_digilocker_sessions(user_id) VALUES($1)",
-    )
-    .bind(other_customer)
-    .execute(&db)
-    .await
-    .unwrap();
+    sqlx::query("INSERT INTO customer_digilocker_sessions(user_id) VALUES($1)")
+        .bind(first_customer)
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO customer_digilocker_sessions(user_id) VALUES($1)")
+        .bind(other_customer)
+        .execute(&db)
+        .await
+        .unwrap();
 
-    let count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM customer_digilocker_sessions WHERE user_id=$1",
-    )
-    .bind(first_customer)
-    .fetch_one(&db)
-    .await
-    .unwrap();
+    let count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM customer_digilocker_sessions WHERE user_id=$1")
+            .bind(first_customer)
+            .fetch_one(&db)
+            .await
+            .unwrap();
     assert_eq!(count, 2);
 }
 
@@ -115,13 +106,11 @@ async fn staged_kyc_schema_rejects_unexpected_states_and_duplicate_provider_ids(
         .is_err(),
         "provider session must never imply an approved KYC status"
     );
-    let rows = sqlx::query(
-        "SELECT status FROM customer_digilocker_sessions WHERE user_id=$1",
-    )
-    .bind(first_customer)
-    .fetch_all(&db)
-    .await
-    .unwrap();
+    let rows = sqlx::query("SELECT status FROM customer_digilocker_sessions WHERE user_id=$1")
+        .bind(first_customer)
+        .fetch_all(&db)
+        .await
+        .unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].get::<String, _>("status"), "STARTING");
 }
