@@ -90,6 +90,24 @@ async fn call(app: &Router, path: &str, body: Option<Value>, token: &str) -> (St
 }
 
 #[sqlx::test]
+async fn digilocker_name_case_changes_do_not_block_authority_approved_orders(db: PgPool) {
+    let (_, app, customer, plant, token) = fixture(&db).await;
+    sqlx::query("UPDATE user_profiles SET verified_name='CUSTOMER' WHERE user_id=$1")
+        .bind(customer)
+        .execute(&db)
+        .await
+        .unwrap();
+    let (status, body) = call(
+        &app,
+        "/api/customer/orders",
+        Some(order(plant, "digilocker-case-normalization")),
+        &token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "verified name case changed: {body}");
+}
+
+#[sqlx::test]
 async fn digilocker_disabled_preserves_existing_kyc_and_never_starts_provider(db: PgPool) {
     let (_, app, customer, _, token) = fixture(&db).await;
     let (status, body) = call(&app, "/api/customer/kyc", None, &token).await;
