@@ -19,7 +19,7 @@ import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 const STATE_META: Record<string, { icon: keyof typeof Ionicons.glyphMap; title: string; body: string; tone: "success" | "warning" | "error" | "info" }> = {
   VERIFIED: { icon: "shield-checkmark", title: "KYC Verified", body: "You can place orders using the app.", tone: "success" },
   IN_PROGRESS: { icon: "phone-portrait-outline", title: "Complete DigiLocker", body: "Finish consent in DigiLocker. If you cancelled or closed it, you can safely restart the verification.", tone: "warning" },
-  PENDING: { icon: "hourglass-outline", title: "Authority review pending", body: "DigiLocker consent succeeded. An Authority will review your KYC.", tone: "warning" },
+  PENDING: { icon: "hourglass-outline", title: "Authority review pending", body: "DigiLocker identity matched. Approval by an authorized reviewer is pending.", tone: "warning" },
   REJECTED: { icon: "close-circle", title: "Verification rejected", body: "Something didn't match. Please retry.", tone: "error" },
   REQUIRES_REVERIFICATION: { icon: "refresh", title: "Re-verification required", body: "Please start DigiLocker again to continue.", tone: "warning" },
   NOT_STARTED: { icon: "id-card-outline", title: "Verify your identity", body: "Complete KYC to unlock live concrete ordering.", tone: "info" },
@@ -28,7 +28,7 @@ const STATE_META: Record<string, { icon: keyof typeof Ionicons.glyphMap; title: 
 const STEPS = [
   "Verify your identity via DigiLocker / approved KYC",
   "We confirm your details against government records",
-  "Get verified and start ordering instantly",
+  "Wait for authorized review before placing live orders",
 ];
 
 type KycStatusResponse = {
