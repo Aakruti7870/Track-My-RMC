@@ -934,3 +934,10 @@ pub async fn delete_receiving_record(
     Ok(Json(json!({"success":true,"status":"deleted"})))
 }
 
+// Backward-compatible test/module entry point. Public route uses digilocker_kyc::start.
+pub async fn start_customer_kyc(
+    state: State<AppState>,
+    auth_user: AuthUser,
+) -> Result<Json<serde_json::Value>, AppError> {
+    crate::routes::digilocker_kyc::start(state, auth_user).await
+}
