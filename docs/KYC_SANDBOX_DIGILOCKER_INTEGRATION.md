@@ -1,7 +1,7 @@
 # Sandbox.co.in DigiLocker customer KYC — test-mode implementation
 
 ## Security / release status
-Feature branch implementation only. **Do not merge or deploy without reviewing migration 0038 and completing provider/device acceptance.** No production credentials, payments, or live database were changed by this PR. DigiLocker session initiation stays **disabled by default** and cannot use Sandbox's production host.
+Feature branch implementation only. **Do not merge or deploy without reviewing pending customer_digilocker_sessions.sql migration and completing provider/device acceptance.** No production credentials, payments, or live database were changed by this PR. DigiLocker session initiation stays **disabled by default** and cannot use Sandbox's production host.
 
 Provider API contracts (26 Oct 2026):
 - POST `https://test-api.sandbox.co.in/authenticate` with server-only `x-api-key` and `x-api-secret`.
@@ -32,7 +32,7 @@ Docs:
 7. Failed/mismatched consent returns `REQUIRES_REVERIFICATION`. Existing approved users remain approved (provider polling never downgrades a verified profile).
 
 ## Prior-to-merge checklist
-- Confirm migration 0038 version does not collide with newer main and test on an isolated Postgres database with rollback.
+- Review ops/pending-migrations/customer_digilocker_sessions.sql and only after approval assign the next free SQLx version. Test on an isolated Postgres database and verify rollback.
 - Run Backend CI Postgres 16/18 including Rust tests, Frontend CI, Android builds, and security lint. Run negative tests for concurrent start, provider timeout, consent denial, mismatch, replay, and cross-customer read.
 - Obtain approval to configure test credentials and perform an authorized DigiLocker sandbox session with a consenting test identity. Provider may use different demo fields/status names; confirm against actual contracted responses before enabling.
 - Check browser and Android App Link return and `/kyc` refresh. Confirm Authority review records audit and only after approval can customer place order.
@@ -40,3 +40,5 @@ Docs:
 
 ## Known limitation
 No signed provider callback is processed; vendor's documented, authenticated **session-status polling** is authoritative. Browser return is only navigation. Live provider acceptance, test subscription entitlements and callback registration were not exercised by this change.
+
+The draft PR intentionally stores DDL in `ops/pending-migrations/customer_digilocker_sessions.sql`. Existing production PostgreSQL schema is unchanged. **The test feature cannot be enabled until the DDL is reviewed, versioned and applied to an isolated test DB.**
