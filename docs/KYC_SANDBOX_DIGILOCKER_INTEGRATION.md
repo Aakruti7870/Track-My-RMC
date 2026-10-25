@@ -6,13 +6,14 @@ Feature branch implementation only. **Do not merge or deploy without reviewing p
 Provider API contracts (26 Oct 2026):
 - POST `https://test-api.sandbox.co.in/authenticate` with server-only `x-api-key` and `x-api-secret`.
 - POST `/kyc/digilocker/sessions/init` with `@entity=in.co.sandbox.kyc.digilocker.session.request`, `flow=signin`, `doc_types=["aadhaar"]` and registered `redirect_url=https://trackmyrmc.com/kyc/return`.
-- GET `/kyc/digilocker/sessions/{session_id}/status`; GET `/kyc/digilocker/sessions/{session_id}/user/profile` after explicit completed consent.
+- GET `/kyc/digilocker/sessions/{session_id}/status`; GET `/kyc/digilocker/sessions/{session_id}/documents/aadhaar` and GET `/kyc/digilocker/sessions/{session_id}/user/profile` after explicit completed consent. Document metadata must attest UIDAI issuer; no file download.
 
 Docs:
 - https://developer.sandbox.co.in/api-reference/authenticate
 - https://developer.sandbox.co.in/api-reference/kyc/digilocker/endpoints/initiate_session
 - https://developer.sandbox.co.in/api-reference/kyc/digilocker/endpoints/session_status
 - https://developer.sandbox.co.in/api-reference/kyc/digilocker/endpoints/user_profile
+- https://developer.sandbox.co.in/api-reference/kyc/digilocker/endpoints/fetch_document
 
 ## Required environment (server-only; NO EXPO_PUBLIC_ values)
 - `TRACKMYRMC_KYC_ENABLED=true` (default absent => closed)
@@ -27,7 +28,7 @@ Docs:
 2. Authenticate server-to-server, create test DigiLocker session, validate provider-supplied HTTPS authorization URL against DigiLocker host allowlist; return URL to browser without exposing server credentials.
 3. DigiLocker returns to the existing informational `/kyc/return` deep-link trampoline. It **never** accepts query parameters as evidence of consent or verification.
 4. Only authenticated owner `GET /api/customer/kyc` polls the recorded provider session ID (not a user-supplied ID). Unknown/failed provider statuses do **not** confirm identity.
-5. After explicit provider consent, retrieve profile. Enforce `eaadhaar=true` and exact normalized name match to registered account, plus matching 10-digit Indian mobile. Save only `verified_name`, minimal session status, provider session ID and audit metadata; never store Aadhaar, address, photo, XML or raw provider response.
+5. After explicit provider consent, verify that Aadhaar is among consented documents by checking UIDAI issuer metadata (without downloading the document), then retrieve profile. Enforce `eaadhaar=true` and exact normalized name match to registered account, plus matching 10-digit Indian mobile. Save only `verified_name`, minimal session status, provider session ID and audit metadata; never store Aadhaar, address, photo, XML or raw provider response.
 6. This sets `PENDING`, **not VERIFIED**. The already-approved `/api/staff/customers/:customer_id/kyc/approve` Authority session gate (PR #110) remains mandatory. Normal customer order KYC enforcement remains server-side.
 7. Failed/mismatched consent returns `REQUIRES_REVERIFICATION`. Existing approved users remain approved (provider polling never downgrades a verified profile).
 
