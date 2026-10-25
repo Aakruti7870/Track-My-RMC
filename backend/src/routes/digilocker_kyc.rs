@@ -88,7 +88,7 @@ fn safe_authorization_url(raw: &str) -> bool {
     // Never relay a provider-supplied arbitrary URL to the client's browser.
     // Permit only the documented DigiLocker host and its HTTPS path.
     raw.starts_with("https://digilocker.meripehchaan.gov.in/")
-        && !raw.contains(['\r','\n','\\'])
+        && !(raw.contains('\r') || raw.contains('\n') || raw.contains('\\'))
         && raw.len() < 8192
 }
 fn display_status(db: &str) -> &'static str {
