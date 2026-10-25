@@ -289,7 +289,7 @@ pub async fn status(
 ) -> Result<Json<Value>, AppError> {
     check_role(&user, &["customer"])?;
     let account = sqlx::query(
-        "SELECT u.full_name,u.phone,coalesce(p.kyc_status,'unverified') AS kyc_status
+        "SELECT u.full_name,coalesce(u.phone,'') AS phone,coalesce(p.kyc_status,'unverified') AS kyc_status
          FROM users u LEFT JOIN user_profiles p ON p.user_id=u.id WHERE u.id=$1",
     )
     .bind(user.user_id)
