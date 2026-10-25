@@ -30,8 +30,12 @@ impl Provider {
         {
             return Err(AppError::Conflict("DigiLocker KYC is not enabled".into()));
         }
-        let api_key = env::var("SANDBOX_KYC_API_KEY").unwrap_or_default();
-        let api_secret = env::var("SANDBOX_KYC_API_SECRET").unwrap_or_default();
+        let api_key = env::var("SANDBOX_KYC_API_KEY")
+            .or_else(|_| env::var("KYC_API_KEY"))
+            .unwrap_or_default();
+        let api_secret = env::var("SANDBOX_KYC_API_SECRET")
+            .or_else(|_| env::var("KYC_API_SECRET"))
+            .unwrap_or_default();
         if api_key.trim().is_empty() || api_secret.trim().is_empty() {
             return Err(AppError::Conflict(
                 "DigiLocker KYC is not configured".into(),
@@ -296,6 +300,17 @@ pub async fn status(
     .fetch_one(&state.db)
     .await?;
     let kyc: String = account.get("kyc_status");
+    // Production currently has no DigiLocker session migration. Keep the
+    // existing KYC screen functional while provider activation is disabled.
+    // Never query a staged/not-yet-applied table in fail-closed mode.
+    if Provider::enabled().is_err() {
+        return Ok(Json(json!({
+            "status": display_status(&kyc),
+            "kyc_status": kyc,
+            "provider": "unavailable",
+            "refresh_failed": false
+        })));
+    }
     // Approved status always comes from the database, never callback query parameters.
     if display_status(&kyc) == "VERIFIED" {
         return Ok(Json(
