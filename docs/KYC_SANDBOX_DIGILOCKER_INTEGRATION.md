@@ -18,8 +18,8 @@ Docs:
 ## Required environment (server-only; NO EXPO_PUBLIC_ values)
 - `TRACKMYRMC_KYC_ENABLED=true` (default absent => closed)
 - `TRACKMYRMC_KYC_ENV=sandbox` (only accepted value; fixed test-api host)
-- `SANDBOX_KYC_API_KEY` (Sandbox dashboard test-environment credential)
-- `SANDBOX_KYC_API_SECRET` (Sandbox dashboard test-environment credential)
+- `SANDBOX_KYC_API_KEY` and `SANDBOX_KYC_API_SECRET`: preferred server-side Sandbox test credentials.
+- The existing TrackMyRMC secret fields `KYC_API_KEY` and `KYC_API_SECRET` are supported as fallback **only when the explicit sandbox feature flags above are enabled**. Their presence does not prove that the credentials belong to the provider test environment. Validate their workspace mode before enabling.
 
 **Never** paste credentials into GitHub, app bundles, docs, CI logs or issue comments. Secrets must come from approved secret storage. In the current release do not set these fields on the production instance without approval. Register the exact public callback origin with Sandbox in the test workspace.
 
@@ -43,3 +43,6 @@ Docs:
 No signed provider callback is processed; vendor's documented, authenticated **session-status polling** is authoritative. Browser return is only navigation. Live provider acceptance, test subscription entitlements and callback registration were not exercised by this change.
 
 The draft PR intentionally stores DDL in `ops/pending-migrations/customer_digilocker_sessions.sql`. Existing production PostgreSQL schema is unchanged. **The test feature cannot be enabled until the DDL is reviewed, versioned and applied to an isolated test DB.**
+
+## Deployment safeguard
+When `TRACKMYRMC_KYC_ENABLED` is absent or false, `GET /api/customer/kyc` reads only `user_profiles` and returns a frontend-compatible `status`; it does **not** query the pending DigiLocker table. `POST /api/customer/kyc/start` fails closed. Backend CI includes this regression guard. Do not enable flags while DDL is still staged.
