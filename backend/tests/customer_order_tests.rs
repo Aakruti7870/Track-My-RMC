@@ -90,6 +90,28 @@ async fn call(app: &Router, path: &str, body: Option<Value>, token: &str) -> (St
 }
 
 #[sqlx::test]
+async fn digilocker_disabled_preserves_existing_kyc_and_never_starts_provider(db: PgPool) {
+    let (_, app, customer, _, token) = fixture(&db).await;
+    let (status, body) = call(&app, "/api/customer/kyc", None, &token).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["status"], "VERIFIED");
+    assert_eq!(body["provider"], "unavailable");
+
+    // A disabled provider must remain inaccessible, including for a verified customer.
+    let (status, _) = call(&app, "/api/customer/kyc/start", Some(json!({})), &token).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    sqlx::query("UPDATE user_profiles SET kyc_status='unverified',verified_name=NULL WHERE user_id=$1")
+        .bind(customer).execute(&db).await.unwrap();
+    let (status, body) = call(&app, "/api/customer/kyc", None, &token).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["status"], "NOT_STARTED");
+
+    let (status, _) = call(&app, "/api/customer/kyc", None, "invalid-token").await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[sqlx::test]
 async fn map_endpoints_never_fabricate_places_routes_or_provider_health(db: PgPool) {
     let (_, app, _, _, token) = fixture(&db).await;
     let (status, body) = call(&app, "/api/maps/status", None, &token).await;
