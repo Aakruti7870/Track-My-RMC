@@ -364,6 +364,15 @@ pub async fn status(
         if !provider_completed(&value) {
             return Ok("IN_PROGRESS");
         }
+        // Consent must cover an actual UIDAI-issued Aadhaar document, not just profile access.
+        // Inspect provider document metadata only; never fetch or persist the presigned file.
+        let document = provider.get(&token, &format!("/kyc/digilocker/sessions/{provider_id}/documents/aadhaar")).await?;
+        let aadhaar_consented = document.pointer("/data/files").and_then(Value::as_array)
+            .is_some_and(|files| files.iter().any(|file|
+                file.pointer("/metadata/issuer_id").and_then(Value::as_str) == Some("in.gov.uidai")));
+        if !aadhaar_consented {
+            return Err(AppError::Conflict("Consented Aadhaar document was not confirmed".into()));
+        }
         let profile = provider.get(&token, &format!("/kyc/digilocker/sessions/{provider_id}/user/profile")).await?;
         let data = &profile["data"];
         if !profile_matches(&account.get::<String,_>("full_name"), &account.get::<String,_>("phone"), data) {
