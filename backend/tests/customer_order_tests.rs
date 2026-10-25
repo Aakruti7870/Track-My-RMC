@@ -101,8 +101,13 @@ async fn digilocker_disabled_preserves_existing_kyc_and_never_starts_provider(db
     let (status, _) = call(&app, "/api/customer/kyc/start", Some(json!({})), &token).await;
     assert_eq!(status, StatusCode::CONFLICT);
 
-    sqlx::query("UPDATE user_profiles SET kyc_status='unverified',verified_name=NULL WHERE user_id=$1")
-        .bind(customer).execute(&db).await.unwrap();
+    sqlx::query(
+        "UPDATE user_profiles SET kyc_status='unverified',verified_name=NULL WHERE user_id=$1",
+    )
+    .bind(customer)
+    .execute(&db)
+    .await
+    .unwrap();
     let (status, body) = call(&app, "/api/customer/kyc", None, &token).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["status"], "NOT_STARTED");
