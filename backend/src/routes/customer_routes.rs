@@ -934,38 +934,3 @@ pub async fn delete_receiving_record(
     Ok(Json(json!({"success":true,"status":"deleted"})))
 }
 
-pub async fn get_customer_kyc(
-    State(state): State<AppState>,
-    auth_user: AuthUser,
-) -> Result<impl IntoResponse, AppError> {
-    let profile = sqlx::query(
-        "SELECT kyc_status, verified_name, gst_number FROM user_profiles WHERE user_id = $1",
-    )
-    .bind(auth_user.user_id)
-    .fetch_optional(&state.db)
-    .await?;
-
-    let kyc_status: String = profile
-        .as_ref()
-        .and_then(|p| p.get("kyc_status"))
-        .unwrap_or_else(|| "unverified".to_string());
-    let verified_name: Option<String> = profile.as_ref().and_then(|p| p.get("verified_name"));
-    let gst_number: Option<String> = profile.as_ref().and_then(|p| p.get("gst_number"));
-
-    Ok(Json(json!({
-        "success": true,
-        "kyc_status": kyc_status,
-        "verified_name": verified_name,
-        "gst_number": gst_number
-    })))
-}
-
-pub async fn start_customer_kyc(
-    State(_state): State<AppState>,
-    auth_user: AuthUser,
-) -> Result<Json<serde_json::Value>, AppError> {
-    check_role(&auth_user, &["customer"])?;
-    Err(AppError::Conflict(
-        "KYC provider is not configured; no verification session was started".into(),
-    ))
-}
