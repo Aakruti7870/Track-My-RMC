@@ -3,8 +3,7 @@
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
-const STAGED_SCHEMA: &str =
-    include_str!("../migrations/0040_customer_digilocker_sessions.sql");
+const STAGED_SCHEMA: &str = include_str!("../migrations/0040_customer_digilocker_sessions.sql");
 
 async fn customer(db: &PgPool) -> Uuid {
     let phone = format!("kyc{}", &Uuid::new_v4().simple().to_string()[..14]);
