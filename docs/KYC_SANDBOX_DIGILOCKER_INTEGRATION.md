@@ -1,7 +1,7 @@
 # Sandbox.co.in DigiLocker customer KYC — test-mode implementation
 
 ## Security / release status
-Feature branch implementation only. **Do not merge or deploy without reviewing pending customer_digilocker_sessions.sql migration and completing provider/device acceptance.** No production credentials, payments, or live database were changed by this PR. DigiLocker session initiation stays **disabled by default** and cannot use Sandbox's production host.
+Feature branch implementation only. **Do not merge or deploy without reviewing SQLx migration 0040 and completing provider/device acceptance.** No production credentials, payments, or live database were changed by this PR. DigiLocker session initiation stays **disabled by default** and cannot use Sandbox's production host.
 
 Provider API contracts (26 Oct 2026):
 - POST `https://test-api.sandbox.co.in/authenticate` with server-only `x-api-key` and `x-api-secret`.
@@ -33,7 +33,7 @@ Docs:
 7. Failed/mismatched consent returns `REQUIRES_REVERIFICATION`. Existing approved users remain approved (provider polling never downgrades a verified profile).
 
 ## Prior-to-merge checklist
-- Review ops/pending-migrations/customer_digilocker_sessions.sql and only after approval assign the next free SQLx version. Test on an isolated Postgres database and verify rollback.
+- Review backend/migrations/0040_customer_digilocker_sessions.sql and only after approval assign the next free SQLx version. Test on an isolated Postgres database and verify rollback.
 - Run Backend CI Postgres 16/18 including Rust tests, Frontend CI, Android builds, and security lint. Run negative tests for concurrent start, provider timeout, consent denial, mismatch, replay, and cross-customer read.
 - Obtain approval to configure test credentials and perform an authorized DigiLocker sandbox session with a consenting test identity. Provider may use different demo fields/status names; confirm against actual contracted responses before enabling.
 - Check browser and Android App Link return and `/kyc` refresh. Confirm Authority review records audit and only after approval can customer place order.
@@ -42,7 +42,15 @@ Docs:
 ## Known limitation
 No signed provider callback is processed; vendor's documented, authenticated **session-status polling** is authoritative. Browser return is only navigation. Live provider acceptance, test subscription entitlements and callback registration were not exercised by this change.
 
-The draft PR intentionally stores DDL in `ops/pending-migrations/customer_digilocker_sessions.sql`. Existing production PostgreSQL schema is unchanged. **The test feature cannot be enabled until the DDL is reviewed, versioned and applied to an isolated test DB.**
+Migration `0040_customer_digilocker_sessions.sql` is additive. Its SQLx history remains unmodified in production until a deploy from `main`; the existing backend applies it at startup. PostgreSQL 16/18 CI verifies fresh migration. Never activate KYC before production migration health is verified.
 
 ## Deployment safeguard
-When `TRACKMYRMC_KYC_ENABLED` is absent or false, `GET /api/customer/kyc` reads only `user_profiles` and returns a frontend-compatible `status`; it does **not** query the pending DigiLocker table. `POST /api/customer/kyc/start` fails closed. Backend CI includes this regression guard. Do not enable flags while DDL is still staged.
+When `TRACKMYRMC_KYC_ENABLED` is absent or false, `GET /api/customer/kyc` reads only `user_profiles` and returns a frontend-compatible `status`; it does **not** query the pending DigiLocker table. `POST /api/customer/kyc/start` fails closed. Backend CI includes this regression guard. Do not enable flags before production migration 0040 and vendor-acceptance gates are verified.
+
+## Production release procedure
+1. Confirm latest main is unchanged, PostgreSQL backups are available and SSH/SSM origin verification works. Confirm **_sqlx_migrations maximum 39** before introducing 0040.
+2. Merge only after Backend CI PG16/18, Frontend CI and source safety checks pass. GitHub's SHA-pinned deployment restarts the Rust service; `sqlx::migrate!` applies version 0040 automatically at startup. It is an additive new table with indexes and a unique constraint; existing users/orders are untouched.
+3. `ops/aws-deploy-ec2.sh` reads KYC switches from the AWS app-runtime secret. Missing `TRACKMYRMC_KYC_ENABLED` means `false`. Credentials are forwarded into the root-readable systemd environment file only when `TRACKMYRMC_KYC_ENABLED=true`, `TRACKMYRMC_KYC_ENV=sandbox`, and the registered return URL matches.
+4. Before activating, verify the deployed release marker and origin health, table existence and SQLx version 40, Sandbox test credential authentication, one authorized test user's consent, UIDAI document metadata, identity and Authority review, order gate and Android/Web callback.
+5. Only after that, intentionally set `TRACKMYRMC_KYC_ENABLED=true` and `TRACKMYRMC_KYC_ENV=sandbox` in AWS Secrets Manager with reviewed credentials and perform a controlled service deployment. Never substitute Sandbox test credentials for production-live identity verification.
+6. Rollback: disable KYC flag first; the status endpoint works with previous `user_profiles` without the provider. The additive migration table can remain unused; do not DROP it or remove SQLx history during incident rollback.
