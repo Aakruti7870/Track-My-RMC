@@ -1,7 +1,7 @@
 # Sandbox.co.in DigiLocker customer KYC — test-mode implementation
 
 ## Security / release status
-Feature branch implementation only. **Do not merge or deploy without reviewing migration 0037 and completing provider/device acceptance.** No production credentials, payments, or live database were changed by this PR. DigiLocker session initiation stays **disabled by default** and cannot use Sandbox's production host.
+Feature branch implementation only. **Do not merge or deploy without reviewing migration 0038 and completing provider/device acceptance.** No production credentials, payments, or live database were changed by this PR. DigiLocker session initiation stays **disabled by default** and cannot use Sandbox's production host.
 
 Provider API contracts (26 Oct 2026):
 - POST `https://test-api.sandbox.co.in/authenticate` with server-only `x-api-key` and `x-api-secret`.
@@ -32,7 +32,7 @@ Docs:
 7. Failed/mismatched consent returns `REQUIRES_REVERIFICATION`. Existing approved users remain approved (provider polling never downgrades a verified profile).
 
 ## Prior-to-merge checklist
-- Confirm migration 0037 version does not collide with newer main and test on an isolated Postgres database with rollback.
+- Confirm migration 0038 version does not collide with newer main and test on an isolated Postgres database with rollback.
 - Run Backend CI Postgres 16/18 including Rust tests, Frontend CI, Android builds, and security lint. Run negative tests for concurrent start, provider timeout, consent denial, mismatch, replay, and cross-customer read.
 - Obtain approval to configure test credentials and perform an authorized DigiLocker sandbox session with a consenting test identity. Provider may use different demo fields/status names; confirm against actual contracted responses before enabling.
 - Check browser and Android App Link return and `/kyc` refresh. Confirm Authority review records audit and only after approval can customer place order.
