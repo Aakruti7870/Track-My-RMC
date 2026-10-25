@@ -7,8 +7,8 @@ pub mod business_routes;
 pub mod cashfree_sandbox;
 pub mod control_center_routes;
 pub mod customer_routes;
-pub mod digilocker_kyc;
 pub mod customer_services;
+pub mod digilocker_kyc;
 pub mod discovery;
 pub mod dispatcher_routes;
 pub mod driver_profile_routes;
@@ -428,10 +428,7 @@ pub fn build_app_router(state: AppState) -> Router {
                 .post(customer_routes::add_cube_test_result),
         )
         .route("/api/customer/kyc", get(digilocker_kyc::status))
-        .route(
-            "/api/customer/kyc/start",
-            post(digilocker_kyc::start),
-        )
+        .route("/api/customer/kyc/start", post(digilocker_kyc::start))
         // --- Driver Domain ---
         .route("/api/driver/home", get(driver_routes::get_driver_home))
         .route(
