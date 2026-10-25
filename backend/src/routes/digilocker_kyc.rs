@@ -179,7 +179,10 @@ fn profile_matches(account_name: &str, account_phone: &str, data: &Value) -> boo
         && normalized_mobile(phone) == normalized_mobile(account_phone)
 }
 fn provider_completed(s: &str) -> bool {
-    matches!(s, "consented" | "completed" | "success" | "succeeded" | "consent_received")
+    matches!(
+        s,
+        "consented" | "completed" | "success" | "succeeded" | "consent_received"
+    )
 }
 fn provider_rejected(s: &str) -> bool {
     matches!(
