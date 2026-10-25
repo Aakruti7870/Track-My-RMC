@@ -7,7 +7,7 @@ const STAGED_SCHEMA: &str =
     include_str!("../../ops/pending-migrations/customer_digilocker_sessions.sql");
 
 async fn customer(db: &PgPool) -> Uuid {
-    let phone = format!("kyc{}", Uuid::new_v4().simple());
+    let phone = format!("kyc{}", &Uuid::new_v4().simple().to_string()[..14]);
     sqlx::query_scalar(
         "INSERT INTO users(phone, hashed_password, full_name, role)
          VALUES($1,'unused','Sandbox QA Customer','customer') RETURNING id",
