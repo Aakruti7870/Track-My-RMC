@@ -45,8 +45,8 @@ pub async fn kyc_return() -> Html<&'static str> {
 </head>
 <body style="font-family:system-ui;background:#101112;color:#fff;display:grid;place-items:center;min-height:100vh;margin:0">
 <main style="text-align:center;padding:24px">
-<h1>KYC consent return received</h1>
-<p>Return to TrackMyRMC and tap Refresh Status to check your verification result.</p>
+<h1>DigiLocker return</h1>
+<p>Return to TrackMyRMC and tap Refresh Status. Your identity is only verified after the provider confirms consent and an authorized reviewer approves it.</p>
 <a href="trackmyrmc://kyc" style="color:#dfff62">Open TrackMyRMC</a>
 </main>
 </body>

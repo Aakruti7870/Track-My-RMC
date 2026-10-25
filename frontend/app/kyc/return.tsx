@@ -35,9 +35,9 @@ export default function KycReturnScreen() {
       <Card style={{ gap: spacing.lg }}>
         <View style={{ gap: spacing.sm }}>
           <AppText variant="caption" color={colors.brand}>DIGILOCKER RETURN</AppText>
-          <AppText variant="title">KYC consent received</AppText>
+          <AppText variant="title">Returned from DigiLocker</AppText>
           <AppText variant="bodyMuted">
-            Your DigiLocker consent flow has returned securely to TrackMyRMC. Continue to refresh your KYC status.
+            TrackMyRMC will confirm the DigiLocker session directly with the provider. Returning here does not mean verification is complete. Refresh your KYC status to continue.
           </AppText>
         </View>
         {Platform.OS === "web" ? (

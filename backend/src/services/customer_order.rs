@@ -106,10 +106,10 @@ async fn validate(
         }
         let verified: Option<String> = user.get("verified_name");
         let normalized = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
-        if verified
-            .as_deref()
-            .is_none_or(|s| normalized(s).is_empty() || normalized(s) != normalized(&name))
-        {
+        if verified.as_deref().is_none_or(|s| {
+            normalized(s).is_empty()
+                || normalized(s).to_lowercase() != normalized(&name).to_lowercase()
+        }) {
             return Err(AppError::Conflict("KYC_REVERIFICATION_REQUIRED".into()));
         }
         if phone.trim().is_empty() {

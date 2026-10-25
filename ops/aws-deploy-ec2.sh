@@ -299,6 +299,26 @@ META_GRAPH_API_VERSION="$(printf '%s' "$APP_JSON" | jq -r '.META_GRAPH_API_VERSI
 PLAY_SIGNING_SHA256="$(printf '%s' "$APP_JSON" | jq -r '.PLAY_SIGNING_SHA256 // empty')"
 PLAY_REVIEW_ACCESS_CODE="$(printf '%s' "$APP_JSON" | jq -r '.PLAY_REVIEW_ACCESS_CODE // empty')"
 GOOGLE_PLACES_API_KEY="$(printf '%s' "$APP_JSON" | jq -r '.GOOGLE_PLACES_API_KEY // empty')"
+# KYC credentials are installed only on explicit Sandbox activation; default OFF.
+TRACKMYRMC_KYC_ENABLED="$(printf '%s' "$APP_JSON" | jq -r '.TRACKMYRMC_KYC_ENABLED // "false" | tostring')"
+TRACKMYRMC_KYC_ENV="$(printf '%s' "$APP_JSON" | jq -r '.TRACKMYRMC_KYC_ENV // "disabled"')"
+KYC_API_KEY=''
+KYC_API_SECRET=''
+if [[ "$TRACKMYRMC_KYC_ENABLED" != 'false' && "$TRACKMYRMC_KYC_ENABLED" != 'true' ]]; then
+  echo 'Invalid TRACKMYRMC_KYC_ENABLED: expected true or false' >&2
+  exit 1
+fi
+if [[ "$TRACKMYRMC_KYC_ENABLED" == 'true' ]]; then
+  [[ "$TRACKMYRMC_KYC_ENV" == 'sandbox' ]] || { echo 'KYC activation requires the sandbox environment' >&2; exit 1; }
+  KYC_API_KEY="$(printf '%s' "$APP_JSON" | jq -r '.SANDBOX_KYC_API_KEY // .KYC_API_KEY // empty')"
+  KYC_API_SECRET="$(printf '%s' "$APP_JSON" | jq -r '.SANDBOX_KYC_API_SECRET // .KYC_API_SECRET // empty')"
+  KYC_REDIRECT="$(printf '%s' "$APP_JSON" | jq -r '.KYC_REDIRECT_URL // empty')"
+  [[ "$KYC_REDIRECT" == 'https://trackmyrmc.com/kyc/return' ]] || { echo 'Invalid registered KYC redirect URL' >&2; exit 1; }
+  [[ -n "$KYC_API_KEY" && -n "$KYC_API_SECRET" ]] || { echo 'Missing KYC credentials' >&2; exit 1; }
+  for value in "$KYC_API_KEY" "$KYC_API_SECRET"; do
+    [[ "$value" =~ ^[A-Za-z0-9_./+=:@-]+$ ]] || { echo 'KYC credential has invalid encoding' >&2; exit 1; }
+  done
+fi
 
 
 aws s3 cp "s3://$BUCKET/backend-$RELEASE_SHA" "/opt/trackmyrmc/releases/backend-$RELEASE_SHA"
@@ -406,6 +426,10 @@ META_GRAPH_API_VERSION=$META_GRAPH_API_VERSION
 PLAY_SIGNING_SHA256=$PLAY_SIGNING_SHA256
 PLAY_REVIEW_ACCESS_CODE=$PLAY_REVIEW_ACCESS_CODE
 GOOGLE_PLACES_API_KEY=$GOOGLE_PLACES_API_KEY
+TRACKMYRMC_KYC_ENABLED=$TRACKMYRMC_KYC_ENABLED
+TRACKMYRMC_KYC_ENV=$TRACKMYRMC_KYC_ENV
+KYC_API_KEY=$KYC_API_KEY
+KYC_API_SECRET=$KYC_API_SECRET
 EMAIL_API_KEY=$EMAIL_KEY
 EMAIL_FROM_ADDRESS=$EMAIL_FROM
 EOF
