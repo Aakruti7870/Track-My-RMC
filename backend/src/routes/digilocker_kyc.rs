@@ -1,6 +1,10 @@
 //! Sandbox.co.in DigiLocker integration. Test environment only and disabled by default.
 //! Callback is a browser trampoline, never an identity-verification source of truth.
-use crate::{auth::{middleware::check_role, AuthUser}, error::AppError, state::AppState};
+use crate::{
+    auth::{middleware::check_role, AuthUser},
+    error::AppError,
+    state::AppState,
+};
 use axum::{extract::State, Json};
 use chrono::{Duration, Utc};
 use reqwest::{header, Client};
@@ -22,64 +26,100 @@ impl Provider {
     fn enabled() -> Result<Self, AppError> {
         // Production environment alone never turns on this integration.
         if env::var("TRACKMYRMC_KYC_ENABLED").as_deref() != Ok("true")
-            || env::var("TRACKMYRMC_KYC_ENV").as_deref() != Ok("sandbox") {
+            || env::var("TRACKMYRMC_KYC_ENV").as_deref() != Ok("sandbox")
+        {
             return Err(AppError::Conflict("DigiLocker KYC is not enabled".into()));
         }
         let api_key = env::var("SANDBOX_KYC_API_KEY").unwrap_or_default();
         let api_secret = env::var("SANDBOX_KYC_API_SECRET").unwrap_or_default();
         if api_key.trim().is_empty() || api_secret.trim().is_empty() {
-            return Err(AppError::Conflict("DigiLocker KYC is not configured".into()));
+            return Err(AppError::Conflict(
+                "DigiLocker KYC is not configured".into(),
+            ));
         }
         let client = Client::builder()
             .timeout(StdDuration::from_secs(12))
             .redirect(reqwest::redirect::Policy::none())
-            .build().map_err(|_| AppError::InternalError("KYC HTTP client unavailable".into()))?;
-        Ok(Self { client, api_key, api_secret })
+            .build()
+            .map_err(|_| AppError::InternalError("KYC HTTP client unavailable".into()))?;
+        Ok(Self {
+            client,
+            api_key,
+            api_secret,
+        })
     }
     async fn read(response: reqwest::Response) -> Result<Value, AppError> {
         if !response.status().is_success() {
-            return Err(AppError::Conflict("DigiLocker provider request failed".into()));
+            return Err(AppError::Conflict(
+                "DigiLocker provider request failed".into(),
+            ));
         }
-        if response.content_length().is_some_and(|n| n > MAX_PROVIDER_BODY as u64) {
-            return Err(AppError::Conflict("Invalid DigiLocker provider response".into()));
+        if response
+            .content_length()
+            .is_some_and(|n| n > MAX_PROVIDER_BODY as u64)
+        {
+            return Err(AppError::Conflict(
+                "Invalid DigiLocker provider response".into(),
+            ));
         }
-        let bytes = response.bytes().await
+        let bytes = response
+            .bytes()
+            .await
             .map_err(|_| AppError::Conflict("DigiLocker provider unavailable".into()))?;
         if bytes.len() > MAX_PROVIDER_BODY {
-            return Err(AppError::Conflict("Invalid DigiLocker provider response".into()));
+            return Err(AppError::Conflict(
+                "Invalid DigiLocker provider response".into(),
+            ));
         }
         let body: Value = serde_json::from_slice(&bytes)
             .map_err(|_| AppError::Conflict("Invalid DigiLocker provider response".into()))?;
-        if body.get("code").and_then(Value::as_i64) != Some(200) || !body.get("data").is_some_and(Value::is_object) {
-            return Err(AppError::Conflict("DigiLocker provider returned an error".into()));
+        if body.get("code").and_then(Value::as_i64) != Some(200)
+            || !body.get("data").is_some_and(Value::is_object)
+        {
+            return Err(AppError::Conflict(
+                "DigiLocker provider returned an error".into(),
+            ));
         }
         Ok(body)
     }
     async fn access_token(&self) -> Result<String, AppError> {
-        let res = self.client.post(format!("{SANDBOX_HOST}/authenticate"))
+        let res = self
+            .client
+            .post(format!("{SANDBOX_HOST}/authenticate"))
             .header("x-api-key", &self.api_key)
             .header("x-api-secret", &self.api_secret)
-            .send().await.map_err(|_| AppError::Conflict("DigiLocker authentication unavailable".into()))?;
+            .send()
+            .await
+            .map_err(|_| AppError::Conflict("DigiLocker authentication unavailable".into()))?;
         let body = Self::read(res).await?;
-        body.pointer("/data/access_token").and_then(Value::as_str)
+        body.pointer("/data/access_token")
+            .and_then(Value::as_str)
             .filter(|v| !v.is_empty() && v.len() < 8192)
             .map(str::to_owned)
             .ok_or_else(|| AppError::Conflict("DigiLocker authentication failed".into()))
     }
     async fn post(&self, token: &str, path: &str, payload: Value) -> Result<Value, AppError> {
-        let res = self.client.post(format!("{SANDBOX_HOST}{path}"))
+        let res = self
+            .client
+            .post(format!("{SANDBOX_HOST}{path}"))
             .header("Authorization", token)
             .header("x-api-key", &self.api_key)
             .header(header::CONTENT_TYPE, "application/json")
-            .json(&payload).send().await
+            .json(&payload)
+            .send()
+            .await
             .map_err(|_| AppError::Conflict("DigiLocker provider unavailable".into()))?;
         Self::read(res).await
     }
     async fn get(&self, token: &str, path: &str) -> Result<Value, AppError> {
-        let res = self.client.get(format!("{SANDBOX_HOST}{path}"))
+        let res = self
+            .client
+            .get(format!("{SANDBOX_HOST}{path}"))
             .header("Authorization", token)
             .header("x-api-key", &self.api_key)
-            .send().await.map_err(|_| AppError::Conflict("DigiLocker provider unavailable".into()))?;
+            .send()
+            .await
+            .map_err(|_| AppError::Conflict("DigiLocker provider unavailable".into()))?;
         Self::read(res).await
     }
 }
@@ -109,13 +149,20 @@ fn session_status(status: &str) -> &'static str {
     }
 }
 fn comparable_name(name: &str) -> String {
-    name.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
+    name.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
 }
 fn normalized_mobile(raw: &str) -> Option<String> {
     let digits: String = raw.chars().filter(|c| c.is_ascii_digit()).collect();
-    if digits.len() == 10 { Some(digits) }
-    else if digits.len() == 12 && digits.starts_with("91") { Some(digits[2..].to_string()) }
-    else { None }
+    if digits.len() == 10 {
+        Some(digits)
+    } else if digits.len() == 12 && digits.starts_with("91") {
+        Some(digits[2..].to_string())
+    } else {
+        None
+    }
 }
 fn profile_matches(account_name: &str, account_phone: &str, data: &Value) -> bool {
     // A DigiLocker profile must explicitly attest Aadhaar presence and match THIS customer.
@@ -131,12 +178,13 @@ fn provider_completed(s: &str) -> bool {
     matches!(s, "consented" | "completed" | "success")
 }
 fn provider_rejected(s: &str) -> bool {
-    matches!(s, "cancelled" | "canceled" | "failed" | "expired" | "rejected" | "denied")
+    matches!(
+        s,
+        "cancelled" | "canceled" | "failed" | "expired" | "rejected" | "denied"
+    )
 }
 
-pub async fn start(
-    State(state): State<AppState>, user: AuthUser,
-) -> Result<Json<Value>, AppError> {
+pub async fn start(State(state): State<AppState>, user: AuthUser) -> Result<Json<Value>, AppError> {
     check_role(&user, &["customer"])?;
     let provider = Provider::enabled()?;
     let mut tx = state.db.begin().await?;
@@ -145,56 +193,87 @@ pub async fn start(
          FROM users u JOIN user_profiles p ON p.user_id=u.id WHERE u.id=$1 FOR UPDATE OF p"
     ).bind(user.user_id).fetch_optional(&mut *tx).await?
         .ok_or_else(|| AppError::NotFound("Customer profile not found".into()))?;
-    if !account.get::<bool,_>("is_active") {
+    if !account.get::<bool, _>("is_active") {
         return Err(AppError::Forbidden("Inactive customer".into()));
     }
-    if display_status(&account.get::<String,_>("kyc_status")) == "VERIFIED" {
-        return Err(AppError::Conflict("Customer KYC is already verified".into()));
+    if display_status(&account.get::<String, _>("kyc_status")) == "VERIFIED" {
+        return Err(AppError::Conflict(
+            "Customer KYC is already verified".into(),
+        ));
     }
     // Enforce one active attempt at a time, with a minimum retry interval.
     let active = sqlx::query(
         "SELECT id,created_at FROM customer_digilocker_sessions
-         WHERE user_id=$1 AND status IN ('STARTING','IN_PROGRESS') FOR UPDATE"
-    ).bind(user.user_id).fetch_optional(&mut *tx).await?;
+         WHERE user_id=$1 AND status IN ('STARTING','IN_PROGRESS') FOR UPDATE",
+    )
+    .bind(user.user_id)
+    .fetch_optional(&mut *tx)
+    .await?;
     if let Some(row) = active {
         let created: chrono::DateTime<Utc> = row.get("created_at");
         if Utc::now() - created < Duration::seconds(65) {
-            return Err(AppError::RateLimited("Please wait before restarting DigiLocker".into()));
+            return Err(AppError::RateLimited(
+                "Please wait before restarting DigiLocker".into(),
+            ));
         }
         let id: Uuid = row.get("id");
-        sqlx::query("UPDATE customer_digilocker_sessions SET status='EXPIRED',updated_at=NOW() WHERE id=$1")
-            .bind(id).execute(&mut *tx).await?;
+        sqlx::query(
+            "UPDATE customer_digilocker_sessions SET status='EXPIRED',updated_at=NOW() WHERE id=$1",
+        )
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
     }
     let id: Uuid = sqlx::query_scalar(
-        "INSERT INTO customer_digilocker_sessions(user_id) VALUES($1) RETURNING id"
-    ).bind(user.user_id).fetch_one(&mut *tx).await?;
+        "INSERT INTO customer_digilocker_sessions(user_id) VALUES($1) RETURNING id",
+    )
+    .bind(user.user_id)
+    .fetch_one(&mut *tx)
+    .await?;
     tx.commit().await?;
 
     let initiate = async {
         let token = provider.access_token().await?;
-        let body = provider.post(&token, "/kyc/digilocker/sessions/init", json!({
-            "@entity":"in.co.sandbox.kyc.digilocker.session.request",
-            "flow":"signin", "redirect_url":REDIRECT_URL,
-            "doc_types":["aadhaar"],"purpose":"TrackMyRMC Customer Verification",
-            "requestor_name":"TrackMyRMC"
-        })).await?;
+        let body = provider
+            .post(
+                &token,
+                "/kyc/digilocker/sessions/init",
+                json!({
+                    "@entity":"in.co.sandbox.kyc.digilocker.session.request",
+                    "flow":"signin", "redirect_url":REDIRECT_URL,
+                    "doc_types":["aadhaar"],"purpose":"TrackMyRMC Customer Verification",
+                    "requestor_name":"TrackMyRMC"
+                }),
+            )
+            .await?;
         let data = &body["data"];
-        let session_id: Uuid = data.get("session_id").and_then(Value::as_str)
+        let session_id: Uuid = data
+            .get("session_id")
+            .and_then(Value::as_str)
             .and_then(|s| Uuid::parse_str(s).ok())
             .ok_or_else(|| AppError::Conflict("Invalid DigiLocker session".into()))?;
-        let url = data.get("authorization_url").and_then(Value::as_str)
+        let url = data
+            .get("authorization_url")
+            .and_then(Value::as_str)
             .filter(|s| safe_authorization_url(s))
             .ok_or_else(|| AppError::Conflict("Invalid DigiLocker authorization link".into()))?;
-        Ok::<(Uuid,String),AppError>((session_id,url.to_string()))
-    }.await;
+        Ok::<(Uuid, String), AppError>((session_id, url.to_string()))
+    }
+    .await;
     match initiate {
         Ok((session_id, url)) => {
             sqlx::query(
                 "UPDATE customer_digilocker_sessions SET status='IN_PROGRESS',
-                 provider_session_id=$2,updated_at=NOW() WHERE id=$1 AND status='STARTING'"
-            ).bind(id).bind(session_id).execute(&state.db).await?;
-            Ok(Json(json!({"status":"IN_PROGRESS","provider":"sandbox_digilocker",
-                           "authorization_url":url})))
+                 provider_session_id=$2,updated_at=NOW() WHERE id=$1 AND status='STARTING'",
+            )
+            .bind(id)
+            .bind(session_id)
+            .execute(&state.db)
+            .await?;
+            Ok(Json(
+                json!({"status":"IN_PROGRESS","provider":"sandbox_digilocker",
+                           "authorization_url":url}),
+            ))
         }
         Err(err) => {
             sqlx::query("UPDATE customer_digilocker_sessions SET status='FAILED',updated_at=NOW() WHERE id=$1")
@@ -205,45 +284,71 @@ pub async fn start(
 }
 
 pub async fn status(
-    State(state): State<AppState>, user: AuthUser,
+    State(state): State<AppState>,
+    user: AuthUser,
 ) -> Result<Json<Value>, AppError> {
     check_role(&user, &["customer"])?;
     let account = sqlx::query(
         "SELECT u.full_name,u.phone,coalesce(p.kyc_status,'unverified') AS kyc_status
-         FROM users u LEFT JOIN user_profiles p ON p.user_id=u.id WHERE u.id=$1"
-    ).bind(user.user_id).fetch_one(&state.db).await?;
+         FROM users u LEFT JOIN user_profiles p ON p.user_id=u.id WHERE u.id=$1",
+    )
+    .bind(user.user_id)
+    .fetch_one(&state.db)
+    .await?;
     let kyc: String = account.get("kyc_status");
     // Approved status always comes from the database, never callback query parameters.
     if display_status(&kyc) == "VERIFIED" {
-        return Ok(Json(json!({"status":"VERIFIED","provider":"sandbox_digilocker"})));
+        return Ok(Json(
+            json!({"status":"VERIFIED","provider":"sandbox_digilocker"}),
+        ));
     }
     let latest = sqlx::query(
         "SELECT id,provider_session_id,status,expires_at
-         FROM customer_digilocker_sessions WHERE user_id=$1 ORDER BY created_at DESC LIMIT 1"
-    ).bind(user.user_id).fetch_optional(&state.db).await?;
+         FROM customer_digilocker_sessions WHERE user_id=$1 ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(user.user_id)
+    .fetch_optional(&state.db)
+    .await?;
     let Some(latest) = latest else {
-        return Ok(Json(json!({"status":display_status(&kyc),"provider":"sandbox_digilocker"})));
+        return Ok(Json(
+            json!({"status":display_status(&kyc),"provider":"sandbox_digilocker"}),
+        ));
     };
     let id: Uuid = latest.get("id");
     let previous: String = latest.get("status");
     if previous != "IN_PROGRESS" {
-        let status = if display_status(&kyc)=="PENDING" {"PENDING"}
-                     else if previous=="PENDING" {"NOT_STARTED"} else {session_status(&previous)};
-        return Ok(Json(json!({"status":status,"provider":"sandbox_digilocker"})));
+        let status = if display_status(&kyc) == "PENDING" {
+            "PENDING"
+        } else if previous == "PENDING" {
+            "NOT_STARTED"
+        } else {
+            session_status(&previous)
+        };
+        return Ok(Json(
+            json!({"status":status,"provider":"sandbox_digilocker"}),
+        ));
     }
     let expiry: chrono::DateTime<Utc> = latest.get("expires_at");
     if Utc::now() > expiry {
         sqlx::query("UPDATE customer_digilocker_sessions SET status='EXPIRED',updated_at=NOW() WHERE id=$1 AND status='IN_PROGRESS'")
             .bind(id).execute(&state.db).await?;
-        return Ok(Json(json!({"status":"REQUIRES_REVERIFICATION","provider":"sandbox_digilocker"})));
+        return Ok(Json(
+            json!({"status":"REQUIRES_REVERIFICATION","provider":"sandbox_digilocker"}),
+        ));
     }
     // If configuration is unavailable, preserve the last known state; do not fake success.
     let provider = match Provider::enabled() {
         Ok(p) => p,
-        Err(_) => return Ok(Json(json!({"status":"IN_PROGRESS","provider":"sandbox_digilocker","refresh_failed":true}))),
+        Err(_) => {
+            return Ok(Json(
+                json!({"status":"IN_PROGRESS","provider":"sandbox_digilocker","refresh_failed":true}),
+            ))
+        }
     };
-    let Some(provider_id) = latest.get::<Option<Uuid>,_>("provider_session_id") else {
-        return Ok(Json(json!({"status":"IN_PROGRESS","provider":"sandbox_digilocker","refresh_failed":true})));
+    let Some(provider_id) = latest.get::<Option<Uuid>, _>("provider_session_id") else {
+        return Ok(Json(
+            json!({"status":"IN_PROGRESS","provider":"sandbox_digilocker","refresh_failed":true}),
+        ));
     };
     let refresh = async {
         let token = provider.access_token().await?;
@@ -288,8 +393,12 @@ pub async fn status(
         Ok("PENDING")
     }.await;
     match refresh {
-        Ok(status) => Ok(Json(json!({"status":status,"provider":"sandbox_digilocker"}))),
-        Err(_) => Ok(Json(json!({"status":"IN_PROGRESS","provider":"sandbox_digilocker","refresh_failed":true}))),
+        Ok(status) => Ok(Json(
+            json!({"status":status,"provider":"sandbox_digilocker"}),
+        )),
+        Err(_) => Ok(Json(
+            json!({"status":"IN_PROGRESS","provider":"sandbox_digilocker","refresh_failed":true}),
+        )),
     }
 }
 #[cfg(test)]
@@ -297,15 +406,33 @@ mod tests {
     use super::*;
     #[test]
     fn contract_normalization_and_strict_identity_match() {
-        assert_eq!(display_status("verified"),"VERIFIED");
-        assert_eq!(display_status("unverified"),"NOT_STARTED");
-        assert_eq!(session_status("IN_PROGRESS"),"IN_PROGRESS");
+        assert_eq!(display_status("verified"), "VERIFIED");
+        assert_eq!(display_status("unverified"), "NOT_STARTED");
+        assert_eq!(session_status("IN_PROGRESS"), "IN_PROGRESS");
         assert!(!safe_authorization_url("https://evil.example/kyc"));
-        assert!(safe_authorization_url("https://digilocker.meripehchaan.gov.in/public/oauth2/1/authorize"));
-        assert!(profile_matches("Ramesh Kumar","+919876543210",&json!({"name":"Ramesh   Kumar","mobile":"9876543210","eaadhaar":true})));
-        assert!(!profile_matches("Ramesh Kumar","9876543210",&json!({"name":"Another Person","mobile":"9876543210","eaadhaar":true})));
-        assert!(!profile_matches("Ramesh Kumar","9876543210",&json!({"name":"Ramesh Kumar","mobile":"0000000000","eaadhaar":true})));
-        assert!(!profile_matches("Ramesh Kumar","9876543210",&json!({"name":"Ramesh Kumar","mobile":"9876543210","eaadhaar":false})));
+        assert!(safe_authorization_url(
+            "https://digilocker.meripehchaan.gov.in/public/oauth2/1/authorize"
+        ));
+        assert!(profile_matches(
+            "Ramesh Kumar",
+            "+919876543210",
+            &json!({"name":"Ramesh   Kumar","mobile":"9876543210","eaadhaar":true})
+        ));
+        assert!(!profile_matches(
+            "Ramesh Kumar",
+            "9876543210",
+            &json!({"name":"Another Person","mobile":"9876543210","eaadhaar":true})
+        ));
+        assert!(!profile_matches(
+            "Ramesh Kumar",
+            "9876543210",
+            &json!({"name":"Ramesh Kumar","mobile":"0000000000","eaadhaar":true})
+        ));
+        assert!(!profile_matches(
+            "Ramesh Kumar",
+            "9876543210",
+            &json!({"name":"Ramesh Kumar","mobile":"9876543210","eaadhaar":false})
+        ));
         assert!(!provider_completed("created"));
         assert!(!provider_completed("pending"));
     }
