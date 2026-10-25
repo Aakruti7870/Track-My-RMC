@@ -317,8 +317,10 @@ pub async fn status(
     let id: Uuid = latest.get("id");
     let previous: String = latest.get("status");
     if previous != "IN_PROGRESS" {
-        let status = if display_status(&kyc) == "PENDING" {
-            "PENDING"
+        // Authority rejection/reset takes precedence over a former consent session.
+        let profile_state = display_status(&kyc);
+        let status = if profile_state != "NOT_STARTED" {
+            profile_state
         } else if previous == "PENDING" {
             "NOT_STARTED"
         } else {
