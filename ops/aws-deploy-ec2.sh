@@ -317,7 +317,10 @@ if [[ "$TRACKMYRMC_KYC_ENABLED" == 'true' ]]; then
   [[ "$REDIRECT" == 'https://trackmyrmc.com/kyc/return' ]] || { echo 'Unapproved KYC redirect URL' >&2; exit 1; }
   [[ -n "$KYC_API_KEY" && -n "$KYC_API_SECRET" ]] || { echo 'Missing server-side KYC credentials' >&2; exit 1; }
   for value in "$KYC_API_KEY" "$KYC_API_SECRET"; do
-    [[ ${#value} -le 4096 && "$value" != *
+    [[ ${#value} -le 4096 ]] || { echo 'KYC credential exceeds maximum length' >&2; exit 1; }
+    [[ "$value" =~ ^[A-Za-z0-9_./+=:@-]+$ ]] || { echo 'Invalid KYC credential encoding' >&2; exit 1; }
+  done
+fi
 
 aws s3 cp "s3://$BUCKET/backend-$RELEASE_SHA" "/opt/trackmyrmc/releases/backend-$RELEASE_SHA"
 aws s3 cp "s3://$BUCKET/frontend-$RELEASE_SHA.tgz" "$DEPLOY_CACHE_DIR/frontend-$RELEASE_SHA.tgz"
