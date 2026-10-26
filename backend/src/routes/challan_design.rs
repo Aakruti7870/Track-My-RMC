@@ -1,6 +1,9 @@
 //! Secure, plant-scoped challan design; no changes to historical dispatch records.
 use crate::{auth::AuthUser, error::AppError, state::AppState};
-use axum::{extract::{Path, State}, Json};
+use axum::{
+    extract::{Path, State},
+    Json,
+};
 use base64::Engine;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -28,36 +31,45 @@ fn valid_color(s: &str) -> bool {
     s.len() == 7 && s.starts_with('#') && s[1..].bytes().all(|c| c.is_ascii_hexdigit())
 }
 fn valid_logo(s: &str) -> bool {
-    if s.len() > 500_000 { return false; }
+    if s.len() > 500_000 {
+        return false;
+    }
     let variants = [
         ("data:image/png;base64,", "png"),
         ("data:image/jpeg;base64,", "jpeg"),
         ("data:image/webp;base64,", "webp"),
     ];
-    let Some((prefix, kind)) = variants.iter().find(|(prefix,_)| s.starts_with(prefix)) else {
+    let Some((prefix, kind)) = variants.iter().find(|(prefix, _)| s.starts_with(prefix)) else {
         return false;
     };
     let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(&s[prefix.len()..]) else {
         return false;
     };
-    if bytes.is_empty() || bytes.len() > 350_000 { return false; }
+    if bytes.is_empty() || bytes.len() > 350_000 {
+        return false;
+    }
     match *kind {
         "png" => bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
-        "jpeg" => bytes.starts_with(&[0xFF,0xD8,0xFF]),
+        "jpeg" => bytes.starts_with(&[0xFF, 0xD8, 0xFF]),
         "webp" => bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP",
         _ => false,
     }
 }
 fn validate(d: &DesignInput) -> Result<(), AppError> {
-    if d.expected_version < 0 || d.title.trim().is_empty() || d.title.len() > 100
-        || d.header_note.len() > 140 || d.footer_note.len() > 200
+    if d.expected_version < 0
+        || d.title.trim().is_empty()
+        || d.title.len() > 100
+        || d.header_note.len() > 140
+        || d.footer_note.len() > 200
         || !valid_color(&d.accent_color)
         || d.title.chars().any(char::is_control)
         || d.header_note.chars().any(char::is_control)
         || d.footer_note.chars().any(char::is_control)
         || d.logo_data_uri.as_deref().is_some_and(|s| !valid_logo(s))
     {
-        return Err(AppError::BadRequest("Invalid challan design fields or logo (PNG/JPEG/WebP, max 350 KB)".into()));
+        return Err(AppError::BadRequest(
+            "Invalid challan design fields or logo (PNG/JPEG/WebP, max 350 KB)".into(),
+        ));
     }
     Ok(())
 }
@@ -67,18 +79,26 @@ fn may_design_role(role: &str) -> bool {
 }
 async fn require_manage(db: &PgPool, user: &AuthUser, plant_id: Uuid) -> Result<(), AppError> {
     if !may_design_role(&user.role) {
-        return Err(AppError::Forbidden("Only a plant owner or assigned plant manager can design challans".into()));
+        return Err(AppError::Forbidden(
+            "Only a plant owner or assigned plant manager can design challans".into(),
+        ));
     }
     let permitted: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM rmc_plants p
            WHERE p.id=$1 AND p.is_active=TRUE AND
            (p.owner_id=$2 OR ($3='admin' AND EXISTS(
                 SELECT 1 FROM plant_staff ps WHERE ps.plant_id=p.id
-                AND ps.user_id=$2 AND ps.is_active=TRUE))))"
-    ).bind(plant_id).bind(user.user_id).bind(&user.role)
-    .fetch_one(db).await?;
+                AND ps.user_id=$2 AND ps.is_active=TRUE))))",
+    )
+    .bind(plant_id)
+    .bind(user.user_id)
+    .bind(&user.role)
+    .fetch_one(db)
+    .await?;
     if !permitted {
-        return Err(AppError::Forbidden("This plant is not assigned to your account".into()));
+        return Err(AppError::Forbidden(
+            "This plant is not assigned to your account".into(),
+        ));
     }
     Ok(())
 }
@@ -87,8 +107,11 @@ async fn resolve_design(db: &PgPool, plant_id: Uuid) -> Result<Value, AppError> 
     let record = sqlx::query(
         "SELECT title, accent_color, header_note, footer_note, logo_data_uri,
                 show_po, show_slump, show_batch, version
-         FROM plant_challan_templates WHERE plant_id=$1"
-    ).bind(plant_id).fetch_optional(db).await?;
+         FROM plant_challan_templates WHERE plant_id=$1",
+    )
+    .bind(plant_id)
+    .fetch_optional(db)
+    .await?;
     Ok(if let Some(r) = record {
         json!({
             "is_custom":true, "version":r.get::<i32,_>("version"),
@@ -115,13 +138,18 @@ async fn get_plant(db: &PgPool, plant_id: Uuid) -> Result<Value, AppError> {
     let plant: Option<Value> = sqlx::query_scalar(
         "SELECT jsonb_build_object('id', id, 'name', name,
              'address', address_line, 'city', city, 'state', state,
-             'phone', contact_phone) FROM rmc_plants WHERE id=$1 AND is_active=TRUE"
-    ).bind(plant_id).fetch_optional(db).await?;
+             'phone', contact_phone) FROM rmc_plants WHERE id=$1 AND is_active=TRUE",
+    )
+    .bind(plant_id)
+    .fetch_optional(db)
+    .await?;
     plant.ok_or_else(|| AppError::NotFound("Plant not found".into()))
 }
 
 pub async fn get(
-    State(state): State<AppState>, auth: AuthUser, Path(plant_id): Path<Uuid>,
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(plant_id): Path<Uuid>,
 ) -> Result<Json<Value>, AppError> {
     require_manage(&state.db, &auth, plant_id).await?;
     Ok(Json(json!({
@@ -132,8 +160,10 @@ pub async fn get(
     })))
 }
 pub async fn save(
-    State(state): State<AppState>, auth: AuthUser,
-    Path(plant_id): Path<Uuid>, Json(input): Json<DesignInput>,
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(plant_id): Path<Uuid>,
+    Json(input): Json<DesignInput>,
 ) -> Result<Json<Value>, AppError> {
     require_manage(&state.db, &auth, plant_id).await?;
     validate(&input)?;
@@ -152,42 +182,72 @@ pub async fn save(
            version=plant_challan_templates.version+1,
            updated_by=EXCLUDED.updated_by,updated_at=NOW()
          WHERE plant_challan_templates.version=$11
-         RETURNING version"
-    ).bind(plant_id).bind(input.title.trim()).bind(&input.accent_color)
-    .bind(input.header_note.trim()).bind(input.footer_note.trim())
-    .bind(&input.logo_data_uri).bind(input.show_po).bind(input.show_slump)
-    .bind(input.show_batch).bind(auth.user_id).bind(input.expected_version)
-    .fetch_optional(&mut *tx).await?;
-    let version = updated.ok_or_else(|| AppError::Conflict("Challan design changed. Reload before saving.".into()))?;
+         RETURNING version",
+    )
+    .bind(plant_id)
+    .bind(input.title.trim())
+    .bind(&input.accent_color)
+    .bind(input.header_note.trim())
+    .bind(input.footer_note.trim())
+    .bind(&input.logo_data_uri)
+    .bind(input.show_po)
+    .bind(input.show_slump)
+    .bind(input.show_batch)
+    .bind(auth.user_id)
+    .bind(input.expected_version)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let version = updated.ok_or_else(|| {
+        AppError::Conflict("Challan design changed. Reload before saving.".into())
+    })?;
     // Initial insert must require expected_version=0 too.
     if version == 1 && input.expected_version != 0 {
-        return Err(AppError::Conflict("Challan design changed. Reload before saving.".into()));
+        return Err(AppError::Conflict(
+            "Challan design changed. Reload before saving.".into(),
+        ));
     }
     sqlx::query(
         "INSERT INTO plant_challan_template_audit
          (plant_id,actor_id,action,previous_version,new_version)
-         VALUES ($1,$2,'save',$3,$4)"
-    ).bind(plant_id).bind(auth.user_id)
-    .bind(if input.expected_version == 0 {None} else {Some(input.expected_version)})
-    .bind(version).execute(&mut *tx).await?;
+         VALUES ($1,$2,'save',$3,$4)",
+    )
+    .bind(plant_id)
+    .bind(auth.user_id)
+    .bind(if input.expected_version == 0 {
+        None
+    } else {
+        Some(input.expected_version)
+    })
+    .bind(version)
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
     Ok(Json(json!({"success":true,"version":version})))
 }
 pub async fn reset(
-    State(state): State<AppState>, auth: AuthUser, Path(plant_id): Path<Uuid>,
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(plant_id): Path<Uuid>,
 ) -> Result<Json<Value>, AppError> {
     require_manage(&state.db, &auth, plant_id).await?;
-    let mut tx=state.db.begin().await?;
-    let old:Option<i32>=sqlx::query_scalar(
-        "DELETE FROM plant_challan_templates WHERE plant_id=$1 RETURNING version"
-    ).bind(plant_id).fetch_optional(&mut *tx).await?;
-    if let Some(version)=old {
+    let mut tx = state.db.begin().await?;
+    let old: Option<i32> = sqlx::query_scalar(
+        "DELETE FROM plant_challan_templates WHERE plant_id=$1 RETURNING version",
+    )
+    .bind(plant_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if let Some(version) = old {
         sqlx::query(
             "INSERT INTO plant_challan_template_audit
              (plant_id,actor_id,action,previous_version,new_version)
-             VALUES($1,$2,'reset',$3,NULL)"
-        ).bind(plant_id).bind(auth.user_id).bind(version)
-        .execute(&mut *tx).await?;
+             VALUES($1,$2,'reset',$3,NULL)",
+        )
+        .bind(plant_id)
+        .bind(auth.user_id)
+        .bind(version)
+        .execute(&mut *tx)
+        .await?;
     }
     tx.commit().await?;
     Ok(Json(json!({"success":true,"design":"default"})))
@@ -196,17 +256,22 @@ pub async fn reset(
 /// A real delivery-print payload. Never accept manually supplied customer, quantity,
 /// grade, load, or vehicle data from a template designer.
 pub async fn order_print(
-    State(state): State<AppState>, auth: AuthUser, Path(order_id): Path<Uuid>,
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(order_id): Path<Uuid>,
 ) -> Result<Json<Value>, AppError> {
-    let r=sqlx::query(
+    let r = sqlx::query(
         "SELECT o.customer_id, o.plant_id, p.owner_id
          FROM orders o JOIN rmc_plants p ON p.id=o.plant_id
-         WHERE o.id=$1"
-    ).bind(order_id).fetch_optional(&state.db).await?
+         WHERE o.id=$1",
+    )
+    .bind(order_id)
+    .fetch_optional(&state.db)
+    .await?
     .ok_or_else(|| AppError::NotFound("Order not found".into()))?;
-    let customer_id:Uuid=r.get("customer_id");
-    let plant_id:Uuid=r.get("plant_id");
-    let owner_id:Uuid=r.get("owner_id");
+    let customer_id: Uuid = r.get("customer_id");
+    let plant_id: Uuid = r.get("plant_id");
+    let owner_id: Uuid = r.get("owner_id");
     if customer_id != auth.user_id && owner_id != auth.user_id {
         let assigned:bool=sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM plant_staff WHERE plant_id=$1 AND user_id=$2 AND is_active=TRUE)"
@@ -215,7 +280,7 @@ pub async fn order_print(
             return Err(AppError::Forbidden("Not authorized for this order".into()));
         }
     }
-    let challans:Vec<Value>=sqlx::query_scalar(
+    let challans: Vec<Value> = sqlx::query_scalar(
         "SELECT jsonb_build_object(
           'id',c.id,'challan_number',c.challan_number,'order_number',o.order_number,
           'load_number',l.load_number,'customer_name',c.customer_name,
@@ -227,10 +292,15 @@ pub async fn order_print(
          FROM challans c JOIN order_loads l ON l.id=c.load_id
          JOIN orders o ON o.id=l.order_id
          LEFT JOIN customer_sites s ON s.id=o.site_id
-         WHERE l.order_id=$1 ORDER BY l.load_number ASC"
-    ).bind(order_id).fetch_all(&state.db).await?;
+         WHERE l.order_id=$1 ORDER BY l.load_number ASC",
+    )
+    .bind(order_id)
+    .fetch_all(&state.db)
+    .await?;
     if challans.is_empty() {
-        return Err(AppError::NotFound("No issued delivery challans for this order".into()));
+        return Err(AppError::NotFound(
+            "No issued delivery challans for this order".into(),
+        ));
     }
     Ok(Json(json!({
         "plant":get_plant(&state.db,plant_id).await?,
