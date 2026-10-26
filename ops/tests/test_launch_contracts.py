@@ -2,6 +2,8 @@
 from pathlib import Path
 import subprocess
 import unittest
+import json
+import re
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -47,6 +49,16 @@ class LaunchContracts(unittest.TestCase):
         self.assertIn("EXPECTED_PLAY_UPLOAD_SHA1", workflow)
         self.assertNotIn("pull_request:", workflow)
         self.assertIn("com.trackmyrmc.concreteking", workflow)
+
+    def test_android_version_and_package_match_signed_candidate(self):
+        app = json.loads(self.read("frontend/app.json"))["expo"]
+        workflow = self.read(".github/workflows/android-build.yml")
+        self.assertEqual(app["android"]["package"], "com.trackmyrmc.concreteking")
+        self.assertIn(f'VERSION_NAME: "{app["version"]}"', workflow)
+        self.assertIn(f'VERSION_CODE: "{app["android"]["versionCode"]}"', workflow)
+        self.assertIn("EXPECTED_PLAY_UPLOAD_SHA1", workflow)
+        self.assertIn("Verify required signing secrets", workflow)
+        self.assertRegex(workflow, r"(?m)^  workflow_dispatch:$")
 
     def test_operations_preflight_has_no_mutation(self):
         script = self.read("ops/release/launch_preflight_readonly.sh")
