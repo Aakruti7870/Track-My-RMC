@@ -308,8 +308,14 @@ pub async fn require(
     module: &str,
     action: Action,
 ) -> Result<(), AppError> {
+    if matches!(user.role.as_str(), "owner" | "plant_owner") {
+        // Plant owner privileges must never escape the owner's active plant.
+        return owned_plant(state, user, plant).await;
+    }
     if !is_staff_role(&user.role) {
-        return Ok(());
+        return Err(AppError::Forbidden(
+            "Plant staff permission required for this module".into(),
+        ));
     }
     let ceiling = role_ceiling(&user.role, module)
         .ok_or_else(|| AppError::Forbidden("Unknown module permission".into()))?;
@@ -344,9 +350,6 @@ pub async fn require_order(
     module: &str,
     action: Action,
 ) -> Result<(), AppError> {
-    if !is_staff_role(&user.role) {
-        return Ok(());
-    }
     let plant: Uuid = sqlx::query_scalar("SELECT plant_id FROM orders WHERE id=$1")
         .bind(order_id)
         .fetch_optional(&state.db)
@@ -361,9 +364,6 @@ pub async fn require_load(
     module: &str,
     action: Action,
 ) -> Result<(), AppError> {
-    if !is_staff_role(&user.role) {
-        return Ok(());
-    }
     let plant: Uuid = sqlx::query_scalar(
         "SELECT o.plant_id FROM order_loads l JOIN orders o ON o.id=l.order_id WHERE l.id=$1",
     )
