@@ -34,7 +34,7 @@ pub async fn fulfill_verified(state: &AppState, intent_id: Uuid) -> Result<Value
         let invoice: Uuid = row.get::<Option<Uuid>, _>("invoice_id")
             .ok_or_else(|| AppError::Conflict("Missing invoice target".into()))?;
         // Shared lock order with manual ledger posting: order, invoice, payments.
-        let order: Option<Uuid> = sqlx::query_scalar(
+        let invoice_target = sqlx::query(
             "SELECT order_id FROM plant_invoices WHERE id=$1 AND plant_id=$2 AND customer_id=$3",
         )
         .bind(invoice)
@@ -43,6 +43,7 @@ pub async fn fulfill_verified(state: &AppState, intent_id: Uuid) -> Result<Value
         .fetch_optional(&mut *tx)
         .await?
         .ok_or_else(|| AppError::Conflict("Invoice or payer mismatch".into()))?;
+        let order: Option<Uuid> = invoice_target.get("order_id");
         if let Some(id) = order {
             sqlx::query("SELECT id FROM orders WHERE id=$1 FOR UPDATE")
                 .bind(id)
