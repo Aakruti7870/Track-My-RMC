@@ -243,7 +243,6 @@ async fn owner_controls_dispatcher_only_with_tenant_isolation_and_live_revocatio
     ));
 }
 
-
 #[sqlx::test]
 async fn all_thirteen_roles_fail_closed_without_plant_scope(db: PgPool) {
     let owner = user(&db, "owner").await;
@@ -253,17 +252,15 @@ async fn all_thirteen_roles_fail_closed_without_plant_scope(db: PgPool) {
     let app = state(db.clone());
 
     // The owning account alone receives owner-level delegated access.
-    assert!(
-        permissions::require(
-            &app,
-            &identity(owner, "owner"),
-            my_plant,
-            "billing_ledger",
-            Action::Approve
-        )
-        .await
-        .is_ok()
-    );
+    assert!(permissions::require(
+        &app,
+        &identity(owner, "owner"),
+        my_plant,
+        "billing_ledger",
+        Action::Approve
+    )
+    .await
+    .is_ok());
     assert!(matches!(
         permissions::require(
             &app,
@@ -293,14 +290,9 @@ async fn all_thirteen_roles_fail_closed_without_plant_scope(db: PgPool) {
         "central_admin",
     ] {
         let subject = identity(user(&db, role).await, role);
-        let decision = permissions::require(
-            &app,
-            &subject,
-            my_plant,
-            "fleet_availability",
-            Action::View,
-        )
-        .await;
+        let decision =
+            permissions::require(&app, &subject, my_plant, "fleet_availability", Action::View)
+                .await;
         assert!(
             matches!(decision, Err(AppError::Forbidden(_))),
             "role {role} must not inherit a plant grant without ownership or assignment"
