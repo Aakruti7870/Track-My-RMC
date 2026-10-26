@@ -15,7 +15,7 @@ CREATE TABLE plant_challan_templates (
     updated_by UUID NOT NULL REFERENCES users(id),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CHECK (length(title) BETWEEN 1 AND 100),
-    CHECK (logo_data_uri IS NULL OR length(logo_data_uri) <= 100000)
+    CHECK (logo_data_uri IS NULL OR length(logo_data_uri) <= 500000)
 );
 
 -- Audit only metadata/changed values; do not duplicate images or secrets.
