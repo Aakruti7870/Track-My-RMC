@@ -20,9 +20,14 @@ pub async fn fulfill_verified(state: &AppState, intent_id: Uuid) -> Result<Value
     .ok_or_else(|| AppError::NotFound("Payment intent not found".into()))?;
     let status: String = row.get("status");
     if status != "VERIFIED" {
-        return Err(AppError::Conflict("Payment was not provider-verified".into()));
+        return Err(AppError::Conflict(
+            "Payment was not provider-verified".into(),
+        ));
     }
-    if row.get::<Option<chrono::DateTime<chrono::Utc>>, _>("fulfilled_at").is_some() {
+    if row
+        .get::<Option<chrono::DateTime<chrono::Utc>>, _>("fulfilled_at")
+        .is_some()
+    {
         return Ok(json!({"status":"VERIFIED","fulfilled":true,"idempotent":true}));
     }
     let requester: Uuid = row.get("requester_id");
@@ -31,7 +36,8 @@ pub async fn fulfill_verified(state: &AppState, intent_id: Uuid) -> Result<Value
     let expected: BigDecimal = row.get("amount");
     let kind: String = row.get("kind");
     if kind == "INVOICE" {
-        let invoice: Uuid = row.get::<Option<Uuid>, _>("invoice_id")
+        let invoice: Uuid = row
+            .get::<Option<Uuid>, _>("invoice_id")
             .ok_or_else(|| AppError::Conflict("Missing invoice target".into()))?;
         // Shared lock order with manual ledger posting: order, invoice, payments.
         let invoice_target = sqlx::query(
@@ -60,7 +66,9 @@ pub async fn fulfill_verified(state: &AppState, intent_id: Uuid) -> Result<Value
         .await?;
         let invoice_status: String = invoice_row.get("status");
         if invoice_status == "CANCELLED" {
-            return Err(AppError::Conflict("Invoice cancelled; payment requires manual review".into()));
+            return Err(AppError::Conflict(
+                "Invoice cancelled; payment requires manual review".into(),
+            ));
         }
         let total: BigDecimal = invoice_row.get("total_amount");
         let paid: BigDecimal = sqlx::query_scalar(
@@ -73,7 +81,9 @@ pub async fn fulfill_verified(state: &AppState, intent_id: Uuid) -> Result<Value
         if next > total || expected <= BigDecimal::from(0) {
             // Provider confirms a receipt but a concurrent manual payment consumed
             // the balance. Never over-credit; preserve VERIFIED unfulfilled for review.
-            return Err(AppError::Conflict("Verified receipt exceeds invoice outstanding balance; review required".into()));
+            return Err(AppError::Conflict(
+                "Verified receipt exceeds invoice outstanding balance; review required".into(),
+            ));
         }
         let request_id = format!("cashfree_sandbox_{}", intent_id.simple());
         let payment_id: Uuid = sqlx::query_scalar(
@@ -88,14 +98,22 @@ pub async fn fulfill_verified(state: &AppState, intent_id: Uuid) -> Result<Value
         .bind(&request_id)
         .fetch_one(&mut *tx)
         .await?;
-        let new_status = if next == total { "PAID" } else { "PARTIALLY_PAID" };
+        let new_status = if next == total {
+            "PAID"
+        } else {
+            "PARTIALLY_PAID"
+        };
         sqlx::query("UPDATE plant_invoices SET status=$2 WHERE id=$1")
             .bind(invoice)
             .bind(new_status)
             .execute(&mut *tx)
             .await?;
         if let Some(order_id) = order {
-            let order_status = if next == total { "paid" } else { "partially_paid" };
+            let order_status = if next == total {
+                "paid"
+            } else {
+                "partially_paid"
+            };
             sqlx::query("UPDATE orders SET payment_status=$2,updated_at=NOW() WHERE id=$1")
                 .bind(order_id)
                 .bind(order_status)
@@ -113,14 +131,18 @@ pub async fn fulfill_verified(state: &AppState, intent_id: Uuid) -> Result<Value
         .await?;
     } else if kind == "PLAN" {
         // Serializes overlapping plan purchases for the same physical plant.
-        sqlx::query("SELECT id FROM rmc_plants WHERE id=$1 AND owner_id=$2 AND is_active=TRUE FOR UPDATE")
-            .bind(plant)
-            .bind(requester)
-            .fetch_one(&mut *tx)
-            .await?;
-        let sku: String = row.get::<Option<String>, _>("sku")
+        sqlx::query(
+            "SELECT id FROM rmc_plants WHERE id=$1 AND owner_id=$2 AND is_active=TRUE FOR UPDATE",
+        )
+        .bind(plant)
+        .bind(requester)
+        .fetch_one(&mut *tx)
+        .await?;
+        let sku: String = row
+            .get::<Option<String>, _>("sku")
             .ok_or_else(|| AppError::Conflict("Missing approved plan SKU".into()))?;
-        let duration: i32 = row.get::<Option<i32>, _>("duration_days")
+        let duration: i32 = row
+            .get::<Option<i32>, _>("duration_days")
             .ok_or_else(|| AppError::Conflict("Missing approved duration".into()))?;
         let approved: Option<(BigDecimal, i32)> = sqlx::query_as(
             "SELECT price_inr,duration_days FROM cashfree_approved_plan_prices WHERE sku=$1 AND is_active=TRUE",
@@ -129,7 +151,9 @@ pub async fn fulfill_verified(state: &AppState, intent_id: Uuid) -> Result<Value
         .fetch_optional(&mut *tx)
         .await?;
         if approved.as_ref() != Some(&(expected.clone(), duration)) || duration <= 0 {
-            return Err(AppError::Conflict("Approved price or duration changed; review required".into()));
+            return Err(AppError::Conflict(
+                "Approved price or duration changed; review required".into(),
+            ));
         }
         let plan_id: Uuid = sqlx::query_scalar(
             "SELECT id FROM plant_subscription_plans WHERE plan_code=$1 AND is_active=TRUE",
