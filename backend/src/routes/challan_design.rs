@@ -136,9 +136,12 @@ async fn resolve_design(db: &PgPool, plant_id: Uuid) -> Result<Value, AppError> 
 
 async fn get_plant(db: &PgPool, plant_id: Uuid) -> Result<Value, AppError> {
     let plant: Option<Value> = sqlx::query_scalar(
-        "SELECT jsonb_build_object('id', id, 'name', name,
-             'address', address_line, 'city', city, 'state', state,
-             'phone', contact_phone) FROM rmc_plants WHERE id=$1 AND is_active=TRUE",
+        "SELECT jsonb_build_object('id', p.id, 'name', p.name,
+             'address', p.address_line, 'city', p.city, 'state', p.state,
+             'phone', COALESCE(pr.contact_phone,p.contact_phone),
+             'legal_name', pr.legal_name, 'gstin', pr.gstin)
+          FROM rmc_plants p LEFT JOIN plant_profiles pr ON pr.plant_id=p.id
+          WHERE p.id=$1 AND p.is_active=TRUE",
     )
     .bind(plant_id)
     .fetch_optional(db)
