@@ -28,7 +28,7 @@ fn valid_color(s: &str) -> bool {
     s.len() == 7 && s.starts_with('#') && s[1..].bytes().all(|c| c.is_ascii_hexdigit())
 }
 fn valid_logo(s: &str) -> bool {
-    if s.len() > 100_000 { return false; }
+    if s.len() > 500_000 { return false; }
     let variants = [
         ("data:image/png;base64,", "png"),
         ("data:image/jpeg;base64,", "jpeg"),
@@ -40,7 +40,7 @@ fn valid_logo(s: &str) -> bool {
     let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(&s[prefix.len()..]) else {
         return false;
     };
-    if bytes.is_empty() || bytes.len() > 72_000 { return false; }
+    if bytes.is_empty() || bytes.len() > 350_000 { return false; }
     match *kind {
         "png" => bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
         "jpeg" => bytes.starts_with(&[0xFF,0xD8,0xFF]),
@@ -57,7 +57,7 @@ fn validate(d: &DesignInput) -> Result<(), AppError> {
         || d.footer_note.chars().any(char::is_control)
         || d.logo_data_uri.as_deref().is_some_and(|s| !valid_logo(s))
     {
-        return Err(AppError::BadRequest("Invalid challan design fields or logo (PNG/JPEG/WebP, max 72 KB)".into()));
+        return Err(AppError::BadRequest("Invalid challan design fields or logo (PNG/JPEG/WebP, max 350 KB)".into()));
     }
     Ok(())
 }
