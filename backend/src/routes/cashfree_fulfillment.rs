@@ -78,7 +78,7 @@ pub async fn fulfill_verified(state: &AppState, intent_id: Uuid) -> Result<Value
         .fetch_one(&mut *tx)
         .await?;
         let next = &paid + &expected;
-        if next > total || expected <= BigDecimal::from(0) {
+        if next > total || expected <= 0 {
             // Provider confirms a receipt but a concurrent manual payment consumed
             // the balance. Never over-credit; preserve VERIFIED unfulfilled for review.
             return Err(AppError::Conflict(
