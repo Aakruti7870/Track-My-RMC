@@ -4,6 +4,7 @@ pub mod assistant_routes;
 pub mod auth_routes;
 pub mod automation_routes;
 pub mod business_routes;
+pub mod cashfree_fulfillment;
 pub mod cashfree_sandbox;
 pub mod control_center_routes;
 pub mod customer_routes;
