@@ -26,6 +26,15 @@ export default function OwnerMore() {
   return <OwnerFrame title={directory === "1" ? "All Plant Modules" : "More"} subtitle="Account, workforce, payroll and other settings">
     <OwnerList><View testID="role-module-directory" style={{ gap: 6 }}>
       {groups.map(group => <React.Fragment key={group.title}><AppText style={[ui.section, { color: p.text }]}>{group.title}</AppText>{group.entries.filter(module => available.has(module.key) || module.key === DRIVER_MODULE.key).map(module => <OwnerModuleRow key={module.key} module={module} compact />)}</React.Fragment>)}
+      <Pressable testID="owner-design-challan" accessibilityRole="button" accessibilityLabel="Design Challan" onPress={() => router.push("/challan-design")} style={{ marginVertical: 8 }}>
+        <OwnerGlass style={{ padding: 15, gap: 10, flexDirection: "row", alignItems: "center" }}>
+          <VectorSymbol name="delivery-challan" size={52} warmAccent />
+          <View style={{ flex: 1, gap: 3 }}>
+            <AppText style={{ color: p.text, fontSize: 15, fontWeight: "700" }}>Design Challan</AppText>
+            <AppText style={{ color: p.muted, fontSize: 12 }}>Two-copy A4 · Plant logo · Preview · Save & assign</AppText>
+          </View>
+        </OwnerGlass>
+      </Pressable>
       <Pressable testID="owner-staff-module-access" accessibilityRole="button" accessibilityLabel="Manage Staff Module Access" onPress={() => router.push("/staff-module-access")} style={{ marginVertical: 8 }}>
         <OwnerGlass style={{ padding: 15, gap: 10, flexDirection: "row", alignItems: "center" }}>
           <VectorSymbol name="plant-staff" size={52} warmAccent />

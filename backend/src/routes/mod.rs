@@ -5,6 +5,7 @@ pub mod auth_routes;
 pub mod automation_routes;
 pub mod business_routes;
 pub mod cashfree_sandbox;
+pub mod challan_design;
 pub mod control_center_routes;
 pub mod customer_routes;
 pub mod customer_services;
@@ -42,6 +43,18 @@ use axum::{
 
 pub fn build_app_router(state: AppState) -> Router {
     Router::new()
+        // Plant owners and assigned plant managers can design only their own plant challans.
+        .route(
+            "/api/challan-design/plants/:plant_id",
+            get(challan_design::get)
+                .put(challan_design::save)
+                .delete(challan_design::reset),
+        )
+        // Customer/owner/staff read-only generated dispatch data; access is rechecked in handler.
+        .route(
+            "/api/challan-design/orders/:order_id",
+            get(challan_design::order_print),
+        )
         .route(
             "/api/admin/auth/logout",
             post(crate::auth::control_center::logout),

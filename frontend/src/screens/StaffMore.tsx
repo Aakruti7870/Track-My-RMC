@@ -64,6 +64,16 @@ export function StaffMore() {
           </View>
         </View>
 
+        {user?.role === "admin" && <Pressable testID="plant-manager-design-challan" accessibilityRole="button" accessibilityLabel="Design Challan" onPress={() => router.push("/challan-design")}>
+          <Card style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+            <VectorSymbol name="delivery-challan" size={45} />
+            <View style={{ flex: 1, gap: 3 }}>
+              <AppText variant="heading">Design Challan</AppText>
+              <AppText variant="caption">Plant-specific A4 · logo · save and print</AppText>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceSecondary}/>
+          </Card>
+        </Pressable>}
         <StaffModuleDirectory role={user?.role} title="Role workspace" searchable />
 
         <Pressable testID="logout-button" accessibilityRole="button" accessibilityLabel="Sign out of staff account" onPress={doLogout} style={[styles.logout, { borderColor: colors.error }]}><VectorSymbol name="logout" size={27} /><AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: colors.error }}>Logout</AppText></Pressable>
