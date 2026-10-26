@@ -178,8 +178,14 @@ async fn approved_sandbox_subscription_extends_once(db: PgPool) {
     .fetch_one(&db)
     .await
     .unwrap();
-    assert_eq!(fulfill_verified(&app(db.clone()), intent).await.unwrap()["fulfilled"], true);
-    assert_eq!(fulfill_verified(&app(db.clone()), intent).await.unwrap()["idempotent"], true);
+    assert_eq!(
+        fulfill_verified(&app(db.clone()), intent).await.unwrap()["fulfilled"],
+        true
+    );
+    assert_eq!(
+        fulfill_verified(&app(db.clone()), intent).await.unwrap()["idempotent"],
+        true
+    );
     let subscription_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM plant_plan_subscriptions WHERE plant_id=$1 AND plan_id=$2",
     )
