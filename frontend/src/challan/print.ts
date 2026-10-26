@@ -20,6 +20,8 @@ export type PlantPrint = {
   city: string;
   state: string;
   phone: string;
+  legal_name?: string | null;
+  gstin?: string | null;
 };
 export type ChallanPrintData = {
   id?: string;
@@ -90,6 +92,7 @@ function copy(label: string, plant: PlantPrint, design: ChallanDesign, data: Cha
     '<header class="head"><div class="brand">' + logo +
     '<div class="identity"><div class="plant-name">' + name + '</div><div class="address">' +
     e([plant.address,plant.city,plant.state].filter(Boolean).join(", ")) + (plant.phone ? " · " + e(plant.phone):"") +
+    (plant.gstin ? " · GSTIN: " + e(plant.gstin) : "") +
     '</div><div class="header-note">'+e(design.header_note)+'</div></div></div>' +
     '<div class="header-right"><strong>'+e(design.title)+'</strong><span>'+e(label)+'</span></div></header>' +
     '<div class="details">' +
