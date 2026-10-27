@@ -34,6 +34,7 @@ const workforce = read("frontend/app/workforce.tsx");
 const onboarding = read("frontend/app/plant-onboarding.tsx");
 const pod = read("frontend/app/pod/[id].tsx");
 const push = read("frontend/src/notifications/PushNotificationBridge.tsx");
+const postAuthConsent = read("frontend/src/permissions/PermissionProvider.tsx");
 const pushClient = read("frontend/src/notifications/pushClient.ts");
 const privacy = read("frontend/app/privacy.tsx");
 const terms = read("frontend/app/terms.tsx");
@@ -48,7 +49,8 @@ assert(workforce.includes("requestFieldVisitLocationConsent") && workforce.inclu
 assert(onboarding.includes("requestPlantOnboardingLocationConsent") && onboarding.indexOf("requestPlantOnboardingLocationConsent()") < onboarding.indexOf("Location.requestForegroundPermissionsAsync()"), "Plant onboarding disclosure must precede foreground location permission.");
 assert(pod.includes("Camera access for proof of delivery") && pod.indexOf("Camera access for proof of delivery") < pod.indexOf("ImagePicker.requestCameraPermissionsAsync()"), "Camera disclosure must precede the camera permission request.");
 assert(pod.includes("Choose a proof-of-delivery photo"), "Photo picker must explain what selected data is attached.");
-assert(push.includes("Enable notifications") && push.includes("Not now"), "Notifications must be opt-in with a decline path.");
+assert(postAuthConsent.includes("Enable notifications") && postAuthConsent.includes("Not now"), "Signed-in notification consent must be opt-in with a decline path.");
+assert(!push.includes("setConsentVisible"), "Do not display a second notification dialog on login.");
 assert(pushClient.includes("requestPermission = false") && pushClient.includes("permission.status !== \"granted\" && requestPermission"), "Push registration must not request permission without explicit opt-in.");
 assert(privacy.includes("Location and live delivery tracking") && privacy.includes("Camera, photos and files") && privacy.includes("Notifications") && privacy.includes("Retention and account deletion"), "Privacy policy must cover location, camera/photos, notifications, and deletion.");
 assert(terms.includes("Terms & Conditions") && terms.includes("support@goldetech.com"), "Terms must be available with a support contact.");
