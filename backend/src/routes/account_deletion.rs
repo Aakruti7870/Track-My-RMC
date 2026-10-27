@@ -1,9 +1,13 @@
 use crate::{
-    auth::control_center::WebAdmin,
-    auth::otp::OtpEngine, auth::AuthUser, error::AppError, repositories::user_repo,
-    services::whatsapp_service::WhatsAppService, state::AppState,
+    auth::control_center::WebAdmin, auth::otp::OtpEngine, auth::AuthUser, error::AppError,
+    repositories::user_repo, services::whatsapp_service::WhatsAppService, state::AppState,
 };
-use axum::{extract::{Path, State}, http::HeaderMap, response::IntoResponse, Json};
+use axum::{
+    extract::{Path, State},
+    http::HeaderMap,
+    response::IntoResponse,
+    Json,
+};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -398,7 +402,9 @@ pub async fn fulfill_verified_request(
         ));
     }
     fulfill_eligible_verified_request(&state.db, request_id, admin.user_id).await?;
-    Ok(Json(json!({"success":true,"status":"COMPLETED","request_id":request_id})))
+    Ok(Json(
+        json!({"success":true,"status":"COMPLETED","request_id":request_id}),
+    ))
 }
 
 /// Purges a strictly limited, verified, low-risk account in a single transaction.
@@ -415,7 +421,7 @@ pub async fn fulfill_eligible_verified_request(
         "SELECT u.id, u.role, u.phone, u.email
          FROM account_deletion_requests r JOIN users u ON u.id=r.user_id
          WHERE r.id=$1 AND r.status='PENDING'
-         FOR UPDATE OF r,u"
+         FOR UPDATE OF r,u",
     )
     .bind(request_id)
     .fetch_optional(&mut *tx)
@@ -444,7 +450,7 @@ pub async fn fulfill_eligible_verified_request(
             OR EXISTS(SELECT 1 FROM driver_employment_profiles WHERE driver_id=$1)
             OR EXISTS(SELECT 1 FROM user_profiles
                      WHERE user_id=$1 AND (LOWER(kyc_status) NOT IN
-                       ('unverified','not_started','pending') OR verified_name IS NOT NULL))"
+                       ('unverified','not_started','pending') OR verified_name IS NOT NULL))",
     )
     .bind(user_id)
     .fetch_one(&mut *tx)
@@ -458,8 +464,10 @@ pub async fn fulfill_eligible_verified_request(
     // Account-linked OTPs must be discarded as well as tokens/passkeys (which
     // cascade from users) so deleted identities cannot reuse an old challenge.
     sqlx::query("DELETE FROM otp_verifications WHERE destination=$1 OR destination=$2")
-        .bind(&phone).bind(email.as_deref().unwrap_or(""))
-        .execute(&mut *tx).await?;
+        .bind(&phone)
+        .bind(email.as_deref().unwrap_or(""))
+        .execute(&mut *tx)
+        .await?;
 
     // Keep the immutable action ledger but detach identifiers and free-form
     // metadata; never retain plaintext personal data in audit metadata.
@@ -469,24 +477,33 @@ pub async fn fulfill_eligible_verified_request(
     // FK RESTRICT failures are fail-closed; PostgreSQL rolls the whole
     // transaction back. We do not mark completed unless hard deletion succeeds.
     let deleted = sqlx::query("DELETE FROM users WHERE id=$1")
-        .bind(user_id).execute(&mut *tx).await?;
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
     if deleted.rows_affected() != 1 {
-        return Err(AppError::Conflict("Account deletion was not completed".into()));
+        return Err(AppError::Conflict(
+            "Account deletion was not completed".into(),
+        ));
     }
     sqlx::query(
         "UPDATE account_deletion_requests
          SET status='COMPLETED', user_id=NULL, reason=NULL,
              identifier_hash=repeat('0',32)||replace(id::text,'-',''),
              completed_at=NOW(), updated_at=NOW()
-         WHERE id=$1 AND status='PENDING'"
+         WHERE id=$1 AND status='PENDING'",
     )
-    .bind(request_id).execute(&mut *tx).await?;
+    .bind(request_id)
+    .execute(&mut *tx)
+    .await?;
     sqlx::query(
         "INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata)
          VALUES($1,'account_deletion.fulfilled','account_deletion_request',$2,
-                jsonb_build_object('status','COMPLETED','identity_erased',true))"
+                jsonb_build_object('status','COMPLETED','identity_erased',true))",
     )
-    .bind(actor_id).bind(request_id.to_string()).execute(&mut *tx).await?;
+    .bind(actor_id)
+    .bind(request_id.to_string())
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
     Ok(())
 }
