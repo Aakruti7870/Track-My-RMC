@@ -80,6 +80,7 @@ jobs:
           node scripts/test-home-tracking-browser.cjs
           node scripts/test-customer-header-browser.cjs
           node scripts/test-owner-dashboard-browser.cjs
+          node scripts/test-post-otp-consent-browser.cjs
       - name: Upload tracking layout previews
         if: always()
         uses: actions/upload-artifact@v4
