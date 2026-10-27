@@ -38,6 +38,7 @@ type PlantRequest = {
   applicant_owner_name: string | null;
   applicant_email: string | null;
   applicant_mobile: string | null;
+  preferred_plan_months?: 1 | 3 | 6 | 12 | null;
   created_at: string;
 };
 
@@ -207,6 +208,13 @@ export default function AdminPlantOnboardingReview() {
               <Ionicons name="call-outline" size={17} color={colors.onSurfaceSecondary} />
               <AppText variant="body" style={{ flex: 1 }}>{item.applicant_mobile || item.contact_phone || "Mobile not supplied"}</AppText>
             </View>
+            <View style={styles.detailRow}>
+              <Ionicons name="calendar-outline" size={17} color={colors.onSurfaceSecondary}/>
+              <AppText variant="body" style={{ flex: 1 }}>
+                Plan interest: {item.preferred_plan_months ? `${item.preferred_plan_months} month${item.preferred_plan_months === 1 ? "" : "s"}` : "Not selected (legacy request)"}
+              </AppText>
+            </View>
+            <AppText variant="caption">Pricing and payment instructions must be sent separately after review. This request is not a paid subscription.</AppText>
             <View style={styles.detailRow}>
               <Ionicons name="location-outline" size={17} color={colors.onSurfaceSecondary} />
               <AppText variant="body" style={{ flex: 1 }}>{item.address}</AppText>

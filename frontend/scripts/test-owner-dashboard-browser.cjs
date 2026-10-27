@@ -21,6 +21,7 @@ fs.mkdirSync(out, { recursive: true });
         let json = {};
         if (path.endsWith('/me')) json = { id: 'isolated-owner', name: 'TrackMyRMC Play Review Owner', role: 'plant_owner', roles: ['plant_owner'], status: 'active', kyc_status: 'pending', plant_id: null };
         else if (path.endsWith('/owner/home')) json = { plant_count: 0, plants: [], cards: { todays_orders: 0, dispatched_loads: 0, active_staff: 0, pending_approvals: 0 }, pending_orders: [] };
+        else if (path.endsWith('/permission-consent')) json = { consent: { version: 2, location_choice: 'manual',notification_choice:'manual',camera_choice:'manual' } };
         else if (path.endsWith('/notifications')) json = { unread: 2, items: [] };
         else if (path.endsWith('/master/my-plants')) json = { plants: [] };
         else if (/\/owner\/orders\/[0-9a-f-]+$/.test(path)) return route.fulfill({ status: 404, json: { message: 'Isolated detail navigation fixture' } });

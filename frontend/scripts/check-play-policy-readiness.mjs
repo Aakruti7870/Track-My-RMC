@@ -82,11 +82,13 @@ expect(
 
 const pushClient = read("frontend/src/notifications/pushClient.ts");
 const pushBridge = read("frontend/src/notifications/PushNotificationBridge.tsx");
+const postAuthConsent = read("frontend/src/permissions/PermissionProvider.tsx");
 const notificationsScreen = read("frontend/app/notifications.tsx");
 expectIncludes(pushClient, "requestPermission = false", "Push registration must not request notification permission by default.");
 expectIncludes(pushClient, 'if (permission.status !== "granted" && requestPermission)', "Notification prompt must require explicit caller consent.");
-expectIncludes(pushBridge, "Enable notifications", "Notification disclosure needs an affirmative action.");
-expectIncludes(pushBridge, "Not now", "Notification disclosure needs a decline path.");
+expectIncludes(postAuthConsent, "Enable notifications", "Post-OTP notification disclosure needs an affirmative action.");
+expectIncludes(postAuthConsent, "Not now", "Post-OTP notification disclosure needs a decline path.");
+expect(!pushBridge.includes("setConsentVisible"), "Duplicate login notification modal must remain disabled.");
 expectIncludes(notificationsScreen, "Enable device notifications", "Users must be able to opt into notifications later.");
 
 const reviewScreen = read("frontend/app/review-access.tsx");

@@ -14,7 +14,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  const order={id:'isolated-order',order_number:'CUSTOMER-ORDER',status:mode==='pending'?'PENDING':mode==='delivered'?'DELIVERED':'DISPATCHED',grade:'M30',quantity:8,site_name:'Actual project'};
  if(mode!=='demo'){home.recent_orders=[order];home.active_order=mode==='delivered'?null:order;}
  const tracking={active:mode==='live',status:order.status,active_loads:mode==='live'?[{id:'load-a',status:'en_route',tm_number:'ASSIGNED-MIXER',location:{lat:19.1,lng:73.1,at:new Date(Date.now()-1000).toISOString()}}]:[],destination:{lat:19.2,lng:73.2}};
- await route.fulfill({json:path.endsWith('/tracking')?tracking:path.endsWith('/permission-consent')?{consent:{version:1,location_choice:'manual',notification_choice:'manual'}}:path.endsWith('/me')?me:path.endsWith('/customer/home')?home:{}});
+ await route.fulfill({json:path.endsWith('/tracking')?tracking:path.endsWith('/permission-consent')?{consent:{version:2,location_choice:'manual',notification_choice:'manual',camera_choice:'manual'}}:path.endsWith('/me')?me:path.endsWith('/customer/home')?home:{}});
  });
  page.on('pageerror',e=>console.error(e.message));
  await page.goto('http://127.0.0.1:8765/customer/');

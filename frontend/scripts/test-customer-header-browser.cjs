@@ -19,7 +19,7 @@ const out=process.env.HEADER_PREVIEW_DIR||'header-previews';fs.mkdirSync(out,{re
   await page.route('**/api/**',async route=>{
    const path=new URL(route.request().url()).pathname;let json={};
    if(path.endsWith('/me'))json={id:'header-customer',name:'Test Customer',role:'customer',roles:['customer'],phone:'12025550171',status:'active',kyc_status:kyc,plant_id:null};
-   else if(path.endsWith('/permission-consent'))json={consent:{version:1,location_choice:'manual',notification_choice:'manual'}};
+   else if(path.endsWith('/permission-consent'))json={consent:{version:2,location_choice:'manual',notification_choice:'manual',camera_choice:'manual'}};
    else if(path.endsWith('/customer/home'))json={name:'Test Customer',kyc_status:kyc,active_order:null,recent_orders:[],nearby_plants:[],unread_notifications:unread};
    else if(path.endsWith('/notifications/read-all')||/\/notifications\/[^/]+\/read$/.test(path)){unread=0;json={success:true};}
    else if(path.endsWith('/notifications'))json={unread,items:[{id:'test-notification',event:'dispatched',title:'Test dispatch update',body:'Synthetic notification fixture',read:!unread,created_at:null}]};

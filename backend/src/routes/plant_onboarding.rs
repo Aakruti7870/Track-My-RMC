@@ -33,6 +33,8 @@ pub struct PlantOnboardingBody {
     pub city: Option<String>,
     pub state: Option<String>,
     pub google_place_id: Option<String>,
+    /// Non-billable plan interest. Legacy clients may omit.
+    pub preferred_plan_months: Option<i16>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -67,6 +69,7 @@ pub struct PlantListingRequest {
     pub applicant_owner_name: Option<String>,
     pub applicant_email: Option<String>,
     pub applicant_mobile: Option<String>,
+    pub preferred_plan_months: Option<i16>,
     pub plant_id: Option<Uuid>,
     pub reject_reason: Option<String>,
     pub created_at: DateTime<Utc>,
@@ -86,6 +89,10 @@ struct ApprovalSource {
     applicant_email: Option<String>,
     applicant_mobile: Option<String>,
     status: String,
+}
+
+fn valid_plan_interest(months: i16) -> bool {
+    matches!(months, 1 | 3 | 6 | 12)
 }
 
 fn normalized_email(raw: &str) -> Result<String, AppError> {
@@ -239,6 +246,11 @@ pub async fn submit_onboarding(
         ));
     }
 
+    if let Some(months) = payload.preferred_plan_months {
+        if !valid_plan_interest(months) {
+            return Err(AppError::BadRequest("Choose 1, 3, 6 or 12 months".into()));
+        }
+    }
     let email = normalized_email(&payload.email)?;
     let mobile = normalized_mobile(&payload.mobile)?;
     let google_place_id = payload
@@ -312,9 +324,9 @@ pub async fn submit_onboarding(
         "INSERT INTO plant_listing_requests
             (source, google_place_id, name, address, city, state, lat, lng,
              contact_phone, requested_role, claim_requested, applicant_owner_name,
-             applicant_email, applicant_mobile)
+             applicant_email, applicant_mobile, preferred_plan_months)
          VALUES ('self_onboarding', $1, $2, $3, $4, $5, $6, $7, $8,
-                 'owner', TRUE, $9, $10, $11)
+                 'owner', TRUE, $9, $10, $11, $12)
          RETURNING id, request_number",
     )
     .bind(&google_place_id)
@@ -328,6 +340,7 @@ pub async fn submit_onboarding(
     .bind(&owner_name)
     .bind(&email)
     .bind(&mobile)
+    .bind(payload.preferred_plan_months)
     .fetch_one(&mut *tx)
     .await?;
 
@@ -336,7 +349,7 @@ pub async fn submit_onboarding(
          VALUES (NULL, 'plant_onboarding.submit', 'plant_listing_request', $1, $2)",
     )
     .bind(row.0.to_string())
-    .bind(json!({"request_number": row.1, "source": "self_onboarding"}))
+    .bind(json!({"request_number": row.1, "source": "self_onboarding", "preferred_plan_months": payload.preferred_plan_months}))
     .execute(&mut *tx)
     .await?;
 
@@ -358,7 +371,9 @@ pub async fn submit_onboarding(
     Ok(Json(json!({
         "status": "PENDING",
         "request_id": row.1,
-        "message": "Your TrackMyRMC onboarding request has been submitted for review."
+        "preferred_plan_months": payload.preferred_plan_months,
+        "payment_status": "NOT_REQUESTED",
+        "message": "Your request is under review. Plan details will be shared by email. No payment is due now."
     })))
 }
 
@@ -370,7 +385,7 @@ pub async fn list_requests(
     let requests = sqlx::query_as::<_, PlantListingRequest>(
         "SELECT id, request_number, source, google_place_id, name, address, city, state,
                 lat, lng, contact_phone, status, requested_role, claim_requested,
-                applicant_owner_name, applicant_email, applicant_mobile, plant_id,
+                applicant_owner_name, applicant_email, applicant_mobile, preferred_plan_months, plant_id,
                 reject_reason, created_at, updated_at
          FROM plant_listing_requests
          WHERE status = 'PENDING'
@@ -640,6 +655,20 @@ pub async fn approve_listing(
         "plant_id": plant_id,
         "owner_id": owner_id
     })))
+}
+
+#[cfg(test)]
+mod plan_interest_tests {
+    use super::valid_plan_interest;
+    #[test]
+    fn only_billing_review_durations_are_accepted() {
+        for months in [1, 3, 6, 12] {
+            assert!(valid_plan_interest(months));
+        }
+        for months in [-1, 0, 2, 4, 9, 13, 24] {
+            assert!(!valid_plan_interest(months));
+        }
+    }
 }
 
 #[cfg(test)]
