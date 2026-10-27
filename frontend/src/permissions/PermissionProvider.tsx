@@ -9,7 +9,6 @@ import { useTheme } from "@/src/theme/ThemeProvider";
 import { AppText } from "@/src/components/ui/AppText";
 import { Button } from "@/src/components/ui/Button";
 import { Card } from "@/src/components/ui/Card";
-import { registerPushDevice } from "@/src/notifications/pushClient";
 
 /**
  * Version-2 signed-in permission introduction. This is not an OS permission grant:
@@ -28,6 +27,7 @@ type Decision = {
 const Permissions = createContext({
   ready: false,
   locationEnabled: false,
+  notificationEnabled: false,
   enableDiscoveryLocation: async () => {},
   review: () => {},
 });
@@ -136,7 +136,7 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
         const current = await n.getPermissionsAsync();
         const result = current.status === "granted" || !current.canAskAgain ? current : await n.requestPermissionsAsync();
         setNotifications(result.status as Choice);
-        if (token && result.status === "granted") await registerPushDevice(token);
+        // Token registration occurs only after the whole preference is saved.
       }
     } catch { setError("Notifications could not be enabled. You can still check updates within TrackMyRMC."); }
     finally { setBusy(false); }
@@ -175,6 +175,7 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
   return <Permissions.Provider value={{
     ready: !hydrating && (!account || (loadedFor === account && !needed)),
     locationEnabled: isCustomer && location === "granted",
+    notificationEnabled: notifications === "granted",
     enableDiscoveryLocation,
     review: () => { if (account) { setReviewing(true); void refreshStatuses(); } },
   }}>
