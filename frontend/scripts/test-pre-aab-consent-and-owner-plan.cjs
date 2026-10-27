@@ -31,6 +31,11 @@ test("all signed-in roles and reviewers see consent after authenticated login",(
   assert.doesNotMatch(f,/requestCameraPermissionsAsync/);
   assert.doesNotMatch(f,/requestBackgroundPermissionsAsync/);
   assert.match(root,/<PermissionProvider>/);
+  const bridge=read("frontend/src/notifications/PushNotificationBridge.tsx");
+  assert.match(bridge,/notificationEnabled/);
+  assert.match(bridge,/unregisterPushDevice/);
+  assert.ok(root.indexOf("<PermissionProvider>") < root.indexOf("<PushNotificationBridge />"),"Push registration must be under consent provider");
+  assert.doesNotMatch(bridge,/setConsentVisible/);
 });
 
 test("camera, driver background and exit decisions remain explicit",()=>{
