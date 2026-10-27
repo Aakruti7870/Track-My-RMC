@@ -12,6 +12,7 @@ const pages = [
 (async()=>{
   const browser = await chromium.launch({headless:true,args:["--no-sandbox"]});
   try{
+    const failures=[];
     for(const expected of pages){
       const context = await browser.newContext({viewport:{width:390,height:860}});
       const page = await context.newPage();
@@ -33,9 +34,11 @@ const pages = [
             "https://trackmyrmc-preview.pages.dev" + expected.path,
             {waitUntil:"domcontentloaded",timeout:25000}
           );
-          const ok = altResponse?.status() === 200 &&
-            await alternate.getByText(expected.heading,{exact:true}).first()
+          const headingVisible=await alternate.getByText(expected.heading,{exact:true}).first()
               .waitFor({timeout:13000}).then(()=>true,()=>false);
+          const proofVisible=await alternate.getByText(expected.proof,{exact:true}).first()
+              .waitFor({timeout:13000}).then(()=>true,()=>false);
+          const ok = altResponse?.status() === 200 && headingVisible && proofVisible;
           console.error("PUBLIC_LEGAL_ALTERNATE",expected.path,
             "status",altResponse?.status()??0,"rendered",ok);
         } catch(err) {
@@ -43,7 +46,11 @@ const pages = [
             "failed",String(err?.message||err).slice(0,160));
         } finally { await alternate.close(); }
       }
-      assert.equal(response.status(),200,expected.path+" must be publicly reachable");
+      if(response.status()!==200){
+        failures.push(expected.path+": HTTP "+response.status());
+        await context.close();
+        continue;
+      }
       assert.equal(new URL(page.url()).pathname,expected.path,"Legal page redirected away from public route");
       await page.getByText(expected.heading,{exact:true}).first().waitFor({timeout:20000});
       await page.getByText(expected.proof,{exact:true}).first().waitFor({timeout:20000});
@@ -52,5 +59,6 @@ const pages = [
       console.log("PUBLIC LEGAL PAGE PASS",expected.path,"200 and actual legal content");
       await context.close();
     }
+    if(failures.length) throw new Error("Canonical public legal pages blocked: "+failures.join(", "));
   }finally{await browser.close();}
 })().catch(e=>{console.error("PUBLIC LEGAL PAGE FAILED",e.name,e.message.slice(0,160));process.exitCode=1;});
