@@ -69,10 +69,10 @@ export default function RootLayout() {
             <ThemeProvider onReady={handleThemeReady}>
               <AuthProvider>
                 <ToastProvider>
-                  <PushNotificationBridge />
                   <BackgroundLocationConsentProvider />
                   <PermissionProvider>
-                  <RootBackHandler />
+                    <PushNotificationBridge />
+                    <RootBackHandler />
                   <ThemedNavigator />
                   <SupportWidgetBridge />
                   </PermissionProvider>
