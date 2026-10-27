@@ -201,7 +201,9 @@ jobs:
         run: |
           set -euo pipefail
           grep -q 'versionCode 93' android/app/build.gradle
-          grep -Eq '^android.targetSdkVersion=36 "const app=require('./app.json').expo; if(app.version !== process.env.VERSION_NAME || app.android.versionCode !== Number(process.env.VERSION_CODE)) process.exit(1); console.log('Android release version verified')"
+          grep -Eq '^android.targetSdkVersion=36$' android/gradle.properties
+          grep -Eq '^android.compileSdkVersion=36$' android/gradle.properties
+          node -e "const app=require('./app.json').expo; if(app.version !== process.env.VERSION_NAME || app.android.versionCode !== Number(process.env.VERSION_CODE)) process.exit(1); console.log('Android release version verified')"
 
       - name: Restore upload keystore
         working-directory: frontend/android/app
