@@ -5,15 +5,12 @@ on:
   push:
     branches:
       - main
-      # Explicit, temporary candidate-building branch; never deploy production.
-      - release/android-v1.1.2-vc93-preflight
     paths:
       - ".github/workflows/android-build.yml"
     tags:
       - "android-v*"
-  # The branch-only push is an explicitly requested private signed candidate;
-  # no Play upload and no AWS deployment. The production main and tagged
-  # builds retain fail-closed privacy URL checks and signing requirements.
+  # Signed release runs on manually dispatched candidate refs, tags or the
+  # main workflow file push. Ordinary candidate changes must not auto-sign.
 
 permissions:
   contents: read
