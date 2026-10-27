@@ -17,6 +17,14 @@ const pages = [
       const page = await context.newPage();
       const response = await page.goto(origin+expected.path,{waitUntil:"domcontentloaded",timeout:30000});
       assert(response,"Page did not respond");
+      if(response.status()!==200) {
+        const headers=response.headers();
+        console.error("PUBLIC_LEGAL_DIAGNOSTIC",expected.path,
+          "status",response.status(),"server",headers["server"]||"missing",
+          "mitigation",headers["cf-mitigated"]||"none",
+          "cache",headers["cf-cache-status"]||"none",
+          "content-type",headers["content-type"]||"missing");
+      }
       assert.equal(response.status(),200,expected.path+" must be publicly reachable");
       assert.equal(new URL(page.url()).pathname,expected.path,"Legal page redirected away from public route");
       await page.getByText(expected.heading,{exact:true}).first().waitFor({timeout:20000});
