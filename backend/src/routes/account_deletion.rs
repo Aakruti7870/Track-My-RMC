@@ -440,7 +440,7 @@ pub async fn fulfill_eligible_verified_request(
             OR EXISTS(SELECT 1 FROM gps_telemetry WHERE driver_id=$1)
             OR EXISTS(SELECT 1 FROM stored_files WHERE uploaded_by=$1)
             OR EXISTS(SELECT 1 FROM customer_digilocker_sessions WHERE user_id=$1)
-            OR EXISTS(SELECT 1 FROM invoices WHERE customer_id=$1)
+            OR EXISTS(SELECT 1 FROM plant_invoices WHERE customer_id=$1)
             OR EXISTS(SELECT 1 FROM driver_employment_profiles WHERE driver_id=$1)
             OR EXISTS(SELECT 1 FROM user_profiles
                      WHERE user_id=$1 AND (LOWER(kyc_status) NOT IN
