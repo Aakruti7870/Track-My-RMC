@@ -109,7 +109,7 @@ jobs:
           node -e "const c=require('./google-services.json'); const p=c.client?.[0]?.client_info?.android_client_info?.package_name; if(p !== process.env.PACKAGE_NAME) process.exit(1); console.log('Firebase Android package verified')"
 
       - name: Configure AWS credentials
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        if: github.ref != 'refs/heads/release/android-v1.1.2-vc93-preflight' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
@@ -118,6 +118,7 @@ jobs:
         continue-on-error: ${{ github.event_name == 'pull_request' }}
 
       - name: Load Google Maps keys from AWS Secrets Manager
+        if: github.ref != 'refs/heads/release/android-v1.1.2-vc93-preflight'
         shell: bash
         run: |
           set -euo pipefail
@@ -190,6 +191,28 @@ jobs:
           print("Google Maps runtime configuration loaded, masked, and validated.")
           PY
           unset SECRET_JSON TRACKMYRMC_SECRET_JSON
+
+      - name: Load Maps keys from repository secrets for isolated vc93 candidate
+        if: github.ref == 'refs/heads/release/android-v1.1.2-vc93-preflight'
+        shell: bash
+        env:
+          CANDIDATE_ANDROID_MAPS_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_KEY }}
+          CANDIDATE_EXPO_MAPS_KEY: ${{ secrets.EXPO_PUBLIC_GOOGLE_MAPS_KEY }}
+          CANDIDATE_PLACES_KEY: ${{ secrets.GOOGLE_PLACES_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$CANDIDATE_ANDROID_MAPS_KEY" ] || [ -z "$CANDIDATE_EXPO_MAPS_KEY" ] || [ -z "$CANDIDATE_PLACES_KEY" ]; then
+            echo "::error::Isolated candidate build requires all 3 GitHub repository Maps secrets. Never ship Android Maps without its key."
+            exit 1
+          fi
+          echo "::add-mask::$CANDIDATE_ANDROID_MAPS_KEY"
+          echo "::add-mask::$CANDIDATE_EXPO_MAPS_KEY"
+          echo "::add-mask::$CANDIDATE_PLACES_KEY"
+          {
+            echo "GOOGLE_MAPS_ANDROID_KEY=$CANDIDATE_ANDROID_MAPS_KEY"
+            echo "EXPO_PUBLIC_GOOGLE_MAPS_KEY=$CANDIDATE_EXPO_MAPS_KEY"
+            echo "GOOGLE_PLACES_API_KEY=$CANDIDATE_PLACES_KEY"
+          } >> "$GITHUB_ENV"
 
       - name: Generate Android project
         env:
