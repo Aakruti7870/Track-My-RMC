@@ -91,6 +91,10 @@ struct ApprovalSource {
     status: String,
 }
 
+fn valid_plan_interest(months: i16) -> bool {
+    matches!(months, 1 | 3 | 6 | 12)
+}
+
 fn normalized_email(raw: &str) -> Result<String, AppError> {
     let email = raw.trim().to_ascii_lowercase();
     let Some((local, domain)) = email.split_once('@') else {
@@ -243,7 +247,7 @@ pub async fn submit_onboarding(
     }
 
     if let Some(months) = payload.preferred_plan_months {
-        if ![1, 3, 6, 12].contains(&months) {
+        if !valid_plan_interest(months) {
             return Err(AppError::BadRequest("Choose 1, 3, 6 or 12 months".into()));
         }
     }
@@ -651,6 +655,16 @@ pub async fn approve_listing(
         "plant_id": plant_id,
         "owner_id": owner_id
     })))
+}
+
+#[cfg(test)]
+mod plan_interest_tests {
+    use super::valid_plan_interest;
+    #[test]
+    fn only_billing_review_durations_are_accepted() {
+        for months in [1, 3, 6, 12] { assert!(valid_plan_interest(months)); }
+        for months in [-1, 0, 2, 4, 9, 13, 24] { assert!(!valid_plan_interest(months)); }
+    }
 }
 
 #[cfg(test)]
