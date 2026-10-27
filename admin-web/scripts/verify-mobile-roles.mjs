@@ -271,7 +271,7 @@ try {
       await page.screenshot({path:new URL('../../artifacts/customer-experience/plants-desktop.png',import.meta.url).pathname});
       await page.setViewportSize({width:390,height:844});
       phase = 'browser permission revocation drops GPS coordinates';
-      const preference = await context.request.put('http://127.0.0.1:8301/api/me/permission-consent',{headers:{Authorization:`Bearer ${token}`},data:{version:1,location_choice:'granted',notification_choice:'manual'}});
+      const preference = await context.request.put('http://127.0.0.1:8301/api/me/permission-consent',{headers:{Authorization:`Bearer ${token}`},data:{version:2,location_choice:'granted',notification_choice:'manual',camera_choice:'manual'}});
       assert.equal(preference.status(),200);
       const gpsSearch = page.waitForResponse(response => new URL(response.url()).pathname === '/api/customer/plants/search' && response.status()===200 && response.request().postDataJSON()?.lat != null);
       await page.reload();
