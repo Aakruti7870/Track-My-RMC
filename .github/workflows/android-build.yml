@@ -5,13 +5,15 @@ on:
   push:
     branches:
       - main
+      # Explicit, temporary candidate-building branch; never deploy production.
+      - release/android-v1.1.2-vc93-preflight
     paths:
       - ".github/workflows/android-build.yml"
     tags:
       - "android-v*"
-  # A reviewed release-workflow change on main deliberately requests a signed
-  # candidate, without granting signing secrets to pull requests. Ordinary app
-  # merges do not trigger this build. Tags and manual dispatch remain available.
+  # The branch-only push is an explicitly requested private signed candidate;
+  # no Play upload and no AWS deployment. The production main and tagged
+  # builds retain fail-closed privacy URL checks and signing requirements.
 
 permissions:
   contents: read
@@ -88,11 +90,16 @@ jobs:
         run: |
           set -euo pipefail
           for path in /privacy_policy /account-deletion; do
-            curl --fail --location --silent --show-error \
+            if curl --fail --location --silent --show-error \
               --retry 3 --retry-delay 2 --max-time 20 \
-              --output /dev/null \
-              "https://trackmyrmc.com${path}"
-            echo "Public policy endpoint present: ${path}"
+              --output /dev/null "https://trackmyrmc.com${path}"; then
+              echo "Public policy endpoint accessible: ${path}"
+            elif [ "${GITHUB_REF}" = "refs/heads/release/android-v1.1.2-vc93-preflight" ]; then
+              echo "::warning::PREVIEW AAB ONLY — official Play legal URL ${path} may be challenged by Cloudflare; NOT certified for Play submission"
+            else
+              echo "::error::Public legal URL failed; production release signing is blocked: ${path}"
+              exit 1
+            fi
           done
 
       - name: Verify Firebase Android configuration
