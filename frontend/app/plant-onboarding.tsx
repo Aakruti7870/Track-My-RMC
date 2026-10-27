@@ -72,6 +72,8 @@ export default function PlantOnboarding() {
   const [email, setEmail] = useState(initialEmail);
   const [mobile, setMobile] = useState("");
   const [plantName, setPlantName] = useState("");
+  const [planMonths, setPlanMonths] = useState<1 | 3 | 6 | 12 | null>(null);
+  const [planMenuOpen, setPlanMenuOpen] = useState(false);
   const [address, setAddress] = useState("");
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
@@ -185,6 +187,7 @@ export default function PlantOnboarding() {
     if (!validEmail(email)) return setError("Enter a valid email address");
     if (mobile.length !== 10) return setError("Enter a valid 10-digit mobile number");
     if (plantName.trim().length < 2) return setError("Enter the plant name");
+    if (!planMonths) return setError("Choose a plan duration: 1, 3, 6 or 12 months");
     if (!locationMarked || lat === null || lng === null) return setError("Mark the plant location before submitting");
 
     setSubmitting(true);
@@ -194,6 +197,7 @@ export default function PlantOnboarding() {
         email: email.trim().toLowerCase(),
         mobile: `+91${mobile}`,
         plant_name: plantName.trim(),
+        preferred_plan_months: planMonths,
         address: address.trim(),
         lat,
         lng,
@@ -216,7 +220,7 @@ export default function PlantOnboarding() {
         </View>
         <AppText variant="title" center>Onboarding Request Received</AppText>
         <AppText variant="bodyMuted" center>
-          Thank you, {ownerName.trim()}. Your plant details are now pending TrackMyRMC Authority review.
+          Thank you, {ownerName.trim()}. Your plant details and {planMonths}-month plan preference are pending TrackMyRMC review.
         </AppText>
         <View style={[styles.requestCard, { borderColor: colors.border, backgroundColor: colors.surfaceSecondary }]}>
           <AppText variant="caption" center>REQUEST ID</AppText>
@@ -225,7 +229,7 @@ export default function PlantOnboarding() {
           </AppText>
         </View>
         <AppText variant="caption" center>
-          Approval is not automatic. Once approved, use your registered email on Plant Staff Login to receive an email OTP.
+          We will share subscription plans, pricing and the next steps at {email.trim().toLowerCase()}. No payment is due now; no subscription is active. Approval is not automatic.
         </AppText>
         <Button label="Back to Login" onPress={() => router.replace("/login" as any)} />
       </View>
@@ -302,6 +306,37 @@ export default function PlantOnboarding() {
             onChangeText={setPlantName}
             placeholder="RMC plant name"
           />
+          <View style={{ gap: spacing.sm }}>
+            <AppText variant="label">Preferred subscription period *</AppText>
+            <Pressable
+              testID="onboarding-plan-dropdown"
+              accessibilityRole="button"
+              accessibilityLabel="Choose subscription duration"
+              accessibilityState={{ expanded: planMenuOpen }}
+              onPress={() => setPlanMenuOpen(open => !open)}
+              style={[styles.planSelector, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}
+            >
+              <AppText style={{ color: colors.onSurface }}>
+                {planMonths ? (planMonths === 1 ? "1 month" : planMonths + " months") : "Select duration"}
+              </AppText>
+              <Ionicons name={planMenuOpen ? "chevron-up" : "chevron-down"} size={20} color={colors.brand}/>
+            </Pressable>
+            {planMenuOpen ? <View style={[styles.planOptions, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}>
+              {([1, 3, 6, 12] as const).map(months => (
+                <Pressable
+                  testID={`onboarding-plan-${months}`}
+                  accessibilityRole="button"
+                  key={months}
+                  onPress={() => { setPlanMonths(months); setPlanMenuOpen(false); setError(null); }}
+                  style={[styles.planOption, { borderBottomColor: colors.divider }]}
+                >
+                  <AppText style={{ color: colors.onSurface }}>{months === 1 ? "Monthly" : months + " months"}</AppText>
+                  {planMonths === months ? <Ionicons name="checkmark-circle" size={19} color={colors.success}/> : null}
+                </Pressable>
+              ))}
+            </View> : null}
+            <AppText variant="caption">Plans and prices will be emailed after review. Choosing a period does not start a subscription or request payment.</AppText>
+          </View>
 
           <View style={{ gap: spacing.sm }}>
             <AppText variant="label">Mark Plant Location</AppText>
@@ -416,6 +451,9 @@ const styles = StyleSheet.create({
   backButton: { width: 42, height: 42, borderWidth: 1, borderRadius: 21, alignItems: "center", justifyContent: "center" },
   infoBanner: { borderWidth: 1, borderRadius: radius.lg, padding: spacing.md, flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
   section: { gap: spacing.md },
+  planSelector: { minHeight: 54, borderRadius: radius.md, borderWidth: 1, paddingHorizontal: spacing.md, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  planOptions: { borderRadius: radius.md, borderWidth: 1, overflow: "hidden" },
+  planOption: { minHeight: 46, paddingHorizontal: spacing.md, flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderBottomWidth: StyleSheet.hairlineWidth },
   phoneInputWrap: { flexDirection: "row", minHeight: 56, borderRadius: radius.md, borderWidth: 1, overflow: "hidden" },
   prefix: { width: 66, borderRightWidth: 1, alignItems: "center", justifyContent: "center" },
   prefixText: { fontFamily: fonts.semibold, fontSize: fontSize.base },
