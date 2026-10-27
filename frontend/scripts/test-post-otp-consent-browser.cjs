@@ -27,8 +27,11 @@ const assert = require("node:assert/strict");
                 ? {role,role_label:"Staff",name:"Test Staff",plant_name:"Test Plant",kpis:[],primary:{title:"Review",kind:"orders"}}
                 : pathname.endsWith("/staff/module-permissions")
                   ? {permissions:[]}
-                  : pathname.endsWith("/driver/home")
-                    ? {name:"Test Driver",vehicle:null,active_trip:null,completed_today:0,checked_in:false}
+                  : pathname.endsWith("/driver/identity")
+                    ? {success:true,plant_name:"Test Plant",plant_address:"Test Address",tm_number:"TM-1",driver_name:"Test Driver",blood_group:null,emergency_contact_1:null,emergency_contact_2:null,
+                       employment:{employee_id:null,company_joining_date:null,total_driving_experience_months:null,total_driving_experience_display:"Not provided"}}
+                    : pathname.endsWith("/driver/home")
+                      ? {name:"Test Driver",vehicle:null,active_trip:null,completed_today:0,checked_in:false}
                     : pathname.endsWith("/driver/attendance")
                       ? {date:"2026-10-27",check_in:null,check_out:null}
                       : {};
