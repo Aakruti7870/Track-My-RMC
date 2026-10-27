@@ -192,14 +192,19 @@ try {
     const rolePath = user.alias ?? user.role;
     phase = 'role navigation';
     await page.waitForURL(url => url.pathname === `/${rolePath}` || url.pathname === `/${rolePath}/`);
+    // Every authenticated role (including reviewer fixture accounts) receives
+    // the same v2 introduction after OTP/MFA, not a pre-login install modal.
+    phase = 'post OTP optional consent';
+    await expect(page.getByTestId('post-otp-permission-introduction')).toBeVisible();
     if (user.role === 'customer') {
-      phase = 'post OTP optional consent';
-      await expect(page.getByTestId('permission-introduction')).toBeVisible();
       await mkdir(new URL('../../artifacts/customer-experience/',import.meta.url),{recursive:true});
       await page.screenshot({path:new URL('../../artifacts/customer-experience/consent-mobile.png',import.meta.url).pathname});
-      await page.getByTestId('permission-continue').click();
-      await expect(page.getByTestId('permission-introduction')).not.toBeVisible();
     }
+    await page.getByTestId('intro-camera-not-now').click();
+    await page.getByTestId('intro-skip-location').click();
+    await page.getByTestId('intro-skip-notifications').click();
+    await page.getByTestId('permission-continue').click();
+    await expect(page.getByTestId('post-otp-permission-introduction')).not.toBeVisible();
     phase = 'dashboard';
     const summary = user.role === 'customer' ? 'customer-home-scroll' : `${['plant_owner', 'driver'].includes(user.role) ? rolePath : 'staff'}-home-summary`;
     await expect(page.getByTestId(summary)).toBeVisible();
@@ -217,7 +222,7 @@ try {
       await page.screenshot({path:new URL('../../artifacts/customer-experience/plants-mobile.png',import.meta.url).pathname});
       await page.reload();
       await expect(page.getByTestId('plants-list')).toBeVisible();
-      await expect(page.getByTestId('permission-introduction')).not.toBeVisible();
+      await expect(page.getByTestId('post-otp-permission-introduction')).not.toBeVisible();
       phase = 'four-field search: open filters';
       await page.getByRole('button',{name:'Location filters',exact:true}).click();
       phase = 'four-field search: validate filter fields';
@@ -300,7 +305,7 @@ try {
       await page.screenshot({path:new URL('../../artifacts/customer-experience/tracking-mobile.png',import.meta.url).pathname});
       await page.goBack();
       await expect(page.getByTestId('plants-list')).toBeVisible();
-      await expect(page.getByTestId('permission-introduction')).not.toBeVisible();
+      await expect(page.getByTestId('post-otp-permission-introduction')).not.toBeVisible();
       await page.getByTestId('tab-home').click();
     }
     if (user.role !== 'customer') assert.ok(currentIdentity.plant_id);
