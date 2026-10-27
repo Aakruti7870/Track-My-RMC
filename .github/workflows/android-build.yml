@@ -201,8 +201,12 @@ jobs:
           CANDIDATE_PLACES_KEY: ${{ secrets.GOOGLE_PLACES_API_KEY }}
         run: |
           set -euo pipefail
-          if [ -z "$CANDIDATE_ANDROID_MAPS_KEY" ] || [ -z "$CANDIDATE_EXPO_MAPS_KEY" ] || [ -z "$CANDIDATE_PLACES_KEY" ]; then
-            echo "::error::Isolated candidate build requires all 3 GitHub repository Maps secrets. Never ship Android Maps without its key."
+          missing=()
+          [ -n "$CANDIDATE_ANDROID_MAPS_KEY" ] || missing+=(GOOGLE_MAPS_ANDROID_KEY)
+          [ -n "$CANDIDATE_EXPO_MAPS_KEY" ] || missing+=(EXPO_PUBLIC_GOOGLE_MAPS_KEY)
+          [ -n "$CANDIDATE_PLACES_KEY" ] || missing+=(GOOGLE_PLACES_API_KEY)
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing GitHub Actions Maps secrets: ${missing[*]}. No keys or confidential values are logged."
             exit 1
           fi
           echo "::add-mask::$CANDIDATE_ANDROID_MAPS_KEY"
