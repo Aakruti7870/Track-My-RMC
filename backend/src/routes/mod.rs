@@ -97,6 +97,11 @@ pub fn build_app_router(state: AppState) -> Router {
             "/api/account-deletion/cancel",
             post(account_deletion::cancel),
         )
+        // Super-admin only; permission "account.delete" is NOT granted by default.
+        .route(
+            "/api/admin/account-deletion/requests/:request_id/fulfill",
+            post(account_deletion::fulfill_verified_request),
+        )
         // --- User-scoped notifications and push-token registration ---
         .route("/api/notifications", get(notifications::list_notifications))
         .route(

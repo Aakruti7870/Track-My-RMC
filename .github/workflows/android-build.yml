@@ -9,9 +9,8 @@ on:
       - ".github/workflows/android-build.yml"
     tags:
       - "android-v*"
-  # A reviewed release-workflow change on main deliberately requests a signed
-  # candidate, without granting signing secrets to pull requests. Ordinary app
-  # merges do not trigger this build. Tags and manual dispatch remain available.
+  # Signed release runs on manually dispatched candidate refs, tags or the
+  # main workflow file push. Ordinary candidate changes must not auto-sign.
 
 permissions:
   contents: read
@@ -22,8 +21,8 @@ env:
   EXPO_PUBLIC_BACKEND_URL: https://trackmyrmc.com
   EXPECTED_PLAY_UPLOAD_SHA1: "3D:5F:80:59:1C:BA:69:1B:03:28:4D:A1:74:91:38:1D:8F:A1:32:DC"
   PACKAGE_NAME: com.trackmyrmc.concreteking
-  VERSION_CODE: "90"
-  VERSION_NAME: "2.0.32"
+  VERSION_CODE: "93"
+  VERSION_NAME: "1.1.2"
   AWS_REGION: ap-south-1
   AWS_ROLE_ARN: arn:aws:iam::260234292958:role/TrackMyRMC-GitHubDeploy
   APP_SECRET_NAME: trackmyrmc/app-runtime
@@ -77,7 +76,28 @@ jobs:
         run: npm ci
 
       - name: Validate Google Play privacy and permission readiness
-        run: npm run check:android-permissions
+        run: |
+          npm run check:android-permissions
+          npm run check:play-policy
+          npm run typecheck
+          node scripts/check-fresh-production-release.mjs
+
+      - name: Verify public policy and deletion links are accessible
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in /privacy_policy /account-deletion; do
+            if curl --fail --location --silent --show-error \
+              --retry 3 --retry-delay 2 --max-time 20 \
+              --output /dev/null "https://trackmyrmc.com${path}"; then
+              echo "Public policy endpoint accessible: ${path}"
+            elif [ "${GITHUB_REF}" = "refs/heads/release/android-v1.1.2-vc93-preflight" ]; then
+              echo "::warning::PREVIEW AAB ONLY — official Play legal URL ${path} may be challenged by Cloudflare; NOT certified for Play submission"
+            else
+              echo "::error::Public legal URL failed; production release signing is blocked: ${path}"
+              exit 1
+            fi
+          done
 
       - name: Verify Firebase Android configuration
         run: |
@@ -86,7 +106,7 @@ jobs:
           node -e "const c=require('./google-services.json'); const p=c.client?.[0]?.client_info?.android_client_info?.package_name; if(p !== process.env.PACKAGE_NAME) process.exit(1); console.log('Firebase Android package verified')"
 
       - name: Configure AWS credentials
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        if: github.ref != 'refs/heads/release/android-v1.1.2-vc93-preflight' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
@@ -95,6 +115,7 @@ jobs:
         continue-on-error: ${{ github.event_name == 'pull_request' }}
 
       - name: Load Google Maps keys from AWS Secrets Manager
+        if: github.ref != 'refs/heads/release/android-v1.1.2-vc93-preflight'
         shell: bash
         run: |
           set -euo pipefail
@@ -168,6 +189,32 @@ jobs:
           PY
           unset SECRET_JSON TRACKMYRMC_SECRET_JSON
 
+      - name: Load Maps keys from repository secrets for isolated vc93 candidate
+        if: github.ref == 'refs/heads/release/android-v1.1.2-vc93-preflight'
+        shell: bash
+        env:
+          CANDIDATE_ANDROID_MAPS_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_KEY }}
+          CANDIDATE_EXPO_MAPS_KEY: ${{ secrets.EXPO_PUBLIC_GOOGLE_MAPS_KEY }}
+          CANDIDATE_PLACES_KEY: ${{ secrets.GOOGLE_PLACES_API_KEY }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [ -n "$CANDIDATE_ANDROID_MAPS_KEY" ] || missing+=(GOOGLE_MAPS_ANDROID_KEY)
+          [ -n "$CANDIDATE_EXPO_MAPS_KEY" ] || missing+=(EXPO_PUBLIC_GOOGLE_MAPS_KEY)
+          [ -n "$CANDIDATE_PLACES_KEY" ] || missing+=(GOOGLE_PLACES_API_KEY)
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing GitHub Actions Maps secrets: ${missing[*]}. No keys or confidential values are logged."
+            exit 1
+          fi
+          echo "::add-mask::$CANDIDATE_ANDROID_MAPS_KEY"
+          echo "::add-mask::$CANDIDATE_EXPO_MAPS_KEY"
+          echo "::add-mask::$CANDIDATE_PLACES_KEY"
+          {
+            echo "GOOGLE_MAPS_ANDROID_KEY=$CANDIDATE_ANDROID_MAPS_KEY"
+            echo "EXPO_PUBLIC_GOOGLE_MAPS_KEY=$CANDIDATE_EXPO_MAPS_KEY"
+            echo "GOOGLE_PLACES_API_KEY=$CANDIDATE_PLACES_KEY"
+          } >> "$GITHUB_ENV"
+
       - name: Generate Android project
         env:
           GOOGLE_MAPS_ANDROID_KEY: ${{ env.GOOGLE_MAPS_ANDROID_KEY }}
@@ -177,7 +224,9 @@ jobs:
       - name: Verify release version
         run: |
           set -euo pipefail
-          grep -q 'versionCode 90' android/app/build.gradle
+          grep -q 'versionCode 93' android/app/build.gradle
+          grep -Eq '^android.targetSdkVersion=36$' android/gradle.properties
+          grep -Eq '^android.compileSdkVersion=36$' android/gradle.properties
           node -e "const app=require('./app.json').expo; if(app.version !== process.env.VERSION_NAME || app.android.versionCode !== Number(process.env.VERSION_CODE)) process.exit(1); console.log('Android release version verified')"
 
       - name: Restore upload keystore
@@ -270,7 +319,7 @@ jobs:
       - name: Upload signed AAB
         uses: actions/upload-artifact@v4
         with:
-          name: trackmyrmc-v2.0.32-vc90-signed-aab
+          name: trackmyrmc-v1.1.2-vc93-signed-aab
           path: frontend/android/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
           retention-days: 14

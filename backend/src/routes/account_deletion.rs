@@ -1,8 +1,13 @@
 use crate::{
-    auth::otp::OtpEngine, auth::AuthUser, error::AppError, repositories::user_repo,
-    services::whatsapp_service::WhatsAppService, state::AppState,
+    auth::control_center::WebAdmin, auth::otp::OtpEngine, auth::AuthUser, error::AppError,
+    repositories::user_repo, services::whatsapp_service::WhatsAppService, state::AppState,
 };
-use axum::{extract::State, response::IntoResponse, Json};
+use axum::{
+    extract::{Path, State},
+    http::HeaderMap,
+    response::IntoResponse,
+    Json,
+};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -370,6 +375,137 @@ pub async fn submit_signed_in_request(
     Ok(Json(
         json!({ "success": true, "request": request_json(row) }),
     ))
+}
+
+/// Only the dedicated Central Admin may execute this irreversible operation.
+/// The permission is intentionally *not* assigned by default; operators must
+/// authorize the privacy workflow separately after a verified restore rehearsal.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FulfillDeletionBody {
+    pub confirm: String,
+}
+
+pub async fn fulfill_verified_request(
+    State(state): State<AppState>,
+    admin: WebAdmin,
+    headers: HeaderMap,
+    Path(request_id): Path<Uuid>,
+    Json(payload): Json<FulfillDeletionBody>,
+) -> Result<impl IntoResponse, AppError> {
+    admin.require("account.delete")?;
+    crate::routes::control_center_routes::require_recent_step_up(&state, &admin.user, &headers)
+        .await?;
+    if payload.confirm != "DELETE_ACCOUNT" {
+        return Err(AppError::BadRequest(
+            "Type DELETE_ACCOUNT to confirm permanent erasure".into(),
+        ));
+    }
+    fulfill_eligible_verified_request(&state.db, request_id, admin.user_id).await?;
+    Ok(Json(
+        json!({"success":true,"status":"COMPLETED","request_id":request_id}),
+    ))
+}
+
+/// Purges a strictly limited, verified, low-risk account in a single transaction.
+/// Financial, personnel, KYC, trip and uploaded-file records are never silently
+/// removed: those cases require an independently reviewed erasure/retention plan.
+/// This helper is testable on isolated databases without granting an API admin role.
+pub async fn fulfill_eligible_verified_request(
+    db: &PgPool,
+    request_id: Uuid,
+    actor_id: Uuid,
+) -> Result<(), AppError> {
+    let mut tx = db.begin().await?;
+    let identity: Option<(Uuid, String, String, Option<String>)> = sqlx::query_as(
+        "SELECT u.id, u.role, u.phone, u.email
+         FROM account_deletion_requests r JOIN users u ON u.id=r.user_id
+         WHERE r.id=$1 AND r.status='PENDING'
+         FOR UPDATE OF r,u",
+    )
+    .bind(request_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let (user_id, role, phone, email) = identity.ok_or_else(|| {
+        AppError::NotFound("No pending, verified account deletion request".into())
+    })?;
+    if !matches!(role.as_str(), "customer" | "driver") || user_id == actor_id {
+        return Err(AppError::Forbidden(
+            "Privileged, staff and plant-owner identities require a separate legal handover".into(),
+        ));
+    }
+
+    // Any retained operational or third-party document must be reviewed before
+    // completion. Do not infer that CASCADE automatically erases S3/vendor data.
+    let retain: bool = sqlx::query_scalar(
+        "SELECT
+            EXISTS(SELECT 1 FROM rmc_plants WHERE owner_id=$1)
+            OR EXISTS(SELECT 1 FROM orders WHERE customer_id=$1)
+            OR EXISTS(SELECT 1 FROM order_loads WHERE driver_id=$1)
+            OR EXISTS(SELECT 1 FROM transit_mixers WHERE driver_id=$1)
+            OR EXISTS(SELECT 1 FROM gps_telemetry WHERE driver_id=$1)
+            OR EXISTS(SELECT 1 FROM stored_files WHERE uploaded_by=$1)
+            OR EXISTS(SELECT 1 FROM customer_digilocker_sessions WHERE user_id=$1)
+            OR EXISTS(SELECT 1 FROM plant_invoices WHERE customer_id=$1)
+            OR EXISTS(SELECT 1 FROM driver_employment_profiles WHERE driver_id=$1)
+            OR EXISTS(SELECT 1 FROM user_profiles
+                     WHERE user_id=$1 AND (LOWER(kyc_status) NOT IN
+                       ('unverified','not_started','pending') OR verified_name IS NOT NULL))",
+    )
+    .bind(user_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    if retain {
+        return Err(AppError::Conflict(
+            "Retained commercial, KYC, staff, location or file records need reviewed erasure and legal retention before completion".into(),
+        ));
+    }
+
+    // Account-linked OTPs must be discarded as well as tokens/passkeys (which
+    // cascade from users) so deleted identities cannot reuse an old challenge.
+    sqlx::query("DELETE FROM otp_verifications WHERE destination=$1 OR destination=$2")
+        .bind(&phone)
+        .bind(email.as_deref().unwrap_or(""))
+        .execute(&mut *tx)
+        .await?;
+
+    // Keep the immutable action ledger but detach identifiers and free-form
+    // metadata; never retain plaintext personal data in audit metadata.
+    sqlx::query("UPDATE audit_logs SET user_id=NULL, metadata='{}'::jsonb, ip_address=NULL WHERE user_id=$1")
+        .bind(user_id).execute(&mut *tx).await?;
+
+    // FK RESTRICT failures are fail-closed; PostgreSQL rolls the whole
+    // transaction back. We do not mark completed unless hard deletion succeeds.
+    let deleted = sqlx::query("DELETE FROM users WHERE id=$1")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+    if deleted.rows_affected() != 1 {
+        return Err(AppError::Conflict(
+            "Account deletion was not completed".into(),
+        ));
+    }
+    sqlx::query(
+        "UPDATE account_deletion_requests
+         SET status='COMPLETED', user_id=NULL, reason=NULL,
+             identifier_hash=repeat('0',32)||replace(id::text,'-',''),
+             completed_at=NOW(), updated_at=NOW()
+         WHERE id=$1 AND status='PENDING'",
+    )
+    .bind(request_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata)
+         VALUES($1,'account_deletion.fulfilled','account_deletion_request',$2,
+                jsonb_build_object('status','COMPLETED','identity_erased',true))",
+    )
+    .bind(actor_id)
+    .bind(request_id.to_string())
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(())
 }
 
 fn deletion_identifier(role: &str, phone: &str, email: Option<&str>) -> Result<String, AppError> {

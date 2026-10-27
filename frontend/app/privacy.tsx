@@ -7,7 +7,7 @@ import { Card } from "@/src/components/ui/Card";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { spacing } from "@/src/theme/tokens";
 
-const UPDATED = "28 August 2026";
+const UPDATED = "27 October 2026";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -42,7 +42,7 @@ export default function PrivacyPolicy() {
         </Section>
 
         <Section title="Account and operational information">
-          We use mobile number or email for authentication and profile, role, plant assignment and KYC status for access control. Operational records may include RMC orders, delivery sites, dispatches, trips, challans, proof of delivery, signatures, invoices, payments, attendance, incidents and support records when those features are used.
+          We use mobile number or email for authentication and profile, role, plant assignment and KYC status for access control. Operational records may include RMC orders, delivery sites, dispatches, trips, challans, proof of delivery, signatures, invoices, payment transaction references and statuses, attendance, incidents and support records when those features are used. Plant staff employment records may include join dates and experience; driver emergency contacts and blood group may be stored by an authorized plant for safety and identification.
         </Section>
 
         <Section title="Location and live delivery tracking">
@@ -50,7 +50,7 @@ export default function PrivacyPolicy() {
         </Section>
 
         <Section title="Camera, photos and files">
-          Camera access is requested only when a Driver chooses to capture a proof-of-delivery site photo. On supported Android versions, existing photos are selected through the system photo picker without broad photo or storage access. KYC consent flows may use approved verification providers such as DigiLocker where enabled.
+          Camera access is requested only when a Driver chooses to capture a proof-of-delivery site photo. On supported Android versions, existing photos are selected through the system photo picker without broad photo or storage access. Identity verification and KYC flows may send submitted identification information to authorized verification providers (including DigiLocker/Sandbox, when enabled); the provider handles the verification response. Uploads and photos selected for delivery proof become part of the corresponding operational record.
         </Section>
 
         <Section title="Notifications">
@@ -58,15 +58,15 @@ export default function PrivacyPolicy() {
         </Section>
 
         <Section title="Service providers and sharing">
-          Data is shared only as needed to provide TrackMyRMC and according to role permissions. Infrastructure, mapping, notification, payment, KYC and authentication providers may process the minimum information required for enabled features. TrackMyRMC does not sell personal data and does not use location for advertising.
+          Data is disclosed to the selected RMC plant and authorized drivers or customers only for the order, dispatch, safety and delivery features they use. Service providers for infrastructure, maps, push notifications, Meta WhatsApp/email authentication, Cashfree payments and enabled KYC verification may process data needed to deliver those functions. Customers may see assigned mixer tracking during an active delivery. TrackMyRMC does not sell personal data and does not use location for advertising.
         </Section>
 
         <Section title="Retention and account deletion">
-          You can request deletion from inside TrackMyRMC or from the public Delete Account page at trackmyrmc.com/account-deletion. After verified deletion is completed, sign-in identifiers, profile data, sessions, saved customer sites, app notifications and registered push tokens are removed or anonymized. Certain statutory transaction records may be retained only where required for legal, tax, fraud-prevention or accounting obligations.
+          You can submit a verified account-deletion request from inside TrackMyRMC or from the public Delete Account page at trackmyrmc.com/account-deletion. The request is reviewed and processed; submitting the request is not the same as completing deletion. After verified deletion is completed, sign-in identifiers, profile data, sessions, saved customer sites, app notifications and registered push tokens are removed or anonymized. Certain statutory transaction records may be retained only where required for legal, tax, fraud-prevention or accounting obligations.
         </Section>
 
         <Section title="Security and your choices">
-          TrackMyRMC uses authenticated sessions and server-authorized role-based access controls. Sensitive Android permissions are requested only in the feature that needs them. You may decline optional permissions or revoke them in Android settings.
+          TrackMyRMC uses authenticated sessions and server-authorized role-based access controls. Camera and location permissions are requested for the feature that needs them, following an explanation. You may decline optional device permissions, review in-app permission choices or revoke operating-system access in Android Settings. A driver may decline background location; active-trip tracking functions may then be limited.
         </Section>
 
         <Card style={{ gap: spacing.xs }}>
