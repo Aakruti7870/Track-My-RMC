@@ -29,8 +29,8 @@ async fn request_for(pool: &PgPool, user_id: Uuid) -> Uuid {
 
 #[sqlx::test(migrations = "./migrations")]
 async fn verified_eligible_customer_is_deleted_with_related_personal_data(pool: PgPool) {
-    let actor = create_user(&pool,"qa-control-center","central_admin").await;
-    let user = create_user(&pool,"qa-erasure-customer","customer").await;
+    let actor = create_user(&pool,"qa-admin","central_admin").await;
+    let user = create_user(&pool,"qa-customer","customer").await;
     sqlx::query("INSERT INTO user_profiles(user_id,kyc_status,address_line) VALUES ($1,'unverified','Synthetic Address')")
         .bind(user).execute(&pool).await.unwrap();
     sqlx::query("INSERT INTO device_push_tokens(user_id,token,platform) VALUES ($1,'synthetic-token','android')")
@@ -69,7 +69,7 @@ async fn verified_eligible_customer_is_deleted_with_related_personal_data(pool: 
 #[sqlx::test(migrations = "./migrations")]
 async fn owner_is_not_eligible_and_request_stays_pending(pool: PgPool) {
     let actor = create_user(&pool,"qa-admin-actor","central_admin").await;
-    let owner = create_user(&pool,"qa-owner-pending","owner").await;
+    let owner = create_user(&pool,"qa-owner","owner").await;
     let id = request_for(&pool,owner).await;
     assert!(fulfill_eligible_verified_request(&pool,id,actor).await.is_err());
     let status: String = sqlx::query_scalar("SELECT status FROM account_deletion_requests WHERE id=$1")
@@ -80,7 +80,7 @@ async fn owner_is_not_eligible_and_request_stays_pending(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn driver_with_employment_records_is_not_silently_erased(pool: PgPool) {
     let actor = create_user(&pool,"qa-administrator-2","central_admin").await;
-    let driver = create_user(&pool,"qa-driver-with-records","driver").await;
+    let driver = create_user(&pool,"qa-driver","driver").await;
     let plant: Uuid = sqlx::query_scalar(
         "INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,address_line,city,state,pincode,contact_phone)
          VALUES($1,'Synthetic','QA-ERASE-PLANT',19,73,'Test','Test','Test','400000','0') RETURNING id",
