@@ -662,8 +662,12 @@ mod plan_interest_tests {
     use super::valid_plan_interest;
     #[test]
     fn only_billing_review_durations_are_accepted() {
-        for months in [1, 3, 6, 12] { assert!(valid_plan_interest(months)); }
-        for months in [-1, 0, 2, 4, 9, 13, 24] { assert!(!valid_plan_interest(months)); }
+        for months in [1, 3, 6, 12] {
+            assert!(valid_plan_interest(months));
+        }
+        for months in [-1, 0, 2, 4, 9, 13, 24] {
+            assert!(!valid_plan_interest(months));
+        }
     }
 }
 
