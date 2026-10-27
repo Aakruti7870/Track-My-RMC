@@ -24,6 +24,24 @@ const pages = [
           "mitigation",headers["cf-mitigated"]||"none",
           "cache",headers["cf-cache-status"]||"none",
           "content-type",headers["content-type"]||"missing");
+        // An existing Pages host may be a no-DNS fallback for the Play URL.
+        // Diagnostics do NOT count as a production pass and must not hide the
+        // canonical 403. Its actual rendered content must also be checked.
+        const alternate = await browser.newPage({viewport:{width:390,height:860}});
+        try {
+          const altResponse = await alternate.goto(
+            "https://trackmyrmc-preview.pages.dev" + expected.path,
+            {waitUntil:"domcontentloaded",timeout:25000}
+          );
+          const ok = altResponse?.status() === 200 &&
+            await alternate.getByText(expected.heading,{exact:true}).first()
+              .waitFor({timeout:13000}).then(()=>true,()=>false);
+          console.error("PUBLIC_LEGAL_ALTERNATE",expected.path,
+            "status",altResponse?.status()??0,"rendered",ok);
+        } catch(err) {
+          console.error("PUBLIC_LEGAL_ALTERNATE",expected.path,
+            "failed",String(err?.message||err).slice(0,160));
+        } finally { await alternate.close(); }
       }
       assert.equal(response.status(),200,expected.path+" must be publicly reachable");
       assert.equal(new URL(page.url()).pathname,expected.path,"Legal page redirected away from public route");
