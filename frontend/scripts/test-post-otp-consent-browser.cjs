@@ -21,7 +21,17 @@ const assert = require("node:assert/strict");
           ? {id:"fresh-"+role+"-"+review,name:review?"TrackMyRMC Play Reviewer":"Test Account",role,roles:[role],status:"active",kyc_status:"NOT_STARTED",plant_id:null}
           : pathname.endsWith("/permission-consent") && route.request().method()==="GET"
             ? {consent:{version:1,location_choice:"manual",notification_choice:"manual"}}
-            : {};
+            : pathname.endsWith("/owner/home")
+              ? {plant_count:0,plants:[],cards:{todays_orders:0,dispatched_loads:0,active_staff:0,pending_approvals:0},pending_orders:[]}
+              : pathname.endsWith("/staff/home")
+                ? {role,role_label:"Staff",name:"Test Staff",plant_name:"Test Plant",kpis:[],primary:{title:"Review",kind:"orders"}}
+                : pathname.endsWith("/staff/module-permissions")
+                  ? {permissions:[]}
+                  : pathname.endsWith("/driver/home")
+                    ? {name:"Test Driver",vehicle:null,active_trip:null,completed_today:0,checked_in:false}
+                    : pathname.endsWith("/driver/attendance")
+                      ? {date:"2026-10-27",check_in:null,check_out:null}
+                      : {};
         if(pathname.endsWith("/permission-consent")&&route.request().method()==="PUT"){
           writes.push(JSON.parse(route.request().postData()));
           return route.fulfill({json:{success:true}});
