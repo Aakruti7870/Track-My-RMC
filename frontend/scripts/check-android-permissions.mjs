@@ -13,8 +13,8 @@ const app = JSON.parse(read("frontend/app.json")).expo;
 const android = app.android || {};
 const permissions = new Set(android.permissions || []);
 const blocked = new Set(android.blockedPermissions || []);
-assert(app.version === "2.0.32", "Expected Android release version 2.0.32.");
-assert(android.versionCode === 90, "Expected Android versionCode 90.");
+assert(app.version === "2.0.33", "Expected Android release version 2.0.33.");
+assert(android.versionCode === 93, "Expected Android versionCode 93.");
 assert(android.package === "com.trackmyrmc.concreteking", "Android application ID must remain stable.");
 
 for (const permission of ["READ_MEDIA_IMAGES", "READ_MEDIA_VIDEO", "READ_EXTERNAL_STORAGE", "WRITE_EXTERNAL_STORAGE"]) {
@@ -58,4 +58,4 @@ if (failures.length) {
   for (const failure of failures) console.error("ANDROID PRIVACY GATE FAILED: " + failure);
   process.exit(1);
 }
-console.log("Android privacy/permission checks passed for TrackMyRMC 2.0.32 / vc90.");
+console.log("Android privacy/permission checks passed for TrackMyRMC 2.0.33 / vc93.");

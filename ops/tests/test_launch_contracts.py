@@ -54,6 +54,7 @@ class LaunchContracts(unittest.TestCase):
         app = json.loads(self.read("frontend/app.json"))["expo"]
         workflow = self.read(".github/workflows/android-build.yml")
         self.assertEqual(app["android"]["package"], "com.trackmyrmc.concreteking")
+        self.assertGreater(app["android"]["versionCode"], 92, "Do not reuse Play Console version codes 90–92")
         self.assertIn(f'VERSION_NAME: "{app["version"]}"', workflow)
         self.assertIn(f'VERSION_CODE: "{app["android"]["versionCode"]}"', workflow)
         self.assertIn("EXPECTED_PLAY_UPLOAD_SHA1", workflow)
