@@ -77,7 +77,10 @@ jobs:
         run: npm ci
 
       - name: Validate Google Play privacy and permission readiness
-        run: npm run check:android-permissions
+        run: |
+          npm run check:android-permissions
+          npm run check:play-policy
+          node scripts/check-fresh-production-release.mjs
 
       - name: Verify Firebase Android configuration
         run: |
