@@ -25,7 +25,7 @@ sqlx = { version = "0.8.6", default-features = false, features = [
 uuid = { version = "1.8", features = ["serde", "v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 argon2 = "0.5"
-jsonwebtoken = "9.3"
+jsonwebtoken = "10.3"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 dotenvy = "0.15"
