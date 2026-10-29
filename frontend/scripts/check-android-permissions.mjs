@@ -30,6 +30,7 @@ const permissionSettings = read("frontend/app/permission-settings.tsx");
 const ownerMore = read("frontend/app/owner/more.tsx");
 const driverMore = read("frontend/app/driver/more.tsx");
 const customerMore = read("frontend/app/customer/more.tsx");
+const staffMore = read("frontend/src/screens/StaffMore.tsx");
 const browserReview = read("admin-web/scripts/verify-mobile-roles.mjs");
 const consent = read("frontend/src/location/BackgroundLocationConsent.tsx");
 const tracking = read("frontend/src/location/tripTracking.ts");
@@ -52,7 +53,7 @@ assert(permissionSettings.includes("ImagePicker.requestCameraPermissionsAsync()"
 assert(permissionSettings.includes("registerPushDevice(token, true)"), "Notification opt-in must request Android permission on an explicit action.");
 assert(permissionSettings.includes('isDriver ? (') && permissionSettings.includes("Background location — active trips only"), "Only driver settings may discuss background trip tracking.");
 assert(permissionSettings.includes("reconfirmGranted={!locationEnabled}"), "Existing Android location grants must still require TrackMyRMC opt-in.");
-assert([ownerMore, driverMore, customerMore].every(source => source.includes("permission-settings") || source.includes("review")), "Customer, owner, and driver settings must link to optional permission management.");
+assert([ownerMore, driverMore, customerMore, staffMore].every(source => source.includes("permission-settings") || source.includes("review")), "Customer, owner, driver, and operational staff settings must link to optional permission management.");
 assert(!browserReview.includes("getByTestId('permission-continue')"), "Browser E2E must not depend on removed permission gate.");
 assert(consent.includes("This location is collected in the background — even when the app is closed or not in use"), "Background location disclosure must state background use.");
 assert(trip.includes("This app collects location data to enable live mixer delivery tracking even when the app is closed or not in use."), "Driver trip screen must disclose background location use.");
