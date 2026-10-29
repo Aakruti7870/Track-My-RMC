@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import * as Location from "expo-location";
@@ -48,6 +48,7 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
   const [locationPreference, setLocationPreference] = useState(false);
   const [runtimeGranted, setRuntimeGranted] = useState(false);
   const [notificationChoice, setNotificationChoice] = useState<Choice>("manual");
+  const newlyApprovedAccount = useRef<string | null>(null);
 
   const refreshLocation = useCallback(async () => {
     setRuntimeGranted(await isForegroundLocationGranted());
@@ -60,6 +61,7 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
     setLocationPreference(false);
     setRuntimeGranted(false);
     setNotificationChoice("manual");
+    if (newlyApprovedAccount.current !== account) newlyApprovedAccount.current = null;
     if (!account || !token) return;
     let cancelled = false;
     void (async () => {
@@ -71,7 +73,7 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
         try { decision = saved ? JSON.parse(saved) as Decision : null; } catch { /* No saved choice. */ }
       }
       if (cancelled) return;
-      setLocationPreference(decision?.location_choice === "granted");
+      setLocationPreference(newlyApprovedAccount.current === account || decision?.location_choice === "granted");
       setNotificationChoice(decision?.notification_choice ?? "manual");
       await refreshLocation();
     })().catch(() => undefined);
@@ -91,6 +93,7 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
     const granted = await isForegroundLocationGranted();
     setRuntimeGranted(granted);
     if (!granted) return;
+    if (account) newlyApprovedAccount.current = account;
     setLocationPreference(true);
     if (!account || !token || locationPreference) return;
     const decision: Decision = {
