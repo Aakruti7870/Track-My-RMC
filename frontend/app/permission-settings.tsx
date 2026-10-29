@@ -144,11 +144,17 @@ export default function PermissionSettings() {
             TrackMyRMC asks for each Android permission separately, when you enable the related feature. You can decline any optional access and continue using other features.
           </AppText>
 
-          <PermissionCard icon="location-outline" title="Location"
-            description={isDriver
-              ? "Share location for your assigned delivery or attendance only after a separate explanation. Background trip tracking is requested later, only for an active trip."
-              : "Find nearby concrete plants using precise or approximate location while using the app. You can search by city instead. No customer background tracking."}
-            state={location} buttonLabel="Allow location" onRequest={askLocation} busy={busy} onSettings={openSettings} />
+          {user.role === "customer" ? (
+            <PermissionCard icon="location-outline" title="Location"
+              description="Find nearby concrete plants using precise or approximate location while using the app. You can search by city instead. No customer background tracking."
+              state={location} buttonLabel="Allow location" onRequest={askLocation} busy={busy} onSettings={openSettings} />
+          ) : (
+            <Card style={styles.card}>
+              <AppText variant="heading">Location</AppText>
+              <AppText variant="bodyMuted">Location access is requested only when you use an assigned trip, attendance, SOS, field visit or plant-location feature. Each action provides its own purpose-specific explanation before the Android prompt.</AppText>
+              <AppText variant="caption">Android permission: {labelFor(location.status)}</AppText>
+            </Card>
+          )}
 
           {isDriver ? (
             <PermissionCard icon="camera-outline" title="Camera"
