@@ -9,7 +9,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/src/auth/AuthContext";
 import { usePermissions } from "@/src/permissions/PermissionProvider";
 import { requestNearbyPlantsLocationConsent } from "@/src/location/BackgroundLocationConsent";
-import { getNotificationPermissionStatus, registerPushDevice } from "@/src/notifications/pushClient";
+import { registerPushDevice } from "@/src/notifications/pushClient";
 import { ThemedScreen } from "@/src/components/ThemedScreen";
 import { Card } from "@/src/components/ui/Card";
 import { AppText } from "@/src/components/ui/AppText";
