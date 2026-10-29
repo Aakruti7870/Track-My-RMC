@@ -572,8 +572,6 @@ export default function LoginScreen() {
             <View style={[styles.sheetHandle, { backgroundColor: colors.isDark ? "rgba(255,255,255,0.18)" : "rgba(15,23,42,0.12)" }]} />
           </View>
 
-
-
           <View style={[styles.segmented, { backgroundColor: colors.surface, borderColor: colors.border }]}> 
             <Pressable testID="login-user-tab" onPress={() => resetEntry("user")} style={[styles.segment, mode === "user" && { backgroundColor: colors.brandSoft, borderColor: `${colors.brand}88`, }]}>
               <Ionicons name="person-outline" size={18} color={mode === "user" ? colors.brand : colors.onSurfaceTertiary} />
