@@ -572,22 +572,7 @@ export default function LoginScreen() {
             <View style={[styles.sheetHandle, { backgroundColor: colors.isDark ? "rgba(255,255,255,0.18)" : "rgba(15,23,42,0.12)" }]} />
           </View>
 
-          <Pressable
-            testID="login-review-access"
-            accessibilityRole="button"
-            onPress={() => router.push("/review-access" as any)}
-            style={[styles.reviewAccessCard, { backgroundColor: colors.brandSoft, borderColor: `${colors.brand}66` }]}
-            hitSlop={8}
-          >
-            <View style={[styles.reviewAccessIcon, { backgroundColor: colors.surface }]}>
-              <Ionicons name="shield-checkmark-outline" size={21} color={colors.brand} />
-            </View>
-            <View style={{ flex: 1, gap: 3 }}>
-              <AppText variant="label">Google Play Reviewer Access</AppText>
-              <AppText variant="caption" color={colors.onSurfaceSecondary}>Dedicated Customer, Plant Owner and Driver review accounts</AppText>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.brand} />
-          </Pressable>
+
 
           <View style={[styles.segmented, { backgroundColor: colors.surface, borderColor: colors.border }]}> 
             <Pressable testID="login-user-tab" onPress={() => resetEntry("user")} style={[styles.segment, mode === "user" && { backgroundColor: colors.brandSoft, borderColor: `${colors.brand}88`, }]}>
@@ -627,6 +612,24 @@ export default function LoginScreen() {
             </View>
           ) : null}
         </View>
+
+        <Pressable
+          testID="login-review-access"
+          accessibilityRole="button"
+          accessibilityLabel="Google Play Reviewer Access"
+          onPress={() => router.push("/review-access" as any)}
+          style={[styles.reviewAccessCard, styles.reviewAccessStandalone, {
+            backgroundColor: colors.brandSoft,
+            borderColor: `${colors.brand}66`,
+          }]}
+          hitSlop={8}
+        >
+          <View style={[styles.reviewAccessIcon, { backgroundColor: colors.surface }]}>
+            <Ionicons name="shield-checkmark-outline" size={21} color={colors.brand} />
+          </View>
+          <AppText variant="body" numberOfLines={2} style={styles.reviewAccessLabel}>Google Play Reviewer Access</AppText>
+          <Ionicons name="chevron-forward" size={20} color={colors.brand} />
+        </Pressable>
 
         <View style={styles.legalArea}>
           <AppText variant="caption" center style={{ color: colors.onSurfaceTertiary }}>
@@ -790,6 +793,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
+  },
+  reviewAccessStandalone: {
+    width: "92%",
+    maxWidth: 470,
+    minHeight: 56,
+    marginTop: spacing.md,
+  },
+  reviewAccessLabel: {
+    flex: 1,
+    fontFamily: fonts.semibold,
   },
   reviewAccessIcon: {
     width: 40,
