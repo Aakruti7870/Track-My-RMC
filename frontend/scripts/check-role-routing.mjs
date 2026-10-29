@@ -139,7 +139,7 @@ if (!login.includes('testID="login-review-access"') || !login.includes('router.p
 // The Google Play reviewer entry is a compact standalone action AFTER the login
 // shell and BEFORE the Terms & Privacy line, on both mobile and tablet widths.
 const reviewerEntry = login.indexOf('testID="login-review-access"');
-const reviewerAfterShell = login.indexOf('</View>\\n\\n        <Pressable\\n          testID="login-review-access"');
+const reviewerAfterShell = login.indexOf('</View>\n\n        <Pressable\n          testID="login-review-access"');
 const legalStart = login.indexOf('<View style={styles.legalArea}>');
 if (reviewerEntry < 0 || reviewerAfterShell < 0 || reviewerEntry >= legalStart) {
   failures.push("Google Play reviewer entry must sit below the login card and above legal terms");
