@@ -25,6 +25,12 @@ assert(permissions.has("CAMERA"), "Camera permission must be declared for proof-
 assert(permissions.has("ACCESS_COARSE_LOCATION") && permissions.has("ACCESS_FINE_LOCATION"), "Foreground location permissions are required for supported location features.");
 assert(permissions.has("ACCESS_BACKGROUND_LOCATION"), "Background location permission must remain explicitly declared for active Driver trips only.");
 
+const permissionProvider = read("frontend/src/permissions/PermissionProvider.tsx");
+const permissionSettings = read("frontend/app/permission-settings.tsx");
+const ownerMore = read("frontend/app/owner/more.tsx");
+const driverMore = read("frontend/app/driver/more.tsx");
+const customerMore = read("frontend/app/customer/more.tsx");
+const browserReview = read("admin-web/scripts/verify-mobile-roles.mjs");
 const consent = read("frontend/src/location/BackgroundLocationConsent.tsx");
 const tracking = read("frontend/src/location/tripTracking.ts");
 const trip = read("frontend/app/trip/[id].tsx");
@@ -38,6 +44,16 @@ const pushClient = read("frontend/src/notifications/pushClient.ts");
 const privacy = read("frontend/app/privacy.tsx");
 const terms = read("frontend/app/terms.tsx");
 
+assert(!permissionProvider.includes("<Modal") && !permissionProvider.includes("permission-continue"), "Blocking combined permission modal must not return.");
+assert(permissionProvider.includes("locationPreference && runtimeGranted"), "Customer discovery must require explicit preference AND a native OS location grant.");
+assert(permissionSettings.includes("Location.requestForegroundPermissionsAsync()") && permissionSettings.includes("requestNearbyPlantsLocationConsent()"), "Location must use a purpose-specific disclosure followed by the native Android prompt.");
+assert(permissionSettings.indexOf("requestNearbyPlantsLocationConsent()") < permissionSettings.indexOf("Location.requestForegroundPermissionsAsync()"), "Location disclosure must precede the OS permission prompt.");
+assert(permissionSettings.includes("ImagePicker.requestCameraPermissionsAsync()"), "Camera must use the native Android permission prompt.");
+assert(permissionSettings.includes("registerPushDevice(token, true)"), "Notification opt-in must request Android permission on an explicit action.");
+assert(permissionSettings.includes('isDriver ? (') && permissionSettings.includes("Background location — active trips only"), "Only driver settings may discuss background trip tracking.");
+assert(permissionSettings.includes("reconfirmGranted={!locationEnabled}"), "Existing Android location grants must still require TrackMyRMC opt-in.");
+assert([ownerMore, driverMore, customerMore].every(source => source.includes("permission-settings") || source.includes("review")), "Customer, owner, and driver settings must link to optional permission management.");
+assert(!browserReview.includes("getByTestId('permission-continue')"), "Browser E2E must not depend on removed permission gate.");
 assert(consent.includes("This location is collected in the background — even when the app is closed or not in use"), "Background location disclosure must state background use.");
 assert(trip.includes("This app collects location data to enable live mixer delivery tracking even when the app is closed or not in use."), "Driver trip screen must disclose background location use.");
 assert(trip.includes("Agree & Continue") && trip.includes("Not now"), "Driver disclosure must require affirmative consent and offer a decline path.");
