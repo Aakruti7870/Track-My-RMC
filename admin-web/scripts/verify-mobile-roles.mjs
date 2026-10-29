@@ -193,12 +193,12 @@ try {
     phase = 'role navigation';
     await page.waitForURL(url => url.pathname === `/${rolePath}` || url.pathname === `/${rolePath}/`);
     if (user.role === 'customer') {
-      phase = 'post OTP optional consent';
-      await expect(page.getByTestId('permission-introduction')).toBeVisible();
-      await mkdir(new URL('../../artifacts/customer-experience/',import.meta.url),{recursive:true});
-      await page.screenshot({path:new URL('../../artifacts/customer-experience/consent-mobile.png',import.meta.url).pathname});
-      await page.getByTestId('permission-continue').click();
+      phase = 'post OTP native permissions are on demand';
+      // The combined permission screen must not block the dashboard.
       await expect(page.getByTestId('permission-introduction')).not.toBeVisible();
+      await expect(page.getByTestId('customer-home-scroll')).toBeVisible();
+      await mkdir(new URL('../../artifacts/customer-experience/',import.meta.url),{recursive:true});
+      await page.screenshot({path:new URL('../../artifacts/customer-experience/dashboard-mobile.png',import.meta.url).pathname});
     }
     phase = 'dashboard';
     const summary = user.role === 'customer' ? 'customer-home-scroll' : `${['plant_owner', 'driver'].includes(user.role) ? rolePath : 'staff'}-home-summary`;
