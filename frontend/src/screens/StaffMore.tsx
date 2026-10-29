@@ -66,6 +66,17 @@ export function StaffMore() {
 
         <StaffModuleDirectory role={user?.role} title="Role workspace" searchable />
 
+        <Pressable testID="staff-permission-settings" accessibilityRole="button" accessibilityLabel="App permissions"
+          onPress={() => router.push("/permission-settings")}
+          style={[styles.manage, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+          <VectorSymbol name="permission-settings" size={33} />
+          <View style={{ flex: 1 }}>
+            <AppText variant="heading">App permissions</AppText>
+            <AppText variant="caption">Review Android location and notification access</AppText>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceTertiary} />
+        </Pressable>
+
         <Pressable testID="logout-button" accessibilityRole="button" accessibilityLabel="Sign out of staff account" onPress={doLogout} style={[styles.logout, { borderColor: colors.error }]}><VectorSymbol name="logout" size={27} /><AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: colors.error }}>Logout</AppText></Pressable>
         <AppText variant="caption" center>TrackMyRMC · v2.0.18 (76)</AppText>
       </ScrollView>
