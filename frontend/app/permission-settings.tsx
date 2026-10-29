@@ -22,7 +22,7 @@ const UNKNOWN: PermissionState = { status: "undetermined", canAskAgain: true };
 const labelFor = (value: string) => value === "granted" ? "Allowed" : value === "denied" ? "Denied" : value === "unavailable" ? "Unavailable" : "Not requested";
 
 function PermissionCard({
-  icon, title, description, state, buttonLabel, onRequest, busy, onSettings,
+  icon, title, description, state, buttonLabel, onRequest, busy, reconfirmGranted = false, onSettings,
 }: {
   icon: React.ComponentProps<typeof Ionicons>["name"];
   title: string;
@@ -31,6 +31,7 @@ function PermissionCard({
   buttonLabel: string;
   onRequest: () => void;
   busy: boolean;
+  reconfirmGranted?: boolean;
   onSettings: () => void;
 }) {
   const { colors } = useTheme();
@@ -47,7 +48,7 @@ function PermissionCard({
         </View>
       </View>
       <AppText variant="bodyMuted">{description}</AppText>
-      {state.status === "granted" ? (
+      {state.status === "granted" && !reconfirmGranted ? (
         <AppText variant="caption">Permission is enabled. You can change it in Android Settings.</AppText>
       ) : blocked ? (
         <Button label="Open Android settings" variant="outline" disabled={busy} onPress={onSettings} />
@@ -60,7 +61,7 @@ function PermissionCard({
 
 export default function PermissionSettings() {
   const { token, user, hydrating } = useAuth();
-  const { enableDiscoveryLocation } = usePermissions();
+  const { enableDiscoveryLocation, locationEnabled } = usePermissions();
   const { colors } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -126,7 +127,13 @@ export default function PermissionSettings() {
     if (token) await registerPushDevice(token, true);
   });
 
-  const openSettings = () => void Linking.openSettings().catch(() => setError("Could not open Android settings."));
+  const openSettings = () => {
+    if (Platform.OS === "web") {
+      setError("In your browser, use the site permissions control beside the address bar.");
+      return;
+    }
+    void Linking.openSettings().catch(() => setError("Could not open Android settings."));
+  };
   if (hydrating) return null;
   if (!token || !user) return <Redirect href="/login" />;
 
@@ -147,7 +154,7 @@ export default function PermissionSettings() {
           {user.role === "customer" ? (
             <PermissionCard icon="location-outline" title="Location"
               description="Find nearby concrete plants using precise or approximate location while using the app. You can search by city instead. No customer background tracking."
-              state={location} buttonLabel="Allow location" onRequest={askLocation} busy={busy} onSettings={openSettings} />
+              state={location} buttonLabel="Use location in TrackMyRMC" onRequest={askLocation} busy={busy} reconfirmGranted={!locationEnabled} onSettings={openSettings} />
           ) : (
             <Card style={styles.card}>
               <AppText variant="heading">Location</AppText>
@@ -176,7 +183,7 @@ export default function PermissionSettings() {
             <AppText variant="bodyMuted">When you begin an assigned delivery trip, TrackMyRMC shows its separate prominent disclosure before Android asks for background location. There is no background permission request on login or on this page.</AppText>
           </Card> : null}
           {error ? <AppText color={colors.error}>{error}</AppText> : null}
-          <Button label="Open Android app settings" variant="outline" onPress={openSettings} />
+          <Button label={Platform.OS === "web" ? "Browser permission help" : "Open Android app settings"} variant="outline" onPress={openSettings} />
           <AppText variant="caption">The Android system controls the precise/approximate location choices, one-time permission and denial buttons. Those options cannot be customized by TrackMyRMC.</AppText>
         </ScrollView>
       </View>
