@@ -18,8 +18,9 @@ Docs:
 ## Required environment (server-only; NO EXPO_PUBLIC_ values)
 - `TRACKMYRMC_KYC_ENABLED=true` (default absent => closed)
 - `TRACKMYRMC_KYC_ENV=sandbox` (only accepted value; fixed test-api host)
-- `SANDBOX_KYC_API_KEY` and `SANDBOX_KYC_API_SECRET`: preferred server-side Sandbox test credentials.
-- The existing TrackMyRMC secret fields `KYC_API_KEY` and `KYC_API_SECRET` are supported as fallback **only when the explicit sandbox feature flags above are enabled**. Their presence does not prove that the credentials belong to the provider test environment. Validate their workspace mode before enabling.
+- `SANDBOX_KYC_API_KEY` and `SANDBOX_KYC_API_SECRET`: **required test-environment credentials**. Sandbox issues separate Test and Live API keys; only test credentials may be sent to `test-api.sandbox.co.in`.
+- Generic `KYC_API_KEY` and `KYC_API_SECRET` values may contain a live key and **are not accepted as fallback**. Existing generic fields remain untouched in Secrets Manager; do not re-label them without confirming their origin in the Sandbox console. 
+- An active Sandbox subscription alone is not evidence that the test API key authenticates or that DigiLocker entitlement is enabled. Verify both before activation.
 
 **Never** paste credentials into GitHub, app bundles, docs, CI logs or issue comments. Secrets must come from approved secret storage. In the current release do not set these fields on the production instance without approval. Register the exact public callback origin with Sandbox in the test workspace.
 
@@ -33,6 +34,8 @@ Docs:
 7. Failed/mismatched consent returns `REQUIRES_REVERIFICATION`. Existing approved users remain approved (provider polling never downgrades a verified profile).
 
 ## Prior-to-activation checklist
+- Confirm Sandbox Console → Settings → API Keys → **Test** environment is selected. Store test credentials in AWS Secrets Manager without exposing values in source or browser.
+- Authenticate via `POST https://test-api.sandbox.co.in/authenticate` and require HTTP 200 + JSON `code:200` + `data.access_token`. Do not print the JWT or API keys. This request contains no customer identity data. 
 - Review backend/migrations/0040_customer_digilocker_sessions.sql and only after approval assign the next free SQLx version. Test on an isolated Postgres database and verify rollback.
 - Run Backend CI Postgres 16/18 including Rust tests, Frontend CI, Android builds, and security lint. Run negative tests for concurrent start, provider timeout, consent denial, mismatch, replay, and cross-customer read.
 - Obtain approval to configure test credentials and perform an authorized DigiLocker sandbox session with a consenting test identity. Provider may use different demo fields/status names; confirm against actual contracted responses before enabling.
