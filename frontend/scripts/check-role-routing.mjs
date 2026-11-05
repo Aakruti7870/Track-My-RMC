@@ -154,6 +154,22 @@ if (!login.includes('reviewAccessStandalone: {') ||
     !login.includes('minHeight: 56')) {
   failures.push("Reviewer action must retain touch-friendly responsive width under the login card");
 }
+// Reviewer access must remain a plain centered link, not a second colored card.
+const reviewerAction = login.slice(reviewerAfterShell, legalStart);
+if (!reviewerAction.includes("style={styles.reviewAccessStandalone}") ||
+    ["reviewAccessCard", "reviewAccessIcon", "backgroundColor:", "borderColor:", 'name="chevron-forward"'].some((item) => reviewerAction.includes(item))) {
+  failures.push("Google Play reviewer action must not render a colored card, icon container, or trailing chevron");
+}
+if (!reviewerAction.includes('name="shield-checkmark-outline"') ||
+    !reviewerAction.includes('color={colors.isDark ? "#4ADE80" : "#16834A"}') ||
+    !reviewerAction.includes('style={[styles.reviewAccessLabel, { color: colors.onSurface }]}')) {
+  failures.push("Reviewer action must display a green shield checkmark and readable theme-aware text");
+}
+if (!login.includes('reviewAccessStandalone: {') ||
+    !login.includes('justifyContent: "center"') ||
+    !login.includes('marginTop: 0')) {
+  failures.push("Reviewer action must stay centered immediately beneath the login card");
+}
 
 if (login.includes('EXPO_PUBLIC_ENABLE_PLAY_REVIEW === "true"') || reviewAccess.includes('EXPO_PUBLIC_ENABLE_PLAY_REVIEW === "true"') || reviewAccess.includes('<Redirect href="/login" />')) {
   failures.push("Implemented Google Play reviewer access must not be hidden behind a build-time feature flag");
