@@ -107,10 +107,11 @@ pub async fn send_whatsapp_otp(
 
 pub async fn verify_whatsapp_otp(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Json(payload): Json<VerifyWhatsAppOtpRequest>,
 ) -> Result<impl IntoResponse, AppError> {
     let auth_res = auth_service::verify_whatsapp_otp(&state, payload).await?;
-    Ok(Json(auth_res))
+    Ok(crate::auth::refresh::login_response(auth_res, &headers))
 }
 
 // --- Non-Driver Roles (Staff, Owner, Admin): Email OTP ---
@@ -166,10 +167,11 @@ pub async fn confirm_staff_mfa_enrollment(
 // --- Challenge-bound staff MFA: second factor required before JWT issuance ---
 pub async fn verify_staff_mfa(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Json(payload): Json<VerifyStaffMfaRequest>,
 ) -> Result<impl IntoResponse, AppError> {
     let auth_res = auth_service::verify_staff_mfa(&state, payload).await?;
-    Ok(Json(auth_res))
+    Ok(crate::auth::refresh::login_response(auth_res, &headers))
 }
 
 // --- Authenticator App (RFC 6238 TOTP) ---
@@ -289,7 +291,9 @@ pub async fn logout(
         auth_user.user_id,
     )?;
     crate::auth::account_sessions::revoke_current(&state, auth_user.user_id, jti).await?;
-    Ok(Json(json!({"success":true,"message":"Session revoked"})))
+    let mut response = Json(json!({"success":true,"message":"Session revoked"})).into_response();
+    crate::auth::refresh::clear_cookie(&mut response);
+    Ok(response)
 }
 
 #[derive(Deserialize)]
