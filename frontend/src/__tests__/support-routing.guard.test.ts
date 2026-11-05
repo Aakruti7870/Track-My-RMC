@@ -108,11 +108,13 @@ test("login help widget stays compact and public issue choices expand before nav
   assert.ok(!publicWidget.includes('"/assistant/') && !publicWidget.includes('"/customer/orders'));
 });
 
-test("support widget displays an optimized WebP in both launchers without changing responsive sizing", () => {
+test("support widget uses the uploaded vector in both open panels and optimized WebP launchers", () => {
   const asset = readFileSync(`${process.cwd()}/assets/images/support-agent-mascot.webp`);
   assert.equal(asset.toString("ascii", 0, 4), "RIFF");
   assert.equal(asset.toString("ascii", 8, 12), "WEBP", "mascot asset must be a WebP");
-  assert.ok(widget.includes('name="chatbubbles-outline"'));
+  assert.ok(widget.includes('import { VectorSymbol } from "@/src/components/VectorSymbol";'));
+  assert.equal(widget.split('<VectorSymbol name="support" size={40} />').length - 1, 2, "both support panels must display the uploaded support.svg vector");
+  assert.ok(!widget.includes('name="chatbubbles-outline"'), "do not show the old generic chat icon");
   assert.ok(widget.includes('require("../../assets/images/support-agent-mascot.webp")'));
   assert.equal((widget.match(/<Image source={SUPPORT_AGENT_MASCOT}/g) || []).length, 2, "both customer and login launchers must display the uploaded mascot");
   assert.ok(widget.includes('resizeMode="contain"'));
