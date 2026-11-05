@@ -50,7 +50,7 @@ export default function PrivacyPolicy() {
         </Section>
 
         <Section title="Camera, photos and files">
-          Camera access is requested only when a Driver chooses to capture a proof-of-delivery site photo. On supported Android versions, existing photos are selected through the system photo picker without broad photo or storage access. KYC consent flows may use approved verification providers such as DigiLocker where enabled.
+          Camera access is requested only when a Driver chooses to capture a proof-of-delivery site photo or explicitly enables camera access in App permissions. On supported Android versions, existing photos are selected through the system photo picker without broad photo or storage access. KYC consent flows may use approved verification providers such as DigiLocker where enabled.
         </Section>
 
         <Section title="Notifications">

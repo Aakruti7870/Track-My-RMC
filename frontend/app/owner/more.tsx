@@ -35,6 +35,15 @@ export default function OwnerMore() {
           </View>
         </OwnerGlass>
       </Pressable>
+      <Pressable testID="owner-permission-settings" accessibilityRole="button" accessibilityLabel="App permissions" onPress={() => router.push("/permission-settings")} style={{ marginVertical: 8 }}>
+        <OwnerGlass style={{ padding: 15, gap: 10, flexDirection: "row", alignItems: "center" }}>
+          <VectorSymbol name="permission-settings" size={44} warmAccent />
+          <View style={{ flex: 1 }}>
+            <AppText style={{ color: p.text, fontSize: 15, fontWeight: "700" }}>App permissions</AppText>
+            <AppText style={{ color: p.muted, fontSize: 12 }}>Manage Android location and notification access</AppText>
+          </View>
+        </OwnerGlass>
+      </Pressable>
       <OwnerInsights />
       <AppText style={[ui.section, { color: p.text }]}>Appearance</AppText>
       <OwnerGlass style={{ padding: 12, flexDirection: "row", gap: 8 }}>
