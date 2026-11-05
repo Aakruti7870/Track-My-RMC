@@ -532,7 +532,10 @@ pub async fn get_order_tracking(
             let longitude: Option<f64> = l.get("last_longitude");
             let last_ping: Option<chrono::DateTime<chrono::Utc>> = l.get("last_ping_at");
             let location = match (latitude, longitude, last_ping) {
-                (Some(lat),Some(lng),Some(at)) => json!({"lat":lat,"lng":lng,"at":at,"stale":(chrono::Utc::now()-at).num_seconds()>90}),
+                (Some(lat),Some(lng),Some(at)) => {
+                    let stale = crate::utils::security::tracking::gps_is_stale(lat, lng, at, chrono::Utc::now());
+                    json!({"lat":lat,"lng":lng,"at":at,"stale":stale})
+                },
                 _ => serde_json::Value::Null,
             };
 
