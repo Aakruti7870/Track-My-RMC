@@ -2,7 +2,7 @@
 //! Only OTP/MFA completion may mint the first credential; access tokens never renew
 //! themselves. The secret is never written to the database or logged.
 use crate::{
-    auth::{account_sessions, jwt::verify_token},
+    auth::account_sessions,
     error::AppError,
     state::AppState,
 };
@@ -14,7 +14,7 @@ use axum::{
 use chrono::{DateTime, Duration, Utc};
 use rand::RngCore;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::json;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
