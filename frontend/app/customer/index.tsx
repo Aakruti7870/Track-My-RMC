@@ -34,7 +34,7 @@ type ServiceKey = "cement" | "labour" | "material";
 const ACTIONS: readonly { key: ActionKey; label: string; symbol: VectorSymbolName }[] = [
   { key: "new", label: "New Order", symbol: "new-order" },
   { key: "track", label: "Track Order", symbol: "live-order-tracking" },
-  { key: "plants", label: "Available Plants", symbol: "nearby-rmc-plants" },
+  { key: "plants", label: "Plants", symbol: "nearby-rmc-plants" },
   { key: "orders", label: "My Orders", symbol: "my-orders" },
 ];
 

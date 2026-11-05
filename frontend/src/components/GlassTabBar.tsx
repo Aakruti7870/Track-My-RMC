@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Platform, Pressable, StyleSheet, View } from "react-native";
 import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -12,6 +12,7 @@ import { QuickActionHub } from "@/src/components/QuickActionHub";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { tabVectorSymbol } from "@/src/navigation/vectorSymbolAssignments";
 import { control, fonts, radius, spacing } from "@/src/theme/tokens";
+import { getThemedCanvasColor } from "@/src/theme/sceneBackground";
 
 export type TabDef = {
   name: string;
@@ -84,7 +85,7 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick" }: 
 
   return (
     <>
-      <View pointerEvents="box-none" style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+      <View pointerEvents="box-none" style={[styles.wrap, { paddingBottom: Platform.OS === "web" ? 0 : insets.bottom, backgroundColor: getThemedCanvasColor(colors) }]}>
         <BlurView
           intensity={scheme === "dark" ? 58 : 82}
           tint={scheme === "dark" ? "dark" : "light"}

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Modal, Pressable, ScrollView, View } from "react-native";
+import { Modal, Platform, Pressable, ScrollView, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -24,7 +24,7 @@ export function OwnerTabBar({ state, navigation, tabs }: Props) {
     return <Pressable key={tab.name} testID={`tab-${tab.label.toLowerCase()}`} accessibilityRole="tab" accessibilityLabel={`${tab.label} tab`} accessibilityState={{ selected }} aria-selected={selected} onPress={() => { const event = navigation.emit({ type: "tabPress", target: route.key, canPreventDefault: true }); if (!event.defaultPrevented) navigation.navigate(tab.name); }} style={{ flex: 1, minWidth: 0, minHeight: 65, alignItems: "center", justifyContent: "center", gap: 4 }}><Ionicons name={selected ? tab.active : tab.icon} size={30} color={selected ? p.accent : p.muted} /><AppText numberOfLines={1} style={{ fontSize: 10, color: selected ? p.accent : p.muted }}>{tab.label}</AppText></Pressable>;
   }
   return <>
-    <View pointerEvents="box-none" style={{ position: "absolute", left: 0, right: 0, bottom: 0 }}><OwnerGlass style={{ width: "100%", maxWidth: 820, alignSelf: "center", borderBottomLeftRadius: 0, borderBottomRightRadius: 0, borderTopLeftRadius: 26, borderTopRightRadius: 26, paddingBottom: Math.max(insets.bottom, 8), paddingTop: 3, backgroundColor: p.dark ? "rgba(24,30,39,0.97)" : "rgba(255,255,255,0.97)", flexDirection: "row", alignItems: "center" }}>
+    <View pointerEvents="box-none" style={{ position: "absolute", left: 0, right: 0, bottom: 0 }}><OwnerGlass style={{ width: "100%", maxWidth: 820, alignSelf: "center", borderBottomLeftRadius: 0, borderBottomRightRadius: 0, borderTopLeftRadius: 26, borderTopRightRadius: 26, paddingBottom: Platform.OS === "web" ? 8 : Math.max(insets.bottom, 8), paddingTop: 3, backgroundColor: p.dark ? "rgba(24,30,39,0.97)" : "rgba(255,255,255,0.97)", flexDirection: "row", alignItems: "center" }}>
       {tabs.slice(0, 2).map(tabItem)}
       <View style={{ width: 66, alignItems: "center", gap: 3, marginTop: -16 }}><Pressable testID="tab-quick-actions" accessibilityRole="button" accessibilityLabel="Open quick actions" onPress={() => setOpen(true)} style={({ pressed }) => ({ width: 56, height: 56, borderRadius: 28, backgroundColor: pressed ? p.pressed : p.accent, borderWidth: 3, borderColor: p.border, alignItems: "center", justifyContent: "center", shadowColor: p.accent, shadowOpacity: 0.25, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 4 })}><Ionicons name="add" size={32} color="white" /></Pressable><AppText style={{ fontSize: 10, color: p.accent }}>Quick</AppText></View>
       {tabs.slice(2).map(tabItem)}

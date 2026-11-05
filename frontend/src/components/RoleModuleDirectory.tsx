@@ -79,7 +79,7 @@ export function RoleModuleDirectory({ role, title = "Your Modules" }: {
                   style={({ pressed }) => [
                     styles.item,
                     {
-                      backgroundColor: colors.isDark ? "rgba(31,34,39,0.86)" : "rgba(255,255,255,0.84)",
+                      backgroundColor: colors.surfaceSecondary,
                       borderColor: colors.isDark ? "rgba(255,161,93,0.25)" : "rgba(255,255,255,0.96)",
                       opacity: pressed ? 0.76 : 1,
                     },

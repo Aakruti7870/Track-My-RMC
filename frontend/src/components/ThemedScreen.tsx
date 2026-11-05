@@ -4,7 +4,7 @@ import { useTheme } from "@/src/theme/ThemeProvider";
 import { getThemedCanvasColor } from "@/src/theme/sceneBackground";
 
 /**
- * Customer tab wallpaper: its own opaque canvas + 35% theme image.
+ * Customer tab wallpaper: an opaque canvas with softly subdued theme artwork.
  * The previous tab is never used as the new tab's background.
  */
 export function ThemedScreen({ children }: PropsWithChildren) {
@@ -25,5 +25,5 @@ export function ThemedScreen({ children }: PropsWithChildren) {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  artwork: { opacity: 0.35 },
+  artwork: { opacity: 0.15 },
 });

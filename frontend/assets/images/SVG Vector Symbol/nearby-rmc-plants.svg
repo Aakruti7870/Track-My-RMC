@@ -40,7 +40,7 @@
   <rect x="23" y="21" width="4" height="11" rx="2" fill="#FFFFFF" opacity="0.3" />
   <rect x="24" y="38" width="4" height="4" rx="1" fill="#FFFFFF" opacity="0.6" />
   <rect x="36" y="38" width="5" height="4" rx="1" fill="#FFFFFF" opacity="0.5" />
-  <path d="M32 16 C25.4 16 20 21.2 20 27.8 C20 36.5 32 48 32 48 C32 48 44 36.5 44 27.8 C44 21.2 38.6 16 32 16 Z" fill="url(#nearby-rmc-plants-npin)" transform="translate(10 -14) scale(0.5)" />
-  <circle cx="32" cy="27.6" r="5" fill="#FFFFFF" transform="translate(10 -14) scale(0.5)" />
-  <circle cx="32" cy="27.6" r="2.6" fill="url(#nearby-rmc-plants-npin-d)" transform="translate(10 -14) scale(0.5)" />
+  <path d="M32 16 C25.4 16 20 21.2 20 27.8 C20 36.5 32 48 32 48 C32 48 44 36.5 44 27.8 C44 21.2 38.6 16 32 16 Z" fill="url(#nearby-rmc-plants-npin)" transform="translate(30 0) scale(0.5)" />
+  <circle cx="32" cy="27.6" r="5" fill="#FFFFFF" transform="translate(30 0) scale(0.5)" />
+  <circle cx="32" cy="27.6" r="2.6" fill="url(#nearby-rmc-plants-npin-d)" transform="translate(30 0) scale(0.5)" />
 </svg>
