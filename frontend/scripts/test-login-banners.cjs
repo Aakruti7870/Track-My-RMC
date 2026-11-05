@@ -50,8 +50,10 @@ describe("optimized login banner assets and non-cropping layout", () => {
     assert.ok(screen.includes("onPress={openOnboarding}"));
     assert.ok(screen.includes('pathname: "/plant-onboarding"'));
     assert.ok(screen.includes("email: plantEmail.trim().toLowerCase()"));
-    assert.match(screen, /onboardingLinkContent:[\\s\\S]*minHeight:\\s*54/);
-    assert.match(screen, /onboardingLinkLabel:[\\s\\S]*fontFamily:\\s*fonts\\.bold/);
+    assert.ok(screen.includes("onboardingLinkContent: {"));
+    assert.ok(screen.includes("onboardingLinkLabel: {"));
+    assert.ok(screen.includes("fontFamily: fonts.bold"));
+    assert.ok(screen.includes("minHeight: 54"));
     assert.ok(screen.includes("rgba(187,247,208,0.21)"), "Dark glass green treatment missing");
     assert.ok(screen.includes("rgba(134,239,172,0.30)"), "Light glass green treatment missing");
   });
