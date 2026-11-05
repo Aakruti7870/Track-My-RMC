@@ -536,11 +536,11 @@ pub async fn list_plant_people(
 
     let rows = sqlx::query(
         r#"
-        SELECT ps.id as staff_id, ps.user_id, ps.role, ps.is_active, ps.joined_at,
+        SELECT ps.id as staff_id, ps.user_id, ps.role, ps.is_active, ps.joined_at, ps.removed_at,
                u.full_name, u.phone, u.email
         FROM plant_staff ps
         INNER JOIN users u ON u.id = ps.user_id
-        WHERE ps.plant_id = $1
+        WHERE ps.plant_id = $1 AND ps.removed_at IS NULL
         ORDER BY ps.role, u.full_name
         "#,
     )
@@ -568,6 +568,7 @@ pub async fn list_plant_people(
                 "phone": phone,
                 "email": email,
                 "active": is_active,
+                "status": if is_active {"active"} else {"suspended"},
                 "joined_at": joined_at
             })
         })

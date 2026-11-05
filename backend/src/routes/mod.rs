@@ -239,6 +239,10 @@ pub fn build_app_router(state: AppState) -> Router {
             post(business_routes::activate_plant_staff),
         )
         .route(
+            "/api/master/plants/:plant_id/staff/:user_id/remove",
+            post(business_routes::remove_plant_staff),
+        )
+        .route(
             "/api/master/plants/:plant_id/customers",
             get(business_routes::list_plant_customers),
         )
@@ -273,6 +277,10 @@ pub fn build_app_router(state: AppState) -> Router {
             post(business_routes::activate_plant_staff),
         )
         .route(
+            "/api/business/plants/:plant_id/people/:user_id/remove",
+            post(business_routes::remove_plant_staff),
+        )
+        .route(
             "/api/business/plants/:plant_id/staff",
             post(business_routes::add_plant_staff),
         )
@@ -283,6 +291,10 @@ pub fn build_app_router(state: AppState) -> Router {
         .route(
             "/api/business/plants/:plant_id/staff/:user_id/activate",
             post(business_routes::activate_plant_staff),
+        )
+        .route(
+            "/api/business/plants/:plant_id/staff/:user_id/remove",
+            post(business_routes::remove_plant_staff),
         )
         .route(
             "/api/business/plants/:plant_id/drivers",
