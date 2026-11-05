@@ -7,6 +7,7 @@
 - SQLx migration maximum: `0040`; the KYC sessions table has an additive schema migration at `backend/migrations/0040_customer_digilocker_sessions.sql`.
 - Effective deployed `TRACKMYRMC_KYC_ENABLED=false`; `TRACKMYRMC_KYC_ENV=disabled`.
 - Secrets Manager `trackmyrmc/app-runtime`: generic `KYC_API_KEY` / `KYC_API_SECRET` present, **no** separate `SANDBOX_KYC_API_KEY` / `SANDBOX_KYC_API_SECRET` values or explicit KYC activation flags. Credential presence does **not** prove that they belong to the test environment.
+- Sandbox provider confirmed the **Startup account plan is active again on 2026-11-05**. This removes the subscription suspension but does not prove the existing generic KYC credentials are for the test environment, or that DigiLocker API entitlement is active.
 - Provider sandbox authentication, registered callback, consent journey, and reviewer acceptance **not verified**. Do not mark enabled.
 
 ## Changes staged in the accompanying PR
