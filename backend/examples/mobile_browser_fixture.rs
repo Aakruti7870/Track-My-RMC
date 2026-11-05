@@ -1,7 +1,13 @@
 //! Disposable CI harness, never the production entry point. It runs the real
 //! router with an injected delivery transport and the explicitly approved
 //! synthetic identities. OTPs go only to a protected loopback memory sink.
-use axum::{async_trait, http::{header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE}, Method}};
+use axum::{
+    async_trait,
+    http::{
+        header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE},
+        Method,
+    },
+};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{
@@ -9,7 +15,7 @@ use std::{
     io::Read,
     sync::Arc,
 };
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::CorsLayer;
 use trackmyrmc_backend::{
     config::AppConfig,
     error::AppError,
@@ -234,7 +240,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("CI-FIXTURE: router");
     let cors = CorsLayer::new()
         .allow_origin("http://127.0.0.1:8081".parse::<axum::http::HeaderValue>()?)
-        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::PATCH, Method::DELETE, Method::OPTIONS])
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::PATCH,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
         .allow_headers([ACCEPT, AUTHORIZATION, CONTENT_TYPE])
         .allow_credentials(true);
     let app = build_app_router(state).layer(cors);
