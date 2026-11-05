@@ -42,6 +42,8 @@ jobs:
         run: node --test scripts/test-image-size.cjs
       - name: Validate uploaded PNG splash, native startup and removed video
         run: node --test scripts/test-splash-image.cjs
+      - name: Validate optimized WebP graphics, loading priority and native splash safeguards
+        run: node --test scripts/test-optimized-images.cjs
       - name: Validate light and dark login hero assets and layout
         run: node --test scripts/test-login-banners.cjs
       - name: Home tracking state regressions
