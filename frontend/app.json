@@ -76,10 +76,10 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/RMC_Splash_logo.png",
+          "image": "./assets/images/Splash_screen.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#101112"
+          "backgroundColor": "#000000"
         }
       ],
       "./plugins/with-play-store-compatibility"
