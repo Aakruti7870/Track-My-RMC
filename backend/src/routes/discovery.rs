@@ -31,7 +31,9 @@ pub struct Search {
 }
 
 fn valid_geo_field(value: &Option<String>) -> bool {
-    value.as_ref().is_none_or(|v| crate::security::geo_fields::valid_geo_field(v))
+    value
+        .as_ref()
+        .is_none_or(|v| crate::security::geo_fields::valid_geo_field(v))
 }
 
 impl Search {

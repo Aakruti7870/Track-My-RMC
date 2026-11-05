@@ -20,9 +20,22 @@ mod tests {
     use super::*;
     #[test]
     fn canonical_and_hidden_input_rejection() {
-        assert_eq!(canonical_login_phone("9876543210"),Some("919876543210".to_string()));
-        assert_eq!(canonical_login_phone("+12025550101"),Some("12025550101".to_string()));
-        for s in ["919876543210"," 9876543210","+91 (98765) 43210","tel:+919876543210","9876543210\n","٩٨٧٦٥٤٣٢١٠"] {
+        assert_eq!(
+            canonical_login_phone("9876543210"),
+            Some("919876543210".to_string())
+        );
+        assert_eq!(
+            canonical_login_phone("+12025550101"),
+            Some("12025550101".to_string())
+        );
+        for s in [
+            "919876543210",
+            " 9876543210",
+            "+91 (98765) 43210",
+            "tel:+919876543210",
+            "9876543210\n",
+            "٩٨٧٦٥٤٣٢١٠",
+        ] {
             assert!(canonical_login_phone(s).is_none());
         }
     }

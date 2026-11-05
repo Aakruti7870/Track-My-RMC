@@ -12,8 +12,10 @@ pub fn valid_geo_field(value: &str) -> bool {
 }
 
 pub fn valid_coordinate(lat: f64, lng: f64) -> bool {
-    lat.is_finite() && lng.is_finite()
-        && (-90.0..=90.0).contains(&lat) && (-180.0..=180.0).contains(&lng)
+    lat.is_finite()
+        && lng.is_finite()
+        && (-90.0..=90.0).contains(&lat)
+        && (-180.0..=180.0).contains(&lng)
 }
 
 #[cfg(test)]
