@@ -1,4 +1,4 @@
-use axum::http::HeaderValue;
+use axum::http::{header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE}, HeaderValue, Method};
 use config::AppConfig;
 use state::AppState;
 use std::net::SocketAddr;
@@ -56,8 +56,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .collect::<Vec<_>>();
         CorsLayer::new()
             .allow_origin(origins)
-            .allow_methods(Any)
-            .allow_headers(Any)
+            .allow_methods([Method::GET, Method::POST, Method::PUT, Method::PATCH, Method::DELETE, Method::OPTIONS])
+            .allow_headers([ACCEPT, AUTHORIZATION, CONTENT_TYPE])
+            .allow_credentials(true)
     };
 
     let app = routes::build_app_router(state)
