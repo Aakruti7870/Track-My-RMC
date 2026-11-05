@@ -497,7 +497,7 @@ export default function LoginScreen() {
         </View>
         <Input
           testID="login-plant-email-input"
-          label="Work email"
+          label="Enter Registered Work Email"
           value={plantEmail}
           onChangeText={(text) => { setPlantEmail(text.trimStart().toLowerCase()); setError(null); setOnboardingRequired(false); }}
           placeholder="name@company.com"
@@ -506,6 +506,38 @@ export default function LoginScreen() {
           autoCorrect={false}
           error={error}
         />
+        <Pressable
+          testID="login-open-onboarding-form"
+          accessibilityRole="button"
+          accessibilityLabel="Open Onboarding Form"
+          accessibilityHint="Opens the existing plant onboarding form and prefills your work email if entered"
+          onPress={openOnboarding}
+          style={({ pressed }) => [
+            styles.onboardingLink,
+            {
+              borderColor: colors.isDark ? "rgba(134,239,172,0.60)" : "rgba(22,163,74,0.48)",
+              backgroundColor: colors.isDark ? "rgba(21,128,61,0.28)" : "rgba(220,252,231,0.74)",
+              shadowColor: "#16A34A",
+              opacity: pressed ? 0.88 : 1,
+              transform: [{ scale: pressed ? 0.992 : 1 }],
+            },
+          ]}
+        >
+          <LinearGradient
+            colors={colors.isDark
+              ? ["rgba(187,247,208,0.21)", "rgba(21,128,61,0.08)"]
+              : ["rgba(255,255,255,0.82)", "rgba(134,239,172,0.30)"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0.12, y: 1 }}
+            style={styles.onboardingLinkContent}
+          >
+            <Ionicons name="document-text-outline" size={21} color={colors.isDark ? "#BBF7D0" : "#166534"} />
+            <AppText style={[styles.onboardingLinkLabel, { color: colors.isDark ? "#BBF7D0" : "#166534" }]}>
+              Open Onboarding Form
+            </AppText>
+            <Ionicons name="arrow-forward" size={18} color={colors.isDark ? "#BBF7D0" : "#166534"} />
+          </LinearGradient>
+        </Pressable>
         <Button testID="login-plant-send-otp" label="Continue Securely" onPress={handleStartPlantLogin} loading={loading} disabled={!validEmail(plantEmail)} icon={<Ionicons name="shield-checkmark-outline" size={18} color={colors.onBrand} />} />
         <View style={styles.altAuthRow}>
           <View style={[styles.altAuthCard, { borderColor: colors.border, backgroundColor: colors.surface }]}>
@@ -755,6 +787,32 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     marginTop: -2,
+  },
+  onboardingLink: {
+    width: "100%",
+    minHeight: 54,
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: "hidden",
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  onboardingLinkContent: {
+    minHeight: 54,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  onboardingLinkLabel: {
+    flexShrink: 1,
+    fontFamily: fonts.bold,
+    fontSize: fontSize.base,
+    textAlign: "center",
   },
   altAuthRow: { flexDirection: "row", gap: spacing.sm },
   altAuthCard: {
