@@ -1,8 +1,9 @@
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { Image, StyleSheet, View } from "react-native";
+import { AccessibilityInfo, StyleSheet, View } from "react-native";
+import { useVideoPlayer, VideoView } from "expo-video";
 import { getThemedSceneStyle } from "@/src/theme/sceneBackground";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -36,10 +37,72 @@ function ThemedNavigator() {
   );
 }
 
+// Native Android/iOS startup stays a PNG; after app hydration the bundled MP4
+// plays once above the existing router and login screen. No permissions or network
+// are required for playback. A timeout prevents startup from getting stuck.
+function OpeningSplashVideo({
+  active,
+  reduceMotion,
+  onFinish,
+}: {
+  active: boolean;
+  reduceMotion: boolean;
+  onFinish: () => void;
+}) {
+  const player = useVideoPlayer(require("../assets/images/TrackMyRMC_Splash_screen.mp4"), (video) => {
+    video.loop = false;
+    video.muted = true;
+  });
+  const done = useRef(false);
+  const finish = useCallback(() => {
+    if (done.current) return;
+    done.current = true;
+    onFinish();
+  }, [onFinish]);
+
+  useEffect(() => {
+    const ended = player.addListener("playToEnd", finish);
+    const status = player.addListener("statusChange", ({ status }) => {
+      if (status === "error") finish();
+    });
+    return () => {
+      ended.remove();
+      status.remove();
+    };
+  }, [player, finish]);
+
+  useEffect(() => {
+    if (!active) return;
+    if (reduceMotion) {
+      finish();
+      return;
+    }
+    const fallback = setTimeout(finish, 4200);
+    try {
+      player.play();
+    } catch {
+      finish();
+    }
+    return () => clearTimeout(fallback);
+  }, [active, reduceMotion, player, finish]);
+
+  return (
+    <View style={styles.openingSplash} pointerEvents="auto" testID="opening-splash-video">
+      <VideoView
+        style={styles.openingVideo}
+        player={player}
+        contentFit="contain"
+        nativeControls={false}
+      />
+    </View>
+  );
+}
+
 export default function RootLayout() {
   const [themeReady, setThemeReady] = useState(false);
-  const [artworkLoaded, setArtworkLoaded] = useState(false);
   const [showOpeningArtwork, setShowOpeningArtwork] = useState(true);
+  const [nativeSplashHidden, setNativeSplashHidden] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState(false);
   const [iconsLoaded, iconError] = useIconFonts();
   const [fontsLoaded, fontError] = useFonts({
     "Outfit-SemiBold": require("../assets/fonts/Outfit-SemiBold.ttf"),
@@ -56,10 +119,28 @@ export default function RootLayout() {
   const appReady = iconsReady && fontsReady && themeReady;
 
   useEffect(() => {
-    if (!appReady || !artworkLoaded) return;
+    let mounted = true;
+    AccessibilityInfo.isReduceMotionEnabled()
+      .then((enabled) => { if (mounted) setReduceMotion(enabled); })
+      .catch(() => {});
+    const subscription = AccessibilityInfo.addEventListener("reduceMotionChanged", setReduceMotion);
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, []);
 
-    void SplashScreen.hideAsync().finally(() => setShowOpeningArtwork(false));
-  }, [appReady, artworkLoaded]);
+  useEffect(() => {
+    if (!appReady) return;
+    let mounted = true;
+    // The video is mounted before hiding the native launch splash to avoid a blank frame.
+    void SplashScreen.hideAsync()
+      .catch(() => {})
+      .finally(() => { if (mounted) setNativeSplashHidden(true); });
+    return () => { mounted = false; };
+  }, [appReady]);
+
+  const finishOpening = useCallback(() => setShowOpeningArtwork(false), []);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -82,17 +163,12 @@ export default function RootLayout() {
           </KeyboardProvider>
         </SafeAreaProvider>
       ) : null}
-      {showOpeningArtwork ? (
-        <View style={styles.openingSplash} pointerEvents="auto">
-          <Image
-            source={require("../assets/images/RMC_Splash_logo.png")}
-            style={styles.openingSplashArtwork}
-            resizeMode="contain"
-            onLoad={() => setArtworkLoaded(true)}
-            onError={() => setArtworkLoaded(true)}
-            accessible={false}
-          />
-        </View>
+      {showOpeningArtwork && appReady ? (
+        <OpeningSplashVideo
+          active={nativeSplashHidden}
+          reduceMotion={reduceMotion}
+          onFinish={finishOpening}
+        />
       ) : null}
     </GestureHandlerRootView>
   );
@@ -102,13 +178,9 @@ const styles = StyleSheet.create({
   appCanvas: { flex: 1 },
   openingSplash: {
     ...StyleSheet.absoluteFillObject,
-    alignItems: "center",
-    justifyContent: "center",
     backgroundColor: "#101112",
   },
-  openingSplashArtwork: {
-    width: "72%",
-    maxWidth: 360,
-    aspectRatio: 1,
+  openingVideo: {
+    ...StyleSheet.absoluteFillObject,
   },
 });
