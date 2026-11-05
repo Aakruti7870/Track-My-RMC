@@ -43,7 +43,7 @@ where
 
         let claims: Claims = verify_token(token, &app_state.config.jwt_secret)?;
 
-        let row = sqlx::query("SELECT is_active, auth_revoked_at, role FROM users WHERE id=$1")
+        let row = sqlx::query("SELECT is_active, auth_revoked_at, role, active_session_jti FROM users WHERE id=$1")
             .bind(claims.sub)
             .fetch_optional(&app_state.db)
             .await?
@@ -78,6 +78,12 @@ where
                 "Account permissions changed; sign in again".into(),
             ));
         }
+        let current_jti: Option<Uuid> = row.get("active_session_jti");
+        if current_jti.is_some() && current_jti != claims.jti {
+            return Err(AppError::SessionReplaced);
+        }
+        // NULL accepts only bounded legacy tokens issued before a successful
+        // post-upgrade login. Legacy tokens expire normally within 24 hours.
         Ok(AuthUser {
             user_id: claims.sub,
             role: current_role,

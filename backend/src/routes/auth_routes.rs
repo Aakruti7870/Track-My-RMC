@@ -281,16 +281,13 @@ pub async fn passkey_login_verify(
 pub async fn logout(
     State(state): State<AppState>,
     auth_user: AuthUser,
+    headers: axum::http::HeaderMap,
 ) -> Result<impl IntoResponse, AppError> {
-    sqlx::query("UPDATE users SET auth_revoked_at=NOW(), updated_at=NOW() WHERE id=$1")
-        .bind(auth_user.user_id)
-        .execute(&state.db)
-        .await?;
-
-    Ok(Json(json!({
-        "success": true,
-        "message": "Session revoked"
-    })))
+    let jti = crate::auth::account_sessions::header_session_jti(
+        &headers, &state.config.jwt_secret, auth_user.user_id,
+    )?;
+    crate::auth::account_sessions::revoke_current(&state, auth_user.user_id, jti).await?;
+    Ok(Json(json!({"success":true,"message":"Session revoked"})))
 }
 
 #[derive(Deserialize)]

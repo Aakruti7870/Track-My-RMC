@@ -1,6 +1,6 @@
 use crate::{
     auth::{
-        jwt::generate_token, otp::OtpEngine, passkey::PasskeyLoginVerifyRequest,
+        otp::OtpEngine, passkey::PasskeyLoginVerifyRequest,
         password::hash_password,
     },
     error::AppError,
@@ -227,14 +227,15 @@ pub async fn verify_whatsapp_otp(
         .unwrap_or_else(|| "unverified".to_string());
     let verified_name = profile.and_then(|p| p.verified_name);
 
-    let token = generate_token(
+    let token = crate::auth::account_sessions::issue(
+        state,
         user.id,
         &user.role,
         &user.phone,
         user.email.as_deref(),
-        &state.config.jwt_secret,
         state.config.jwt_expiration_hours,
-    )?;
+    )
+    .await?;
 
     Ok(AuthResponse {
         success: true,
@@ -602,14 +603,15 @@ pub async fn verify_staff_mfa(
         .map(|p| p.kyc_status.clone())
         .unwrap_or_else(|| "unverified".to_string());
     let verified_name = profile.and_then(|p| p.verified_name);
-    let token = generate_token(
+    let token = crate::auth::account_sessions::issue(
+        state,
         user.id,
         &user.role,
         &user.phone,
         user.email.as_deref(),
-        &state.config.jwt_secret,
         state.config.jwt_expiration_hours,
-    )?;
+    )
+    .await?;
     Ok(AuthResponse {
         success: true,
         token,

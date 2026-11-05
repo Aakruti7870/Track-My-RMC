@@ -1,4 +1,5 @@
 pub mod jwt;
+pub mod account_sessions;
 pub mod middleware;
 pub mod otp;
 pub mod passkey;
