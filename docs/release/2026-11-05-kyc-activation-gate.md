@@ -19,8 +19,8 @@
 
 ## Safe sandbox-only activation sequence (not yet executed)
 
-1. Confirm KYC API access and **test workspace** subscription for DigiLocker with the Sandbox provider. Obtain the test-environment API key and secret into AWS Secrets Manager fields `SANDBOX_KYC_API_KEY` and `SANDBOX_KYC_API_SECRET` without printing or committing them. Existing generic KYC keys might be live: do **not** assume they are sandbox keys.
-2. Verify test credentials by authenticating at `https://test-api.sandbox.co.in/authenticate` with no personal data; confirm test entitlement. Do not accidentally send test data to the live API host.
+1. Confirm KYC API access and **test workspace** subscription for DigiLocker with the Sandbox provider. In Sandbox Console → Settings → API Keys, generate/select **Test** credentials and save them only in AWS Secrets Manager fields `SANDBOX_KYC_API_KEY` and `SANDBOX_KYC_API_SECRET` without printing or committing them. Existing generic KYC keys might be live and cannot be used as fallback. See https://help.sandbox.co.in/portal/en/kb/articles/generate-your-api-keys.
+2. Verify test credentials by authenticating at `https://test-api.sandbox.co.in/authenticate` with no personal data; confirm test entitlement. Run the redacted preflight `python3 ops/release/verify-sandbox-digilocker-auth.py` **only with the explicitly configured Test credentials in its process environment**. The script prints only `SANDBOX_AUTH=PASS/FAIL` and never a token. Do not use or test against the live API host.
 3. Verify the configured callback in the provider test workspace is exactly `https://trackmyrmc.com/kyc/return` and the public return path works in Chrome and Android; test return never itself verifies KYC.
 4. Verify production SQLx migration 0040 and table using read-only probes; confirm recent restorable backup/restore plan before a feature that will write new KYC session records.
 5. Add `TRACKMYRMC_KYC_ENABLED=true` and `TRACKMYRMC_KYC_ENV=sandbox` to the AWS runtime secret **only after** steps 1–4 succeed; perform a controlled backend service deploy/restart to pick up the environment, not an Android AAB release.
