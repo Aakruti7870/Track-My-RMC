@@ -6,6 +6,7 @@ import { useRouter } from "expo-router";
 
 import { apiGet, apiPost, apiPut } from "@/src/api/client";
 import { useAuth } from "@/src/auth/AuthContext";
+import { roleSlotStatus, type PlantJobRole, type PlantRoleAssignment } from "@/src/domain/staffRoleCapacity";
 import { AppText } from "@/src/components/ui/AppText";
 import { Button } from "@/src/components/ui/Button";
 import { Card } from "@/src/components/ui/Card";
@@ -202,7 +203,7 @@ const MODULES: Record<string, ModuleDef> = {
     addLabel: "Add Plant Staff",
     fields: [
       { key: "user_id", label: "Existing staff user UUID", placeholder: "UUID from an already registered staff account", required: true },
-      { key: "role", label: "Role", placeholder: "admin / dispatcher / operator / supervisor / accountant / quality_engineer / fleet_manager / store_manager", required: true },
+      { key: "role", label: "Role", placeholder: "dispatcher / operator / supervisor / accountant / quality_engineer / fleet_manager / store_manager", required: true },
     ],
   },
   customers: { title: "Customers", subtitle: "Customers served by this plant" },
@@ -357,6 +358,16 @@ export function BusinessModule({ kind }: { kind: string }) {
   useEffect(() => { loadPlants().catch((e: any) => setError(e.detail || "Could not load plants")); }, [loadPlants]);
   useEffect(() => { if (plantId) load(); }, [plantId, load]);
 
+  const staffAssignments = useMemo<PlantRoleAssignment[]>(
+    () => (data?.people || []).map((person: any) => ({
+      user_id: String(person.id), role: String(person.role),
+      is_active: person.active === true,
+      removed_at: person.removed_at ?? null,
+    })),
+    [data?.people],
+  );
+  const [removeConfirmId, setRemoveConfirmId] = useState<string | null>(null);
+
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
     return unpackRows(kind, data).filter((r) => !q || [r.title, r.subtitle, r.meta].some((v) => (v || "").toLowerCase().includes(q)));
@@ -437,6 +448,9 @@ export function BusinessModule({ kind }: { kind: string }) {
         await apiPost(`/business/plants/${plantId}/materials`, token, payload);
       } else if (kind === "staff") {
         payload.role = String(payload.role || "").trim().toLowerCase().replace(/[ /-]+/g, "_");
+        if (roleSlotStatus(staffAssignments, payload.role as PlantJobRole) !== "available") {
+          throw { detail: "This role is already assigned. Remove the previous employee first." };
+        }
         await apiPost(`/business/plants/${plantId}/people`, token, payload);
       }
       toast("Saved", "success");
@@ -475,7 +489,7 @@ export function BusinessModule({ kind }: { kind: string }) {
 
   const toggleStaff = async (row: Row) => {
     if (!token || !plantId) return;
-    const active = (row.raw?.status || "active") === "active";
+    const active = row.raw?.active === true;
     setSaving(true);
     try {
       await apiPost(`/business/plants/${plantId}/people/${row.id}/${active ? "suspend" : "activate"}`, token);
@@ -483,6 +497,19 @@ export function BusinessModule({ kind }: { kind: string }) {
       await load();
     } catch (e: any) { toast(e.detail || "Staff update failed", "error"); }
     finally { setSaving(false); }
+  };
+
+  const removeStaff = async (row: Row) => {
+    if (!token || !plantId) return;
+    setSaving(true);
+    try {
+      await apiPost(`/business/plants/${plantId}/people/${row.id}/remove`, token);
+      setRemoveConfirmId(null);
+      toast("Employee assignment removed; job role is now available", "success");
+      await load();
+    } catch (error: any) {
+      toast(error.detail || "Unable to remove employee assignment", "error");
+    } finally { setSaving(false); }
   };
 
   const openAdjustment = (row: Row, sign: 1 | -1) => {
@@ -580,7 +607,16 @@ export function BusinessModule({ kind }: { kind: string }) {
                   </View>
                 ) : null}
                 {kind === "staff" && STAFF_ROLE_OPTIONS.some((option) => option.value === r.raw?.role) ? (
-                  <Button label={(r.raw?.status || "active") === "active" ? "Suspend" : "Activate"} variant="outline" onPress={() => toggleStaff(r)} />
+                  <View style={{ gap: spacing.sm }}>
+                    <Button label={r.raw?.active === true ? "Suspend (keep role reserved)" : "Activate"} variant="outline" onPress={() => toggleStaff(r)} />
+                    {removeConfirmId === r.id ? (
+                      <View style={{ gap: spacing.sm }}>
+                        <AppText variant="caption">Removing this assignment frees the role. Employee and payroll history are retained.</AppText>
+                        <Button label="Confirm Remove Assignment" variant="outline" loading={saving} onPress={() => removeStaff(r)} />
+                        <Button label="Cancel" variant="outline" onPress={() => setRemoveConfirmId(null)} />
+                      </View>
+                    ) : <Button label="Remove Assignment" variant="outline" onPress={() => setRemoveConfirmId(r.id)} />}
+                  </View>
                 ) : null}
               </Card>
             )) : <Card><AppText variant="bodyMuted">No records yet.</AppText></Card>}
@@ -620,15 +656,21 @@ export function BusinessModule({ kind }: { kind: string }) {
                     <View style={styles.grid}>
                       {STAFF_ROLE_OPTIONS.filter((option) => user?.role === "plant_owner" || option.value !== "admin").map((option) => {
                         const selected = form.role === option.value;
+                        const slot = roleSlotStatus(staffAssignments, option.value as PlantJobRole);
                         return (
                           <Pressable
                             key={option.value}
                             testID={`staff-role-${option.value}`}
+                            disabled={slot !== "available"}
+                            accessibilityState={{ disabled: slot !== "available", selected }}
                             onPress={() => setForm((current) => ({ ...current, role: option.value }))}
                             style={[styles.roleOption, { backgroundColor: selected ? colors.brand : colors.surfaceSecondary, borderColor: selected ? colors.brand : colors.border }]}
                           >
                             <Ionicons name={selected ? "checkmark-circle" : "ellipse-outline"} size={17} color={selected ? colors.onBrand : colors.onSurfaceSecondary} />
-                            <AppText style={{ fontFamily: fonts.medium, fontSize: fontSize.sm, color: selected ? colors.onBrand : colors.onSurface }}>{option.label}</AppText>
+                            <View style={{ flex: 1, gap: 2 }}>
+                              <AppText style={{ fontFamily: fonts.medium, fontSize: fontSize.sm, color: selected ? colors.onBrand : colors.onSurface }}>{option.label}</AppText>
+                              <AppText variant="caption">{slot === "available" ? "Available" : slot === "active" ? "Assigned" : "Suspended · reserved"}</AppText>
+                            </View>
                           </Pressable>
                         );
                       })}
