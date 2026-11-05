@@ -12,7 +12,7 @@ async fn make_user(db: &PgPool, role: &str) -> Uuid {
         "INSERT INTO users(phone,hashed_password,full_name,role)
          VALUES($1,'test-only','Session CI',$2) RETURNING id",
     )
-    .bind(Uuid::new_v4().simple().to_string())
+    .bind(Uuid::new_v4().simple().to_string()[..16].to_string())
     .bind(role)
     .fetch_one(db)
     .await
