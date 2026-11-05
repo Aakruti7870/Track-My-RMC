@@ -1,11 +1,13 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { AppState } from "react-native";
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { AppState, Platform } from "react-native";
 import { sessionLossMessage, sessionLossReason } from "@/src/auth/sessionPolicy";
 
 import { storage } from "@/src/utils/storage";
 import {
   apiGet,
   apiPost,
+  refreshSession,
+  AuthSessionResponse,
   demoLogin as apiDemoLogin,
   exchangeGoogleStaffCode,
   isApiError,
@@ -25,6 +27,8 @@ import { stopTripLocationTracking } from "@/src/location/tripTracking";
 import { unregisterPushDevice } from "@/src/notifications/pushClient";
 
 const TOKEN_KEY = "tmrmc_token";
+const REFRESH_KEY = "tmrmc_refresh";
+const SIGNED_OUT_KEY = "tmrmc_explicit_signout";
 
 export type Me = {
   id: string;
@@ -73,39 +77,90 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<Me | null>(null);
   const [staffMfaChallenge, setStaffMfaChallenge] = useState<string | null>(null);
-
-  useEffect(() => {
-    (async () => {
-      const saved = await storage.secureGet<string>(TOKEN_KEY, "");
-      if (saved) {
-        try {
-          const me = await apiGet<Me>("/me", saved);
-          setToken(saved);
-          setUser(me);
-        } catch (error) {
-          const reason = sessionLossReason(error);
-          if (reason) setSessionMessage(sessionLossMessage(reason));
-          await stopTripLocationTracking();
-          await storage.secureRemove(TOKEN_KEY);
-          setToken(null);
-          setUser(null);
+  // Rotations are strictly serialized on one device: concurrent refreshes would
+  // replay a consumed token and could invalidate an otherwise healthy session.
+  const refreshFlight = useRef<Promise<string> | null>(null);
+  const rotateSession = useCallback(async (): Promise<string> => {
+    if (refreshFlight.current) return refreshFlight.current;
+    const flight = (async () => {
+      const refreshToken = Platform.OS === "web" ? undefined : await storage.secureGet<string>(REFRESH_KEY, "");
+      if (Platform.OS !== "web" && !refreshToken) throw { status: 401, error_code: "SESSION_EXPIRED" };
+      const next = await refreshSession(refreshToken || undefined);
+      const nextAccess = next.access_token ?? next.token;
+      if (!nextAccess) throw new Error("Refresh response missing access token");
+      if (Platform.OS !== "web") {
+        if (!next.refresh_token || !(await storage.secureSet(REFRESH_KEY, next.refresh_token))) {
+          throw new Error("Cannot securely persist rotated refresh credential");
         }
       }
-      setHydrating(false);
+      if (!(await storage.secureSet(TOKEN_KEY, nextAccess))) {
+        throw new Error("Cannot securely persist renewed access token");
+      }
+      setToken(nextAccess);
+      return nextAccess;
     })();
+    refreshFlight.current = flight;
+    try { return await flight; } finally { refreshFlight.current = null; }
   }, []);
 
-  const acceptSession = useCallback(async (accessToken: string): Promise<Me> => {
+  const verifiedSession = useCallback(async (current: string): Promise<{ access: string; me: Me }> => {
+    try {
+      return { access: current, me: await apiGet<Me>("/me", current) };
+    } catch (error) {
+      if (!isApiError(error) || error.status !== 401 || sessionLossReason(error) === "replaced") throw error;
+      const access = await rotateSession();
+      return { access, me: await apiGet<Me>("/me", access) };
+    }
+  }, [rotateSession]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const signedOut = await storage.getItem(SIGNED_OUT_KEY, false);
+        if (signedOut) return;
+        const saved = await storage.secureGet<string>(TOKEN_KEY, "");
+        if (!saved && Platform.OS !== "web" && !(await storage.secureGet<string>(REFRESH_KEY, ""))) return;
+        const access = saved || await rotateSession();
+        const result = await verifiedSession(access);
+        if (active) { setToken(result.access); setUser(result.me); setSessionMessage(null); }
+      } catch (error) {
+        if (isApiError(error) && (error.status === 401 || error.status === 403)) {
+          const reason = sessionLossReason(error);
+          if (active && reason) setSessionMessage(sessionLossMessage(reason));
+          await stopTripLocationTracking();
+          await storage.secureRemove(TOKEN_KEY);
+          await storage.secureRemove(REFRESH_KEY);
+          if (active) { setToken(null); setUser(null); }
+        }
+        // Transient offline failures must not destroy recoverable credentials.
+      } finally {
+        if (active) setHydrating(false);
+      }
+    })();
+    return () => { active = false; };
+  }, [rotateSession, verifiedSession]);
+
+  const acceptSession = useCallback(async (res: AuthSessionResponse): Promise<Me> => {
+    const accessToken = res.access_token ?? res.token;
+    if (!accessToken) throw new Error("Authentication response missing access token");
+    if (Platform.OS !== "web") {
+      if (!res.refresh_token || !(await storage.secureSet(REFRESH_KEY, res.refresh_token))) {
+        throw new Error("Unable to securely store refresh credential");
+      }
+    }
     const stored = await storage.secureSet(TOKEN_KEY, accessToken);
     if (!stored) throw new Error("Unable to securely store login session");
     try {
       const me = await apiGet<Me>("/me", accessToken);
+      await storage.removeItem(SIGNED_OUT_KEY);
       setSessionMessage(null);
       setToken(accessToken);
       setUser(me);
       return me;
     } catch (error) {
       await storage.secureRemove(TOKEN_KEY);
+      await storage.secureRemove(REFRESH_KEY);
       setToken(null);
       setUser(null);
       throw error;
@@ -114,7 +169,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const verify = async (identifier: string, code: string): Promise<Me> => {
     const res = await verifyOtp(identifier, code);
-    return acceptSession(res.access_token ?? res.token);
+    return acceptSession(res);
   };
 
   const verifyStaff = async (identifier: string, code: string): Promise<import("@/src/api/client").StaffMfaChallengeResponse> => {
@@ -140,97 +195,81 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!staffMfaChallenge) throw new Error("Staff login challenge expired. Start login again.");
     const res = await verifyStaffTotp(staffMfaChallenge, code);
     setStaffMfaChallenge(null);
-    return acceptSession(res.access_token ?? res.token);
+    return acceptSession(res);
   };
 
   const verifyStaffRecoveryCode = async (_identifier: string, code: string): Promise<Me> => {
     if (!staffMfaChallenge) throw new Error("Staff login challenge expired. Start login again.");
     const res = await verifyStaffRecovery(staffMfaChallenge, code);
     setStaffMfaChallenge(null);
-    return acceptSession(res.access_token ?? res.token);
+    return acceptSession(res);
   };
 
   // Kept for backward compatibility and rollback safety. The normal Plant Staff
   // login UI no longer exposes Google OAuth.
   const verifyGoogle = async (code: string): Promise<Me> => {
     const res = await exchangeGoogleStaffCode(code);
-    return acceptSession(res.access_token ?? res.token);
+    return acceptSession(res);
   };
 
   const demoLogin = async (role: string): Promise<Me> => {
     const res = await apiDemoLogin(role);
-    return acceptSession(res.access_token ?? res.token);
+    return acceptSession(res);
   };
 
   const verifyPlayReview = async (role: PlayReviewRole, accessCode: string): Promise<Me> => {
     const res = await playReviewLogin(role, accessCode);
-    return acceptSession(res.access_token ?? res.token);
+    return acceptSession(res);
   };
+
+  const clearSession = useCallback(async (error: unknown) => {
+    const reason = sessionLossReason(error);
+    setSessionMessage(reason ? sessionLossMessage(reason) : "Your secure session ended. Please sign in again.");
+    await stopTripLocationTracking();
+    await storage.secureRemove(TOKEN_KEY);
+    await storage.secureRemove(REFRESH_KEY);
+    setToken(null);
+    setUser(null);
+  }, []);
 
   const refreshMe = async () => {
     if (!token) return;
     try {
-      const me = await apiGet<Me>("/me", token);
-      setUser(me);
+      const result = await verifiedSession(token);
+      setToken(result.access);
+      setUser(result.me);
     } catch (error) {
-      // A revoked, expired, suspended, or no-longer-authorized session must not
-      // leave stale privileged UI state resident in memory.
-      if (isApiError(error) && (error.status === 401 || error.status === 403)) {
-        const reason = sessionLossReason(error);
-        setSessionMessage(reason ? sessionLossMessage(reason) : "Your secure session ended. Please sign in again.");
-        await stopTripLocationTracking();
-        await storage.secureRemove(TOKEN_KEY);
-        setToken(null);
-        setUser(null);
-      }
-      // Transient network failures keep the current session so offline/poor
-      // connectivity does not unnecessarily force the user through OTP again.
+      if (isApiError(error) && (error.status === 401 || error.status === 403)) await clearSession(error);
     }
   };
 
   const signOut = async () => {
     setSessionMessage(null);
     const sessionToken = token;
-
-    // Fail closed locally first. Remote cleanup is best effort and must never
-    // keep a sensitive session alive on-device while the network is slow/down.
+    // Keep explicit local sign-out sticky across browser restarts even if the
+    // network fails before the server can clear its HttpOnly refresh cookie.
+    await storage.setItem(SIGNED_OUT_KEY, true);
     await stopTripLocationTracking();
     await storage.secureRemove(TOKEN_KEY);
+    await storage.secureRemove(REFRESH_KEY);
     setToken(null);
     setUser(null);
-
     if (!sessionToken) return;
-
-    try {
-      await unregisterPushDevice(sessionToken);
-    } catch {
-      /* push cleanup is best effort; server/session logout must still run */
-    }
-    try {
-      await apiPost("/auth/logout", sessionToken);
-    } catch {
-      /* local logout has already succeeded when the network is unavailable */
-    }
+    try { await unregisterPushDevice(sessionToken); } catch { /* best effort */ }
+    try { await apiPost("/auth/logout", sessionToken); } catch { /* locally signed out */ }
   };
 
-  // The Rust API rejects replaced tokens immediately. Foreground rechecks
-  // synchronize the on-screen session without polling in the background.
   useEffect(() => {
     if (!token) return;
     let active = true;
     const check = async () => {
       try {
-        const me = await apiGet<Me>("/me", token);
-        if (active) setUser(me);
+        const result = await verifiedSession(token);
+        if (active) { setToken(result.access); setUser(result.me); }
       } catch (error) {
         if (!active || !isApiError(error) || (error.status !== 401 && error.status !== 403)) return;
         active = false;
-        const reason = sessionLossReason(error);
-        setSessionMessage(reason ? sessionLossMessage(reason) : "Your secure session ended. Please sign in again.");
-        await stopTripLocationTracking();
-        await storage.secureRemove(TOKEN_KEY);
-        setToken(null);
-        setUser(null);
+        await clearSession(error);
       }
     };
     const listener = AppState.addEventListener("change", (next) => {
@@ -240,7 +279,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (AppState.currentState === "active") void check();
     }, 120_000);
     return () => { active = false; listener.remove(); clearInterval(interval); };
-  }, [token]);
+  }, [token, verifiedSession, clearSession]);
 
   return (
     <AuthContext.Provider
