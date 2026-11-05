@@ -14,32 +14,43 @@ use std::{env, time::Duration as StdDuration};
 use uuid::Uuid;
 
 const SANDBOX_HOST: &str = "https://test-api.sandbox.co.in";
+const LIVE_HOST: &str = "https://api.sandbox.co.in";
 const REDIRECT_URL: &str = "https://trackmyrmc.com/kyc/return";
 const MAX_PROVIDER_BODY: usize = 262_144;
 
 struct Provider {
     client: Client,
+    host: &'static str,
+    label: &'static str,
     api_key: String,
     api_secret: String,
 }
 impl Provider {
     fn enabled() -> Result<Self, AppError> {
-        // Production environment alone never turns on this integration.
-        if env::var("TRACKMYRMC_KYC_ENABLED").as_deref() != Ok("true")
-            || env::var("TRACKMYRMC_KYC_ENV").as_deref() != Ok("sandbox")
-        {
+        if env::var("TRACKMYRMC_KYC_ENABLED").as_deref() != Ok("true") {
             return Err(AppError::Conflict("DigiLocker KYC is not enabled".into()));
         }
-        let api_key = env::var("SANDBOX_KYC_API_KEY")
-            .or_else(|_| env::var("KYC_API_KEY"))
-            .unwrap_or_default();
-        let api_secret = env::var("SANDBOX_KYC_API_SECRET")
-            .or_else(|_| env::var("KYC_API_SECRET"))
-            .unwrap_or_default();
+        // Sandbox Test keys are NOT interchangeable with production Live keys.
+        // A separate, explicit live approval flag prevents accidental escalation.
+        let (host, label, key_var, secret_var) = match env::var("TRACKMYRMC_KYC_ENV").as_deref() {
+            Ok("sandbox") => (
+                SANDBOX_HOST,
+                "sandbox_digilocker",
+                "SANDBOX_KYC_API_KEY",
+                "SANDBOX_KYC_API_SECRET",
+            ),
+            Ok("live") if env::var("TRACKMYRMC_KYC_LIVE_APPROVED").as_deref() == Ok("true") => (
+                LIVE_HOST,
+                "live_digilocker",
+                "LIVE_KYC_API_KEY",
+                "LIVE_KYC_API_SECRET",
+            ),
+            _ => return Err(AppError::Conflict("DigiLocker KYC environment is not approved".into())),
+        };
+        let api_key = env::var(key_var).unwrap_or_default();
+        let api_secret = env::var(secret_var).unwrap_or_default();
         if api_key.trim().is_empty() || api_secret.trim().is_empty() {
-            return Err(AppError::Conflict(
-                "DigiLocker KYC is not configured".into(),
-            ));
+            return Err(AppError::Conflict("DigiLocker KYC is not configured".into()));
         }
         let client = Client::builder()
             .timeout(StdDuration::from_secs(12))
@@ -48,6 +59,8 @@ impl Provider {
             .map_err(|_| AppError::InternalError("KYC HTTP client unavailable".into()))?;
         Ok(Self {
             client,
+            host,
+            label,
             api_key,
             api_secret,
         })
@@ -89,7 +102,7 @@ impl Provider {
     async fn access_token(&self) -> Result<String, AppError> {
         let res = self
             .client
-            .post(format!("{SANDBOX_HOST}/authenticate"))
+            .post(format!("{}/authenticate", self.host))
             .header("x-api-key", &self.api_key)
             .header("x-api-secret", &self.api_secret)
             .send()
@@ -105,7 +118,7 @@ impl Provider {
     async fn post(&self, token: &str, path: &str, payload: Value) -> Result<Value, AppError> {
         let res = self
             .client
-            .post(format!("{SANDBOX_HOST}{path}"))
+            .post(format!("{}{path}", self.host))
             .header("Authorization", token)
             .header("x-api-key", &self.api_key)
             .header(header::CONTENT_TYPE, "application/json")
