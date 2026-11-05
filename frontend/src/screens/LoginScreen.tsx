@@ -616,17 +616,11 @@ export default function LoginScreen() {
           accessibilityRole="button"
           accessibilityLabel="Google Play Reviewer Access"
           onPress={() => router.push("/review-access" as any)}
-          style={[styles.reviewAccessCard, styles.reviewAccessStandalone, {
-            backgroundColor: colors.brandSoft,
-            borderColor: `${colors.brand}66`,
-          }]}
+          style={styles.reviewAccessStandalone}
           hitSlop={8}
         >
-          <View style={[styles.reviewAccessIcon, { backgroundColor: colors.surface }]}>
-            <Ionicons name="shield-checkmark-outline" size={21} color={colors.brand} />
-          </View>
-          <AppText variant="body" numberOfLines={2} style={styles.reviewAccessLabel}>Google Play Reviewer Access</AppText>
-          <Ionicons name="chevron-forward" size={20} color={colors.brand} />
+          <Ionicons name="shield-checkmark-outline" size={20} color={colors.isDark ? "#4ADE80" : "#16834A"} />
+          <AppText variant="caption" numberOfLines={2} style={[styles.reviewAccessLabel, { color: colors.onSurface }]}>Google Play Reviewer Access</AppText>
         </Pressable>
 
         <View style={styles.legalArea}>
@@ -780,34 +774,23 @@ const styles = StyleSheet.create({
   demoBox: { borderWidth: 1, borderRadius: radius.lg, padding: spacing.md, gap: spacing.sm },
   demoRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, justifyContent: "center" },
   demoChip: { borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  legalArea: { width: "92%", maxWidth: 470, paddingTop: spacing.lg, paddingHorizontal: spacing.sm, gap: spacing.md },
+  legalArea: { width: "92%", maxWidth: 470, paddingTop: spacing.xs, paddingHorizontal: spacing.sm, gap: spacing.md },
   legalLink: { fontFamily: fonts.semibold },
   poweredFooter: { marginTop: spacing.sm },
-  reviewAccessCard: {
-    minHeight: 68,
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
   reviewAccessStandalone: {
     width: "92%",
     maxWidth: 470,
     minHeight: 56,
-    marginTop: spacing.md,
-  },
-  reviewAccessLabel: {
-    flex: 1,
-    fontFamily: fonts.semibold,
-  },
-  reviewAccessIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.md,
+    marginTop: 0,
+    paddingHorizontal: spacing.sm,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: spacing.xs,
+  },
+  reviewAccessLabel: {
+    fontFamily: fonts.semibold,
+    textAlign: "center",
   },
 });
 
