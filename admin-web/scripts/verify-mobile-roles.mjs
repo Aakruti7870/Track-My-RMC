@@ -134,6 +134,10 @@ try {
     safeSuccessfulPaths = successfulPaths;
     let token;
     let currentIdentity;
+    let awaitingAnonymousRefresh = true;
+    const isRefreshResponse = response =>
+      response.url() === 'http://127.0.0.1:8301/api/auth/refresh' &&
+      response.request().method() === 'POST';
     page.on('request', request => {
       if (request.url().startsWith('http://127.0.0.1:8301/api/')) {
         const authorization = request.headers().authorization;
@@ -147,6 +151,11 @@ try {
     page.on('response', async response => {
       if (!response.url().startsWith('http://127.0.0.1:8301/api/')) return;
       const path = new URL(response.url()).pathname;
+      // The first refresh in this fresh context is asserted before sign-in below.
+      if (awaitingAnonymousRefresh && isRefreshResponse(response)) {
+        awaitingAnonymousRefresh = false;
+        return;
+      }
       if (response.status() >= 400) failures.push(`${path}: ${response.status()}`);
       else {
         successfulPaths.add(path);
@@ -165,7 +174,12 @@ try {
         }
       }
     });
-    await page.goto('http://127.0.0.1:8081/login', { timeout: 180000 });
+    const [anonymousRefresh] = await Promise.all([
+      page.waitForResponse(isRefreshResponse, { timeout: 180000 }),
+      page.goto('http://127.0.0.1:8081/login', { timeout: 180000 }),
+    ]);
+    assert.equal(anonymousRefresh.status(), 401, 'Anonymous session restoration must be rejected');
+    assert.equal((await anonymousRefresh.json()).message, 'Refresh credential required');
     await expect(page.getByTestId('login-user-tab')).toBeVisible({ timeout: 180000 });
     const destination = user.email ?? user.phone.replace(/^\+/, '');
     if (user.email) {
