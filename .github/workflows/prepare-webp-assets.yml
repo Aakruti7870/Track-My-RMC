@@ -1,0 +1,11 @@
+name: Generate WebP asset variants
+on:
+  push:
+    branches: [perf/webp-fast-loading-20261105]
+permissions:
+  contents: write
+jobs:
+  optimize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
