@@ -42,7 +42,7 @@ export function OwnerFrame({ children, title, subtitle }: { children: React.Reac
   const insets = useSafeAreaInsets();
   return <View style={{ flex: 1, backgroundColor: p.canvas }}>
     {/* Metro registers bundled image assets through static require calls. */}
-    <Image source={p.dark ? require("../../assets/images/Background Dark Theme.png") : require("../../assets/images/Background Light Theme.png")} resizeMode="cover" style={[StyleSheet.absoluteFill, { width: "100%", height: "100%", opacity: 0.35 }]} />
+    <Image source={p.dark ? require("../../assets/images/Background Dark Theme.webp") : require("../../assets/images/Background Light Theme.webp")} resizeMode="cover" style={[StyleSheet.absoluteFill, { width: "100%", height: "100%", opacity: 0.35 }]} />
     <View style={[ui.container, { paddingTop: insets.top }]}>
       <OwnerHeader />
       {title ? <View style={ui.title}><AppText style={{ fontFamily: fonts.bold, fontSize: 27, color: p.text }}>{title}</AppText><AppText style={{ fontSize: 12, lineHeight: 18, color: p.muted }}>{subtitle}</AppText></View> : null}
