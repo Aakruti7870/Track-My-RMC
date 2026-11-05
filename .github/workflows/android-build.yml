@@ -177,6 +177,11 @@ jobs:
           EXPO_PUBLIC_GOOGLE_MAPS_KEY: ${{ env.EXPO_PUBLIC_GOOGLE_MAPS_KEY }}
         run: npx expo prebuild --platform android --clean --no-install
 
+      - name: Verify Android Maps SDK manifest configuration
+        env:
+          GOOGLE_MAPS_ANDROID_KEY: ${{ env.GOOGLE_MAPS_ANDROID_KEY }}
+        run: node scripts/check-android-maps-manifest.cjs
+
       - name: Verify release version
         run: |
           set -euo pipefail

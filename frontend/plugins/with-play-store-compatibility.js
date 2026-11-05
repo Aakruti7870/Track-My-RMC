@@ -102,6 +102,26 @@ module.exports = function withPlayStoreCompatibility(config) {
     }
 
     manifest['uses-feature'] = features;
+
+    // Expo's legacy android.config.googleMaps path does not guarantee that a
+    // release prebuild contains the native SDK key. Upsert it explicitly so
+    // Google Maps SDK for Android can authenticate the installed binary.
+    // This key must stay Android-app restricted (package + signing SHA-1).
+    const mapsKey = (process.env.GOOGLE_MAPS_ANDROID_KEY || '').trim();
+    if (mapsKey) {
+      const application = manifest.application && manifest.application[0];
+      if (!application) {
+        throw new Error('Android application manifest is missing; cannot configure Google Maps');
+      }
+      const metadata = Array.isArray(application['meta-data']) ? application['meta-data'] : [];
+      const mapsMetadataName = 'com.google.android.geo.API_KEY';
+      application['meta-data'] = [
+        ...metadata.filter((entry) =>
+          entry && entry.$ && entry.$['android:name'] !== mapsMetadataName
+        ),
+        { $: { 'android:name': mapsMetadataName, 'android:value': mapsKey } },
+      ];
+    }
     return modConfig;
   });
 };
