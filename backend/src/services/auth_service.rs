@@ -224,7 +224,7 @@ pub async fn verify_whatsapp_otp(
         .unwrap_or_else(|| "unverified".to_string());
     let verified_name = profile.and_then(|p| p.verified_name);
 
-    let token = crate::auth::account_sessions::issue(
+    let session = crate::auth::refresh::issue_after_auth(
         state,
         user.id,
         &user.role,
@@ -236,7 +236,8 @@ pub async fn verify_whatsapp_otp(
 
     Ok(AuthResponse {
         success: true,
-        token,
+        token: session.token,
+        refresh_token: Some(session.refresh_token),
         role: user.role.clone(),
         user: UserResponse {
             id: user.id,
@@ -600,7 +601,7 @@ pub async fn verify_staff_mfa(
         .map(|p| p.kyc_status.clone())
         .unwrap_or_else(|| "unverified".to_string());
     let verified_name = profile.and_then(|p| p.verified_name);
-    let token = crate::auth::account_sessions::issue(
+    let session = crate::auth::refresh::issue_after_auth(
         state,
         user.id,
         &user.role,
@@ -611,7 +612,8 @@ pub async fn verify_staff_mfa(
     .await?;
     Ok(AuthResponse {
         success: true,
-        token,
+        token: session.token,
+        refresh_token: Some(session.refresh_token),
         role: user.role.clone(),
         user: UserResponse {
             id: user.id,
