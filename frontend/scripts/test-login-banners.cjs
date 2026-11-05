@@ -1,35 +1,28 @@
-/* Keep login hero images and sheet geometry stable across release builds. */
+/* Keep login hero quality, pixel dimensions and sheet geometry stable across builds. */
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { describe, it } = require("node:test");
+const { dimensions } = require("./webp-asset-utils.cjs");
 
 const frontend = path.resolve(__dirname, "..");
 const screen = fs.readFileSync(path.join(frontend, "src/screens/LoginScreen.tsx"), "utf8");
 
 const assets = [
-  ["HERO_LIGHT", "TrackMyRMC_Login_Top_Banner_light.png"],
-  ["HERO_DARK", "TrackMyRMC_Login_Top_Banner_Dark.png"],
+  ["HERO_LIGHT", "TrackMyRMC_Login_Top_Banner_light.webp"],
+  ["HERO_DARK", "TrackMyRMC_Login_Top_Banner_Dark.webp"],
 ];
 
-describe("login banner assets and non-cropping layout", () => {
+describe("optimized login banner assets and non-cropping layout", () => {
   for (const [variable, filename] of assets) {
-    it(`bundles the correct 1920x1080 PNG for ${variable}`, () => {
+    it(`bundles the original-resolution 1920x1080 WebP for ${variable}`, () => {
       const requirePath = `../../assets/images/${filename}`;
       assert.ok(screen.includes(`const ${variable} = require("${requirePath}");`));
-      const filePath = path.join(frontend, "assets/images", filename);
-      const header = Buffer.alloc(24);
-      const fd = fs.openSync(filePath, "r");
-      try {
-        assert.equal(fs.readSync(fd, header, 0, 24, 0), 24);
-      } finally {
-        fs.closeSync(fd);
-      }
-      assert.equal(header.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
-      assert.equal(header.toString("ascii", 12, 16), "IHDR");
-      assert.equal(header.readUInt32BE(16), 1920);
-      assert.equal(header.readUInt32BE(20), 1080);
-      assert.ok(fs.statSync(filePath).size < 2 * 1024 * 1024, "banner exceeds 2 MiB");
+      const compressedPath = path.join(frontend, "assets/images", filename);
+      const originalPath = compressedPath.replace(/\.webp$/, ".png");
+      assert.deepEqual(dimensions(compressedPath), { width: 1920, height: 1080 });
+      assert.deepEqual(dimensions(originalPath), { width: 1920, height: 1080 });
+      assert.ok(fs.statSync(compressedPath).size < fs.statSync(originalPath).size, "WebP must be smaller than original PNG");
     });
   }
 
@@ -40,10 +33,10 @@ describe("login banner assets and non-cropping layout", () => {
     assert.match(screen, /heroImage:\s*\{\s*width:\s*"100%",\s*height:\s*"100%"/);
   });
 
-  it("retains the current login card width, overlap and all existing content", () => {
+  it("retains current login card width, overlap and existing options", () => {
     assert.match(screen, /loginShell:\s*\{\s*width:\s*"92%",\s*maxWidth:\s*470,\s*marginTop:\s*-24/);
-    assert.ok(screen.includes("testID=\"login-user-tab\""));
-    assert.ok(screen.includes("testID=\"login-plant-tab\""));
-    assert.ok(screen.includes("testID=\"login-review-access\""));
+    assert.ok(screen.includes('testID="login-user-tab"'));
+    assert.ok(screen.includes('testID="login-plant-tab"'));
+    assert.ok(screen.includes('testID="login-review-access"'));
   });
 });

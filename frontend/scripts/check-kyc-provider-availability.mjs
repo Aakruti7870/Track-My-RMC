@@ -11,7 +11,7 @@ assert(kyc.includes('if (!token || providerUnavailable) return;'), "KYC initiati
 assert(kyc.includes('testID="kyc-unavailable"'), "KYC unavailable state needs explicit feedback");
 assert(kyc.includes('testID="kyc-refresh-availability"'), "KYC unavailable state needs a safe retry");
 assert(kyc.includes('!providerUnavailable && status === "IN_PROGRESS"'), "KYC must not duplicate disabled-provider actions");
-for (const file of ["TrackMyRMC_Login_Top_Banner_light.png", "TrackMyRMC_Login_Top_Banner_Dark.png"]) {
+for (const file of ["TrackMyRMC_Login_Top_Banner_light.webp", "TrackMyRMC_Login_Top_Banner_Dark.webp"]) {
   assert(fs.existsSync(path.join("assets", "images", file)), `Missing login image: ${file}`);
   assert(login.includes(file), `Login screen does not use ${file}`);
 }

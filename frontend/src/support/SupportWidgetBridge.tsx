@@ -9,7 +9,7 @@ import { AppText } from "@/src/components/ui/AppText";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
 
-const SUPPORT_AGENT_MASCOT = require("../../assets/images/support-agent-mascot.png");
+const SUPPORT_AGENT_MASCOT = require("../../assets/images/support-agent-mascot.webp");
 
 const CUSTOMER_WIDGET_PATHS = new Set(["/customer", "/customer/orders", "/customer/plants", "/customer/more"]);
 type CustomerSupportFlow = "order" | "tracking" | null;

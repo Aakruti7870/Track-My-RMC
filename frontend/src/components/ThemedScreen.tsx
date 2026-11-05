@@ -12,8 +12,8 @@ export function ThemedScreen({ children }: PropsWithChildren) {
   return (
     <ImageBackground
       source={colors.isDark
-        ? require("../../assets/images/Background Dark Theme.png")
-        : require("../../assets/images/Background Light Theme.png")}
+        ? require("../../assets/images/Background Dark Theme.webp")
+        : require("../../assets/images/Background Light Theme.webp")}
       resizeMode="cover"
       imageStyle={styles.artwork}
       style={[styles.root, { backgroundColor: getThemedCanvasColor(colors) }]}
