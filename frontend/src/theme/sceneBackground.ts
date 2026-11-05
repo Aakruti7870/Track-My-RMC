@@ -14,7 +14,7 @@ export function getThemedSceneStyle(colors: ThemeColors): ViewStyle {
   const backgroundColor = getThemedCanvasColor(colors);
   if (Platform.OS !== "web") return { backgroundColor };
 
-  // Web: apply the same 35% wallpaper to each opaque navigation scene rather
+  // Web: apply the same subdued wallpaper to each opaque navigation scene rather
   // than allowing prior route content to show through a transparent scene.
   const asset = colors.isDark
     ? require("../../assets/images/Background Dark Theme.webp")
@@ -24,7 +24,7 @@ export function getThemedSceneStyle(colors: ThemeColors): ViewStyle {
   const source = asset as string | { uri?: string; default?: { uri?: string } };
   const uri = typeof source === "string" ? source : source?.uri ?? source?.default?.uri;
   if (!uri) return { backgroundColor };
-  const veil = colors.isDark ? "rgba(14,17,22,0.65)" : "rgba(247,248,249,0.65)";
+  const veil = colors.isDark ? "rgba(14,17,22,0.85)" : "rgba(247,248,249,0.85)";
   return {
     backgroundColor,
     backgroundImage: `linear-gradient(${veil}, ${veil}), url("${uri}")`,

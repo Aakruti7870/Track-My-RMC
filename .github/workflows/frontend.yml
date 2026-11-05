@@ -68,6 +68,8 @@ jobs:
         run: npm run check:play-policy
       - name: Validate Android responsive layouts
         run: npm run check:android-layout
+      - name: Validate theme readability and bottom navigation geometry
+        run: node --test scripts/test-theme-legibility.cjs
       - name: Expo Doctor
         run: npm run doctor
       - name: Verify generated Android Maps manifest with a test-only key

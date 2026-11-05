@@ -58,7 +58,7 @@ export function QuickActionHub({ visible, onClose, tabs, role, navigation }: Pro
           style={[
             styles.sheet,
             {
-              backgroundColor: colors.isDark ? "rgba(18,20,22,0.82)" : "rgba(255,255,255,0.82)",
+              backgroundColor: colors.surfaceElevated,
               borderColor: colors.isDark ? "rgba(255,255,255,0.11)" : "rgba(17,19,21,0.09)",
               shadowColor: colors.shadow,
             },

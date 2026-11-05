@@ -185,7 +185,7 @@ export function StaffModuleDirectory({
                   style={({ pressed }) => [
                     styles.card, {
                       width: cardWidth,
-                      backgroundColor: colors.isDark ? "rgba(30,35,42,0.84)" : "rgba(255,255,255,0.84)",
+                      backgroundColor: colors.surfaceSecondary,
                       borderColor: colors.isDark ? "rgba(255,159,82,0.31)" : "rgba(255,255,255,0.98)",
                       shadowColor: colors.isDark ? "#F08928" : "#7B5845",
                       opacity: pressed ? 0.8 : 1,
