@@ -30,12 +30,10 @@ impl Provider {
         {
             return Err(AppError::Conflict("DigiLocker KYC is not enabled".into()));
         }
-        let api_key = env::var("SANDBOX_KYC_API_KEY")
-            .or_else(|_| env::var("KYC_API_KEY"))
-            .unwrap_or_default();
-        let api_secret = env::var("SANDBOX_KYC_API_SECRET")
-            .or_else(|_| env::var("KYC_API_SECRET"))
-            .unwrap_or_default();
+        // Test and live Sandbox keys are distinct. Never fall back to an unclassified
+        // generic (potentially live) API key during a sandbox DigiLocker flow.
+        let api_key = env::var("SANDBOX_KYC_API_KEY").unwrap_or_default();
+        let api_secret = env::var("SANDBOX_KYC_API_SECRET").unwrap_or_default();
         if api_key.trim().is_empty() || api_secret.trim().is_empty() {
             return Err(AppError::Conflict(
                 "DigiLocker KYC is not configured".into(),
