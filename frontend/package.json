@@ -18,6 +18,7 @@
     "check:play-policy": "node ./scripts/check-play-policy-readiness.mjs",
     "check:android-permissions": "node ./scripts/check-android-permissions.mjs",
     "check:android-layout": "node ./scripts/check-android-responsive-layout.mjs",
+    "check:kyc-availability": "node scripts/check-kyc-provider-availability.mjs",
     "doctor": "expo-doctor",
     "build:preview": "expo export --platform web --output-dir dist",
     "check:vector-symbols": "node ./scripts/check-vector-symbols.mjs",
