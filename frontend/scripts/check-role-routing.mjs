@@ -136,6 +136,25 @@ if (!login.includes('testID="login-plant-email-input"') || !login.includes('test
 if (!login.includes('testID="login-review-access"') || !login.includes('router.push("/review-access" as any)')) {
   failures.push("Google Play reviewer access must be discoverable from the login landing screen");
 }
+// The Google Play reviewer entry is a compact standalone action AFTER the login
+// shell and BEFORE the Terms & Privacy line, on both mobile and tablet widths.
+const reviewerEntry = login.indexOf('testID="login-review-access"');
+const reviewerAfterShell = login.indexOf('</View>\n\n        <Pressable\n          testID="login-review-access"');
+const legalStart = login.indexOf('<View style={styles.legalArea}>');
+if (reviewerEntry < 0 || reviewerAfterShell < 0 || reviewerEntry >= legalStart) {
+  failures.push("Google Play reviewer entry must sit below the login card and above legal terms");
+}
+if ((login.match(/Google Play Reviewer Access/g) || []).length !== 2 ||
+    login.includes("Dedicated Customer, Plant Owner and Driver review accounts")) {
+  failures.push("Reviewer action must show only the Google Play Reviewer Access title, without the old subtitle");
+}
+if (!login.includes('reviewAccessStandalone: {') ||
+    !login.includes('width: "92%"') ||
+    !login.includes('maxWidth: 470') ||
+    !login.includes('minHeight: 56')) {
+  failures.push("Reviewer action must retain touch-friendly responsive width under the login card");
+}
+
 if (login.includes('EXPO_PUBLIC_ENABLE_PLAY_REVIEW === "true"') || reviewAccess.includes('EXPO_PUBLIC_ENABLE_PLAY_REVIEW === "true"') || reviewAccess.includes('<Redirect href="/login" />')) {
   failures.push("Implemented Google Play reviewer access must not be hidden behind a build-time feature flag");
 }
