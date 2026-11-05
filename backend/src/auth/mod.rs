@@ -1,4 +1,5 @@
 pub mod account_sessions;
+pub mod refresh;
 pub mod jwt;
 pub mod middleware;
 pub mod otp;
