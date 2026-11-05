@@ -26,6 +26,7 @@ import { useToast } from "@/src/components/ui/Toast";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 
+// Keep 16:9 hero assets theme-specific; the login sheet layout is unchanged.
 const HERO_LIGHT = require("../../assets/images/TrackMyRMC_Login_Top_Banner_light.png");
 const HERO_DARK = require("../../assets/images/TrackMyRMC_Login_Top_Banner_Dark.png");
 
