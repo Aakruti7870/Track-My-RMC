@@ -700,3 +700,87 @@ async fn play_review_owner_session_skips_staff_enrollment_without_weakening_staf
     assert_eq!(normal_me["mfa_enabled"], false);
     assert_eq!(normal_me["mfa_configured"], true);
 }
+
+#[sqlx::test]
+async fn rotating_refresh_rejects_replay_replacement_and_revocation(db: PgPool) {
+    use trackmyrmc_backend::auth::{account_sessions, jwt::verify_token, refresh};
+    let state = state(db.clone());
+    let user = identity(&db, "customer", None, None).await;
+    let phone: String = sqlx::query_scalar("SELECT phone FROM users WHERE id=$1")
+        .bind(user)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+
+    let initial = refresh::issue_after_auth(&state, user, "customer", &phone, None, 1)
+        .await
+        .unwrap();
+    let app = build_app_router(state.clone());
+    assert_eq!(call(&app, "/api/me", None, Some(&initial.token)).await.0, StatusCode::OK);
+    let (status, renewed) = call(
+        &app,
+        "/api/auth/refresh",
+        Some(json!({"refresh_token":initial.refresh_token})),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let renewed_access = renewed["access_token"].as_str().unwrap();
+    let renewed_refresh = renewed["refresh_token"].as_str().unwrap();
+    assert_ne!(renewed_refresh, initial.refresh_token);
+    assert_eq!(call(&app, "/api/me", None, Some(&initial.token)).await.0, StatusCode::UNAUTHORIZED);
+    assert_eq!(call(&app, "/api/me", None, Some(renewed_access)).await.0, StatusCode::OK);
+
+    // Replaying the consumed credential must not yield another access JWT.
+    assert_eq!(
+        call(
+            &app,
+            "/api/auth/refresh",
+            Some(json!({"refresh_token":initial.refresh_token})),
+            None
+        ).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+
+    // A new fully verified login replaces both the earlier JWT and refresh token.
+    let second = refresh::issue_after_auth(&state, user, "customer", &phone, None, 1)
+        .await
+        .unwrap();
+    assert_eq!(
+        call(
+            &app,
+            "/api/auth/refresh",
+            Some(json!({"refresh_token":renewed_refresh})),
+            None
+        ).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    let jti = verify_token(&second.token, &state.config.jwt_secret)
+        .unwrap()
+        .jti
+        .unwrap();
+    account_sessions::revoke_current(&state, user, jti).await.unwrap();
+    assert_eq!(
+        call(
+            &app,
+            "/api/auth/refresh",
+            Some(json!({"refresh_token":second.refresh_token})),
+            None
+        ).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+}
+
+#[sqlx::test]
+async fn rotating_refresh_rejects_suspended_identity(db: PgPool) {
+    use trackmyrmc_backend::auth::refresh;
+    let state = state(db.clone());
+    let user = identity(&db, "customer", None, None).await;
+    let phone: String = sqlx::query_scalar("SELECT phone FROM users WHERE id=$1")
+        .bind(user).fetch_one(&db).await.unwrap();
+    let session = refresh::issue_after_auth(&state, user, "customer", &phone, None, 1)
+        .await.unwrap();
+    sqlx::query("UPDATE users SET is_active=FALSE WHERE id=$1")
+        .bind(user).execute(&db).await.unwrap();
+    assert!(refresh::rotate(&state, &session.refresh_token).await.is_err());
+}
