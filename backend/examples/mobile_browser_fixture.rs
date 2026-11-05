@@ -1,7 +1,7 @@
 //! Disposable CI harness, never the production entry point. It runs the real
 //! router with an injected delivery transport and the explicitly approved
 //! synthetic identities. OTPs go only to a protected loopback memory sink.
-use axum::async_trait;
+use axum::{async_trait, http::{header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE}, Method}};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{
@@ -234,8 +234,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("CI-FIXTURE: router");
     let cors = CorsLayer::new()
         .allow_origin("http://127.0.0.1:8081".parse::<axum::http::HeaderValue>()?)
-        .allow_methods(Any)
-        .allow_headers(Any);
+        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::PATCH, Method::DELETE, Method::OPTIONS])
+        .allow_headers([ACCEPT, AUTHORIZATION, CONTENT_TYPE])
+        .allow_credentials(true);
     let app = build_app_router(state).layer(cors);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:8301").await?;
     eprintln!("Isolated synthetic mobile browser fixture ready");
