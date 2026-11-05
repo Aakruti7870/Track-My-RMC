@@ -17,8 +17,8 @@ export function getThemedSceneStyle(colors: ThemeColors): ViewStyle {
   // Web: apply the same 35% wallpaper to each opaque navigation scene rather
   // than allowing prior route content to show through a transparent scene.
   const asset = colors.isDark
-    ? require("../../assets/images/Background Dark Theme.png")
-    : require("../../assets/images/Background Light Theme.png");
+    ? require("../../assets/images/Background Dark Theme.webp")
+    : require("../../assets/images/Background Light Theme.webp");
   // Metro's web asset modules expose a URL directly or in a { uri } object.
   // React Native Web's Image does NOT implement Image.resolveAssetSource.
   const source = asset as string | { uri?: string; default?: { uri?: string } };

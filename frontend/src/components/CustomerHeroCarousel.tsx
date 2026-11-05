@@ -16,8 +16,8 @@ import { AppText } from "@/src/components/ui/AppText";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 
-const HERO_LIGHT = require("../../assets/images/login-hero-light.jpg");
-const HERO_DARK = require("../../assets/images/login-hero-dark.jpg");
+const HERO_LIGHT = require("../../assets/images/TrackMyRMC_Login_Top_Banner_light.webp");
+const HERO_DARK = require("../../assets/images/TrackMyRMC_Login_Top_Banner_Dark.webp");
 const AUTOPLAY_MS = 4500;
 
 type Slide = {

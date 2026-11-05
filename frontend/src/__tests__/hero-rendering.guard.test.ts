@@ -42,7 +42,7 @@ describe('final login and customer hero guards', () => {
     assert.ok(carousel.includes('const SLIDE_COUNT = SLIDES.length'));
     assert.ok(carousel.includes('pagingEnabled'));
     assert.ok(carousel.includes('aspectRatio: 16 / 9'));
-    const filenames = ['Mixer.png', 'KYC-verification.png', 'Free-Calculator.png', 'Cashfree.png', 'CountryMap.png'];
+    const filenames = ['Mixer.webp', 'KYC-verification.webp', 'Free-Calculator.webp', 'Cashfree.webp', 'CountryMap.webp'];
     const imports = carousel.split("\n").filter(line => line.includes('source: require('))
       .map(line => line.split('assets/images/')[1]?.split('"')[0]);
     assert.deepEqual(imports.map(file => path.basename(file)), filenames);
@@ -57,7 +57,7 @@ describe('final login and customer hero guards', () => {
     const activePage = fs.readFileSync(path.join(root, 'src/components/ThemedScreen.tsx'), 'utf8');
     const colors = fs.readFileSync(path.join(root, 'src/theme/tokens.ts'), 'utf8');
     const card = fs.readFileSync(path.join(root, 'src/components/ui/Card.tsx'), 'utf8');
-    for (const image of ['Background Light Theme.png', 'Background Dark Theme.png']) {
+    for (const image of ['Background Light Theme.webp', 'Background Dark Theme.webp']) {
       assert.ok(scene.includes(image));
       assert.ok(activePage.includes(image));
       assert.ok(fs.existsSync(path.join(root, 'assets/images', image)));

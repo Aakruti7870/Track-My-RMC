@@ -108,11 +108,12 @@ test("login help widget stays compact and public issue choices expand before nav
   assert.ok(!publicWidget.includes('"/assistant/') && !publicWidget.includes('"/customer/orders'));
 });
 
-test("support widget displays the uploaded PNG in both launchers without changing responsive sizing", () => {
-  const asset = readFileSync(`${process.cwd()}/assets/images/support-agent-mascot.png`);
-  assert.deepEqual([...asset.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10], "mascot asset must be a PNG");
+test("support widget displays an optimized WebP in both launchers without changing responsive sizing", () => {
+  const asset = readFileSync(`${process.cwd()}/assets/images/support-agent-mascot.webp`);
+  assert.equal(asset.toString("ascii", 0, 4), "RIFF");
+  assert.equal(asset.toString("ascii", 8, 12), "WEBP", "mascot asset must be a WebP");
   assert.ok(widget.includes('name="chatbubbles-outline"'));
-  assert.ok(widget.includes('require("../../assets/images/support-agent-mascot.png")'));
+  assert.ok(widget.includes('require("../../assets/images/support-agent-mascot.webp")'));
   assert.equal((widget.match(/<Image source={SUPPORT_AGENT_MASCOT}/g) || []).length, 2, "both customer and login launchers must display the uploaded mascot");
   assert.ok(widget.includes('resizeMode="contain"'));
   assert.ok(!widget.includes("AnimatedPuppy"));
