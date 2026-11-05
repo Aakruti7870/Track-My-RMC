@@ -48,6 +48,8 @@ jobs:
         run: node --test scripts/test-home-tracking.cjs
       - name: Google Maps loader regressions
         run: npm run test:maps
+      - name: KYC provider availability guard
+        run: npm run check:kyc-availability
       - name: Customer header foreground location regressions
         run: node --test scripts/test-header-location.cjs
       - name: Verify isolated Google Play reviewer MFA routing
