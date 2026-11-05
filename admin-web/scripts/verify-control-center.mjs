@@ -33,7 +33,8 @@ try {
   await page.getByRole('heading', { name: 'Central Admin sign in', exact: true }).waitFor();
   assert.equal(await page.evaluate(() => sessionStorage.getItem('trackmyrmc_admin_token')), null);
   const revoked=await page.request.get('http://127.0.0.1:8000/api/admin/auth/me',{headers:{Authorization:'Bearer '+token}});
-  assert.equal(revoked.status(),403);
+  // A successfully revoked access token is unauthenticated, not merely forbidden.
+  assert.equal(revoked.status(), 401, 'signed-out admin session must be unauthorized');
   console.log('PASS: real Central Admin MFA, authorized workspaces and browser logout');
 } finally {
   await browser.close();
