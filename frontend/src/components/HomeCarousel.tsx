@@ -6,11 +6,11 @@ import { radius } from "@/src/theme/tokens";
 
 // Exactly five approved 1280x720 images, in display order; paths are case sensitive.
 const SLIDES = [
-  { id: "mixer", source: require("../../assets/images/Mixer.png"), label: "Transit mixer" },
-  { id: "kyc", source: require("../../assets/images/KYC-verification.png"), label: "KYC verification" },
-  { id: "calculator", source: require("../../assets/images/Free-Calculator.png"), label: "Free RMC calculator" },
-  { id: "cashfree", source: require("../../assets/images/Cashfree.png"), label: "Cashfree payments" },
-  { id: "country", source: require("../../assets/images/CountryMap.png"), label: "India coverage" },
+  { id: "mixer", source: require("../../assets/images/Mixer.webp"), label: "Transit mixer" },
+  { id: "kyc", source: require("../../assets/images/KYC-verification.webp"), label: "KYC verification" },
+  { id: "calculator", source: require("../../assets/images/Free-Calculator.webp"), label: "Free RMC calculator" },
+  { id: "cashfree", source: require("../../assets/images/Cashfree.webp"), label: "Cashfree payments" },
+  { id: "country", source: require("../../assets/images/CountryMap.webp"), label: "India coverage" },
 ] as const;
 const AUTO_MS = 4500;
 const SLIDE_COUNT = SLIDES.length;
@@ -65,6 +65,8 @@ export function HomeCarousel({ style }: { style?: ViewStyle }) {
               <View key={slide.id} style={{ width: size.w, height: size.h }}>
                 <Image source={slide.source} style={StyleSheet.absoluteFill}
                   contentFit="contain" contentPosition="center" cachePolicy="memory-disk"
+                  priority={slide.id === "mixer" ? "high" : "low"}
+                  loading={slide.id === "mixer" ? "eager" : "lazy"}
                   accessibilityLabel={slide.label} />
               </View>
             ))}
