@@ -38,3 +38,11 @@ test("Deleted video and older PNG are not required for app boot", () => {
   assert.doesNotMatch(layout, /RMC_Splash_logo\.png/);
   assert.ok(!JSON.stringify(config).includes("RMC_Splash_logo.png"));
 });
+
+test("Video playback package is not required after MP4 removal", () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+  const lockfile = JSON.parse(fs.readFileSync(path.join(root, "package-lock.json"), "utf8"));
+  assert.equal(manifest.dependencies["expo-video"], undefined);
+  assert.equal(lockfile.packages[""].dependencies["expo-video"], undefined);
+  assert.equal(lockfile.packages["node_modules/expo-video"], undefined);
+});
