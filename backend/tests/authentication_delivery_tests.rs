@@ -279,6 +279,20 @@ async fn approved_staff_fixtures_complete_email_enrollment_mfa_recovery_and_logo
     let delivery = Arc::new(MemoryDelivery::default());
     state.otp_delivery = delivery.clone();
     let app = build_app_router(state);
+    // Synthetic staff must be provisioned to an approved plant before login.
+    // This verifies the production authorization rule rather than bypassing it.
+    let plant_owner = identity(&db, "owner", None, None).await;
+    let plant: Uuid = sqlx::query_scalar(
+        "INSERT INTO rmc_plants (owner_id,name,code,latitude,longitude,
+          address_line,city,state,pincode,contact_phone)
+         VALUES ($1,'Auth CI Plant',$2,0,0,'CI Address','CI','MH','410206','000')
+         RETURNING id"
+    )
+    .bind(plant_owner)
+    .bind(Uuid::new_v4().simple().to_string())
+    .fetch_one(&db)
+    .await
+    .unwrap();
     let fixtures: Value =
         serde_json::from_str(include_str!("fixtures/staging_identities.json")).unwrap();
     for fixture in fixtures["users"]
@@ -289,7 +303,19 @@ async fn approved_staff_fixtures_complete_email_enrollment_mfa_recovery_and_logo
     {
         let role = fixture["role"].as_str().unwrap();
         let email = fixture["email"].as_str().unwrap();
-        identity(&db, role, Some(email), None).await;
+        let staff_id = identity(&db, role, Some(email), None).await;
+        if role != "plant_owner" && role != "owner" {
+            sqlx::query(
+                "INSERT INTO plant_staff (plant_id,user_id,role,is_active)
+                 VALUES ($1,$2,$3,TRUE)"
+            )
+            .bind(plant)
+            .bind(staff_id)
+            .bind(role)
+            .execute(&db)
+            .await
+            .unwrap();
+        }
         let challenge = email_challenge(&app, &delivery, email).await;
         assert_eq!(challenge["status"], "MFA_ENROLLMENT_REQUIRED");
         assert_eq!(
