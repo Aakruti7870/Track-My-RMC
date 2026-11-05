@@ -18,6 +18,24 @@ workflow fails if the generated Android manifest does not contain exactly one
 entry with the expected value; the key is not printed. Map tile timeouts show
 retry and a safe external Maps option without blocking the list.
 
+## Verified signing identities (2026-11-05)
+
+Both certificate fingerprints were extracted directly from public X.509 DER
+certificates provided from Play Console and compared to the production
+configuration; **certificate fingerprints are public identifiers, not API keys**.
+
+| Signing identity | SHA-1 |
+| --- | --- |
+| **Play App Signing key** (for Play-installed builds) | `DC:ED:10:E6:DB:BD:91:5D:E9:0E:AB:5E:6D:AD:11:0C:A5:3A:99:64` |
+| **Upload key** (for locally upload-signed builds) | `3D:5F:80:59:1C:BA:69:1B:03:28:4D:A1:74:91:38:1D:8F:A1:32:DC` |
+
+Play App Signing SHA-256 is
+`94:19:46:02:2E:2E:BF:55:5E:71:1B:63:33:99:87:C6:91:A2:21:43:B8:5C:34:97:31:D0:FC:E6:C2:AC:62:D4`
+and matches the previously configured production Android App Links fingerprint.
+**Google Cloud key restrictions have not yet been read or confirmed.**
+Authorizing the *upload* certificate alone will not fix map tiles in
+Play-installed APKs when Play re-signs them with the *app signing* certificate.
+
 ## Mandatory Google Cloud and Play Console validation
 
 1. In Google Cloud Console, open **APIs & Services > Library** in the project
