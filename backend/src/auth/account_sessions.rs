@@ -116,6 +116,7 @@ pub fn header_session_jti(headers: &HeaderMap, secret: &str, user: Uuid) -> Resu
 
 /// Conditional revocation prevents stale Session-1 logout racing with Session-2.
 pub async fn revoke_current(state: &AppState, user: Uuid, jti: Uuid) -> Result<(), AppError> {
+    let mut tx = state.db.begin().await?;
     let rows = sqlx::query(
         "UPDATE users SET active_session_jti=NULL,
          auth_revoked_at=clock_timestamp(),updated_at=NOW()
@@ -123,11 +124,14 @@ pub async fn revoke_current(state: &AppState, user: Uuid, jti: Uuid) -> Result<(
     )
     .bind(user)
     .bind(jti)
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await?;
     if rows.rows_affected() != 1 {
         return Err(AppError::SessionReplaced);
     }
+    sqlx::query("DELETE FROM account_refresh_tokens WHERE user_id=$1")
+        .bind(user).execute(&mut *tx).await?;
+    tx.commit().await?;
     Ok(())
 }
 
