@@ -184,7 +184,11 @@ pub async fn me(admin: WebAdmin) -> Json<Value> {
 pub async fn logout(
     State(state): State<AppState>,
     admin: WebAdmin,
+    headers: HeaderMap,
 ) -> Result<Json<Value>, AppError> {
+    let jti = crate::auth::account_sessions::header_session_jti(
+        &headers, &state.config.jwt_secret, admin.user_id,
+    )?;
     let mut tx = state.db.begin().await?;
     sqlx::query(
         "UPDATE control_center_sessions SET revoked_at=NOW() WHERE user_id=$1 AND token_hash=$2",
@@ -198,6 +202,11 @@ pub async fn logout(
         .bind(&admin.token_hash)
         .execute(&mut *tx)
         .await?;
+    // Revoke only this account JTI, never a newer session that won a login race.
+    sqlx::query("UPDATE users SET active_session_jti=NULL,
+                 auth_revoked_at=clock_timestamp(),updated_at=NOW()
+                 WHERE id=$1 AND active_session_jti=$2")
+        .bind(admin.user_id).bind(jti).execute(&mut *tx).await?;
     sqlx::query("INSERT INTO audit_logs (user_id,action,resource_type,metadata) VALUES ($1,'admin.session.logout','admin_session','{}')")
         .bind(admin.user_id).execute(&mut *tx).await?;
     tx.commit().await?;
