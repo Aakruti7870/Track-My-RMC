@@ -716,7 +716,10 @@ async fn rotating_refresh_rejects_replay_replacement_and_revocation(db: PgPool) 
         .await
         .unwrap();
     let app = build_app_router(state.clone());
-    assert_eq!(call(&app, "/api/me", None, Some(&initial.token)).await.0, StatusCode::OK);
+    assert_eq!(
+        call(&app, "/api/me", None, Some(&initial.token)).await.0,
+        StatusCode::OK
+    );
     let (status, renewed) = call(
         &app,
         "/api/auth/refresh",
@@ -728,8 +731,14 @@ async fn rotating_refresh_rejects_replay_replacement_and_revocation(db: PgPool) 
     let renewed_access = renewed["access_token"].as_str().unwrap();
     let renewed_refresh = renewed["refresh_token"].as_str().unwrap();
     assert_ne!(renewed_refresh, initial.refresh_token);
-    assert_eq!(call(&app, "/api/me", None, Some(&initial.token)).await.0, StatusCode::UNAUTHORIZED);
-    assert_eq!(call(&app, "/api/me", None, Some(renewed_access)).await.0, StatusCode::OK);
+    assert_eq!(
+        call(&app, "/api/me", None, Some(&initial.token)).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        call(&app, "/api/me", None, Some(renewed_access)).await.0,
+        StatusCode::OK
+    );
 
     // Replaying the consumed credential must not yield another access JWT.
     assert_eq!(
@@ -738,7 +747,9 @@ async fn rotating_refresh_rejects_replay_replacement_and_revocation(db: PgPool) 
             "/api/auth/refresh",
             Some(json!({"refresh_token":initial.refresh_token})),
             None
-        ).await.0,
+        )
+        .await
+        .0,
         StatusCode::UNAUTHORIZED
     );
 
@@ -752,21 +763,27 @@ async fn rotating_refresh_rejects_replay_replacement_and_revocation(db: PgPool) 
             "/api/auth/refresh",
             Some(json!({"refresh_token":renewed_refresh})),
             None
-        ).await.0,
+        )
+        .await
+        .0,
         StatusCode::UNAUTHORIZED
     );
     let jti = verify_token(&second.token, &state.config.jwt_secret)
         .unwrap()
         .jti
         .unwrap();
-    account_sessions::revoke_current(&state, user, jti).await.unwrap();
+    account_sessions::revoke_current(&state, user, jti)
+        .await
+        .unwrap();
     assert_eq!(
         call(
             &app,
             "/api/auth/refresh",
             Some(json!({"refresh_token":second.refresh_token})),
             None
-        ).await.0,
+        )
+        .await
+        .0,
         StatusCode::UNAUTHORIZED
     );
 }
@@ -777,10 +794,19 @@ async fn rotating_refresh_rejects_suspended_identity(db: PgPool) {
     let state = state(db.clone());
     let user = identity(&db, "customer", None, None).await;
     let phone: String = sqlx::query_scalar("SELECT phone FROM users WHERE id=$1")
-        .bind(user).fetch_one(&db).await.unwrap();
+        .bind(user)
+        .fetch_one(&db)
+        .await
+        .unwrap();
     let session = refresh::issue_after_auth(&state, user, "customer", &phone, None, 1)
-        .await.unwrap();
+        .await
+        .unwrap();
     sqlx::query("UPDATE users SET is_active=FALSE WHERE id=$1")
-        .bind(user).execute(&db).await.unwrap();
-    assert!(refresh::rotate(&state, &session.refresh_token).await.is_err());
+        .bind(user)
+        .execute(&db)
+        .await
+        .unwrap();
+    assert!(refresh::rotate(&state, &session.refresh_token)
+        .await
+        .is_err());
 }
