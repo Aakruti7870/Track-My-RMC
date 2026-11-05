@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const routes = readFileSync(`${process.cwd()}/src/support/routes.ts`, "utf8");
-const scripted = readFileSync(`${process.cwd()}/src/support/scriptedSupport.ts`, "utf8");
+const scripted = readFileSync(`${process.cwd()}/src/support/scriptedSupport.json`, "utf8");
 const screen = readFileSync(`${process.cwd()}/app/support.tsx`, "utf8");
 const order = readFileSync(`${process.cwd()}/app/new-order.tsx`, "utf8");
 const staff = readFileSync(`${process.cwd()}/app/support-cases.tsx`, "utf8");
@@ -39,7 +39,7 @@ test("scripted support covers common login, KYC, order, tracking, payment, accou
     "Describe another issue",
   ]) assert.ok(scripted.includes(text), `missing scripted option: ${text}`);
   for (const category of ["LOGIN", "KYC", "ORDER", "TRACKING", "PAYMENT", "ACCOUNT_DELETION", "PLANT_ONBOARDING", "GENERAL"]) {
-    assert.ok(scripted.includes(`${category}: {`));
+    assert.ok(scripted.includes(`"${category}": {`));
   }
 });
 
@@ -47,7 +47,7 @@ test("order and tracking scripted answers stay bound to an owned selected order"
   assert.ok(screen.includes("/customer/orders"));
   assert.ok(screen.includes("Choose one of your orders"));
   assert.ok(screen.includes("choice.requiresOrder && !orderId"));
-  assert.ok(scripted.includes("requiresOrder: true"));
+  assert.ok(scripted.includes('"requiresOrder": true'));
   assert.ok(screen.includes("order_id: orderId"));
 });
 
