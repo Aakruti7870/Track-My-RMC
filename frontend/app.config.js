@@ -5,7 +5,8 @@ module.exports = ({ config }) => {
     ...(config.android || {}),
     adaptiveIcon: {
       ...((config.android && config.android.adaptiveIcon) || {}),
-      backgroundColor: "#FFFFFF",
+      foregroundImage: "./assets/images/adaptive-icon.png",
+      backgroundColor: "#24282D",
     },
   };
 
