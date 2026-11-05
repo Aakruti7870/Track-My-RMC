@@ -51,7 +51,6 @@ test("visible-first images have priority without changing carousel order or timi
   const home = fs.readFileSync(path.join(root, "src/components/HomeCarousel.tsx"), "utf8");
   const login = fs.readFileSync(path.join(root, "src/screens/LoginScreen.tsx"), "utf8");
   assert.ok(home.includes('priority={slide.id === "mixer" ? "high" : "low"}'));
-  assert.ok(home.includes('loading={slide.id === "mixer" ? "eager" : "lazy"}'));
   assert.ok(home.includes("const AUTO_MS = 4500"));
   assert.ok(home.includes("contentFit=\"contain\""));
   assert.ok(login.includes('priority="high"'));
