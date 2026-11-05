@@ -113,7 +113,7 @@ test("support widget uses the uploaded vector in both open panels and optimized 
   assert.equal(asset.toString("ascii", 0, 4), "RIFF");
   assert.equal(asset.toString("ascii", 8, 12), "WEBP", "mascot asset must be a WebP");
   assert.ok(widget.includes('import { VectorSymbol } from "@/src/components/VectorSymbol";'));
-  assert.equal((widget.match(/<VectorSymbol name="support" size=\\{40\\} \\/>/g) || []).length, 2, "both support panels must display the uploaded support.svg vector");
+  assert.equal(widget.split('<VectorSymbol name="support" size={40} />').length - 1, 2, "both support panels must display the uploaded support.svg vector");
   assert.ok(!widget.includes('name="chatbubbles-outline"'), "do not show the old generic chat icon");
   assert.ok(widget.includes('require("../../assets/images/support-agent-mascot.webp")'));
   assert.equal((widget.match(/<Image source={SUPPORT_AGENT_MASCOT}/g) || []).length, 2, "both customer and login launchers must display the uploaded mascot");
