@@ -1,5 +1,5 @@
 use crate::{
-    auth::account_sessions,
+    auth::refresh,
     error::AppError,
     models::user::{AuthResponse, User, UserResponse},
     repositories::user_repo,
@@ -128,7 +128,7 @@ pub async fn login(
         .map(|item| item.kyc_status.clone())
         .unwrap_or_else(|| "unverified".to_string());
     let verified_name = profile.and_then(|item| item.verified_name);
-    let token = account_sessions::issue(
+    let session = refresh::issue_after_auth(
         state,
         user.id,
         &user.role,
@@ -140,7 +140,8 @@ pub async fn login(
 
     Ok(AuthResponse {
         success: true,
-        token,
+        token: session.token,
+        refresh_token: Some(session.refresh_token),
         role: user.role.clone(),
         user: UserResponse {
             id: user.id,
