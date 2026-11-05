@@ -1,14 +1,15 @@
 import React, { useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from "react-native";
+import { Image, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { usePathname, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/src/auth/AuthContext";
-import { AnimatedPuppy } from "@/src/support/AnimatedPuppy";
 import { AppText } from "@/src/components/ui/AppText";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
+
+const SUPPORT_AGENT_MASCOT = require("../../assets/images/support-agent-mascot.png");
 
 const CUSTOMER_WIDGET_PATHS = new Set(["/customer", "/customer/orders", "/customer/plants", "/customer/more"]);
 type CustomerSupportFlow = "order" | "tracking" | null;
@@ -286,7 +287,7 @@ export function SupportWidgetBridge() {
                 },
               ]}
             >
-              <AnimatedPuppy mood={customerHelpOpen ? "greeting" : "idle"} active={showCustomerSupport} size={48} />
+              <Image source={SUPPORT_AGENT_MASCOT} style={styles.supportMascot} resizeMode="contain" accessible={false} />
             </Pressable>
             <View pointerEvents="none" style={[styles.customerBadge, { backgroundColor: colors.brand }]}> 
               <AppText style={[styles.badgeText, { color: colors.onBrand }]}>May I Help you?</AppText>
@@ -444,7 +445,7 @@ export function SupportWidgetBridge() {
             },
           ]}
         >
-          <AnimatedPuppy mood={publicHelpOpen ? "greeting" : "idle"} active={showPublicLoginHelp} size={48} />
+          <Image source={SUPPORT_AGENT_MASCOT} style={styles.supportMascot} resizeMode="contain" accessible={false} />
         </Pressable>
       </View>
     </View>
@@ -480,6 +481,7 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 7,
   },
+  supportMascot: { width: 48, height: 48 },
   customerBadge: {
     minHeight: 24,
     minWidth: 54,
