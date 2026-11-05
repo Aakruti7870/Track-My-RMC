@@ -64,7 +64,7 @@ jobs:
         run: npm run doctor
       - name: Verify generated Android Maps manifest with a test-only key
         env:
-          GOOGLE_MAPS_ANDROID_KEY: "AIzaSyPrebuildOnlyMapKeyNeverUsedInProduction012"
+          GOOGLE_MAPS_ANDROID_KEY: "test-only-android-maps-key-do-not-deploy"
         run: |
           npx expo prebuild --platform android --clean --no-install
           node scripts/check-android-maps-manifest.cjs
