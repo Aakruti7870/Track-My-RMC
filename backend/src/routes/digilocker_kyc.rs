@@ -33,7 +33,9 @@ impl Provider {
         }
         // Sandbox Test keys are NOT interchangeable with production Live keys.
         // A separate, explicit live approval flag prevents accidental escalation.
-        let (host, label, environment, key_var, secret_var) = match env::var("TRACKMYRMC_KYC_ENV").as_deref() {
+        let (host, label, environment, key_var, secret_var) = match env::var("TRACKMYRMC_KYC_ENV")
+            .as_deref()
+        {
             Ok("sandbox") => (
                 SANDBOX_HOST,
                 "sandbox_digilocker",
@@ -48,12 +50,18 @@ impl Provider {
                 "LIVE_KYC_API_KEY",
                 "LIVE_KYC_API_SECRET",
             ),
-            _ => return Err(AppError::Conflict("DigiLocker KYC environment is not approved".into())),
+            _ => {
+                return Err(AppError::Conflict(
+                    "DigiLocker KYC environment is not approved".into(),
+                ))
+            }
         };
         let api_key = env::var(key_var).unwrap_or_default();
         let api_secret = env::var(secret_var).unwrap_or_default();
         if api_key.trim().is_empty() || api_secret.trim().is_empty() {
-            return Err(AppError::Conflict("DigiLocker KYC is not configured".into()));
+            return Err(AppError::Conflict(
+                "DigiLocker KYC is not configured".into(),
+            ));
         }
         let client = Client::builder()
             .timeout(StdDuration::from_secs(12))
@@ -325,18 +333,18 @@ pub async fn status(
     // Never query a session table without an approved provider configuration.
     let provider = match Provider::enabled() {
         Ok(p) => p,
-        Err(_) => return Ok(Json(json!({
-            "status": display_status(&kyc),
-            "kyc_status": kyc,
-            "provider": "unavailable",
-            "refresh_failed": false
-        }))),
+        Err(_) => {
+            return Ok(Json(json!({
+                "status": display_status(&kyc),
+                "kyc_status": kyc,
+                "provider": "unavailable",
+                "refresh_failed": false
+            })))
+        }
     };
     // Approved status always comes from the database, never callback query parameters.
     if display_status(&kyc) == "VERIFIED" {
-        return Ok(Json(
-            json!({"status":"VERIFIED","provider":provider.label}),
-        ));
+        return Ok(Json(json!({"status":"VERIFIED","provider":provider.label})));
     }
     let latest = sqlx::query(
         "SELECT id,provider_session_id,status,expires_at
@@ -364,9 +372,7 @@ pub async fn status(
         } else {
             session_status(&previous)
         };
-        return Ok(Json(
-            json!({"status":status,"provider":provider.label}),
-        ));
+        return Ok(Json(json!({"status":status,"provider":provider.label})));
     }
     let expiry: chrono::DateTime<Utc> = latest.get("expires_at");
     if Utc::now() > expiry {
@@ -433,9 +439,7 @@ pub async fn status(
         Ok("PENDING")
     }.await;
     match refresh {
-        Ok(status) => Ok(Json(
-            json!({"status":status,"provider":provider.label}),
-        )),
+        Ok(status) => Ok(Json(json!({"status":status,"provider":provider.label}))),
         Err(_) => Ok(Json(
             json!({"status":"IN_PROGRESS","provider":provider.label,"refresh_failed":true}),
         )),
