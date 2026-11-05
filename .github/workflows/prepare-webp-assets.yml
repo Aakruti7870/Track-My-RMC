@@ -1,11 +1,35 @@
-name: Generate WebP asset variants
+name: Prepare WebP image assets for performance PR
+
+# Temporary conversion workflow; remove before merging into main.
 on:
   push:
-    branches: [perf/webp-fast-loading-20261105]
+    branches:
+      - perf/webp-fast-loading-20261105
+
 permissions:
   contents: write
+
 jobs:
-  optimize:
+  convert:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: perf/webp-fast-loading-20261105
+          persist-credentials: true
+      - name: Install WebP encoder
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq webp
+      - name: Generate high quality WebP from the existing PNGs
+        run: python3 frontend/scripts/generate-webp-assets.py
+      - name: Commit generated variants to feature branch
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add 'frontend/assets/images/*.webp'
+          if ! git diff --cached --quiet; then
+            git commit -m "perf(images): add optimized WebP variants for customer graphics"
+            git push origin HEAD:perf/webp-fast-loading-20261105
+          fi
