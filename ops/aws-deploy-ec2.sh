@@ -299,23 +299,38 @@ META_GRAPH_API_VERSION="$(printf '%s' "$APP_JSON" | jq -r '.META_GRAPH_API_VERSI
 PLAY_SIGNING_SHA256="$(printf '%s' "$APP_JSON" | jq -r '.PLAY_SIGNING_SHA256 // empty')"
 PLAY_REVIEW_ACCESS_CODE="$(printf '%s' "$APP_JSON" | jq -r '.PLAY_REVIEW_ACCESS_CODE // empty')"
 GOOGLE_PLACES_API_KEY="$(printf '%s' "$APP_JSON" | jq -r '.GOOGLE_PLACES_API_KEY // empty')"
-# KYC credentials are installed only on explicit Sandbox activation; default OFF.
+# DigiLocker activation is opt-in, environment-scoped and uses different
+# credentials for Test versus Live. Generic KYC_API_KEY values are NOT fallback.
 TRACKMYRMC_KYC_ENABLED="$(printf '%s' "$APP_JSON" | jq -r '.TRACKMYRMC_KYC_ENABLED // "false" | tostring')"
 TRACKMYRMC_KYC_ENV="$(printf '%s' "$APP_JSON" | jq -r '.TRACKMYRMC_KYC_ENV // "disabled"')"
-KYC_API_KEY=''
-KYC_API_SECRET=''
-if [[ "$TRACKMYRMC_KYC_ENABLED" != 'false' && "$TRACKMYRMC_KYC_ENABLED" != 'true' ]]; then
-  echo 'Invalid TRACKMYRMC_KYC_ENABLED: expected true or false' >&2
-  exit 1
-fi
+TRACKMYRMC_KYC_LIVE_APPROVED="$(printf '%s' "$APP_JSON" | jq -r '.TRACKMYRMC_KYC_LIVE_APPROVED // "false" | tostring')"
+SANDBOX_KYC_API_KEY=''
+SANDBOX_KYC_API_SECRET=''
+LIVE_KYC_API_KEY=''
+LIVE_KYC_API_SECRET=''
+[[ "$TRACKMYRMC_KYC_ENABLED" == 'true' || "$TRACKMYRMC_KYC_ENABLED" == 'false' ]] || { echo 'Invalid DigiLocker feature switch' >&2; exit 1; }
+[[ "$TRACKMYRMC_KYC_LIVE_APPROVED" == 'true' || "$TRACKMYRMC_KYC_LIVE_APPROVED" == 'false' ]] || { echo 'Invalid DigiLocker live approval' >&2; exit 1; }
 if [[ "$TRACKMYRMC_KYC_ENABLED" == 'true' ]]; then
-  [[ "$TRACKMYRMC_KYC_ENV" == 'sandbox' ]] || { echo 'KYC activation requires the sandbox environment' >&2; exit 1; }
-  KYC_API_KEY="$(printf '%s' "$APP_JSON" | jq -r '.SANDBOX_KYC_API_KEY // .KYC_API_KEY // empty')"
-  KYC_API_SECRET="$(printf '%s' "$APP_JSON" | jq -r '.SANDBOX_KYC_API_SECRET // .KYC_API_SECRET // empty')"
+  case "$TRACKMYRMC_KYC_ENV" in
+    sandbox)
+      SANDBOX_KYC_API_KEY="$(printf '%s' "$APP_JSON" | jq -r '.SANDBOX_KYC_API_KEY // empty')"
+      SANDBOX_KYC_API_SECRET="$(printf '%s' "$APP_JSON" | jq -r '.SANDBOX_KYC_API_SECRET // empty')"
+      KYC_SELECTED_KEY="$SANDBOX_KYC_API_KEY"
+      KYC_SELECTED_SECRET="$SANDBOX_KYC_API_SECRET"
+      ;;
+    live)
+      [[ "$TRACKMYRMC_KYC_LIVE_APPROVED" == 'true' ]] || { echo 'Live DigiLocker approval is missing' >&2; exit 1; }
+      LIVE_KYC_API_KEY="$(printf '%s' "$APP_JSON" | jq -r '.LIVE_KYC_API_KEY // empty')"
+      LIVE_KYC_API_SECRET="$(printf '%s' "$APP_JSON" | jq -r '.LIVE_KYC_API_SECRET // empty')"
+      KYC_SELECTED_KEY="$LIVE_KYC_API_KEY"
+      KYC_SELECTED_SECRET="$LIVE_KYC_API_SECRET"
+      ;;
+    *) echo 'Invalid DigiLocker environment; expected sandbox or approved live' >&2; exit 1 ;;
+  esac
   KYC_REDIRECT="$(printf '%s' "$APP_JSON" | jq -r '.KYC_REDIRECT_URL // empty')"
   [[ "$KYC_REDIRECT" == 'https://trackmyrmc.com/kyc/return' ]] || { echo 'Invalid registered KYC redirect URL' >&2; exit 1; }
-  [[ -n "$KYC_API_KEY" && -n "$KYC_API_SECRET" ]] || { echo 'Missing KYC credentials' >&2; exit 1; }
-  for value in "$KYC_API_KEY" "$KYC_API_SECRET"; do
+  [[ -n "$KYC_SELECTED_KEY" && -n "$KYC_SELECTED_SECRET" ]] || { echo 'Missing environment-specific DigiLocker credentials' >&2; exit 1; }
+  for value in "$KYC_SELECTED_KEY" "$KYC_SELECTED_SECRET"; do
     [[ "$value" =~ ^[A-Za-z0-9_./+=:@-]+$ ]] || { echo 'KYC credential has invalid encoding' >&2; exit 1; }
   done
 fi
@@ -428,8 +443,11 @@ PLAY_REVIEW_ACCESS_CODE=$PLAY_REVIEW_ACCESS_CODE
 GOOGLE_PLACES_API_KEY=$GOOGLE_PLACES_API_KEY
 TRACKMYRMC_KYC_ENABLED=$TRACKMYRMC_KYC_ENABLED
 TRACKMYRMC_KYC_ENV=$TRACKMYRMC_KYC_ENV
-KYC_API_KEY=$KYC_API_KEY
-KYC_API_SECRET=$KYC_API_SECRET
+TRACKMYRMC_KYC_LIVE_APPROVED=$TRACKMYRMC_KYC_LIVE_APPROVED
+SANDBOX_KYC_API_KEY=$SANDBOX_KYC_API_KEY
+SANDBOX_KYC_API_SECRET=$SANDBOX_KYC_API_SECRET
+LIVE_KYC_API_KEY=$LIVE_KYC_API_KEY
+LIVE_KYC_API_SECRET=$LIVE_KYC_API_SECRET
 EMAIL_API_KEY=$EMAIL_KEY
 EMAIL_FROM_ADDRESS=$EMAIL_FROM
 EOF

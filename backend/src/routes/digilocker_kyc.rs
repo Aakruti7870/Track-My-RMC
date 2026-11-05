@@ -14,28 +14,50 @@ use std::{env, time::Duration as StdDuration};
 use uuid::Uuid;
 
 const SANDBOX_HOST: &str = "https://test-api.sandbox.co.in";
+const LIVE_HOST: &str = "https://api.sandbox.co.in";
 const REDIRECT_URL: &str = "https://trackmyrmc.com/kyc/return";
 const MAX_PROVIDER_BODY: usize = 262_144;
 
 struct Provider {
     client: Client,
+    host: &'static str,
+    label: &'static str,
+    environment: &'static str,
     api_key: String,
     api_secret: String,
 }
 impl Provider {
     fn enabled() -> Result<Self, AppError> {
-        // Production environment alone never turns on this integration.
-        if env::var("TRACKMYRMC_KYC_ENABLED").as_deref() != Ok("true")
-            || env::var("TRACKMYRMC_KYC_ENV").as_deref() != Ok("sandbox")
-        {
+        if env::var("TRACKMYRMC_KYC_ENABLED").as_deref() != Ok("true") {
             return Err(AppError::Conflict("DigiLocker KYC is not enabled".into()));
         }
-        let api_key = env::var("SANDBOX_KYC_API_KEY")
-            .or_else(|_| env::var("KYC_API_KEY"))
-            .unwrap_or_default();
-        let api_secret = env::var("SANDBOX_KYC_API_SECRET")
-            .or_else(|_| env::var("KYC_API_SECRET"))
-            .unwrap_or_default();
+        // Sandbox Test keys are NOT interchangeable with production Live keys.
+        // A separate, explicit live approval flag prevents accidental escalation.
+        let (host, label, environment, key_var, secret_var) = match env::var("TRACKMYRMC_KYC_ENV")
+            .as_deref()
+        {
+            Ok("sandbox") => (
+                SANDBOX_HOST,
+                "sandbox_digilocker",
+                "sandbox",
+                "SANDBOX_KYC_API_KEY",
+                "SANDBOX_KYC_API_SECRET",
+            ),
+            Ok("live") if env::var("TRACKMYRMC_KYC_LIVE_APPROVED").as_deref() == Ok("true") => (
+                LIVE_HOST,
+                "live_digilocker",
+                "live",
+                "LIVE_KYC_API_KEY",
+                "LIVE_KYC_API_SECRET",
+            ),
+            _ => {
+                return Err(AppError::Conflict(
+                    "DigiLocker KYC environment is not approved".into(),
+                ))
+            }
+        };
+        let api_key = env::var(key_var).unwrap_or_default();
+        let api_secret = env::var(secret_var).unwrap_or_default();
         if api_key.trim().is_empty() || api_secret.trim().is_empty() {
             return Err(AppError::Conflict(
                 "DigiLocker KYC is not configured".into(),
@@ -48,6 +70,9 @@ impl Provider {
             .map_err(|_| AppError::InternalError("KYC HTTP client unavailable".into()))?;
         Ok(Self {
             client,
+            host,
+            label,
+            environment,
             api_key,
             api_secret,
         })
@@ -89,7 +114,7 @@ impl Provider {
     async fn access_token(&self) -> Result<String, AppError> {
         let res = self
             .client
-            .post(format!("{SANDBOX_HOST}/authenticate"))
+            .post(format!("{}/authenticate", self.host))
             .header("x-api-key", &self.api_key)
             .header("x-api-secret", &self.api_secret)
             .send()
@@ -105,7 +130,7 @@ impl Provider {
     async fn post(&self, token: &str, path: &str, payload: Value) -> Result<Value, AppError> {
         let res = self
             .client
-            .post(format!("{SANDBOX_HOST}{path}"))
+            .post(format!("{}{path}", self.host))
             .header("Authorization", token)
             .header("x-api-key", &self.api_key)
             .header(header::CONTENT_TYPE, "application/json")
@@ -232,9 +257,10 @@ pub async fn start(State(state): State<AppState>, user: AuthUser) -> Result<Json
         .await?;
     }
     let id: Uuid = sqlx::query_scalar(
-        "INSERT INTO customer_digilocker_sessions(user_id) VALUES($1) RETURNING id",
+        "INSERT INTO customer_digilocker_sessions(user_id,provider_environment) VALUES($1,$2) RETURNING id",
     )
     .bind(user.user_id)
+    .bind(provider.environment)
     .fetch_one(&mut *tx)
     .await?;
     tx.commit().await?;
@@ -278,7 +304,7 @@ pub async fn start(State(state): State<AppState>, user: AuthUser) -> Result<Json
             .execute(&state.db)
             .await?;
             Ok(Json(
-                json!({"status":"IN_PROGRESS","provider":"sandbox_digilocker",
+                json!({"status":"IN_PROGRESS","provider":provider.label,
                            "authorization_url":url}),
             ))
         }
@@ -303,33 +329,35 @@ pub async fn status(
     .fetch_one(&state.db)
     .await?;
     let kyc: String = account.get("kyc_status");
-    // Production currently has no DigiLocker session migration. Keep the
-    // existing KYC screen functional while provider activation is disabled.
-    // Never query a staged/not-yet-applied table in fail-closed mode.
-    if Provider::enabled().is_err() {
-        return Ok(Json(json!({
-            "status": display_status(&kyc),
-            "kyc_status": kyc,
-            "provider": "unavailable",
-            "refresh_failed": false
-        })));
-    }
+    // Keep stored KYC status functional while the provider feature is disabled.
+    // Never query a session table without an approved provider configuration.
+    let provider = match Provider::enabled() {
+        Ok(p) => p,
+        Err(_) => {
+            return Ok(Json(json!({
+                "status": display_status(&kyc),
+                "kyc_status": kyc,
+                "provider": "unavailable",
+                "refresh_failed": false
+            })))
+        }
+    };
     // Approved status always comes from the database, never callback query parameters.
     if display_status(&kyc) == "VERIFIED" {
-        return Ok(Json(
-            json!({"status":"VERIFIED","provider":"sandbox_digilocker"}),
-        ));
+        return Ok(Json(json!({"status":"VERIFIED","provider":provider.label})));
     }
     let latest = sqlx::query(
         "SELECT id,provider_session_id,status,expires_at
-         FROM customer_digilocker_sessions WHERE user_id=$1 ORDER BY created_at DESC LIMIT 1",
+         FROM customer_digilocker_sessions WHERE user_id=$1 AND provider_environment=$2
+         ORDER BY created_at DESC LIMIT 1",
     )
     .bind(user.user_id)
+    .bind(provider.environment)
     .fetch_optional(&state.db)
     .await?;
     let Some(latest) = latest else {
         return Ok(Json(
-            json!({"status":display_status(&kyc),"provider":"sandbox_digilocker"}),
+            json!({"status":display_status(&kyc),"provider":provider.label}),
         ));
     };
     let id: Uuid = latest.get("id");
@@ -344,30 +372,19 @@ pub async fn status(
         } else {
             session_status(&previous)
         };
-        return Ok(Json(
-            json!({"status":status,"provider":"sandbox_digilocker"}),
-        ));
+        return Ok(Json(json!({"status":status,"provider":provider.label})));
     }
     let expiry: chrono::DateTime<Utc> = latest.get("expires_at");
     if Utc::now() > expiry {
         sqlx::query("UPDATE customer_digilocker_sessions SET status='EXPIRED',updated_at=NOW() WHERE id=$1 AND status='IN_PROGRESS'")
             .bind(id).execute(&state.db).await?;
         return Ok(Json(
-            json!({"status":"REQUIRES_REVERIFICATION","provider":"sandbox_digilocker"}),
+            json!({"status":"REQUIRES_REVERIFICATION","provider":provider.label}),
         ));
     }
-    // If configuration is unavailable, preserve the last known state; do not fake success.
-    let provider = match Provider::enabled() {
-        Ok(p) => p,
-        Err(_) => {
-            return Ok(Json(
-                json!({"status":"IN_PROGRESS","provider":"sandbox_digilocker","refresh_failed":true}),
-            ))
-        }
-    };
     let Some(provider_id) = latest.get::<Option<Uuid>, _>("provider_session_id") else {
         return Ok(Json(
-            json!({"status":"IN_PROGRESS","provider":"sandbox_digilocker","refresh_failed":true}),
+            json!({"status":"IN_PROGRESS","provider":provider.label,"refresh_failed":true}),
         ));
     };
     let refresh = async {
@@ -415,18 +432,16 @@ pub async fn status(
                 "INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata)
                  VALUES($1,'kyc.digilocker.consent_verified','customer',$2,$3)"
             ).bind(user.user_id).bind(user.user_id.to_string())
-            .bind(json!({"provider":"sandbox_digilocker","session_id":provider_id.to_string(),"result":"pending_authority_review"}))
+            .bind(json!({"provider":provider.label,"session_id":provider_id.to_string(),"result":"pending_authority_review"}))
             .execute(&mut *tx).await?;
         }
         tx.commit().await?;
         Ok("PENDING")
     }.await;
     match refresh {
-        Ok(status) => Ok(Json(
-            json!({"status":status,"provider":"sandbox_digilocker"}),
-        )),
+        Ok(status) => Ok(Json(json!({"status":status,"provider":provider.label}))),
         Err(_) => Ok(Json(
-            json!({"status":"IN_PROGRESS","provider":"sandbox_digilocker","refresh_failed":true}),
+            json!({"status":"IN_PROGRESS","provider":provider.label,"refresh_failed":true}),
         )),
     }
 }
