@@ -676,7 +676,11 @@ mod tests {
         let no_cursor: GoogleNearbyQuery = serde_json::from_value(json!({
             "lat": 18.99, "lng": 73.11, "radius_km": 50.0
         })).unwrap();
-        assert!(google_text_search_body(&no_cursor, 50.0, "ready mix concrete plant").get("pageToken").is_none());
+        assert!(
+            google_text_search_body(&no_cursor, 50.0, "ready mix concrete plant")
+                .get("pageToken")
+                .is_none()
+        );
         for token in ["", "bad\npage-token"] {
             let invalid: GoogleNearbyQuery = serde_json::from_value(json!({
                 "lat": 18.99, "lng": 73.11, "page_token": token
