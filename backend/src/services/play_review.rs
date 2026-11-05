@@ -129,9 +129,14 @@ pub async fn login(
         .unwrap_or_else(|| "unverified".to_string());
     let verified_name = profile.and_then(|item| item.verified_name);
     let token = account_sessions::issue(
-        state, user.id, &user.role, &user.phone, user.email.as_deref(),
+        state,
+        user.id,
+        &user.role,
+        &user.phone,
+        user.email.as_deref(),
         state.config.jwt_expiration_hours.min(2),
-    ).await?;
+    )
+    .await?;
 
     Ok(AuthResponse {
         success: true,

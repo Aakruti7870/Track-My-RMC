@@ -284,7 +284,9 @@ pub async fn logout(
     headers: axum::http::HeaderMap,
 ) -> Result<impl IntoResponse, AppError> {
     let jti = crate::auth::account_sessions::header_session_jti(
-        &headers, &state.config.jwt_secret, auth_user.user_id,
+        &headers,
+        &state.config.jwt_secret,
+        auth_user.user_id,
     )?;
     crate::auth::account_sessions::revoke_current(&state, auth_user.user_id, jti).await?;
     Ok(Json(json!({"success":true,"message":"Session revoked"})))

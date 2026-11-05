@@ -415,18 +415,32 @@ pub async fn add_plant_staff(
         "INSERT INTO plant_staff(plant_id,user_id,role,is_active,removed_at,removed_by)
          VALUES ($1,$2,$3,TRUE,NULL,NULL)
          ON CONFLICT(plant_id,user_id) DO UPDATE SET role=EXCLUDED.role,
-             is_active=TRUE,removed_at=NULL,removed_by=NULL"
-    ).bind(plant_id).bind(payload.user_id).bind(&payload.role)
-     .execute(&mut *tx).await.map_err(|err| {
-        if err.as_database_error().and_then(|db| db.constraint()) == Some("ux_plant_staff_reserved_role") {
+             is_active=TRUE,removed_at=NULL,removed_by=NULL",
+    )
+    .bind(plant_id)
+    .bind(payload.user_id)
+    .bind(&payload.role)
+    .execute(&mut *tx)
+    .await
+    .map_err(|err| {
+        if err.as_database_error().and_then(|db| db.constraint())
+            == Some("ux_plant_staff_reserved_role")
+        {
             AppError::Conflict("Job role occupied. Remove the previous assignment first.".into())
-        } else { AppError::DatabaseError(err) }
+        } else {
+            AppError::DatabaseError(err)
+        }
     })?;
     sqlx::query(
         "INSERT INTO plant_staff_role_slot_audit(plant_id,staff_user_id,actor_user_id,role,action)
-         VALUES($1,$2,$3,$4,'ASSIGNED')"
-    ).bind(plant_id).bind(payload.user_id).bind(auth_user.user_id).bind(&payload.role)
-     .execute(&mut *tx).await?;
+         VALUES($1,$2,$3,$4,'ASSIGNED')",
+    )
+    .bind(plant_id)
+    .bind(payload.user_id)
+    .bind(auth_user.user_id)
+    .bind(&payload.role)
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
 
     Ok(Json(
@@ -435,69 +449,116 @@ pub async fn add_plant_staff(
 }
 
 pub async fn suspend_plant_staff(
-    State(state): State<AppState>, auth_user: AuthUser,
+    State(state): State<AppState>,
+    auth_user: AuthUser,
     Path((plant_id, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["owner","plant_owner","admin"])?;
-    ensure_plant_staff_or_owner(&state,&auth_user,plant_id).await?;
-    let mut tx=state.db.begin().await?;
-    let role: Option<String>=sqlx::query_scalar(
+    check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
+    ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
+    let mut tx = state.db.begin().await?;
+    let role: Option<String> = sqlx::query_scalar(
         "UPDATE plant_staff SET is_active=FALSE WHERE plant_id=$1 AND user_id=$2
-         AND is_active=TRUE AND removed_at IS NULL RETURNING role"
-    ).bind(plant_id).bind(user_id).fetch_optional(&mut *tx).await?;
-    let role=role.ok_or_else(|| AppError::Conflict("Active employee not found".into()))?;
-    sqlx::query("UPDATE users SET active_session_jti=NULL,auth_revoked_at=clock_timestamp() WHERE id=$1")
-        .bind(user_id).execute(&mut *tx).await?;
-    sqlx::query("INSERT INTO plant_staff_role_slot_audit(plant_id,staff_user_id,actor_user_id,role,action)
-                VALUES($1,$2,$3,$4,'SUSPENDED')")
-        .bind(plant_id).bind(user_id).bind(auth_user.user_id).bind(role)
-        .execute(&mut *tx).await?;
+         AND is_active=TRUE AND removed_at IS NULL RETURNING role",
+    )
+    .bind(plant_id)
+    .bind(user_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let role = role.ok_or_else(|| AppError::Conflict("Active employee not found".into()))?;
+    sqlx::query(
+        "UPDATE users SET active_session_jti=NULL,auth_revoked_at=clock_timestamp() WHERE id=$1",
+    )
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "INSERT INTO plant_staff_role_slot_audit(plant_id,staff_user_id,actor_user_id,role,action)
+                VALUES($1,$2,$3,$4,'SUSPENDED')",
+    )
+    .bind(plant_id)
+    .bind(user_id)
+    .bind(auth_user.user_id)
+    .bind(role)
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
-    Ok(Json(json!({"success":true,"message":"Staff member suspended; role reserved"})))
+    Ok(Json(
+        json!({"success":true,"message":"Staff member suspended; role reserved"}),
+    ))
 }
 
 pub async fn activate_plant_staff(
-    State(state): State<AppState>, auth_user: AuthUser,
+    State(state): State<AppState>,
+    auth_user: AuthUser,
     Path((plant_id, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["owner","plant_owner","admin"])?;
-    ensure_plant_staff_or_owner(&state,&auth_user,plant_id).await?;
-    let mut tx=state.db.begin().await?;
-    let role: Option<String>=sqlx::query_scalar(
+    check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
+    ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
+    let mut tx = state.db.begin().await?;
+    let role: Option<String> = sqlx::query_scalar(
         "UPDATE plant_staff SET is_active=TRUE WHERE plant_id=$1 AND user_id=$2
-         AND is_active=FALSE AND removed_at IS NULL RETURNING role"
-    ).bind(plant_id).bind(user_id).fetch_optional(&mut *tx).await?;
-    let role=role.ok_or_else(|| AppError::Conflict("Suspended employee not found".into()))?;
-    sqlx::query("INSERT INTO plant_staff_role_slot_audit(plant_id,staff_user_id,actor_user_id,role,action)
-                VALUES($1,$2,$3,$4,'REACTIVATED')")
-        .bind(plant_id).bind(user_id).bind(auth_user.user_id).bind(role)
-        .execute(&mut *tx).await?;
+         AND is_active=FALSE AND removed_at IS NULL RETURNING role",
+    )
+    .bind(plant_id)
+    .bind(user_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let role = role.ok_or_else(|| AppError::Conflict("Suspended employee not found".into()))?;
+    sqlx::query(
+        "INSERT INTO plant_staff_role_slot_audit(plant_id,staff_user_id,actor_user_id,role,action)
+                VALUES($1,$2,$3,$4,'REACTIVATED')",
+    )
+    .bind(plant_id)
+    .bind(user_id)
+    .bind(auth_user.user_id)
+    .bind(role)
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
-    Ok(Json(json!({"success":true,"message":"Staff member activated"})))
+    Ok(Json(
+        json!({"success":true,"message":"Staff member activated"}),
+    ))
 }
 
 /// Audited soft-removal releases a job role without deleting payroll/history.
 pub async fn remove_plant_staff(
-    State(state): State<AppState>, auth_user: AuthUser,
+    State(state): State<AppState>,
+    auth_user: AuthUser,
     Path((plant_id, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["owner","plant_owner","admin"])?;
-    ensure_plant_staff_or_owner(&state,&auth_user,plant_id).await?;
-    let mut tx=state.db.begin().await?;
-    let role: Option<String>=sqlx::query_scalar(
+    check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
+    ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
+    let mut tx = state.db.begin().await?;
+    let role: Option<String> = sqlx::query_scalar(
         "UPDATE plant_staff SET is_active=FALSE,removed_at=clock_timestamp(),removed_by=$3
-         WHERE plant_id=$1 AND user_id=$2 AND removed_at IS NULL RETURNING role"
-    ).bind(plant_id).bind(user_id).bind(auth_user.user_id)
-     .fetch_optional(&mut *tx).await?;
-    let role=role.ok_or_else(|| AppError::Conflict("Staff assignment not found".into()))?;
-    sqlx::query("UPDATE users SET active_session_jti=NULL,auth_revoked_at=clock_timestamp() WHERE id=$1")
-        .bind(user_id).execute(&mut *tx).await?;
-    sqlx::query("INSERT INTO plant_staff_role_slot_audit(plant_id,staff_user_id,actor_user_id,role,action)
-                VALUES($1,$2,$3,$4,'REMOVED')")
-        .bind(plant_id).bind(user_id).bind(auth_user.user_id).bind(role)
-        .execute(&mut *tx).await?;
+         WHERE plant_id=$1 AND user_id=$2 AND removed_at IS NULL RETURNING role",
+    )
+    .bind(plant_id)
+    .bind(user_id)
+    .bind(auth_user.user_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let role = role.ok_or_else(|| AppError::Conflict("Staff assignment not found".into()))?;
+    sqlx::query(
+        "UPDATE users SET active_session_jti=NULL,auth_revoked_at=clock_timestamp() WHERE id=$1",
+    )
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "INSERT INTO plant_staff_role_slot_audit(plant_id,staff_user_id,actor_user_id,role,action)
+                VALUES($1,$2,$3,$4,'REMOVED')",
+    )
+    .bind(plant_id)
+    .bind(user_id)
+    .bind(auth_user.user_id)
+    .bind(role)
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
-    Ok(Json(json!({"success":true,"message":"Assignment removed; role available"})))
+    Ok(Json(
+        json!({"success":true,"message":"Assignment removed; role available"}),
+    ))
 }
 
 pub async fn list_plant_customers(

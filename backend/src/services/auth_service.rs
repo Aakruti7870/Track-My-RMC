@@ -1,8 +1,5 @@
 use crate::{
-    auth::{
-        otp::OtpEngine, passkey::PasskeyLoginVerifyRequest,
-        password::hash_password,
-    },
+    auth::{otp::OtpEngine, passkey::PasskeyLoginVerifyRequest, password::hash_password},
     error::AppError,
     models::user::{AuthResponse, LoginRequest, RegisterRequest, UserProfile, UserResponse},
     repositories::user_repo,

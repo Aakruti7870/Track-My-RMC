@@ -43,11 +43,13 @@ where
 
         let claims: Claims = verify_token(token, &app_state.config.jwt_secret)?;
 
-        let row = sqlx::query("SELECT is_active, auth_revoked_at, role, active_session_jti FROM users WHERE id=$1")
-            .bind(claims.sub)
-            .fetch_optional(&app_state.db)
-            .await?
-            .ok_or_else(|| AppError::Unauthorized("Account not found".to_string()))?;
+        let row = sqlx::query(
+            "SELECT is_active, auth_revoked_at, role, active_session_jti FROM users WHERE id=$1",
+        )
+        .bind(claims.sub)
+        .fetch_optional(&app_state.db)
+        .await?
+        .ok_or_else(|| AppError::Unauthorized("Account not found".to_string()))?;
 
         let is_active: bool = row.get("is_active");
         if !is_active {
