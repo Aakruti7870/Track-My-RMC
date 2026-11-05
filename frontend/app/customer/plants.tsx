@@ -132,6 +132,8 @@ export default function CustomerPlants() {
   const [locationStatus, setLocationStatus] = useState<NearbyLocationStatus | null>(null);
   const [showFilters,setShowFilters] = useState(false);
   const [page, setPage] = useState(1);
+  const listRef = useRef<FlatList<PlantData>>(null);
+  const scrollToResults = () => listRef.current?.scrollToOffset({ offset: 0, animated: true });
   const [geoDraft, setGeoDraft] = useState<PlantGeoFilters>({...EMPTY_PLANT_GEO});
   const [filters, setFilters] = useState({q:"",grade:"",radius_km:50,verified:false,...EMPTY_PLANT_GEO});
   const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null);
@@ -144,6 +146,8 @@ export default function CustomerPlants() {
   const { data, loading, error, refetch, reload, clearCache } = usePlantSearch(userLocation, filters, page);
   const {
     data: googleNearby, loading: googleLoading, error: googleError, refresh: refreshGoogle,
+    page: googlePage, nextPage: nextGooglePage, previousPage: previousGooglePage,
+    hasNextPage: googleHasNextPage, hasPreviousPage: googleHasPreviousPage,
   } = useGoogleNearbyPlants(userLocation, Math.min(filters.radius_km, 50), !filters.verified && !filters.grade.trim(), filters.q, filters);
   const didInit = useRef(false);
   const previousLocationStatus = useRef<NearbyLocationStatus | null>(null);
@@ -356,6 +360,7 @@ export default function CustomerPlants() {
 
       {error && !data ? <ErrorView message={error} onRetry={reload} /> : (
         <FlatList
+          ref={listRef}
           testID="plants-list"
           data={filtered}
           keyExtractor={(p) => p.id}
@@ -437,7 +442,7 @@ export default function CustomerPlants() {
                     </AppText>
                   </View>
                   <AppText variant="caption">
-                    Live Google Places listings within {Math.min(filters.radius_km,50)} km. Google listings are not TrackMyRMC-verified and cannot accept orders here.
+                    Google Maps results within {Math.min(filters.radius_km,50)} km of the selected location. Google may return only some matching businesses per page; use Next when more are available. Listings are not TrackMyRMC-verified and cannot accept orders here.
                   </AppText>
                   {googleLoading ? <ActivityIndicator accessibilityLabel="Finding live Google Places listings" color={colors.brand} /> : null}
                   {googleError ? (
@@ -483,11 +488,38 @@ export default function CustomerPlants() {
               onQuotation={()=>router.push({pathname:"/customer/compare-plants",params:{plantId:item.id}} as any)}
               onOrder={()=>router.push(`/new-order?plantId=${item.id}` as any)} />
           )}
-          ListFooterComponent={filtered.length ? <View style={{gap:12}}>
-            <AppText variant="caption">Page {page}</AppText>
-            <Button label="Previous" variant="outline" disabled={page===1 || loading} onPress={() => setPage(v=>v-1)} />
-            <Button label="Next" variant="outline" disabled={!data?.has_more || loading} onPress={() => setPage(v=>v+1)} />
-          </View> : null}
+          ListFooterComponent={
+            ((userLocation && !filters.verified && !filters.grade.trim() && (googleNearby || googleHasPreviousPage))
+              || page > 1 || data?.has_more) ? (
+              <View style={{gap:16,paddingTop:10}}>
+                {userLocation && !filters.verified && !filters.grade.trim() && (googleNearby || googleHasPreviousPage) ? (
+                  <View testID="google-places-pagination" style={{gap:8}}>
+                    <AppText variant="caption">Google Maps results · Page {googlePage}</AppText>
+                    {!googleHasNextPage && !googleLoading && !googleError ? (
+                      <AppText variant="caption">No further Google results were returned for this search.</AppText>
+                    ) : null}
+                    <Button testID="google-places-previous" label="Previous" variant="outline"
+                      disabled={!googleHasPreviousPage || googleLoading}
+                      onPress={() => { previousGooglePage(); scrollToResults(); }} />
+                    <Button testID="google-places-next" label="Next" variant="outline"
+                      disabled={!googleHasNextPage || googleLoading}
+                      onPress={() => { nextGooglePage(); scrollToResults(); }} />
+                  </View>
+                ) : null}
+                {page > 1 || data?.has_more ? (
+                  <View testID="registered-plants-pagination" style={{gap:8}}>
+                    <AppText variant="caption">Registered TrackMyRMC plants · Page {page}</AppText>
+                    <Button label="Previous registered plants" variant="outline"
+                      disabled={page===1 || loading}
+                      onPress={() => { setPage(v=>Math.max(1,v-1)); scrollToResults(); }} />
+                    <Button label="Next registered plants" variant="outline"
+                      disabled={!data?.has_more || loading}
+                      onPress={() => { setPage(v=>v+1); scrollToResults(); }} />
+                  </View>
+                ) : null}
+              </View>
+            ) : null
+          }
           ListEmptyComponent={loading && !data ? (
             <View style={{ gap: spacing.md }}>{[0, 1].map((i) => <Skeleton key={i} height={140} style={{ borderRadius: radius.lg }} />)}</View>
           ) : null}
