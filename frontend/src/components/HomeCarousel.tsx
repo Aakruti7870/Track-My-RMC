@@ -66,7 +66,6 @@ export function HomeCarousel({ style }: { style?: ViewStyle }) {
                 <Image source={slide.source} style={StyleSheet.absoluteFill}
                   contentFit="contain" contentPosition="center" cachePolicy="memory-disk"
                   priority={slide.id === "mixer" ? "high" : "low"}
-                  loading={slide.id === "mixer" ? "eager" : "lazy"}
                   accessibilityLabel={slide.label} />
               </View>
             ))}
