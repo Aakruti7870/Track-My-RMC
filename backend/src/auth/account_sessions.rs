@@ -130,7 +130,9 @@ pub async fn revoke_current(state: &AppState, user: Uuid, jti: Uuid) -> Result<(
         return Err(AppError::SessionReplaced);
     }
     sqlx::query("DELETE FROM account_refresh_tokens WHERE user_id=$1")
-        .bind(user).execute(&mut *tx).await?;
+        .bind(user)
+        .execute(&mut *tx)
+        .await?;
     tx.commit().await?;
     Ok(())
 }
