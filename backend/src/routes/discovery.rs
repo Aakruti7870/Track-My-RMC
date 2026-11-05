@@ -175,11 +175,12 @@ pub struct GoogleNearbyQuery {
     district: Option<String>,
     taluka: Option<String>,
     city: Option<String>,
+    page_token: Option<String>,
 }
 
 impl GoogleNearbyQuery {
     fn validate(&self) -> Result<f64, AppError> {
-        let radius = self.radius_km.unwrap_or(25.0);
+        let radius = self.radius_km.unwrap_or(50.0);
         if !self.lat.is_finite()
             || !self.lng.is_finite()
             || !(-90.0..=90.0).contains(&self.lat)
@@ -194,6 +195,9 @@ impl GoogleNearbyQuery {
             || !valid_geo_field(&self.district)
             || !valid_geo_field(&self.taluka)
             || !valid_geo_field(&self.city)
+            || self.page_token.as_ref().is_some_and(|token| {
+                token.is_empty() || token.len() > 4096 || token.chars().any(char::is_control)
+            })
         {
             return Err(AppError::BadRequest(
                 "Google nearby search requires valid coordinates and a radius from 1 to 50 km"
@@ -285,6 +289,27 @@ fn allow_google_search(user: Uuid) -> bool {
     *count <= 8
 }
 
+/// Google Text Search returns at most 20 Places per page. Preserve its opaque
+/// cursor between pages; this request must match the original search parameters.
+fn google_text_search_body(query: &GoogleNearbyQuery, radius: f64, text_query: &str) -> Value {
+    let mut body = json!({
+        "textQuery": text_query,
+        "pageSize": 20,
+        "languageCode": "en",
+        "regionCode": "IN",
+        "locationBias": {
+            "circle": {
+                "center": {"latitude": query.lat, "longitude": query.lng},
+                "radius": radius * 1000.0
+            }
+        }
+    });
+    if let Some(page_token) = query.page_token.as_deref() {
+        body["pageToken"] = json!(page_token);
+    }
+    body
+}
+
 /// Live Places Text Search (New), proxied with the AWS secret; no key reaches Android/web.
 /// Search is RMC-specific because Places Nearby Search has no dedicated RMC plant type.
 pub async fn google_nearby(
@@ -335,20 +360,9 @@ pub async fn google_nearby(
         .header("X-Goog-Api-Key", key)
         .header(
             "X-Goog-FieldMask",
-            "places.id,places.displayName,places.formattedAddress,places.location,places.googleMapsUri,places.businessStatus",
+            "places.id,places.displayName,places.formattedAddress,places.location,places.googleMapsUri,places.businessStatus,nextPageToken",
         )
-        .json(&json!({
-            "textQuery": text_query,
-            "pageSize": 20,
-            "languageCode": "en",
-            "regionCode": "IN",
-            "locationBias": {
-                "circle": {
-                    "center": {"latitude": query.lat, "longitude": query.lng},
-                    "radius": radius * 1000.0
-                }
-            }
-        }))
+        .json(&google_text_search_body(&query, radius, &text_query))
         .send()
         .await
         .map_err(|_| AppError::InternalError("Google Places search is temporarily unavailable".into()))?;
@@ -366,7 +380,8 @@ pub async fn google_nearby(
         "places": places,
         "source": "google_places",
         "attribution": "Google Maps",
-        "radius_km": radius
+        "radius_km": radius,
+        "next_page_token": payload["nextPageToken"].as_str()
     })))
 }
 
@@ -585,6 +600,7 @@ mod tests {
                 district: None,
                 taluka: None,
                 city: None,
+                page_token: None,
             },
             GoogleNearbyQuery {
                 lat: f64::NAN,
@@ -595,6 +611,7 @@ mod tests {
                 district: None,
                 taluka: None,
                 city: None,
+                page_token: None,
             },
             GoogleNearbyQuery {
                 lat: 18.0,
@@ -605,6 +622,7 @@ mod tests {
                 district: None,
                 taluka: None,
                 city: None,
+                page_token: None,
             },
             GoogleNearbyQuery {
                 lat: 18.0,
@@ -615,6 +633,7 @@ mod tests {
                 district: None,
                 taluka: None,
                 city: None,
+                page_token: None,
             },
             GoogleNearbyQuery {
                 lat: 18.0,
@@ -625,6 +644,7 @@ mod tests {
                 district: None,
                 taluka: None,
                 city: None,
+                page_token: None,
             },
         ] {
             assert!(query.validate().is_err());
@@ -638,8 +658,35 @@ mod tests {
             district: None,
             taluka: None,
             city: None,
+            page_token: None,
         };
-        assert_eq!(valid.validate().unwrap(), 25.0);
+        assert_eq!(valid.validate().unwrap(), 50.0);
+    }
+
+    #[test]
+    fn google_nearby_pagination_forwards_opaque_token_and_keeps_radius() {
+        let query: GoogleNearbyQuery = serde_json::from_value(json!({
+            "lat": 18.99, "lng": 73.11, "radius_km": 50.0, "page_token": "next-token_example"
+        })).unwrap();
+        assert_eq!(query.validate().unwrap(), 50.0);
+        let body = google_text_search_body(&query, 50.0, "ready mix concrete plant");
+        assert_eq!(body["pageToken"], "next-token_example");
+        assert_eq!(body["pageSize"], 20);
+        assert_eq!(body["locationBias"]["circle"]["radius"], 50000.0);
+        let no_cursor: GoogleNearbyQuery = serde_json::from_value(json!({
+            "lat": 18.99, "lng": 73.11, "radius_km": 50.0
+        })).unwrap();
+        assert!(google_text_search_body(&no_cursor, 50.0, "ready mix concrete plant").get("pageToken").is_none());
+        for token in ["", "bad\npage-token"] {
+            let invalid: GoogleNearbyQuery = serde_json::from_value(json!({
+                "lat": 18.99, "lng": 73.11, "page_token": token
+            })).unwrap();
+            assert!(invalid.validate().is_err());
+        }
+        let too_long: GoogleNearbyQuery = serde_json::from_value(json!({
+            "lat": 18.99, "lng": 73.11, "page_token": "x".repeat(4097)
+        })).unwrap();
+        assert!(too_long.validate().is_err());
     }
 
     #[test]
@@ -653,6 +700,7 @@ mod tests {
             district: None,
             taluka: None,
             city: None,
+            page_token: None,
         };
         let payload = json!({"places":[
             {"id":"near","displayName":{"text":"Nearby RMC"},"location":{"latitude":18.91,"longitude":73.1},"formattedAddress":"Raigad"},
