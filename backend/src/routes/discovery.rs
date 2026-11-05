@@ -667,7 +667,8 @@ mod tests {
     fn google_nearby_pagination_forwards_opaque_token_and_keeps_radius() {
         let query: GoogleNearbyQuery = serde_json::from_value(json!({
             "lat": 18.99, "lng": 73.11, "radius_km": 50.0, "page_token": "next-token_example"
-        })).unwrap();
+        }))
+        .unwrap();
         assert_eq!(query.validate().unwrap(), 50.0);
         let body = google_text_search_body(&query, 50.0, "ready mix concrete plant");
         assert_eq!(body["pageToken"], "next-token_example");
@@ -675,7 +676,8 @@ mod tests {
         assert_eq!(body["locationBias"]["circle"]["radius"], 50000.0);
         let no_cursor: GoogleNearbyQuery = serde_json::from_value(json!({
             "lat": 18.99, "lng": 73.11, "radius_km": 50.0
-        })).unwrap();
+        }))
+        .unwrap();
         assert!(
             google_text_search_body(&no_cursor, 50.0, "ready mix concrete plant")
                 .get("pageToken")
@@ -684,12 +686,14 @@ mod tests {
         for token in ["", "bad\npage-token"] {
             let invalid: GoogleNearbyQuery = serde_json::from_value(json!({
                 "lat": 18.99, "lng": 73.11, "page_token": token
-            })).unwrap();
+            }))
+            .unwrap();
             assert!(invalid.validate().is_err());
         }
         let too_long: GoogleNearbyQuery = serde_json::from_value(json!({
             "lat": 18.99, "lng": 73.11, "page_token": "x".repeat(4097)
-        })).unwrap();
+        }))
+        .unwrap();
         assert!(too_long.validate().is_err());
     }
 
