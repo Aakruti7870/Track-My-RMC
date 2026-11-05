@@ -2,7 +2,7 @@
 const RAW_BACKEND = (process.env.EXPO_PUBLIC_BACKEND_URL || process.env.EXPO_PUBLIC_API_URL)?.trim();
 const REQUEST_TIMEOUT_MS = 30_000;
 
-export type ApiError = { status: number; detail: string };
+export type ApiError = { status: number; detail: string; error_code?: string };
 
 export function isApiError(error: unknown): error is ApiError {
   return Boolean(
@@ -178,7 +178,9 @@ async function readResponseBody(res: Response): Promise<unknown> {
 async function handle<T>(res: Response): Promise<T> {
   const body = await readResponseBody(res);
   if (!res.ok) {
-    throw { status: res.status, detail: normalizeErrorDetail(body, res.status) } as ApiError;
+    const errorCode = body && typeof body === "object" && "error_code" in body
+      && typeof body.error_code === "string" ? body.error_code : undefined;
+    throw { status: res.status, detail: normalizeErrorDetail(body, res.status), error_code: errorCode } as ApiError;
   }
   return body as T;
 }

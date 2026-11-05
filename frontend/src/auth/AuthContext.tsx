@@ -1,4 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { AppState } from "react-native";
+import { sessionLossMessage, sessionLossReason } from "@/src/auth/sessionPolicy";
 
 import { storage } from "@/src/utils/storage";
 import {
@@ -44,6 +46,7 @@ export type Me = {
 
 type AuthContextValue = {
   hydrating: boolean;
+  sessionMessage: string | null;
   token: string | null;
   user: Me | null;
   requestOtp: typeof requestOtp;
@@ -66,6 +69,7 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [hydrating, setHydrating] = useState(true);
+  const [sessionMessage, setSessionMessage] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<Me | null>(null);
   const [staffMfaChallenge, setStaffMfaChallenge] = useState<string | null>(null);
@@ -78,7 +82,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const me = await apiGet<Me>("/me", saved);
           setToken(saved);
           setUser(me);
-        } catch {
+        } catch (error) {
+          const reason = sessionLossReason(error);
+          if (reason) setSessionMessage(sessionLossMessage(reason));
           await stopTripLocationTracking();
           await storage.secureRemove(TOKEN_KEY);
           setToken(null);
@@ -94,6 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!stored) throw new Error("Unable to securely store login session");
     try {
       const me = await apiGet<Me>("/me", accessToken);
+      setSessionMessage(null);
       setToken(accessToken);
       setUser(me);
       return me;
@@ -169,6 +176,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // A revoked, expired, suspended, or no-longer-authorized session must not
       // leave stale privileged UI state resident in memory.
       if (isApiError(error) && (error.status === 401 || error.status === 403)) {
+        const reason = sessionLossReason(error);
+        setSessionMessage(reason ? sessionLossMessage(reason) : "Your secure session ended. Please sign in again.");
         await stopTripLocationTracking();
         await storage.secureRemove(TOKEN_KEY);
         setToken(null);
@@ -180,6 +189,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
+    setSessionMessage(null);
     const sessionToken = token;
 
     // Fail closed locally first. Remote cleanup is best effort and must never
@@ -203,10 +213,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // The Rust API rejects replaced tokens immediately. Foreground rechecks
+  // synchronize the on-screen session without polling in the background.
+  useEffect(() => {
+    if (!token) return;
+    let active = true;
+    const check = async () => {
+      try {
+        const me = await apiGet<Me>("/me", token);
+        if (active) setUser(me);
+      } catch (error) {
+        if (!active || !isApiError(error) || (error.status !== 401 && error.status !== 403)) return;
+        active = false;
+        const reason = sessionLossReason(error);
+        setSessionMessage(reason ? sessionLossMessage(reason) : "Your secure session ended. Please sign in again.");
+        await stopTripLocationTracking();
+        await storage.secureRemove(TOKEN_KEY);
+        setToken(null);
+        setUser(null);
+      }
+    };
+    const listener = AppState.addEventListener("change", (next) => {
+      if (next === "active") void check();
+    });
+    const interval = setInterval(() => {
+      if (AppState.currentState === "active") void check();
+    }, 120_000);
+    return () => { active = false; listener.remove(); clearInterval(interval); };
+  }, [token]);
+
   return (
     <AuthContext.Provider
       value={{
         hydrating,
+        sessionMessage,
         token,
         user,
         requestOtp,

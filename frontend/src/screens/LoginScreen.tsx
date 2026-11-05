@@ -59,6 +59,7 @@ export default function LoginScreen() {
     hydrating,
     token,
     user,
+    sessionMessage,
     requestOtp,
     requestStaffOtp,
     verify,
@@ -476,6 +477,7 @@ export default function LoginScreen() {
               style={[styles.phoneInput, { color: colors.onSurface }]}
             />
           </View>
+          {sessionMessage ? <AppText testID="login-session-message" variant="caption" color={colors.error}>{sessionMessage}</AppText> : null}
           {error ? <AppText variant="caption" color={colors.error}>{error}</AppText> : null}
           <Button label="CONTINUE" onPress={handleSendUserOtp} loading={loading} disabled={!loginPhone(mobile)} icon={<Ionicons name="shield-checkmark-outline" size={19} color={colors.onBrand} />} />
           <View style={styles.securityNote}>
