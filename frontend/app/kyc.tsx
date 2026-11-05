@@ -69,11 +69,12 @@ export default function KycScreen() {
   }, [data?.status, refreshMe]);
 
   const status = data?.status || "NOT_STARTED";
+  const providerUnavailable = data?.provider === "unavailable" && status !== "VERIFIED";
   const meta = STATE_META[status] || STATE_META.NOT_STARTED;
   const tone = { success: colors.success, warning: colors.warning, error: colors.error, info: colors.brand }[meta.tone];
 
   const startKyc = async () => {
-    if (!token) return;
+    if (!token || providerUnavailable) return;
     setSubmitting(true);
     try {
       const result = await apiPost<{ status: string; authorization_url: string }>("/customer/kyc/start", token);
@@ -150,6 +151,15 @@ export default function KycScreen() {
               ) : null}
             </Card>
 
+            {providerUnavailable ? (
+              <Card testID="kyc-unavailable" style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, borderColor: colors.warning + "66" }}>
+                <Ionicons name="information-circle-outline" size={20} color={colors.warning} />
+                <AppText variant="caption" style={{ flex: 1 }}>
+                  DigiLocker verification is temporarily unavailable. Your existing KYC status is unchanged. You can check again later; do not share identity documents with anyone outside the official verification process.
+                </AppText>
+              </Card>
+            ) : null}
+
             {data?.refresh_failed ? (
               <Card style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, borderColor: colors.warning + "66" }}>
                 <Ionicons name="warning-outline" size={18} color={colors.warning} />
@@ -181,9 +191,13 @@ export default function KycScreen() {
 
             {error ? <AppText variant="caption" color={colors.error}>{error}</AppText> : null}
 
-            <Button testID="kyc-cta" label={ctaLabel} onPress={onCta} loading={submitting || (status === "PENDING" && refreshing)} />
+            {providerUnavailable ? (
+              <Button testID="kyc-refresh-availability" label="Check DigiLocker Availability" variant="outline" onPress={refreshStatus} loading={refreshing} />
+            ) : (
+              <Button testID="kyc-cta" label={ctaLabel} onPress={onCta} loading={submitting || (status === "PENDING" && refreshing)} />
+            )}
 
-            {status === "IN_PROGRESS" ? (
+            {!providerUnavailable && status === "IN_PROGRESS" ? (
               <Button testID="kyc-refresh" label="Refresh Status" variant="outline" onPress={refreshStatus} loading={refreshing} />
             ) : null}
           </>
