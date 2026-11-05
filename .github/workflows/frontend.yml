@@ -62,6 +62,12 @@ jobs:
         run: npm run check:android-layout
       - name: Expo Doctor
         run: npm run doctor
+      - name: Verify generated Android Maps manifest with a test-only key
+        env:
+          GOOGLE_MAPS_ANDROID_KEY: "AIzaSyPrebuildOnlyMapKeyNeverUsedInProduction012"
+        run: |
+          npx expo prebuild --platform android --clean --no-install
+          node scripts/check-android-maps-manifest.cjs
       - name: Build production web bundle
         env:
           EXPO_PUBLIC_BACKEND_URL: https://trackmyrmc.com
