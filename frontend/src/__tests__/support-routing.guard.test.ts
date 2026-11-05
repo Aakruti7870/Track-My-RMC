@@ -108,12 +108,17 @@ test("login help widget stays compact and public issue choices expand before nav
   assert.ok(!publicWidget.includes('"/assistant/') && !publicWidget.includes('"/customer/orders'));
 });
 
-test("support widget uses a bundled system icon and compact responsive sizing", () => {
+test("support widget displays the uploaded PNG in both launchers without changing responsive sizing", () => {
+  const asset = readFileSync(`${process.cwd()}/assets/images/support-agent-mascot.png`);
+  assert.deepEqual([...asset.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10], "mascot asset must be a PNG");
   assert.ok(widget.includes('name="chatbubbles-outline"'));
-  assert.ok(!widget.includes("support-agent-mascot.png"));
-  assert.ok(!widget.includes('from "expo-image"'));
+  assert.ok(widget.includes('require("../../assets/images/support-agent-mascot.png")'));
+  assert.equal((widget.match(/<Image source={SUPPORT_AGENT_MASCOT}/g) || []).length, 2, "both customer and login launchers must display the uploaded mascot");
+  assert.ok(widget.includes('resizeMode="contain"'));
+  assert.ok(!widget.includes("AnimatedPuppy"));
   assert.ok(widget.includes("width: 56"));
   assert.ok(widget.includes("height: 56"));
+  assert.ok(widget.includes("width: 48, height: 48"));
   assert.ok(widget.includes("compactPanelWidth(viewportWidth)"));
   assert.ok(widget.includes("viewportWidth * 0.72"));
   assert.ok(widget.includes("viewportHeight * 0.42"));
