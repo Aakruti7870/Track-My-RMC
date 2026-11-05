@@ -1,10 +1,7 @@
 //! PostgreSQL regression tests for one-login enforcement and reserved staff slots.
 //! All identities and plants are synthetic. Never use production credentials.
 use sqlx::PgPool;
-use trackmyrmc_backend::auth::{
-    account_sessions::issue_in_tx,
-    jwt::verify_token,
-};
+use trackmyrmc_backend::auth::{account_sessions::issue_in_tx, jwt::verify_token};
 use uuid::Uuid;
 
 async fn make_user(db: &PgPool, role: &str) -> Uuid {
