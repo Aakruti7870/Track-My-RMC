@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/src/auth/AuthContext";
 import { AppText } from "@/src/components/ui/AppText";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
 
@@ -104,8 +105,8 @@ export function SupportWidgetBridge() {
               showsVerticalScrollIndicator
             >
               <View style={styles.panelHeader}>
-                <View style={[styles.panelIcon, { backgroundColor: colors.brandSoft, borderColor: colors.brand + "44" }]}>
-                  <Ionicons name="chatbubbles-outline" size={22} color={colors.brand} />
+                <View style={styles.panelIcon}>
+                  <VectorSymbol name="support" size={40} />
                 </View>
                 <View style={{ flex: 1, gap: 2 }}>
                   <AppText variant="heading">TrackMyRMC Support</AppText>
@@ -324,8 +325,8 @@ export function SupportWidgetBridge() {
             showsVerticalScrollIndicator
           >
             <View style={styles.panelHeader}>
-              <View style={[styles.panelIcon, { backgroundColor: colors.brandSoft, borderColor: colors.brand + "44" }]}>
-                <Ionicons name="chatbubbles-outline" size={22} color={colors.brand} />
+              <View style={styles.panelIcon}>
+                <VectorSymbol name="support" size={40} />
               </View>
               <View style={{ flex: 1, gap: 2 }}>
                 <AppText variant="heading">TrackMyRMC Support</AppText>
@@ -507,7 +508,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   panelHeader: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
-  panelIcon: { width: 42, height: 42, borderRadius: 21, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  panelIcon: { width: 42, height: 42, alignItems: "center", justifyContent: "center" },
   closeButton: { width: 34, height: 34, borderRadius: 17, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   actionSection: {
     borderWidth: 1,
