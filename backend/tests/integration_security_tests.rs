@@ -405,7 +405,7 @@ async fn step_up_is_session_bound_expiring_and_logout_revokes_sessions(db: PgPoo
         request(&router, "/reviewer", Some(&second), Some(payload.clone()))
             .await
             .0,
-        StatusCode::FORBIDDEN
+        StatusCode::UNAUTHORIZED
     );
     assert_eq!(
         request(&router, "/reviewer", Some(token), Some(payload.clone()))
@@ -542,7 +542,7 @@ async fn read_workspaces_execute_and_enforce_individual_permissions(db: PgPool) 
 }
 
 #[sqlx::test]
-async fn central_logout_revokes_only_the_current_web_session(db: PgPool) {
+async fn central_admin_rejects_unbound_jwt_and_logout_revokes_active_session(db: PgPool) {
     let state = state(db.clone());
     let router = app(state.clone());
     let (id, email, secret) = identity(&db, "central_admin", true, vec![]).await;
@@ -574,10 +574,10 @@ async fn central_logout_revokes_only_the_current_web_session(db: PgPool) {
     );
     assert_eq!(
         request(&router, "/me", Some(first), None).await.0,
-        StatusCode::FORBIDDEN
+        StatusCode::UNAUTHORIZED
     );
     assert_eq!(
         request(&router, "/me", Some(&second), None).await.0,
-        StatusCode::OK
+        StatusCode::UNAUTHORIZED
     );
 }

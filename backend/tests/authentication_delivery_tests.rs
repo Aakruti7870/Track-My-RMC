@@ -286,7 +286,7 @@ async fn approved_staff_fixtures_complete_email_enrollment_mfa_recovery_and_logo
         "INSERT INTO rmc_plants (owner_id,name,code,latitude,longitude,
           address_line,city,state,pincode,contact_phone)
          VALUES ($1,'Auth CI Plant',$2,0,0,'CI Address','CI','MH','410206','000')
-         RETURNING id"
+         RETURNING id",
     )
     .bind(plant_owner)
     .bind(Uuid::new_v4().simple().to_string())
@@ -307,7 +307,7 @@ async fn approved_staff_fixtures_complete_email_enrollment_mfa_recovery_and_logo
         if role != "plant_owner" && role != "owner" {
             sqlx::query(
                 "INSERT INTO plant_staff (plant_id,user_id,role,is_active)
-                 VALUES ($1,$2,$3,TRUE)"
+                 VALUES ($1,$2,$3,TRUE)",
             )
             .bind(plant)
             .bind(staff_id)
