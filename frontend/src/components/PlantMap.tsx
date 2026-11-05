@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef } from "react";
-import { StyleSheet, View } from "react-native";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Linking, Pressable, StyleSheet, View } from "react-native";
 import Constants from "expo-constants";
 import MapView, { Marker, PROVIDER_GOOGLE, type Region } from "react-native-maps";
 
@@ -41,6 +41,17 @@ function regionFor(plants: PlantData[], userLocation?: LatLng | null): Region | 
 
 export function PlantMap({ plants, userLocation, selectedPlantId, onSelectPlant, onRegionChange }: Props) {
   const map = useRef<MapView | null>(null);
+  const [mapAttempt, setMapAttempt] = useState(0);
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [mapTimedOut, setMapTimedOut] = useState(false);
+  // A native map can be created with a Google logo while tile requests are
+  // rejected (for example by an Android package/SHA-1 restriction).
+  useEffect(() => {
+    setMapLoaded(false);
+    setMapTimedOut(false);
+    const timer = setTimeout(() => setMapTimedOut(true), 20000);
+    return () => clearTimeout(timer);
+  }, [mapAttempt]);
   const currentPlants = useRef(plants);
   currentPlants.current = plants;
 
@@ -84,8 +95,10 @@ export function PlantMap({ plants, userLocation, selectedPlantId, onSelectPlant,
   return (
     <View style={[styles.shell, { borderColor: colors.border, backgroundColor: colors.surfaceSecondary }]}>
       <MapView
+        key={mapAttempt}
         ref={map}
         testID="customer-plants-map"
+        onMapLoaded={() => { setMapLoaded(true); setMapTimedOut(false); }}
         provider={PROVIDER_GOOGLE}
         style={StyleSheet.absoluteFill}
         initialRegion={userLocation ? {latitude:userLocation.lat,longitude:userLocation.lng,latitudeDelta:0.15,longitudeDelta:0.15} : initialRegion}
@@ -120,6 +133,34 @@ export function PlantMap({ plants, userLocation, selectedPlantId, onSelectPlant,
         ) : null}
       </MapView>
 
+      {mapTimedOut && !mapLoaded ? (
+        <View
+          accessibilityRole="alert"
+          style={[styles.mapWarning, { backgroundColor: colors.surface, borderColor: colors.border }]}
+        >
+          <AppText style={{ color: colors.onSurface, fontSize: 12 }}>
+            Map tiles are not loading. Check your connection or retry. Plant listings are still available.
+          </AppText>
+          <View style={{ flexDirection: "row", gap: 14, alignItems: "center" }}>
+            <Pressable accessibilityRole="button" onPress={() => setMapAttempt(value => value + 1)}>
+              <AppText style={{ color: colors.brand, fontFamily: fonts.semibold }}>Retry map</AppText>
+            </Pressable>
+            <Pressable accessibilityRole="link" onPress={() => {
+              const center = userLocation && validLatLng(userLocation)
+                ? userLocation
+                : mappedPlants[0];
+              if (center) {
+                void Linking.openURL(
+                  `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${center.lat},${center.lng}`)}`
+                );
+              }
+            }}>
+              <AppText style={{ color: colors.brand, fontFamily: fonts.semibold }}>Open Google Maps</AppText>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+
       <View style={[styles.badge, { backgroundColor: colors.surface + "EE", borderColor: colors.border }]} pointerEvents="none">
         <AppText style={{ fontFamily: fonts.semibold, fontSize: 11, color: colors.onSurface }}>
           Google Maps · {mappedPlants.length} plant{mappedPlants.length === 1 ? "" : "s"}
@@ -136,6 +177,17 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     borderRadius: radius.lg,
     borderWidth: 1,
+  },
+  mapWarning: {
+    position: "absolute",
+    bottom: spacing.sm,
+    left: spacing.sm,
+    right: spacing.sm,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    padding: spacing.sm,
+    gap: 8,
+    elevation: 4,
   },
   badge: {
     position: "absolute",
