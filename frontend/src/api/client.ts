@@ -76,6 +76,7 @@ function validatedApiPath(path: string): string {
 export type AuthSessionResponse = {
   access_token?: string;
   token: string;
+  refresh_token?: string;
   token_type: string;
   expires_at: string;
   role: string;
@@ -217,6 +218,7 @@ async function request<T>(
   try {
     const res = await fetch(`${apiBase()}${safePath}`, {
       method: options.method ?? "GET",
+      credentials: "include",
       headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
       signal: controller.signal,
@@ -315,6 +317,11 @@ export async function exchangeGoogleStaffCode(code: string) {
 
 export async function demoLogin(role: string) {
   return apiPublicPost<AuthSessionResponse>("/auth/demo-login", { role });
+}
+
+export async function refreshSession(refreshToken?: string): Promise<AuthSessionResponse> {
+  // Browser refresh secret lives in a __Host- HttpOnly cookie; Android uses SecureStore.
+  return apiPublicPost<AuthSessionResponse>("/auth/refresh", refreshToken ? { refresh_token: refreshToken } : {});
 }
 
 export async function apiGet<T>(path: string, token: string, signal?: AbortSignal): Promise<T> {
