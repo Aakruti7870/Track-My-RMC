@@ -5,7 +5,7 @@ import { VectorSymbol, type VectorSymbolName } from "./VectorSymbol";
 import { useRouter } from "expo-router";
 
 import { useTheme } from "@/src/theme/ThemeProvider";
-import { control, fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
+import { fonts } from "@/src/theme/tokens";
 import { AppText } from "./ui/AppText";
 
 const CONFIG: Record<
@@ -50,13 +50,12 @@ export function KycBanner({ status }: { status: string }) {
         },
       ]}
     >
-      <VectorSymbol name={cfg.symbol} size={45} />
+      <VectorSymbol name={cfg.symbol} size={28} />
       <View style={styles.copy}>
-        <AppText variant="eyebrow" color={tone}>{isVerified ? "IDENTITY STATUS" : "VERIFICATION"}</AppText>
-        <AppText style={{ fontFamily: fonts.bold, fontSize: fontSize.base, lineHeight: 20, color: isVerified ? tone : colors.onSurface }}>
+        <AppText style={{ fontFamily: fonts.bold, fontSize: 12, lineHeight: 18, color: isVerified ? tone : colors.onSurface }}>
           {cfg.title}
         </AppText>
-        <AppText variant="caption">{cfg.sub}</AppText>
+        <AppText variant="caption" style={{ fontSize: 10, lineHeight: 18 }}>{cfg.sub}</AppText>
       </View>
       <View style={[styles.trailing, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
         <Ionicons name={isVerified ? "checkmark" : "chevron-forward"} size={17} color={isVerified ? tone : colors.onSurfaceTertiary} />
@@ -67,13 +66,13 @@ export function KycBanner({ status }: { status: string }) {
 
 const styles = StyleSheet.create({
   wrap: {
-    minHeight: 68,
+    minHeight: 38,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 8,
-    borderRadius: radius.lg,
+    gap: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 6,
+    borderRadius: 4,
     borderWidth: 1,
     shadowOffset: { width: 0, height: 6 },
     shadowRadius: 16,
@@ -81,9 +80,9 @@ const styles = StyleSheet.create({
   },
   copy: { minWidth: 0, flex: 1, gap: 1 },
   trailing: {
-    width: control.iconButton - 6,
-    height: control.iconButton - 6,
-    borderRadius: radius.pill,
+    width: 25,
+    height: 25,
+    borderRadius: 13,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
