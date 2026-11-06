@@ -311,10 +311,11 @@ pub async fn reject_order(
 
     super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
     let mut tx = state.db.begin().await?;
-    let (current, customer_id, order_number): (String, Uuid, String) = sqlx::query_as("SELECT status,customer_id,order_number FROM orders WHERE id=$1 FOR UPDATE")
-        .bind(order_id)
-        .fetch_one(&mut *tx)
-        .await?;
+    let (current, customer_id, order_number): (String, Uuid, String) =
+        sqlx::query_as("SELECT status,customer_id,order_number FROM orders WHERE id=$1 FOR UPDATE")
+            .bind(order_id)
+            .fetch_one(&mut *tx)
+            .await?;
     if current != "rejected" && current != "pending" {
         return Err(AppError::Conflict(
             "Only a pending order can be reviewed".into(),
