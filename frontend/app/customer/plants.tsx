@@ -506,7 +506,7 @@ export default function CustomerPlants() {
       )}
       <Modal visible={!!details} animationType="slide" onRequestClose={() => setDetails(null)}>
         <ScrollView contentContainerStyle={{padding:24,paddingTop:56,gap:16,backgroundColor:colors.isDark ? "#0E1116" : "#F7F8F9",flexGrow:1}}>
-          {details ? <><AppText variant="title">{details.status === "google_listing" ? "Plant Details" : "Plant Specifications"}</AppText><AppText style={{color:colors.brand}}>{details.name}</AppText><AppText>{details.address}</AppText>
+          {details ? <><AppText variant="title">{details.status === "google_listing" ? "Plant Profile" : "Plant Specifications"}</AppText><AppText style={{color:colors.brand}}>{details.name}</AppText><AppText>{details.address}</AppText>
           {details.status === "google_listing" ? (
             <AppText accessibilityLabel="Google Maps" style={{fontSize:14,color:colors.onSurfaceTertiary}}>
               Google Maps · Public business listing · Not TrackMyRMC verified
@@ -528,6 +528,7 @@ export default function CustomerPlants() {
               <Button label="Place Order" disabled onPress={()=>{}} />
             </>
           ) : (
+            <Button label="Open Plant Profile" variant="outline" onPress={()=>{const id=details.id;setDetails(null);router.push({pathname:"/plant-profile",params:{plantId:id}});}} />
             <Button label="Place Order" disabled={!details.order_enabled} onPress={()=>{setDetails(null);router.push(`/new-order?plantId=${details.id}` as any);}} />
           )}
           </> : null}
@@ -604,7 +605,7 @@ function ScreenshotPlantCard({plant,onDetails,onQuotation,onOrder,quoteSubmittin
         <Pressable accessibilityRole="button" onPress={onDetails} accessibilityLabel="View Details"
           style={[styles.screenshotOutline,{backgroundColor:colors.isDark ? "rgba(255,138,0,0.08)" : "rgba(255,255,255,0.85)",borderColor:orange}]}>
           <Ionicons name="document-text-outline" size={17} color={outlineText}/>
-          <AppText numberOfLines={2} style={[styles.screenshotOutlineText,{color:outlineText}]}>Plant Details</AppText>
+          <AppText numberOfLines={2} style={[styles.screenshotOutlineText,{color:outlineText}]}>Plant Profile</AppText>
         </Pressable>
         <Pressable accessibilityRole="button" disabled={!eligible} accessibilityState={{disabled:!eligible}}
           accessibilityLabel={!eligible ? "Place Order unavailable until plant is verified" : "Place Order"}
