@@ -2199,3 +2199,207 @@ async fn revoked_manager_cannot_commit_driver_profile_after_waiting_for_identity
     assert_eq!(edit.await.unwrap().0, StatusCode::FORBIDDEN);
     assert_eq!(sqlx::query_scalar::<_,String>("SELECT employee_code FROM driver_employment_profiles WHERE plant_id=$1 AND driver_id=$2").bind(plant).bind(driver).fetch_one(&db).await.unwrap(),"ORIGINAL");
 }
+
+
+#[sqlx::test]
+async fn owner_disablement_prevents_queued_manager_appointment(db: PgPool) {
+    use trackmyrmc_backend::auth::refresh;
+    let state = state(db.clone());
+    let owner = identity(&db, "owner", Some("disabled-owner@example.invalid"), None).await;
+    let manager = identity(
+        &db,
+        "supervisor",
+        Some("disabled-owner-manager@example.invalid"),
+        None,
+    )
+    .await;
+    let plant: Uuid = sqlx::query_scalar(
+        "INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,address_line,city,state,pincode,contact_phone)
+         VALUES($1,'Disabled Owner CI',$2,0,0,'CI','CI','MH','0','0') RETURNING id",
+    )
+    .bind(owner)
+    .bind(Uuid::new_v4().simple().to_string())
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    sqlx::query("INSERT INTO plant_staff(plant_id,user_id,role) VALUES($1,$2,'supervisor')")
+        .bind(plant)
+        .bind(manager)
+        .execute(&db)
+        .await
+        .unwrap();
+    let login = refresh::issue_after_auth(
+        &state,
+        owner,
+        "owner",
+        "",
+        Some("disabled-owner@example.invalid"),
+        1,
+    )
+    .await
+    .unwrap();
+    let app = build_app_router(state);
+    // Simulate the Owner row lock held by Control Center's status transaction.
+    // The HTTP request must finish authentication and wait on this lock before
+    // the disable commits; otherwise the test would only exercise login denial.
+    let mut disabling = db.begin().await.unwrap();
+    sqlx::query("SELECT id FROM users WHERE id=$1 FOR UPDATE")
+        .bind(owner)
+        .execute(&mut *disabling)
+        .await
+        .unwrap();
+    let request_app = app.clone();
+    let token = login.token.clone();
+    let request = tokio::spawn(async move {
+        call(
+            &request_app,
+            &format!("/api/business/plants/{plant}/staff/{manager}/manager/grant"),
+            Some(json!({})),
+            Some(&token),
+        )
+        .await
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            let waiting: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM pg_stat_activity
+                 WHERE datname=current_database() AND wait_event_type='Lock'
+                   AND query LIKE 'SELECT id FROM users WHERE id=$1 AND role IN%')",
+            )
+            .fetch_one(&db)
+            .await
+            .unwrap();
+            if waiting {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("Manager appointment must reach the blocked live Owner lock");
+    sqlx::query("UPDATE users SET is_active=FALSE WHERE id=$1")
+        .bind(owner)
+        .execute(&mut *disabling)
+        .await
+        .unwrap();
+    disabling.commit().await.unwrap();
+    assert_eq!(request.await.unwrap().0, StatusCode::FORBIDDEN);
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM plant_staff_manager_delegations
+         WHERE plant_id=$1 AND revoked_at IS NULL",
+    )
+    .bind(plant)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(count, 0, "Disabled Owner cannot create a live Manager");
+}
+
+#[sqlx::test]
+async fn financial_creation_requires_create_even_when_edit_is_granted(db: PgPool) {
+    use trackmyrmc_backend::{
+        auth::{refresh, AuthUser},
+        routes::staff_module_permissions::{self, Action},
+    };
+    let state = state(db.clone());
+    let owner = identity(&db, "owner", None, None).await;
+    let plant: Uuid = sqlx::query_scalar(
+        "INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,address_line,city,state,pincode,contact_phone)
+         VALUES($1,'Financial grants CI',$2,0,0,'CI','CI','MH','0','0') RETURNING id",
+    )
+    .bind(owner)
+    .bind(Uuid::new_v4().simple().to_string())
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    let accountant = identity(&db, "accountant", Some("create-expense@example.invalid"), None).await;
+    let fleet = identity(&db, "fleet_manager", Some("create-diesel@example.invalid"), None).await;
+    let store = identity(&db, "store_manager", Some("create-purchase@example.invalid"), None).await;
+    let app = build_app_router(state.clone());
+    for (user, role, module, endpoint, payload, table) in [
+        (
+            accountant,
+            "accountant",
+            "expenses",
+            "expenses",
+            json!({"category":"CI expense","amount":10.0}),
+            "plant_expenses",
+        ),
+        (
+            fleet,
+            "fleet_manager",
+            "diesel_ledger",
+            "diesel",
+            json!({"transaction_type":"IN","litres":10.0}),
+            "diesel_transactions",
+        ),
+        (
+            store,
+            "store_manager",
+            "purchases",
+            "purchases",
+            json!({"supplier_id":Uuid::new_v4(),"receipt_number":"CI-001","lines":[],"total_amount":10.0}),
+            "purchase_receipts",
+        ),
+    ] {
+        sqlx::query("INSERT INTO plant_staff(plant_id,user_id,role) VALUES($1,$2,$3)")
+            .bind(plant)
+            .bind(user)
+            .bind(role)
+            .execute(&db)
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO plant_staff_module_permissions
+             (plant_id,user_id,module_key,can_view,can_edit,can_create,updated_by)
+             VALUES($1,$2,$3,TRUE,TRUE,FALSE,$4)",
+        )
+        .bind(plant)
+        .bind(user)
+        .bind(module)
+        .bind(owner)
+        .execute(&db)
+        .await
+        .unwrap();
+        let actor = AuthUser {
+            user_id: user,
+            role: role.to_string(),
+            phone: String::new(),
+            email: None,
+        };
+        assert!(
+            staff_module_permissions::require(&state, &actor, plant, module, Action::Edit)
+                .await
+                .is_ok(),
+            "{role} must genuinely have Edit on {module} to test Create isolation"
+        );
+        assert!(
+            staff_module_permissions::require(&state, &actor, plant, module, Action::Create)
+                .await
+                .is_err()
+        );
+        let login = refresh::issue_after_auth(&state, user, role, "", None, 1)
+            .await
+            .unwrap();
+        let (status, _) = call(
+            &app,
+            &format!("/api/ops/plants/{plant}/{endpoint}"),
+            Some(payload),
+            Some(&login.token),
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::FORBIDDEN,
+            "{endpoint} must not allow Edit as a substitute for Create"
+        );
+        // Only fixed table names from this synthetic fixture are interpolated.
+        let count_query = format!("SELECT COUNT(*) FROM {table} WHERE plant_id=$1");
+        let count: i64 = sqlx::query_scalar(&count_query)
+            .bind(plant)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert_eq!(count, 0, "{endpoint} must not insert a record");
+    }
+}
