@@ -260,10 +260,12 @@ pub async fn create(
         None => {
             let existing: (Uuid, String, Option<Uuid>) = sqlx::query_as(
                 "SELECT id,status,canonical_request_id FROM rmc_rfq_leads
-                 WHERE customer_id=$1 AND request_key=$2"
+                 WHERE customer_id=$1 AND request_key=$2",
             )
-            .bind(auth.user_id).bind(payload.request_key)
-            .fetch_one(&mut *tx).await?;
+            .bind(auth.user_id)
+            .bind(payload.request_key)
+            .fetch_one(&mut *tx)
+            .await?;
             return Ok(Json(json!({
                 "id":existing.0,"status":existing.1,
                 "canonical_request_id":existing.2,"idempotent_replay":true
