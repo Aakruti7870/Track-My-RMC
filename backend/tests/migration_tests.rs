@@ -177,11 +177,7 @@ async fn migrations_apply_from_an_empty_database() {
 async fn late_session_migrations_apply_after_existing_rfq_version_44(pool: sqlx::PgPool) {
     use std::borrow::Cow;
     let all = sqlx::migrate!("./migrations");
-    if !all.iter().any(|migration| migration.version == 44) {
-        // The isolated PR branch predates main's 44; the pull-request merge
-        // CI is responsible for exercising the combined release.
-        return;
-    }
+    assert!(all.iter().any(|migration| migration.version == 44));
     let deployed = sqlx::migrate::Migrator {
         migrations: Cow::Owned(
             all.iter()
@@ -211,7 +207,7 @@ async fn late_session_migrations_apply_after_existing_rfq_version_44(pool: sqlx:
 
     let customer: uuid::Uuid = sqlx::query_scalar(
         "INSERT INTO users(phone,hashed_password,full_name,role)
-         VALUES('late-migration-customer','unused','Preserved late customer','customer') RETURNING id",
+         VALUES('late-customer','unused','Preserved late customer','customer') RETURNING id",
     )
     .fetch_one(&pool)
     .await
@@ -270,4 +266,79 @@ async fn late_session_migrations_apply_after_existing_rfq_version_44(pool: sqlx:
     all.run(&pool)
         .await
         .expect("re-running migrations must be idempotent");
+}
+
+#[sqlx::test(migrations = false)]
+async fn duplicate_slots_abort_upgrade_without_record_loss(pool: sqlx::PgPool) {
+    use std::borrow::Cow;
+    let all = sqlx::migrate!("./migrations");
+    let baseline = sqlx::migrate::Migrator {
+        migrations: Cow::Owned(
+            all.iter()
+                .filter(|migration| !matches!(migration.version, 42 | 43))
+                .cloned()
+                .collect(),
+        ),
+        ..sqlx::migrate!("./migrations")
+    };
+    baseline.run(&pool).await.unwrap();
+    let owner: uuid::Uuid = sqlx::query_scalar(
+        "INSERT INTO users(phone,hashed_password,full_name,role)
+         VALUES('collision-owner','unused','Collision owner','owner') RETURNING id",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let plant: uuid::Uuid = sqlx::query_scalar(
+        "INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,address_line,
+         city,state,pincode,contact_phone)
+         VALUES($1,'Collision CI','COLLISION-CI',0,0,'CI','CI','MH','0','0') RETURNING id",
+    )
+    .bind(owner)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    for phone in ["collision-first", "collision-second"] {
+        let staff: uuid::Uuid = sqlx::query_scalar(
+            "INSERT INTO users(phone,hashed_password,full_name,role)
+             VALUES($1,'unused','Preserved staff','supervisor') RETURNING id",
+        )
+        .bind(phone)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO plant_staff(plant_id,user_id,role,is_active)
+             VALUES($1,$2,'supervisor',FALSE)",
+        )
+        .bind(plant)
+        .bind(staff)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    assert!(all.run(&pool).await.is_err());
+    let retained: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM plant_staff WHERE plant_id=$1 AND role='supervisor'",
+    )
+    .bind(plant)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(retained, 2);
+    let applied: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM _sqlx_migrations WHERE version IN (42,43))",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(!applied);
+    let partial_schema: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM information_schema.columns
+         WHERE table_schema='public' AND table_name='plant_staff' AND column_name='removed_at')",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(!partial_schema);
 }

@@ -1018,37 +1018,66 @@ async fn staff_role_changes_are_soft_audited_and_reserve_suspended_slots(db: PgP
     let second_payload = json!({"user_id":second,"role":"supervisor"});
     let token = Some(owner_session.token.as_str());
     assert_eq!(
-        call(&app, &staff_path, Some(first_payload.clone()), token).await.0,
+        call(&app, &staff_path, Some(first_payload.clone()), token)
+            .await
+            .0,
         StatusCode::OK
     );
     let staff_session = refresh::issue_after_auth(&state, first, "supervisor", "", None, 1)
         .await
         .unwrap();
     assert_eq!(
-        call(&app, &format!("{first_path}/suspend"), Some(json!({})), token).await.0,
+        call(
+            &app,
+            &format!("{first_path}/suspend"),
+            Some(json!({})),
+            token
+        )
+        .await
+        .0,
         StatusCode::OK
     );
     assert_eq!(
-        call(&app, &staff_path, Some(second_payload.clone()), token).await.0,
+        call(&app, &staff_path, Some(second_payload.clone()), token)
+            .await
+            .0,
         StatusCode::CONFLICT
     );
     assert_eq!(
-        call(&app, "/api/me", None, Some(&staff_session.token)).await.0,
+        call(&app, "/api/me", None, Some(&staff_session.token))
+            .await
+            .0,
         StatusCode::UNAUTHORIZED
     );
     assert!(refresh::rotate(&state, &staff_session.refresh_token)
         .await
         .is_err());
     assert_eq!(
-        call(&app, &format!("{first_path}/activate"), Some(json!({})), token).await.0,
+        call(
+            &app,
+            &format!("{first_path}/activate"),
+            Some(json!({})),
+            token
+        )
+        .await
+        .0,
         StatusCode::OK
     );
     assert_eq!(
-        call(&app, "/api/me", None, Some(&staff_session.token)).await.0,
+        call(&app, "/api/me", None, Some(&staff_session.token))
+            .await
+            .0,
         StatusCode::UNAUTHORIZED
     );
     assert_eq!(
-        call(&app, &format!("{first_path}/remove"), Some(json!({})), token).await.0,
+        call(
+            &app,
+            &format!("{first_path}/remove"),
+            Some(json!({})),
+            token
+        )
+        .await
+        .0,
         StatusCode::OK
     );
     let retained: (bool, bool, Option<Uuid>) = sqlx::query_as(
