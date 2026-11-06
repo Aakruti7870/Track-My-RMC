@@ -23,6 +23,12 @@ CREATE TABLE IF NOT EXISTS rmc_rfq_leads (
     status VARCHAR(40) NOT NULL CHECK (status IN (
         'PENDING_SUPPLIER','REQUESTED','MATCHED_RECONFIRMATION_REQUIRED','CLOSED'
     )),
+    outreach_status VARCHAR(24) NOT NULL DEFAULT 'NOT_CONTACTED' CHECK (
+        outreach_status IN ('NOT_CONTACTED','INVITATION_SHARED','CONTACTED','DECLINED')
+    ),
+    outreach_notes VARCHAR(1000),
+    outreach_updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    outreach_updated_at TIMESTAMPTZ,
     expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '30 days'),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
