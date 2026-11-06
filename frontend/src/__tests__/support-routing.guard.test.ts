@@ -4,6 +4,7 @@ import test from "node:test";
 
 const routes = readFileSync(`${process.cwd()}/src/support/routes.ts`, "utf8");
 const scripted = readFileSync(`${process.cwd()}/src/support/scriptedSupport.ts`, "utf8");
+const supportData = JSON.parse(readFileSync(`${process.cwd()}/src/support/scriptedSupport.json`, "utf8")) as Record<string, {prompt: string; choices: Array<{id: string; label: string; answer: string; action?: string; requiresOrder?: boolean}>}>;
 const screen = readFileSync(`${process.cwd()}/app/support.tsx`, "utf8");
 const order = readFileSync(`${process.cwd()}/app/new-order.tsx`, "utf8");
 const staff = readFileSync(`${process.cwd()}/app/support-cases.tsx`, "utf8");
@@ -37,17 +38,19 @@ test("scripted support covers common login, KYC, order, tracking, payment, accou
     "Order still pending", "Plant not responding", "Open live tracking", "Location not updating",
     "Payment failed", "Money deducted but not updated", "Delete my account", "Staff email not approved",
     "Describe another issue",
-  ]) assert.ok(scripted.includes(text), `missing scripted option: ${text}`);
+  ]) assert.ok(Object.values(supportData).some(topic => topic.choices.some(choice => choice.label === text)), `missing scripted option: ${text}`);
   for (const category of ["LOGIN", "KYC", "ORDER", "TRACKING", "PAYMENT", "ACCOUNT_DELETION", "PLANT_ONBOARDING", "GENERAL"]) {
-    assert.ok(scripted.includes(`${category}: {`));
+    assert.ok(supportData[category], `missing support category: ${category}`);
   }
+  assert.equal(Object.values(supportData).reduce((total, topic) => total + topic.choices.length, 0), 29);
+  assert.ok(scripted.includes("scriptedSupport.json"));
 });
 
 test("order and tracking scripted answers stay bound to an owned selected order", () => {
   assert.ok(screen.includes("/customer/orders"));
   assert.ok(screen.includes("Choose one of your orders"));
   assert.ok(screen.includes("choice.requiresOrder && !orderId"));
-  assert.ok(scripted.includes("requiresOrder: true"));
+  assert.ok(Object.values(supportData).some(topic => topic.choices.some(choice => choice.requiresOrder === true)));
   assert.ok(screen.includes("order_id: orderId"));
 });
 

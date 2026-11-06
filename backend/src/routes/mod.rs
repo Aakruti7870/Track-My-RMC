@@ -26,6 +26,7 @@ pub mod permission_consent;
 pub mod plant_onboarding;
 pub mod plant_plans_routes;
 pub mod play_review;
+pub mod rmc_rfq_leads;
 pub mod staff_collections;
 pub mod staff_module_permissions;
 pub mod staff_routes;
@@ -341,6 +342,24 @@ pub fn build_app_router(state: AppState) -> Router {
         .route(
             "/api/customer/plants/google-quote-interest",
             post(discovery::request_google_quote),
+        )
+        // Full requirement capture for approved and unregistered RMC suppliers.
+        .route(
+            "/api/customer/rmc-rfq-leads",
+            get(rmc_rfq_leads::list_customer).post(rmc_rfq_leads::create),
+        )
+        .route(
+            "/api/customer/rmc-rfq-leads/:lead_id/confirm",
+            post(rmc_rfq_leads::confirm_match),
+        )
+        .route("/api/admin/rmc-rfq-leads", get(rmc_rfq_leads::list_admin))
+        .route(
+            "/api/admin/rmc-rfq-leads/:lead_id/outreach",
+            patch(rmc_rfq_leads::update_admin_outreach),
+        )
+        .route(
+            "/api/control-center/rmc-rfq-leads/:lead_id/outreach",
+            patch(rmc_rfq_leads::update_control_center_outreach),
         )
         .route("/api/customer/plants/locate", post(discovery::locate))
         .route(

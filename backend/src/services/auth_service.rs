@@ -3,7 +3,6 @@ use crate::{
     error::AppError,
     models::user::{AuthResponse, LoginRequest, RegisterRequest, UserProfile, UserResponse},
     repositories::user_repo,
-    services::whatsapp_service::WhatsAppService,
     state::AppState,
 };
 use chrono::{Duration, Utc};
@@ -82,7 +81,8 @@ pub async fn send_whatsapp_otp(
     state: &AppState,
     req: SendWhatsAppOtpRequest,
 ) -> Result<(), AppError> {
-    let destination = WhatsAppService::normalize_phone(&req.phone);
+    let destination = crate::security::phone::canonical_login_phone(&req.phone)
+        .ok_or_else(|| AppError::BadRequest("Enter a valid mobile number".into()))?;
     let purpose = req.purpose.unwrap_or_else(|| "login".to_string());
 
     if !matches!(purpose.as_str(), "login" | "driver_login") {
@@ -165,7 +165,8 @@ pub async fn verify_whatsapp_otp(
     state: &AppState,
     req: VerifyWhatsAppOtpRequest,
 ) -> Result<AuthResponse, AppError> {
-    let destination = WhatsAppService::normalize_phone(&req.phone);
+    let destination = crate::security::phone::canonical_login_phone(&req.phone)
+        .ok_or_else(|| AppError::Unauthorized("Invalid verification identity".into()))?;
     let purpose = req.purpose.unwrap_or_else(|| "login".to_string());
 
     if !matches!(purpose.as_str(), "login" | "driver_login") {

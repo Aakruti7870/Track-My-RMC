@@ -63,7 +63,7 @@ async fn signed_in_deletion_requires_fresh_purpose_and_account_bound_otp(db: PgP
         call(
             &app,
             "/api/auth/otp/whatsapp/send",
-            Some(json!({"phone":phone})),
+            Some(json!({"phone":format!("+{phone}")})),
             None
         )
         .await

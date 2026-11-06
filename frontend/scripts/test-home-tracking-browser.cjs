@@ -24,7 +24,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    .evaluate(node => [Math.round(node.getBoundingClientRect().width), Math.round(node.getBoundingClientRect().height)]);
  for(const id of ['action-new','action-track','action-plants','action-orders']) {
    const size = await actualVectorSize(id);
-   if(size[0]!==75||size[1]!==75)throw Error(`Quick Action SVG size: ${id} ${size}`);
+   if(size[0]!==52||size[1]!==52)throw Error(`Quick Action SVG size: ${id} ${size}`);
  }
  for(const id of ['customer-module-projects','customer-module-free-tools']) {
    const size=await actualVectorSize(id);
@@ -35,9 +35,27 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    if(size[0]!==58||size[1]!==58)throw Error(`Service SVG size: ${id} ${size}`);
  }
  const actionBoxes=await Promise.all(['action-new','action-track','action-plants','action-orders'].map(id=>page.getByTestId(id).boundingBox()));
+ // Validate the actual card boundaries: carousel -> Quick Actions -> KYC -> RMC Tools.
+ // These are 4 CSS px on the web (4 React Native dp on Android).
+ const carouselBox=await page.getByTestId('home-promotional-carousel').boundingBox();
+ const quickSectionBox=await page.getByTestId('home-quick-actions').boundingBox();
+ const kycBox=await page.getByTestId('kyc-banner').boundingBox();
+ const toolSectionBox=await page.getByTestId('customer-module-grid').boundingBox();
+ const otherServicesSectionBox=await page.getByTestId('home-other-services').boundingBox();
+ const trackingSectionBox=await page.getByTestId('demo-tracking-card').locator('xpath=..').boundingBox();
+ const gapBetween=(above,below)=>below.y-(above.y+above.height);
+ for(const [name,actual] of [
+   ['carousel to quick actions',gapBetween(carouselBox,quickSectionBox)],
+   ['quick actions to KYC',gapBetween(quickSectionBox,kycBox)],
+   ['KYC to RMC tools',gapBetween(kycBox,toolSectionBox)],
+   ['RMC tools to Other Services',gapBetween(toolSectionBox,otherServicesSectionBox)],
+   ['Other Services to tracking section',gapBetween(otherServicesSectionBox,trackingSectionBox)],
+ ])if(Math.abs(actual-4)>1)throw Error(`${name} must be 4dp; got ${actual}`);
+ for(const title of ['Quick Actions','RMC Tools'])if(await page.getByText(title,{exact:true}).count())throw Error(`Unexpected home section header: ${title}`);
+ if((await page.getByTestId('action-plants').innerText()).trim()!=='Plants')throw Error('Third Quick Action must be labeled Plants');
  const fourAcross=width>=390;
  if(fourAcross && Math.max(...actionBoxes.map(box=>box.y))-Math.min(...actionBoxes.map(box=>box.y))>2)throw Error('Wide Quick Actions must remain four columns');
- if(!fourAcross && !(actionBoxes[2].y>actionBoxes[0].y+50))throw Error('Narrow Quick Actions must use two rows, preserving 75-unit icons');
+ if(!fourAcross && !(actionBoxes[2].y>actionBoxes[0].y+50))throw Error('Narrow Quick Actions must use two rows, preserving 52-unit icons');
 
  // Compact sections have no second border. Keep the individual cards narrow,
  // close together, and short while preserving full-sized SVGs and readable text.
@@ -56,7 +74,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  if(toolBoxes.length!==8||serviceBoxes.length!==3)throw Error('Missing compact Home cards');
  const expectedToolColumns=width>=360?4:2;
  if(Math.abs(toolBoxes[expectedToolColumns].y-toolBoxes[0].y)<50)throw Error('RMC Tools responsive row arrangement');
- for (const [kind,boxes,minHeight,maxHeight] of [['Quick Action',actionBoxes.map(box=>({h:box.height,x:box.x,y:box.y,w:box.width})),102,132],['RMC Tool',toolBoxes,90,134],['Other Service',serviceBoxes,92,120]]) {
+ for (const [kind,boxes,minHeight,maxHeight] of [['Quick Action',actionBoxes.map(box=>({h:box.height,x:box.x,y:box.y,w:box.width})),103,105],['RMC Tool',toolBoxes,90,134],['Other Service',serviceBoxes,92,120]]) {
    for(const box of boxes){
      if(box.h<minHeight||box.h>maxHeight)throw Error(`${kind} card height ${box.h} outside ${minHeight}-${maxHeight}`);
      if(box.x<0||box.x+box.w>width+1)throw Error(`${kind} card overflows the viewport`);

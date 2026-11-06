@@ -47,7 +47,7 @@ const compiled = ts.transpileModule(catalog, {
   compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 },
 }).outputText;
 const { MODULE_CATALOG } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`);
-assert.equal(MODULE_CATALOG.length, 61);
+assert.equal(MODULE_CATALOG.length, 62);
 let mapped = 0;
 for (const m of MODULE_CATALOG) {
   if (m.symbol) {
@@ -58,7 +58,7 @@ for (const m of MODULE_CATALOG) {
     assert.equal(m.icon, "trash-outline");
   }
 }
-assert.equal(mapped, 60);
+assert.equal(mapped, 61);
 const tabs = read("src/navigation/vectorSymbolAssignments.ts");
 for (const [, key] of tabs.matchAll(/(?:"[^"]+":\s*|return\s+)"([a-z0-9-]+)"/g)) {
   assert.ok(embedded.has(key), `Tab references an unregistered SVG: ${key}`);
@@ -106,7 +106,7 @@ for (const [key, symbol] of [["cement", "cement"], ["labour", "labour-contractor
   assert.ok(homeSource.includes(`key: "${key}"`) && homeSource.includes(`symbol: "${symbol}"`), `Customer service ${key} missing vector assignment`);
 }
 assert.ok(homeSource.includes('<VectorSymbol name={service.symbol} size={58} />'), "Other Services must render 58-unit vectors, not generic Ionicons");
-assert.ok(homeSource.includes('<VectorSymbol name={action.symbol} size={75} />'), "Quick Actions must render 75-unit vectors");
+assert.ok(homeSource.includes('<VectorSymbol name={action.symbol} size={52} />'), "Quick Actions must render 52-unit vectors");
 assert.ok(homeSource.includes('<VectorSymbol name={module.symbol} size={52} />'), "RMC Tools must render 52-unit vectors");
 assert.ok(!/styles\.(actionIcon|toolIcon|serviceIcon)/.test(homeSource), "Remove all decorative home icon wrappers");
 const nav = read("src/components/GlassTabBar.tsx");

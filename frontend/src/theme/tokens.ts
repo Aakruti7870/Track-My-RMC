@@ -84,13 +84,13 @@ export type ThemeColors = {
 };
 
 export const darkColors: ThemeColors = {
-  surface: "rgba(14,17,22,0.24)",
+  surface: "rgba(14,17,22,0.52)",
   onSurface: "#FFFFFF",
-  surfaceSecondary: "rgba(26,31,38,0.78)",
+  surfaceSecondary: "rgba(26,31,38,0.96)",
   onSurfaceSecondary: "#F8FAFC",
-  surfaceTertiary: "rgba(38,45,56,0.72)",
+  surfaceTertiary: "rgba(38,45,56,0.94)",
   onSurfaceTertiary: "#B8C1CC",
-  surfaceElevated: "rgba(26,31,38,0.88)",
+  surfaceElevated: "rgba(26,31,38,0.98)",
   surfaceInverse: "#FFFFFF",
   onSurfaceInverse: "#0E1116",
   brand: "#FF8A00",
@@ -112,18 +112,18 @@ export const darkColors: ThemeColors = {
   disabledContent: "#CBD5E1",
   scrim: "rgba(3,5,8,0.66)",
   shadow: "#000000",
-  glassTint: "rgba(26,31,38,0.40)",
+  glassTint: "rgba(26,31,38,0.95)",
   isDark: true,
 };
 
 export const lightColors: ThemeColors = {
-  surface: "rgba(247,248,249,0.24)",
+  surface: "rgba(247,248,249,0.52)",
   onSurface: "#14181F",
-  surfaceSecondary: "rgba(255,255,255,0.78)",
+  surfaceSecondary: "rgba(255,255,255,0.96)",
   onSurfaceSecondary: "#14181F",
-  surfaceTertiary: "rgba(241,243,245,0.66)",
+  surfaceTertiary: "rgba(241,243,245,0.94)",
   onSurfaceTertiary: "#4A5568",
-  surfaceElevated: "rgba(255,255,255,0.86)",
+  surfaceElevated: "rgba(255,255,255,0.98)",
   surfaceInverse: "#0E1116",
   onSurfaceInverse: "#FFFFFF",
   brand: "#FF6A00",
@@ -145,13 +145,13 @@ export const lightColors: ThemeColors = {
   disabledContent: "#929AA3",
   scrim: "rgba(14,17,22,0.45)",
   shadow: "#0E1116",
-  glassTint: "rgba(255,255,255,0.72)",
+  glassTint: "rgba(255,255,255,0.95)",
   isDark: false,
 };
 
 export const glass = {
-  lightSurface: "rgba(255,255,255,0.78)",
-  darkSurface: "rgba(26,31,38,0.78)",
+  lightSurface: "rgba(255,255,255,0.96)",
+  darkSurface: "rgba(26,31,38,0.96)",
   lightBorder: "rgba(20,24,31,0.08)",
   darkBorder: "rgba(255,154,61,0.28)",
   lightHighlight: "rgba(255,255,255,0.98)",

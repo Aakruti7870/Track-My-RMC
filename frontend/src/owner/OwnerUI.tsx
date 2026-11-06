@@ -14,7 +14,7 @@ import { ownerDestination } from "./modules";
 export function useOwnerPalette() {
   const { scheme } = useTheme();
   const dark = scheme === "dark";
-  return { dark, accent: "#FF6B00", pressed: "#E65F00", text: dark ? "#F4F6FA" : "#141B28", muted: dark ? "#B7C2D2" : "#59677D", canvas: dark ? "#0E1116" : "#F7F6F2", glass: dark ? "rgba(28,34,43,0.88)" : "rgba(255,255,255,0.80)", border: dark ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.94)" };
+  return { dark, accent: "#FF6B00", pressed: "#E65F00", text: dark ? "#F4F6FA" : "#141B28", muted: dark ? "#B7C2D2" : "#59677D", canvas: dark ? "#0E1116" : "#F7F6F2", glass: dark ? "rgba(28,34,43,0.96)" : "rgba(255,255,255,0.96)", border: dark ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.94)" };
 }
 export function useOwnerBottomSpace() { return 112 + useSafeAreaInsets().bottom; }
 export function OwnerGlass({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
@@ -42,7 +42,7 @@ export function OwnerFrame({ children, title, subtitle }: { children: React.Reac
   const insets = useSafeAreaInsets();
   return <View style={{ flex: 1, backgroundColor: p.canvas }}>
     {/* Metro registers bundled image assets through static require calls. */}
-    <Image source={p.dark ? require("../../assets/images/Background Dark Theme.webp") : require("../../assets/images/Background Light Theme.webp")} resizeMode="cover" style={[StyleSheet.absoluteFill, { width: "100%", height: "100%", opacity: 0.35 }]} />
+    <Image source={p.dark ? require("../../assets/images/Background Dark Theme.webp") : require("../../assets/images/Background Light Theme.webp")} resizeMode="cover" style={[StyleSheet.absoluteFill, { width: "100%", height: "100%", opacity: 0.15 }]} />
     <View style={[ui.container, { paddingTop: insets.top }]}>
       <OwnerHeader />
       {title ? <View style={ui.title}><AppText style={{ fontFamily: fonts.bold, fontSize: 27, color: p.text }}>{title}</AppText><AppText style={{ fontSize: 12, lineHeight: 18, color: p.muted }}>{subtitle}</AppText></View> : null}
