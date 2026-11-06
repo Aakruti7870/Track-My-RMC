@@ -454,5 +454,8 @@ async fn changed_server_price_invalidates_outstanding_offer(db: PgPool) {
         .fetch_one(&db)
         .await
         .unwrap();
-    assert_eq!(state, "pending", "stale commercial terms must not release an order");
+    assert_eq!(
+        state, "pending",
+        "stale commercial terms must not release an order"
+    );
 }
