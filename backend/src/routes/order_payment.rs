@@ -212,7 +212,7 @@ pub async fn accept(
     check_role(&actor, &["customer"])?;
     let mut tx = state.db.begin().await?;
     let row = sqlx::query(
-        "SELECT o.customer_id,o.plant_id,o.order_number,o.status AS order_status,o.total_amount,p.mode,p.advance_amount, \
+        "SELECT o.customer_id,o.plant_id,o.order_number,o.status AS order_status,o.total_amount,p.total_amount AS offer_total_amount,p.mode,p.advance_amount, \
                 p.status AS offer_status,p.expires_at,p.version \
          FROM orders o JOIN order_payment_offers p ON p.order_id=o.id \
          WHERE o.id=$1 FOR UPDATE OF o,p",
@@ -252,9 +252,11 @@ pub async fn accept(
             "Offer expired; request refreshed terms from the plant".into(),
         ));
     }
-    if row.get::<BigDecimal, _>("total_amount") <= 0 {
+    let current_total: BigDecimal = row.get("total_amount");
+    let offered_total: BigDecimal = row.get("offer_total_amount");
+    if current_total <= 0 || offered_total != current_total {
         return Err(AppError::Conflict(
-            "Order amount requires reconciliation".into(),
+            "Order price changed after the plant offered terms; request a new offer".into(),
         ));
     }
     let status = if is_online(&mode) {
