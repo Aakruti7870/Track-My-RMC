@@ -28,7 +28,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    if(nodes.some(node=>!node))return false;
    const ys=nodes.map(node=>node.getBoundingClientRect().top);
    return ys.every(y=>Math.abs(y-ys[0])<2);
- },{timeout:15000});
+ },undefined,{timeout:15000});
 
  const actualVectorSize = async (testId) => page.getByTestId(testId).locator('svg').first()
    .evaluate(node => [Math.round(node.getBoundingClientRect().width), Math.round(node.getBoundingClientRect().height)]);
@@ -131,6 +131,9 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  const [left,right]=await Promise.all(promoCards.map(card=>card.boundingBox()));
  if(Math.abs(left.height-right.height)>1)throw Error('Rental and watch cards must have equal height');
  if(Math.abs(right.x-(left.x+left.width)-8)>1)throw Error('Rental and watch cards must be 8dp apart');
+ // Export full-page Home references at the exact mobile/desktop sizes that
+ // the layout gates check; CI uploads them for human visual comparison.
+ await page.screenshot({path:`tracking-previews/home-layout-${width}.png`,fullPage:true});
  const tabIds=['tab-home','tab-orders','tab-plants','tab-more'];
  for(const id of tabIds){const size=await actualVectorSize(id);if(size[0]!==35||size[1]!==35)throw Error(`Tab SVG size: ${id} ${size}`);}
  const tabBoxes=await Promise.all(tabIds.map(id=>page.getByTestId(id).boundingBox()));
