@@ -285,7 +285,7 @@ pub async fn request(
          LEFT JOIN plant_staff_module_permissions m ON m.plant_id=ps.plant_id
            AND m.user_id=ps.user_id AND m.module_key='quotations'
          WHERE ps.plant_id=$1 AND ps.is_active=TRUE AND ps.role IN ('accountant','admin')
-         AND (m.user_id IS NULL OR m.can_view=TRUE) AND ps.user_id<>p.owner_id"
+         AND (m.user_id IS NULL OR m.can_view=TRUE) AND ps.user_id<>p.owner_id",
     )
     .bind(payload.plant_id)
     .bind(format!("A customer requested {} m3 of {}", quantity, grade))
@@ -413,10 +413,14 @@ pub async fn respond(
     // Notify the requesting customer through the existing private in-app feed.
     sqlx::query(
         "INSERT INTO notifications(user_id,title,body,notification_type,reference_id)
-         VALUES($1,$2,$3,'rmc_quotation_response',$4)"
+         VALUES($1,$2,$3,'rmc_quotation_response',$4)",
     )
     .bind(row.get::<Uuid, _>("customer_id"))
-    .bind(if status == "QUOTED" { "Your RMC quotation is ready" } else { "RMC quotation request declined" })
+    .bind(if status == "QUOTED" {
+        "Your RMC quotation is ready"
+    } else {
+        "RMC quotation request declined"
+    })
     .bind(if status == "QUOTED" {
         "Your selected plant has prepared an official quotation. Open Quotations to review it."
     } else {
