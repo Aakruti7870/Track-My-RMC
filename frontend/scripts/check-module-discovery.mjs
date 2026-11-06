@@ -44,9 +44,13 @@ for (const m of MODULE_CATALOG) {
     assert.ok(business.includes(`  ${kind}: `) || business.includes(`  ${kind}: {`),
       `Business module implementation absent: ${kind}`);
   } else {
-    const p = path.join(root, `app${m.route}.tsx`);
-    const index = path.join(root, `app${m.route}/index.tsx`);
-    assert.ok(fs.existsSync(p) || fs.existsSync(index), `Missing Expo page for ${m.key}: ${m.route}`);
+    // Expo Router supports JSX as well as TSX pages. Require a real page in either format.
+    const candidates = [".tsx", ".jsx"].flatMap(ext => [
+      path.join(root, `app${m.route}${ext}`),
+      path.join(root, `app${m.route}/index${ext}`),
+    ]);
+    assert.ok(candidates.some(candidate => fs.existsSync(candidate)),
+      `Missing Expo page for ${m.key}: ${m.route}`);
   }
 }
 
