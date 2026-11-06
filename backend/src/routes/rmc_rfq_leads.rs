@@ -285,8 +285,11 @@ pub async fn list_customer(
           'grade',grade,'quantity_m3',quantity_m3::DOUBLE PRECISION,
           'site_address',site_address,'delivery_date',delivery_date,
           'pump_required',pump_required,'created_at',created_at,'expires_at',expires_at
-         ) FROM rmc_rfq_leads WHERE customer_id=$1 ORDER BY created_at DESC LIMIT 100"
-    ).bind(auth.user_id).fetch_all(&state.db).await?;
+         ) FROM rmc_rfq_leads WHERE customer_id=$1 ORDER BY created_at DESC LIMIT 100",
+    )
+    .bind(auth.user_id)
+    .fetch_all(&state.db)
+    .await?;
     Ok(Json(json!({"leads":rows})))
 }
 
@@ -389,7 +392,9 @@ pub async fn update_admin_outreach(
     }
     let notes = payload.notes.as_deref().unwrap_or("").trim();
     if notes.len() > 1000 || notes.chars().any(char::is_control) {
-        return Err(AppError::BadRequest("Outreach note is too long or invalid".into()));
+        return Err(AppError::BadRequest(
+            "Outreach note is too long or invalid".into(),
+        ));
     }
     let mut tx = state.db.begin().await?;
     let changed: Option<Uuid> = sqlx::query_scalar(
@@ -397,7 +402,7 @@ pub async fn update_admin_outreach(
          outreach_notes=$3, outreach_updated_by=$4,
          outreach_updated_at=NOW(),updated_at=NOW()
          WHERE id=$1 AND status='PENDING_SUPPLIER' AND expires_at>NOW()
-         RETURNING id"
+         RETURNING id",
     )
     .bind(lead_id)
     .bind(&payload.outreach_status)
@@ -406,11 +411,13 @@ pub async fn update_admin_outreach(
     .fetch_optional(&mut *tx)
     .await?;
     if changed.is_none() {
-        return Err(AppError::Conflict("Only active unregistered-supplier enquiries may be updated".into()));
+        return Err(AppError::Conflict(
+            "Only active unregistered-supplier enquiries may be updated".into(),
+        ));
     }
     sqlx::query(
         "INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata)
-         VALUES($1,'rmc_rfq_lead.outreach','rmc_rfq_lead',$2,$3)"
+         VALUES($1,'rmc_rfq_lead.outreach','rmc_rfq_lead',$2,$3)",
     )
     .bind(auth.user_id)
     .bind(lead_id.to_string())
@@ -418,7 +425,9 @@ pub async fn update_admin_outreach(
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
-    Ok(Json(json!({"success":true,"id":lead_id,"outreach_status":payload.outreach_status})))
+    Ok(Json(
+        json!({"success":true,"id":lead_id,"outreach_status":payload.outreach_status}),
+    ))
 }
 
 pub async fn list_admin(
