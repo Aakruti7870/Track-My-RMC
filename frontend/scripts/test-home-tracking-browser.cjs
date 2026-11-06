@@ -61,6 +61,22 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  }
  const carouselBox=await page.getByTestId('home-promotional-carousel').boundingBox();
  const quickSectionBox=await page.getByTestId('home-quick-actions').boundingBox();
+ // Geometry measured from the PhonePe reference, expressed in viewport dp on web.
+ if(width<=390) {
+   if(Math.abs(quickSectionBox.height-160)>4)
+     throw Error('Quick Actions reference section must be about 160dp: '+quickSectionBox.height);
+   const titleBox=await page.getByText('Quick Actions',{exact:true}).boundingBox();
+   const bannerToTitle=titleBox.y-(carouselBox.y+carouselBox.height);
+   if(bannerToTitle<21||bannerToTitle>27)
+     throw Error('Banner-to-header text gap must be about 23dp: '+bannerToTitle);
+   const slogan=await page.getByText('Built Better',{exact:true}).locator('xpath=..').boundingBox();
+   if(Math.abs(slogan.width-106)>1||Math.abs(slogan.height-28)>2)
+     throw Error('Built Better pill must be 106x28dp: '+JSON.stringify(slogan));
+   for(const id of ['action-new','action-track','action-plants','action-orders']){
+     const font=await page.getByTestId(id).locator('span').last().evaluate(el=>getComputedStyle(el).fontSize);
+     if(font!=='14px')throw Error('Quick Action label must be 14sp: '+id+' '+font);
+   }
+ }
  const kycBox=await page.getByTestId('kyc-banner').boundingBox();
  const toolSectionBox=await page.getByTestId('customer-module-grid').boundingBox();
  const pumpSectionBox=await page.getByTestId('home-pump-rental-promo').boundingBox();
@@ -136,7 +152,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  if(Math.abs(right.width-row.width*0.28)>1)throw Error('On Time card width must be 28%');
  if(Math.abs(right.x-(left.x+left.width)-row.width*0.07)>1)throw Error('Promo gap must be 7%');
  if(left.height<36||right.height<36)throw Error('Promo cards shorter than 36dp minimum');
- if(!await page.getByText(/Book Concrete\\s+Pump/).count())throw Error('Booking label missing');
+ if(!await page.getByRole('button',{name:'Book Concrete Pump'}).count())throw Error('Booking accessible button missing');
  for(const title of ['Quick Actions','Active Projects & Planning','Free Tools & Expert Advice','Supply & Workforce','Track My RMC','Built Better']){
    const style=await page.getByText(title,{exact:true}).first().evaluate(el=>{const s=getComputedStyle(el);return {size:s.fontSize,height:s.lineHeight,family:s.fontFamily,weight:s.fontWeight};});
    if(style.size!=='14px'||style.height!=='20px'||!style.family.toLowerCase().includes('roboto')||Number(style.weight)!==700)
