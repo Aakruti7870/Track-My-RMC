@@ -242,3 +242,95 @@ async fn offer_cannot_be_accepted_by_other_customer(db: PgPool) {
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
 }
+
+#[sqlx::test]
+async fn payment_offer_notifies_customer_once_and_acceptance_notifies_plant(db: PgPool) {
+    let (app, plant, customer, owner) = fixture(&db).await;
+    let id = create(&app, plant, "ON_DELIVERY", &customer).await;
+    let endpoint = format!("/api/owner/orders/{id}/payment-offer");
+    let (status, offer) = post(&app, &endpoint, json!({"advance_paise":null}), &owner).await;
+    assert_eq!(status, StatusCode::OK, "{offer}");
+    let (retry_status, retry) = post(&app, &endpoint, json!({"advance_paise":null}), &owner).await;
+    assert_eq!(retry_status, StatusCode::OK, "{retry}");
+    assert_eq!(retry["version"], offer["version"]);
+    assert_eq!(retry["reused"], true);
+
+    let customer_notices: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM notifications WHERE reference_id=$1 AND notification_type='order_payment_offer'"
+    ).bind(id.to_string()).fetch_one(&db).await.unwrap();
+    assert_eq!(customer_notices, 1, "idempotent offer retries must not spam customers");
+
+    let (status, accepted) = post(
+        &app,
+        &format!("/api/customer/orders/{id}/accept-payment-terms"),
+        json!({"version":offer["version"]}),
+        &customer,
+    ).await;
+    assert_eq!(status, StatusCode::OK, "{accepted}");
+    let owner_notices: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM notifications WHERE reference_id=$1 AND notification_type='order_terms_accepted'"
+    ).bind(id.to_string()).fetch_one(&db).await.unwrap();
+    assert_eq!(owner_notices, 1);
+}
+
+#[sqlx::test]
+async fn rejection_notifies_customer_and_cancels_unaccepted_offer(db: PgPool) {
+    let (app, plant, customer, owner) = fixture(&db).await;
+    let id = create(&app, plant, "FULL_ADVANCE", &customer).await;
+    let (status, offer) = post(
+        &app,
+        &format!("/api/owner/orders/{id}/payment-offer"),
+        json!({"advance_paise":null}),
+        &owner,
+    ).await;
+    assert_eq!(status, StatusCode::OK, "{offer}");
+    let (status, result) = post(
+        &app,
+        &format!("/api/owner/orders/{id}/reject"),
+        json!({}),
+        &owner,
+    ).await;
+    assert_eq!(status, StatusCode::OK, "{result}");
+    let order_status: String = sqlx::query_scalar("SELECT status FROM orders WHERE id=$1")
+        .bind(id).fetch_one(&db).await.unwrap();
+    assert_eq!(order_status, "rejected");
+    let offer_status: String = sqlx::query_scalar(
+        "SELECT status FROM order_payment_offers WHERE order_id=$1"
+    ).bind(id).fetch_one(&db).await.unwrap();
+    assert_eq!(offer_status, "CANCELLED");
+    let notice_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM notifications WHERE reference_id=$1 AND notification_type='order_rejected'"
+    ).bind(id.to_string()).fetch_one(&db).await.unwrap();
+    assert_eq!(notice_count, 1);
+}
+
+#[sqlx::test]
+async fn plant_cannot_reject_customer_accepted_prepaid_terms(db: PgPool) {
+    let (app, plant, customer, owner) = fixture(&db).await;
+    let id = create(&app, plant, "FULL_ADVANCE", &customer).await;
+    let (_, offer) = post(
+        &app,
+        &format!("/api/owner/orders/{id}/payment-offer"),
+        json!({"advance_paise":null}),
+        &owner,
+    ).await;
+    let (status, accepted) = post(
+        &app,
+        &format!("/api/customer/orders/{id}/accept-payment-terms"),
+        json!({"version":offer["version"]}),
+        &customer,
+    ).await;
+    assert_eq!(status, StatusCode::OK, "{accepted}");
+    let (status, _) = post(
+        &app,
+        &format!("/api/owner/orders/{id}/reject"),
+        json!({}),
+        &owner,
+    ).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    let state: (String, String) = sqlx::query_as(
+        "SELECT o.status,p.status FROM orders o JOIN order_payment_offers p ON p.order_id=o.id WHERE o.id=$1"
+    ).bind(id).fetch_one(&db).await.unwrap();
+    assert_eq!(state.0, "pending");
+    assert_eq!(state.1, "AWAITING_PAYMENT");
+}
