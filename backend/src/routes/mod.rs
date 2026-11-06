@@ -24,6 +24,7 @@ pub mod owner_routes;
 pub mod payroll_routes;
 pub mod permission_consent;
 pub mod plant_onboarding;
+pub mod plant_staff_manager;
 pub mod plant_plans_routes;
 pub mod play_review;
 pub mod rmc_rfq_leads;
@@ -265,6 +266,18 @@ pub fn build_app_router(state: AppState) -> Router {
             "/api/business/plants/:plant_id/vehicles/:vehicle_id/status",
             patch(business_routes::update_vehicle_status)
                 .post(business_routes::update_vehicle_status),
+        )
+        .route(
+            "/api/staff/manager-access",
+            get(plant_staff_manager::get_my_access),
+        )
+        .route(
+            "/api/business/plants/:plant_id/staff/:user_id/manager/grant",
+            post(plant_staff_manager::grant),
+        )
+        .route(
+            "/api/business/plants/:plant_id/staff/:user_id/manager/revoke",
+            post(plant_staff_manager::revoke),
         )
         .route(
             "/api/business/plants/:plant_id/people",
