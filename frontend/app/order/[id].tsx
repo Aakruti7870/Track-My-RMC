@@ -1,11 +1,12 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Image, Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { apiPost } from "@/src/api/client";
+import { apiGet, apiPost } from "@/src/api/client";
+import { cashfreeCheckout } from "@/src/payments/cashfree";
 import { fileSource } from "@/src/api/upload";
 import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeProvider";
@@ -68,6 +69,8 @@ type Detail = {
 };
 
 const CANCELLABLE = ["DRAFT", "PENDING", "ACCEPTED", "SCHEDULED"];
+// Never expose the sandbox payment control in production builds.
+const PREPAID_SANDBOX_UI = process.env.EXPO_PUBLIC_RMC_PREPAID_SANDBOX_UI === "true";
 
 export default function OrderDetail() {
   const { colors, scheme } = useTheme();
@@ -86,6 +89,8 @@ export default function OrderDetail() {
   const [reason, setReason] = useState("");
   const [advanceRupees, setAdvanceRupees] = useState("");
   const [balanceDueOn, setBalanceDueOn] = useState("");
+  const [prepaidBusy, setPrepaidBusy] = useState(false);
+  const checkoutRef = useRef<{ version: number; key: string; gateway?: string } | null>(null);
 
   const act = async (path: string, body?: any, msg?: string) => {
     setBusy(true);
@@ -104,6 +109,62 @@ export default function OrderDetail() {
 
   const o = data?.order;
   const offer = data?.payment_offer;
+
+  const reconcilePrepaid = async () => {
+    try {
+      const result = await apiGet<{ status: string }>(`/customer/orders/${id}/prepaid/status`, token!);
+      if (result.status === "VERIFIED") {
+        toast("Payment independently verified. Order is confirmed.", "success");
+        reload();
+      } else if (result.status === "HOLD_REFUND_REVIEW") {
+        toast("Payment needs reconciliation. Do not pay again; contact support.", "error");
+        reload();
+      } else {
+        toast("Payment not yet verified. Do not make a second payment.", "info");
+      }
+    } catch (err: any) {
+      toast(err?.detail || "Unable to verify payment. Do not retry payment until checked.", "error");
+    }
+  };
+
+  useEffect(() => {
+    if (!PREPAID_SANDBOX_UI || !token || isOwner || !cashfreeCheckout.available) return;
+    cashfreeCheckout.setCallbacks({
+      onVerify: (gatewayOrderId) => {
+        if (checkoutRef.current?.gateway === gatewayOrderId) { void reconcilePrepaid(); }
+      },
+      onError: () => {
+        toast("Checkout interrupted. Check its payment status before retrying.", "info");
+      },
+    });
+    return () => cashfreeCheckout.removeCallbacks();
+  }, [id, token, isOwner, toast, reload]);
+
+  const startPrepaidCheckout = async () => {
+    if (!offer || !token || prepaidBusy || !cashfreeCheckout.available) return;
+    setPrepaidBusy(true);
+    try {
+      if (!checkoutRef.current || checkoutRef.current.version !== offer.version) {
+        checkoutRef.current = {
+          version: offer.version,
+          key: `rmc-prepaid-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        };
+      }
+      const result = await apiPost<{ payment_session_id: string; gateway_order_id: string; cashfree_environment: string }>(
+        `/customer/orders/${id}/prepaid/checkout`, token,
+        { offer_version: offer.version, idempotency_key: checkoutRef.current.key }
+      );
+      if (result.cashfree_environment !== "sandbox" || !result.payment_session_id) {
+        throw new Error("Payment environment not approved");
+      }
+      checkoutRef.current.gateway = result.gateway_order_id;
+      cashfreeCheckout.start(result.payment_session_id, result.gateway_order_id, false);
+    } catch (err: any) {
+      toast(err?.detail || err?.message || "Prepaid sandbox checkout is not enabled for this plant", "error");
+    } finally {
+      setPrepaidBusy(false);
+    }
+  };
   const approvePreferredTerms = () => {
     if (!o?.preferred_payment_mode) return;
     let advance_paise: number | null = null;
@@ -248,7 +309,16 @@ export default function OrderDetail() {
                   onPress={() => act(`/customer/orders/${id}/accept-payment-terms`, { version: offer.version }, "Payment terms accepted")} />
               ) : null}
               {!isOwner && offer.status === "AWAITING_PAYMENT" ? (
-                <AppText variant="caption">Your terms are accepted. This order remains on hold until a secure payment link is enabled and payment is verified. Do not transfer money outside the approved flow.</AppText>
+                <View style={{ gap: spacing.sm }}>
+                  <AppText variant="caption">Terms accepted. Your order remains on hold until Cashfree confirms payment. Never pay using an unofficial UPI ID or personal link.</AppText>
+                  {PREPAID_SANDBOX_UI && cashfreeCheckout.available ? (
+                    <View style={{ gap: spacing.sm }}>
+                      <AppText variant="caption">Sandbox test mode — no real payment will be collected.</AppText>
+                      <Button testID="rmc-prepaid-sandbox-checkout" label="Test Secure Prepaid Checkout" loading={prepaidBusy} onPress={startPrepaidCheckout} />
+                      <Button testID="rmc-prepaid-check-status" variant="outline" label="Check Payment Status" loading={prepaidBusy} onPress={() => { void reconcilePrepaid(); }} />
+                    </View>
+                  ) : null}
+                </View>
               ) : null}
             </Card>
           ) : !isOwner && o.preferred_payment_mode && o.status === "PENDING" ? (
