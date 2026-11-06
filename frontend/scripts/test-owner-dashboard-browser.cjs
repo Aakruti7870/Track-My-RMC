@@ -38,7 +38,7 @@ fs.mkdirSync(out, { recursive: true });
         assert.equal(await page.getByText('TrackMyRMC Play Review Owner', { exact: true }).count(), 0);
         if (name === 'home') assert.equal(await page.locator('[data-testid^="owner-shortcut-"]').count(), 6);
         if (name === 'operations') assert.equal(await page.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])').count(), 10);
-        if (name === 'more') assert.equal(await page.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])').count(), 21);
+        if (name === 'more') assert.equal(await page.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])').count(), 22);
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `Horizontal overflow at ${width}`);
         await page.screenshot({ path: `${out}/${scheme}-${width}-${name}.png`, animations: 'disabled' });
       }
@@ -61,7 +61,7 @@ fs.mkdirSync(out, { recursive: true });
       await page.waitForTimeout(200);
       assert(requests.some(url => url.searchParams.get('grade') === 'M25'));
       await go('/owner/more?directory=1');
-      assert.equal(await page.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])').count(), 31);
+      assert.equal(await page.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])').count(), 32);
       await go('/owner/operations');
       await page.evaluate(() => { for (const el of document.querySelectorAll('*')) if (el.scrollHeight > el.clientHeight && /auto|scroll/.test(getComputedStyle(el).overflowY)) el.scrollTop = el.scrollHeight; });
       const row = await page.getByTestId('role-module-business-reports').boundingBox();
