@@ -181,7 +181,47 @@ pub async fn request(
     if payload.notes.as_ref().is_some_and(|s| s.len() > 2000) {
         return Err(AppError::BadRequest("Notes are too long".into()));
     }
+    if let Some(lead) = payload.lead.as_ref() {
+        if !lead.share_with_supplier
+            || !(2..=160).contains(&lead.customer_name.trim().len())
+            || !(5..=500).contains(&lead.site_address.trim().len())
+            || !(10..=20).contains(&lead.site_contact_phone.len())
+        {
+            return Err(AppError::BadRequest(
+                "Invalid enquiry details or missing supplier-sharing consent".into(),
+            ));
+        }
+    }
     let mut tx = state.db.begin().await?;
+    if let Some(lead) = payload.lead.as_ref() {
+        // Cross-instance idempotency for parallel taps and retrying network clients.
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtext($1::text),hashtext($2::text))")
+            .bind(customer.to_string())
+            .bind(lead.request_key.to_string())
+            .execute(&mut *tx)
+            .await?;
+        if let Some(place) = lead.google_place_id.as_deref() {
+            let matches_plant: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM rmc_plants
+                 WHERE id=$1 AND google_place_id=$2 AND is_active=TRUE)",
+            )
+            .bind(payload.plant_id)
+            .bind(place)
+            .fetch_one(&mut *tx)
+            .await?;
+            if !matches_plant {
+                return Err(AppError::BadRequest(
+                    "Google listing does not match the selected plant".into(),
+                ));
+            }
+        }
+        let existing: Option<Uuid> = sqlx::query_scalar(
+            "SELECT canonical_request_id FROM rmc_rfq_leads WHERE customer_id=$1 AND request_key=$2 AND canonical_request_id IS NOT NULL"
+        ).bind(customer).bind(lead.request_key).fetch_optional(&mut *tx).await?;
+        if let Some(existing) = existing {
+            return Ok(existing);
+        }
+    }
     let available:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM rmc_plants p WHERE id=$1 AND is_active AND EXISTS(SELECT 1 FROM plant_listing_requests r WHERE r.plant_id=p.id AND status='APPROVED'))").bind(payload.plant_id).fetch_one(&mut *tx).await?;
     if !available {
         return Err(AppError::Conflict(
@@ -218,8 +258,61 @@ pub async fn request(
         sqlx::query_scalar("INSERT INTO customer_sites(customer_id,name,address_line,city,state,pincode,contact_person,contact_phone) SELECT id,$2,$3,'','','',full_name,COALESCE(phone,'') FROM users WHERE id=$1 RETURNING id")
             .bind(customer).bind(name).bind(address).fetch_one(&mut *tx).await?
     };
-    let id=sqlx::query_scalar("INSERT INTO customer_quotation_requests(customer_id,plant_id,site_id,grade,quantity_m3,required_date,notes,pump_required) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id")
-        .bind(customer).bind(payload.plant_id).bind(site).bind(grade).bind(quantity).bind(required).bind(payload.notes).bind(payload.pump_required.unwrap_or(false)).fetch_one(&mut *tx).await?;
+    let id: Uuid=sqlx::query_scalar("INSERT INTO customer_quotation_requests(customer_id,plant_id,site_id,grade,quantity_m3,required_date,notes,pump_required) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id")
+        .bind(customer).bind(payload.plant_id).bind(site).bind(&grade).bind(quantity.clone()).bind(required).bind(payload.notes).bind(payload.pump_required.unwrap_or(false)).fetch_one(&mut *tx).await?;
+    if let Some(lead) = payload.lead.as_ref() {
+        sqlx::query(
+            "INSERT INTO rmc_rfq_leads(customer_id,request_key,google_place_id,plant_id,canonical_request_id,customer_name,customer_email,customer_gstin,grade,quantity_m3,site_address,site_lat,site_lng,delivery_date,pump_required,site_contact_phone,sharing_consent_at,status)
+             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW(),'REQUESTED')
+             ON CONFLICT(customer_id,request_key) DO UPDATE
+             SET canonical_request_id=EXCLUDED.canonical_request_id,
+                 status='REQUESTED',updated_at=NOW()
+             WHERE rmc_rfq_leads.status='MATCHED_RECONFIRMATION_REQUIRED'
+                 AND rmc_rfq_leads.plant_id=EXCLUDED.plant_id
+                 AND rmc_rfq_leads.expires_at>NOW()
+             RETURNING id"
+        )
+        .bind(customer).bind(lead.request_key).bind(lead.google_place_id.as_deref())
+        .bind(payload.plant_id).bind(id).bind(lead.customer_name.trim())
+        .bind(lead.customer_email.as_deref()).bind(lead.customer_gstin.as_deref())
+        .bind(&grade).bind(quantity.clone()).bind(lead.site_address.trim())
+        .bind(lead.site_lat).bind(lead.site_lng).bind(required)
+        .bind(payload.pump_required.unwrap_or(false)).bind(lead.site_contact_phone.trim())
+        .fetch_optional(&mut *tx).await?
+        .ok_or_else(|| AppError::Conflict("Matched enquiry must be reconfirmed by its owner".into()))?;
+    }
+    // Internal notification only: WhatsApp requires supplier opt-in and an approved non-OTP template.
+    sqlx::query(
+        "INSERT INTO notifications(user_id,title,body,notification_type,reference_id)
+         SELECT owner_id,'New RMC quotation request',$2,'rmc_rfq',$3
+         FROM rmc_plants WHERE id=$1",
+    )
+    .bind(payload.plant_id)
+    .bind(format!(
+        "A customer has requested a quotation for {} m3 of {}",
+        quantity, grade
+    ))
+    .bind(id.to_string())
+    .execute(&mut *tx)
+    .await?;
+    // Notify only active plant staff explicitly granted quotation view permission.
+    // Other roles cannot see these private RFQ details.
+    sqlx::query(
+        "INSERT INTO notifications(user_id,title,body,notification_type,reference_id)
+         SELECT ps.user_id,'New RMC quotation request',$2,'rmc_rfq',$3
+         FROM plant_staff ps
+         JOIN users u ON u.id=ps.user_id AND u.is_active=TRUE AND u.role=ps.role
+         JOIN rmc_plants p ON p.id=ps.plant_id AND p.is_active=TRUE
+         LEFT JOIN plant_staff_module_permissions m ON m.plant_id=ps.plant_id
+           AND m.user_id=ps.user_id AND m.module_key='quotations'
+         WHERE ps.plant_id=$1 AND ps.is_active=TRUE AND ps.role IN ('accountant','admin')
+         AND (m.user_id IS NULL OR m.can_view=TRUE) AND ps.user_id<>p.owner_id",
+    )
+    .bind(payload.plant_id)
+    .bind(format!("A customer requested {} m3 of {}", quantity, grade))
+    .bind(id.to_string())
+    .execute(&mut *tx)
+    .await?;
     sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'quotation.request','rfq',$2,$3)").bind(customer).bind(format!("{id}")).bind(json!({"plant_id":payload.plant_id})).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(id)
@@ -338,6 +431,25 @@ pub async fn respond(
     };
     sqlx::query("UPDATE customer_quotation_requests SET status=$2,decline_reason=$3,response_payload=$4,updated_at=NOW() WHERE id=$1").bind(request).bind(status).bind(payload.decline_reason).bind(intent).execute(&mut *tx).await?;
     sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'quotation.respond','rfq',$2,$3)").bind(actor).bind(request.to_string()).bind(json!({"status":status,"quotation":quote})).execute(&mut *tx).await?;
+    // Notify the requesting customer through the existing private in-app feed.
+    sqlx::query(
+        "INSERT INTO notifications(user_id,title,body,notification_type,reference_id)
+         VALUES($1,$2,$3,'rmc_quotation_response',$4)",
+    )
+    .bind(row.get::<Uuid, _>("customer_id"))
+    .bind(if status == "QUOTED" {
+        "Your RMC quotation is ready"
+    } else {
+        "RMC quotation request declined"
+    })
+    .bind(if status == "QUOTED" {
+        "Your selected plant has prepared an official quotation. Open Quotations to review it."
+    } else {
+        "Your selected plant has declined this request. Open Quotations to see the response."
+    })
+    .bind(request.to_string())
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
     Ok(json!({"success":true,"status":status,"quotation":quote}))
 }

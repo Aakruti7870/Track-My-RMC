@@ -661,6 +661,23 @@ pub struct CustomerRfqPayload {
     pub required_date: Option<String>,
     pub pump_required: Option<bool>,
     pub notes: Option<String>,
+    /// Optional richer enquiry details. Older customer clients remain compatible.
+    #[serde(default)]
+    pub lead: Option<CustomerRfqLeadDetails>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct CustomerRfqLeadDetails {
+    pub request_key: Uuid,
+    pub google_place_id: Option<String>,
+    pub customer_name: String,
+    pub customer_email: Option<String>,
+    pub customer_gstin: Option<String>,
+    pub site_address: String,
+    pub site_lat: Option<f64>,
+    pub site_lng: Option<f64>,
+    pub site_contact_phone: String,
+    pub share_with_supplier: bool,
 }
 
 pub async fn create_quotation_request(

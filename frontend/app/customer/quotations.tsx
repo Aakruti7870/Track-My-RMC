@@ -16,6 +16,11 @@ import { useToast } from "@/src/components/ui/Toast";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 
+type RmcLead = {
+  id: string; grade: string; quantity_m3: number; site_address: string;
+  delivery_date: string; status: "PENDING_SUPPLIER" | "MATCHED_RECONFIRMATION_REQUIRED" | "REQUESTED" | "CLOSED";
+  canonical_request_id?: string | null; created_at: string;
+};
 type QuoteRequest = {
   id: string; plant_name?: string; site_name: string; site_address: string; grade: string;
   quantity: number; estimated_total?: number | null; status: "REQUESTED" | "QUOTED" | "DECLINED";
@@ -36,9 +41,21 @@ export default function CustomerQuotations() {
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
+  const leads = useGet<{ leads: RmcLead[] }>("/customer/rmc-rfq-leads");
   const requests = useGet<{ requests: QuoteRequest[] }>("/customer/quotation-requests");
   const quotes = useGet<{ quotations: Quote[] }>("/ops/customer/quotations");
-  const refresh = () => { requests.refetch(); quotes.refetch(); };
+  const refresh = () => { leads.refetch(); requests.refetch(); quotes.refetch(); };
+  const confirmMatched = async (lead: RmcLead) => {
+    if (!token || busy) return;
+    setBusy(lead.id);
+    try {
+      await apiPost(`/customer/rmc-rfq-leads/${lead.id}/confirm`, token, {});
+      toast("Quotation request sent to the verified plant", "success");
+      refresh();
+    } catch (e: any) {
+      toast(e.detail || "Unable to reconfirm enquiry", "error");
+    } finally { setBusy(null); }
+  };
   const decide = async (quote: Quote, action: "ACCEPT" | "DECLINE") => {
     if (!token) return;
     setBusy(quote.id);
@@ -65,6 +82,26 @@ export default function CustomerQuotations() {
         <View><AppText variant="title">Quotations</AppText><AppText variant="caption">Track requests and official commercial offers from plants</AppText></View>
         <Card style={{ gap: spacing.sm }}><View style={styles.notice}><Ionicons name="information-circle-outline" size={19} color={colors.brand} /><AppText variant="caption" style={{ flex: 1 }}>Comparison totals are planning estimates. Only a quotation numbered by the plant is an official commercial offer.</AppText></View></Card>
 
+        <View style={styles.sectionTitle}>
+          <AppText variant="heading">Supplier Onboarding Enquiries</AppText>
+          <Badge label={String((leads.data?.leads || []).filter(l=>!l.canonical_request_id).length)} color={colors.brand}/>
+        </View>
+        {leads.loading && !leads.data ? <Skeleton height={100}/> : null}
+        {(leads.data?.leads || []).filter(l=>!l.canonical_request_id).map(lead=>(
+          <Card key={lead.id} style={{gap:spacing.sm}}>
+            <AppText style={styles.name}>{lead.grade} · {lead.quantity_m3} m³</AppText>
+            <AppText variant="caption">{lead.site_address} · Delivery {lead.delivery_date}</AppText>
+            <AppText variant="caption">Reference: {lead.id}</AppText>
+            {lead.status === "PENDING_SUPPLIER" ? <AppText variant="caption">
+              TrackMyRMC admin has your enquiry. The unregistered supplier has not been contacted.
+            </AppText> : null}
+            {lead.status === "MATCHED_RECONFIRMATION_REQUIRED" ? <>
+              <AppText variant="caption">Supplier onboarding completed. Reconfirm to share your enquiry with the approved plant.</AppText>
+              <Button label="Confirm & Send to Verified Plant" loading={busy===lead.id} onPress={()=>void confirmMatched(lead)}/>
+            </> : null}
+            {lead.status === "CLOSED" ? <AppText variant="caption">This enquiry is closed.</AppText> : null}
+          </Card>
+        ))}
         <View style={styles.sectionTitle}><AppText variant="heading">My Requests</AppText><Badge label={String(requests.data?.requests.length || 0)} color={colors.brand} /></View>
         {requests.loading && !requests.data ? <Skeleton height={110} /> : null}
         {requests.data?.requests.map((item) => <Card key={item.id} style={{ gap: spacing.sm }}>

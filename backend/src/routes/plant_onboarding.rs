@@ -607,6 +607,20 @@ pub async fn approve_listing(
         .bind(place_id)
         .execute(&mut *tx)
         .await?;
+        // Match rich customer-submitted leads, but require customer reconfirmation
+        // before any personal details are disclosed to the newly onboarded supplier.
+        sqlx::query(
+            "WITH matched AS (
+                UPDATE rmc_rfq_leads SET plant_id=$1, status='MATCHED_RECONFIRMATION_REQUIRED',updated_at=NOW()
+                WHERE google_place_id=$2 AND status='PENDING_SUPPLIER' AND expires_at>NOW()
+                RETURNING id,customer_id
+             )
+             INSERT INTO notifications(user_id,title,body,notification_type,reference_id)
+             SELECT customer_id,'RMC supplier joined TrackMyRMC',
+                    'Your selected supplier is now verified. Confirm your quotation request to share your details.',
+                    'rmc_rfq_match',id::text FROM matched"
+        )
+        .bind(plant_id).bind(place_id).execute(&mut *tx).await?;
     }
 
     sqlx::query(

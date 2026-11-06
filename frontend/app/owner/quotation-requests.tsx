@@ -20,6 +20,8 @@ type RequestStatus = "REQUESTED" | "QUOTED" | "DECLINED";
 type OwnerQuote = { id: string; quotation_number: string; customer_name: string; grade: string; quantity_m3: number; total: number; valid_until: string; status: string; customer_response_reason?: string | null; customer_responded_at?: string; order_number?: string };
 type QuoteRequest = {
   id: string; plant_id: string; plant_name?: string; customer_name?: string; customer_mobile?: string;
+  customer_email?: string | null; customer_gstin?: string | null; site_contact_phone?: string | null;
+  delivery_date?: string; site_lat?: number | null; site_lng?: number | null;
   site_name: string; site_address: string; grade: string; quantity: number; pump_required?: boolean;
   estimated_total?: number | null; status: RequestStatus; created_at: string; quotation_number?: string;
   quoted_total?: number; decline_reason?: string;
@@ -102,6 +104,10 @@ export default function OwnerQuotationRequests() {
           <View style={styles.between}><View style={{ flex: 1 }}><AppText variant="heading">{item.customer_name || "Customer"}</AppText><AppText variant="caption">{item.customer_mobile || "Mobile not provided"} · {new Date(item.created_at).toLocaleDateString("en-IN")}</AppText></View><Badge label={item.status} status={item.status} /></View>
           <View style={[styles.requirement, { backgroundColor: colors.surfaceTertiary }]}><View><AppText variant="caption">Requirement</AppText><AppText style={styles.requirementText}>{item.grade} · {item.quantity} m³</AppText></View><View style={{ alignItems: "flex-end" }}><AppText variant="caption">Customer estimate</AppText><AppText style={{ fontFamily: fonts.semibold }}>{rupees(item.estimated_total)}</AppText></View></View>
           <View><AppText style={{ fontFamily: fonts.semibold }}>{item.site_name}</AppText><AppText variant="caption">{item.site_address}</AppText></View>
+          {item.site_contact_phone ? <AppText variant="caption">Site contact: {item.site_contact_phone}</AppText> : null}
+          {item.customer_email ? <AppText variant="caption">Customer email: {item.customer_email}</AppText> : null}
+          {item.customer_gstin ? <AppText variant="caption">GSTIN: {item.customer_gstin}</AppText> : null}
+          {item.delivery_date ? <AppText variant="caption">Required date: {item.delivery_date}</AppText> : null}
           {item.pump_required ? <Badge label="Pump required" color={colors.brand} /> : null}
           {item.status === "QUOTED" ? <AppText variant="caption">Sent {item.quotation_number} · {rupees(item.quoted_total)}</AppText> : null}
           {item.status === "DECLINED" ? <AppText variant="caption" color={colors.error}>Reason: {item.decline_reason}</AppText> : null}
