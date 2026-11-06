@@ -87,9 +87,13 @@ for (const key of homeKeys) {
 }
 assert.ok(customerHome.includes('const DIRECTORY = modulesForRole("customer");'));
 assert.ok(customerHome.includes("const CUSTOMER_MODULES = HOME_MODULE_KEYS.flatMap(key => DIRECTORY.filter(module => module.key === key));"));
-for (const name of ["home-quick-actions", "customer-module-grid", "home-other-services"]) {
+for (const name of ["home-quick-actions", "home-other-services"]) {
   assert.ok(customerHome.includes(`testID="${name}"`), `Missing grouped Home card: ${name}`);
 }
+assert.ok(customerHome.includes('testID={testID}') &&
+  customerHome.includes('"customer-module-grid"') &&
+  customerHome.includes('"home-advice-grid"'),
+  "Both four-item customer groups must use the shared module renderer with stable test IDs.");
 assert.ok(customerHome.includes('<HomeCarousel style={{ width: Math.min(viewportWidth, 720), borderRadius: 0, borderWidth: 0 }} />'), "Preserve five-slide carousel and make the customer banner edge-to-edge.");
 assert.ok(customerHome.includes('<KycBanner status={data.kyc_status} />'), "Preserve KYC state machine.");
 assert.ok(customerHome.includes('<ActiveTransitMixerCard'), "Preserve real order and demo tracking.");
