@@ -232,7 +232,7 @@ const styles = StyleSheet.create({
   row: { width: "100%", maxWidth: 1100, alignSelf: "center", minHeight: 64, paddingHorizontal: 8, flexDirection: "row", alignItems: "center" },
   target: { width: 44, minHeight: 48, flexShrink: 0, alignItems: "center", justifyContent: "center" },
   location: { flex: 1, minWidth: 0, minHeight: 48, flexDirection: "row", gap: 6, alignItems: "center", paddingHorizontal: 4 },
-  locationText: { flex: 1, minWidth: 0, fontFamily: fonts.semibold, fontSize: 16, lineHeight: 24 },
+  locationText: { flex: 1, minWidth: 0, fontFamily: "Roboto", fontWeight: "700", fontSize: 14, lineHeight: 20 },
   qrInner: { position: "absolute", alignItems: "center", justifyContent: "center" },
   dot: { position: "absolute", top: 8, right: 9, width: 10, height: 10, borderRadius: 5, borderWidth: 1.5 },
   overlay: { flex: 1, justifyContent: "flex-end", backgroundColor: glass.overlay },
