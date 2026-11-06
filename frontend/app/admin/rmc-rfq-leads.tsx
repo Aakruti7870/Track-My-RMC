@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { RefreshControl, ScrollView, View } from "react-native";
+import { Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -49,10 +49,9 @@ export default function AdminRmcRfqLeads() {
         </Card>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:8}}>
           {FILTERS.map(key=>(
-            <View key={key} style={{padding:9,borderRadius:9,backgroundColor:key===filter?colors.brandSoft:colors.surfaceSecondary}}
-              onTouchEnd={()=>setFilter(key)}>
+            <Pressable key={key} accessibilityRole="button" onPress={()=>setFilter(key)} style={{padding:9,borderRadius:9,backgroundColor:key===filter?colors.brandSoft:colors.surfaceSecondary}}>
               <AppText>{key.replace(/_/g," ")}</AppText>
-            </View>
+            </Pressable>
           ))}
         </ScrollView>
         {loading && !data ? <><Skeleton height={150}/><Skeleton height={150}/></>:null}
