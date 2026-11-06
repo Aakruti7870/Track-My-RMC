@@ -181,7 +181,24 @@ pub async fn request(
     if payload.notes.as_ref().is_some_and(|s| s.len() > 2000) {
         return Err(AppError::BadRequest("Notes are too long".into()));
     }
+    if let Some(lead) = payload.lead.as_ref() {
+        if !lead.share_with_supplier
+            || !(2..=160).contains(&lead.customer_name.trim().len())
+            || !(5..=500).contains(&lead.site_address.trim().len())
+            || !(10..=20).contains(&lead.site_contact_phone.len())
+        {
+            return Err(AppError::BadRequest("Invalid enquiry details or missing supplier-sharing consent".into()));
+        }
+    }
     let mut tx = state.db.begin().await?;
+    if let Some(lead) = payload.lead.as_ref() {
+        let existing: Option<Uuid> = sqlx::query_scalar(
+            "SELECT canonical_request_id FROM rmc_rfq_leads WHERE customer_id=$1 AND request_key=$2 AND canonical_request_id IS NOT NULL"
+        ).bind(customer).bind(lead.request_key).fetch_optional(&mut *tx).await?;
+        if let Some(existing) = existing {
+            return Ok(existing);
+        }
+    }
     let available:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM rmc_plants p WHERE id=$1 AND is_active AND EXISTS(SELECT 1 FROM plant_listing_requests r WHERE r.plant_id=p.id AND status='APPROVED'))").bind(payload.plant_id).fetch_one(&mut *tx).await?;
     if !available {
         return Err(AppError::Conflict(
@@ -219,7 +236,27 @@ pub async fn request(
             .bind(customer).bind(name).bind(address).fetch_one(&mut *tx).await?
     };
     let id=sqlx::query_scalar("INSERT INTO customer_quotation_requests(customer_id,plant_id,site_id,grade,quantity_m3,required_date,notes,pump_required) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id")
-        .bind(customer).bind(payload.plant_id).bind(site).bind(grade).bind(quantity).bind(required).bind(payload.notes).bind(payload.pump_required.unwrap_or(false)).fetch_one(&mut *tx).await?;
+        .bind(customer).bind(payload.plant_id).bind(site).bind(&grade).bind(quantity.clone()).bind(required).bind(payload.notes).bind(payload.pump_required.unwrap_or(false)).fetch_one(&mut *tx).await?;
+    if let Some(lead) = payload.lead.as_ref() {
+        sqlx::query(
+            "INSERT INTO rmc_rfq_leads(customer_id,request_key,google_place_id,plant_id,canonical_request_id,customer_name,customer_email,customer_gstin,grade,quantity_m3,site_address,site_lat,site_lng,delivery_date,pump_required,site_contact_phone,sharing_consent_at,status)
+             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW(),'REQUESTED')"
+        )
+        .bind(customer).bind(lead.request_key).bind(lead.google_place_id.as_deref())
+        .bind(payload.plant_id).bind(id).bind(lead.customer_name.trim())
+        .bind(lead.customer_email.as_deref()).bind(lead.customer_gstin.as_deref())
+        .bind(&grade).bind(quantity.clone()).bind(lead.site_address.trim())
+        .bind(lead.site_lat).bind(lead.site_lng).bind(required)
+        .bind(payload.pump_required.unwrap_or(false)).bind(lead.site_contact_phone.trim())
+        .execute(&mut *tx).await?;
+    }
+    // Internal notification only: WhatsApp requires supplier opt-in and an approved non-OTP template.
+    sqlx::query(
+        "INSERT INTO notifications(user_id,title,body,notification_type,reference_id)
+         SELECT owner_id,'New RMC quotation request',$2,'rmc_rfq',$3
+         FROM rmc_plants WHERE id=$1"
+    ).bind(payload.plant_id).bind(format!("A customer has requested a quotation for {} m3 of {}", quantity, grade))
+      .bind(id.to_string()).execute(&mut *tx).await?;
     sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'quotation.request','rfq',$2,$3)").bind(customer).bind(format!("{id}")).bind(json!({"plant_id":payload.plant_id})).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(id)
