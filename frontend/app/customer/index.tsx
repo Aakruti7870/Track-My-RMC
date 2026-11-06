@@ -293,7 +293,7 @@ const styles = StyleSheet.create({
   grid: { flexDirection: "row", flexWrap: "wrap", width: "100%", justifyContent: "space-between", rowGap: 4 },
   tile: { alignItems: "center", justifyContent: "center", paddingHorizontal: 1, paddingVertical: 2, gap: 4 },
   quickTile: { minHeight: 98, paddingVertical: 3, gap: 5, borderWidth: 0 },
-  quickCircle: { width: 60, height: 60, borderRadius: 30, overflow: "hidden", borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  quickCircle: { width: 56, height: 56, borderRadius: 28, overflow: "hidden", borderWidth: 1, alignItems: "center", justifyContent: "center" },
   quickLabel: { fontFamily: fonts.semibold, fontSize: 12, lineHeight: 15, textAlign: "center", minHeight: 30 },
   toolTile: { minHeight: 101, paddingVertical: 0, gap: 4, justifyContent: "flex-start" },
   toolPlate: { width: "100%", height: 56, borderRadius: radius.md, borderWidth: 1, alignItems: "center", justifyContent: "center", overflow: "hidden" },
