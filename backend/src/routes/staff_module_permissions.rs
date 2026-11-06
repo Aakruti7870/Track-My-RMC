@@ -400,7 +400,7 @@ pub async fn get_staff(
     owner: AuthUser,
     Path((plant, staff)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<Value>, AppError> {
-    owned_plant(&state, &owner, plant).await?;
+    super::plant_staff_manager::require_manage_target(&state, &owner, plant, staff).await?;
     let role = active_staff_role(&state.db, plant, staff).await?;
     let permissions = resolved(&state.db, plant, staff).await?;
     Ok(Json(
@@ -413,7 +413,7 @@ pub async fn replace_staff(
     Path((plant, staff)): Path<(Uuid, Uuid)>,
     Json(request): Json<ReplaceGrants>,
 ) -> Result<Json<Value>, AppError> {
-    owned_plant(&state, &owner, plant).await?;
+    super::plant_staff_manager::require_manage_target(&state, &owner, plant, staff).await?;
     let target_role = active_staff_role(&state.db, plant, staff).await?;
     let allowed = role_modules(&target_role);
     if request.permissions.len() != allowed.len() {
