@@ -183,7 +183,7 @@ export default function CustomerHome() {
           <Path d="M22 15 V26 L30 31" fill="none" stroke={colors.brand} strokeWidth="3.5"
             strokeLinecap="round" strokeLinejoin="round" />
         </Svg>
-        <AppText numberOfLines={2} style={[styles.promoText, { color: colors.onSurface }]}>On Time,{"\n"}Everytime</AppText>
+        <AppText numberOfLines={2} style={[styles.promoText, styles.promoSecondaryText, { color: colors.onSurface }]}>On Time,{"\n"}Everytime</AppText>
       </View>
     </View>
   );
@@ -307,6 +307,7 @@ const styles = StyleSheet.create({
   promoSecondaryCard: { width: "28%", flexDirection: "column", gap: 0 },
   promoText: { flex: 1, minWidth: 0, fontFamily: "Roboto", fontWeight: "700", fontSize: 12, lineHeight: 13, textAlign: "center" },
   promoPrimaryText: { fontSize: 11 },
+  promoSecondaryText: { flex: 0, width: "100%" },
   serviceTile: { minHeight: 103, paddingVertical: 0, gap: 4, justifyContent: "flex-start" },
   servicePlate: { width: "100%", height: 62, borderRadius: radius.md, borderWidth: 1, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   serviceLabel: { fontFamily: fonts.semibold, fontSize: 12, lineHeight: 15, textAlign: "center" },
