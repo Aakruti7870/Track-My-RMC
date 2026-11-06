@@ -190,13 +190,6 @@ fn fields(section: &str) -> Option<&'static [Field]> {
         _ => None,
     }
 }
-fn label(section: &str) -> &'static str {
-    SECTIONS
-        .iter()
-        .find(|(key, _)| *key == section)
-        .map(|(_, title)| *title)
-        .unwrap_or("")
-}
 fn checked_fields(section: &str) -> Result<&'static [Field], AppError> {
     fields(section).ok_or_else(|| AppError::BadRequest("Unknown Plant Profile section".into()))
 }
@@ -334,7 +327,7 @@ fn clean_answers(section: &str, answers: Value) -> Result<Value, AppError> {
                             g.starts_with('M')
                                 && g[1..]
                                     .parse::<u16>()
-                                    .map(|n| n >= 5 && n <= 100)
+                                    .map(|n| (5..=100).contains(&n))
                                     .unwrap_or(false)
                         }))
             }
