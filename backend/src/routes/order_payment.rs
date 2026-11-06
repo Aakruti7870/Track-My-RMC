@@ -97,7 +97,7 @@ pub async fn offer(
     super::loads_routes::ensure_order_access(&state, &actor, order_id, false).await?;
     let mut tx = state.db.begin().await?;
     let order = sqlx::query(
-        "SELECT status,preferred_payment_mode,total_amount FROM orders WHERE id=$1 FOR UPDATE",
+        "SELECT status,preferred_payment_mode,total_amount,customer_id,order_number FROM orders WHERE id=$1 FOR UPDATE",
     )
     .bind(order_id)
     .fetch_optional(&mut *tx)
@@ -144,6 +144,15 @@ pub async fn offer(
         .bind(actor.user_id).bind(order_id.to_string())
         .bind(json!({"mode":mode,"advance_amount":advance,"total_amount":total,"version":version}))
         .execute(&mut *tx).await?;
+    sqlx::query(
+        "INSERT INTO notifications(user_id,title,body,notification_type,reference_id) \
+         VALUES($1,$2,$3,'order_payment_offer',$4)"
+    )
+    .bind(order.get::<Uuid, _>("customer_id"))
+    .bind(format!("Review payment terms for {}", order.get::<String, _>("order_number")))
+    .bind("The plant has approved commercial terms. Review the final amount and accept or decline in your order details; no payment has been collected.")
+    .bind(order_id.to_string())
+    .execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(Json(
         json!({"success":true,"status":"OFFERED","version":version,
@@ -168,7 +177,7 @@ pub async fn accept(
     check_role(&actor, &["customer"])?;
     let mut tx = state.db.begin().await?;
     let row = sqlx::query(
-        "SELECT o.customer_id,o.status AS order_status,o.total_amount,p.mode,p.advance_amount, \
+        "SELECT o.customer_id,o.plant_id,o.order_number,o.status AS order_status,o.total_amount,p.mode,p.advance_amount, \
                 p.status AS offer_status,p.expires_at,p.version \
          FROM orders o JOIN order_payment_offers p ON p.order_id=o.id \
          WHERE o.id=$1 FOR UPDATE OF o,p",
@@ -229,6 +238,19 @@ pub async fn accept(
         .bind(actor.user_id).bind(order_id.to_string())
         .bind(json!({"mode":mode,"offer_version":input.version,"status":status}))
         .execute(&mut *tx).await?;
+    sqlx::query(
+        "INSERT INTO notifications(user_id,title,body,notification_type,reference_id) \
+         SELECT p.owner_id,$2,$3,'order_terms_accepted',$4 FROM rmc_plants p WHERE p.id=$1"
+    )
+    .bind(row.get::<Uuid, _>("plant_id"))
+    .bind(format!("Customer accepted terms for {}", row.get::<String, _>("order_number")))
+    .bind(if is_online(&mode) {
+        "Customer accepted your approved payment terms. Do not start production until the gateway verifies the required advance."
+    } else {
+        "Customer accepted your deferred payment terms. The order is confirmed and payment is still outstanding."
+    })
+    .bind(order_id.to_string())
+    .execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(Json(json!({"success":true,"status":status,
         "requires_online_payment":is_online(&mode),"payment_link":null,
