@@ -36,7 +36,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  }
  const actionBoxes=await Promise.all(['action-new','action-track','action-plants','action-orders'].map(id=>page.getByTestId(id).boundingBox()));
  // Round PhonePe-style quick actions: 52dp artwork is displayed inside a
- // 60dp circular frame with the label visibly below, never clipped.
+ // 56dp circular frame with the label visibly below, never clipped.
  for(const [id,label] of [['action-new','New Order'],['action-track','Track Order'],['action-plants','Plants'],['action-orders','My Orders']]) {
    const action=page.getByTestId(id);
    const tile=await action.boundingBox();
@@ -45,7 +45,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    const circle=await action.locator('svg').first().evaluate(node=>node.parentElement.getBoundingClientRect().toJSON());
    if(!tile||!svg||!name||!circle)throw Error(`Missing Quick Action geometry: ${id}`);
    if(tile.height<95||tile.height>124)throw Error(`Quick Action row height outside 95–124dp: ${id} ${tile.height}`);
-   if(Math.abs(circle.width-60)>1||Math.abs(circle.height-60)>1)throw Error(`Missing 60dp circular frame: ${id}`);
+   if(Math.abs(circle.width-56)>1||Math.abs(circle.height-56)>1)throw Error(`Missing 56dp circular frame: ${id}`);
    if(svg.y<circle.y-1||name.y<svg.y+svg.height-1||name.y+name.height>tile.y+tile.height+1)
      throw Error(`Quick Action SVG/label clipping: ${id}`);
  }
