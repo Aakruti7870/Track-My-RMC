@@ -199,6 +199,20 @@ fn value_string<'a>(data: &'a Value, key: &str) -> &'a str {
 fn valid_date(value: &str) -> bool {
     NaiveDate::parse_from_str(value, "%Y-%m-%d").is_ok()
 }
+/// A reviewed certificate ceases to be publicly visible when it expires.
+/// Apply this to the parent Yes answer AND all dependent metadata.
+fn currently_verified_certificate(source: &Value, key: &str) -> bool {
+    if !CERTIFICATES.contains(&key) || value_string(source, key) != "yes" {
+        return false;
+    }
+    let expiry = value_string(source, &format!("{key}_expiry"));
+    let valid = NaiveDate::parse_from_str(expiry, "%Y-%m-%d")
+        .map(|date| date >= Utc::now().date_naive())
+        .unwrap_or(false);
+    valid
+        && !value_string(source, &format!("{key}_number")).is_empty()
+        && !value_string(source, &format!("{key}_document")).is_empty()
+}
 fn visible_fields(section: &str, source: &Value) -> Vec<Value> {
     let Some(defs) = fields(section) else {
         return Vec::new();
@@ -212,15 +226,15 @@ fn visible_fields(section: &str, source: &Value) -> Vec<Value> {
             if value.is_empty() || value == "no" || value == "unknown" {
                 return None;
             }
-            if section == "certifications" && CERTIFICATES.contains(&field.key) {
-                let expiry = value_string(source, &format!("{}_expiry", field.key));
-                let valid = NaiveDate::parse_from_str(expiry, "%Y-%m-%d")
-                    .map(|date| date >= Utc::now().date_naive())
-                    .unwrap_or(false);
-                let has_evidence = !value_string(source, &format!("{}_document", field.key))
-                    .is_empty()
-                    && !value_string(source, &format!("{}_number", field.key)).is_empty();
-                if !valid || !has_evidence {
+            if section == "certifications" {
+                let certificate = if CERTIFICATES.contains(&field.key) {
+                    Some(field.key)
+                } else if field.depends_on.is_empty() {
+                    None
+                } else {
+                    Some(field.depends_on)
+                };
+                if certificate.is_some_and(|key| !currently_verified_certificate(source, key)) {
                     return None;
                 }
             }
@@ -820,6 +834,25 @@ mod tests {
         let output = visible_fields("fleet", &sample);
         assert_eq!(output.len(), 2);
         assert!(!output.iter().any(|v| v["key"] == "gps"));
+    }
+    #[test]
+    fn expired_certification_and_dependent_metadata_are_hidden() {
+        let expired = json!({
+            "cte": "yes",
+            "cte_number": "OLD-CERT",
+            "cte_expiry": "2000-01-01",
+            "cte_document": "trackmyrmc/plant_cert/example.pdf"
+        });
+        assert!(visible_fields("certifications", &expired).is_empty());
+        assert!(public_documents(Uuid::nil(), &expired).is_empty());
+
+        let no_certificate = json!({
+            "cto": "no",
+            "cto_number": "INACTIVE-CERT",
+            "cto_expiry": "2099-01-01",
+            "cto_document": "trackmyrmc/plant_cert/example.pdf"
+        });
+        assert!(visible_fields("certifications", &no_certificate).is_empty());
     }
     #[test]
     fn malformed_and_unknown_values_rejected() {
