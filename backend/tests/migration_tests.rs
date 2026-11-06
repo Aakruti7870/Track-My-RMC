@@ -171,7 +171,7 @@ async fn migrations_apply_from_an_empty_database() {
 }
 
 /// A previous production deployment may have already applied migration 44
-/// before the security PR that introduces 42/43 is merged. Prove SQLx can
+/// before the security PR that introduces 42/43/45 is merged. Prove SQLx can
 /// backfill those pending versions without replaying or altering 44.
 #[sqlx::test(migrations = false)]
 async fn late_session_migrations_apply_after_existing_rfq_version_44(pool: sqlx::PgPool) {
@@ -181,7 +181,7 @@ async fn late_session_migrations_apply_after_existing_rfq_version_44(pool: sqlx:
     let deployed = sqlx::migrate::Migrator {
         migrations: Cow::Owned(
             all.iter()
-                .filter(|migration| !matches!(migration.version, 42 | 43))
+                .filter(|migration| !matches!(migration.version, 42 | 43 | 45))
                 .cloned()
                 .collect(),
         ),
@@ -226,7 +226,7 @@ async fn late_session_migrations_apply_after_existing_rfq_version_44(pool: sqlx:
     all.run(&pool)
         .await
         .expect("pending session and refresh migrations must apply after version 44");
-    for version in [42_i64, 43] {
+    for version in [42_i64, 43, 45] {
         let applied: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM _sqlx_migrations WHERE version=$1 AND success=TRUE)",
         )
@@ -251,7 +251,7 @@ async fn late_session_migrations_apply_after_existing_rfq_version_44(pool: sqlx:
             .unwrap();
     assert_eq!(customer_before, customer_after);
     let history_after: Vec<(i64, Vec<u8>)> = sqlx::query_as(
-        "SELECT version,checksum FROM _sqlx_migrations WHERE version NOT IN (42,43) ORDER BY version",
+        "SELECT version,checksum FROM _sqlx_migrations WHERE version NOT IN (42,43,45) ORDER BY version",
     )
     .fetch_all(&pool)
     .await
@@ -275,7 +275,7 @@ async fn duplicate_slots_abort_upgrade_without_record_loss(pool: sqlx::PgPool) {
     let baseline = sqlx::migrate::Migrator {
         migrations: Cow::Owned(
             all.iter()
-                .filter(|migration| !matches!(migration.version, 42 | 43))
+                .filter(|migration| !matches!(migration.version, 42 | 43 | 45))
                 .cloned()
                 .collect(),
         ),
@@ -327,7 +327,7 @@ async fn duplicate_slots_abort_upgrade_without_record_loss(pool: sqlx::PgPool) {
     .unwrap();
     assert_eq!(retained, 2);
     let applied: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM _sqlx_migrations WHERE version IN (42,43))",
+        "SELECT EXISTS(SELECT 1 FROM _sqlx_migrations WHERE version IN (42,43,45))",
     )
     .fetch_one(&pool)
     .await
