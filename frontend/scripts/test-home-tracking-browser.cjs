@@ -35,43 +35,53 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    if(size[0]!==58||size[1]!==58)throw Error(`Service SVG size: ${id} ${size}`);
  }
  const actionBoxes=await Promise.all(['action-new','action-track','action-plants','action-orders'].map(id=>page.getByTestId(id).boundingBox()));
- // Verify all labels stay below the 52dp symbols and inside the new 80dp cards.
+ // Round PhonePe-style quick actions: 52dp artwork is displayed inside a
+ // 60dp circular frame with the label visibly below, never clipped.
  for(const [id,label] of [['action-new','New Order'],['action-track','Track Order'],['action-plants','Plants'],['action-orders','My Orders']]) {
    const action=page.getByTestId(id);
    const tile=await action.boundingBox();
    const svg=await action.locator('svg').first().boundingBox();
    const name=await action.getByText(label,{exact:true}).boundingBox();
-   if(!tile||!svg||!name)throw Error(`Missing Quick Action geometry: ${id}`);
-   if(Math.abs(tile.height-80)>1)throw Error(`Quick Action card must be 80dp: ${id} ${tile.height}`);
-   if(svg.y<tile.y-1||name.y<svg.y+svg.height-1||name.y+name.height>tile.y+tile.height+1)
+   const circle=await action.locator('svg').first().evaluate(node=>node.parentElement.getBoundingClientRect().toJSON());
+   if(!tile||!svg||!name||!circle)throw Error(`Missing Quick Action geometry: ${id}`);
+   if(tile.height<95||tile.height>124)throw Error(`Quick Action row height outside 95–124dp: ${id} ${tile.height}`);
+   if(Math.abs(circle.width-60)>1||Math.abs(circle.height-60)>1)throw Error(`Missing 60dp circular frame: ${id}`);
+   if(svg.y<circle.y-1||name.y<svg.y+svg.height-1||name.y+name.height>tile.y+tile.height+1)
      throw Error(`Quick Action SVG/label clipping: ${id}`);
  }
-
- // Validate the actual card boundaries: carousel -> Quick Actions -> KYC -> RMC Tools.
- // These are 4 CSS px on the web (4 React Native dp on Android).
  const carouselBox=await page.getByTestId('home-promotional-carousel').boundingBox();
  const quickSectionBox=await page.getByTestId('home-quick-actions').boundingBox();
  const kycBox=await page.getByTestId('kyc-banner').boundingBox();
  const toolSectionBox=await page.getByTestId('customer-module-grid').boundingBox();
+ const pumpSectionBox=await page.getByTestId('home-pump-rental-promo').boundingBox();
+ const adviceSectionBox=await page.getByTestId('home-advice-grid').boundingBox();
  const otherServicesSectionBox=await page.getByTestId('home-other-services').boundingBox();
  const trackingSectionBox=await page.getByTestId('demo-tracking-card').locator('xpath=..').boundingBox();
  const gapBetween=(above,below)=>below.y-(above.y+above.height);
  for(const [name,actual] of [
    ['carousel to quick actions',gapBetween(carouselBox,quickSectionBox)],
    ['quick actions to KYC',gapBetween(quickSectionBox,kycBox)],
-   ['KYC to RMC tools',gapBetween(kycBox,toolSectionBox)],
-   ['RMC tools to Other Services',gapBetween(toolSectionBox,otherServicesSectionBox)],
-   ['Other Services to tracking section',gapBetween(otherServicesSectionBox,trackingSectionBox)],
+   ['KYC to planning',gapBetween(kycBox,toolSectionBox)],
+   ['planning to pump rental',gapBetween(toolSectionBox,pumpSectionBox)],
+   ['pump rental to advice',gapBetween(pumpSectionBox,adviceSectionBox)],
+   ['advice to supply',gapBetween(adviceSectionBox,otherServicesSectionBox)],
+   ['supply to tracking',gapBetween(otherServicesSectionBox,trackingSectionBox)],
  ])if(Math.abs(actual-4)>1)throw Error(`${name} must be 4dp; got ${actual}`);
- for(const title of ['Quick Actions','RMC Tools'])if(await page.getByText(title,{exact:true}).count())throw Error(`Unexpected home section header: ${title}`);
+ for(const title of ['Quick Actions','Active Projects & Planning','Free Tools & Expert Advice','Supply & Workforce','Track My RMC']){
+   if(!await page.getByText(title,{exact:true}).count())throw Error(`Home heading missing: ${title}`);
+ }
+ if(!await page.getByText('Built Better',{exact:true}).count())throw Error('Built Better slogan missing');
  if((await page.getByTestId('action-plants').innerText()).trim()!=='Plants')throw Error('Third Quick Action must be labeled Plants');
- const fourAcross=width>=390;
- if(fourAcross && Math.max(...actionBoxes.map(box=>box.y))-Math.min(...actionBoxes.map(box=>box.y))>2)throw Error('Wide Quick Actions must remain four columns');
- if(!fourAcross && !(actionBoxes[2].y>actionBoxes[0].y+50))throw Error('Narrow Quick Actions must use two rows, preserving 52-unit icons');
+ if(Math.max(...actionBoxes.map(box=>box.y))-Math.min(...actionBoxes.map(box=>box.y))>2)
+   throw Error('All four Quick Actions must fit one row at 320dp and above');
 
- // Compact sections have no second border. Keep the individual cards narrow,
- // close together, and short while preserving full-sized SVGs and readable text.
- for (const section of ['home-quick-actions','customer-module-grid','home-other-services']) {
+ // Carousel is full-bleed at mobile widths with the original five-slide source.
+ if(width<=390 && (Math.abs(carouselBox.x)>1||Math.abs(carouselBox.width-width)>1))
+   throw Error(`Mobile carousel is not full width: ${JSON.stringify(carouselBox)}`);
+
+ // No redundant outer borders. The responsive tools and supply sections have
+ // stable test IDs, and all eight catalog actions still have a reachable tile.
+ for (const section of ['home-quick-actions','customer-module-grid','home-advice-grid','home-other-services']) {
    const locator=page.getByTestId(section);
    const bounds=await locator.boundingBox();
    const border=await locator.evaluate(node=>getComputedStyle(node).borderTopWidth);
@@ -82,22 +92,35 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  const boundsOf=async (container,prefix)=>page.getByTestId(container).locator(`[data-testid^="${prefix}"]`)
    .evaluateAll(nodes=>nodes.map(node=>{const box=node.getBoundingClientRect();return {x:box.x,y:box.y,w:box.width,h:box.height,scrollHeight:node.scrollHeight};}));
  const toolBoxes=await boundsOf('customer-module-grid','customer-module-');
+ const adviceBoxes=await boundsOf('home-advice-grid','customer-module-');
  const serviceBoxes=await boundsOf('home-other-services','service-');
- if(toolBoxes.length!==8||serviceBoxes.length!==3)throw Error('Missing compact Home cards');
- const expectedToolColumns=width>=360?4:2;
- if(Math.abs(toolBoxes[expectedToolColumns].y-toolBoxes[0].y)<50)throw Error('RMC Tools responsive row arrangement');
- for (const [kind,boxes,minHeight,maxHeight] of [['Quick Action',actionBoxes.map(box=>({h:box.height,x:box.x,y:box.y,w:box.width})),79,81],['RMC Tool',toolBoxes,90,134],['Other Service',serviceBoxes,92,120]]) {
-   for(const box of boxes){
+ if(toolBoxes.length!==4||adviceBoxes.length!==4||serviceBoxes.length!==3)throw Error('Missing Home cards');
+ for(const group of [toolBoxes,adviceBoxes]) {
+   if(Math.max(...group.map(box=>box.y))-Math.min(...group.map(box=>box.y))>2)
+     throw Error('All four module vectors must fit one row');
+ }
+ for (const [kind,boxes,minHeight,maxHeight] of [
+   ['Quick Action',actionBoxes.map(box=>({h:box.height,x:box.x,y:box.y,w:box.width})),95,124],
+   ['Planning Tool',toolBoxes,94,146],
+   ['Expert Advice',adviceBoxes,94,146],
+   ['Supply',serviceBoxes,92,130],
+ ]) {
+   for(const box of boxes) {
      if(box.h<minHeight||box.h>maxHeight)throw Error(`${kind} card height ${box.h} outside ${minHeight}-${maxHeight}`);
      if(box.x<0||box.x+box.w>width+1)throw Error(`${kind} card overflows the viewport`);
-     if(box.scrollHeight&&box.scrollHeight>box.h+1)throw Error(`${kind} text or SVG is clipped`);
+     if(box.scrollHeight&&box.scrollHeight>box.h+1)throw Error(`${kind} label or SVG is clipped`);
    }
    const firstRow=boxes.filter(box=>Math.abs(box.y-boxes[0].y)<2).sort((a,b)=>a.x-b.x);
-   for(let i=1;i<firstRow.length;i++) {
+   for(let i=1;i<firstRow.length;i++){
      const gap=firstRow[i].x-(firstRow[i-1].x+firstRow[i-1].w);
-     if(gap>11||gap<0)throw Error(`${kind} card gap ${gap} violates compact spacing`);
+     if(gap>11||gap<0)throw Error(`${kind} horizontal gap ${gap} outside compact bounds`);
    }
  }
+ const promoCards=await page.getByTestId('home-pump-rental-promo').locator(':scope > *').all();
+ if(promoCards.length!==2)throw Error('Rental and On Time callouts must be in one row');
+ const [left,right]=await Promise.all(promoCards.map(card=>card.boundingBox()));
+ if(Math.abs(left.height-right.height)>1)throw Error('Rental and watch cards must have equal height');
+ if(Math.abs(right.x-(left.x+left.width)-8)>1)throw Error('Rental and watch cards must be 8dp apart');
  const tabIds=['tab-home','tab-orders','tab-plants','tab-more'];
  for(const id of tabIds){const size=await actualVectorSize(id);if(size[0]!==35||size[1]!==35)throw Error(`Tab SVG size: ${id} ${size}`);}
  const tabBoxes=await Promise.all(tabIds.map(id=>page.getByTestId(id).boundingBox()));
