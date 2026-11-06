@@ -210,14 +210,14 @@ const styles = StyleSheet.create({
   kycPending: { minHeight: 42, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, alignItems: "center", justifyContent: "center" },
   iconBtn: { width: 44, height: 44, borderRadius: 16, alignItems: "center", justifyContent: "center", borderWidth: 1 },
   dot: { position: "absolute", top: 7, right: 7, width: 8, height: 8, borderRadius: 4 },
-  scrollContent: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 190, gap: 11, maxWidth: 1100, alignSelf: "center", width: "100%" },
+  scrollContent: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 190, gap: 4, maxWidth: 1100, alignSelf: "center", width: "100%" },
   // No second oversized glass perimeter: individual compact tiles carry the only border.
-  groupCard: { width: "100%", maxWidth: 620, alignSelf: "center", paddingHorizontal: 0, paddingVertical: 2, gap: 7 },
-  // Exactly 4 dp between carousel, Quick Action cards, KYC card and RMC Tool cards.
+  groupCard: { width: "100%", maxWidth: 620, alignSelf: "center", paddingHorizontal: 0, paddingVertical: 0, gap: 4 },
+  // Exactly 4 dp between carousel, Quick Actions, KYC, RMC Tools and subsequent Home sections.
   homeAboveFold: { width: "100%", gap: 4 },
   tightGroup: { paddingVertical: 0, gap: 0 },
   sectionTitle: { fontFamily: fonts.displayBold, fontSize: 19, paddingHorizontal: 2 },
-  grid: { flexDirection: "row", flexWrap: "wrap", width: "100%", justifyContent: "space-between", rowGap: 5 },
+  grid: { flexDirection: "row", flexWrap: "wrap", width: "100%", justifyContent: "space-between", rowGap: 4 },
   tile: { alignItems: "center", justifyContent: "center", paddingHorizontal: 1, paddingVertical: 5, gap: 4, borderWidth: 1, borderRadius: radius.md },
   quickTile: { height: 104 },
   toolTile: { minHeight: 108 },
