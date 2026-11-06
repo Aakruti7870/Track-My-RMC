@@ -93,13 +93,19 @@ for (const name of ["home-quick-actions", "customer-module-grid", "home-other-se
 assert.ok(customerHome.includes('<HomeCarousel />'), "Preserve existing carousel component.");
 assert.ok(customerHome.includes('<KycBanner status={data.kyc_status} />'), "Preserve KYC state machine.");
 assert.ok(customerHome.includes('<ActiveTransitMixerCard'), "Preserve real order and demo tracking.");
-assert.ok(customerHome.includes('fourQuickColumns ? "24.25%" : "49%"'), "Quick Actions must use four compact columns when wide and two when narrow for full 75-unit icons.");
+assert.ok(customerHome.includes('homeAboveFold: { width: "100%", gap: 4 }'), "Carousel, Quick Actions, KYC and RMC Tools must be separated by 4 dp.");
+assert.ok(customerHome.includes('tightGroup: { paddingVertical: 0, gap: 0 }'), "Unheaded groups must have no extra vertical padding.");
+assert.ok(!customerHome.includes('>Quick Actions</AppText>'), "Quick Actions heading must be removed.");
+assert.ok(!customerHome.includes('>RMC Tools</AppText>'), "RMC Tools heading must be removed.");
+assert.ok(customerHome.includes('>Other Services</AppText>'), "Keep Other Services heading unchanged.");
+assert.ok(customerHome.includes('{ key: "plants", label: "Plants"'), "The third action label must remain Plants.");
+assert.ok(customerHome.includes('fourQuickColumns ? "24.25%" : "49%"'), "Quick Actions must use four compact columns when wide and two when narrow for full 52-unit icons.");
 assert.ok(customerHome.includes('fourToolColumns ? "24.25%" : "49%"'), "RMC Tools must use four compact columns when they fit or two on narrow displays.");
 assert.ok(customerHome.includes('width: "32.5%"'), "Other Services must use three compact columns.");
 assert.ok(!customerHome.includes('<Card testID="customer-module-grid"'), "Redundant RMC Tools outer border must be removed.");
 assert.ok(!customerHome.includes('<Card testID="home-quick-actions"'), "Redundant Quick Actions outer border must be removed.");
 assert.ok(!customerHome.includes('<Card testID="home-other-services"'), "Redundant Other Services outer border must be removed.");
-for (const key of ["quickTile: { minHeight: 116 }", "toolTile: { minHeight: 108 }", "serviceTile: { minHeight: 104 }", "maxWidth: 620"]) {
+for (const key of ["quickTile: { height: 104 }", "toolTile: { minHeight: 108 }", "serviceTile: { minHeight: 104 }", "maxWidth: 620"]) {
   assert.ok(customerHome.includes(key), `Compact card sizing missing: ${key}`);
 }
 // Newly uploaded Other Services SVG masters must render on the actual home cards.
@@ -115,7 +121,7 @@ for (const [key, symbol] of [
 }
 assert.ok(customerHome.includes('<VectorSymbol name={service.symbol} size={58} />'), "Other Services must show 58-unit uploaded artwork.");
 assert.ok(!customerHome.includes('<Ionicons name={service.icon}'), "Do not regress to generic service icons.");
-assert.ok(customerHome.includes('<VectorSymbol name={action.symbol} size={75} />'), "Quick Actions must show 75-unit assigned vector artwork.");
+assert.ok(customerHome.includes('<VectorSymbol name={action.symbol} size={52} />'), "Quick Actions must show 52-unit assigned vector artwork.");
 assert.ok(customerHome.includes('<VectorSymbol name={module.symbol} size={52} />'), "RMC Tools must show 52-unit assigned vector artwork.");
 for (const wrapper of ["styles.actionIcon", "styles.toolIcon", "styles.serviceIcon"]) {
   assert.ok(!customerHome.includes(wrapper), `Decorative icon plate must be removed: ${wrapper}`);
