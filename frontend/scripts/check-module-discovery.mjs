@@ -94,6 +94,9 @@ assert.ok(customerHome.includes('<HomeCarousel />'), "Preserve existing carousel
 assert.ok(customerHome.includes('<KycBanner status={data.kyc_status} />'), "Preserve KYC state machine.");
 assert.ok(customerHome.includes('<ActiveTransitMixerCard'), "Preserve real order and demo tracking.");
 assert.ok(customerHome.includes('homeAboveFold: { width: "100%", gap: 4 }'), "Carousel, Quick Actions, KYC and RMC Tools must be separated by 4 dp.");
+assert.ok(customerHome.includes('scrollContent: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 190, gap: 4,'), "Every Home section must use a 4 dp vertical gap.");
+assert.ok(customerHome.includes('groupCard: { width: "100%", maxWidth: 620, alignSelf: "center", paddingHorizontal: 0, paddingVertical: 0, gap: 4 }'), "Remove extra group padding and keep compact spacing.");
+assert.ok(customerHome.includes('justifyContent: "space-between", rowGap: 4 }'), "Home grid rows must use 4 dp spacing.");
 assert.ok(customerHome.includes('tightGroup: { paddingVertical: 0, gap: 0 }'), "Unheaded groups must have no extra vertical padding.");
 assert.ok(!customerHome.includes('>Quick Actions</AppText>'), "Quick Actions heading must be removed.");
 assert.ok(!customerHome.includes('>RMC Tools</AppText>'), "RMC Tools heading must be removed.");
