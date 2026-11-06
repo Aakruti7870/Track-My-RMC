@@ -130,12 +130,11 @@ pub async fn rotate(state: &AppState, raw: &str) -> Result<RefreshBundle, AppErr
 
     // Disabling Play reviewer access must also deny renewal of any fixture
     // token, even if a stale credential survived a previous deployment.
-    let reviewer_enabled: Option<bool> = sqlx::query_scalar(
-        "SELECT enabled FROM play_review_fixtures WHERE user_id=$1"
-    )
-    .bind(user)
-    .fetch_optional(&mut *tx)
-    .await?;
+    let reviewer_enabled: Option<bool> =
+        sqlx::query_scalar("SELECT enabled FROM play_review_fixtures WHERE user_id=$1")
+            .bind(user)
+            .fetch_optional(&mut *tx)
+            .await?;
     if reviewer_enabled.is_some_and(|enabled| !enabled)
         || (reviewer_enabled.is_some() && state.config.play_review_access_code.is_none())
     {
