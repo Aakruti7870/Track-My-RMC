@@ -359,3 +359,22 @@ export async function apiPatch<T>(path: string, token: string, body?: unknown): 
 export async function apiDelete<T>(path: string, token: string): Promise<T> {
   return request<T>(path, { method: "DELETE", token });
 }
+
+/** Upload a scanned certificate through the existing authenticated storage service.
+ * Only file references owned by the submitting user can be linked to a profile.
+ */
+export async function apiUploadCertificate(token: string, file: File | { uri: string; type: string; name: string }): Promise<{ path: string }> {
+  const body = new FormData();
+  if (typeof File !== "undefined" && file instanceof File) {
+    body.append("file", file);
+  } else {
+    body.append("file", file as unknown as Blob, file.name);
+  }
+  body.append("purpose", "plant_cert");
+  const response = await fetch(`${apiBase()}/upload`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body,
+  });
+  return handle<{ path: string }>(response);
+}

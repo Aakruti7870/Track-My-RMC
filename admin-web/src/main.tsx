@@ -66,6 +66,11 @@ function CommandCenter() {
   const [ownerId,setOwnerId]=useState('');
   const [ownerFields,setOwnerFields]=useState<Record<string,{city:string;state:string;pincode:string}>>({});
   const [showOwners,setShowOwners]=useState(false);
+  const [showPlantProfiles,setShowPlantProfiles]=useState(false);
+  const [plantProfileQueue,setPlantProfileQueue]=useState<Array<Record<string,any>>>([]);
+  const [plantProfileCode,setPlantProfileCode]=useState('');
+  const [plantProfileReason,setPlantProfileReason]=useState('');
+
 
   useEffect(() => {
     const token = window.sessionStorage.getItem('trackmyrmc_admin_token');
@@ -133,6 +138,42 @@ function CommandCenter() {
     finally {setBusy(false);}
   }
 
+
+  async function loadPlantProfileQueue(){
+    setBusy(true);setError('');setShowPlantProfiles(true);
+    try{
+      const result=await apiClient.get('/api/control-center/plant-profile/pending');
+      setPlantProfileQueue(result.data.items||[]);
+    }catch(e){setError(errorMessage(e));}
+    finally{setBusy(false);}
+  }
+  async function decidePlantProfile(plant:string,section:string,approve:boolean){
+    if(!plantProfileCode.trim()||(!approve && plantProfileReason.trim().length<10)){
+      setError('Enter a current authenticator code and a reason of at least 10 characters for rejection.');
+      return;
+    }
+    setBusy(true);setError('');
+    try{
+      await apiClient.post('/api/control-center/step-up',{code:plantProfileCode.trim()});
+      setPlantProfileCode('');
+      await apiClient.post('/api/control-center/plants/'+encodeURIComponent(plant)+'/profile/'+encodeURIComponent(section)+'/decision',
+        {approve,reason:plantProfileReason.trim()||'Certificate and plant details checked by administrator.'});
+      setNotice(approve?'Published after admin review.':'Revision rejected with feedback.');
+      setPlantProfileReason('');
+      await loadPlantProfileQueue();
+    }catch(e){setError(errorMessage(e));}
+    finally{setBusy(false);}
+  }
+  async function reviewPlantCertificate(plant:string,cert:string){
+    setError('');
+    try{
+      const result=await apiClient.get('/api/control-center/plants/'+encodeURIComponent(plant)+'/profile/document/'+encodeURIComponent(cert),
+        {responseType:'blob'});
+      const url=URL.createObjectURL(result.data);
+      window.open(url,'_blank','noopener,noreferrer');
+      window.setTimeout(()=>URL.revokeObjectURL(url),60000);
+    }catch(e){setError(errorMessage(e));}
+  }
   async function loadOwnerRequests(){
     setBusy(true);setError('');setShowOwners(true);
     try{const response=await apiClient.get('/api/plant-discovery/requests');setOwnerRequests(response.data.requests||[]);}
@@ -464,6 +505,44 @@ function CommandCenter() {
               </section>
             )}
             {user.role === 'central_admin' && <section aria-label="Authorized workspaces" style={{marginTop:18}}>
+
+              {permissions.includes('plant_owners.manage') && permissions.includes('plant.view') && <>
+                <button onClick={()=>void loadPlantProfileQueue()} disabled={busy} style={buttonStyle}>Plant Profile · Verification Queue</button>
+                {showPlantProfiles && <section aria-label="Plant profile verification" style={{display:'grid',gap:12,marginTop:12,marginBottom:18}}>
+                  <p style={{color:'#cbd5e1'}}>Review owner-submitted data and uploaded certificates before publishing. Unapproved information is never exposed to customers.</p>
+                  <label>Fresh authenticator code<input type="password" autoComplete="off" value={plantProfileCode}
+                    onChange={e=>setPlantProfileCode(e.target.value)} style={inputStyle}/></label>
+                  <label>Review note / rejection reason<input maxLength={500} value={plantProfileReason}
+                    onChange={e=>setPlantProfileReason(e.target.value)} style={inputStyle}/></label>
+                  {plantProfileQueue.map(item=>{
+                    const plant=String(item.plant_id);
+                    const section=String(item.section);
+                    const data=(item.answers||{}) as Record<string,string>;
+                    return <article key={plant+':'+section} style={{padding:14,borderRadius:10,border:'1px solid #475569'}}>
+                      <h3>{String(item.plant_name)} — {section.replace(/_/g,' ')}</h3>
+                      <p>Pending submission · Revision {String(item.revision||'—')}</p>
+                      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:8}}>
+                        {Object.entries(data).filter(([key])=>!key.endsWith('_document')).map(([key,value])=>
+                          <div key={key} style={{padding:8,background:'#111827',borderRadius:6}}>
+                            <small style={{color:'#94a3b8'}}>{key.replace(/_/g,' ')}</small><div>{String(value)}</div>
+                          </div>)}
+                      </div>
+                      {section==='certifications' && <div style={{display:'flex',gap:7,flexWrap:'wrap',marginTop:10}}>
+                        {['cte','cto','qci','bis','license'].filter(cert=>data[cert]==='yes'&&data[cert+'_document'])
+                          .map(cert=><button key={cert} type="button" style={{...buttonStyle,width:'auto'}}
+                            onClick={()=>void reviewPlantCertificate(plant,cert)}>Review {cert.toUpperCase()} evidence</button>)}
+                      </div>}
+                      <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:12}}>
+                        <button disabled={busy} style={{...buttonStyle,width:'auto',background:'#166534'}}
+                          onClick={()=>void decidePlantProfile(plant,section,true)}>Approve & Publish</button>
+                        <button disabled={busy} style={{...buttonStyle,width:'auto',background:'#991b1b'}}
+                          onClick={()=>void decidePlantProfile(plant,section,false)}>Reject / Request Changes</button>
+                      </div>
+                    </article>;
+                  })}
+                  {!plantProfileQueue.length && <p>No pending Plant Profile submissions.</p>}
+                </section>}
+              </>}
               {permissions.includes('plant_owners.manage') && <>
                 <button onClick={()=>void loadOwnerRequests()} disabled={busy} style={buttonStyle}>Plant Owner approvals and access</button>
                 {showOwners && <section aria-label="Plant Owner access controls" style={{display:'grid',gap:12,marginTop:12}}>
