@@ -282,9 +282,10 @@ pub async fn request(
          FROM plant_staff ps
          JOIN users u ON u.id=ps.user_id AND u.is_active=TRUE AND u.role=ps.role
          JOIN rmc_plants p ON p.id=ps.plant_id AND p.is_active=TRUE
-         JOIN plant_staff_module_permissions m ON m.plant_id=ps.plant_id AND m.user_id=ps.user_id
-         WHERE ps.plant_id=$1 AND ps.is_active=TRUE AND m.module_key='quotations'
-         AND m.can_view=TRUE AND ps.user_id<>p.owner_id"
+         LEFT JOIN plant_staff_module_permissions m ON m.plant_id=ps.plant_id
+           AND m.user_id=ps.user_id AND m.module_key='quotations'
+         WHERE ps.plant_id=$1 AND ps.is_active=TRUE AND ps.role IN ('accountant','admin')
+         AND (m.user_id IS NULL OR m.can_view=TRUE) AND ps.user_id<>p.owner_id"
     )
     .bind(payload.plant_id)
     .bind(format!("A customer requested {} m3 of {}", quantity, grade))
