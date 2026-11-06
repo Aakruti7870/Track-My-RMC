@@ -162,7 +162,11 @@ pub async fn rotate(state: &AppState, raw: &str) -> Result<RefreshBundle, AppErr
         &identity.1,
         identity.2.as_deref(),
         &state.config.jwt_secret,
-        state.config.jwt_expiration_hours,
+        if reviewer_enabled.is_some() {
+            state.config.jwt_expiration_hours.min(2)
+        } else {
+            state.config.jwt_expiration_hours
+        },
     )
     .await?;
     // A successful rotation invalidates the prior access JTI as well.

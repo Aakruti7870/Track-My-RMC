@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
 import { sessionLossMessage, sessionLossReason } from "@/src/auth/sessionPolicy";
+import { supportsSessionLock, withSessionLock } from "@/src/auth/sessionLock";
 
 import { storage } from "@/src/utils/storage";
 import {
@@ -82,18 +83,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const sessionGeneration = useRef(0);
   const signedOutLocally = useRef(false);
   const refreshFlight = useRef<Promise<string> | null>(null);
-  const rotateSession = useCallback(async (): Promise<string> => {
+  const rotateSession = useCallback(async (currentAccess?: string): Promise<string> => {
     const expired = () => ({
       status: 401,
       detail: "Your session has expired. Sign in again.",
       error_code: "SESSION_EXPIRED",
     });
-    if (signedOutLocally.current) throw expired();
+    if (signedOutLocally.current || !supportsSessionLock()) throw expired();
     if (refreshFlight.current) return refreshFlight.current;
     const generation = sessionGeneration.current;
     const stale = () => signedOutLocally.current || sessionGeneration.current !== generation;
     const assertCurrent = async (access?: string): Promise<void> => {
-      if (!stale()) return;
+      const signedOutInBrowser = Platform.OS === "web"
+        && await storage.getItem(SIGNED_OUT_KEY, false);
+      if (!stale() && !signedOutInBrowser) return;
+      if (signedOutInBrowser) signedOutLocally.current = true;
       // Rotation can have invalidated the old access token server-side while
       // logout was in flight. Revoke its newly issued access token as well.
       if (signedOutLocally.current && access) {
@@ -105,7 +109,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       throw expired();
     };
-    const flight = (async () => {
+    const flight = withSessionLock(async () => {
+      await assertCurrent();
+      // The tab ahead of us may already have consumed the shared cookie.
+      // Adopt its access token before issuing another single-use rotation.
+      if (Platform.OS === "web" && currentAccess) {
+        const shared = await storage.secureGet<string>(TOKEN_KEY, "");
+        await assertCurrent();
+        if (shared && shared !== currentAccess) {
+          setToken(shared);
+          return shared;
+        }
+      }
       const refreshToken = Platform.OS === "web" ? undefined : await storage.secureGet<string>(REFRESH_KEY, "");
       await assertCurrent();
       if (Platform.OS !== "web" && !refreshToken) throw expired();
@@ -125,7 +140,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await assertCurrent(nextAccess);
       setToken(nextAccess);
       return nextAccess;
-    })();
+    });
     refreshFlight.current = flight;
     try { return await flight; } finally {
       if (refreshFlight.current === flight) refreshFlight.current = null;
@@ -136,8 +151,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       return { access: current, me: await apiGet<Me>("/me", current) };
     } catch (error) {
-      if (!isApiError(error) || error.status !== 401 || sessionLossReason(error) === "replaced") throw error;
-      const access = await rotateSession();
+      if (!isApiError(error) || error.status !== 401) throw error;
+      if (Platform.OS === "web") {
+        // Wait for any rotation in another tab to publish its access token
+        // before interpreting its obsolete JTI as another-device replacement.
+        const shared = await withSessionLock(() => storage.secureGet<string>(TOKEN_KEY, ""));
+        if (shared && shared !== current) {
+          return { access: shared, me: await apiGet<Me>("/me", shared) };
+        }
+      }
+      if (sessionLossReason(error) === "replaced") throw error;
+      const access = await rotateSession(current);
       return { access, me: await apiGet<Me>("/me", access) };
     }
   }, [rotateSession]);
@@ -157,7 +181,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setToken(result.access); setUser(result.me); setSessionMessage(null);
         }
       } catch (error) {
-        if (isApiError(error) && (error.status === 401 || error.status === 403)) {
+        if (active && sessionGeneration.current === generation
+            && isApiError(error) && (error.status === 401 || error.status === 403)) {
           const reason = sessionLossReason(error);
           if (active && sessionGeneration.current === generation && reason) setSessionMessage(sessionLossMessage(reason));
           await stopTripLocationTracking();
@@ -260,6 +285,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     sessionGeneration.current += 1;
     signedOutLocally.current = true;
     const reason = sessionLossReason(error);
+    await storage.setItem(SIGNED_OUT_KEY, true);
+    setStaffMfaChallenge(null);
     setSessionMessage(reason ? sessionLossMessage(reason) : "Your secure session ended. Please sign in again.");
     await stopTripLocationTracking();
     await storage.secureRemove(TOKEN_KEY);
@@ -287,18 +314,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signedOutLocally.current = true;
     sessionGeneration.current += 1;
     setSessionMessage(null);
-    const sessionToken = token;
+    setStaffMfaChallenge(null);
     // Keep explicit local sign-out sticky across browser restarts even if the
     // network fails before the server can clear its HttpOnly refresh cookie.
     await storage.setItem(SIGNED_OUT_KEY, true);
     await stopTripLocationTracking();
-    await storage.secureRemove(TOKEN_KEY);
-    await storage.secureRemove(REFRESH_KEY);
     setToken(null);
     setUser(null);
-    if (!sessionToken) return;
-    try { await unregisterPushDevice(sessionToken); } catch { /* best effort */ }
-    try { await apiPost("/auth/logout", sessionToken); } catch { /* locally signed out */ }
+    await withSessionLock(async () => {
+      const sessionToken = await storage.secureGet<string>(TOKEN_KEY, "") || token;
+      await storage.secureRemove(TOKEN_KEY);
+      await storage.secureRemove(REFRESH_KEY);
+      if (!sessionToken) return;
+      try { await unregisterPushDevice(sessionToken); } catch { /* best effort */ }
+      try { await apiPost("/auth/logout", sessionToken); } catch { /* locally signed out */ }
+    });
   };
 
   useEffect(() => {
@@ -319,6 +349,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await clearSession(error);
       }
     };
+    void check();
     const listener = AppState.addEventListener("change", (next) => {
       if (next === "active") void check();
     });
@@ -327,6 +358,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, 120_000);
     return () => { active = false; listener.remove(); clearInterval(interval); };
   }, [token, verifiedSession, clearSession]);
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined") return;
+    const sync = async () => {
+      const generation = sessionGeneration.current;
+      const saved = await withSessionLock(async () => ({
+        access: await storage.secureGet<string>(TOKEN_KEY, ""),
+        signedOut: await storage.getItem(SIGNED_OUT_KEY, false),
+      }));
+      if (sessionGeneration.current !== generation) return;
+      if (saved.signedOut || !saved.access) {
+        sessionGeneration.current += 1;
+        signedOutLocally.current = true;
+        setStaffMfaChallenge(null);
+        setToken(null);
+        setUser(null);
+        await stopTripLocationTracking();
+      } else if (saved.access !== token) {
+        signedOutLocally.current = false;
+        setToken(saved.access);
+      }
+    };
+    const changed = (event: StorageEvent) => {
+      if (event.key === null || event.key === TOKEN_KEY || event.key === SIGNED_OUT_KEY) {
+        void sync().catch(() => { /* retain state during transient storage failures */ });
+      }
+    };
+    window.addEventListener("storage", changed);
+    return () => window.removeEventListener("storage", changed);
+  }, [token]);
 
   return (
     <AuthContext.Provider

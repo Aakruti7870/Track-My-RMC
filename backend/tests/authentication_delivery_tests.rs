@@ -810,3 +810,163 @@ async fn rotating_refresh_rejects_suspended_identity(db: PgPool) {
         .await
         .is_err());
 }
+
+#[sqlx::test]
+async fn incomplete_staff_login_preserves_session_until_final_mfa(db: PgPool) {
+    use trackmyrmc_backend::auth::refresh;
+    let mut state = state(db.clone());
+    let delivery = Arc::new(MemoryDelivery::default());
+    state.otp_delivery = delivery.clone();
+    let email = "session-timing@example.invalid";
+    let user = identity(&db, "owner", Some(email), None).await;
+    let phone: String = sqlx::query_scalar("SELECT phone FROM users WHERE id=$1")
+        .bind(user)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    let first = refresh::issue_after_auth(&state, user, "owner", &phone, Some(email), 1)
+        .await
+        .unwrap();
+    let app = build_app_router(state);
+
+    assert_eq!(
+        call(&app, "/api/auth/otp/email/send", Some(json!({"email":email})), None)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        call(&app, "/api/me", None, Some(&first.token)).await.0,
+        StatusCode::OK
+    );
+    let otp = delivery.take_code(email);
+    let (status, challenge) = call(
+        &app,
+        "/api/auth/otp/email/verify",
+        Some(json!({"email":email,"otp":otp})),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(challenge.get("token").is_none());
+    assert_eq!(
+        call(&app, "/api/me", None, Some(&first.token)).await.0,
+        StatusCode::OK
+    );
+    assert!(!call(
+        &app,
+        "/api/auth/staff/mfa/verify-totp",
+        Some(json!({"challenge_token":challenge["challenge_token"],"code":"invalid"})),
+        None,
+    )
+    .await
+    .0
+    .is_success());
+    assert_eq!(
+        call(&app, "/api/me", None, Some(&first.token)).await.0,
+        StatusCode::OK
+    );
+
+    let (status, enrollment) = call(
+        &app,
+        "/api/auth/staff/mfa/enroll/start",
+        Some(json!({"challenge_token":challenge["challenge_token"]})),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let code = TotpEngine::compute_code(
+        enrollment["manual_key"].as_str().unwrap(),
+        chrono::Utc::now().timestamp() as u64,
+    )
+    .unwrap();
+    let (status, enabled) = call(
+        &app,
+        "/api/auth/staff/mfa/enroll/confirm",
+        Some(json!({"challenge_token":challenge["challenge_token"],"code":code})),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        call(&app, "/api/me", None, Some(&first.token)).await.0,
+        StatusCode::OK
+    );
+    let (status, second) = call(
+        &app,
+        "/api/auth/staff/mfa/verify-totp",
+        Some(json!({"challenge_token":enabled["challenge_token"],"code":code})),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let second_token = second["token"].as_str().unwrap();
+    let (status, replaced) = call(&app, "/api/me", None, Some(&first.token)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(replaced["error_code"], "SESSION_REPLACED");
+    assert_eq!(
+        call(&app, "/api/auth/logout", Some(json!({})), Some(&first.token))
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        call(&app, "/api/me", None, Some(second_token)).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        call(
+            &app,
+            "/api/auth/refresh",
+            Some(json!({"refresh_token":first.refresh_token})),
+            None,
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
+}
+
+#[sqlx::test]
+async fn refresh_cannot_silently_renew_mobile_admin_or_unassigned_staff(db: PgPool) {
+    use trackmyrmc_backend::auth::refresh;
+    let state = state(db.clone());
+    let admin = identity(&db, "admin", Some("mobile-admin@example.invalid"), None).await;
+    let session = refresh::issue_after_auth(&state, admin, "admin", "", None, 1)
+        .await
+        .unwrap();
+    assert!(refresh::rotate(&state, &session.refresh_token).await.is_err());
+    for role in ["central_admin", "authority"] {
+        assert!(refresh::issue_after_auth(&state, admin, role, "", None, 1)
+            .await
+            .is_err());
+    }
+
+    let owner = identity(&db, "owner", None, None).await;
+    let staff = identity(&db, "supervisor", Some("refresh-staff@example.invalid"), None).await;
+    let plant: Uuid = sqlx::query_scalar(
+        "INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,address_line,
+         city,state,pincode,contact_phone)
+         VALUES($1,'Refresh CI',$2,0,0,'CI','CI','MH','0','0') RETURNING id",
+    )
+    .bind(owner)
+    .bind(Uuid::new_v4().simple().to_string())
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    sqlx::query("INSERT INTO plant_staff(plant_id,user_id,role) VALUES($1,$2,'supervisor')")
+        .bind(plant)
+        .bind(staff)
+        .execute(&db)
+        .await
+        .unwrap();
+    let session = refresh::issue_after_auth(&state, staff, "supervisor", "", None, 1)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE plant_staff SET is_active=FALSE WHERE user_id=$1")
+        .bind(staff)
+        .execute(&db)
+        .await
+        .unwrap();
+    assert!(refresh::rotate(&state, &session.refresh_token).await.is_err());
+}

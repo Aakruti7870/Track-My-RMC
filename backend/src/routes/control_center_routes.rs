@@ -212,7 +212,8 @@ pub async fn set_reviewer_access(
         // Revocation must invalidate access JTIs and any rotating refresh
         // credentials in the same transaction as the fixture disable.
         sqlx::query(
-            "UPDATE users SET active_session_jti=NULL
+            "UPDATE users SET active_session_jti=NULL,
+             auth_revoked_at=clock_timestamp(),updated_at=NOW()
              WHERE id IN (SELECT user_id FROM play_review_fixtures)",
         )
         .execute(&mut *tx)

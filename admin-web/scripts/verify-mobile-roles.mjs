@@ -104,6 +104,7 @@ try {
       PATH: process.env.PATH, HOME: process.env.HOME, TMPDIR: process.env.TMPDIR,
       CI: 'true', EXPO_OFFLINE: '1', EXPO_NO_TELEMETRY: '1',
       EXPO_PUBLIC_BACKEND_URL: 'http://127.0.0.1:8301',
+      EXPO_PUBLIC_CROSS_ORIGIN_COOKIES: 'true',
     },
   });
   await ready('http://127.0.0.1:8081', web);
@@ -129,6 +130,8 @@ try {
     }
     page.setDefaultTimeout(60000);
     const failures = [], runtimeErrors = [];
+    const expiredAccessTokens = new Set();
+    let secondTab;
     safeDiagnostics = failures;
     const successfulPaths = new Set();
     safeSuccessfulPaths = successfulPaths;
@@ -156,6 +159,8 @@ try {
         awaitingAnonymousRefresh = false;
         return;
       }
+      if (path === '/api/me' && response.status() === 401
+          && expiredAccessTokens.has(response.request().headers().authorization?.slice(7))) return;
       if (response.status() >= 400) failures.push(`${path}: ${response.status()}`);
       else {
         successfulPaths.add(path);
@@ -426,12 +431,63 @@ try {
       phase = 'quality persistence: collection status';
       await expect(page.getByTestId(inspectedRowId).filter({visible:true}).getByText('Engineer FAIL', { exact: true })).toBeVisible();
     }
+    if (user.role === 'customer') {
+      phase = 'shared browser refresh across tabs';
+      const originalAccess = token;
+      expiredAccessTokens.add(originalAccess);
+      let rotations = 0;
+      const countRotation = request => {
+        if (request.url() === 'http://127.0.0.1:8301/api/auth/refresh'
+            && request.method() === 'POST') rotations++;
+      };
+      context.on('request', countRotation);
+      const expireAccess = async route => {
+        if (route.request().headers().authorization === `Bearer ${originalAccess}`) {
+          await route.fulfill({
+            status: 401, contentType: 'application/json',
+            body: JSON.stringify({message:'Synthetic access expiry',error_code:'TOKEN_ERROR'}),
+            headers: {
+              'Access-Control-Allow-Origin':'http://127.0.0.1:8081',
+              'Access-Control-Allow-Credentials':'true',
+            },
+          });
+        } else await route.continue();
+      };
+      await context.route('http://127.0.0.1:8301/api/me', expireAccess);
+      secondTab = await context.newPage();
+      await Promise.all([
+        page.reload(),
+        secondTab.goto('http://127.0.0.1:8081/customer'),
+      ]);
+      await expect(page.getByTestId('customer-home-scroll')).toBeVisible();
+      await expect(secondTab.getByTestId('customer-home-scroll')).toBeVisible();
+      assert.equal(rotations, 1, 'Both tabs must share one refresh rotation');
+      await expect.poll(() => token !== originalAccess).toBe(true);
+      const renewedAccess = token;
+      assert.equal((await context.request.get('http://127.0.0.1:8301/api/me', {
+        headers:{Authorization:`Bearer ${renewedAccess}`},
+      })).status(), 200);
+      await secondTab.reload();
+      await expect(secondTab.getByTestId('customer-home-scroll')).toBeVisible();
+      assert.equal(rotations, 1, 'A tab with an obsolete closure must adopt the renewed token');
+      context.off('request', countRotation);
+      await context.unroute('http://127.0.0.1:8301/api/me', expireAccess);
+      console.log('PASS: real Expo tabs share one rotating credential and adopt renewed access');
+    }
     phase = 'logout';
     await page.getByText('More', { exact: true }).last().click();
     const logout = user.role === 'plant_owner' ? 'owner-logout' : user.role === 'driver' ? 'driver-logout' : 'logout-button';
     await page.getByTestId(logout).click();
     await expect(page.getByTestId('login-user-tab')).toBeVisible();
     await expect.poll(() => successfulPaths.has('/api/auth/logout')).toBe(true);
+    if (secondTab) {
+      await expect(secondTab.getByTestId('login-user-tab')).toBeVisible();
+      for (const tab of [page, secondTab]) {
+        assert.equal(await tab.evaluate(() => localStorage.getItem('tmrmc_token')), null);
+        assert.equal(await tab.evaluate(() => localStorage.getItem('tmrmc_refresh')), null);
+      }
+      console.log('PASS: sign-out clears credentials and signs out the other Expo tab');
+    }
     const revoked = await context.request.get('http://127.0.0.1:8301/api/me', { headers: { Authorization: `Bearer ${token}` } });
     assert.ok([401, 403].includes(revoked.status()), 'Logout must revoke the server session');
     assert.deepEqual(failures, [], 'Browser API failures');

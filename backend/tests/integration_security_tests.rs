@@ -581,3 +581,119 @@ async fn central_admin_rejects_unbound_jwt_and_logout_revokes_active_session(db:
         StatusCode::UNAUTHORIZED
     );
 }
+
+#[sqlx::test]
+async fn reviewer_disable_revokes_current_replaced_and_legacy_access(db: PgPool) {
+    use trackmyrmc_backend::auth::jwt::verify_token;
+    let mut state = state(db.clone());
+    let mut config = (*state.config).clone();
+    config.play_review_access_code = Some("654321".into());
+    config.jwt_expiration_hours = 24;
+    state.config = std::sync::Arc::new(config);
+    let public = trackmyrmc_backend::routes::build_app_router(state.clone());
+    let console = app(state.clone());
+    let payload = json!({"role":"customer","access_code":"654321"});
+    let (status, first) = request(&public, "/api/auth/play-review", None, Some(payload.clone())).await;
+    assert_eq!(status, StatusCode::OK);
+    let first_token = first["token"].as_str().unwrap();
+    let claims = verify_token(first_token, &state.config.jwt_secret).unwrap();
+    let legacy = generate_token(
+        claims.sub,
+        "customer",
+        &claims.phone,
+        None,
+        &state.config.jwt_secret,
+        1,
+    )
+    .unwrap();
+    let (status, second) = request(&public, "/api/auth/play-review", None, Some(payload)).await;
+    assert_eq!(status, StatusCode::OK);
+    let current = second["token"].as_str().unwrap();
+    let (status, rotated) = request(
+        &public,
+        "/api/auth/refresh",
+        None,
+        Some(json!({"refresh_token":second["refresh_token"]})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let renewed = rotated["access_token"].as_str().unwrap();
+    let renewed_claims = verify_token(renewed, &state.config.jwt_secret).unwrap();
+    assert!(renewed_claims.exp - renewed_claims.iat <= 2 * 3600);
+    assert_eq!(
+        request(&public, "/api/me", Some(renewed), None).await.0,
+        StatusCode::OK
+    );
+
+    let (_, email, secret) =
+        identity(&db, "central_admin", true, vec!["reviewer_access.manage"]).await;
+    let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
+    let (status, login) = request(
+        &console,
+        "/login",
+        None,
+        Some(json!({"identifier":email,"code":code})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let admin = login["token"].as_str().unwrap();
+    assert_eq!(
+        request(&console, "/step-up", Some(admin), Some(json!({"code":code})))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        request(
+            &console,
+            "/reviewer",
+            Some(admin),
+            Some(json!({"enabled":false,"reason":"Synthetic reviewer revocation regression"})),
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    for token in [first_token, current, renewed, &legacy] {
+        assert_eq!(
+            request(&public, "/api/me", Some(token), None).await.0,
+            StatusCode::UNAUTHORIZED
+        );
+    }
+    assert_eq!(
+        request(
+            &public,
+            "/api/auth/refresh",
+            None,
+            Some(json!({"refresh_token":rotated["refresh_token"]})),
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM account_refresh_tokens WHERE user_id=$1"
+        )
+        .bind(claims.sub)
+        .fetch_one(&db)
+        .await
+        .unwrap(),
+        0
+    );
+    assert_eq!(
+        request(
+            &console,
+            "/reviewer",
+            Some(admin),
+            Some(json!({"enabled":true,"reason":"Synthetic reviewer reactivation regression"})),
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        request(&public, "/api/me", Some(renewed), None).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+}
