@@ -55,7 +55,7 @@ const SERVICES: readonly { key: ServiceKey; label: string; symbol: VectorSymbolN
 export default function CustomerHome() {
   const { colors } = useTheme();
   const [quickGridWidth, setQuickGridWidth] = React.useState(0);
-  // At small viewports, two columns preserve the requested 75-unit SVGs without clipping.
+  // At small viewports, two columns preserve the requested 52-unit SVGs without clipping.
   const fourQuickColumns = quickGridWidth >= 334;
   const fourToolColumns = quickGridWidth >= 310;
   const { user } = useAuth();
@@ -82,8 +82,7 @@ export default function CustomerHome() {
   };
 
   const quickActions = (
-    <View testID="home-quick-actions" style={styles.groupCard}>
-      <AppText style={[styles.sectionTitle, { color: colors.onSurface }]}>Quick Actions</AppText>
+    <View testID="home-quick-actions" style={[styles.groupCard, styles.tightGroup]}>
       <View style={styles.grid} onLayout={event => {
         const width = event.nativeEvent.layout.width;
         setQuickGridWidth(previous => Math.abs(previous - width) > 1 ? width : previous);
@@ -97,7 +96,7 @@ export default function CustomerHome() {
             onPress={() => onAction(action.key)}
             style={({ pressed }) => [styles.tile, styles.quickTile, { width: fourQuickColumns ? "24.25%" : "49%", backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.75 : 1 }]}
           >
-            <VectorSymbol name={action.symbol} size={75} />
+            <VectorSymbol name={action.symbol} size={52} />
             <AppText numberOfLines={2} style={[styles.tileLabel, { color: colors.onSurface }]}>{action.label}</AppText>
           </Pressable>
         ))}
@@ -106,8 +105,7 @@ export default function CustomerHome() {
   );
 
   const tools = (
-    <View testID="customer-module-grid" style={styles.groupCard}>
-      <AppText style={[styles.sectionTitle, { color: colors.onSurface }]}>RMC Tools</AppText>
+    <View testID="customer-module-grid" style={[styles.groupCard, styles.tightGroup]}>
       <View style={styles.grid}>
         {CUSTOMER_MODULES.map(module => (
           <Pressable
@@ -162,9 +160,11 @@ export default function CustomerHome() {
         {error && !data ? (
           <>
             <ErrorView message={error} onRetry={reload} />
-            {quickActions}
-            <KycBanner status={user?.kyc_status || "NOT_STARTED"} />
-            {tools}
+            <View style={styles.homeAboveFold}>
+              {quickActions}
+              <KycBanner status={user?.kyc_status || "NOT_STARTED"} />
+              {tools}
+            </View>
             {otherServices}
           </>
         ) : loading && !data ? (
@@ -176,11 +176,13 @@ export default function CustomerHome() {
           </>
         ) : data ? (
           <>
-            {/* Approved five-image promotional carousel. */}
-            <HomeCarousel />
-            {quickActions}
-            <KycBanner status={data.kyc_status} />
-            {tools}
+            {/* Existing carousel and its five images remain unchanged. */}
+            <View style={styles.homeAboveFold}>
+              <HomeCarousel />
+              {quickActions}
+              <KycBanner status={data.kyc_status} />
+              {tools}
+            </View>
             {otherServices}
             {/* Preserve the existing active-order, stale-GPS and demo selection workflow. */}
             <ActiveTransitMixerCard
@@ -211,10 +213,13 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 190, gap: 11, maxWidth: 1100, alignSelf: "center", width: "100%" },
   // No second oversized glass perimeter: individual compact tiles carry the only border.
   groupCard: { width: "100%", maxWidth: 620, alignSelf: "center", paddingHorizontal: 0, paddingVertical: 2, gap: 7 },
+  // Exactly 4 dp between carousel, Quick Action cards, KYC card and RMC Tool cards.
+  homeAboveFold: { width: "100%", gap: 4 },
+  tightGroup: { paddingVertical: 0, gap: 0 },
   sectionTitle: { fontFamily: fonts.displayBold, fontSize: 19, paddingHorizontal: 2 },
   grid: { flexDirection: "row", flexWrap: "wrap", width: "100%", justifyContent: "space-between", rowGap: 5 },
   tile: { alignItems: "center", justifyContent: "center", paddingHorizontal: 1, paddingVertical: 5, gap: 4, borderWidth: 1, borderRadius: radius.md },
-  quickTile: { minHeight: 116 },
+  quickTile: { height: 104 },
   toolTile: { minHeight: 108 },
   serviceTile: { minHeight: 104 },
   tileLabel: { fontFamily: fonts.semibold, fontSize: 11, lineHeight: 14, textAlign: "center" },
