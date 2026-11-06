@@ -138,7 +138,6 @@ export default function CustomerPlants() {
   const [filters, setFilters] = useState({q:"",grade:"",radius_km:50,verified:false,...EMPTY_PLANT_GEO});
   const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null);
   const [details,setDetails] = useState<PlantData | null>(null);
-  const [quoteSubmitting,setQuoteSubmitting] = useState<string | null>(null);
   useEffect(() => { setSelectedPlantId(null); }, [userLocation?.lat, userLocation?.lng]);
   const manualLocation = useRef(false);
   const geoLookupVersion = useRef(0);
@@ -330,25 +329,6 @@ export default function CustomerPlants() {
     void Linking.openURL(place.google_maps_uri || fallback);
   }, []);
 
-  const requestGoogleQuotation = useCallback(async (place: GoogleNearbyPlant) => {
-    if (!token || quoteSubmitting) return;
-    setQuoteSubmitting(place.place_id);
-    try {
-      const result = await apiPost<{status:"REGISTERED" | "PENDING_PARTNER";plant_id?:string;message?:string}>(
-        "/customer/plants/google-quote-interest", token, {google_place_id:place.place_id},
-      );
-      if (result.status === "REGISTERED" && result.plant_id) {
-        router.push({pathname:"/customer/compare-plants",params:{plantId:result.plant_id}} as any);
-      } else {
-        toast(result.message || "Interest saved. No quotation has been sent: plant registration is pending.", "success");
-      }
-    } catch (error: any) {
-      toast(error?.detail || error?.message || "Could not record quotation interest. Please retry.", "error");
-    } finally {
-      setQuoteSubmitting(null);
-    }
-  }, [token, quoteSubmitting, router, toast]);
-
   return (
     <ThemedScreen>
     <View style={{ flex: 1, backgroundColor: colors.isDark ? "transparent" : colors.surface }}>
@@ -461,11 +441,10 @@ export default function CustomerPlants() {
                       <View key={place.place_id} testID="google-places-plant">
                         <ScreenshotPlantCard
                           plant={listing}
-                          onQuotation={() => void requestGoogleQuotation(place)}
+                          onQuotation={() => router.push({pathname:"/customer/request-quotation",params:{googlePlaceId:place.place_id,plantName:place.name}} as any)}
                           onSelect={() => setSelectedPlantId(listing.id)}
                           onDetails={() => {setSelectedPlantId(listing.id);setDetails(listing);}}
                           onOrder={() => toast("Ordering is available once this supplier completes TrackMyRMC verification.", "info")}
-                          quoteSubmitting={quoteSubmitting === place.place_id}
                         />
                       </View>
                     );
@@ -485,7 +464,7 @@ export default function CustomerPlants() {
           }
           renderItem={({ item }) => loading && !data ? null : (
             <ScreenshotPlantCard plant={item} onSelect={()=>setSelectedPlantId(item.id)} onDetails={()=>{setSelectedPlantId(item.id);setDetails(item);}}
-              onQuotation={()=>router.push({pathname:"/customer/compare-plants",params:{plantId:item.id}} as any)}
+              onQuotation={()=>router.push({pathname:"/customer/request-quotation",params:{plantId:item.id,plantName:item.name}} as any)}
               onOrder={()=>router.push(`/new-order?plantId=${item.id}` as any)} />
           )}
           ListFooterComponent={
@@ -545,7 +524,7 @@ export default function CustomerPlants() {
                 const place=googleEntries.find(entry=>`google:${entry.place_id}` === details.id);
                 if (place) openGooglePlace(place);
               }} />
-              <AppText variant="caption">Request Quotation records your interest only. This business cannot receive orders or quotations through TrackMyRMC until it joins and is approved.</AppText>
+              <AppText variant="caption">A submitted enquiry for this unregistered supplier is saved for TrackMyRMC admin assistance. The business is not automatically contacted.</AppText>
               <Button label="Place Order" disabled onPress={()=>{}} />
             </>
           ) : (
