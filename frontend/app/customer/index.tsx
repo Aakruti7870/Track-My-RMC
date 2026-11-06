@@ -1,6 +1,7 @@
 import React from "react";
-import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import Svg, { Circle, Path, Rect } from "react-native-svg";
 import { useRouter } from "expo-router";
 import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
 import { useAuth } from "@/src/auth/AuthContext";
@@ -54,10 +55,11 @@ const SERVICES: readonly { key: ServiceKey; label: string; symbol: VectorSymbolN
 
 export default function CustomerHome() {
   const { colors } = useTheme();
+  const { width: viewportWidth } = useWindowDimensions();
   const [quickGridWidth, setQuickGridWidth] = React.useState(0);
   // At small viewports, two columns preserve the requested 52-unit SVGs without clipping.
-  const fourQuickColumns = quickGridWidth >= 334;
-  const fourToolColumns = quickGridWidth >= 310;
+  const fourQuickColumns = quickGridWidth >= 270;
+  const fourToolColumns = quickGridWidth >= 270;
   const { user } = useAuth();
   const router = useRouter();
   const toast = useToast();
@@ -81,52 +83,114 @@ export default function CustomerHome() {
     router.push({ pathname: "/customer/service-enquiry", params: { service } });
   };
 
+  // Four circular shortcuts match the reference's visual hierarchy; all original
+  // actions, 52 dp vector artwork and KYC guards remain unchanged.
   const quickActions = (
     <View testID="home-quick-actions" style={[styles.groupCard, styles.tightGroup]}>
+      <View style={styles.sectionHeaderRow}>
+        <AppText style={[styles.sectionTitle, { color: colors.onSurface }]}>Quick Actions</AppText>
+        <View style={styles.slogan} accessibilityLabel="Built Better">
+          <Ionicons name="shield-checkmark" size={19} color={colors.verified} />
+          <AppText style={[styles.sloganText, { color: colors.verified }]}>Built Better</AppText>
+        </View>
+      </View>
       <View style={styles.grid} onLayout={event => {
         const width = event.nativeEvent.layout.width;
         setQuickGridWidth(previous => Math.abs(previous - width) > 1 ? width : previous);
       }}>
-        {ACTIONS.map((action) => (
+        {ACTIONS.map(action => (
           <Pressable
             key={action.key}
             testID={`action-${action.key}`}
             accessibilityRole="button"
             accessibilityLabel={action.label}
             onPress={() => onAction(action.key)}
-            style={({ pressed }) => [styles.tile, styles.quickTile, { width: fourQuickColumns ? "24.25%" : "49%", backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.75 : 1 }]}
+            style={({ pressed }) => [styles.tile, styles.quickTile, { width: fourQuickColumns ? "24.25%" : "49%", opacity: pressed ? 0.7 : 1 }]}
           >
-            <VectorSymbol name={action.symbol} size={52} />
-            <AppText numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85} style={[styles.tileLabel, { color: colors.onSurface }]}>{action.label}</AppText>
+            <View style={[styles.quickCircle, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+              <VectorSymbol name={action.symbol} size={52} />
+            </View>
+            <AppText numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.85}
+              style={[styles.quickLabel, { color: colors.onSurface }]}>{action.label}</AppText>
           </Pressable>
         ))}
       </View>
     </View>
   );
 
-  const tools = (
-    <View testID="customer-module-grid" style={[styles.groupCard, styles.tightGroup]}>
+  // Keep the original eight module keys in the registered catalog and simply
+  // present them as two clearly named four-item sections.
+  const renderModuleGroup = (keys: readonly string[], title: string, testID: string) => (
+    <View testID={testID} style={[styles.groupCard, styles.tightGroup]}>
+      <AppText style={[styles.sectionTitle, { color: colors.onSurface }]}>{title}</AppText>
       <View style={styles.grid}>
-        {CUSTOMER_MODULES.map(module => (
+        {keys.flatMap(key => CUSTOMER_MODULES.filter(module => module.key === key)).map(module => (
           <Pressable
             key={module.key}
             testID={`customer-module-${module.key}`}
             accessibilityRole="button"
             accessibilityLabel={module.label}
             onPress={() => router.push(module.route)}
-            style={({ pressed }) => [styles.tile, styles.toolTile, { width: fourToolColumns ? "24.25%" : "49%", backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.75 : 1 }]}
+            style={({ pressed }) => [styles.tile, styles.toolTile, { width: fourToolColumns ? "24.25%" : "49%", opacity: pressed ? 0.7 : 1 }]}
           >
-            {module.symbol ? <VectorSymbol name={module.symbol} size={52} /> : <Ionicons name={module.icon} size={52} color={colors.brand} />}
-            <AppText numberOfLines={3} style={[styles.tileLabel, { color: colors.onSurface }]}>{module.key === "projects" ? "Project Hub" : module.label}</AppText>
+            <View style={[styles.toolPlate, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+              {module.symbol ? <VectorSymbol name={module.symbol} size={52} /> : <Ionicons name={module.icon} size={52} color={colors.brand} />}
+            </View>
+            <AppText numberOfLines={3} adjustsFontSizeToFit minimumFontScale={0.85}
+              style={[styles.tileLabel, { color: colors.onSurface }]}>
+              {module.key === "projects" ? "Project Hub" : module.key === "free-tools" ? "RMC Calculator" : module.label}
+            </AppText>
           </Pressable>
         ))}
+      </View>
+    </View>
+  );
+  const planningTools = renderModuleGroup(
+    ["pour-planner", "compare-plants", "projects", "saved-sites"],
+    "Active Projects & Planning", "customer-module-grid",
+  );
+  const adviceTools = renderModuleGroup(
+    ["free-tools", "receiving-guide", "cube-tests", "customer-support"],
+    "Free Tools & Expert Advice", "home-advice-grid",
+  );
+
+  // A pump-rental module is not yet implemented. Route enquiries to the
+  // existing, authorized support screen rather than an unrelated order form.
+  const pumpOffer = (
+    <View testID="home-pump-rental-promo" style={styles.promoRow}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Concrete Pump On Rent"
+        accessibilityHint="Opens Customer Support for a pump rental enquiry"
+        onPress={() => router.push("/support")}
+        style={({ pressed }) => [styles.promoCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.76 : 1 }]}>
+        <Svg width={34} height={34} viewBox="0 0 64 64" accessible={false}>
+          <Rect x="4" y="34" width="40" height="14" rx="3" fill={colors.brand} />
+          <Rect x="28" y="27" width="15" height="9" rx="2" fill={colors.surface} stroke={colors.brand} strokeWidth="2" />
+          <Path d="M10 34 20 16 31 26 42 11 54 21 54 34" stroke={colors.brand} strokeWidth="5"
+            strokeLinecap="round" strokeLinejoin="round" fill="none" />
+          <Circle cx="15" cy="49" r="6" fill={colors.onSurface} />
+          <Circle cx="36" cy="49" r="6" fill={colors.onSurface} />
+          <Circle cx="15" cy="49" r="2.5" fill={colors.surface} />
+          <Circle cx="36" cy="49" r="2.5" fill={colors.surface} />
+        </Svg>
+        <AppText numberOfLines={2} style={[styles.promoText, { color: colors.onSurface }]}>Concrete Pump{"\n"}On Rent</AppText>
+        <Ionicons name="chevron-forward" size={16} color={colors.onSurfaceSecondary} />
+      </Pressable>
+      <View accessibilityLabel="On Time, Everytime" style={[styles.promoCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+        <Svg width={30} height={34} viewBox="0 0 44 52" accessible={false}>
+          <Rect x="16" y="1" width="12" height="10" rx="3" fill={colors.brand} />
+          <Rect x="16" y="41" width="12" height="10" rx="3" fill={colors.brand} />
+          <Circle cx="22" cy="26" r="17" fill={colors.surface} stroke={colors.brand} strokeWidth="4" />
+          <Path d="M22 15 V26 L30 31" fill="none" stroke={colors.brand} strokeWidth="3.5"
+            strokeLinecap="round" strokeLinejoin="round" />
+        </Svg>
+        <AppText numberOfLines={2} style={[styles.promoText, { color: colors.onSurface }]}>On Time,{"\n"}Everytime</AppText>
       </View>
     </View>
   );
 
   const otherServices = (
     <View testID="home-other-services" style={styles.groupCard}>
-      <AppText style={[styles.sectionTitle, { color: colors.onSurface }]}>Other Services</AppText>
+      <AppText style={[styles.sectionTitle, { color: colors.onSurface }]}>Supply & Workforce</AppText>
       <View style={styles.grid}>
         {SERVICES.map(service => (
           <Pressable
@@ -135,9 +199,11 @@ export default function CustomerHome() {
             accessibilityRole="button"
             accessibilityLabel={`${service.label} enquiry`}
             onPress={() => openService(service.key)}
-            style={({ pressed }) => [styles.tile, styles.serviceTile, { width: "32.5%", backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.75 : 1 }]}
+            style={({ pressed }) => [styles.tile, styles.serviceTile, { width: "32.5%", opacity: pressed ? 0.7 : 1 }]}
           >
-            <VectorSymbol name={service.symbol} size={58} />
+            <View style={[styles.servicePlate, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+              <VectorSymbol name={service.symbol} size={58} />
+            </View>
             <AppText numberOfLines={2} style={[styles.serviceLabel, { color: colors.onSurface }]}>{service.label}</AppText>
           </Pressable>
         ))}
@@ -163,7 +229,9 @@ export default function CustomerHome() {
             <View style={styles.homeAboveFold}>
               {quickActions}
               <KycBanner status={user?.kyc_status || "NOT_STARTED"} />
-              {tools}
+              {planningTools}
+              {pumpOffer}
+              {adviceTools}
             </View>
             {otherServices}
           </>
@@ -178,10 +246,12 @@ export default function CustomerHome() {
           <>
             {/* Existing carousel and its five images remain unchanged. */}
             <View style={styles.homeAboveFold}>
-              <HomeCarousel />
+              <HomeCarousel style={{ width: Math.min(viewportWidth, 720), borderRadius: 0, borderWidth: 0 }} />
               {quickActions}
               <KycBanner status={data.kyc_status} />
-              {tools}
+              {planningTools}
+              {pumpOffer}
+              {adviceTools}
             </View>
             {otherServices}
             {/* Preserve the existing active-order, stale-GPS and demo selection workflow. */}
@@ -211,17 +281,27 @@ const styles = StyleSheet.create({
   iconBtn: { width: 44, height: 44, borderRadius: 16, alignItems: "center", justifyContent: "center", borderWidth: 1 },
   dot: { position: "absolute", top: 7, right: 7, width: 8, height: 8, borderRadius: 4 },
   scrollContent: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 190, gap: 4, maxWidth: 1100, alignSelf: "center", width: "100%" },
-  // No second oversized glass perimeter: individual compact tiles carry the only border.
+  // Four-dp spacing across sections, with the carousel extending to the
+  // viewport edges. The surrounding scroll content keeps 16-dp gutters.
   groupCard: { width: "100%", maxWidth: 620, alignSelf: "center", paddingHorizontal: 0, paddingVertical: 0, gap: 4 },
-  // Exactly 4 dp between carousel, Quick Actions, KYC, RMC Tools and subsequent Home sections.
   homeAboveFold: { width: "100%", gap: 4 },
   tightGroup: { paddingVertical: 0, gap: 0 },
+  sectionHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8, minHeight: 30 },
   sectionTitle: { fontFamily: fonts.displayBold, fontSize: 19, paddingHorizontal: 2 },
+  slogan: { flexDirection: "row", alignItems: "center", gap: 5, paddingRight: 2 },
+  sloganText: { fontFamily: fonts.semibold, fontSize: 12 },
   grid: { flexDirection: "row", flexWrap: "wrap", width: "100%", justifyContent: "space-between", rowGap: 4 },
-  tile: { alignItems: "center", justifyContent: "center", paddingHorizontal: 1, paddingVertical: 5, gap: 4, borderWidth: 1, borderRadius: radius.md },
-  quickTile: { height: 80, paddingVertical: 3, gap: 3 },
-  toolTile: { minHeight: 108 },
-  serviceTile: { minHeight: 104 },
-  tileLabel: { fontFamily: fonts.semibold, fontSize: 11, lineHeight: 14, textAlign: "center" },
+  tile: { alignItems: "center", justifyContent: "center", paddingHorizontal: 1, paddingVertical: 2, gap: 4 },
+  quickTile: { minHeight: 98, paddingVertical: 3, gap: 5, borderWidth: 0 },
+  quickCircle: { width: 60, height: 60, borderRadius: 30, overflow: "hidden", borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  quickLabel: { fontFamily: fonts.semibold, fontSize: 12, lineHeight: 15, textAlign: "center", minHeight: 30 },
+  toolTile: { minHeight: 101, paddingVertical: 0, gap: 4, justifyContent: "flex-start" },
+  toolPlate: { width: "100%", height: 56, borderRadius: radius.md, borderWidth: 1, alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  tileLabel: { fontFamily: fonts.semibold, fontSize: 11, lineHeight: 13, textAlign: "center" },
+  promoRow: { flexDirection: "row", gap: 8, width: "100%", maxWidth: 620, alignSelf: "center" },
+  promoCard: { flex: 1, minWidth: 0, minHeight: 58, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, borderWidth: 1, borderRadius: radius.md, paddingHorizontal: 6, paddingVertical: 6 },
+  promoText: { flex: 1, minWidth: 0, fontFamily: fonts.semibold, fontSize: 11, lineHeight: 14, textAlign: "center" },
+  serviceTile: { minHeight: 103, paddingVertical: 0, gap: 4, justifyContent: "flex-start" },
+  servicePlate: { width: "100%", height: 62, borderRadius: radius.md, borderWidth: 1, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   serviceLabel: { fontFamily: fonts.semibold, fontSize: 12, lineHeight: 15, textAlign: "center" },
 });
