@@ -226,7 +226,7 @@ async fn offer_cannot_be_accepted_by_other_customer(db: PgPool) {
     let (_, offer) = post(
         &app,
         &format!("/api/owner/orders/{id}/payment-offer"),
-        json!({"advance_paise":null}),
+        json!({"advance_paise":null,"balance_due_on":(chrono::Utc::now().date_naive()+chrono::Duration::days(15)).to_string()}),
         &owner,
     )
     .await;
@@ -333,4 +333,56 @@ async fn plant_cannot_reject_customer_accepted_prepaid_terms(db: PgPool) {
     ).bind(id).fetch_one(&db).await.unwrap();
     assert_eq!(state.0, "pending");
     assert_eq!(state.1, "AWAITING_PAYMENT");
+}
+
+#[sqlx::test]
+async fn approved_credit_requires_explicit_future_due_date(db: PgPool) {
+    let (app, plant, customer, owner) = fixture(&db).await;
+    let id = create(&app, plant, "APPROVED_CREDIT", &customer).await;
+    let endpoint = format!("/api/owner/orders/{id}/payment-offer");
+    let (missing_status, _) = post(
+        &app, &endpoint, json!({"advance_paise":null}), &owner,
+    ).await;
+    assert_eq!(missing_status, StatusCode::BAD_REQUEST);
+
+    let delivery = chrono::Utc::now().date_naive() + chrono::Duration::days(1);
+    let (early_status, _) = post(
+        &app, &endpoint, json!({"advance_paise":null,"balance_due_on":delivery.to_string()}), &owner,
+    ).await;
+    assert_eq!(early_status, StatusCode::BAD_REQUEST);
+
+    let due = delivery + chrono::Duration::days(30);
+    let (status, response) = post(
+        &app, &endpoint, json!({"advance_paise":null,"balance_due_on":due.to_string()}), &owner,
+    ).await;
+    assert_eq!(status, StatusCode::OK, "{response}");
+    let recorded: (Option<chrono::NaiveDate>, String) = sqlx::query_as(
+        "SELECT balance_due_on,status FROM order_payment_offers WHERE order_id=$1"
+    ).bind(id).fetch_one(&db).await.unwrap();
+    assert_eq!(recorded.0, Some(due));
+    assert_eq!(recorded.1, "OFFERED");
+    let (status, accepted) = post(
+        &app, &format!("/api/customer/orders/{id}/accept-payment-terms"),
+        json!({"version":response["version"]}), &customer,
+    ).await;
+    assert_eq!(status, StatusCode::OK, "{accepted}");
+    assert_eq!(accepted["status"], "READY_FOR_PRODUCTION");
+    let payment_status: String = sqlx::query_scalar("SELECT payment_status FROM orders WHERE id=$1")
+        .bind(id).fetch_one(&db).await.unwrap();
+    assert_eq!(payment_status, "unpaid", "credit must not be recorded as paid");
+}
+
+#[sqlx::test]
+async fn partial_advance_balance_defaults_to_delivery_day(db: PgPool) {
+    let (app, plant, customer, owner) = fixture(&db).await;
+    let id = create(&app, plant, "PARTIAL_ADVANCE", &customer).await;
+    let (status, offer) = post(
+        &app, &format!("/api/owner/orders/{id}/payment-offer"),
+        json!({"advance_paise":10000}), &owner,
+    ).await;
+    assert_eq!(status, StatusCode::OK, "{offer}");
+    let (due, delivery): (Option<chrono::NaiveDate>, chrono::NaiveDate) = sqlx::query_as(
+        "SELECT p.balance_due_on,o.delivery_date FROM order_payment_offers p JOIN orders o ON o.id=p.order_id WHERE o.id=$1"
+    ).bind(id).fetch_one(&db).await.unwrap();
+    assert_eq!(due, Some(delivery));
 }
