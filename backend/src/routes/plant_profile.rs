@@ -148,6 +148,14 @@ fn visible_fields(section: &str, source: &Value) -> Vec<Value> {
         if value.is_empty() || value == "no" || value == "unknown" {
             return None;
         }
+        if section == "certifications" && CERTIFICATES.contains(&field.key) {
+            let expiry = value_string(source, &format!("{}_expiry", field.key));
+            let valid = NaiveDate::parse_from_str(expiry, "%Y-%m-%d")
+                .map(|date| date >= Utc::now().date_naive()).unwrap_or(false);
+            let has_evidence = !value_string(source, &format!("{}_document", field.key)).is_empty()
+                && !value_string(source, &format!("{}_number", field.key)).is_empty();
+            if !valid || !has_evidence { return None; }
+        }
         if field.kind == "attachment" {
             // Documents are accessed through a strictly authorization-checked route.
             return None;
@@ -156,7 +164,7 @@ fn visible_fields(section: &str, source: &Value) -> Vec<Value> {
         Some(json!({"key":field.key,"label":field.label,"value":value,"kind":field.kind}))
     }).collect()
 }
-fn public_documents(source: &Value) -> Vec<Value> {
+fn public_documents(plant: Uuid, source: &Value) -> Vec<Value> {
     let today = Utc::now().date_naive();
     CERTIFICATES.iter().filter_map(|key| {
         if value_string(source, key) != "yes" { return None; }
@@ -168,7 +176,7 @@ fn public_documents(source: &Value) -> Vec<Value> {
         Some(json!({
             "key":key,"title": CERTIFICATIONS.iter().find(|f|f.key==*key)?.label,
             "certificate_number":number,"valid_until":expires.to_string(),
-            "download_path":format!("/plant-profile/document/{key}")
+            "download_path":format!("/plant-profile/{plant}/document/{key}")
         }))
     }).collect()
 }
@@ -314,7 +322,7 @@ pub async fn public_profile(
         json!({"key":key,"title":title,"details":details,"available":!details.is_empty()})
     }).collect();
     let docs=rows.iter().find(|r|r.get::<String,_>("section_key")=="certifications")
-        .map(|r|public_documents(&r.get::<Value,_>("published_data"))).unwrap_or_default();
+        .map(|r|public_documents(plant,&r.get::<Value,_>("published_data"))).unwrap_or_default();
     Ok(Json(json!({"plant_id":plant,"plant_name":item.get::<String,_>("name"),
         "sections":sections,"documents":docs})))
 }
@@ -391,7 +399,7 @@ pub async fn decide(
     Path((plant,section)):Path<(Uuid,String)>, headers:HeaderMap,
     Json(request):Json<DecisionRequest>,
 )->Result<Json<Value>,AppError>{
-    admin.require("owner.assign")?;
+    admin.require("plant_owners.manage")?;
     super::control_center_routes::require_recent_step_up(&state,&admin,&headers).await?;
     checked_fields(&section)?;
     if request.reason.trim().len()>500 || (!request.approve && request.reason.trim().len()<10){
