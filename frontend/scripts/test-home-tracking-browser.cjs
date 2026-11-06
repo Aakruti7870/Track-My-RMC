@@ -72,8 +72,8 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    const slogan=await page.getByText('Built Better',{exact:true}).locator('xpath=..').boundingBox();
    if(Math.abs(slogan.width-106)>1||Math.abs(slogan.height-28)>2)
      throw Error('Built Better pill must be 106x28dp: '+JSON.stringify(slogan));
-   for(const id of ['action-new','action-track','action-plants','action-orders']){
-     const font=await page.getByTestId(id).locator('span').last().evaluate(el=>getComputedStyle(el).fontSize);
+   for(const [id,label] of [['action-new','New Order'],['action-track','Track Order'],['action-plants','Plants'],['action-orders','My Orders']]){
+     const font=await page.getByTestId(id).getByText(label,{exact:true}).evaluate(el=>getComputedStyle(el).fontSize);
      if(font!=='14px')throw Error('Quick Action label must be 14sp: '+id+' '+font);
    }
  }
