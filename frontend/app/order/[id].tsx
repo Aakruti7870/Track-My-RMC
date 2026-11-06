@@ -121,7 +121,7 @@ export default function OrderDetail() {
       }
     }
     const balance_due_on = balanceDueOn.trim();
-    if (balance_due_on && !/^\\d{4}-\\d{2}-\\d{2}$/.test(balance_due_on)) {
+    if (balance_due_on && !/^\d{4}-\d{2}-\d{2}$/.test(balance_due_on)) {
       toast("Enter the balance due date as YYYY-MM-DD", "error");
       return;
     }
