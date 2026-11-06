@@ -170,7 +170,6 @@ async fn migrations_apply_from_an_empty_database() {
     pool.close().await;
 }
 
-
 /// A previous production deployment may have already applied migration 44
 /// before the security PR that introduces 42/43 is merged. Prove SQLx can
 /// backfill those pending versions without replaying or altering 44.
@@ -192,7 +191,10 @@ async fn late_session_migrations_apply_after_existing_rfq_version_44(pool: sqlx:
         ),
         ..sqlx::migrate!("./migrations")
     };
-    deployed.run(&pool).await.expect("simulate production through migration 44");
+    deployed
+        .run(&pool)
+        .await
+        .expect("simulate production through migration 44");
     let version_44_before: Vec<u8> = sqlx::query_scalar(
         "SELECT checksum FROM _sqlx_migrations WHERE version=44 AND success=TRUE",
     )
@@ -227,12 +229,13 @@ async fn late_session_migrations_apply_after_existing_rfq_version_44(pool: sqlx:
     .await
     .unwrap();
     assert_eq!(version_44_before, version_44_after);
-    let refresh_table_exists: bool = sqlx::query_scalar(
-        "SELECT to_regclass('public.account_refresh_tokens') IS NOT NULL",
-    )
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    let refresh_table_exists: bool =
+        sqlx::query_scalar("SELECT to_regclass('public.account_refresh_tokens') IS NOT NULL")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert!(refresh_table_exists);
-    all.run(&pool).await.expect("re-running migrations must be idempotent");
+    all.run(&pool)
+        .await
+        .expect("re-running migrations must be idempotent");
 }
