@@ -114,7 +114,7 @@ assert.ok(nav.includes('<VectorSymbol name={symbol} size={35} />'), "Navigation 
 assert.ok(nav.includes('styles.tabSide}>{leftRoutes.map(renderTab)') && nav.includes('styles.tabSide}>{rightRoutes.map(renderTab)'), "Two symmetric side groups must flank New Order");
 assert.ok(!nav.includes("styles.iconWrap"), "Navigation icon plates must be absent");
 const kyc = read("src/components/KycBanner.tsx");
-assert.ok(kyc.includes('<VectorSymbol name={cfg.symbol} size={45} />'), "KYC artwork must be 45 units");
+assert.ok(kyc.includes('<VectorSymbol name={cfg.symbol} size={28} />'), "KYC artwork must be 28 units");
 assert.ok(!kyc.includes("styles.icon"), "KYC icon plate must be absent");
 const header = read("src/components/customer/CustomerHomeHeader.tsx");
 for (const expected of ['name="shield-outline" size={35}', 'name="scan-outline" size={32}', 'name="qr-code-outline" size={19}', 'name="notifications-outline" size={26}']) {
