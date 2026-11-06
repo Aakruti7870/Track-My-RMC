@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS order_payment_offers (
         ('FULL_ADVANCE','PARTIAL_ADVANCE','ON_DELIVERY','APPROVED_CREDIT')),
     total_amount NUMERIC(12,2) NOT NULL CHECK (total_amount > 0),
     advance_amount NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (advance_amount >= 0),
+    -- Explicit due date for outstanding balance; never infer open-ended credit.
+    balance_due_on DATE,
     status VARCHAR(32) NOT NULL DEFAULT 'OFFERED' CHECK (status IN
         ('OFFERED','AWAITING_PAYMENT','READY_FOR_PRODUCTION','CANCELLED')),
     version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0),
@@ -26,6 +28,10 @@ CREATE TABLE IF NOT EXISTS order_payment_offers (
         (mode='FULL_ADVANCE' AND advance_amount=total_amount) OR
         (mode='PARTIAL_ADVANCE' AND advance_amount > 0 AND advance_amount < total_amount) OR
         (mode IN ('ON_DELIVERY','APPROVED_CREDIT') AND advance_amount=0)
+    ),
+    CONSTRAINT order_payment_balance_due_consistency CHECK (
+        (mode='FULL_ADVANCE' AND balance_due_on IS NULL)
+        OR (mode IN ('PARTIAL_ADVANCE','ON_DELIVERY','APPROVED_CREDIT') AND balance_due_on IS NOT NULL)
     )
 );
 CREATE INDEX IF NOT EXISTS idx_order_payment_offers_expires
