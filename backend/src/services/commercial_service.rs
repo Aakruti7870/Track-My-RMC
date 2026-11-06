@@ -274,6 +274,23 @@ pub async fn request(
     .bind(id.to_string())
     .execute(&mut *tx)
     .await?;
+    // Notify only active plant staff explicitly granted quotation view permission.
+    // Other roles cannot see these private RFQ details.
+    sqlx::query(
+        "INSERT INTO notifications(user_id,title,body,notification_type,reference_id)
+         SELECT ps.user_id,'New RMC quotation request',$2,'rmc_rfq',$3
+         FROM plant_staff ps
+         JOIN users u ON u.id=ps.user_id AND u.is_active=TRUE AND u.role=ps.role
+         JOIN rmc_plants p ON p.id=ps.plant_id AND p.is_active=TRUE
+         JOIN plant_staff_module_permissions m ON m.plant_id=ps.plant_id AND m.user_id=ps.user_id
+         WHERE ps.plant_id=$1 AND ps.is_active=TRUE AND m.module_key='quotations'
+         AND m.can_view=TRUE AND ps.user_id<>p.owner_id"
+    )
+    .bind(payload.plant_id)
+    .bind(format!("A customer requested {} m3 of {}", quantity, grade))
+    .bind(id.to_string())
+    .execute(&mut *tx)
+    .await?;
     sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'quotation.request','rfq',$2,$3)").bind(customer).bind(format!("{id}")).bind(json!({"plant_id":payload.plant_id})).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(id)
@@ -392,6 +409,21 @@ pub async fn respond(
     };
     sqlx::query("UPDATE customer_quotation_requests SET status=$2,decline_reason=$3,response_payload=$4,updated_at=NOW() WHERE id=$1").bind(request).bind(status).bind(payload.decline_reason).bind(intent).execute(&mut *tx).await?;
     sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'quotation.respond','rfq',$2,$3)").bind(actor).bind(request.to_string()).bind(json!({"status":status,"quotation":quote})).execute(&mut *tx).await?;
+    // Notify the requesting customer through the existing private in-app feed.
+    sqlx::query(
+        "INSERT INTO notifications(user_id,title,body,notification_type,reference_id)
+         VALUES($1,$2,$3,'rmc_quotation_response',$4)"
+    )
+    .bind(row.get::<Uuid, _>("customer_id"))
+    .bind(if status == "QUOTED" { "Your RMC quotation is ready" } else { "RMC quotation request declined" })
+    .bind(if status == "QUOTED" {
+        "Your selected plant has prepared an official quotation. Open Quotations to review it."
+    } else {
+        "Your selected plant has declined this request. Open Quotations to see the response."
+    })
+    .bind(request.to_string())
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
     Ok(json!({"success":true,"status":status,"quotation":quote}))
 }
