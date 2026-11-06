@@ -41,11 +41,15 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  const quickSectionBox=await page.getByTestId('home-quick-actions').boundingBox();
  const kycBox=await page.getByTestId('kyc-banner').boundingBox();
  const toolSectionBox=await page.getByTestId('customer-module-grid').boundingBox();
+ const otherServicesSectionBox=await page.getByTestId('home-other-services').boundingBox();
+ const trackingSectionBox=await page.getByTestId('demo-tracking-card').locator('xpath=..').boundingBox();
  const gapBetween=(above,below)=>below.y-(above.y+above.height);
  for(const [name,actual] of [
    ['carousel to quick actions',gapBetween(carouselBox,quickSectionBox)],
    ['quick actions to KYC',gapBetween(quickSectionBox,kycBox)],
    ['KYC to RMC tools',gapBetween(kycBox,toolSectionBox)],
+   ['RMC tools to Other Services',gapBetween(toolSectionBox,otherServicesSectionBox)],
+   ['Other Services to tracking section',gapBetween(otherServicesSectionBox,trackingSectionBox)],
  ])if(Math.abs(actual-4)>1)throw Error(`${name} must be 4dp; got ${actual}`);
  for(const title of ['Quick Actions','RMC Tools'])if(await page.getByText(title,{exact:true}).count())throw Error(`Unexpected home section header: ${title}`);
  if((await page.getByTestId('action-plants').innerText()).trim()!=='Plants')throw Error('Third Quick Action must be labeled Plants');
