@@ -6,7 +6,11 @@ use crate::{
     routes::customer_routes::CustomerRfqPayload,
     state::AppState,
 };
-use axum::{extract::{Path, State}, response::IntoResponse, Json};
+use axum::{
+    extract::{Path, State},
+    response::IntoResponse,
+    Json,
+};
 use chrono::{NaiveDate, Utc};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -34,7 +38,9 @@ pub struct NewRmcRfq {
 
 fn validate(input: &NewRmcRfq) -> Result<(), AppError> {
     if !input.share_with_supplier {
-        return Err(AppError::BadRequest("Supplier-sharing permission is required".into()));
+        return Err(AppError::BadRequest(
+            "Supplier-sharing permission is required".into(),
+        ));
     }
     if input.google_place_id.is_some() == input.plant_id.is_some() {
         return Err(AppError::BadRequest("Choose exactly one supplier".into()));
@@ -42,41 +48,69 @@ fn validate(input: &NewRmcRfq) -> Result<(), AppError> {
     if !(2..=160).contains(&input.customer_name.trim().len())
         || !(5..=500).contains(&input.site_address.trim().len())
     {
-        return Err(AppError::BadRequest("Enter a valid customer name and site address".into()));
+        return Err(AppError::BadRequest(
+            "Enter a valid customer name and site address".into(),
+        ));
     }
     if input.customer_email.as_ref().is_some_and(|email| {
-        email.len() > 254 || email.contains(char::is_whitespace)
-        || !email.contains('@') || !email.split('@').nth(1).is_some_and(|domain| domain.contains('.'))
+        email.len() > 254
+            || email.contains(char::is_whitespace)
+            || !email.contains('@')
+            || !email
+                .split('@')
+                .nth(1)
+                .is_some_and(|domain| domain.contains('.'))
     }) {
         return Err(AppError::BadRequest("Invalid customer email".into()));
     }
-    if input.customer_gstin.as_ref().is_some_and(|gst| {
-        gst.len() != 15 || !gst.bytes().all(|c| c.is_ascii_alphanumeric())
-    }) {
-        return Err(AppError::BadRequest("GSTIN must contain 15 alphanumeric characters".into()));
+    if input
+        .customer_gstin
+        .as_ref()
+        .is_some_and(|gst| gst.len() != 15 || !gst.bytes().all(|c| c.is_ascii_alphanumeric()))
+    {
+        return Err(AppError::BadRequest(
+            "GSTIN must contain 15 alphanumeric characters".into(),
+        ));
     }
-    let phone: String = input.site_contact_phone.chars().filter(|c| c.is_ascii_digit()).collect();
+    let phone: String = input
+        .site_contact_phone
+        .chars()
+        .filter(|c| c.is_ascii_digit())
+        .collect();
     if !(10..=15).contains(&phone.len()) || input.site_contact_phone.len() > 20 {
-        return Err(AppError::BadRequest("Enter a valid site contact number".into()));
+        return Err(AppError::BadRequest(
+            "Enter a valid site contact number".into(),
+        ));
     }
     let grade = crate::services::customer_order::canonical_grade(&input.grade);
-    if !["M10","M15","M20","M25","M30","M35","M40","M45","M50","M55","M60"]
-        .contains(&grade.strip_suffix("PILE").unwrap_or(&grade))
+    if ![
+        "M10", "M15", "M20", "M25", "M30", "M35", "M40", "M45", "M50", "M55", "M60",
+    ]
+    .contains(&grade.strip_suffix("PILE").unwrap_or(&grade))
     {
         return Err(AppError::BadRequest("Unsupported concrete grade".into()));
     }
-    if !input.quantity_m3.is_finite() || input.quantity_m3 <= 0.0
+    if !input.quantity_m3.is_finite()
+        || input.quantity_m3 <= 0.0
         || input.quantity_m3 > 10000.0
         || ((input.quantity_m3 * 100.0).round() - input.quantity_m3 * 100.0).abs() > 0.00001
     {
-        return Err(AppError::BadRequest("Quantity must be 0.01–10000 m3 with at most two decimals".into()));
+        return Err(AppError::BadRequest(
+            "Quantity must be 0.01–10000 m3 with at most two decimals".into(),
+        ));
     }
     if input.delivery_date < Utc::now().date_naive() {
-        return Err(AppError::BadRequest("Delivery date cannot be in the past".into()));
+        return Err(AppError::BadRequest(
+            "Delivery date cannot be in the past".into(),
+        ));
     }
     if input.site_lat.is_some() != input.site_lng.is_some()
-        || input.site_lat.is_some_and(|v| !v.is_finite() || !(-90.0..=90.0).contains(&v))
-        || input.site_lng.is_some_and(|v| !v.is_finite() || !(-180.0..=180.0).contains(&v))
+        || input
+            .site_lat
+            .is_some_and(|v| !v.is_finite() || !(-90.0..=90.0).contains(&v))
+        || input
+            .site_lng
+            .is_some_and(|v| !v.is_finite() || !(-180.0..=180.0).contains(&v))
     {
         return Err(AppError::BadRequest("Invalid site coordinates".into()));
     }
@@ -89,7 +123,10 @@ fn validate(input: &NewRmcRfq) -> Result<(), AppError> {
 }
 
 async fn verify_google_place(state: &AppState, place_id: &str) -> Result<(), AppError> {
-    let key = state.config.google_places_api_key.as_deref()
+    let key = state
+        .config
+        .google_places_api_key
+        .as_deref()
         .ok_or_else(|| AppError::InternalError("Google Places is not configured".into()))?;
     let mut url = reqwest::Url::parse("https://places.googleapis.com/v1/places/")
         .map_err(|_| AppError::InternalError("Invalid Google Places endpoint".into()))?;
@@ -98,15 +135,23 @@ async fn verify_google_place(state: &AppState, place_id: &str) -> Result<(), App
         .pop_if_empty()
         .push(place_id);
     let response = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10)).build()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
         .map_err(|_| AppError::InternalError("Google Places client unavailable".into()))?
-        .get(url).header("X-Goog-Api-Key", key).header("X-Goog-FieldMask", "id")
-        .send().await
+        .get(url)
+        .header("X-Goog-Api-Key", key)
+        .header("X-Goog-FieldMask", "id")
+        .send()
+        .await
         .map_err(|_| AppError::InternalError("Google Places verification unavailable".into()))?;
     if !response.status().is_success() {
-        return Err(AppError::BadRequest("Selected Google business could not be verified".into()));
+        return Err(AppError::BadRequest(
+            "Selected Google business could not be verified".into(),
+        ));
     }
-    let result: Value = response.json().await
+    let result: Value = response
+        .json()
+        .await
         .map_err(|_| AppError::InternalError("Invalid Google Places response".into()))?;
     if result["id"].as_str() != Some(place_id) {
         return Err(AppError::BadRequest("Google Place ID did not match".into()));
@@ -126,57 +171,77 @@ pub async fn create(
         "SELECT id,status,canonical_request_id FROM rmc_rfq_leads WHERE customer_id=$1 AND request_key=$2"
     ).bind(auth.user_id).bind(payload.request_key).fetch_optional(&state.db).await?;
     if let Some((id, status, canonical_request_id)) = previous {
-        return Ok(Json(json!({"id":id,"status":status,"canonical_request_id":canonical_request_id,"idempotent_replay":true})));
+        return Ok(Json(
+            json!({"id":id,"status":status,"canonical_request_id":canonical_request_id,"idempotent_replay":true}),
+        ));
     }
     let recent: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM rmc_rfq_leads WHERE customer_id=$1 AND created_at > NOW() - INTERVAL '1 hour'"
     ).bind(auth.user_id).fetch_one(&state.db).await?;
     if recent >= 10 {
-        return Err(AppError::RateLimited("Quotation request limit reached. Please try later".into()));
+        return Err(AppError::RateLimited(
+            "Quotation request limit reached. Please try later".into(),
+        ));
     }
     let approved_plant = if let Some(plant_id) = payload.plant_id {
         let exists: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM rmc_plants p WHERE id=$1 AND is_active AND EXISTS(SELECT 1 FROM plant_listing_requests r WHERE r.plant_id=p.id AND r.status='APPROVED'))"
         ).bind(plant_id).fetch_one(&state.db).await?;
-        if !exists { return Err(AppError::Conflict("Selected plant is not approved".into())); }
+        if !exists {
+            return Err(AppError::Conflict("Selected plant is not approved".into()));
+        }
         Some(plant_id)
     } else {
-        let place = payload.google_place_id.as_deref().expect("validated source");
+        let place = payload
+            .google_place_id
+            .as_deref()
+            .expect("validated source");
         let linked: Option<Uuid> = sqlx::query_scalar(
             "SELECT p.id FROM rmc_plants p WHERE p.google_place_id=$1 AND p.is_active AND EXISTS(SELECT 1 FROM plant_listing_requests r WHERE r.plant_id=p.id AND r.status='APPROVED') LIMIT 1"
         ).bind(place).fetch_optional(&state.db).await?;
-        if linked.is_none() { verify_google_place(&state, place).await?; }
+        if linked.is_none() {
+            verify_google_place(&state, place).await?;
+        }
         linked
     };
     if let Some(plant) = approved_plant {
-        let rfq_id = crate::services::commercial_service::request(&state, auth.user_id, CustomerRfqPayload {
-            plant_id: plant,
-            site_id: None,
-            site_name: Some("Delivery site".into()),
-            site_address: Some(payload.site_address.clone()),
-            grade: payload.grade.clone(),
-            quantity_m3: Some(payload.quantity_m3),
-            quantity: None,
-            required_date: Some(payload.delivery_date.to_string()),
-            pump_required: Some(payload.pump_required),
-            notes: None,
-            lead: Some(crate::routes::customer_routes::CustomerRfqLeadDetails {
-                request_key: payload.request_key,
-                google_place_id: payload.google_place_id.clone(),
-                customer_name: payload.customer_name.clone(),
-                customer_email: payload.customer_email.clone(),
-                customer_gstin: payload.customer_gstin.clone(),
-                site_address: payload.site_address.clone(),
-                site_lat: payload.site_lat,
-                site_lng: payload.site_lng,
-                site_contact_phone: payload.site_contact_phone.clone(),
-                share_with_supplier: payload.share_with_supplier,
-            }),
-        }).await?;
-        let lead_id: Uuid = sqlx::query_scalar(
-            "SELECT id FROM rmc_rfq_leads WHERE canonical_request_id=$1"
-        ).bind(rfq_id).fetch_one(&state.db).await?;
-        return Ok(Json(json!({"id":lead_id,"canonical_request_id":rfq_id,"status":"REQUESTED","message":"Quotation request submitted to the approved plant"})));
+        let rfq_id = crate::services::commercial_service::request(
+            &state,
+            auth.user_id,
+            CustomerRfqPayload {
+                plant_id: plant,
+                site_id: None,
+                site_name: Some("Delivery site".into()),
+                site_address: Some(payload.site_address.clone()),
+                grade: payload.grade.clone(),
+                quantity_m3: Some(payload.quantity_m3),
+                quantity: None,
+                required_date: Some(payload.delivery_date.to_string()),
+                pump_required: Some(payload.pump_required),
+                notes: None,
+                lead: Some(crate::routes::customer_routes::CustomerRfqLeadDetails {
+                    request_key: payload.request_key,
+                    google_place_id: payload.google_place_id.clone(),
+                    customer_name: payload.customer_name.clone(),
+                    customer_email: payload.customer_email.clone(),
+                    customer_gstin: payload.customer_gstin.clone(),
+                    site_address: payload.site_address.clone(),
+                    site_lat: payload.site_lat,
+                    site_lng: payload.site_lng,
+                    site_contact_phone: payload.site_contact_phone.clone(),
+                    share_with_supplier: payload.share_with_supplier,
+                }),
+            },
+        )
+        .await?;
+        let lead_id: Uuid =
+            sqlx::query_scalar("SELECT id FROM rmc_rfq_leads WHERE canonical_request_id=$1")
+                .bind(rfq_id)
+                .fetch_one(&state.db)
+                .await?;
+        return Ok(Json(
+            json!({"id":lead_id,"canonical_request_id":rfq_id,"status":"REQUESTED","message":"Quotation request submitted to the approved plant"}),
+        ));
     }
     let mut tx = state.db.begin().await?;
     let lead_id: Uuid = sqlx::query_scalar(
@@ -196,15 +261,22 @@ pub async fn create(
     .bind(lead_id.to_string()).execute(&mut *tx).await?;
     sqlx::query(
         "INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata)
-         VALUES($1,'rmc_rfq_lead.create','rmc_rfq_lead',$2,$3)"
-    ).bind(auth.user_id).bind(lead_id.to_string()).bind(json!({"status":"PENDING_SUPPLIER"}))
-    .execute(&mut *tx).await?;
+         VALUES($1,'rmc_rfq_lead.create','rmc_rfq_lead',$2,$3)",
+    )
+    .bind(auth.user_id)
+    .bind(lead_id.to_string())
+    .bind(json!({"status":"PENDING_SUPPLIER"}))
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
-    Ok(Json(json!({"id":lead_id,"status":"PENDING_SUPPLIER","message":"Enquiry saved for TrackMyRMC assistance. Supplier has not been contacted."})))
+    Ok(Json(
+        json!({"id":lead_id,"status":"PENDING_SUPPLIER","message":"Enquiry saved for TrackMyRMC assistance. Supplier has not been contacted."}),
+    ))
 }
 
 pub async fn list_customer(
-    State(state): State<AppState>, auth: AuthUser,
+    State(state): State<AppState>,
+    auth: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth, &["customer"])?;
     let rows: Vec<Value> = sqlx::query_scalar(
@@ -223,32 +295,52 @@ pub async fn confirm_match(
     check_role(&auth, &["customer"])?;
     let row = sqlx::query(
         "SELECT * FROM rmc_rfq_leads
-         WHERE id=$1 AND customer_id=$2 AND expires_at>NOW()"
-    ).bind(lead_id).bind(auth.user_id).fetch_optional(&state.db).await?
+         WHERE id=$1 AND customer_id=$2 AND expires_at>NOW()",
+    )
+    .bind(lead_id)
+    .bind(auth.user_id)
+    .fetch_optional(&state.db)
+    .await?
     .ok_or_else(|| AppError::NotFound("Active enquiry not found".into()))?;
     let status: String = row.get("status");
     if status == "REQUESTED" {
-        if let Some(rfq_id) = row.get::<Option<Uuid>,_>("canonical_request_id") {
-            return Ok(Json(json!({"id":lead_id,"canonical_request_id":rfq_id,"status":"REQUESTED","idempotent_replay":true})));
+        if let Some(rfq_id) = row.get::<Option<Uuid>, _>("canonical_request_id") {
+            return Ok(Json(
+                json!({"id":lead_id,"canonical_request_id":rfq_id,"status":"REQUESTED","idempotent_replay":true}),
+            ));
         }
     }
     if status != "MATCHED_RECONFIRMATION_REQUIRED" {
-        return Err(AppError::Conflict("Enquiry is not ready for reconfirmation".into()));
+        return Err(AppError::Conflict(
+            "Enquiry is not ready for reconfirmation".into(),
+        ));
     }
-    let plant_id = row.get::<Option<Uuid>,_>("plant_id")
+    let plant_id = row
+        .get::<Option<Uuid>, _>("plant_id")
         .ok_or_else(|| AppError::Conflict("Supplier has not been linked".into()))?;
     let request_key: Uuid = row.get("request_key");
     let site_address: String = row.get("site_address");
     let grade: String = row.get("grade");
-    let quantity_m3: f64 = row.get::<bigdecimal::BigDecimal,_>("quantity_m3")
-        .to_string().parse().map_err(|_| AppError::Conflict("Invalid stored quantity".into()))?;
+    let quantity_m3: f64 = row
+        .get::<bigdecimal::BigDecimal, _>("quantity_m3")
+        .to_string()
+        .parse()
+        .map_err(|_| AppError::Conflict("Invalid stored quantity".into()))?;
     let required_date: NaiveDate = row.get("delivery_date");
     let rfq_id = crate::services::commercial_service::request(
-        &state, auth.user_id, CustomerRfqPayload {
-            plant_id, site_id: None, site_name: Some("Delivery site".into()),
-            site_address: Some(site_address.clone()), grade, quantity_m3: Some(quantity_m3),
-            quantity: None, required_date: Some(required_date.to_string()),
-            pump_required: Some(row.get("pump_required")), notes: None,
+        &state,
+        auth.user_id,
+        CustomerRfqPayload {
+            plant_id,
+            site_id: None,
+            site_name: Some("Delivery site".into()),
+            site_address: Some(site_address.clone()),
+            grade,
+            quantity_m3: Some(quantity_m3),
+            quantity: None,
+            required_date: Some(required_date.to_string()),
+            pump_required: Some(row.get("pump_required")),
+            notes: None,
             lead: Some(crate::routes::customer_routes::CustomerRfqLeadDetails {
                 request_key,
                 google_place_id: row.get("google_place_id"),
@@ -261,18 +353,24 @@ pub async fn confirm_match(
                 site_contact_phone: row.get("site_contact_phone"),
                 share_with_supplier: true,
             }),
-        }
-    ).await?;
-    Ok(Json(json!({"id":lead_id,"canonical_request_id":rfq_id,"status":"REQUESTED"})))
+        },
+    )
+    .await?;
+    Ok(Json(
+        json!({"id":lead_id,"canonical_request_id":rfq_id,"status":"REQUESTED"}),
+    ))
 }
 
 pub async fn list_admin(
-    State(state): State<AppState>, auth: AuthUser,
+    State(state): State<AppState>,
+    auth: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth, &["admin"])?;
     let rows: Vec<Value> = sqlx::query_scalar(
-        "SELECT to_jsonb(l) FROM rmc_rfq_leads l ORDER BY created_at DESC LIMIT 200"
-    ).fetch_all(&state.db).await?;
+        "SELECT to_jsonb(l) FROM rmc_rfq_leads l ORDER BY created_at DESC LIMIT 200",
+    )
+    .fetch_all(&state.db)
+    .await?;
     Ok(Json(json!({"leads":rows})))
 }
 
@@ -281,35 +379,43 @@ mod tests {
     use super::*;
     fn valid() -> NewRmcRfq {
         NewRmcRfq {
-            request_key: Uuid::new_v4(), google_place_id: Some("ChIJ_example".into()),
-            plant_id: None, customer_name: "Customer Example".into(),
-            customer_email: None, customer_gstin: None, grade: "M25".into(),
-            quantity_m3: 12.5, site_address: "Plot 123, Panvel, Maharashtra".into(),
-            site_lat: None, site_lng: None, delivery_date: Utc::now().date_naive(),
-            pump_required: false, site_contact_phone: "9876543210".into(),
+            request_key: Uuid::new_v4(),
+            google_place_id: Some("ChIJ_example".into()),
+            plant_id: None,
+            customer_name: "Customer Example".into(),
+            customer_email: None,
+            customer_gstin: None,
+            grade: "M25".into(),
+            quantity_m3: 12.5,
+            site_address: "Plot 123, Panvel, Maharashtra".into(),
+            site_lat: None,
+            site_lng: None,
+            delivery_date: Utc::now().date_naive(),
+            pump_required: false,
+            site_contact_phone: "9876543210".into(),
             share_with_supplier: true,
         }
     }
     #[test]
     fn requires_consent_and_exactly_one_supplier() {
-        let mut lead=valid();
+        let mut lead = valid();
         assert!(validate(&lead).is_ok());
-        lead.share_with_supplier=false;
+        lead.share_with_supplier = false;
         assert!(validate(&lead).is_err());
-        lead.share_with_supplier=true;
-        lead.plant_id=Some(Uuid::new_v4());
+        lead.share_with_supplier = true;
+        lead.plant_id = Some(Uuid::new_v4());
         assert!(validate(&lead).is_err());
     }
     #[test]
     fn rejects_malformed_contact_and_grade_and_quantity() {
-        let mut lead=valid();
-        lead.site_contact_phone="123".into();
+        let mut lead = valid();
+        lead.site_contact_phone = "123".into();
         assert!(validate(&lead).is_err());
-        lead.site_contact_phone="9876543210".into();
-        lead.grade="M999".into();
+        lead.site_contact_phone = "9876543210".into();
+        lead.grade = "M999".into();
         assert!(validate(&lead).is_err());
-        lead.grade="M25".into();
-        lead.quantity_m3=0.0;
+        lead.grade = "M25".into();
+        lead.quantity_m3 = 0.0;
         assert!(validate(&lead).is_err());
     }
 }
