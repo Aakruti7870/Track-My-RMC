@@ -35,7 +35,7 @@ export default function PlansPromotions() {
         styles.content,
         { paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom + spacing.xl },
       ]}
-      style={{ flex: 1, backgroundColor: colors.background }}
+      style={{ flex: 1, backgroundColor: colors.surface }}
     >
       <Pressable
         onPress={() => router.back()}
@@ -65,7 +65,7 @@ export default function PlansPromotions() {
         <AppText variant="bodyMuted">
           For document verification, plan enquiries and personalized service quotations:
         </AppText>
-        <AppText style={{ color: colors.brand, fontSize: fontSize.md }}>
+        <AppText style={{ color: colors.brand, fontSize: fontSize.base }}>
           support@trackmyrmc.com
         </AppText>
         <Button label="Email Support" onPress={contactSupport} />
