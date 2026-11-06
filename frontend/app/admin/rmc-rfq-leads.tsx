@@ -1,8 +1,13 @@
 import React, { useMemo, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, View } from "react-native";
+import { Pressable, RefreshControl, ScrollView, Share, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { apiPatch, apiErrorDetail } from "@/src/api/client";
+import { useAuth } from "@/src/auth/AuthContext";
+import { useToast } from "@/src/components/ui/Toast";
+import { Input } from "@/src/components/ui/Input";
+import { Button } from "@/src/components/ui/Button";
 import { AppText } from "@/src/components/ui/AppText";
 import { Badge } from "@/src/components/ui/Badge";
 import { Card } from "@/src/components/ui/Card";
@@ -17,12 +22,18 @@ type RmcLead = {
   site_contact_phone: string; pump_required: boolean; google_place_id?: string | null;
   plant_id?: string | null; canonical_request_id?: string | null;
   status: string; created_at: string; expires_at: string;
+  outreach_status: "NOT_CONTACTED" | "INVITATION_SHARED" | "CONTACTED" | "DECLINED";
+  outreach_notes?: string | null;
 };
 type Filter = "ALL" | "PENDING_SUPPLIER" | "MATCHED_RECONFIRMATION_REQUIRED" | "REQUESTED";
 const FILTERS: Filter[] = ["ALL","PENDING_SUPPLIER","MATCHED_RECONFIRMATION_REQUIRED","REQUESTED"];
 
 export default function AdminRmcRfqLeads() {
   const { colors } = useTheme();
+  const { token } = useAuth();
+  const toast = useToast();
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [working, setWorking] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
   const { data, loading, error, refetch } = useGet<{ leads: RmcLead[] }>("/admin/rmc-rfq-leads");
   const [filter, setFilter] = useState<Filter>("PENDING_SUPPLIER");
@@ -30,6 +41,26 @@ export default function AdminRmcRfqLeads() {
     () => (data?.leads || []).filter(l => filter === "ALL" || l.status === filter),
     [data,filter]
   );
+  const mark = async (lead: RmcLead, outreach_status: RmcLead["outreach_status"]) => {
+    if (!token || working) return;
+    setWorking(lead.id);
+    try {
+      await apiPatch(`/admin/rmc-rfq-leads/${lead.id}/outreach`, token, {
+        outreach_status, notes: notes[lead.id] || lead.outreach_notes || null,
+      });
+      toast("Outreach record updated", "success");
+      await refetch();
+    } catch (e: unknown) {
+      toast(apiErrorDetail(e, "Unable to update outreach status"), "error");
+    } finally { setWorking(null); }
+  };
+  const invite = async () => {
+    try {
+      await Share.share({ message: "Join TrackMyRMC to receive and manage RMC quotation requests. Register your plant here: https://trackmyrmc.com/plant-onboarding" });
+    } catch (e: unknown) {
+      toast(apiErrorDetail(e, "Sharing is not available on this device"), "error");
+    }
+  };
   return (
     <View style={{flex:1,backgroundColor:colors.surface}}>
       <View style={{height:insets.top}}/>
@@ -73,6 +104,16 @@ export default function AdminRmcRfqLeads() {
               {lead.canonical_request_id?"Official RFQ created":lead.google_place_id?"Google-listed supplier awaiting/undergoing verification":"Registered supplier"}
             </AppText>
             <AppText variant="caption">Created {new Date(lead.created_at).toLocaleString("en-IN")}</AppText>
+            {lead.status === "PENDING_SUPPLIER" ? <View style={{gap:spacing.sm}}>
+              <AppText variant="caption">Outreach: {lead.outreach_status.replace(/_/g, " ")}</AppText>
+              <Input label="Internal outreach note (optional)" value={notes[lead.id] ?? lead.outreach_notes ?? ""}
+                onChangeText={value=>setNotes(s=>({...s,[lead.id]:value}))} maxLength={1000}/>
+              <Button label="Share Supplier Onboarding Link" variant="outline" onPress={()=>void invite()}/>
+              <Button label="Record Invitation Shared" disabled={working===lead.id} loading={working===lead.id}
+                onPress={()=>void mark(lead, "INVITATION_SHARED")}/>
+              <Button label="Mark Supplier Contacted" variant="outline" disabled={working===lead.id}
+                onPress={()=>void mark(lead, "CONTACTED")}/>
+            </View> : null}
           </Card>
         ))}
         {data && rows.length===0 ? <Card><AppText variant="caption">No enquiries in this filter.</AppText></Card>:null}
