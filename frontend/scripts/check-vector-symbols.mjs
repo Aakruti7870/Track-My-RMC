@@ -47,7 +47,7 @@ const compiled = ts.transpileModule(catalog, {
   compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 },
 }).outputText;
 const { MODULE_CATALOG } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`);
-assert.equal(MODULE_CATALOG.length, 61);
+assert.equal(MODULE_CATALOG.length, 62);
 let mapped = 0;
 for (const m of MODULE_CATALOG) {
   if (m.symbol) {
@@ -58,7 +58,7 @@ for (const m of MODULE_CATALOG) {
     assert.equal(m.icon, "trash-outline");
   }
 }
-assert.equal(mapped, 60);
+assert.equal(mapped, 61);
 const tabs = read("src/navigation/vectorSymbolAssignments.ts");
 for (const [, key] of tabs.matchAll(/(?:"[^"]+":\s*|return\s+)"([a-z0-9-]+)"/g)) {
   assert.ok(embedded.has(key), `Tab references an unregistered SVG: ${key}`);
