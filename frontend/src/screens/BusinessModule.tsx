@@ -643,7 +643,7 @@ export function BusinessModule({ kind }: { kind: string }) {
                       <Button label={r.raw?.is_manager ? "Revoke Manager Delegation" : "Appoint Plant Manager"}
                         variant="outline" onPress={() => toggleManager(r)} />
                     ) : null}
-                    <Button label={r.raw?.active === true ? "Suspend (keep role reserved)" : "Activate" variant="outline" onPress={() => toggleStaff(r)} />
+                    <Button label={r.raw?.active === true ? "Suspend (keep role reserved)" : "Activate"} variant="outline" onPress={() => toggleStaff(r)} />
                     {removeConfirmId === r.id ? (
                       <View style={{ gap: spacing.sm }}>
                         <AppText variant="caption">Removing this assignment frees the role. Employee and payroll history are retained.</AppText>
