@@ -106,7 +106,7 @@ for (const [key, symbol] of [["cement", "cement"], ["labour", "labour-contractor
   assert.ok(homeSource.includes(`key: "${key}"`) && homeSource.includes(`symbol: "${symbol}"`), `Customer service ${key} missing vector assignment`);
 }
 assert.ok(homeSource.includes('<VectorSymbol name={service.symbol} size={58} />'), "Other Services must render 58-unit vectors, not generic Ionicons");
-assert.ok(homeSource.includes('<VectorSymbol name={action.symbol} size={75} />'), "Quick Actions must render 75-unit vectors");
+assert.ok(homeSource.includes('<VectorSymbol name={action.symbol} size={52} />'), "Quick Actions must render 52-unit vectors");
 assert.ok(homeSource.includes('<VectorSymbol name={module.symbol} size={52} />'), "RMC Tools must render 52-unit vectors");
 assert.ok(!/styles\.(actionIcon|toolIcon|serviceIcon)/.test(homeSource), "Remove all decorative home icon wrappers");
 const nav = read("src/components/GlassTabBar.tsx");
