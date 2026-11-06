@@ -102,7 +102,7 @@ export default function CustomerQuotations() {
             {lead.status === "CLOSED" ? <AppText variant="caption">This enquiry is closed.</AppText> : null}
           </Card>
         ))}
-        {insert}<Badge label={String(requests.data?.requests.length || 0)} color={colors.brand} /></View>
+        <View style={styles.sectionTitle}><AppText variant="heading">My Requests</AppText><Badge label={String(requests.data?.requests.length || 0)} color={colors.brand} /></View>
         {requests.loading && !requests.data ? <Skeleton height={110} /> : null}
         {requests.data?.requests.map((item) => <Card key={item.id} style={{ gap: spacing.sm }}>
           <View style={styles.between}><View style={{ flex: 1 }}><AppText style={styles.name}>{item.plant_name || "RMC Plant"}</AppText><AppText variant="caption">{item.grade} · {item.quantity} m³ · {item.site_name}</AppText></View><Badge label={item.status} status={item.status} /></View>
