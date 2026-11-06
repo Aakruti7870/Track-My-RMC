@@ -532,12 +532,15 @@ pub async fn list_plant_people(
     auth_user: AuthUser,
     Path(plant_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
+    super::plant_staff_manager::require_manager_or_owner(&state, &auth_user, plant_id).await?;
 
     let rows = sqlx::query(
         r#"
         SELECT ps.id as staff_id, ps.user_id, ps.role, ps.is_active, ps.joined_at, ps.removed_at,
-               u.full_name, u.phone, u.email
+               u.full_name, u.phone, u.email,
+                EXISTS(SELECT 1 FROM plant_staff_manager_delegations d
+                       WHERE d.plant_id=ps.plant_id AND d.user_id=ps.user_id
+                         AND d.revoked_at IS NULL) AS is_manager
         FROM plant_staff ps
         INNER JOIN users u ON u.id = ps.user_id
         WHERE ps.plant_id = $1 AND ps.removed_at IS NULL
@@ -558,6 +561,7 @@ pub async fn list_plant_people(
             let phone: Option<String> = r.get("phone");
             let email: Option<String> = r.get("email");
             let is_active: bool = r.get("is_active");
+            let is_manager: bool = r.get("is_manager");
             let joined_at: chrono::DateTime<chrono::Utc> = r.get("joined_at");
 
             json!({
@@ -568,6 +572,7 @@ pub async fn list_plant_people(
                 "phone": phone,
                 "email": email,
                 "active": is_active,
+                "is_manager": is_manager,
                 "status": if is_active {"active"} else {"suspended"},
                 "joined_at": joined_at
             })
