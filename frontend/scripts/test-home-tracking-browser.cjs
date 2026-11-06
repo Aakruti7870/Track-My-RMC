@@ -130,7 +130,20 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  if(promoCards.length!==2)throw Error('Rental and On Time callouts must be in one row');
  const [left,right]=await Promise.all(promoCards.map(card=>card.boundingBox()));
  if(Math.abs(left.height-right.height)>1)throw Error('Rental and watch cards must have equal height');
- if(Math.abs(right.x-(left.x+left.width)-8)>1)throw Error('Rental and watch cards must be 8dp apart');
+ // A 65% booking card + 28% delivery card leaves exactly 7% blank space.
+ const row=await page.getByTestId('home-pump-rental-promo').boundingBox();
+ if(Math.abs(left.width-row.width*0.65)>1)throw Error('Booking card width must be 65%');
+ if(Math.abs(right.width-row.width*0.28)>1)throw Error('On Time card width must be 28%');
+ if(Math.abs(right.x-(left.x+left.width)-row.width*0.07)>1)throw Error('Promo gap must be 7%');
+ if(left.height<36||right.height<36)throw Error('Promo cards shorter than 36dp minimum');
+ if(!await page.getByText(/Book Concrete\\s+Pump/).count())throw Error('Booking label missing');
+ for(const title of ['Quick Actions','Active Projects & Planning','Free Tools & Expert Advice','Supply & Workforce','Track My RMC','Built Better']){
+   const style=await page.getByText(title,{exact:true}).first().evaluate(el=>{const s=getComputedStyle(el);return {size:s.fontSize,height:s.lineHeight,family:s.fontFamily,weight:s.fontWeight};});
+   if(style.size!=='14px'||style.height!=='20px'||!style.family.toLowerCase().includes('roboto')||Number(style.weight)!==700)
+     throw Error('Home heading typography regression '+title+': '+JSON.stringify(style));
+ }
+ if(!await page.getByTestId('header-location').count())throw Error('Location header missing');
+
  // Export full-page Home references at the exact mobile/desktop sizes that
  // the layout gates check; CI uploads them for human visual comparison.
  await page.screenshot({path:`tracking-previews/home-layout-${width}.png`,fullPage:true});
