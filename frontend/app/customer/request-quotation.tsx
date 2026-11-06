@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Modal, Pressable, ScrollView, View } from "react-native";
+import { Modal, Pressable, ScrollView, Share, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -132,6 +132,11 @@ export default function RequestQuotation() {
             <AppText>{result.status === "PENDING_SUPPLIER"
               ? "This supplier has not joined TrackMyRMC. Our team can assist with your enquiry. No supplier notification has been sent."
               : "Your request is available to the approved plant in TrackMyRMC."}</AppText>
+            {result.status === "PENDING_SUPPLIER" ? <Button label="Share Plant Onboarding Invitation" variant="outline"
+              onPress={()=>void Share.share({
+                message:"TrackMyRMC connects customers with verified Ready-Mix Concrete suppliers. Register your RMC plant to receive and manage quotation requests: https://trackmyrmc.com/plant-onboarding"
+              }).catch(()=>setError("Sharing is not available on this device."))}/> : null}
+            <AppText variant="caption">The invitation contains no customer name, contact, GSTIN or site address.</AppText>
             <Button label="Back to Plants" onPress={()=>router.replace("/customer/plants")}/>
           </Card>
         ) : (
