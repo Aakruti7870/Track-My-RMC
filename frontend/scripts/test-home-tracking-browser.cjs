@@ -35,6 +35,18 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    if(size[0]!==58||size[1]!==58)throw Error(`Service SVG size: ${id} ${size}`);
  }
  const actionBoxes=await Promise.all(['action-new','action-track','action-plants','action-orders'].map(id=>page.getByTestId(id).boundingBox()));
+ // Verify all labels stay below the 52dp symbols and inside the new 80dp cards.
+ for(const [id,label] of [['action-new','New Order'],['action-track','Track Order'],['action-plants','Plants'],['action-orders','My Orders']]) {
+   const action=page.getByTestId(id);
+   const tile=await action.boundingBox();
+   const svg=await action.locator('svg').first().boundingBox();
+   const name=await action.getByText(label,{exact:true}).boundingBox();
+   if(!tile||!svg||!name)throw Error(`Missing Quick Action geometry: ${id}`);
+   if(Math.abs(tile.height-80)>1)throw Error(`Quick Action card must be 80dp: ${id} ${tile.height}`);
+   if(svg.y<tile.y-1||name.y<svg.y+svg.height-1||name.y+name.height>tile.y+tile.height+1)
+     throw Error(`Quick Action SVG/label clipping: ${id}`);
+ }
+
  // Validate the actual card boundaries: carousel -> Quick Actions -> KYC -> RMC Tools.
  // These are 4 CSS px on the web (4 React Native dp on Android).
  const carouselBox=await page.getByTestId('home-promotional-carousel').boundingBox();
@@ -74,7 +86,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  if(toolBoxes.length!==8||serviceBoxes.length!==3)throw Error('Missing compact Home cards');
  const expectedToolColumns=width>=360?4:2;
  if(Math.abs(toolBoxes[expectedToolColumns].y-toolBoxes[0].y)<50)throw Error('RMC Tools responsive row arrangement');
- for (const [kind,boxes,minHeight,maxHeight] of [['Quick Action',actionBoxes.map(box=>({h:box.height,x:box.x,y:box.y,w:box.width})),103,105],['RMC Tool',toolBoxes,90,134],['Other Service',serviceBoxes,92,120]]) {
+ for (const [kind,boxes,minHeight,maxHeight] of [['Quick Action',actionBoxes.map(box=>({h:box.height,x:box.x,y:box.y,w:box.width})),79,81],['RMC Tool',toolBoxes,90,134],['Other Service',serviceBoxes,92,120]]) {
    for(const box of boxes){
      if(box.h<minHeight||box.h>maxHeight)throw Error(`${kind} card height ${box.h} outside ${minHeight}-${maxHeight}`);
      if(box.x<0||box.x+box.w>width+1)throw Error(`${kind} card overflows the viewport`);

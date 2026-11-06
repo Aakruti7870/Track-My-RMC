@@ -108,7 +108,7 @@ assert.ok(customerHome.includes('width: "32.5%"'), "Other Services must use thre
 assert.ok(!customerHome.includes('<Card testID="customer-module-grid"'), "Redundant RMC Tools outer border must be removed.");
 assert.ok(!customerHome.includes('<Card testID="home-quick-actions"'), "Redundant Quick Actions outer border must be removed.");
 assert.ok(!customerHome.includes('<Card testID="home-other-services"'), "Redundant Other Services outer border must be removed.");
-for (const key of ["quickTile: { height: 104 }", "toolTile: { minHeight: 108 }", "serviceTile: { minHeight: 104 }", "maxWidth: 620"]) {
+for (const key of ["quickTile: { height: 80, paddingVertical: 3, gap: 3 }", "toolTile: { minHeight: 108 }", "serviceTile: { minHeight: 104 }", "maxWidth: 620"]) {
   assert.ok(customerHome.includes(key), `Compact card sizing missing: ${key}`);
 }
 // Newly uploaded Other Services SVG masters must render on the actual home cards.

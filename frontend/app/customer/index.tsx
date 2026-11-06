@@ -97,7 +97,7 @@ export default function CustomerHome() {
             style={({ pressed }) => [styles.tile, styles.quickTile, { width: fourQuickColumns ? "24.25%" : "49%", backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.75 : 1 }]}
           >
             <VectorSymbol name={action.symbol} size={52} />
-            <AppText numberOfLines={2} style={[styles.tileLabel, { color: colors.onSurface }]}>{action.label}</AppText>
+            <AppText numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85} style={[styles.tileLabel, { color: colors.onSurface }]}>{action.label}</AppText>
           </Pressable>
         ))}
       </View>
@@ -219,7 +219,7 @@ const styles = StyleSheet.create({
   sectionTitle: { fontFamily: fonts.displayBold, fontSize: 19, paddingHorizontal: 2 },
   grid: { flexDirection: "row", flexWrap: "wrap", width: "100%", justifyContent: "space-between", rowGap: 4 },
   tile: { alignItems: "center", justifyContent: "center", paddingHorizontal: 1, paddingVertical: 5, gap: 4, borderWidth: 1, borderRadius: radius.md },
-  quickTile: { height: 104 },
+  quickTile: { height: 80, paddingVertical: 3, gap: 3 },
   toolTile: { minHeight: 108 },
   serviceTile: { minHeight: 104 },
   tileLabel: { fontFamily: fonts.semibold, fontSize: 11, lineHeight: 14, textAlign: "center" },
