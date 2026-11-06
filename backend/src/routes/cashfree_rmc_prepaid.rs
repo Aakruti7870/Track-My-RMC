@@ -435,6 +435,16 @@ async fn reconcile(
             .bind(intent_id).bind(&provider_payment).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO audit_logs(action,resource_type,resource_id,metadata) VALUES('order.prepaid_late_success','order',$1,$2)")
             .bind(order_id.to_string()).bind(json!({"gateway_order_id":gateway,"manual_refund_review":true})).execute(&mut *tx).await?;
+        sqlx::query(
+            "INSERT INTO notifications(user_id,title,body,notification_type,reference_id) \
+             SELECT customer_id,'Payment under reconciliation','Payment was received after an order or offer change. Do not pay again; contact support for reconciliation.','order_payment_review',$2 \
+             FROM orders WHERE id=$1"
+        ).bind(order_id).bind(order_id.to_string()).execute(&mut *tx).await?;
+        sqlx::query(
+            "INSERT INTO notifications(user_id,title,body,notification_type,reference_id) \
+             SELECT p.owner_id,'RMC payment needs review','A payment requires manual refund or reconciliation review. Do not release production.','order_payment_review',$2 \
+             FROM orders o JOIN rmc_plants p ON p.id=o.plant_id WHERE o.id=$1"
+        ).bind(order_id).bind(order_id.to_string()).execute(&mut *tx).await?;
         tx.commit().await?;
         return Ok(
             json!({"status":"HOLD_REFUND_REVIEW","message":"Payment requires refund/reconciliation review; production remains blocked"}),
@@ -449,6 +459,16 @@ async fn reconcile(
         .bind(order_id).bind(if mode==super::order_payment::FULL_ADVANCE {"paid"} else {"partial"}).execute(&mut *tx).await?;
     sqlx::query("INSERT INTO audit_logs(action,resource_type,resource_id,metadata) VALUES('order.prepaid_provider_verified','order',$1,$2)")
         .bind(order_id.to_string()).bind(json!({"gateway_order_id":gateway,"amount":amt,"provider_payment_id":provider_payment,"mode":mode,"vendor_id":vendor})).execute(&mut *tx).await?;
+    sqlx::query(
+        "INSERT INTO notifications(user_id,title,body,notification_type,reference_id) \
+         SELECT customer_id,'RMC advance verified','Cashfree independently verified your payment. The order is confirmed; any remaining balance is due under the plant-approved terms.','order_payment_verified',$2 \
+         FROM orders WHERE id=$1"
+    ).bind(order_id).bind(order_id.to_string()).execute(&mut *tx).await?;
+    sqlx::query(
+        "INSERT INTO notifications(user_id,title,body,notification_type,reference_id) \
+         SELECT p.owner_id,'RMC order payment verified','Customer payment is independently verified. Production may now proceed subject to normal plant checks.','order_payment_verified',$2 \
+         FROM orders o JOIN rmc_plants p ON p.id=o.plant_id WHERE o.id=$1"
+    ).bind(order_id).bind(order_id.to_string()).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(json!({"status":"VERIFIED","order_id":order_id,"payment_mode":mode}))
 }
