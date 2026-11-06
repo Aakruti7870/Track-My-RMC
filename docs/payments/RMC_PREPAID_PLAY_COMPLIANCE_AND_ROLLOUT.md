@@ -15,6 +15,14 @@
   - https://support.google.com/googleplay/android-developer/answer/10144311?hl=en
   - https://support.google.com/googleplay/android-developer/answer/10787469?hl=en-EN
 
+## Approved deferred payment terms
+
+- **ON_DELIVERY:** customer pays the physical supplier on the delivery date. No Cashfree prepayment or false PAID status is created.
+- **PARTIAL_ADVANCE:** plant specifies the exact advance; the remainder is recorded as outstanding with an explicit due date (delivery date unless the plant approves a different date).
+- **APPROVED_CREDIT:** plant must explicitly approve a balance due date after delivery and within one year. The customer must review this date and the outstanding amount before accepting.
+- This is supplier-specific **trade payment timing**, not a TrackMyRMC loan, wallet, credit-scoring product or interest-bearing BNPL financing facility. Do not advertise financing or charge platform credit fees without separate product, legal and Play review.
+- Financial notifications are emitted for owner offers, customer acceptance, rejection, verified gateway prepayment, and late-success refund review; no notification may represent an unverified transaction as settled.
+
 ## Server-enforced lifecycle
 
 1. Customer requests order and indicates FULL_ADVANCE or PARTIAL_ADVANCE. **No money is taken at request submission.**
