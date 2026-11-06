@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, Share, View } from "react-native";
+import { Linking, Pressable, RefreshControl, ScrollView, Share, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -108,6 +108,8 @@ export default function AdminRmcRfqLeads() {
               <AppText variant="caption">Outreach: {lead.outreach_status.replace(/_/g, " ")}</AppText>
               <Input label="Internal outreach note (optional)" value={notes[lead.id] ?? lead.outreach_notes ?? ""}
                 onChangeText={value=>setNotes(s=>({...s,[lead.id]:value}))} maxLength={1000}/>
+              {lead.google_place_id ? <Button label="View Selected Supplier on Google Maps" variant="outline"
+                onPress={()=>void Linking.openURL("https://www.google.com/maps/search/?api=1&query=RMC%20Plant&query_place_id="+encodeURIComponent(lead.google_place_id!))} /> : null}
               <Button label="Share Supplier Onboarding Link" variant="outline" onPress={()=>void invite()}/>
               <Button label="Record Invitation Shared" disabled={working===lead.id} loading={working===lead.id}
                 onPress={()=>void mark(lead, "INVITATION_SHARED")}/>
