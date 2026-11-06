@@ -203,10 +203,27 @@ pub async fn set_reviewer_access(
         ));
     }
 
+    let mut tx = state.db.begin().await?;
     sqlx::query("UPDATE play_review_fixtures SET enabled = $1")
         .bind(payload.enabled)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await?;
+    if !payload.enabled {
+        // Revocation must invalidate access JTIs and any rotating refresh
+        // credentials in the same transaction as the fixture disable.
+        sqlx::query(
+            "UPDATE users SET active_session_jti=NULL
+             WHERE id IN (SELECT user_id FROM play_review_fixtures)",
+        )
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "DELETE FROM account_refresh_tokens
+             WHERE user_id IN (SELECT user_id FROM play_review_fixtures)",
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
 
     sqlx::query(
         r#"
@@ -216,8 +233,9 @@ pub async fn set_reviewer_access(
     )
     .bind(auth_user.user_id)
     .bind(json!({ "enabled": payload.enabled, "reason": payload.reason }))
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await?;
+    tx.commit().await?;
 
     Ok(Json(json!({
         "success": true,
