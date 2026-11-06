@@ -388,7 +388,9 @@ async fn reconcile(
         payments
             .as_array()
             .and_then(|items| {
-                items.iter().find_map(|payment| successful_payment_id(payment, &gateway, payable))
+                items
+                    .iter()
+                    .find_map(|payment| successful_payment_id(payment, &gateway, payable))
             })
             .ok_or_else(|| {
                 AppError::Conflict(
