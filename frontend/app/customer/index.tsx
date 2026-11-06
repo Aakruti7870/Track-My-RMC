@@ -228,7 +228,7 @@ export default function CustomerHome() {
             <ErrorView message={error} onRetry={reload} />
             <View style={styles.homeAboveFold}>
               {quickActions}
-              <KycBanner status={user?.kyc_status || "NOT_STARTED"} />
+              <View style={styles.groupCard}><KycBanner status={user?.kyc_status || "NOT_STARTED"} /></View>
               {planningTools}
               {pumpOffer}
               {adviceTools}
@@ -248,7 +248,7 @@ export default function CustomerHome() {
             <View style={styles.homeAboveFold}>
               <HomeCarousel style={{ width: Math.min(viewportWidth, 720), borderRadius: 0, borderWidth: 0 }} />
               {quickActions}
-              <KycBanner status={data.kyc_status} />
+              <View style={styles.groupCard}><KycBanner status={data.kyc_status} /></View>
               {planningTools}
               {pumpOffer}
               {adviceTools}
