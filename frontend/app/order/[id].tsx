@@ -54,6 +54,7 @@ type Detail = {
     mode: string;
     advance_amount: string;
     total_amount: string;
+    balance_due_on?: string | null;
     expires_at: string;
     version: number;
   } | null;
@@ -84,6 +85,7 @@ export default function OrderDetail() {
   const [showReject, setShowReject] = useState(false);
   const [reason, setReason] = useState("");
   const [advanceRupees, setAdvanceRupees] = useState("");
+  const [balanceDueOn, setBalanceDueOn] = useState("");
 
   const act = async (path: string, body?: any, msg?: string) => {
     setBusy(true);
@@ -118,7 +120,18 @@ export default function OrderDetail() {
         return;
       }
     }
-    act(`/owner/orders/${id}/payment-offer`, { advance_paise }, "Payment terms sent for customer approval");
+    const balance_due_on = balanceDueOn.trim();
+    if (balance_due_on && !/^\\d{4}-\\d{2}-\\d{2}$/.test(balance_due_on)) {
+      toast("Enter the balance due date as YYYY-MM-DD", "error");
+      return;
+    }
+    if (o.preferred_payment_mode === "APPROVED_CREDIT" && !balance_due_on) {
+      toast("Specify the approved credit repayment date", "error");
+      return;
+    }
+    act(`/owner/orders/${id}/payment-offer`,
+      { advance_paise, ...(balance_due_on ? { balance_due_on } : {}) },
+      "Payment terms sent for customer approval");
   };
   const proofs = data?.pods?.length ? data.pods : (data?.pod ? [data.pod] : []);
 
@@ -223,6 +236,12 @@ export default function OrderDetail() {
               <Row icon="wallet-outline" label="Payment mode" value={offer.mode.replace(/_/g, " ")} colors={colors} />
               <Row icon="cash-outline" label="Final total (INR)" value={String(offer.total_amount)} colors={colors} />
               <Row icon="card-outline" label="Advance (INR)" value={String(offer.advance_amount)} colors={colors} />
+              {offer.mode !== "FULL_ADVANCE" ? (
+                <>
+                  <Row icon="cash-outline" label="Outstanding balance (INR)" value={(Number(offer.total_amount) - Number(offer.advance_amount)).toFixed(2)} colors={colors} />
+                  <Row icon="calendar-outline" label="Balance due on" value={offer.balance_due_on || "Not specified"} colors={colors} />
+                </>
+              ) : null}
               <AppText variant="caption">Status: {offer.status.replace(/_/g, " ")}. No payment is taken on this screen.</AppText>
               {!isOwner && offer.status === "OFFERED" ? (
                 <Button testID="customer-accept-payment-terms" label="Accept Final Terms" loading={busy}
@@ -236,8 +255,15 @@ export default function OrderDetail() {
             <Card><AppText variant="caption">Preferred payment: {o.preferred_payment_mode.replace(/_/g, " ")}. Awaiting plant acceptance. No payment is due now.</AppText></Card>
           ) : null}
 
-          {isOwner && o.status === "PENDING" && o.preferred_payment_mode === "PARTIAL_ADVANCE" && !offer ? (
-            <Card><Input testID="owner-advance-amount" label="Plant-approved advance amount (INR)" value={advanceRupees} onChangeText={setAdvanceRupees} keyboardType="decimal-pad" placeholder="e.g. 25000.00" /></Card>
+          {isOwner && o.status === "PENDING" && ["PARTIAL_ADVANCE", "APPROVED_CREDIT"].includes(o.preferred_payment_mode || "") && !offer ? (
+            <Card style={{ gap: spacing.sm }}>
+              {o.preferred_payment_mode === "PARTIAL_ADVANCE" ? (
+                <Input testID="owner-advance-amount" label="Plant-approved advance amount (INR)" value={advanceRupees} onChangeText={setAdvanceRupees} keyboardType="decimal-pad" placeholder="e.g. 25000.00" />
+              ) : null}
+              <Input testID="owner-balance-due-date"
+                label={o.preferred_payment_mode === "APPROVED_CREDIT" ? "Approved credit repayment date (YYYY-MM-DD)" : "Balance due date (optional, defaults to delivery day)"}
+                value={balanceDueOn} onChangeText={setBalanceDueOn} placeholder="YYYY-MM-DD" />
+            </Card>
           ) : null}
 
           {isOwner ? (
