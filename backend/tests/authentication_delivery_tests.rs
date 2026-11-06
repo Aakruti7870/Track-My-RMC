@@ -2200,7 +2200,6 @@ async fn revoked_manager_cannot_commit_driver_profile_after_waiting_for_identity
     assert_eq!(sqlx::query_scalar::<_,String>("SELECT employee_code FROM driver_employment_profiles WHERE plant_id=$1 AND driver_id=$2").bind(plant).bind(driver).fetch_one(&db).await.unwrap(),"ORIGINAL");
 }
 
-
 #[sqlx::test]
 async fn owner_disablement_prevents_queued_manager_appointment(db: PgPool) {
     use trackmyrmc_backend::auth::refresh;
@@ -2312,9 +2311,27 @@ async fn financial_creation_requires_create_even_when_edit_is_granted(db: PgPool
     .fetch_one(&db)
     .await
     .unwrap();
-    let accountant = identity(&db, "accountant", Some("create-expense@example.invalid"), None).await;
-    let fleet = identity(&db, "fleet_manager", Some("create-diesel@example.invalid"), None).await;
-    let store = identity(&db, "store_manager", Some("create-purchase@example.invalid"), None).await;
+    let accountant = identity(
+        &db,
+        "accountant",
+        Some("create-expense@example.invalid"),
+        None,
+    )
+    .await;
+    let fleet = identity(
+        &db,
+        "fleet_manager",
+        Some("create-diesel@example.invalid"),
+        None,
+    )
+    .await;
+    let store = identity(
+        &db,
+        "store_manager",
+        Some("create-purchase@example.invalid"),
+        None,
+    )
+    .await;
     let app = build_app_router(state.clone());
     for (user, role, module, endpoint, payload, table) in [
         (
