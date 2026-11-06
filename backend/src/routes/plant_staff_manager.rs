@@ -42,7 +42,26 @@ pub async fn lock_authorization(
     .bind(plant)
     .fetch_optional(&mut **tx)
     .await?;
-    if is_owner(user) && owner == Some(user.user_id) {
+    if is_owner(user) {
+        // Serialize Owner mutations with Control Center disablement. Holding
+        // this row's SHARE lock until commit prevents a stale authenticated
+        // request from granting delegation after the Owner is disabled.
+        if owner != Some(user.user_id) {
+            return Err(AppError::Forbidden(
+                "This plant is not owned by your account".into(),
+            ));
+        }
+        let active_owner: Option<Uuid> = sqlx::query_scalar(
+            "SELECT id FROM users WHERE id=$1 AND role IN ('owner','plant_owner') AND is_active=TRUE FOR SHARE",
+        )
+        .bind(user.user_id)
+        .fetch_optional(&mut **tx)
+        .await?;
+        if active_owner != Some(user.user_id) {
+            return Err(AppError::Forbidden(
+                "Plant Owner account is no longer active".into(),
+            ));
+        }
         return Ok(());
     }
     let allowed:Option<bool>=sqlx::query_scalar("SELECT CASE $3 WHEN 'staff' THEN d.can_manage_staff WHEN 'permissions' THEN d.can_manage_permissions WHEN 'fleet' THEN d.can_manage_fleet WHEN 'drivers' THEN d.can_manage_drivers ELSE FALSE END
@@ -241,11 +260,13 @@ pub async fn grant(
         }
     }
     let mut tx = state.db.begin().await?;
+    // Lock Owner authorization first, matching Control Center's Owner-first
+    // lock order, to avoid a disablement/delegation deadlock.
+    lock_authorization(&mut tx, &owner, plant, "staff").await?;
     sqlx::query("SELECT id FROM users WHERE id=$1 FOR UPDATE")
         .bind(staff)
         .execute(&mut *tx)
         .await?;
-    lock_authorization(&mut tx, &owner, plant, "staff").await?;
     let previous:Option<Value>=sqlx::query_scalar("SELECT to_jsonb(d) FROM plant_staff_manager_delegations d WHERE plant_id=$1 AND user_id=$2 FOR UPDATE")
         .bind(plant).bind(staff).fetch_optional(&mut *tx).await?;
     let role: Option<String> = sqlx::query_scalar(
@@ -311,11 +332,13 @@ pub async fn revoke(
 ) -> Result<Json<Value>, AppError> {
     require_owner(&state, &owner, plant).await?;
     let mut tx = state.db.begin().await?;
+    // Lock Owner authorization first, matching Control Center's Owner-first
+    // lock order, to avoid a disablement/delegation deadlock.
+    lock_authorization(&mut tx, &owner, plant, "staff").await?;
     sqlx::query("SELECT id FROM users WHERE id=$1 FOR UPDATE")
         .bind(staff)
         .execute(&mut *tx)
         .await?;
-    lock_authorization(&mut tx, &owner, plant, "staff").await?;
     let n = sqlx::query(
         "UPDATE plant_staff_manager_delegations SET revoked_at=clock_timestamp(),revoked_by=$3
          WHERE plant_id=$1 AND user_id=$2 AND revoked_at IS NULL",
