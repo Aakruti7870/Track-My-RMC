@@ -187,7 +187,9 @@ pub async fn request(
             || !(5..=500).contains(&lead.site_address.trim().len())
             || !(10..=20).contains(&lead.site_contact_phone.len())
         {
-            return Err(AppError::BadRequest("Invalid enquiry details or missing supplier-sharing consent".into()));
+            return Err(AppError::BadRequest(
+                "Invalid enquiry details or missing supplier-sharing consent".into(),
+            ));
         }
     }
     let mut tx = state.db.begin().await?;
@@ -235,7 +237,7 @@ pub async fn request(
         sqlx::query_scalar("INSERT INTO customer_sites(customer_id,name,address_line,city,state,pincode,contact_person,contact_phone) SELECT id,$2,$3,'','','',full_name,COALESCE(phone,'') FROM users WHERE id=$1 RETURNING id")
             .bind(customer).bind(name).bind(address).fetch_one(&mut *tx).await?
     };
-    let id=sqlx::query_scalar("INSERT INTO customer_quotation_requests(customer_id,plant_id,site_id,grade,quantity_m3,required_date,notes,pump_required) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id")
+    let id: Uuid=sqlx::query_scalar("INSERT INTO customer_quotation_requests(customer_id,plant_id,site_id,grade,quantity_m3,required_date,notes,pump_required) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id")
         .bind(customer).bind(payload.plant_id).bind(site).bind(&grade).bind(quantity.clone()).bind(required).bind(payload.notes).bind(payload.pump_required.unwrap_or(false)).fetch_one(&mut *tx).await?;
     if let Some(lead) = payload.lead.as_ref() {
         sqlx::query(
@@ -262,9 +264,16 @@ pub async fn request(
     sqlx::query(
         "INSERT INTO notifications(user_id,title,body,notification_type,reference_id)
          SELECT owner_id,'New RMC quotation request',$2,'rmc_rfq',$3
-         FROM rmc_plants WHERE id=$1"
-    ).bind(payload.plant_id).bind(format!("A customer has requested a quotation for {} m3 of {}", quantity, grade))
-      .bind(id.to_string()).execute(&mut *tx).await?;
+         FROM rmc_plants WHERE id=$1",
+    )
+    .bind(payload.plant_id)
+    .bind(format!(
+        "A customer has requested a quotation for {} m3 of {}",
+        quantity, grade
+    ))
+    .bind(id.to_string())
+    .execute(&mut *tx)
+    .await?;
     sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'quotation.request','rfq',$2,$3)").bind(customer).bind(format!("{id}")).bind(json!({"plant_id":payload.plant_id})).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(id)
