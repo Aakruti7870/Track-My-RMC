@@ -11,7 +11,7 @@ use axum::{
     Json,
 };
 use bigdecimal::BigDecimal;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sqlx::Row;
@@ -83,6 +83,8 @@ pub fn approved_advance(
 pub struct OfferInput {
     /// Exact rupee-paise requested by the plant for PARTIAL_ADVANCE only.
     pub advance_paise: Option<i64>,
+    /// Explicitly confirmed by the plant for credit; optional for partial advances.
+    pub balance_due_on: Option<NaiveDate>,
 }
 
 /// Owner confirms the submitted order amount and either accepts the preferred
@@ -97,7 +99,7 @@ pub async fn offer(
     super::loads_routes::ensure_order_access(&state, &actor, order_id, false).await?;
     let mut tx = state.db.begin().await?;
     let order = sqlx::query(
-        "SELECT status,preferred_payment_mode,total_amount,customer_id,order_number FROM orders WHERE id=$1 FOR UPDATE",
+        "SELECT status,preferred_payment_mode,total_amount,customer_id,order_number,delivery_date FROM orders WHERE id=$1 FOR UPDATE",
     )
     .bind(order_id)
     .fetch_optional(&mut *tx)
@@ -115,9 +117,41 @@ pub async fn offer(
         })?;
     let total: BigDecimal = order.get("total_amount");
     let advance = approved_advance(&mode, &total, input.advance_paise)?;
+    let delivery_date: NaiveDate = order.get("delivery_date");
+    let balance_due_on = match mode.as_str() {
+        FULL_ADVANCE => {
+            if input.balance_due_on.is_some() {
+                return Err(AppError::BadRequest("Fully prepaid orders cannot have an outstanding balance date".into()));
+            }
+            None
+        }
+        ON_DELIVERY => {
+            if input.balance_due_on.is_some_and(|day| day != delivery_date) {
+                return Err(AppError::BadRequest("Pay-on-delivery balance must be due on delivery day".into()));
+            }
+            Some(delivery_date)
+        }
+        PARTIAL_ADVANCE => {
+            let due = input.balance_due_on.unwrap_or(delivery_date);
+            if due < delivery_date || due > delivery_date + chrono::Duration::days(365) {
+                return Err(AppError::BadRequest("Partial advance balance due date must be on or after delivery and within one year".into()));
+            }
+            Some(due)
+        }
+        APPROVED_CREDIT => {
+            let due = input.balance_due_on.ok_or_else(|| {
+                AppError::BadRequest("Plant must explicitly specify the approved credit repayment date".into())
+            })?;
+            if due <= delivery_date || due > delivery_date + chrono::Duration::days(365) {
+                return Err(AppError::BadRequest("Credit due date must be after delivery and within one year".into()));
+            }
+            Some(due)
+        }
+        _ => return Err(AppError::BadRequest("Unsupported payment mode".into())),
+    };
 
     if let Some(old) = sqlx::query(
-        "SELECT mode,advance_amount,status,expires_at,version FROM order_payment_offers WHERE order_id=$1 FOR UPDATE"
+        "SELECT mode,advance_amount,balance_due_on,status,expires_at,version FROM order_payment_offers WHERE order_id=$1 FOR UPDATE"
     ).bind(order_id).fetch_optional(&mut *tx).await? {
         let old_status: String = old.get("status");
         if old_status != "OFFERED" {
@@ -125,6 +159,7 @@ pub async fn offer(
         }
         if old.get::<String, _>("mode") == mode
             && old.get::<BigDecimal, _>("advance_amount") == advance
+            && old.get::<Option<NaiveDate>, _>("balance_due_on") == balance_due_on
             && old.get::<DateTime<Utc>, _>("expires_at") > Utc::now()
         {
             tx.commit().await?;
@@ -132,17 +167,17 @@ pub async fn offer(
         }
     }
     let version: i32 = sqlx::query_scalar(
-        "INSERT INTO order_payment_offers(order_id,mode,total_amount,advance_amount,status,expires_at,created_by) \
-         VALUES($1,$2,$3,$4,'OFFERED',NOW() + INTERVAL '24 hours',$5) \
+        "INSERT INTO order_payment_offers(order_id,mode,total_amount,advance_amount,balance_due_on,status,expires_at,created_by) \
+         VALUES($1,$2,$3,$4,$5,'OFFERED',NOW() + INTERVAL '24 hours',$6) \
          ON CONFLICT(order_id) DO UPDATE SET mode=EXCLUDED.mode,total_amount=EXCLUDED.total_amount, \
-         advance_amount=EXCLUDED.advance_amount,status='OFFERED',expires_at=EXCLUDED.expires_at, \
+         advance_amount=EXCLUDED.advance_amount,balance_due_on=EXCLUDED.balance_due_on,status='OFFERED',expires_at=EXCLUDED.expires_at, \
          created_by=EXCLUDED.created_by,updated_at=NOW(),version=order_payment_offers.version+1 \
          RETURNING version"
-    ).bind(order_id).bind(&mode).bind(&total).bind(&advance)
+    ).bind(order_id).bind(&mode).bind(&total).bind(&advance).bind(balance_due_on)
       .bind(actor.user_id).fetch_one(&mut *tx).await?;
     sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'order.payment_offer','order',$2,$3)")
         .bind(actor.user_id).bind(order_id.to_string())
-        .bind(json!({"mode":mode,"advance_amount":advance,"total_amount":total,"version":version}))
+        .bind(json!({"mode":mode,"advance_amount":advance,"total_amount":total,"balance_due_on":balance_due_on,"version":version}))
         .execute(&mut *tx).await?;
     sqlx::query(
         "INSERT INTO notifications(user_id,title,body,notification_type,reference_id) \
