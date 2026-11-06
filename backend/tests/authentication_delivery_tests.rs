@@ -1110,3 +1110,78 @@ async fn staff_role_changes_are_soft_audited_and_reserve_suspended_slots(db: PgP
         StatusCode::CONFLICT
     );
 }
+
+
+#[sqlx::test]
+async fn plant_manager_delegation_is_owner_scoped_revocable_and_cannot_escalate(db: PgPool) {
+    use trackmyrmc_backend::auth::refresh;
+    let state = state(db.clone());
+    let owner = identity(&db, "owner", Some("mgr-owner@example.invalid"), None).await;
+    let foreign_owner = identity(&db, "owner", Some("mgr-foreign@example.invalid"), None).await;
+    let manager = identity(&db, "supervisor", Some("mgr-supervisor@example.invalid"), None).await;
+    let employee = identity(&db, "dispatcher", Some("mgr-dispatcher@example.invalid"), None).await;
+    let replacement_manager = identity(&db, "operator", Some("mgr-operator@example.invalid"), None).await;
+    let plant: Uuid = sqlx::query_scalar(
+        "INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,address_line,
+         city,state,pincode,contact_phone) VALUES($1,'Delegation CI',$2,0,0,'CI','CI','MH','0','0')
+         RETURNING id",
+    ).bind(owner).bind(Uuid::new_v4().simple().to_string())
+     .fetch_one(&db).await.unwrap();
+    for (user, role) in [(manager,"supervisor"),(employee,"dispatcher"),(replacement_manager,"operator")] {
+        sqlx::query("INSERT INTO plant_staff(plant_id,user_id,role) VALUES($1,$2,$3)")
+            .bind(plant).bind(user).bind(role).execute(&db).await.unwrap();
+    }
+    let owner_login=refresh::issue_after_auth(&state,owner,"owner","",Some("mgr-owner@example.invalid"),1).await.unwrap();
+    let foreign_login=refresh::issue_after_auth(&state,foreign_owner,"owner","",Some("mgr-foreign@example.invalid"),1).await.unwrap();
+    let manager_login=refresh::issue_after_auth(&state,manager,"supervisor","",Some("mgr-supervisor@example.invalid"),1).await.unwrap();
+    let app=build_app_router(state.clone());
+    let grant=format!("/api/business/plants/{plant}/staff/{manager}/manager/grant");
+    let revoke=format!("/api/business/plants/{plant}/staff/{manager}/manager/revoke");
+    let owner_token=Some(owner_login.token.as_str());
+    let manager_token=Some(manager_login.token.as_str());
+    assert_eq!(call(&app,&grant,Some(json!({})),Some(&foreign_login.token)).await.0,StatusCode::FORBIDDEN);
+    assert_eq!(call(&app,&grant,Some(json!({})),manager_token).await.0,StatusCode::FORBIDDEN);
+    assert_eq!(call(&app,&grant,Some(json!({})),owner_token).await.0,StatusCode::OK);
+    let (status,access)=call(&app,"/api/staff/manager-access",None,manager_token).await;
+    assert_eq!(status,StatusCode::OK);
+    assert_eq!(access["enabled"],true);
+    assert_eq!(
+        call(&app,&format!("/api/business/plants/{plant}/staff/{replacement_manager}/manager/grant"),Some(json!({})),owner_token).await.0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        call(&app,&format!("/api/business/plants/{plant}/people/{manager}/remove"),Some(json!({})),manager_token).await.0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        call(&app,&format!("/api/business/plants/{plant}/people/{employee}/suspend"),Some(json!({})),manager_token).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        call(&app,&format!("/api/business/plants/{plant}/people/{employee}/activate"),Some(json!({})),manager_token).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(call(&app,&revoke,Some(json!({})),manager_token).await.0,StatusCode::FORBIDDEN);
+    assert_eq!(call(&app,&revoke,Some(json!({})),owner_token).await.0,StatusCode::OK);
+    assert_eq!(call(&app,"/api/staff/manager-access",None,manager_token).await.1["enabled"],false);
+    assert_eq!(
+        call(&app,&format!("/api/business/plants/{plant}/people/{employee}/remove"),Some(json!({})),manager_token).await.0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(call(&app,&grant,Some(json!({})),owner_token).await.0,StatusCode::OK);
+    assert_eq!(
+        call(&app,&format!("/api/business/plants/{plant}/people/{manager}/suspend"),Some(json!({})),owner_token).await.0,
+        StatusCode::OK
+    );
+    let active_delegations:i64=sqlx::query_scalar(
+        "SELECT COUNT(*) FROM plant_staff_manager_delegations
+         WHERE plant_id=$1 AND revoked_at IS NULL",
+    ).bind(plant).fetch_one(&db).await.unwrap();
+    assert_eq!(active_delegations,0);
+    assert_eq!(
+        call(&app,&format!("/api/business/plants/{plant}/people/{manager}/activate"),Some(json!({})),owner_token).await.0,
+        StatusCode::OK
+    );
+    let new_login=refresh::issue_after_auth(&state,manager,"supervisor","",Some("mgr-supervisor@example.invalid"),1).await.unwrap();
+    assert_eq!(call(&app,"/api/staff/manager-access",None,Some(&new_login.token)).await.1["enabled"],false);
+}
