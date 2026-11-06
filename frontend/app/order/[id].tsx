@@ -48,7 +48,15 @@ type DeliveryLoad = {
 };
 
 type Detail = {
-  order: OrderData & { customer_name?: string; customer_mobile?: string };
+  order: OrderData & { customer_name?: string; customer_mobile?: string; preferred_payment_mode?: string | null };
+  payment_offer?: {
+    status: "OFFERED" | "AWAITING_PAYMENT" | "READY_FOR_PRODUCTION" | "CANCELLED";
+    mode: string;
+    advance_amount: string;
+    total_amount: string;
+    expires_at: string;
+    version: number;
+  } | null;
   contact_person?: string;
   contact_mobile?: string;
   notes?: string;
@@ -75,6 +83,7 @@ export default function OrderDetail() {
   const [busy, setBusy] = useState(false);
   const [showReject, setShowReject] = useState(false);
   const [reason, setReason] = useState("");
+  const [advanceRupees, setAdvanceRupees] = useState("");
 
   const act = async (path: string, body?: any, msg?: string) => {
     setBusy(true);
@@ -92,6 +101,25 @@ export default function OrderDetail() {
   };
 
   const o = data?.order;
+  const offer = data?.payment_offer;
+  const approvePreferredTerms = () => {
+    if (!o?.preferred_payment_mode) return;
+    let advance_paise: number | null = null;
+    if (o.preferred_payment_mode === "PARTIAL_ADVANCE") {
+      const amount = advanceRupees.trim();
+      if (!/^\d+(\.\d{1,2})?$/.test(amount)) {
+        toast("Enter an advance amount with at most two decimal places", "error");
+        return;
+      }
+      const [rupees, fraction = ""] = amount.split(".");
+      advance_paise = Number(rupees) * 100 + Number((fraction + "00").slice(0, 2));
+      if (!Number.isSafeInteger(advance_paise) || advance_paise <= 0) {
+        toast("Enter a valid advance", "error");
+        return;
+      }
+    }
+    act(`/owner/orders/${id}/payment-offer`, { advance_paise }, "Payment terms sent for customer approval");
+  };
   const proofs = data?.pods?.length ? data.pods : (data?.pod ? [data.pod] : []);
 
   return (
@@ -189,6 +217,29 @@ export default function OrderDetail() {
             </View>
           ) : null}
 
+          {offer ? (
+            <Card style={{ gap: spacing.sm }}>
+              <AppText variant="heading">Plant-approved payment terms</AppText>
+              <Row icon="wallet-outline" label="Payment mode" value={offer.mode.replace(/_/g, " ")} colors={colors} />
+              <Row icon="cash-outline" label="Final total (INR)" value={String(offer.total_amount)} colors={colors} />
+              <Row icon="card-outline" label="Advance (INR)" value={String(offer.advance_amount)} colors={colors} />
+              <AppText variant="caption">Status: {offer.status.replace(/_/g, " ")}. No payment is taken on this screen.</AppText>
+              {!isOwner && offer.status === "OFFERED" ? (
+                <Button testID="customer-accept-payment-terms" label="Accept Final Terms" loading={busy}
+                  onPress={() => act(`/customer/orders/${id}/accept-payment-terms`, { version: offer.version }, "Payment terms accepted")} />
+              ) : null}
+              {!isOwner && offer.status === "AWAITING_PAYMENT" ? (
+                <AppText variant="caption">Your terms are accepted. This order remains on hold until a secure payment link is enabled and payment is verified. Do not transfer money outside the approved flow.</AppText>
+              ) : null}
+            </Card>
+          ) : !isOwner && o.preferred_payment_mode && o.status === "PENDING" ? (
+            <Card><AppText variant="caption">Preferred payment: {o.preferred_payment_mode.replace(/_/g, " ")}. Awaiting plant acceptance. No payment is due now.</AppText></Card>
+          ) : null}
+
+          {isOwner && o.status === "PENDING" && o.preferred_payment_mode === "PARTIAL_ADVANCE" && !offer ? (
+            <Card><Input testID="owner-advance-amount" label="Plant-approved advance amount (INR)" value={advanceRupees} onChangeText={setAdvanceRupees} keyboardType="decimal-pad" placeholder="e.g. 25000.00" /></Card>
+          ) : null}
+
           {isOwner ? (
             o.status === "PENDING" ? (
               showReject ? (
@@ -203,7 +254,13 @@ export default function OrderDetail() {
               ) : (
                 <View style={{ flexDirection: "row", gap: spacing.sm }}>
                   <View style={{ flex: 1 }}><Button testID="owner-reject" label="Reject" variant="outline" onPress={() => setShowReject(true)} /></View>
-                  <View style={{ flex: 1 }}><Button testID="owner-approve" label="Approve" loading={busy} onPress={() => act(`/owner/orders/${id}/approve`, undefined, "Order approved")} icon={<Ionicons name="checkmark-circle-outline" size={18} color={colors.onBrand} />} /></View>
+                  <View style={{ flex: 1 }}>{offer ? (
+                    <AppText variant="caption">{offer.status === "OFFERED" ? "Payment offer sent. Awaiting customer acceptance." : offer.status === "AWAITING_PAYMENT" ? "Customer accepted. Waiting for verified online payment before production." : "Review the order's current commercial status before any further action."}</AppText>
+                  ) : (
+                    <Button testID="owner-approve" label={o.preferred_payment_mode ? "Accept & Send Terms" : "Approve"} loading={busy}
+                      onPress={() => o.preferred_payment_mode ? approvePreferredTerms() : act(`/owner/orders/${id}/approve`, undefined, "Order approved")}
+                      icon={<Ionicons name="checkmark-circle-outline" size={18} color={colors.onBrand} />} />
+                  )}</View>
                 </View>
               )
             ) : (
