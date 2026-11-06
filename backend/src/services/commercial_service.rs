@@ -240,7 +240,14 @@ pub async fn request(
     if let Some(lead) = payload.lead.as_ref() {
         sqlx::query(
             "INSERT INTO rmc_rfq_leads(customer_id,request_key,google_place_id,plant_id,canonical_request_id,customer_name,customer_email,customer_gstin,grade,quantity_m3,site_address,site_lat,site_lng,delivery_date,pump_required,site_contact_phone,sharing_consent_at,status)
-             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW(),'REQUESTED')"
+             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW(),'REQUESTED')
+             ON CONFLICT(customer_id,request_key) DO UPDATE
+             SET canonical_request_id=EXCLUDED.canonical_request_id,
+                 status='REQUESTED',updated_at=NOW()
+             WHERE rmc_rfq_leads.status='MATCHED_RECONFIRMATION_REQUIRED'
+                 AND rmc_rfq_leads.plant_id=EXCLUDED.plant_id
+                 AND rmc_rfq_leads.expires_at>NOW()
+             RETURNING id"
         )
         .bind(customer).bind(lead.request_key).bind(lead.google_place_id.as_deref())
         .bind(payload.plant_id).bind(id).bind(lead.customer_name.trim())
@@ -248,7 +255,8 @@ pub async fn request(
         .bind(&grade).bind(quantity.clone()).bind(lead.site_address.trim())
         .bind(lead.site_lat).bind(lead.site_lng).bind(required)
         .bind(payload.pump_required.unwrap_or(false)).bind(lead.site_contact_phone.trim())
-        .execute(&mut *tx).await?;
+        .fetch_optional(&mut *tx).await?
+        .ok_or_else(|| AppError::Conflict("Matched enquiry must be reconfirmed by its owner".into()))?;
     }
     // Internal notification only: WhatsApp requires supplier opt-in and an approved non-OTP template.
     sqlx::query(
