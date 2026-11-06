@@ -380,9 +380,11 @@ pub async fn add_plant_staff(
     Path(plant_id): Path<Uuid>,
     Json(payload): Json<AddStaffPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
-    ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
+    super::plant_staff_manager::require_manager_or_owner(&state, &auth_user, plant_id).await?;
 
+    if auth_user.user_id == payload.user_id {
+        return Err(AppError::Forbidden("Self-assignment is not permitted".into()));
+    }
     // Staff linking only: never create users, grant a different global role, or
     // enrol drivers in the email-OTP plant_staff system.
     let allowed = [
@@ -410,6 +412,14 @@ pub async fn add_plant_staff(
         ));
     }
 
+    // Do not bind an already assigned employee to a second plant.
+    let other_plant: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM plant_staff
+         WHERE user_id=$1 AND plant_id<>$2 AND is_active=TRUE AND removed_at IS NULL)",
+    ).bind(payload.user_id).bind(plant_id).fetch_one(&state.db).await?;
+    if other_plant {
+        return Err(AppError::Conflict("Employee already belongs to another active plant".into()));
+    }
     let mut tx = state.db.begin().await?;
     sqlx::query(
         "INSERT INTO plant_staff(plant_id,user_id,role,is_active,removed_at,removed_by)
@@ -453,8 +463,7 @@ pub async fn suspend_plant_staff(
     auth_user: AuthUser,
     Path((plant_id, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
-    ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
+    super::plant_staff_manager::require_manage_target(&state, &auth_user, plant_id, user_id).await?;
     let mut tx = state.db.begin().await?;
     let role: Option<String> = sqlx::query_scalar(
         "UPDATE plant_staff SET is_active=FALSE WHERE plant_id=$1 AND user_id=$2
@@ -471,6 +480,22 @@ pub async fn suspend_plant_staff(
     .bind(user_id)
     .execute(&mut *tx)
     .await?;
+    // Revocation is part of the same transaction as suspension/removal.
+    let revocation = sqlx::query(
+        "UPDATE plant_staff_manager_delegations
+         SET revoked_at=clock_timestamp(),revoked_by=$3
+         WHERE plant_id=$1 AND user_id=$2 AND revoked_at IS NULL",
+    )
+    .bind(plant_id).bind(user_id).bind(auth_user.user_id)
+    .execute(&mut *tx).await?;
+    if revocation.rows_affected() > 0 {
+        sqlx::query(
+            "INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata)
+             VALUES($1,'plant_manager.auto_revoke','plant_staff',$2,$3)",
+        ).bind(auth_user.user_id).bind(user_id)
+         .bind(json!({"plant_id":plant_id,"cause":"suspend_plant_staff"}))
+         .execute(&mut *tx).await?;
+    }
     sqlx::query(
         "INSERT INTO plant_staff_role_slot_audit(plant_id,staff_user_id,actor_user_id,role,action)
                 VALUES($1,$2,$3,$4,'SUSPENDED')",
@@ -492,8 +517,7 @@ pub async fn activate_plant_staff(
     auth_user: AuthUser,
     Path((plant_id, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
-    ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
+    super::plant_staff_manager::require_manage_target(&state, &auth_user, plant_id, user_id).await?;
     let mut tx = state.db.begin().await?;
     let role: Option<String> = sqlx::query_scalar(
         "UPDATE plant_staff SET is_active=TRUE WHERE plant_id=$1 AND user_id=$2
@@ -526,8 +550,7 @@ pub async fn remove_plant_staff(
     auth_user: AuthUser,
     Path((plant_id, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
-    ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
+    super::plant_staff_manager::require_manage_target(&state, &auth_user, plant_id, user_id).await?;
     let mut tx = state.db.begin().await?;
     let role: Option<String> = sqlx::query_scalar(
         "UPDATE plant_staff SET is_active=FALSE,removed_at=clock_timestamp(),removed_by=$3
@@ -545,6 +568,22 @@ pub async fn remove_plant_staff(
     .bind(user_id)
     .execute(&mut *tx)
     .await?;
+    // Revocation is part of the same transaction as suspension/removal.
+    let revocation = sqlx::query(
+        "UPDATE plant_staff_manager_delegations
+         SET revoked_at=clock_timestamp(),revoked_by=$3
+         WHERE plant_id=$1 AND user_id=$2 AND revoked_at IS NULL",
+    )
+    .bind(plant_id).bind(user_id).bind(auth_user.user_id)
+    .execute(&mut *tx).await?;
+    if revocation.rows_affected() > 0 {
+        sqlx::query(
+            "INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata)
+             VALUES($1,'plant_manager.auto_revoke','plant_staff',$2,$3)",
+        ).bind(auth_user.user_id).bind(user_id)
+         .bind(json!({"plant_id":plant_id,"cause":"remove_plant_staff"}))
+         .execute(&mut *tx).await?;
+    }
     sqlx::query(
         "INSERT INTO plant_staff_role_slot_audit(plant_id,staff_user_id,actor_user_id,role,action)
                 VALUES($1,$2,$3,$4,'REMOVED')",
