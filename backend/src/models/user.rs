@@ -116,6 +116,8 @@ pub struct LoginRequest {
 pub struct AuthResponse {
     pub success: bool,
     pub token: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refresh_token: Option<String>,
     pub role: String,
     pub user: UserResponse,
 }

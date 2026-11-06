@@ -95,6 +95,8 @@ pub async fn get_staff_home(
     // The mobile StaffHome screen expects role/name/kpis/primary. The previous Rust
     // endpoint returned only metrics, so every operational role rendered an empty home.
     let role = auth_user.role.as_str();
+    let visible =
+        super::staff_module_permissions::viewable_modules(&state, &auth_user, plant_id).await?;
     let (role_label, title, kind) = match role {
         "dispatcher" => ("Dispatcher", "Dispatch Queue", "dispatch"),
         "operator" => ("Plant Operator", "Production Queue", "production"),
@@ -169,6 +171,29 @@ pub async fn get_staff_home(
         ]);
     }
 
+    let primary_module = match role {
+        "accountant" => "billing_ledger",
+        "operator" => "production_queue",
+        "supervisor" => "incidents",
+        "quality_engineer" => "quality_register",
+        "fleet_manager" => "fleet_availability",
+        "store_manager" => "material_inventory",
+        _ => "dispatch_queue",
+    };
+    if let Some(items) = kpis.as_array_mut() {
+        items.retain(|item| {
+            let key = match item["label"].as_str().unwrap_or("") {
+                "Pending Orders" => "dispatch_queue",
+                "In Transit TMs" | "Available TMs" | "Total TMs" | "Available" | "On Trip" => {
+                    "fleet_availability"
+                }
+                "Staff Present Today" => "workforce",
+                "Drivers" => "driver_roster",
+                _ => primary_module,
+            };
+            visible.contains(key)
+        });
+    }
     Ok(Json(json!({
         "success": true,
         "role": auth_user.role,
@@ -179,10 +204,10 @@ pub async fn get_staff_home(
         "kpis": kpis,
         "plant_id": plant_id,
         "metrics": {
-            "pending_orders": pending_orders,
-            "in_transit_mixers": in_transit_mixers,
-            "available_mixers": available_mixers,
-            "today_attendance": today_attendance
+            "pending_orders": visible.contains("dispatch_queue").then_some(pending_orders),
+            "in_transit_mixers": visible.contains("fleet_availability").then_some(in_transit_mixers),
+            "available_mixers": visible.contains("fleet_availability").then_some(available_mixers),
+            "today_attendance": visible.contains("workforce").then_some(today_attendance)
         }
     })))
 }

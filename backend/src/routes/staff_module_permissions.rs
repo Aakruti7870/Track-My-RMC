@@ -22,6 +22,10 @@ pub struct Grant {
     pub view: bool,
     pub edit: bool,
     pub approve: bool,
+    #[serde(default)]
+    pub create: bool,
+    #[serde(default)]
+    pub export: bool,
 }
 impl Grant {
     const fn new(view: bool, edit: bool, approve: bool) -> Self {
@@ -29,23 +33,33 @@ impl Grant {
             view,
             edit,
             approve,
+            create: edit,
+            export: false,
         }
     }
-    fn valid(self) -> bool {
-        (!self.edit || self.view) && (!self.approve || self.view)
+    pub(crate) fn valid(self) -> bool {
+        (!self.edit || self.view)
+            && (!self.approve || self.view)
+            && (!self.create || self.view)
+            && (!self.export || self.view)
     }
-    fn within(self, ceiling: Self) -> bool {
+    pub(crate) fn within(self, ceiling: Self) -> bool {
         self.valid()
             && (!self.view || ceiling.view)
             && (!self.edit || ceiling.edit)
             && (!self.approve || ceiling.approve)
+            && (!self.create || ceiling.create)
+            && (!self.export || ceiling.export)
     }
     fn intersect(self, ceiling: Self) -> Self {
-        Self::new(
+        let mut grant = Self::new(
             self.view && ceiling.view,
             self.view && self.edit && ceiling.edit,
             self.view && self.approve && ceiling.approve,
-        )
+        );
+        grant.create = self.view && self.create && ceiling.create;
+        grant.export = self.view && self.export && ceiling.export;
+        grant
     }
 }
 #[derive(Clone, Copy)]
@@ -53,6 +67,8 @@ pub enum Action {
     View,
     Edit,
     Approve,
+    Create,
+    Export,
 }
 impl Grant {
     fn permits(self, action: Action) -> bool {
@@ -60,6 +76,8 @@ impl Grant {
             Action::View => self.view,
             Action::Edit => self.edit,
             Action::Approve => self.approve,
+            Action::Create => self.create,
+            Action::Export => self.export,
         }
     }
 }
@@ -85,7 +103,7 @@ pub const STAFF_ROLES: [&str; 8] = [
     "fleet_manager",
     "store_manager",
 ];
-const ALL_KEYS: [&str; 20] = [
+pub const ALL_KEYS: [&str; 20] = [
     "dispatch_queue",
     "fleet_availability",
     "challan_gate_pass",
@@ -107,6 +125,9 @@ const ALL_KEYS: [&str; 20] = [
     "driver_roster",
     "employee_master",
 ];
+pub fn known_module(key: &str) -> bool {
+    ALL_KEYS.contains(&key)
+}
 const ALL_LABELS: [&str; 20] = [
     "Dispatch Queue",
     "Fleet Availability",
@@ -139,7 +160,7 @@ pub fn role_ceiling(role: &str, key: &str) -> Option<Grant> {
     if !is_staff_role(role) {
         return None;
     }
-    let ceiling = match (role, key) {
+    let mut ceiling = match (role, key) {
         (
             "admin",
             "dispatch_queue" | "fleet_availability" | "challan_gate_pass" | "material_inventory"
@@ -190,6 +211,9 @@ pub fn role_ceiling(role: &str, key: &str) -> Option<Grant> {
         }
         _ => Grant::new(false, false, false),
     };
+    if key == "plant_reports" && ceiling.view {
+        ceiling.export = true;
+    }
     if ALL_KEYS.contains(&key) {
         Some(ceiling)
     } else {
@@ -226,6 +250,19 @@ pub struct GrantEdit {
     pub view: bool,
     pub edit: bool,
     pub approve: bool,
+    pub create: Option<bool>,
+    pub export: Option<bool>,
+}
+impl GrantEdit {
+    fn grant(&self) -> Grant {
+        Grant {
+            view: self.view,
+            edit: self.edit,
+            approve: self.approve,
+            create: self.create.unwrap_or(self.edit),
+            export: self.export.unwrap_or(false),
+        }
+    }
 }
 #[derive(Deserialize)]
 pub struct ReplaceGrants {
@@ -273,7 +310,7 @@ async fn active_staff_role(db: &PgPool, plant: Uuid, user: Uuid) -> Result<Strin
 async fn resolved(db: &PgPool, plant: Uuid, user: Uuid) -> Result<Vec<ModuleGrant>, AppError> {
     let role = active_staff_role(db, plant, user).await?;
     let rows = sqlx::query(
-        "SELECT module_key,can_view,can_edit,can_approve FROM plant_staff_module_permissions \
+        "SELECT module_key,can_view,can_edit,can_approve,can_create,can_export FROM plant_staff_module_permissions \
          WHERE plant_id=$1 AND user_id=$2",
     )
     .bind(plant)
@@ -286,17 +323,41 @@ async fn resolved(db: &PgPool, plant: Uuid, user: Uuid) -> Result<Vec<ModuleGran
         let override_row = rows
             .iter()
             .find(|r| r.get::<String, _>("module_key") == *key);
-        let override_grant = override_row
-            .map(|r| Grant::new(r.get("can_view"), r.get("can_edit"), r.get("can_approve")));
+        let override_grant = override_row.map(|r| Grant {
+            view: r.get("can_view"),
+            edit: r.get("can_edit"),
+            approve: r.get("can_approve"),
+            create: r.get("can_create"),
+            export: r.get("can_export"),
+        });
         result.push(ModuleGrant {
             key,
             label,
-            effective: override_grant.unwrap_or(ceiling).intersect(ceiling),
+            effective: override_grant
+                .unwrap_or(Grant::new(false, false, false))
+                .intersect(ceiling),
             ceiling,
             overridden: override_row.is_some(),
         });
     }
     Ok(result)
+}
+
+pub(crate) async fn viewable_modules(
+    state: &AppState,
+    user: &AuthUser,
+    plant: Uuid,
+) -> Result<std::collections::HashSet<&'static str>, AppError> {
+    if matches!(user.role.as_str(), "owner" | "plant_owner") {
+        owned_plant(state, user, plant).await?;
+        return Ok(ALL_KEYS.into_iter().collect());
+    }
+    Ok(resolved(&state.db, plant, user.user_id)
+        .await?
+        .into_iter()
+        .filter(|g| g.effective.view)
+        .map(|g| g.key)
+        .collect())
 }
 
 /// To retain existing role gates, call *after* check_role and plant/order scope checks.
@@ -323,8 +384,8 @@ pub async fn require(
     if active_role != user.role {
         return Err(AppError::Forbidden("Assigned plant role mismatch".into()));
     }
-    let row: Option<(bool, bool, bool)> = sqlx::query_as(
-        "SELECT can_view,can_edit,can_approve FROM plant_staff_module_permissions \
+    let row: Option<(bool, bool, bool, bool, bool)> = sqlx::query_as(
+        "SELECT can_view,can_edit,can_approve,can_create,can_export FROM plant_staff_module_permissions \
          WHERE plant_id=$1 AND user_id=$2 AND module_key=$3",
     )
     .bind(plant)
@@ -333,8 +394,14 @@ pub async fn require(
     .fetch_optional(&state.db)
     .await?;
     let grant = row
-        .map(|(v, e, a)| Grant::new(v, e, a))
-        .unwrap_or(ceiling)
+        .map(|(v, e, a, c, x)| Grant {
+            view: v,
+            edit: e,
+            approve: a,
+            create: c,
+            export: x,
+        })
+        .unwrap_or(Grant::new(false, false, false))
         .intersect(ceiling);
     if !grant.permits(action) {
         return Err(AppError::Forbidden(
@@ -400,9 +467,22 @@ pub async fn get_staff(
     owner: AuthUser,
     Path((plant, staff)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<Value>, AppError> {
-    owned_plant(&state, &owner, plant).await?;
+    super::plant_staff_manager::require_manage_target(&state, &owner, plant, staff).await?;
+    super::plant_staff_manager::require_capability(&state, &owner, plant, "permissions").await?;
     let role = active_staff_role(&state.db, plant, staff).await?;
-    let permissions = resolved(&state.db, plant, staff).await?;
+    let mut permissions = resolved(&state.db, plant, staff).await?;
+    if !matches!(owner.role.as_str(), "owner" | "plant_owner") {
+        let limits:Value=sqlx::query_scalar("SELECT permission_limits FROM plant_staff_manager_delegations WHERE plant_id=$1 AND user_id=$2 AND revoked_at IS NULL")
+            .bind(plant).bind(owner.user_id).fetch_one(&state.db).await?;
+        for permission in &mut permissions {
+            let limit = limits
+                .get(permission.key)
+                .cloned()
+                .and_then(|v| serde_json::from_value::<Grant>(v).ok())
+                .unwrap_or(Grant::new(false, false, false));
+            permission.ceiling = permission.ceiling.intersect(limit);
+        }
+    }
     Ok(Json(
         json!({"plant_id":plant,"staff_user_id":staff,"role":role,"permissions":permissions}),
     ))
@@ -413,7 +493,9 @@ pub async fn replace_staff(
     Path((plant, staff)): Path<(Uuid, Uuid)>,
     Json(request): Json<ReplaceGrants>,
 ) -> Result<Json<Value>, AppError> {
-    owned_plant(&state, &owner, plant).await?;
+    super::plant_staff_manager::require_manage_target(&state, &owner, plant, staff).await?;
+    let mut tx = state.db.begin().await?;
+    super::plant_staff_manager::lock_authorization(&mut tx, &owner, plant, "permissions").await?;
     let target_role = active_staff_role(&state.db, plant, staff).await?;
     let allowed = role_modules(&target_role);
     if request.permissions.len() != allowed.len() {
@@ -428,14 +510,27 @@ pub async fn replace_staff(
             .find(|(key, _, _)| *key == edit.key)
             .map(|(_, _, limit)| *limit)
             .ok_or_else(|| AppError::BadRequest("Module is outside this role ceiling".into()))?;
-        let grant = Grant::new(edit.view, edit.edit, edit.approve);
+        let grant = edit.grant();
+        if !matches!(owner.role.as_str(), "owner" | "plant_owner") {
+            let limits:serde_json::Value=sqlx::query_scalar("SELECT permission_limits FROM plant_staff_manager_delegations WHERE plant_id=$1 AND user_id=$2 AND revoked_at IS NULL")
+                .bind(plant).bind(owner.user_id).fetch_one(&mut *tx).await?;
+            let limit = limits
+                .get(&edit.key)
+                .cloned()
+                .and_then(|v| serde_json::from_value::<Grant>(v).ok())
+                .unwrap_or(Grant::new(false, false, false));
+            if !grant.within(limit) {
+                return Err(AppError::Forbidden(
+                    "Grant exceeds Owner-approved manager limits".into(),
+                ));
+            }
+        }
         if !seen.insert(edit.key.as_str()) || !grant.within(ceiling) {
             return Err(AppError::BadRequest(
                 "Duplicate or excessive module grant".into(),
             ));
         }
     }
-    let mut tx = state.db.begin().await?;
     // Lock assignment so suspension cannot race with privilege writes.
     let current_role: Option<String> = sqlx::query_scalar(
         "SELECT ps.role FROM plant_staff ps JOIN users u ON u.id=ps.user_id \
@@ -453,8 +548,8 @@ pub async fn replace_staff(
         ));
     }
     for edit in &request.permissions {
-        let old: Option<(bool, bool, bool)> = sqlx::query_as(
-            "SELECT can_view,can_edit,can_approve FROM plant_staff_module_permissions \
+        let old: Option<(bool, bool, bool, bool, bool)> = sqlx::query_as(
+            "SELECT can_view,can_edit,can_approve,can_create,can_export FROM plant_staff_module_permissions \
              WHERE plant_id=$1 AND user_id=$2 AND module_key=$3 FOR UPDATE",
         )
         .bind(plant)
@@ -462,16 +557,23 @@ pub async fn replace_staff(
         .bind(&edit.key)
         .fetch_optional(&mut *tx)
         .await?;
-        let next = Grant::new(edit.view, edit.edit, edit.approve);
-        if old.map(|(v, e, a)| Grant::new(v, e, a)) == Some(next) {
+        let next = edit.grant();
+        if old.map(|(v, e, a, c, x)| Grant {
+            view: v,
+            edit: e,
+            approve: a,
+            create: c,
+            export: x,
+        }) == Some(next)
+        {
             continue;
         }
         sqlx::query(
             "INSERT INTO plant_staff_module_permissions \
-             (plant_id,user_id,module_key,can_view,can_edit,can_approve,updated_by) \
-             VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (plant_id,user_id,module_key) \
+             (plant_id,user_id,module_key,can_view,can_edit,can_approve,updated_by,can_create,can_export) \
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (plant_id,user_id,module_key) \
              DO UPDATE SET can_view=EXCLUDED.can_view,can_edit=EXCLUDED.can_edit, \
-             can_approve=EXCLUDED.can_approve,updated_by=EXCLUDED.updated_by,updated_at=NOW()",
+             can_approve=EXCLUDED.can_approve,can_create=EXCLUDED.can_create,can_export=EXCLUDED.can_export,updated_by=EXCLUDED.updated_by,updated_at=NOW()",
         )
         .bind(plant)
         .bind(staff)
@@ -480,6 +582,7 @@ pub async fn replace_staff(
         .bind(edit.edit)
         .bind(edit.approve)
         .bind(owner.user_id)
+        .bind(next.create).bind(next.export)
         .execute(&mut *tx)
         .await?;
         sqlx::query(
@@ -491,7 +594,9 @@ pub async fn replace_staff(
         .bind(staff)
         .bind(owner.user_id)
         .bind(&edit.key)
-        .bind(old.map(|(v, e, a)| sqlx::types::Json(json!({"view":v,"edit":e,"approve":a}))))
+        .bind(old.map(|(v, e, a, c, x)| {
+            sqlx::types::Json(json!({"view":v,"edit":e,"approve":a,"create":c,"export":x}))
+        }))
         .bind(sqlx::types::Json(json!(next)))
         .execute(&mut *tx)
         .await?;

@@ -1,3 +1,4 @@
+mod support;
 use axum::{
     extract::{Path, State},
     Json,
@@ -63,36 +64,48 @@ fn settings(queue_view: bool, fleet_edit: bool) -> ReplaceGrants {
     ReplaceGrants {
         permissions: vec![
             GrantEdit {
+                create: None,
+                export: None,
                 key: "dispatch_queue".into(),
                 view: queue_view,
                 edit: queue_view,
                 approve: false,
             },
             GrantEdit {
+                create: None,
+                export: None,
                 key: "fleet_availability".into(),
                 view: true,
                 edit: fleet_edit,
                 approve: false,
             },
             GrantEdit {
+                create: None,
+                export: None,
                 key: "challan_gate_pass".into(),
                 view: true,
                 edit: true,
                 approve: false,
             },
             GrantEdit {
+                create: None,
+                export: None,
                 key: "material_inventory".into(),
                 view: true,
                 edit: false,
                 approve: false,
             },
             GrantEdit {
+                create: None,
+                export: None,
                 key: "billing_ledger".into(),
                 view: false,
                 edit: false,
                 approve: false,
             },
             GrantEdit {
+                create: None,
+                export: None,
                 key: "payroll".into(),
                 view: false,
                 edit: false,
@@ -117,6 +130,7 @@ async fn owner_controls_dispatcher_only_with_tenant_isolation_and_live_revocatio
     .execute(&db)
     .await
     .unwrap();
+    support::approve_fixture_assignments(&db).await;
     sqlx::query(
         "INSERT INTO plant_staff(plant_id,user_id,role,is_active) VALUES($1,$2,'supervisor',TRUE)",
     )
@@ -125,6 +139,7 @@ async fn owner_controls_dispatcher_only_with_tenant_isolation_and_live_revocatio
     .execute(&db)
     .await
     .unwrap();
+    support::approve_fixture_assignments(&db).await;
     let app = state(db.clone());
     let dispatch = identity(dispatcher, "dispatcher");
     assert!(
@@ -213,7 +228,10 @@ async fn owner_controls_dispatcher_only_with_tenant_isolation_and_live_revocatio
     let audit_count:i64=sqlx::query_scalar(
         "SELECT COUNT(*) FROM plant_staff_module_permission_audit WHERE plant_id=$1 AND staff_user_id=$2"
     ).bind(mine).bind(dispatcher).fetch_one(&db).await.unwrap();
-    assert_eq!(audit_count, 6);
+    assert_eq!(
+        audit_count, 2,
+        "Only the two changed grants require new audit rows"
+    );
     assert!(
         sqlx::query("DELETE FROM plant_staff_module_permission_audit WHERE plant_id=$1")
             .bind(mine)
@@ -239,6 +257,58 @@ async fn owner_controls_dispatcher_only_with_tenant_isolation_and_live_revocatio
             Json(settings(true, true))
         )
         .await,
+        Err(AppError::Forbidden(_))
+    ));
+}
+
+#[sqlx::test]
+async fn report_export_requires_its_own_explicit_grant_and_plant_scope(db: PgPool) {
+    use trackmyrmc_backend::routes::master_data_routes;
+    let owner = user(&db, "owner").await;
+    let staff = user(&db, "store_manager").await;
+    let plant_id = plant(&db, owner).await;
+    let other = plant(&db, owner).await;
+    sqlx::query("INSERT INTO plant_staff(plant_id,user_id,role) VALUES($1,$2,'store_manager')")
+        .bind(plant_id)
+        .bind(staff)
+        .execute(&db)
+        .await
+        .unwrap();
+    let app = state(db.clone());
+    let actor = identity(staff, "store_manager");
+    assert!(matches!(
+        master_data_routes::export_plant_summary(State(app.clone()), actor.clone(), Path(plant_id))
+            .await,
+        Err(AppError::Forbidden(_))
+    ));
+    sqlx::query("INSERT INTO plant_staff_module_permissions(plant_id,user_id,module_key,can_view,can_edit,can_export,updated_by) VALUES($1,$2,'plant_reports',TRUE,FALSE,FALSE,$3)").bind(plant_id).bind(staff).bind(owner).execute(&db).await.unwrap();
+    assert!(
+        permissions::require(&app, &actor, plant_id, "plant_reports", Action::View)
+            .await
+            .is_ok()
+    );
+    assert!(matches!(
+        master_data_routes::export_plant_summary(State(app.clone()), actor.clone(), Path(plant_id))
+            .await,
+        Err(AppError::Forbidden(_))
+    ));
+    sqlx::query("UPDATE plant_staff_module_permissions SET can_export=TRUE WHERE plant_id=$1 AND user_id=$2 AND module_key='plant_reports'").bind(plant_id).bind(staff).execute(&db).await.unwrap();
+    let response =
+        master_data_routes::export_plant_summary(State(app.clone()), actor.clone(), Path(plant_id))
+            .await
+            .unwrap();
+    assert_eq!(
+        response.headers()[axum::http::header::CONTENT_TYPE],
+        "text/csv; charset=utf-8"
+    );
+    let body = axum::body::to_bytes(response.into_body(), 10000)
+        .await
+        .unwrap();
+    let csv = std::str::from_utf8(&body).unwrap();
+    assert!(csv.starts_with("metric,value\r\n"));
+    assert!(!csv.contains("salary"));
+    assert!(matches!(
+        master_data_routes::export_plant_summary(State(app), actor, Path(other)).await,
         Err(AppError::Forbidden(_))
     ));
 }

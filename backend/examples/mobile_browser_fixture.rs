@@ -1,7 +1,13 @@
 //! Disposable CI harness, never the production entry point. It runs the real
 //! router with an injected delivery transport and the explicitly approved
 //! synthetic identities. OTPs go only to a protected loopback memory sink.
-use axum::async_trait;
+use axum::{
+    async_trait,
+    http::{
+        header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE},
+        Method,
+    },
+};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{
@@ -9,7 +15,7 @@ use std::{
     io::Read,
     sync::Arc,
 };
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::CorsLayer;
 use trackmyrmc_backend::{
     config::AppConfig,
     error::AppError,
@@ -192,6 +198,15 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 .bind(role)
                 .execute(&mut *tx)
                 .await?;
+            // Explicit fixture Owner approval. Production missing grants deny.
+            for key in trackmyrmc_backend::routes::staff_module_permissions::ALL_KEYS {
+                if let Some(g) =
+                    trackmyrmc_backend::routes::staff_module_permissions::role_ceiling(role, key)
+                {
+                    sqlx::query("INSERT INTO plant_staff_module_permissions(plant_id,user_id,module_key,can_view,can_edit,can_approve,can_create,can_export,updated_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)")
+                        .bind(plant).bind(id).bind(key).bind(g.view).bind(g.edit).bind(g.approve).bind(g.create).bind(g.export).bind(owner).execute(&mut *tx).await?;
+                }
+            }
         }
     }
     let mixer:Uuid=sqlx::query_scalar("INSERT INTO transit_mixers(plant_id,registration_number,driver_id) VALUES($1,'CI-MOBILE-TM',$2) RETURNING id").bind(plant).bind(driver).fetch_one(&mut *tx).await?;
@@ -234,8 +249,16 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("CI-FIXTURE: router");
     let cors = CorsLayer::new()
         .allow_origin("http://127.0.0.1:8081".parse::<axum::http::HeaderValue>()?)
-        .allow_methods(Any)
-        .allow_headers(Any);
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::PATCH,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
+        .allow_headers([ACCEPT, AUTHORIZATION, CONTENT_TYPE])
+        .allow_credentials(true);
     let app = build_app_router(state).layer(cors);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:8301").await?;
     eprintln!("Isolated synthetic mobile browser fixture ready");

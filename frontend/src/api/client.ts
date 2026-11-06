@@ -1,8 +1,10 @@
+import { Platform } from "react-native";
+import { publishSessionLoss } from "../auth/sessionEvents";
 // API client for TrackMyRMC. Base URL from env; all routes under /api.
 const RAW_BACKEND = (process.env.EXPO_PUBLIC_BACKEND_URL || process.env.EXPO_PUBLIC_API_URL)?.trim();
 const REQUEST_TIMEOUT_MS = 30_000;
 
-export type ApiError = { status: number; detail: string };
+export type ApiError = { status: number; detail: string; error_code?: string };
 
 export function isApiError(error: unknown): error is ApiError {
   return Boolean(
@@ -76,6 +78,7 @@ function validatedApiPath(path: string): string {
 export type AuthSessionResponse = {
   access_token?: string;
   token: string;
+  refresh_token?: string;
   token_type: string;
   expires_at: string;
   role: string;
@@ -178,7 +181,9 @@ async function readResponseBody(res: Response): Promise<unknown> {
 async function handle<T>(res: Response): Promise<T> {
   const body = await readResponseBody(res);
   if (!res.ok) {
-    throw { status: res.status, detail: normalizeErrorDetail(body, res.status) } as ApiError;
+    const errorCode = body && typeof body === "object" && "error_code" in body
+      && typeof body.error_code === "string" ? body.error_code : undefined;
+    throw { status: res.status, detail: normalizeErrorDetail(body, res.status), error_code: errorCode } as ApiError;
   }
   return body as T;
 }
@@ -215,13 +220,28 @@ async function request<T>(
   try {
     const res = await fetch(`${apiBase()}${safePath}`, {
       method: options.method ?? "GET",
+      // Wildcard CORS responses cannot be read with credentialed requests.
+      // Same-origin production keeps HttpOnly refresh cookies; preview web
+      // deployments with wildcard CORS use non-credentialed API calls.
+      credentials: Platform.OS === "web"
+        && typeof window !== "undefined"
+        && new URL(apiBase()).origin !== window.location.origin
+        && process.env.EXPO_PUBLIC_CROSS_ORIGIN_COOKIES !== "true"
+        ? "omit"
+        : "include",
       headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
       signal: controller.signal,
     });
     return await handle<T>(res);
   } catch (error) {
-    if (isApiError(error)) throw error;
+    if (isApiError(error)) {
+      if (options.token && safePath !== "/me" && error.status === 401
+          && ["SESSION_REPLACED", "SESSION_REVOKED"].includes(error.error_code || "")) {
+        publishSessionLoss({ token: options.token, error });
+      }
+      throw error;
+    }
     if (error instanceof Error && error.name === "AbortError") {
       if (options.signal?.aborted && !timedOut) {
         throw { status: 0, detail: "Request cancelled" } as ApiError;
@@ -313,6 +333,11 @@ export async function exchangeGoogleStaffCode(code: string) {
 
 export async function demoLogin(role: string) {
   return apiPublicPost<AuthSessionResponse>("/auth/demo-login", { role });
+}
+
+export async function refreshSession(refreshToken?: string): Promise<AuthSessionResponse> {
+  // Browser refresh secret lives in a __Host- HttpOnly cookie; Android uses SecureStore.
+  return apiPublicPost<AuthSessionResponse>("/auth/refresh", refreshToken ? { refresh_token: refreshToken } : {});
 }
 
 export async function apiGet<T>(path: string, token: string, signal?: AbortSignal): Promise<T> {

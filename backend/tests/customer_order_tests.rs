@@ -1,3 +1,4 @@
+mod support;
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
@@ -740,6 +741,7 @@ async fn generic_dispatcher_status_cannot_skip_production_and_pod(db: PgPool) {
         .execute(&db)
         .await
         .unwrap();
+    support::approve_fixture_assignments(&db).await;
     sqlx::query("UPDATE orders SET status='scheduled' WHERE id=$1")
         .bind(id)
         .execute(&db)
@@ -867,6 +869,55 @@ async fn customer_rfq_owner_response_acceptance_and_order_use_exact_shared_contr
     assert_eq!(queue["requests"][0]["status"], "REQUESTED");
     let path = format!("/api/ops/plants/{plant}/quotation-requests/{id}/respond");
     let response = json!({"action":"SEND","rate_per_m3":4500.01,"transport_amount":100.01,"pumping_amount":0.02,"gst_rate":18});
+    let accountant = identity(&db, "accountant").await;
+    sqlx::query("INSERT INTO plant_staff(plant_id,user_id,role) VALUES($1,$2,'accountant')")
+        .bind(plant)
+        .bind(accountant)
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO plant_staff_module_permissions(plant_id,user_id,module_key,can_view,can_edit,can_create,updated_by) VALUES($1,$2,'quotations',TRUE,TRUE,FALSE,$3)")
+        .bind(plant).bind(accountant).bind(owner).execute(&db).await.unwrap();
+    let accountant_token = generate_token(
+        accountant,
+        "accountant",
+        "",
+        None,
+        &state.config.jwt_secret,
+        1,
+    )
+    .unwrap();
+    assert_eq!(
+        call(&app, &path, Some(response.clone()), &accountant_token)
+            .await
+            .0,
+        StatusCode::FORBIDDEN,
+        "Edit must not create a quotation via RFQ SEND"
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM plant_quotations WHERE request_id=$1")
+            .bind(id.parse::<Uuid>().unwrap())
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+        0
+    );
+    let (_,decline_request)=call(&app,"/api/customer/quotation-requests",Some(json!({"plant_id":plant,"grade":"M25","quantity":4,"site_name":"Declined site","site_address":"Customer supplied address","pump_required":false})),&token).await;
+    assert_eq!(
+        call(
+            &app,
+            &format!(
+                "/api/ops/plants/{plant}/quotation-requests/{}/respond",
+                decline_request["id"].as_str().unwrap()
+            ),
+            Some(json!({"action":"DECLINE","decline_reason":"Plant has no capacity on requested day"})),
+            &accountant_token
+        )
+        .await
+        .0,
+        StatusCode::OK,
+        "Edit still permits a decline without issuing a quotation"
+    );
     let foreign = identity(&db, "admin").await;
     let foreign_token =
         generate_token(foreign, "admin", "", None, &state.config.jwt_secret, 1).unwrap();
@@ -1447,7 +1498,11 @@ async fn support_threads_bind_orders_retries_messages_and_mutations_to_the_custo
         let denied = generate_token(user, role, "", None, &state.config.jwt_secret, 1).unwrap();
         assert_eq!(
             call(&app, &detail, None, &denied).await.0,
-            StatusCode::FORBIDDEN
+            if role == "dispatcher" {
+                StatusCode::UNAUTHORIZED
+            } else {
+                StatusCode::FORBIDDEN
+            }
         );
         assert_eq!(
             call(
@@ -1458,13 +1513,21 @@ async fn support_threads_bind_orders_retries_messages_and_mutations_to_the_custo
             )
             .await
             .0,
-            StatusCode::FORBIDDEN
+            if role == "dispatcher" {
+                StatusCode::UNAUTHORIZED
+            } else {
+                StatusCode::FORBIDDEN
+            }
         );
         assert_eq!(
             call(&app, "/api/assistant/support/staff/cases", None, &denied)
                 .await
                 .0,
-            StatusCode::FORBIDDEN
+            if role == "dispatcher" {
+                StatusCode::UNAUTHORIZED
+            } else {
+                StatusCode::FORBIDDEN
+            }
         );
         assert_eq!(
             call(
@@ -1475,7 +1538,11 @@ async fn support_threads_bind_orders_retries_messages_and_mutations_to_the_custo
             )
             .await
             .0,
-            StatusCode::FORBIDDEN
+            if role == "dispatcher" {
+                StatusCode::UNAUTHORIZED
+            } else {
+                StatusCode::FORBIDDEN
+            }
         );
     }
     assert_eq!(
@@ -1650,6 +1717,7 @@ async fn actual_customer_and_owner_dashboards_return_the_mobile_contract_and_sco
                 .execute(&db)
                 .await
                 .unwrap();
+            support::approve_fixture_assignments(&db).await;
             assert_eq!(
                 call(&app, "/api/owner/home", None, &other_token).await.1["plant_count"],
                 1
@@ -1819,7 +1887,11 @@ async fn quality_recording_requires_active_plant_engineer_and_matching_load(db: 
             call(&app, "/api/staff/quality", Some(payload.clone()), &other)
                 .await
                 .0,
-            StatusCode::FORBIDDEN
+            if trackmyrmc_backend::routes::staff_lifecycle::ROLES.contains(&role) {
+                StatusCode::UNAUTHORIZED
+            } else {
+                StatusCode::FORBIDDEN
+            }
         );
     }
     // A JWT claiming a different privileged role than the current database role
@@ -1853,7 +1925,7 @@ async fn quality_recording_requires_active_plant_engineer_and_matching_load(db: 
         call(&app, "/api/staff/quality", Some(payload.clone()), &other)
             .await
             .0,
-        StatusCode::FORBIDDEN
+        StatusCode::UNAUTHORIZED
     );
     sqlx::query("UPDATE plant_staff SET is_active=FALSE WHERE user_id=$1")
         .bind(engineer)
@@ -1864,7 +1936,7 @@ async fn quality_recording_requires_active_plant_engineer_and_matching_load(db: 
         call(&app, "/api/staff/quality", Some(payload.clone()), &token)
             .await
             .0,
-        StatusCode::FORBIDDEN
+        StatusCode::UNAUTHORIZED
     );
     sqlx::query("UPDATE plant_staff SET is_active=TRUE WHERE user_id=$1")
         .bind(engineer)
@@ -1910,7 +1982,7 @@ async fn quality_recording_requires_active_plant_engineer_and_matching_load(db: 
         call(&app, "/api/staff/quality", Some(payload), &token)
             .await
             .0,
-        StatusCode::FORBIDDEN
+        StatusCode::UNAUTHORIZED
     );
 }
 

@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/src/auth/AuthContext";
+import { apiGet } from "@/src/api/client";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { StaffModuleDirectory } from "@/src/screens/StaffModuleDirectory";
 import { AppText } from "@/src/components/ui/AppText";
@@ -21,9 +22,24 @@ const MODES: { key: "system" | "light" | "dark"; label: string; icon: keyof type
 
 export function StaffMore() {
   const { colors, mode, setMode } = useTheme();
-  const { user, signOut } = useAuth();
+  const { user, token, signOut } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const [managerEnabled, setManagerEnabled] = React.useState(false);
+  const [managerResources,setManagerResources]=React.useState({fleet:false,drivers:false,permissions:false});
+  React.useEffect(() => {
+    if (!token || !user?.role || !["dispatcher","operator","supervisor","accountant",
+      "quality_engineer","fleet_manager","store_manager"].includes(user.role)) {
+      setManagerEnabled(false);
+      return;
+    }
+    let live = true;
+    setManagerEnabled(false);
+    apiGet<{ enabled: boolean;can_manage_staff?:boolean;can_manage_fleet?:boolean;can_manage_drivers?:boolean;can_manage_permissions?:boolean }>("/staff/manager-access", token)
+      .then(result => { if (live) {setManagerEnabled(result.enabled === true && result.can_manage_staff===true);setManagerResources({fleet:result.enabled && result.can_manage_fleet===true,drivers:result.enabled && result.can_manage_drivers===true,permissions:result.enabled && result.can_manage_permissions===true});} })
+      .catch(() => { if (live) setManagerEnabled(false); });
+    return () => { live = false; };
+  }, [token, user?.role]);
 
   const doLogout = async () => {
     await signOut();
@@ -64,6 +80,23 @@ export function StaffMore() {
           </View>
         </View>
 
+        {managerEnabled ? (
+          <Pressable testID="staff-manager-workspace" accessibilityRole="button"
+            accessibilityLabel="Manage plant staff"
+            onPress={() => router.push("/business/staff")}
+            style={[styles.manage, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+            <VectorSymbol name="plant-staff" size={33} />
+            <View style={{ flex: 1 }}>
+              <AppText variant="heading">Plant Manager · Staff Management</AppText>
+              <AppText variant="caption">Manage assigned employees and their role permissions</AppText>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceTertiary} />
+          </Pressable>
+        ) : null}
+
+        {managerResources.fleet ? <Pressable accessibilityRole="button" onPress={()=>router.push("/business/fleet")}><AppText>Manage delegated fleet</AppText></Pressable> : null}
+        {managerResources.drivers ? <Pressable accessibilityRole="button" onPress={()=>router.push("/owner/drivers")}><AppText>Manage delegated Drivers</AppText></Pressable> : null}
+        {managerResources.permissions ? <Pressable accessibilityRole="button" onPress={()=>router.push("/staff-module-access")}><AppText>Manage delegated module permissions</AppText></Pressable> : null}
         <StaffModuleDirectory role={user?.role} title="Role workspace" searchable />
 
         <Pressable testID="staff-permission-settings" accessibilityRole="button" accessibilityLabel="App permissions"

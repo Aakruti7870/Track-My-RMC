@@ -1,3 +1,4 @@
+mod support;
 use axum::{
     extract::{Path, State},
     response::IntoResponse,
@@ -83,6 +84,7 @@ async fn collection_is_real_scoped_and_matches_mobile_contract(db: PgPool) {
     let _order = create_order(&db, customer, plant).await;
     sqlx::query("INSERT INTO plant_staff (plant_id,user_id,role,is_active) VALUES ($1,$2,'dispatcher',TRUE)")
         .bind(plant).bind(dispatcher).execute(&db).await.unwrap();
+    support::approve_fixture_assignments(&db).await;
     let app = state(db);
     let resp = staff_collections::get_staff_collection(
         State(app.clone()),
@@ -112,7 +114,11 @@ async fn collection_is_real_scoped_and_matches_mobile_contract(db: PgPool) {
             .unwrap();
     assert_eq!(data["role"], "dispatcher");
     assert_eq!(data["primary"]["kind"], "dispatch");
-    assert_eq!(data["kpis"].as_array().unwrap().len(), 4);
+    assert_eq!(data["kpis"].as_array().unwrap().len(), 3);
+    assert!(
+        data["metrics"]["today_attendance"].is_null(),
+        "Dispatcher has no plant-wide workforce grant"
+    );
 
     assert!(matches!(
         staff_collections::get_staff_collection(
@@ -243,6 +249,7 @@ async fn owner_disabled_grants_block_staff_collections_but_not_owner(db: PgPool)
         .execute(&db)
         .await
         .unwrap();
+        support::approve_fixture_assignments(&db).await;
 
         // Default role ceiling permits the primary collection.
         let _ = staff_collections::get_staff_collection(
@@ -256,7 +263,7 @@ async fn owner_disabled_grants_block_staff_collections_but_not_owner(db: PgPool)
         sqlx::query(
             "INSERT INTO plant_staff_module_permissions \
              (plant_id,user_id,module_key,can_view,can_edit,can_approve,updated_by) \
-             VALUES($1,$2,$3,FALSE,FALSE,FALSE,$4)",
+             VALUES($1,$2,$3,FALSE,FALSE,FALSE,$4) ON CONFLICT(plant_id,user_id,module_key) DO UPDATE SET can_view=FALSE,can_edit=FALSE,can_create=FALSE,can_export=FALSE,can_approve=FALSE",
         )
         .bind(plant)
         .bind(staff)
@@ -326,6 +333,7 @@ async fn scoped_reports_show_real_counts_and_respect_owner_revocation(db: PgPool
     .execute(&db)
     .await
     .unwrap();
+    support::approve_fixture_assignments(&db).await;
     let app = state(db.clone());
     let response = master_data_routes::get_plant_summary(
         State(app.clone()),
@@ -356,7 +364,7 @@ async fn scoped_reports_show_real_counts_and_respect_owner_revocation(db: PgPool
     sqlx::query(
         "INSERT INTO plant_staff_module_permissions \
          (plant_id,user_id,module_key,can_view,can_edit,can_approve,updated_by) \
-         VALUES($1,$2,'plant_reports',FALSE,FALSE,FALSE,$3)",
+         VALUES($1,$2,'plant_reports',FALSE,FALSE,FALSE,$3) ON CONFLICT(plant_id,user_id,module_key) DO UPDATE SET can_view=FALSE,can_edit=FALSE,can_create=FALSE,can_export=FALSE,can_approve=FALSE",
     )
     .bind(plant)
     .bind(supervisor)
@@ -396,6 +404,7 @@ async fn supervisors_see_roster_without_salaries_and_accountants_keep_pay_access
         .execute(&db)
         .await
         .unwrap();
+        support::approve_fixture_assignments(&db).await;
     }
     let app = state(db);
 

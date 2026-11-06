@@ -79,7 +79,14 @@ async fn ensure_plant_access(
     };
 
     if roster_access_allowed(role, owns_requested_plant, is_active_staff) {
-        Ok(())
+        super::staff_module_permissions::require(
+            state,
+            auth_user,
+            plant_id,
+            "workforce",
+            super::staff_module_permissions::Action::View,
+        )
+        .await
     } else {
         Err(AppError::Forbidden(
             "You are not authorized for this plant".to_string(),
@@ -1055,6 +1062,14 @@ pub async fn get_roster_overview(
     let mut plant_overviews = Vec::new();
 
     for (plant_id, _plant_name) in plants {
+        super::staff_module_permissions::require(
+            &state,
+            &auth_user,
+            plant_id,
+            "workforce",
+            super::staff_module_permissions::Action::View,
+        )
+        .await?;
         let shift_rows = sqlx::query(
             "SELECT id, name, start_time::text as st, end_time::text as et FROM workforce_shifts WHERE plant_id = $1 ORDER BY name",
         )

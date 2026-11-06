@@ -1,5 +1,5 @@
 use crate::{
-    auth::{jwt::generate_token, totp::TotpEngine, AuthUser},
+    auth::{account_sessions, totp::TotpEngine, AuthUser},
     error::AppError,
     state::AppState,
 };
@@ -151,14 +151,28 @@ pub async fn login(
         return Err(AppError::Unauthorized("Authentication failed".into()));
     };
     let (id, phone, email, full_name, _) = identity.expect("verified identity");
-    let token = generate_token(
+    let token = account_sessions::issue_in_tx(
+        &mut tx,
         id,
         "central_admin",
         &phone,
         email.as_deref(),
         &state.config.jwt_secret,
         1,
-    )?;
+    )
+    .await?;
+    // This web surface also has its own session table and step-up grants.
+    sqlx::query(
+        "UPDATE control_center_sessions SET revoked_at=clock_timestamp()
+                 WHERE user_id=$1 AND revoked_at IS NULL",
+    )
+    .bind(id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query("DELETE FROM control_center_step_ups WHERE user_id=$1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
     let hash = format!("{:x}", Sha256::digest(token.as_bytes()));
     sqlx::query("INSERT INTO control_center_sessions (token_hash,user_id,expires_at) VALUES ($1,$2,NOW()+INTERVAL '1 hour')")
         .bind(hash).bind(id).execute(&mut *tx).await?;
@@ -182,7 +196,13 @@ pub async fn me(admin: WebAdmin) -> Json<Value> {
 pub async fn logout(
     State(state): State<AppState>,
     admin: WebAdmin,
+    headers: HeaderMap,
 ) -> Result<Json<Value>, AppError> {
+    let jti = crate::auth::account_sessions::header_session_jti(
+        &headers,
+        &state.config.jwt_secret,
+        admin.user_id,
+    )?;
     let mut tx = state.db.begin().await?;
     sqlx::query(
         "UPDATE control_center_sessions SET revoked_at=NOW() WHERE user_id=$1 AND token_hash=$2",
@@ -196,6 +216,16 @@ pub async fn logout(
         .bind(&admin.token_hash)
         .execute(&mut *tx)
         .await?;
+    // Revoke only this account JTI, never a newer session that won a login race.
+    sqlx::query(
+        "UPDATE users SET active_session_jti=NULL,
+                 auth_revoked_at=clock_timestamp(),updated_at=NOW()
+                 WHERE id=$1 AND active_session_jti=$2",
+    )
+    .bind(admin.user_id)
+    .bind(jti)
+    .execute(&mut *tx)
+    .await?;
     sqlx::query("INSERT INTO audit_logs (user_id,action,resource_type,metadata) VALUES ($1,'admin.session.logout','admin_session','{}')")
         .bind(admin.user_id).execute(&mut *tx).await?;
     tx.commit().await?;

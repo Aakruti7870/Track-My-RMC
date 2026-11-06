@@ -28,5 +28,5 @@ pub async fn login(
     Json(payload): Json<PlayReviewLoginRequest>,
 ) -> Result<impl IntoResponse, AppError> {
     let auth = play_review::login(&state, payload, &client_identifier(&headers)).await?;
-    Ok(Json(auth))
+    Ok(crate::auth::refresh::login_response(auth, &headers))
 }

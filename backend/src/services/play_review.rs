@@ -1,5 +1,5 @@
 use crate::{
-    auth::jwt::generate_token,
+    auth::refresh,
     error::AppError,
     models::user::{AuthResponse, User, UserResponse},
     repositories::user_repo,
@@ -128,18 +128,20 @@ pub async fn login(
         .map(|item| item.kyc_status.clone())
         .unwrap_or_else(|| "unverified".to_string());
     let verified_name = profile.and_then(|item| item.verified_name);
-    let token = generate_token(
+    let session = refresh::issue_after_auth(
+        state,
         user.id,
         &user.role,
         &user.phone,
         user.email.as_deref(),
-        &state.config.jwt_secret,
         state.config.jwt_expiration_hours.min(2),
-    )?;
+    )
+    .await?;
 
     Ok(AuthResponse {
         success: true,
-        token,
+        token: session.token,
+        refresh_token: Some(session.refresh_token),
         role: user.role.clone(),
         user: UserResponse {
             id: user.id,

@@ -73,7 +73,7 @@ pub async fn create_plant_quotation(
         &auth_user,
         plant_id,
         "quotations",
-        super::staff_module_permissions::Action::Edit,
+        super::staff_module_permissions::Action::Create,
     )
     .await?;
     Ok(Json(
@@ -127,7 +127,15 @@ pub async fn respond_quotation_request(
         &auth_user,
         plant_id,
         "quotations",
-        super::staff_module_permissions::Action::Edit,
+        match payload.action.as_str() {
+            "SEND" => super::staff_module_permissions::Action::Create,
+            "DECLINE" => super::staff_module_permissions::Action::Edit,
+            _ => {
+                return Err(AppError::BadRequest(
+                    "Action must be SEND or DECLINE".into(),
+                ))
+            }
+        },
     )
     .await?;
     Ok(Json(
@@ -289,7 +297,7 @@ pub async fn record_plant_expense(
         &auth_user,
         plant_id,
         "expenses",
-        super::staff_module_permissions::Action::Edit,
+        super::staff_module_permissions::Action::Create,
     )
     .await?;
 
@@ -426,7 +434,7 @@ pub async fn record_diesel_transaction(
         &auth_user,
         plant_id,
         "diesel_ledger",
-        super::staff_module_permissions::Action::Edit,
+        super::staff_module_permissions::Action::Create,
     )
     .await?;
 
@@ -554,7 +562,7 @@ pub async fn record_purchase_receipt(
         &auth_user,
         plant_id,
         "purchases",
-        super::staff_module_permissions::Action::Edit,
+        super::staff_module_permissions::Action::Create,
     )
     .await?;
 

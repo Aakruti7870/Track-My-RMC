@@ -107,10 +107,11 @@ pub async fn send_whatsapp_otp(
 
 pub async fn verify_whatsapp_otp(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Json(payload): Json<VerifyWhatsAppOtpRequest>,
 ) -> Result<impl IntoResponse, AppError> {
     let auth_res = auth_service::verify_whatsapp_otp(&state, payload).await?;
-    Ok(Json(auth_res))
+    Ok(crate::auth::refresh::login_response(auth_res, &headers))
 }
 
 // --- Non-Driver Roles (Staff, Owner, Admin): Email OTP ---
@@ -166,10 +167,11 @@ pub async fn confirm_staff_mfa_enrollment(
 // --- Challenge-bound staff MFA: second factor required before JWT issuance ---
 pub async fn verify_staff_mfa(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Json(payload): Json<VerifyStaffMfaRequest>,
 ) -> Result<impl IntoResponse, AppError> {
     let auth_res = auth_service::verify_staff_mfa(&state, payload).await?;
-    Ok(Json(auth_res))
+    Ok(crate::auth::refresh::login_response(auth_res, &headers))
 }
 
 // --- Authenticator App (RFC 6238 TOTP) ---
@@ -281,16 +283,17 @@ pub async fn passkey_login_verify(
 pub async fn logout(
     State(state): State<AppState>,
     auth_user: AuthUser,
+    headers: axum::http::HeaderMap,
 ) -> Result<impl IntoResponse, AppError> {
-    sqlx::query("UPDATE users SET auth_revoked_at=NOW(), updated_at=NOW() WHERE id=$1")
-        .bind(auth_user.user_id)
-        .execute(&state.db)
-        .await?;
-
-    Ok(Json(json!({
-        "success": true,
-        "message": "Session revoked"
-    })))
+    let jti = crate::auth::account_sessions::header_session_jti(
+        &headers,
+        &state.config.jwt_secret,
+        auth_user.user_id,
+    )?;
+    crate::auth::account_sessions::revoke_current(&state, auth_user.user_id, jti).await?;
+    let mut response = Json(json!({"success":true,"message":"Session revoked"})).into_response();
+    crate::auth::refresh::clear_cookie(&mut response);
+    Ok(response)
 }
 
 #[derive(Deserialize)]
