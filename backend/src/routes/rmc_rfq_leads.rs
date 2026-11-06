@@ -6,7 +6,7 @@ use crate::{
     routes::customer_routes::CustomerRfqPayload,
     state::AppState,
 };
-use axum::{extract::State, response::IntoResponse, Json};
+use axum::{extract::{Path, State}, response::IntoResponse, Json};
 use chrono::{NaiveDate, Utc};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -211,6 +211,59 @@ pub async fn list_customer(
         "SELECT to_jsonb(l) - 'sharing_consent_at' FROM rmc_rfq_leads l WHERE customer_id=$1 ORDER BY created_at DESC LIMIT 100"
     ).bind(auth.user_id).fetch_all(&state.db).await?;
     Ok(Json(json!({"leads":rows})))
+}
+
+/// A matched Google supplier receives personal details only after the customer
+/// explicitly reconfirms an unexpired enquiry. No auto-forwarding on onboarding.
+pub async fn confirm_match(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(lead_id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    check_role(&auth, &["customer"])?;
+    let row = sqlx::query(
+        "SELECT * FROM rmc_rfq_leads
+         WHERE id=$1 AND customer_id=$2 AND expires_at>NOW()"
+    ).bind(lead_id).bind(auth.user_id).fetch_optional(&state.db).await?
+    .ok_or_else(|| AppError::NotFound("Active enquiry not found".into()))?;
+    let status: String = row.get("status");
+    if status == "REQUESTED" {
+        if let Some(rfq_id) = row.get::<Option<Uuid>,_>("canonical_request_id") {
+            return Ok(Json(json!({"id":lead_id,"canonical_request_id":rfq_id,"status":"REQUESTED","idempotent_replay":true})));
+        }
+    }
+    if status != "MATCHED_RECONFIRMATION_REQUIRED" {
+        return Err(AppError::Conflict("Enquiry is not ready for reconfirmation".into()));
+    }
+    let plant_id = row.get::<Option<Uuid>,_>("plant_id")
+        .ok_or_else(|| AppError::Conflict("Supplier has not been linked".into()))?;
+    let request_key: Uuid = row.get("request_key");
+    let site_address: String = row.get("site_address");
+    let grade: String = row.get("grade");
+    let quantity_m3: f64 = row.get::<bigdecimal::BigDecimal,_>("quantity_m3")
+        .to_string().parse().map_err(|_| AppError::Conflict("Invalid stored quantity".into()))?;
+    let required_date: NaiveDate = row.get("delivery_date");
+    let rfq_id = crate::services::commercial_service::request(
+        &state, auth.user_id, CustomerRfqPayload {
+            plant_id, site_id: None, site_name: Some("Delivery site".into()),
+            site_address: Some(site_address.clone()), grade, quantity_m3: Some(quantity_m3),
+            quantity: None, required_date: Some(required_date.to_string()),
+            pump_required: Some(row.get("pump_required")), notes: None,
+            lead: Some(crate::routes::customer_routes::CustomerRfqLeadDetails {
+                request_key,
+                google_place_id: row.get("google_place_id"),
+                customer_name: row.get("customer_name"),
+                customer_email: row.get("customer_email"),
+                customer_gstin: row.get("customer_gstin"),
+                site_address,
+                site_lat: row.get("site_lat"),
+                site_lng: row.get("site_lng"),
+                site_contact_phone: row.get("site_contact_phone"),
+                share_with_supplier: true,
+            }),
+        }
+    ).await?;
+    Ok(Json(json!({"id":lead_id,"canonical_request_id":rfq_id,"status":"REQUESTED"})))
 }
 
 pub async fn list_admin(
