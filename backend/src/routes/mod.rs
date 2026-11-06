@@ -25,8 +25,8 @@ pub mod owner_routes;
 pub mod payroll_routes;
 pub mod permission_consent;
 pub mod plant_onboarding;
-pub mod plant_profile;
 pub mod plant_plans_routes;
+pub mod plant_profile;
 pub mod plant_staff_manager;
 pub mod play_review;
 pub mod rmc_rfq_leads;
@@ -361,20 +361,38 @@ pub fn build_app_router(state: AppState) -> Router {
         )
         // Server-driven plant profile: customer sees only centrally approved snapshots.
         .route("/api/plant-profile/schema", get(plant_profile::schema))
-        .route("/api/plant-profile/:plant_id", get(plant_profile::public_profile))
-        .route("/api/plant-profile/:plant_id/editor", get(plant_profile::editor))
-        .route("/api/plant-profile/:plant_id/sections/:section",
-            put(plant_profile::save))
-        .route("/api/plant-profile/:plant_id/sections/:section/submit",
-            post(plant_profile::submit))
-        .route("/api/plant-profile/:plant_id/document/:certificate",
-            get(plant_profile::public_document))
-        .route("/api/control-center/plant-profile/pending",
-            get(plant_profile::pending))
-        .route("/api/control-center/plants/:plant_id/profile/:section/decision",
-            post(plant_profile::decide))
-        .route("/api/control-center/plants/:plant_id/profile/document/:certificate",
-            get(plant_profile::review_document))
+        .route(
+            "/api/plant-profile/:plant_id",
+            get(plant_profile::public_profile),
+        )
+        .route(
+            "/api/plant-profile/:plant_id/editor",
+            get(plant_profile::editor),
+        )
+        .route(
+            "/api/plant-profile/:plant_id/sections/:section",
+            put(plant_profile::save),
+        )
+        .route(
+            "/api/plant-profile/:plant_id/sections/:section/submit",
+            post(plant_profile::submit),
+        )
+        .route(
+            "/api/plant-profile/:plant_id/document/:certificate",
+            get(plant_profile::public_document),
+        )
+        .route(
+            "/api/control-center/plant-profile/pending",
+            get(plant_profile::pending),
+        )
+        .route(
+            "/api/control-center/plants/:plant_id/profile/:section/decision",
+            post(plant_profile::decide),
+        )
+        .route(
+            "/api/control-center/plants/:plant_id/profile/document/:certificate",
+            get(plant_profile::review_document),
+        )
         // --- Customer Domain ---
         // Customer service enquiries are not orders or official quotations.
         .route(
