@@ -14,6 +14,8 @@ use axum::{
 use chrono::{NaiveDate, Utc};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use crate::auth::control_center::WebAdmin;
+use axum::http::HeaderMap;
 use sqlx::Row;
 use uuid::Uuid;
 
@@ -400,8 +402,31 @@ pub async fn update_admin_outreach(
     auth: AuthUser,
     Path(lead_id): Path<Uuid>,
     Json(payload): Json<AdminOutreachUpdate>,
-) -> Result<impl IntoResponse, AppError> {
+) -> Result<Json<Value>, AppError> {
     check_role(&auth, &["admin"])?;
+    record_admin_outreach(&state, auth.user_id, lead_id, payload).await
+}
+
+/// Central Authority: an MFA-authenticated web session plus recent authenticator
+/// step-up is required before recording supplier outreach.
+pub async fn update_control_center_outreach(
+    State(state): State<AppState>,
+    admin: WebAdmin,
+    headers: HeaderMap,
+    Path(lead_id): Path<Uuid>,
+    Json(payload): Json<AdminOutreachUpdate>,
+) -> Result<Json<Value>, AppError> {
+    admin.require("support.view")?;
+    super::control_center_routes::require_recent_step_up(&state, &admin, &headers).await?;
+    record_admin_outreach(&state, admin.user_id, lead_id, payload).await
+}
+
+async fn record_admin_outreach(
+    state: &AppState,
+    actor: Uuid,
+    lead_id: Uuid,
+    payload: AdminOutreachUpdate,
+) -> Result<Json<Value>, AppError> {
     if !matches!(
         payload.outreach_status.as_str(),
         "NOT_CONTACTED" | "INVITATION_SHARED" | "CONTACTED" | "DECLINED"
@@ -425,7 +450,7 @@ pub async fn update_admin_outreach(
     .bind(lead_id)
     .bind(&payload.outreach_status)
     .bind(if notes.is_empty() { None } else { Some(notes) })
-    .bind(auth.user_id)
+    .bind(actor)
     .fetch_optional(&mut *tx)
     .await?;
     if changed.is_none() {
@@ -437,7 +462,7 @@ pub async fn update_admin_outreach(
         "INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata)
          VALUES($1,'rmc_rfq_lead.outreach','rmc_rfq_lead',$2,$3)",
     )
-    .bind(auth.user_id)
+    .bind(actor)
     .bind(lead_id.to_string())
     .bind(json!({"outreach_status":payload.outreach_status}))
     .execute(&mut *tx)
