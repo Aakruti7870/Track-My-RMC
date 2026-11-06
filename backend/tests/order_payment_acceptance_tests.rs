@@ -423,3 +423,36 @@ async fn partial_advance_balance_defaults_to_delivery_day(db: PgPool) {
     ).bind(id).fetch_one(&db).await.unwrap();
     assert_eq!(due, Some(delivery));
 }
+
+#[sqlx::test]
+async fn changed_server_price_invalidates_outstanding_offer(db: PgPool) {
+    let (app, plant, customer, owner) = fixture(&db).await;
+    let id = create(&app, plant, "ON_DELIVERY", &customer).await;
+    let (status, offer) = post(
+        &app,
+        &format!("/api/owner/orders/{id}/payment-offer"),
+        json!({"advance_paise":null}),
+        &owner,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{offer}");
+    sqlx::query("UPDATE orders SET total_amount=total_amount+1 WHERE id=$1")
+        .bind(id)
+        .execute(&db)
+        .await
+        .unwrap();
+    let (status, _) = post(
+        &app,
+        &format!("/api/customer/orders/{id}/accept-payment-terms"),
+        json!({"version":offer["version"]}),
+        &customer,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    let state: String = sqlx::query_scalar("SELECT status FROM orders WHERE id=$1")
+        .bind(id)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(state, "pending", "stale commercial terms must not release an order");
+}
