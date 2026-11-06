@@ -83,6 +83,21 @@ pub async fn issue_after_auth(
         lifetime_hours,
     )
     .await?;
+    // The users row remains locked through commit. Recheck a fixture here so
+    // a login that read enabled=true before an Admin disable cannot mint a
+    // fresh session after that disable transaction has committed.
+    let reviewer_enabled: Option<bool> =
+        sqlx::query_scalar("SELECT enabled FROM play_review_fixtures WHERE user_id=$1")
+            .bind(user)
+            .fetch_optional(&mut *tx)
+            .await?;
+    if reviewer_enabled == Some(false)
+        || (reviewer_enabled.is_some() && state.config.play_review_access_code.is_none())
+    {
+        return Err(AppError::Unauthorized(
+            "Play reviewer access is no longer enabled".into(),
+        ));
+    }
     let (id, raw, hash) = new_credential();
     sqlx::query(
         "INSERT INTO account_refresh_tokens(user_id,token_id,token_hash,expires_at)

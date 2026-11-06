@@ -808,6 +808,28 @@ async fn reviewer_disable_revokes_current_replaced_and_legacy_access(db: PgPool)
             StatusCode::UNAUTHORIZED
         );
     }
+    assert!(
+        trackmyrmc_backend::auth::refresh::issue_after_auth(
+            &state,
+            claims.sub,
+            "customer",
+            &claims.phone,
+            None,
+            2
+        )
+        .await
+        .is_err(),
+        "A login holding stale fixture data must not mint after reviewer disable"
+    );
+    assert!(
+        sqlx::query_scalar::<_, Option<Uuid>>("SELECT active_session_jti FROM users WHERE id=$1")
+            .bind(claims.sub)
+            .fetch_one(&db)
+            .await
+            .unwrap()
+            .is_none(),
+        "Rejected issuance must roll back its JTI update"
+    );
     assert_eq!(
         request(
             &public,
