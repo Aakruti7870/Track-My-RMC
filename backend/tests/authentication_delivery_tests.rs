@@ -830,9 +830,14 @@ async fn incomplete_staff_login_preserves_session_until_final_mfa(db: PgPool) {
     let app = build_app_router(state);
 
     assert_eq!(
-        call(&app, "/api/auth/otp/email/send", Some(json!({"email":email})), None)
-            .await
-            .0,
+        call(
+            &app,
+            "/api/auth/otp/email/send",
+            Some(json!({"email":email})),
+            None
+        )
+        .await
+        .0,
         StatusCode::OK
     );
     assert_eq!(
@@ -905,9 +910,14 @@ async fn incomplete_staff_login_preserves_session_until_final_mfa(db: PgPool) {
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     assert_eq!(replaced["error_code"], "SESSION_REPLACED");
     assert_eq!(
-        call(&app, "/api/auth/logout", Some(json!({})), Some(&first.token))
-            .await
-            .0,
+        call(
+            &app,
+            "/api/auth/logout",
+            Some(json!({})),
+            Some(&first.token)
+        )
+        .await
+        .0,
         StatusCode::UNAUTHORIZED
     );
     assert_eq!(
@@ -935,7 +945,9 @@ async fn refresh_cannot_silently_renew_mobile_admin_or_unassigned_staff(db: PgPo
     let session = refresh::issue_after_auth(&state, admin, "admin", "", None, 1)
         .await
         .unwrap();
-    assert!(refresh::rotate(&state, &session.refresh_token).await.is_err());
+    assert!(refresh::rotate(&state, &session.refresh_token)
+        .await
+        .is_err());
     for role in ["central_admin", "authority"] {
         assert!(refresh::issue_after_auth(&state, admin, role, "", None, 1)
             .await
@@ -943,7 +955,13 @@ async fn refresh_cannot_silently_renew_mobile_admin_or_unassigned_staff(db: PgPo
     }
 
     let owner = identity(&db, "owner", None, None).await;
-    let staff = identity(&db, "supervisor", Some("refresh-staff@example.invalid"), None).await;
+    let staff = identity(
+        &db,
+        "supervisor",
+        Some("refresh-staff@example.invalid"),
+        None,
+    )
+    .await;
     let plant: Uuid = sqlx::query_scalar(
         "INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,address_line,
          city,state,pincode,contact_phone)
@@ -968,5 +986,98 @@ async fn refresh_cannot_silently_renew_mobile_admin_or_unassigned_staff(db: PgPo
         .execute(&db)
         .await
         .unwrap();
-    assert!(refresh::rotate(&state, &session.refresh_token).await.is_err());
+    assert!(refresh::rotate(&state, &session.refresh_token)
+        .await
+        .is_err());
+}
+
+#[sqlx::test]
+async fn staff_role_changes_are_soft_audited_and_reserve_suspended_slots(db: PgPool) {
+    use trackmyrmc_backend::auth::refresh;
+    let state = state(db.clone());
+    let owner = identity(&db, "owner", None, None).await;
+    let first = identity(&db, "supervisor", Some("slot-first@example.invalid"), None).await;
+    let second = identity(&db, "supervisor", Some("slot-second@example.invalid"), None).await;
+    let plant: Uuid = sqlx::query_scalar(
+        "INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,address_line,
+         city,state,pincode,contact_phone)
+         VALUES($1,'Staff Audit CI',$2,0,0,'CI','CI','MH','0','0') RETURNING id",
+    )
+    .bind(owner)
+    .bind(Uuid::new_v4().simple().to_string())
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    let owner_session = refresh::issue_after_auth(&state, owner, "owner", "", None, 1)
+        .await
+        .unwrap();
+    let app = build_app_router(state.clone());
+    let staff_path = format!("/api/master/plants/{plant}/staff");
+    let first_path = format!("{staff_path}/{first}");
+    let first_payload = json!({"user_id":first,"role":"supervisor"});
+    let second_payload = json!({"user_id":second,"role":"supervisor"});
+    let token = Some(owner_session.token.as_str());
+    assert_eq!(
+        call(&app, &staff_path, Some(first_payload.clone()), token).await.0,
+        StatusCode::OK
+    );
+    let staff_session = refresh::issue_after_auth(&state, first, "supervisor", "", None, 1)
+        .await
+        .unwrap();
+    assert_eq!(
+        call(&app, &format!("{first_path}/suspend"), Some(json!({})), token).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        call(&app, &staff_path, Some(second_payload.clone()), token).await.0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        call(&app, "/api/me", None, Some(&staff_session.token)).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert!(refresh::rotate(&state, &staff_session.refresh_token)
+        .await
+        .is_err());
+    assert_eq!(
+        call(&app, &format!("{first_path}/activate"), Some(json!({})), token).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        call(&app, "/api/me", None, Some(&staff_session.token)).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        call(&app, &format!("{first_path}/remove"), Some(json!({})), token).await.0,
+        StatusCode::OK
+    );
+    let retained: (bool, bool, Option<Uuid>) = sqlx::query_as(
+        "SELECT is_active,removed_at IS NOT NULL,removed_by
+         FROM plant_staff WHERE plant_id=$1 AND user_id=$2",
+    )
+    .bind(plant)
+    .bind(first)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(retained, (false, true, Some(owner)));
+    let actions: Vec<String> = sqlx::query_scalar(
+        "SELECT action FROM plant_staff_role_slot_audit
+         WHERE plant_id=$1 AND staff_user_id=$2 AND actor_user_id=$3 ORDER BY id",
+    )
+    .bind(plant)
+    .bind(first)
+    .bind(owner)
+    .fetch_all(&db)
+    .await
+    .unwrap();
+    assert_eq!(actions, ["ASSIGNED", "SUSPENDED", "REACTIVATED", "REMOVED"]);
+    assert_eq!(
+        call(&app, &staff_path, Some(second_payload), token).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        call(&app, &staff_path, Some(first_payload), token).await.0,
+        StatusCode::CONFLICT
+    );
 }

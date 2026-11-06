@@ -209,6 +209,24 @@ async fn late_session_migrations_apply_after_existing_rfq_version_44(pool: sqlx:
     .unwrap()
     .is_none());
 
+    let customer: uuid::Uuid = sqlx::query_scalar(
+        "INSERT INTO users(phone,hashed_password,full_name,role)
+         VALUES('late-migration-customer','unused','Preserved late customer','customer') RETURNING id",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let customer_before: (String, String) =
+        sqlx::query_as("SELECT full_name,role FROM users WHERE id=$1")
+            .bind(customer)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let history_before: Vec<(i64, Vec<u8>)> =
+        sqlx::query_as("SELECT version,checksum FROM _sqlx_migrations ORDER BY version")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
     all.run(&pool)
         .await
         .expect("pending session and refresh migrations must apply after version 44");
@@ -229,6 +247,20 @@ async fn late_session_migrations_apply_after_existing_rfq_version_44(pool: sqlx:
     .await
     .unwrap();
     assert_eq!(version_44_before, version_44_after);
+    let customer_after: (String, String) =
+        sqlx::query_as("SELECT full_name,role FROM users WHERE id=$1")
+            .bind(customer)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(customer_before, customer_after);
+    let history_after: Vec<(i64, Vec<u8>)> = sqlx::query_as(
+        "SELECT version,checksum FROM _sqlx_migrations WHERE version NOT IN (42,43) ORDER BY version",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(history_before, history_after);
     let refresh_table_exists: bool =
         sqlx::query_scalar("SELECT to_regclass('public.account_refresh_tokens') IS NOT NULL")
             .fetch_one(&pool)

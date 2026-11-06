@@ -593,7 +593,13 @@ async fn reviewer_disable_revokes_current_replaced_and_legacy_access(db: PgPool)
     let public = trackmyrmc_backend::routes::build_app_router(state.clone());
     let console = app(state.clone());
     let payload = json!({"role":"customer","access_code":"654321"});
-    let (status, first) = request(&public, "/api/auth/play-review", None, Some(payload.clone())).await;
+    let (status, first) = request(
+        &public,
+        "/api/auth/play-review",
+        None,
+        Some(payload.clone()),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let first_token = first["token"].as_str().unwrap();
     let claims = verify_token(first_token, &state.config.jwt_secret).unwrap();
@@ -638,9 +644,14 @@ async fn reviewer_disable_revokes_current_replaced_and_legacy_access(db: PgPool)
     assert_eq!(status, StatusCode::OK);
     let admin = login["token"].as_str().unwrap();
     assert_eq!(
-        request(&console, "/step-up", Some(admin), Some(json!({"code":code})))
-            .await
-            .0,
+        request(
+            &console,
+            "/step-up",
+            Some(admin),
+            Some(json!({"code":code}))
+        )
+        .await
+        .0,
         StatusCode::OK
     );
     assert_eq!(
