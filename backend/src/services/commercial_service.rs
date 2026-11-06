@@ -194,6 +194,23 @@ pub async fn request(
     }
     let mut tx = state.db.begin().await?;
     if let Some(lead) = payload.lead.as_ref() {
+        // Cross-instance idempotency for parallel taps and retrying network clients.
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtext($1::text),hashtext($2::text))")
+            .bind(customer.to_string())
+            .bind(lead.request_key.to_string())
+            .execute(&mut *tx)
+            .await?;
+        if let Some(place) = lead.google_place_id.as_deref() {
+            let matches_plant: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM rmc_plants
+                 WHERE id=$1 AND google_place_id=$2 AND is_active=TRUE)"
+            )
+            .bind(payload.plant_id).bind(place)
+            .fetch_one(&mut *tx).await?;
+            if !matches_plant {
+                return Err(AppError::BadRequest("Google listing does not match the selected plant".into()));
+            }
+        }
         let existing: Option<Uuid> = sqlx::query_scalar(
             "SELECT canonical_request_id FROM rmc_rfq_leads WHERE customer_id=$1 AND request_key=$2 AND canonical_request_id IS NOT NULL"
         ).bind(customer).bind(lead.request_key).fetch_optional(&mut *tx).await?;
