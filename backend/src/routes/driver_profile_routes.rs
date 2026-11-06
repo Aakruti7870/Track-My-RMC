@@ -126,10 +126,22 @@ pub async fn get_driver_identity(
     })))
 }
 
-fn owner_role(user: &AuthUser) -> Result<(), AppError> {
-    // PII, emergency contacts and medical information must not be exposed
-    // to general plant staff, even when they can access fleet operations.
-    check_role(user, &["owner", "plant_owner"])
+async fn require_driver_management(
+    state: &AppState, user: &AuthUser, plant: Uuid, edit: bool,
+) -> Result<(), AppError> {
+    // PII and emergency contacts are restricted to explicitly authorized plant identities.
+    if matches!(user.role.as_str(), "owner" | "plant_owner") {
+        return super::plant_staff_manager::require_owner(state, user, plant).await;
+    }
+    if user.role == "fleet_manager" {
+        super::business_routes::ensure_plant_staff_or_owner(state, user, plant).await?;
+        return super::staff_module_permissions::require(
+            state, user, plant, "driver_roster",
+            if edit { super::staff_module_permissions::Action::Edit }
+            else { super::staff_module_permissions::Action::View },
+        ).await;
+    }
+    super::plant_staff_manager::require_manager_or_owner(state, user, plant).await
 }
 
 pub async fn list_plant_drivers(
@@ -137,8 +149,7 @@ pub async fn list_plant_drivers(
     auth_user: AuthUser,
     Path(plant_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    owner_role(&auth_user)?;
-    super::business_routes::ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
+    require_driver_management(&state, &auth_user, plant_id, false).await?;
     let drivers: Vec<Value> = sqlx::query_scalar(
         r#"SELECT jsonb_build_object(
             'driver_id', d.id, 'driver_name', d.full_name, 'phone', d.phone,
@@ -240,8 +251,7 @@ pub async fn save_driver_profile(
     Path(plant_id): Path<Uuid>,
     Json(input): Json<UpsertDriverProfile>,
 ) -> Result<impl IntoResponse, AppError> {
-    owner_role(&auth_user)?;
-    super::business_routes::ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
+    require_driver_management(&state, &auth_user, plant_id, true).await?;
     let phone = normalized_phone(&input.phone)?;
     let employee_id = input.employee_id.trim().to_ascii_uppercase();
     if employee_id.len() < 2
