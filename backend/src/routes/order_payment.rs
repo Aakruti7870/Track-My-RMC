@@ -121,13 +121,17 @@ pub async fn offer(
     let balance_due_on = match mode.as_str() {
         FULL_ADVANCE => {
             if input.balance_due_on.is_some() {
-                return Err(AppError::BadRequest("Fully prepaid orders cannot have an outstanding balance date".into()));
+                return Err(AppError::BadRequest(
+                    "Fully prepaid orders cannot have an outstanding balance date".into(),
+                ));
             }
             None
         }
         ON_DELIVERY => {
             if input.balance_due_on.is_some_and(|day| day != delivery_date) {
-                return Err(AppError::BadRequest("Pay-on-delivery balance must be due on delivery day".into()));
+                return Err(AppError::BadRequest(
+                    "Pay-on-delivery balance must be due on delivery day".into(),
+                ));
             }
             Some(delivery_date)
         }
@@ -140,10 +144,14 @@ pub async fn offer(
         }
         APPROVED_CREDIT => {
             let due = input.balance_due_on.ok_or_else(|| {
-                AppError::BadRequest("Plant must explicitly specify the approved credit repayment date".into())
+                AppError::BadRequest(
+                    "Plant must explicitly specify the approved credit repayment date".into(),
+                )
             })?;
             if due <= delivery_date || due > delivery_date + chrono::Duration::days(365) {
-                return Err(AppError::BadRequest("Credit due date must be after delivery and within one year".into()));
+                return Err(AppError::BadRequest(
+                    "Credit due date must be after delivery and within one year".into(),
+                ));
             }
             Some(due)
         }
