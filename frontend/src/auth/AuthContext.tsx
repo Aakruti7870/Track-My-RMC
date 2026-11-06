@@ -77,30 +77,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<Me | null>(null);
   const [staffMfaChallenge, setStaffMfaChallenge] = useState<string | null>(null);
-  // Rotations are strictly serialized on one device: concurrent refreshes would
-  // replay a consumed token and could invalidate an otherwise healthy session.
+  // A generation change invalidates every in-flight refresh before it can
+  // restore tokens after local logout or server-confirmed session replacement.
+  const sessionGeneration = useRef(0);
+  const signedOutLocally = useRef(false);
   const refreshFlight = useRef<Promise<string> | null>(null);
   const rotateSession = useCallback(async (): Promise<string> => {
+    const expired = () => ({
+      status: 401,
+      detail: "Your session has expired. Sign in again.",
+      error_code: "SESSION_EXPIRED",
+    });
+    if (signedOutLocally.current) throw expired();
     if (refreshFlight.current) return refreshFlight.current;
+    const generation = sessionGeneration.current;
+    const stale = () => signedOutLocally.current || sessionGeneration.current !== generation;
+    const assertCurrent = async (access?: string): Promise<void> => {
+      if (!stale()) return;
+      // Rotation can have invalidated the old access token server-side while
+      // logout was in flight. Revoke its newly issued access token as well.
+      if (signedOutLocally.current && access) {
+        try { await apiPost("/auth/logout", access, {}); } catch { /* best effort */ }
+      }
+      if (signedOutLocally.current) {
+        await storage.secureRemove(TOKEN_KEY);
+        await storage.secureRemove(REFRESH_KEY);
+      }
+      throw expired();
+    };
     const flight = (async () => {
       const refreshToken = Platform.OS === "web" ? undefined : await storage.secureGet<string>(REFRESH_KEY, "");
-      if (Platform.OS !== "web" && !refreshToken) throw { status: 401, error_code: "SESSION_EXPIRED" };
+      await assertCurrent();
+      if (Platform.OS !== "web" && !refreshToken) throw expired();
       const next = await refreshSession(refreshToken || undefined);
       const nextAccess = next.access_token ?? next.token;
       if (!nextAccess) throw new Error("Refresh response missing access token");
+      await assertCurrent(nextAccess);
       if (Platform.OS !== "web") {
         if (!next.refresh_token || !(await storage.secureSet(REFRESH_KEY, next.refresh_token))) {
           throw new Error("Cannot securely persist rotated refresh credential");
         }
+        await assertCurrent(nextAccess);
       }
       if (!(await storage.secureSet(TOKEN_KEY, nextAccess))) {
         throw new Error("Cannot securely persist renewed access token");
       }
+      await assertCurrent(nextAccess);
       setToken(nextAccess);
       return nextAccess;
     })();
     refreshFlight.current = flight;
-    try { return await flight; } finally { refreshFlight.current = null; }
+    try { return await flight; } finally {
+      if (refreshFlight.current === flight) refreshFlight.current = null;
+    }
   }, []);
 
   const verifiedSession = useCallback(async (current: string): Promise<{ access: string; me: Me }> => {
@@ -115,6 +144,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let active = true;
+    const generation = sessionGeneration.current;
     (async () => {
       try {
         const signedOut = await storage.getItem(SIGNED_OUT_KEY, false);
@@ -123,15 +153,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!saved && Platform.OS !== "web" && !(await storage.secureGet<string>(REFRESH_KEY, ""))) return;
         const access = saved || await rotateSession();
         const result = await verifiedSession(access);
-        if (active) { setToken(result.access); setUser(result.me); setSessionMessage(null); }
+        if (active && sessionGeneration.current === generation && !signedOutLocally.current) {
+          setToken(result.access); setUser(result.me); setSessionMessage(null);
+        }
       } catch (error) {
         if (isApiError(error) && (error.status === 401 || error.status === 403)) {
           const reason = sessionLossReason(error);
-          if (active && reason) setSessionMessage(sessionLossMessage(reason));
+          if (active && sessionGeneration.current === generation && reason) setSessionMessage(sessionLossMessage(reason));
           await stopTripLocationTracking();
           await storage.secureRemove(TOKEN_KEY);
           await storage.secureRemove(REFRESH_KEY);
-          if (active) { setToken(null); setUser(null); }
+          if (active && sessionGeneration.current === generation) { setToken(null); setUser(null); }
         }
         // Transient offline failures must not destroy recoverable credentials.
       } finally {
@@ -142,6 +174,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [rotateSession, verifiedSession]);
 
   const acceptSession = useCallback(async (res: AuthSessionResponse): Promise<Me> => {
+    sessionGeneration.current += 1;
+    signedOutLocally.current = false;
     const accessToken = res.access_token ?? res.token;
     if (!accessToken) throw new Error("Authentication response missing access token");
     if (Platform.OS !== "web") {
@@ -223,6 +257,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const clearSession = useCallback(async (error: unknown) => {
+    sessionGeneration.current += 1;
+    signedOutLocally.current = true;
     const reason = sessionLossReason(error);
     setSessionMessage(reason ? sessionLossMessage(reason) : "Your secure session ended. Please sign in again.");
     await stopTripLocationTracking();
@@ -233,17 +269,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refreshMe = async () => {
-    if (!token) return;
+    if (!token || signedOutLocally.current) return;
+    const generation = sessionGeneration.current;
     try {
       const result = await verifiedSession(token);
-      setToken(result.access);
-      setUser(result.me);
+      if (sessionGeneration.current === generation && !signedOutLocally.current) {
+        setToken(result.access);
+        setUser(result.me);
+      }
     } catch (error) {
-      if (isApiError(error) && (error.status === 401 || error.status === 403)) await clearSession(error);
+      if (sessionGeneration.current === generation && isApiError(error)
+          && (error.status === 401 || error.status === 403)) await clearSession(error);
     }
   };
 
   const signOut = async () => {
+    signedOutLocally.current = true;
+    sessionGeneration.current += 1;
     setSessionMessage(null);
     const sessionToken = token;
     // Keep explicit local sign-out sticky across browser restarts even if the
@@ -263,11 +305,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!token) return;
     let active = true;
     const check = async () => {
+      const generation = sessionGeneration.current;
+      if (signedOutLocally.current) return;
       try {
         const result = await verifiedSession(token);
-        if (active) { setToken(result.access); setUser(result.me); }
+        if (active && sessionGeneration.current === generation && !signedOutLocally.current) {
+          setToken(result.access); setUser(result.me);
+        }
       } catch (error) {
-        if (!active || !isApiError(error) || (error.status !== 401 && error.status !== 403)) return;
+        if (!active || signedOutLocally.current || generation !== sessionGeneration.current
+            || !isApiError(error) || (error.status !== 401 && error.status !== 403)) return;
         active = false;
         await clearSession(error);
       }
