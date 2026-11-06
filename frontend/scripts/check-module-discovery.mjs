@@ -108,7 +108,7 @@ assert.ok(customerHome.includes('["pour-planner", "compare-plants", "projects", 
 assert.ok(customerHome.includes('["free-tools", "receiving-guide", "cube-tests", "customer-support"]'), "Expert advice must use the four existing authorized routes.");
 assert.ok(customerHome.includes('testID="home-pump-rental-promo"') && customerHome.includes('onPress={() => router.push("/support")}'), "Pump-rental callout must reach existing customer support, not a dead end.");
 assert.ok(customerHome.includes('On Time,') && customerHome.includes('Everytime'), "Delivery slogan callout required.");
-assert.ok(customerHome.includes('quickCircle: { width: 60, height: 60, borderRadius: 30'), "52 dp action artwork must have a circular, clipping frame.");
+assert.ok(customerHome.includes('quickCircle: { width: 56, height: 56, borderRadius: 28'), "52 dp action artwork must have a circular, clipping frame.");
 assert.ok(customerHome.includes('{ key: "plants", label: "Plants"'), "The third action label must remain Plants.");
 assert.ok(customerHome.includes('fourQuickColumns ? "24.25%" : "49%"'), "Quick Actions must use four compact columns when wide and two when narrow for full 52-unit icons.");
 assert.ok(customerHome.includes('fourToolColumns ? "24.25%" : "49%"'), "RMC Tools must use four compact columns when they fit or two on narrow displays.");
