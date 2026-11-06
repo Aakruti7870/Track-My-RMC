@@ -272,10 +272,16 @@ pub async fn approve_order(
 
     super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
     let mut tx = state.db.begin().await?;
-    let current: String = sqlx::query_scalar("SELECT status FROM orders WHERE id=$1 FOR UPDATE")
-        .bind(order_id)
-        .fetch_one(&mut *tx)
-        .await?;
+    let (current, preference): (String, Option<String>) =
+        sqlx::query_as("SELECT status,preferred_payment_mode FROM orders WHERE id=$1 FOR UPDATE")
+            .bind(order_id)
+            .fetch_one(&mut *tx)
+            .await?;
+    if preference.is_some() {
+        return Err(AppError::Conflict(
+            "Use plant-approved payment offer before confirming this order".into(),
+        ));
+    }
     if current != "confirmed" && current != "pending" {
         return Err(AppError::Conflict(
             "Only a pending order can be reviewed".into(),
@@ -320,6 +326,8 @@ pub async fn reject_order(
             .bind("rejected")
             .execute(&mut *tx)
             .await?;
+        sqlx::query("UPDATE order_payment_offers SET status='CANCELLED',updated_at=NOW() WHERE order_id=$1 AND status='OFFERED'")
+            .bind(order_id).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'order_review','order',$2,$3)").bind(auth_user.user_id).bind(order_id.to_string()).bind(json!({"from":current,"to":"rejected"})).execute(&mut *tx).await?;
     }
     tx.commit().await?;
