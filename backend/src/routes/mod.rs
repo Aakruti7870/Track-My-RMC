@@ -336,6 +336,10 @@ pub fn build_app_router(state: AppState) -> Router {
             get(rmc_rfq_leads::list_customer).post(rmc_rfq_leads::create),
         )
         .route(
+            "/api/customer/rmc-rfq-leads/:lead_id/confirm",
+            post(rmc_rfq_leads::confirm_match),
+        )
+        .route(
             "/api/admin/rmc-rfq-leads",
             get(rmc_rfq_leads::list_admin),
         )
