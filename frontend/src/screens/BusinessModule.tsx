@@ -309,6 +309,20 @@ export function BusinessModule({ kind }: { kind: string }) {
   const [adjustNote, setAdjustNote] = useState("");
   const [adjustSign, setAdjustSign] = useState<1 | -1>(1);
   const [permissionEdits, setPermissionEdits] = useState<Record<string, boolean>>({});
+  const isPlantOwner = user?.role === "plant_owner" || user?.role === "owner";
+  const [managerEnabled, setManagerEnabled] = useState(false);
+  React.useEffect(() => {
+    if (kind !== "staff" || isPlantOwner || !token) {
+      setManagerEnabled(false);
+      return;
+    }
+    let live = true;
+    apiGet<{enabled:boolean}>("/staff/manager-access", token)
+      .then(result => { if (live) setManagerEnabled(result.enabled === true); })
+      .catch(() => { if (live) setManagerEnabled(false); });
+    return () => { live = false; };
+  }, [kind, isPlantOwner, token]);
+  const canManageStaff = isPlantOwner || managerEnabled;
   const isDelegatedStaff = !!user?.role && ["admin","dispatcher","operator","supervisor","accountant",
     "quality_engineer","fleet_manager","store_manager"].includes(user.role);
   React.useEffect(() => {
@@ -326,7 +340,8 @@ export function BusinessModule({ kind }: { kind: string }) {
     rates: "rate_cards", quotations: "quotations", expenses: "expenses",
     purchases: "purchases", diesel: "diesel_ledger", suppliers: "suppliers", payroll: "payroll",
   };
-  const canEditModule = !isDelegatedStaff || !kindGrant[kind] || permissionEdits[kindGrant[kind]] === true;
+  const canEditModule = kind === "staff" ? canManageStaff :
+    (!isDelegatedStaff || !kindGrant[kind] || permissionEdits[kindGrant[kind]] === true);
 
   const loadPlants = useCallback(async () => {
     if (!token) return;
@@ -499,6 +514,19 @@ export function BusinessModule({ kind }: { kind: string }) {
     finally { setSaving(false); }
   };
 
+  const toggleManager = async (row: Row) => {
+    if (!token || !plantId || !isPlantOwner) return;
+    setSaving(true);
+    try {
+      const action = row.raw?.is_manager ? "revoke" : "grant";
+      await apiPost(`/business/plants/${plantId}/staff/${row.id}/manager/${action}`, token);
+      toast(action === "grant" ? "Plant Manager delegated" : "Manager delegation revoked", "success");
+      await load();
+    } catch (e: any) {
+      toast(e.detail || "Manager delegation failed", "error");
+    } finally { setSaving(false); }
+  };
+
   const removeStaff = async (row: Row) => {
     if (!token || !plantId) return;
     setSaving(true);
@@ -590,7 +618,9 @@ export function BusinessModule({ kind }: { kind: string }) {
                 <TextInput value={query} onChangeText={setQuery} placeholder="Search…" placeholderTextColor={colors.onSurfaceTertiary} style={{ flex: 1, color: colors.onSurface, fontFamily: fonts.regular }} />
               </View>
             ) : null}
-            {rows.length ? rows.map((r) => (
+            {kind === "staff" && !canManageStaff && !loading ? (
+              <Card><AppText>You do not have delegated Plant Manager access.</AppText></Card>
+            ) : rows.length ? rows.map((r) => (
               <Card key={r.id} style={{ gap: spacing.sm }}>
                 <View style={{ gap: 4 }}>
                   <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: colors.onSurface }}>{r.title}</AppText>
@@ -606,9 +636,14 @@ export function BusinessModule({ kind }: { kind: string }) {
                     <View style={{ flex: 1 }}><Button label="Stock Out" variant="outline" onPress={() => openAdjustment(r, -1)} /></View>
                   </View>
                 ) : null}
-                {kind === "staff" && STAFF_ROLE_OPTIONS.some((option) => option.value === r.raw?.role) ? (
+                {kind === "staff" && canManageStaff && STAFF_ROLE_OPTIONS.some((option) => option.value === r.raw?.role) ? (
                   <View style={{ gap: spacing.sm }}>
-                    <Button label={r.raw?.active === true ? "Suspend (keep role reserved)" : "Activate"} variant="outline" onPress={() => toggleStaff(r)} />
+                    {r.raw?.is_manager ? <AppText variant="caption">Delegated Plant Manager</AppText> : null}
+                    {isPlantOwner && r.raw?.active === true ? (
+                      <Button label={r.raw?.is_manager ? "Revoke Manager Delegation" : "Appoint Plant Manager"}
+                        variant="outline" onPress={() => toggleManager(r)} />
+                    ) : null}
+                    <Button label={r.raw?.active === true ? "Suspend (keep role reserved)" : "Activate" variant="outline" onPress={() => toggleStaff(r)} />
                     {removeConfirmId === r.id ? (
                       <View style={{ gap: spacing.sm }}>
                         <AppText variant="caption">Removing this assignment frees the role. Employee and payroll history are retained.</AppText>
