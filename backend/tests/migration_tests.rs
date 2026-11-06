@@ -169,3 +169,70 @@ async fn migrations_apply_from_an_empty_database() {
 
     pool.close().await;
 }
+
+
+/// A previous production deployment may have already applied migration 44
+/// before the security PR that introduces 42/43 is merged. Prove SQLx can
+/// backfill those pending versions without replaying or altering 44.
+#[sqlx::test(migrations = false)]
+async fn late_session_migrations_apply_after_existing_rfq_version_44(pool: sqlx::PgPool) {
+    use std::borrow::Cow;
+    let all = sqlx::migrate!("./migrations");
+    if !all.iter().any(|migration| migration.version == 44) {
+        // The isolated PR branch predates main's 44; the pull-request merge
+        // CI is responsible for exercising the combined release.
+        return;
+    }
+    let deployed = sqlx::migrate::Migrator {
+        migrations: Cow::Owned(
+            all.iter()
+                .filter(|migration| !matches!(migration.version, 42 | 43))
+                .cloned()
+                .collect(),
+        ),
+        ..sqlx::migrate!("./migrations")
+    };
+    deployed.run(&pool).await.expect("simulate production through migration 44");
+    let version_44_before: Vec<u8> = sqlx::query_scalar(
+        "SELECT checksum FROM _sqlx_migrations WHERE version=44 AND success=TRUE",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(sqlx::query_scalar::<_, Option<i64>>(
+        "SELECT version FROM _sqlx_migrations WHERE version=42",
+    )
+    .fetch_optional(&pool)
+    .await
+    .unwrap()
+    .is_none());
+
+    all.run(&pool)
+        .await
+        .expect("pending session and refresh migrations must apply after version 44");
+    for version in [42_i64, 43] {
+        let applied: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM _sqlx_migrations WHERE version=$1 AND success=TRUE)",
+        )
+        .bind(version)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!(applied, "missing backfilled migration {version}");
+    }
+    let version_44_after: Vec<u8> = sqlx::query_scalar(
+        "SELECT checksum FROM _sqlx_migrations WHERE version=44 AND success=TRUE",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(version_44_before, version_44_after);
+    let refresh_table_exists: bool = sqlx::query_scalar(
+        "SELECT to_regclass('public.account_refresh_tokens') IS NOT NULL",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(refresh_table_exists);
+    all.run(&pool).await.expect("re-running migrations must be idempotent");
+}
