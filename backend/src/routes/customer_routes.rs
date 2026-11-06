@@ -465,6 +465,9 @@ pub async fn cancel_order(
             .execute(&mut *tx)
             .await?;
 
+        sqlx::query("UPDATE order_payment_offers SET status='CANCELLED',updated_at=NOW() WHERE order_id=$1 AND status IN ('OFFERED','AWAITING_PAYMENT','READY_FOR_PRODUCTION')")
+            .bind(order_id).execute(&mut *tx).await?;
+
         sqlx::query("UPDATE order_loads SET status = 'cancelled' WHERE order_id = $1")
             .bind(order_id)
             .execute(&mut *tx)

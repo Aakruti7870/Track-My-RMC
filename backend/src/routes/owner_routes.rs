@@ -272,10 +272,16 @@ pub async fn approve_order(
 
     super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
     let mut tx = state.db.begin().await?;
-    let current: String = sqlx::query_scalar("SELECT status FROM orders WHERE id=$1 FOR UPDATE")
-        .bind(order_id)
-        .fetch_one(&mut *tx)
-        .await?;
+    let (current, preference): (String, Option<String>) =
+        sqlx::query_as("SELECT status,preferred_payment_mode FROM orders WHERE id=$1 FOR UPDATE")
+            .bind(order_id)
+            .fetch_one(&mut *tx)
+            .await?;
+    if preference.is_some() {
+        return Err(AppError::Conflict(
+            "Use plant-approved payment offer before confirming this order".into(),
+        ));
+    }
     if current != "confirmed" && current != "pending" {
         return Err(AppError::Conflict(
             "Only a pending order can be reviewed".into(),
@@ -305,22 +311,43 @@ pub async fn reject_order(
 
     super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
     let mut tx = state.db.begin().await?;
-    let current: String = sqlx::query_scalar("SELECT status FROM orders WHERE id=$1 FOR UPDATE")
-        .bind(order_id)
-        .fetch_one(&mut *tx)
-        .await?;
+    let (current, customer_id, order_number): (String, Uuid, String) =
+        sqlx::query_as("SELECT status,customer_id,order_number FROM orders WHERE id=$1 FOR UPDATE")
+            .bind(order_id)
+            .fetch_one(&mut *tx)
+            .await?;
     if current != "rejected" && current != "pending" {
         return Err(AppError::Conflict(
             "Only a pending order can be reviewed".into(),
         ));
     }
     if current != "rejected" {
+        // A customer-accepted offer cannot be revoked by this ordinary review path.
+        // In-flight prepayments require controlled payment/refund reconciliation.
+        let customer_accepted: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM order_payment_offers WHERE order_id=$1 AND customer_accepted_at IS NOT NULL)"
+        ).bind(order_id).fetch_one(&mut *tx).await?;
+        if customer_accepted {
+            return Err(AppError::Conflict(
+                "Customer accepted commercial terms; use controlled cancellation and financial review".into()
+            ));
+        }
         sqlx::query("UPDATE orders SET status=$2,updated_at=NOW() WHERE id=$1")
             .bind(order_id)
             .bind("rejected")
             .execute(&mut *tx)
             .await?;
+        sqlx::query("UPDATE order_payment_offers SET status='CANCELLED',updated_at=NOW() WHERE order_id=$1 AND status='OFFERED'")
+            .bind(order_id).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'order_review','order',$2,$3)").bind(auth_user.user_id).bind(order_id.to_string()).bind(json!({"from":current,"to":"rejected"})).execute(&mut *tx).await?;
+        sqlx::query(
+            "INSERT INTO notifications(user_id,title,body,notification_type,reference_id) \
+             VALUES($1,$2,$3,'order_rejected',$4)"
+        ).bind(customer_id)
+         .bind(format!("Order {order_number} was declined"))
+         .bind("The plant declined this order request. No payment was collected by the new order request flow.")
+         .bind(order_id.to_string())
+         .execute(&mut *tx).await?;
     }
     tx.commit().await?;
 
