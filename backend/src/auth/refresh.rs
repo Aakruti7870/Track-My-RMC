@@ -64,9 +64,10 @@ pub async fn issue_after_auth(
     email: Option<&str>,
     lifetime_hours: i64,
 ) -> Result<RefreshBundle, AppError> {
-    // Central Admin remains authenticator-only with its existing short-lived
-    // step-up-bound session: silent refresh would bypass mandatory re-auth.
-    if matches!(role, "admin" | "central_admin" | "authority") {
+    // Central Authority uses a separate MFA/step-up-controlled session.
+    // Mobile "admin" accounts must still receive an initial access token after
+    // successfully completing email OTP plus TOTP; rotation rejects that role.
+    if matches!(role, "central_admin" | "authority") {
         return Err(AppError::Forbidden(
             "Privileged console sessions cannot be silently renewed".into(),
         ));
@@ -126,6 +127,22 @@ pub async fn rotate(state: &AppState, raw: &str) -> Result<RefreshBundle, AppErr
     let (stored_id, hash, expires): (Uuid, String, DateTime<Utc>) = sqlx::query_as(
         "SELECT token_id,token_hash,expires_at FROM account_refresh_tokens WHERE user_id=$1 FOR UPDATE",
     ).bind(user).fetch_one(&mut *tx).await?;
+
+    // Disabling Play reviewer access must also deny renewal of any fixture
+    // token, even if a stale credential survived a previous deployment.
+    let reviewer_enabled: Option<bool> = sqlx::query_scalar(
+        "SELECT enabled FROM play_review_fixtures WHERE user_id=$1"
+    )
+    .bind(user)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if reviewer_enabled.is_some_and(|enabled| !enabled)
+        || (reviewer_enabled.is_some() && state.config.play_review_access_code.is_none())
+    {
+        return Err(AppError::Unauthorized(
+            "Play reviewer access is no longer enabled".into(),
+        ));
+    }
 
     let digest = hex::encode(Sha256::digest(raw.as_bytes()));
     if stored_id != id
