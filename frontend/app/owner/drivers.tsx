@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeProvider";
-import { apiErrorDetail, apiGet, apiPut } from "@/src/api/client";
+import { apiErrorDetail, apiGet, apiPut, apiPost } from "@/src/api/client";
 import { AppText } from "@/src/components/ui/AppText";
 import { Card } from "@/src/components/ui/Card";
 import { Input } from "@/src/components/ui/Input";
@@ -18,7 +18,7 @@ type DriverRecord = {
   total_driving_experience_months: number | null; blood_group: string | null;
   emergency_contact_1_name: string | null; emergency_contact_1_phone: string | null;
   emergency_contact_2_name: string | null; emergency_contact_2_phone: string | null;
-  tm_number: string | null; is_active: boolean;
+  tm_number: string | null; is_active: boolean;verified:boolean;
 };
 const empty = {
   phone: "", employee_id: "", company_joining_date: "",
@@ -42,7 +42,25 @@ export default function OwnerDriverManagement() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const canEdit = user?.role === "plant_owner" || user?.role === "owner";
+  const isOwner = user?.role === "plant_owner" || user?.role === "owner";
+  const [delegated,setDelegated]=useState(false);
+  const [invitationName,setInvitationName]=useState("");
+  const [invitationPhone,setInvitationPhone]=useState("");
+  const [changeReason,setChangeReason]=useState("");
+  const canEdit=isOwner || delegated;
+  useEffect(()=>{
+    if (!token || isOwner) return;
+    let active=true;
+    (async()=>{
+      const manager=await apiGet<{enabled:boolean;can_manage_drivers?:boolean}>("/staff/manager-access",token);
+      if(manager.enabled && manager.can_manage_drivers){if(active)setDelegated(true);return;}
+      if(user?.role==="fleet_manager"){
+        const grants=await apiGet<{permissions:Array<{key:string;edit:boolean}>}>("/staff/module-permissions",token);
+        if(active)setDelegated(grants.permissions.some(g=>g.key==="driver_roster" && g.edit));
+      }
+    })().catch(()=>{if(active)setDelegated(false);});
+    return ()=>{active=false;};
+  },[token,isOwner,user?.role]);
   const setField = (key: keyof Form) => (value: string) => setForm(prev => ({ ...prev, [key]: value }));
 
   const loadPlants = useCallback(async () => {
@@ -129,7 +147,7 @@ export default function OwnerDriverManagement() {
   };
   if (!canEdit) {
     return <View style={{ flex: 1, backgroundColor: colors.surface, padding: 20 }}>
-      <AppText>Only a plant owner can edit private driver employment records.</AppText>
+      <AppText>Owner-approved Driver management access is required.</AppText>
     </View>;
   }
   return (
@@ -146,6 +164,18 @@ export default function OwnerDriverManagement() {
         </View>
       ) : null}
       {error ? <Card><AppText style={{ color: colors.error }}>{error}</AppText><Button label="Retry" variant="outline" onPress={() => { void loadDrivers(); }} /></Card> : null}
+      <Card style={{gap:spacing.sm}}>
+        <AppText variant="label">Invite a Driver</AppText>
+        <Input label="Driver name" value={invitationName} onChangeText={setInvitationName}/>
+        <Input label="Phone with country code" value={invitationPhone} onChangeText={setInvitationPhone}/>
+        <Input label="Reason for Driver invitation or access change" value={changeReason} onChangeText={setChangeReason}/>
+        <Button label="Register Driver invitation" disabled={!plantId || saving} onPress={async()=>{
+          if(!token || !plantId)return;setSaving(true);
+          try{await apiPost(`/business/plants/${plantId}/drivers/invitations`,token,{name:invitationName,phone:invitationPhone,reason:changeReason});
+            setInvitationName("");setInvitationPhone("");await loadDrivers();toast("Driver must complete WhatsApp OTP before vehicle assignment","success");
+          }catch(e){setError(apiErrorDetail(e,"Driver invitation failed"));}finally{setSaving(false);}
+        }}/>
+      </Card>
       <Card style={{ gap: 10 }}>
         <AppText variant="heading">Driver onboarding / Employment details</AppText>
         <AppText variant="caption">Existing driver profile? Select it below to edit. A verified driver must register by WhatsApp OTP before onboarding.</AppText>
@@ -189,6 +219,11 @@ export default function OwnerDriverManagement() {
             <AppText style={{ fontFamily: fonts.bold }}>{d.driver_name} · {d.employee_id || "ID pending"}</AppText>
             <AppText variant="caption">{d.tm_number || "No mixer"} · {d.phone} · {d.is_active ? "Active" : "Inactive"}</AppText>
             <AppText style={{ color: colors.brand, fontFamily: fonts.semibold }}>Edit profile</AppText>
+            {d.verified ? <Button label={d.is_active?"Suspend Driver access":"Reactivate verified Driver"} variant="outline" disabled={saving} onPress={async()=>{
+              if(!token || !plantId)return;setSaving(true);
+              try{await apiPost(`/business/plants/${plantId}/drivers/${d.driver_id}/status`,token,{active:!d.is_active,reason:changeReason});await loadDrivers();}
+              catch(e){setError(apiErrorDetail(e,"Driver access change failed"));}finally{setSaving(false);}
+            }}/> : <AppText variant="caption">Pending WhatsApp identity verification</AppText>}
           </Pressable>
         ))}
       </Card>

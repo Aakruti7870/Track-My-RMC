@@ -93,6 +93,11 @@ let browser;
 let activeRole = 'startup', phase = 'fixture';
 let safeDiagnostics = [];
 let safeSuccessfulPaths = new Set();
+async function respectOtpCooldown(){
+  console.log('RUN: waiting for the real OTP resend cooldown before another authentication');
+  let remaining=Number(process.env.OTP_COOLDOWN_SECONDS || 60)*1000+1000;
+  while(remaining>0){const delay=Math.min(30000,remaining);await new Promise(resolve=>setTimeout(resolve,delay));remaining-=delay;}
+}
 try {
   const api = start('cargo', ['run', '--manifest-path', 'backend/Cargo.toml', '--example', 'mobile_browser_fixture']);
   api.stdin.end(JSON.stringify({ capture_token: captureToken, totp_secrets: Object.fromEntries([...authenticators].map(([role, bytes]) => [role, base32(bytes)])) }));
@@ -103,12 +108,13 @@ try {
     env: {
       PATH: process.env.PATH, HOME: process.env.HOME, TMPDIR: process.env.TMPDIR,
       CI: 'true', EXPO_OFFLINE: '1', EXPO_NO_TELEMETRY: '1',
+      __UNSAFE_EXPO_HOME_DIRECTORY:process.env.__UNSAFE_EXPO_HOME_DIRECTORY,
       EXPO_PUBLIC_BACKEND_URL: 'http://127.0.0.1:8301',
       EXPO_PUBLIC_CROSS_ORIGIN_COOKIES: 'true',
     },
   });
   await ready('http://127.0.0.1:8081', web);
-  browser = await chromium.launch();
+  browser = await chromium.launch(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? {executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE} : {});
   for (const user of manifest.users) {
     activeRole = user.role;
     assert.ok(!['admin', 'authority', 'central_admin'].includes(user.role));
@@ -137,6 +143,7 @@ try {
     safeSuccessfulPaths = successfulPaths;
     let token;
     let currentIdentity;
+    let expectingSessionReplacement=false;
     let awaitingAnonymousRefresh = true;
     const isRefreshResponse = response =>
       response.url() === 'http://127.0.0.1:8301/api/auth/refresh' &&
@@ -161,6 +168,7 @@ try {
       }
       if (path === '/api/me' && response.status() === 401
           && expiredAccessTokens.has(response.request().headers().authorization?.slice(7))) return;
+      if (expectingSessionReplacement && response.status() === 401) return;
       if (response.status() >= 400) failures.push(`${path}: ${response.status()}`);
       else {
         successfulPaths.add(path);
@@ -345,6 +353,27 @@ try {
     for (const key of disabledKeys) {
       await expect(page.getByTestId('role-module-' + key)).toHaveCount(0);
     }
+    if (user.role === 'plant_owner') {
+      phase = 'Owner staff slots and Manager delegation';
+      await page.goto('http://127.0.0.1:8081/business/staff');
+      await expect(page.getByText('Seven employee role slots', {exact:true})).toBeVisible();
+      for (const role of ['dispatcher','operator','supervisor','accountant','quality_engineer','fleet_manager','store_manager']) {
+        await expect(page.getByTestId('staff-record-'+role)).toBeVisible();
+      }
+      const supervisor=page.getByTestId('staff-record-supervisor');
+      await supervisor.getByRole('button',{name:'Appoint Plant Manager',exact:true}).click();
+      await expect(supervisor.getByRole('button',{name:'Revoke Manager Delegation',exact:true})).toBeVisible();
+      await supervisor.getByRole('button',{name:'Revoke Manager Delegation',exact:true}).click();
+      await expect(supervisor.getByRole('button',{name:'Appoint Plant Manager',exact:true})).toBeVisible();
+      await page.getByRole('button',{name:'Configure employee module permissions',exact:true}).click();
+      phase='Owner five-action permission editor';
+      await expect(page.getByTestId('save-staff-permissions')).toBeVisible();
+      await page.getByText('Staging dispatcher · dispatcher',{exact:true}).click();
+      await expect(page.getByTestId('permission-dispatch_queue-create')).toBeVisible();
+      await expect(page.getByTestId('permission-dispatch_queue-export')).toBeVisible();
+      await page.goto('http://127.0.0.1:8081/owner/more');
+      console.log('PASS: real Expo Owner seven-slot directory, Manager appointment/revocation and five-action permission editor');
+    }
     if (user.role === 'customer') {
       await expect(page.getByTestId('role-module-directory').locator('[data-testid^="role-module-"]')).toHaveCount(5);
       await expect(page.getByText('All Customer Modules', { exact: true })).toHaveCount(0);
@@ -487,6 +516,36 @@ try {
         assert.equal(await tab.evaluate(() => localStorage.getItem('tmrmc_refresh')), null);
       }
       console.log('PASS: sign-out clears credentials and signs out the other Expo tab');
+    }
+    if (user.role === 'customer') {
+      phase = 'real replacement login revokes an active Expo client';
+      await respectOtpCooldown();
+      await page.getByTestId('login-mobile-input').fill(user.phone);
+      await page.getByRole('button',{name:'CONTINUE',exact:true}).click();
+      await expect(page.getByTestId('login-user-otp-input')).toBeEditable();
+      const firstCode=deliveries.get(destination);deliveries.delete(destination);
+      assert.ok(firstCode);
+      await page.getByTestId('login-user-otp-input').fill(firstCode,{force:true});
+      await expect(page.getByTestId('customer-home-scroll')).toBeVisible();
+      await respectOtpCooldown();
+      const replacement=await browser.newContext();
+      try {
+        const sent=await replacement.request.post('http://127.0.0.1:8301/api/auth/otp/whatsapp/send',{data:{phone:user.phone}});
+        assert.equal(sent.status(),200);
+        const nextCode=deliveries.get(destination);deliveries.delete(destination);assert.ok(nextCode);
+        const completed=await replacement.request.post('http://127.0.0.1:8301/api/auth/otp/whatsapp/verify',{data:{phone:user.phone,otp:nextCode}});
+        assert.equal(completed.status(),200);
+        const fresh=await completed.json();
+        expectingSessionReplacement=true;
+        await page.getByText('Orders',{exact:true}).last().click();
+        await expect(page.getByTestId('login-user-tab')).toBeVisible();
+        await expect(page.getByText('This account was signed in on another device. Sign in again.',{exact:true})).toBeVisible();
+        assert.equal(await page.evaluate(()=>localStorage.getItem('tmrmc_token')),null);
+        assert.equal(await page.evaluate(()=>localStorage.getItem('tmrmc_refresh')),null);
+        const cleanup=await replacement.request.post('http://127.0.0.1:8301/api/auth/logout',{headers:{Authorization:'Bearer '+fresh.token},data:{}});
+        assert.equal(cleanup.status(),200);
+      }finally{await replacement.close();}
+      console.log('PASS: second verified login forces the old Expo client to clear credentials on protected API 401');
     }
     const revoked = await context.request.get('http://127.0.0.1:8301/api/me', { headers: { Authorization: `Bearer ${token}` } });
     assert.ok([401, 403].includes(revoked.status()), 'Logout must revoke the server session');

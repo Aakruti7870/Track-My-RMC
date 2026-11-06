@@ -60,6 +60,12 @@ function CommandCenter() {
   const [notice, setNotice] = useState('');
   const [rfqOutreachCode, setRfqOutreachCode] = useState('');
   const [rfqOutreachNotes, setRfqOutreachNotes] = useState<Record<string,string>>({});
+  const [ownerRequests,setOwnerRequests]=useState<Array<Record<string,any>>>([]);
+  const [ownerCode,setOwnerCode]=useState('');
+  const [ownerReason,setOwnerReason]=useState('');
+  const [ownerId,setOwnerId]=useState('');
+  const [ownerFields,setOwnerFields]=useState<Record<string,{city:string;state:string;pincode:string}>>({});
+  const [showOwners,setShowOwners]=useState(false);
 
   useEffect(() => {
     const token = window.sessionStorage.getItem('trackmyrmc_admin_token');
@@ -125,6 +131,21 @@ function CommandCenter() {
       setRecords(response.data.items || []);setWorkspaceOffset(offset);
     } catch(error) {setRecords([]);setError(errorMessage(error));}
     finally {setBusy(false);}
+  }
+
+  async function loadOwnerRequests(){
+    setBusy(true);setError('');setShowOwners(true);
+    try{const response=await apiClient.get('/api/plant-discovery/requests');setOwnerRequests(response.data.requests||[]);}
+    catch(e){setError(errorMessage(e));}finally{setBusy(false);}
+  }
+  async function ownerAction(path:string,body:Record<string,unknown>){
+    if(ownerReason.trim().length<10 || !ownerCode.trim()){setError('Enter a reason and a fresh authenticator code.');return;}
+    setBusy(true);setError('');
+    try{
+      await apiClient.post('/api/control-center/step-up',{code:ownerCode.trim()});setOwnerCode('');
+      await apiClient.post(path,{...body,reason:ownerReason.trim()});
+      setNotice('Plant Owner action recorded and audited.');setOwnerReason('');await loadOwnerRequests();
+    }catch(e){setError(errorMessage(e));}finally{setBusy(false);}
   }
 
   async function recordRfqOutreach(id:string, status:'INVITATION_SHARED'|'CONTACTED'|'DECLINED') {
@@ -443,6 +464,26 @@ function CommandCenter() {
               </section>
             )}
             {user.role === 'central_admin' && <section aria-label="Authorized workspaces" style={{marginTop:18}}>
+              {permissions.includes('plant_owners.manage') && <>
+                <button onClick={()=>void loadOwnerRequests()} disabled={busy} style={buttonStyle}>Plant Owner approvals and access</button>
+                {showOwners && <section aria-label="Plant Owner access controls" style={{display:'grid',gap:12,marginTop:12}}>
+                  <label>Fresh authenticator code<input type="password" autoComplete="off" value={ownerCode} onChange={e=>setOwnerCode(e.target.value)} style={inputStyle}/></label>
+                  <label>Reason for privileged change<input maxLength={500} value={ownerReason} onChange={e=>setOwnerReason(e.target.value)} style={inputStyle}/></label>
+                  {ownerRequests.map(row=>{
+                    const id=String(row.id);const fields=ownerFields[id]||{city:String(row.city||''),state:String(row.state||''),pincode:''};
+                    return <article key={id} style={{border:'1px solid #475569',padding:12}}>
+                      <h3>{String(row.name)} · {String(row.request_number)}</h3><p>{String(row.applicant_email)} · {String(row.address)}</p>
+                      {(['city','state','pincode'] as const).map(key=><label key={key}>{key}<input value={fields[key]} onChange={e=>setOwnerFields(old=>({...old,[id]:{...fields,[key]:e.target.value}}))} style={inputStyle}/></label>)}
+                      <button disabled={busy} onClick={()=>void ownerAction('/api/plant-discovery/requests/'+id+'/approve',fields)} style={buttonStyle}>Approve Plant Owner and plant</button>
+                      <button disabled={busy} onClick={()=>void ownerAction('/api/plant-discovery/requests/'+id+'/reject',{})} style={buttonStyle}>Reject request</button>
+                    </article>;
+                  })}
+                  {!ownerRequests.length && <p>No pending Plant Owner requests.</p>}
+                  <label>Registered Plant Owner account ID<input value={ownerId} onChange={e=>setOwnerId(e.target.value)} style={inputStyle}/></label>
+                  <button disabled={busy || !ownerId} onClick={()=>void ownerAction('/api/control-center/owners/'+encodeURIComponent(ownerId)+'/status',{active:false})} style={buttonStyle}>Suspend / revoke Owner access</button>
+                  <button disabled={busy || !ownerId} onClick={()=>void ownerAction('/api/control-center/owners/'+encodeURIComponent(ownerId)+'/status',{active:true})} style={buttonStyle}>Reactivate approved Owner</button>
+                </section>}
+              </>}
               <nav style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                 {['users','plants','orders','support','service_enquiries','rmc_rfq_leads','audit','sessions'].filter(kind=>permissions.includes(({users:'user.view',plants:'plant.view',orders:'order.view',support:'support.view',service_enquiries:'support.view',rmc_rfq_leads:'support.view',audit:'audit.view',sessions:'session.view'} as Record<string,string>)[kind])).map(kind=>
                   <button key={kind} disabled={busy} onClick={()=>void loadWorkspace(kind)} style={{...buttonStyle,width:'auto',textTransform:'capitalize'}}>{kind}</button>)}

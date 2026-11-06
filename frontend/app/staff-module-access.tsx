@@ -13,7 +13,7 @@ import { OwnerFrame, OwnerGlass, OwnerList, useOwnerPalette } from "@/src/owner/
 
 type Plant = { id: string; name: string };
 type Staff = { id: string; name: string; role: string; active: boolean };
-type Flags = { view: boolean; edit: boolean; approve: boolean };
+type Flags = { view: boolean; create:boolean; edit: boolean; approve: boolean; export:boolean };
 type Grant = Flags & { key: string; label: string; ceiling: Flags; overridden: boolean };
 type GrantsResponse = { permissions: Grant[] };
 type GrantEdit = Flags & { key: string };
@@ -46,6 +46,17 @@ export default function StaffModuleAccess() {
   const p = useOwnerPalette();
   const toast = useToast();
   const isOwner = user?.role === "owner" || user?.role === "plant_owner";
+  const [managerAllowed,setManagerAllowed]=useState(false);
+  const [checkingManager,setCheckingManager]=useState(true);
+  useEffect(()=>{
+    if (!token || isOwner) {setCheckingManager(false);return;}
+    let active=true;
+    apiGet<{enabled:boolean;can_manage_permissions?:boolean}>("/staff/manager-access",token)
+      .then(r=>{if(active)setManagerAllowed(r.enabled && r.can_manage_permissions===true);})
+      .catch(()=>{if(active)setManagerAllowed(false);})
+      .finally(()=>{if(active)setCheckingManager(false);});
+    return ()=>{active=false;};
+  },[token,isOwner]);
   const [plants, setPlants] = useState<Plant[]>([]);
   const [plant, setPlant] = useState("");
   const [staff, setStaff] = useState<Staff[]>([]);
@@ -57,7 +68,7 @@ export default function StaffModuleAccess() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!token || !isOwner) return;
+    if (!token || (!isOwner && !managerAllowed)) return;
     let active = true;
     apiGet<{ plants: Plant[] }>("/master/my-plants", token).then(r => {
       if (!active) return;
@@ -65,7 +76,7 @@ export default function StaffModuleAccess() {
       setPlant(r.plants?.[0]?.id || "");
     }).catch((e: any) => { if (active) { setLoading(false); setError(e.detail || "Could not load plants"); } });
     return () => { active = false; };
-  }, [token, isOwner]);
+  }, [token, isOwner,managerAllowed]);
 
   useEffect(() => {
     if (!token || !plant) return;
@@ -104,7 +115,7 @@ export default function StaffModuleAccess() {
     setDirty(true);
     setGrants(old => old.map(g => {
       if (g.key !== key || (enabled && !g.ceiling[action])) return g;
-      if (action === "view" && !enabled) return { ...g, view: false, edit: false, approve: false };
+      if (action === "view" && !enabled) return { ...g, view: false,create:false, edit: false, approve: false,export:false };
       if (action === "edit" && enabled) return { ...g, view: true, edit: true };
       if (action === "approve" && enabled) return { ...g, view: true, approve: true };
       return { ...g, [action]: enabled };
@@ -115,7 +126,7 @@ export default function StaffModuleAccess() {
     setSaving(true);
     try {
       const permissions: GrantEdit[] = grants.map(g => ({
-        key: g.key, view: g.view, edit: g.edit, approve: g.approve,
+        key: g.key, view: g.view,create:g.create, edit: g.edit, approve: g.approve,export:g.export,
       }));
       const result = await apiPut<GrantsResponse>(
         "/owner/plants/" + plant + "/staff/" + staffId + "/module-permissions",
@@ -127,12 +138,12 @@ export default function StaffModuleAccess() {
     finally { setSaving(false); }
   };
 
-  if (hydrating) return null;
+  if (hydrating || checkingManager) return null;
   if (!token || !user) return <Redirect href="/login" />;
-  if (!isOwner) return <Redirect href="/role-home" />;
+  if (!isOwner && !managerAllowed) return <Redirect href="/role-home" />;
 
   return (
-    <OwnerFrame title="Staff Module Access" subtitle="Plant Owner · Eight staff roles · plant-scoped audited restrictions">
+    <OwnerFrame title="Staff Module Access" subtitle="Seven employee roles · plant-scoped audited restrictions">
       <OwnerList>
         <Button label="Back to Workforce" variant="ghost" size="sm" fullWidth={false} onPress={() => router.back()} />
         <OwnerGlass style={{ padding: 14, gap: 10 }}>
@@ -176,7 +187,7 @@ export default function StaffModuleAccess() {
                   {g.overridden ? <AppText style={{ color: p.accent, fontSize: 11 }}>Customized</AppText> : null}
                 </View>
                 <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                  {(["view", "edit", "approve"] as const).map(action => {
+                  {(["view","create", "edit", "approve","export"] as const).map(action => {
                     const disabled = !g.ceiling[action] || (action !== "view" && !g.view);
                     return (
                       <View key={action} style={{ alignItems: "center", gap: 5 }}>

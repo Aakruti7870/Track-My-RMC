@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import { AppState, Platform } from "react-native";
 import { sessionLossMessage, sessionLossReason } from "@/src/auth/sessionPolicy";
 import { supportsSessionLock, withSessionLock } from "@/src/auth/sessionLock";
+import { onSessionLoss } from "@/src/auth/sessionEvents";
 
 import { storage } from "@/src/utils/storage";
 import {
@@ -309,6 +310,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           && (error.status === 401 || error.status === 403)) await clearSession(error);
     }
   };
+
+  useEffect(() => onSessionLoss((loss) => {
+    if (!token || loss.token !== token || signedOutLocally.current) return;
+    const generation = sessionGeneration.current;
+    void verifiedSession(token).then((result) => {
+      if (generation === sessionGeneration.current && !signedOutLocally.current) {
+        setToken(result.access); setUser(result.me);
+      }
+    }).catch(async (error) => {
+      if (generation === sessionGeneration.current && isApiError(error)
+          && (error.status === 401 || error.status === 403)) await clearSession(error);
+    });
+  }), [token, verifiedSession, clearSession]);
 
   const signOut = async () => {
     signedOutLocally.current = true;

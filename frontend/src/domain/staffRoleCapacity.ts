@@ -9,12 +9,13 @@ export type PlantRoleAssignment = {
   user_id: string;
   role: string;
   is_active: boolean;
+  status?: string;
   removed_at?: string | null;
 };
 
 export function roleSlotStatus(
   assignments: readonly PlantRoleAssignment[], role: PlantJobRole,
-): "available" | "active" | "suspended" {
+): "available" | "active" | "suspended" | "pending" {
   const occupant = assignments.find((person) => person.role === role && !person.removed_at);
-  return !occupant ? "available" : occupant.is_active ? "active" : "suspended";
+  return !occupant ? "available" : occupant.status === "pending" ? "pending" : occupant.is_active ? "active" : "suspended";
 }

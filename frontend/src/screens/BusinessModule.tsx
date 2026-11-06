@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Modal, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { Modal, Platform, Share, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -199,10 +199,12 @@ const MODULES: Record<string, ModuleDef> = {
   attendance: { title: "Attendance", subtitle: "Daily staff attendance register" },
   staff: {
     title: "Plant Staff",
-    subtitle: "Link an existing email-OTP staff account. Drivers use separate WhatsApp onboarding.",
-    addLabel: "Add Plant Staff",
+    subtitle: "Register work email, reserve a role and require email verification plus MFA.",
+    addLabel: "Invite Plant Staff",
     fields: [
-      { key: "user_id", label: "Existing staff user UUID", placeholder: "UUID from an already registered staff account", required: true },
+      { key: "email", label: "Registered work email", required: true },
+      { key: "full_name", label: "Employee name", required: true },
+      { key: "reason", label: "Invitation reason", required: true },
       { key: "role", label: "Role", placeholder: "dispatcher / operator / supervisor / accountant / quality_engineer / fleet_manager / store_manager", required: true },
     ],
   },
@@ -309,16 +311,22 @@ export function BusinessModule({ kind }: { kind: string }) {
   const [adjustNote, setAdjustNote] = useState("");
   const [adjustSign, setAdjustSign] = useState<1 | -1>(1);
   const [permissionEdits, setPermissionEdits] = useState<Record<string, boolean>>({});
+  const [permissionExports,setPermissionExports]=useState<Record<string,boolean>>({});
+  const [staffHistory, setStaffHistory] = useState<{events:any[];slots:any[]}>({events:[],slots:[]});
+  const [lifecycleReason, setLifecycleReason] = useState("");
+  const [managerPolicy,setManagerPolicy]=useState({can_manage_staff:true,can_manage_permissions:false,can_manage_fleet:false,can_manage_drivers:false});
   const isPlantOwner = user?.role === "plant_owner" || user?.role === "owner";
   const [managerEnabled, setManagerEnabled] = useState(false);
+  const [managerFleet,setManagerFleet]=useState(false);
   React.useEffect(() => {
-    if (kind !== "staff" || isPlantOwner || !token) {
+    if (isPlantOwner || !token) {
       setManagerEnabled(false);
+      setManagerFleet(false);
       return;
     }
     let live = true;
-    apiGet<{enabled:boolean}>("/staff/manager-access", token)
-      .then(result => { if (live) setManagerEnabled(result.enabled === true); })
+    apiGet<{enabled:boolean;can_manage_staff?:boolean;can_manage_fleet?:boolean}>("/staff/manager-access", token)
+      .then(result => { if (live) {setManagerEnabled(result.enabled === true && result.can_manage_staff===true);setManagerFleet(result.enabled && result.can_manage_fleet===true);} })
       .catch(() => { if (live) setManagerEnabled(false); });
     return () => { live = false; };
   }, [kind, isPlantOwner, token]);
@@ -329,9 +337,9 @@ export function BusinessModule({ kind }: { kind: string }) {
     if (!isDelegatedStaff || !token) return;
     let active = true;
     setPermissionEdits({});
-    apiGet<{ permissions: Array<{ key: string; edit: boolean }> }>("/staff/module-permissions", token)
+    apiGet<{ permissions: Array<{ key: string; edit: boolean;export:boolean }> }>("/staff/module-permissions", token)
       .then(result => {
-        if (active) setPermissionEdits(Object.fromEntries(result.permissions.map(item => [item.key, item.edit])));
+        if (active) {setPermissionEdits(Object.fromEntries(result.permissions.map(item => [item.key, item.edit])));setPermissionExports(Object.fromEntries(result.permissions.map(item=>[item.key,item.export])));}
       }).catch(() => { if (active) setPermissionEdits({}); });
     return () => { active = false; };
   }, [token, isDelegatedStaff]);
@@ -340,7 +348,7 @@ export function BusinessModule({ kind }: { kind: string }) {
     rates: "rate_cards", quotations: "quotations", expenses: "expenses",
     purchases: "purchases", diesel: "diesel_ledger", suppliers: "suppliers", payroll: "payroll",
   };
-  const canEditModule = kind === "staff" ? canManageStaff :
+  const canEditModule = kind === "staff" ? canManageStaff : kind === "fleet" && managerFleet ? true :
     (!isDelegatedStaff || !kindGrant[kind] || permissionEdits[kindGrant[kind]] === true);
 
   const loadPlants = useCallback(async () => {
@@ -361,6 +369,7 @@ export function BusinessModule({ kind }: { kind: string }) {
       ];
       if (kind === "purchases" || kind === "diesel") tasks.push(apiGet<any>(`/master/plants/${plantId}/suppliers`, token));
       const results = await Promise.all(tasks);
+      if (kind === "staff") setStaffHistory(await apiGet(`/business/plants/${plantId}/staff/history`,token));
       setData(results[0]);
       setResources({ ...(results[1] || {}), suppliers: results[2]?.suppliers || [] });
     } catch (e: any) {
@@ -377,6 +386,7 @@ export function BusinessModule({ kind }: { kind: string }) {
     () => (data?.people || []).map((person: any) => ({
       user_id: String(person.id), role: String(person.role),
       is_active: person.active === true,
+      status:person.status,
       removed_at: person.removed_at ?? null,
     })),
     [data?.people],
@@ -466,7 +476,7 @@ export function BusinessModule({ kind }: { kind: string }) {
         if (roleSlotStatus(staffAssignments, payload.role as PlantJobRole) !== "available") {
           throw { detail: "This role is already assigned. Remove the previous employee first." };
         }
-        await apiPost(`/business/plants/${plantId}/people`, token, payload);
+        await apiPost(`/business/plants/${plantId}/staff/invitations`, token, payload);
       }
       toast("Saved", "success");
       setModal(false);
@@ -507,7 +517,7 @@ export function BusinessModule({ kind }: { kind: string }) {
     const active = row.raw?.active === true;
     setSaving(true);
     try {
-      await apiPost(`/business/plants/${plantId}/people/${row.id}/${active ? "suspend" : "activate"}`, token);
+      await apiPost(`/business/plants/${plantId}/staff/${row.id}/lifecycle`, token,{action:active?"suspend":"reactivate",reason:lifecycleReason});
       toast(active ? "Staff suspended" : "Staff activated", "success");
       await load();
     } catch (e: any) { toast(e.detail || "Staff update failed", "error"); }
@@ -519,7 +529,10 @@ export function BusinessModule({ kind }: { kind: string }) {
     setSaving(true);
     try {
       const action = row.raw?.is_manager ? "revoke" : "grant";
-      await apiPost(`/business/plants/${plantId}/staff/${row.id}/manager/${action}`, token);
+      const current=action==="grant" && managerPolicy.can_manage_permissions
+        ? await apiGet<{permissions:any[]}>(`/owner/plants/${plantId}/staff/${row.id}/module-permissions`,token) : {permissions:[]};
+      const limits=Object.fromEntries(current.permissions.map(g=>[g.key,{view:g.view,create:g.create,edit:g.edit,approve:false,export:g.export}]));
+      await apiPost(`/business/plants/${plantId}/staff/${row.id}/manager/${action}`, token,action==="grant"?{...managerPolicy,permission_limits:limits}:{});
       toast(action === "grant" ? "Plant Manager delegated" : "Manager delegation revoked", "success");
       await load();
     } catch (e: any) {
@@ -527,11 +540,21 @@ export function BusinessModule({ kind }: { kind: string }) {
     } finally { setSaving(false); }
   };
 
+  const changeStaff = async (row:Row,action:string) => {
+    if (!token || !plantId) return;
+    if (lifecycleReason.trim().length<10) return toast("Enter a reason of at least 10 characters", "error");
+    setSaving(true);
+    try {
+      await apiPost(`/business/plants/${plantId}/staff/${row.id}/lifecycle`,token,{action,reason:lifecycleReason});
+      setLifecycleReason(""); await load(); toast("Employee status updated and audited","success");
+    } catch(e:any){toast(e.detail || "Employee update failed","error");} finally {setSaving(false);}
+  };
+
   const removeStaff = async (row: Row) => {
     if (!token || !plantId) return;
     setSaving(true);
     try {
-      await apiPost(`/business/plants/${plantId}/people/${row.id}/remove`, token);
+      await apiPost(`/business/plants/${plantId}/staff/${row.id}/lifecycle`, token,{action:"remove",reason:lifecycleReason});
       setRemoveConfirmId(null);
       toast("Employee assignment removed; job role is now available", "success");
       await load();
@@ -550,7 +573,7 @@ export function BusinessModule({ kind }: { kind: string }) {
     if (!amount || amount <= 0) return toast("Enter a valid quantity", "error");
     setSaving(true);
     try {
-      await apiPost(`/business/plants/${plantId}/materials/${adjustRow.id}/adjust`, token, { delta: amount * adjustSign, note: adjustNote || null });
+      await apiPost(`/business/plants/${plantId}/materials/${adjustRow.id}/adjust`, token, { quantity_change: amount * adjustSign, reason: adjustNote });
       toast("Stock updated", "success");
       setAdjustRow(null);
       await load();
@@ -575,6 +598,19 @@ export function BusinessModule({ kind }: { kind: string }) {
         {kind === "staff" && (user?.role === "plant_owner" || user?.role === "owner") ? (
           <Button label="Onboard / Manage Drivers" variant="outline" onPress={() => router.push("/owner/drivers")} />
         ) : null}
+        {kind === "staff" && canManageStaff ? <Card style={{gap:spacing.sm}}>
+          <AppText variant="label">Seven employee role slots</AppText>
+          {staffHistory.slots.map(slot=><AppText key={slot.role} variant="caption">{slot.role.replace(/_/g," ")} · {slot.status} · {slot.email || "Available"}</AppText>)}
+          <TextInput accessibilityLabel="Employee change reason" placeholder="Reason for suspension, termination or removal (10–500 characters)" maxLength={500}
+            value={lifecycleReason} onChangeText={setLifecycleReason} style={{color:colors.onSurface,padding:10,borderWidth:1,borderColor:colors.border}} />
+          <Button label="Configure employee module permissions" variant="outline" onPress={()=>router.push("/staff-module-access")} />
+          {isPlantOwner ? <>
+            <AppText variant="label">Permissions for the next Manager appointment</AppText>
+            {(["can_manage_staff","can_manage_permissions","can_manage_fleet","can_manage_drivers"] as const).map(key=><Pressable key={key} accessibilityRole="checkbox" accessibilityState={{checked:managerPolicy[key]}}
+              onPress={()=>setManagerPolicy(old=>({...old,[key]:!old[key]}))}><AppText>{managerPolicy[key]?"☑":"☐"} {key.replace(/_/g," ")}</AppText></Pressable>)}
+            <AppText variant="caption">Permission delegation is limited to the Manager's currently approved module grants.</AppText>
+          </> : null}
+        </Card> : null}
 
         {plants.length > 1 ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>
@@ -591,6 +627,16 @@ export function BusinessModule({ kind }: { kind: string }) {
 
         {!plantId && !loading ? <Card><AppText variant="bodyMuted">No plant is assigned to this account.</AppText></Card> : null}
         {error ? <Card><AppText style={{ color: colors.error }}>{error}</AppText><Button label="Retry" onPress={load} /></Card> : null}
+        {kind==="reports" && (isPlantOwner || permissionExports.plant_reports) ? <Button label="Export plant summary" variant="outline" onPress={async()=>{
+          if(!token || !plantId)return;
+          try{
+            const csv=await apiGet<string>(`/master/plants/${plantId}/summary/export`,token);
+            if(Platform.OS==="web"){
+              const url=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));const link=document.createElement("a");
+              link.href=url;link.download="plant-summary.csv";link.click();URL.revokeObjectURL(url);
+            }else{await Share.share({message:csv,title:"Plant summary"});}
+          }catch(e:any){toast(e.detail || "Report export failed","error");}
+        }}/> : null}
 
         {loading ? (
           <><Skeleton height={82} style={{ borderRadius: radius.lg }} /><Skeleton height={82} style={{ borderRadius: radius.lg }} /></>
@@ -621,7 +667,7 @@ export function BusinessModule({ kind }: { kind: string }) {
             {kind === "staff" && !canManageStaff && !loading ? (
               <Card><AppText>You do not have delegated Plant Manager access.</AppText></Card>
             ) : rows.length ? rows.map((r) => (
-              <Card key={r.id} style={{ gap: spacing.sm }}>
+              <Card key={r.id} testID={kind==="staff" ? `staff-record-${r.raw?.role}` : undefined} style={{ gap: spacing.sm }}>
                 <View style={{ gap: 4 }}>
                   <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: colors.onSurface }}>{r.title}</AppText>
                   {r.subtitle ? <AppText variant="caption">{r.subtitle}</AppText> : null}
@@ -633,7 +679,7 @@ export function BusinessModule({ kind }: { kind: string }) {
                 {kind === "inventory" && canEditModule ? (
                   <View style={{ flexDirection: "row", gap: spacing.sm }}>
                     <View style={{ flex: 1 }}><Button label="Stock In" onPress={() => openAdjustment(r, 1)} /></View>
-                    <View style={{ flex: 1 }}><Button label="Stock Out" variant="outline" onPress={() => openAdjustment(r, -1)} /></View>
+                    {isPlantOwner ? <View style={{ flex: 1 }}><Button label="Stock Out" variant="outline" onPress={() => openAdjustment(r, -1)} /></View> : <AppText variant="caption">Owner approval is required for stock reductions.</AppText>}
                   </View>
                 ) : null}
                 {kind === "staff" && canManageStaff && STAFF_ROLE_OPTIONS.some((option) => option.value === r.raw?.role) ? (
@@ -643,7 +689,17 @@ export function BusinessModule({ kind }: { kind: string }) {
                       <Button label={r.raw?.is_manager ? "Revoke Manager Delegation" : "Appoint Plant Manager"}
                         variant="outline" onPress={() => toggleManager(r)} />
                     ) : null}
-                    <Button label={r.raw?.active === true ? "Suspend (keep role reserved)" : "Activate"} variant="outline" onPress={() => toggleStaff(r)} />
+                    {r.raw?.status==="pending" ? <>
+                      <Button label="Cancel invitation" variant="outline" onPress={()=>changeStaff(r,"cancel")} />
+                      <Button label="Release expired invitation" variant="outline" onPress={()=>changeStaff(r,"expire")} />
+                    </> : <>
+                      <Button label={r.raw?.active === true ? "Suspend (keep role reserved)" : "Activate"} variant="outline" onPress={() => toggleStaff(r)} />
+                      {removeConfirmId===`terminate-${r.id}` ? <>
+                        <AppText variant="caption">Termination revokes access and releases this job slot. History is retained.</AppText>
+                        <Button label="Confirm termination" variant="outline" onPress={()=>changeStaff(r,"terminate")} />
+                        <Button label="Cancel termination" variant="outline" onPress={()=>setRemoveConfirmId(null)} />
+                      </> : <Button label="Terminate employee" variant="outline" onPress={()=>setRemoveConfirmId(`terminate-${r.id}`)} />}
+                    </>}
                     {removeConfirmId === r.id ? (
                       <View style={{ gap: spacing.sm }}>
                         <AppText variant="caption">Removing this assignment frees the role. Employee and payroll history are retained.</AppText>
@@ -657,6 +713,13 @@ export function BusinessModule({ kind }: { kind: string }) {
             )) : <Card><AppText variant="bodyMuted">No records yet.</AppText></Card>}
           </>
         )}
+        {kind === "staff" && canManageStaff ? <Card style={{gap:spacing.sm}}>
+          <AppText variant="label">Assignment history</AppText>
+          {staffHistory.events.length ? staffHistory.events.map(event=><View key={event.id} style={{gap:3}}>
+            <AppText variant="caption">{event.role} · {event.old_status || "VACANT"} → {event.new_status} · {event.occurred_at}</AppText>
+            <AppText variant="caption">{event.reason} · Actor {event.actor_user_id} ({event.actor_role})</AppText>
+          </View>) : <AppText variant="caption">No lifecycle changes recorded.</AppText>}
+        </Card> : null}
 
         {kind === "attendance" ? (
           <View style={{ flexDirection: "row", gap: spacing.sm }}>
@@ -704,13 +767,13 @@ export function BusinessModule({ kind }: { kind: string }) {
                             <Ionicons name={selected ? "checkmark-circle" : "ellipse-outline"} size={17} color={selected ? colors.onBrand : colors.onSurfaceSecondary} />
                             <View style={{ flex: 1, gap: 2 }}>
                               <AppText style={{ fontFamily: fonts.medium, fontSize: fontSize.sm, color: selected ? colors.onBrand : colors.onSurface }}>{option.label}</AppText>
-                              <AppText variant="caption">{slot === "available" ? "Available" : slot === "active" ? "Assigned" : "Suspended · reserved"}</AppText>
+                              <AppText variant="caption">{slot === "available" ? "Available" : slot === "active" ? "Assigned" : slot==="pending" ? "Invitation pending · reserved" : "Suspended · reserved"}</AppText>
                             </View>
                           </Pressable>
                         );
                       })}
                     </View>
-                    <AppText variant="caption">Select the role of an existing registered staff user. Drivers use separate mobile OTP onboarding.</AppText>
+                    <AppText variant="caption">The work email must be verified and MFA completed before this invitation activates. Drivers use separate WhatsApp onboarding.</AppText>
                   </View>
                 ) : (
                   <Input

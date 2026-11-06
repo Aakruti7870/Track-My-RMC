@@ -26,6 +26,7 @@ export function StaffMore() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [managerEnabled, setManagerEnabled] = React.useState(false);
+  const [managerResources,setManagerResources]=React.useState({fleet:false,drivers:false,permissions:false});
   React.useEffect(() => {
     if (!token || !user?.role || !["dispatcher","operator","supervisor","accountant",
       "quality_engineer","fleet_manager","store_manager"].includes(user.role)) {
@@ -34,8 +35,8 @@ export function StaffMore() {
     }
     let live = true;
     setManagerEnabled(false);
-    apiGet<{ enabled: boolean }>("/staff/manager-access", token)
-      .then(result => { if (live) setManagerEnabled(result.enabled === true); })
+    apiGet<{ enabled: boolean;can_manage_staff?:boolean;can_manage_fleet?:boolean;can_manage_drivers?:boolean;can_manage_permissions?:boolean }>("/staff/manager-access", token)
+      .then(result => { if (live) {setManagerEnabled(result.enabled === true && result.can_manage_staff===true);setManagerResources({fleet:result.enabled && result.can_manage_fleet===true,drivers:result.enabled && result.can_manage_drivers===true,permissions:result.enabled && result.can_manage_permissions===true});} })
       .catch(() => { if (live) setManagerEnabled(false); });
     return () => { live = false; };
   }, [token, user?.role]);
@@ -93,6 +94,9 @@ export function StaffMore() {
           </Pressable>
         ) : null}
 
+        {managerResources.fleet ? <Pressable accessibilityRole="button" onPress={()=>router.push("/business/fleet")}><AppText>Manage delegated fleet</AppText></Pressable> : null}
+        {managerResources.drivers ? <Pressable accessibilityRole="button" onPress={()=>router.push("/owner/drivers")}><AppText>Manage delegated Drivers</AppText></Pressable> : null}
+        {managerResources.permissions ? <Pressable accessibilityRole="button" onPress={()=>router.push("/staff-module-access")}><AppText>Manage delegated module permissions</AppText></Pressable> : null}
         <StaffModuleDirectory role={user?.role} title="Role workspace" searchable />
 
         <Pressable testID="staff-permission-settings" accessibilityRole="button" accessibilityLabel="App permissions"

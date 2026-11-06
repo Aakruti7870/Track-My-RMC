@@ -1,4 +1,5 @@
 import { Platform } from "react-native";
+import { publishSessionLoss } from "../auth/sessionEvents";
 // API client for TrackMyRMC. Base URL from env; all routes under /api.
 const RAW_BACKEND = (process.env.EXPO_PUBLIC_BACKEND_URL || process.env.EXPO_PUBLIC_API_URL)?.trim();
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -234,7 +235,13 @@ async function request<T>(
     });
     return await handle<T>(res);
   } catch (error) {
-    if (isApiError(error)) throw error;
+    if (isApiError(error)) {
+      if (options.token && safePath !== "/me" && error.status === 401
+          && ["SESSION_REPLACED", "SESSION_REVOKED"].includes(error.error_code || "")) {
+        publishSessionLoss({ token: options.token, error });
+      }
+      throw error;
+    }
     if (error instanceof Error && error.name === "AbortError") {
       if (options.signal?.aborted && !timedOut) {
         throw { status: 0, detail: "Request cancelled" } as ApiError;
