@@ -344,6 +344,10 @@ pub fn build_app_router(state: AppState) -> Router {
             "/api/admin/rmc-rfq-leads/:lead_id/outreach",
             patch(rmc_rfq_leads::update_admin_outreach),
         )
+        .route(
+            "/api/control-center/rmc-rfq-leads/:lead_id/outreach",
+            patch(rmc_rfq_leads::update_control_center_outreach),
+        )
         .route("/api/customer/plants/locate", post(discovery::locate))
         .route(
             "/api/me/permission-consent",
