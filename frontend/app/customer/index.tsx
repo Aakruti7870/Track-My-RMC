@@ -287,9 +287,9 @@ const styles = StyleSheet.create({
   homeAboveFold: { width: "100%", gap: 4 },
   tightGroup: { paddingVertical: 0, gap: 0 },
   sectionHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8, minHeight: 20 },
-  // 19+20+9+96+16 = 160dp on four-column phone layouts. The surrounding
-  // 4dp carousel gap yields about 23dp from banner to header text.
-  quickActionsGroup: { paddingTop: 19, paddingBottom: 16 },
+  // 19+28+9+96+8 = 160dp (the slogan pill makes the header 28dp tall).
+  // Retain 4+19 = 23dp from the carousel bottom to the heading.
+  quickActionsGroup: { paddingTop: 19, paddingBottom: 8 },
   quickGrid: { marginTop: 9 },
   sectionTitle: { fontFamily: "Roboto", fontWeight: "700", fontSize: 14, lineHeight: 20, paddingHorizontal: 2 },
   slogan: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, width: 106, minHeight: 28, borderRadius: 14, paddingHorizontal: 5 },
