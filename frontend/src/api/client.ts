@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 // API client for TrackMyRMC. Base URL from env; all routes under /api.
 const RAW_BACKEND = (process.env.EXPO_PUBLIC_BACKEND_URL || process.env.EXPO_PUBLIC_API_URL)?.trim();
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -218,7 +219,15 @@ async function request<T>(
   try {
     const res = await fetch(`${apiBase()}${safePath}`, {
       method: options.method ?? "GET",
-      credentials: "include",
+      // Wildcard CORS responses cannot be read with credentialed requests.
+      // Same-origin production keeps HttpOnly refresh cookies; preview web
+      // deployments with wildcard CORS use non-credentialed API calls.
+      credentials: Platform.OS === "web"
+        && typeof window !== "undefined"
+        && new URL(apiBase()).origin !== window.location.origin
+        && process.env.EXPO_PUBLIC_CROSS_ORIGIN_COOKIES !== "true"
+        ? "omit"
+        : "include",
       headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
       signal: controller.signal,
