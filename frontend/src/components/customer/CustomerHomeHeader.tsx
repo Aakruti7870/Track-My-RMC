@@ -17,7 +17,7 @@ import { useTheme } from "@/src/theme/ThemeProvider";
 import { AppText } from "@/src/components/ui/AppText";
 import { Button } from "@/src/components/ui/Button";
 import { Input } from "@/src/components/ui/Input";
-import { fonts, glass } from "@/src/theme/tokens";
+import { glass } from "@/src/theme/tokens";
 
 type Sheet = "help" | "location" | "kyc" | null;
 type Geocode = { locality: string; formatted_address: string };
