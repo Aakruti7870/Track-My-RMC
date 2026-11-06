@@ -58,6 +58,8 @@ function CommandCenter() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [rfqOutreachCode, setRfqOutreachCode] = useState('');
+  const [rfqOutreachNotes, setRfqOutreachNotes] = useState<Record<string,string>>({});
 
   useEffect(() => {
     const token = window.sessionStorage.getItem('trackmyrmc_admin_token');
@@ -123,6 +125,36 @@ function CommandCenter() {
       setRecords(response.data.items || []);setWorkspaceOffset(offset);
     } catch(error) {setRecords([]);setError(errorMessage(error));}
     finally {setBusy(false);}
+  }
+
+  async function recordRfqOutreach(id:string, status:'INVITATION_SHARED'|'CONTACTED'|'DECLINED') {
+    if (!rfqOutreachCode.trim()) {
+      setError('Enter a fresh authenticator or recovery code before recording supplier outreach.');
+      return;
+    }
+    setBusy(true); setError(''); setNotice('');
+    try {
+      await apiClient.post('/api/control-center/step-up', { code:rfqOutreachCode.trim() });
+      setRfqOutreachCode('');
+      await apiClient.patch('/api/control-center/rmc-rfq-leads/'+encodeURIComponent(id)+'/outreach',{
+        outreach_status:status, notes:rfqOutreachNotes[id]||null
+      });
+      setNotice('Supplier outreach activity recorded and audited.');
+      await loadWorkspace('rmc_rfq_leads', workspaceOffset);
+    } catch(err) { setError(errorMessage(err)); }
+    finally { setBusy(false); }
+  }
+  async function shareRmcOnboardingLink() {
+    const url='https://trackmyrmc.com/plant-onboarding';
+    const message='Join TrackMyRMC to receive and manage RMC quotation requests. Register your plant: '+url;
+    try {
+      if (navigator.share) {
+        await navigator.share({title:'TrackMyRMC Plant Onboarding',text:message,url});
+      } else {
+        await navigator.clipboard.writeText(message);
+        setNotice('Onboarding message copied. Share only with consented supplier contacts.');
+      }
+    } catch(err) { setError(errorMessage(err)); }
   }
 
   async function centralLogin(event: React.FormEvent<HTMLFormElement>) {
@@ -253,7 +285,7 @@ function CommandCenter() {
       // Always clear this browser session, even if the server is temporarily unreachable.
     } finally {
       window.sessionStorage.removeItem('trackmyrmc_admin_token');
-      setUser(null);setPermissions([]);setRecords([]);setWorkspace('');
+      setUser(null);setPermissions([]);setRecords([]);setWorkspace('');setRfqOutreachCode('');setRfqOutreachNotes({});
       setHealth(null);
       setAdminKpis([]);
       setAdminOverviewError('');
@@ -412,7 +444,7 @@ function CommandCenter() {
             )}
             {user.role === 'central_admin' && <section aria-label="Authorized workspaces" style={{marginTop:18}}>
               <nav style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                {['users','plants','orders','support','service_enquiries','audit','sessions'].filter(kind=>permissions.includes(({users:'user.view',plants:'plant.view',orders:'order.view',support:'support.view',service_enquiries:'support.view',audit:'audit.view',sessions:'session.view'} as Record<string,string>)[kind])).map(kind=>
+                {['users','plants','orders','support','service_enquiries','rmc_rfq_leads','audit','sessions'].filter(kind=>permissions.includes(({users:'user.view',plants:'plant.view',orders:'order.view',support:'support.view',service_enquiries:'support.view',rmc_rfq_leads:'support.view',audit:'audit.view',sessions:'session.view'} as Record<string,string>)[kind])).map(kind=>
                   <button key={kind} disabled={busy} onClick={()=>void loadWorkspace(kind)} style={{...buttonStyle,width:'auto',textTransform:'capitalize'}}>{kind}</button>)}
               </nav>
               {workspace && <><h2 style={{textTransform:'capitalize'}}>{workspace}</h2>
@@ -421,6 +453,38 @@ function CommandCenter() {
                   <thead><tr>{Object.keys(records[0]||{}).map(key=><th key={key} style={{textAlign:'left',padding:8}}>{key.replace(/_/g,' ')}</th>)}</tr></thead>
                   <tbody>{records.map((row,index)=><tr key={String(row.id||index)}>{Object.entries(row).map(([key,value])=><td key={key} style={{padding:8,borderTop:'1px solid #334155'}}>{value===null?'—':typeof value==='object'?JSON.stringify(value):String(value)}</td>)}</tr>)}</tbody>
                 </table></div>
+                {workspace === 'rmc_rfq_leads' && <div style={{marginTop:18,display:'grid',gap:12}}>
+                  <p style={{color:'#cbd5e1',lineHeight:1.5}}>
+                    Unregistered suppliers have not received these enquiries. Use approved, permission-based outreach.
+                    Customer details remain private until plant approval and customer reconfirmation.
+                  </p>
+                  <label htmlFor="rfq-step-up">Fresh authenticator or recovery code to record outreach</label>
+                  <input id="rfq-step-up" value={rfqOutreachCode} onChange={e=>setRfqOutreachCode(e.target.value)}
+                    autoComplete="off" type="password" style={inputStyle} disabled={busy} />
+                  <button type="button" disabled={busy} onClick={()=>void shareRmcOnboardingLink()}
+                    style={{...buttonStyle,background:'#166534'}}>Share or Copy Generic Onboarding Link</button>
+                  {records.filter(row=>row.status === 'PENDING_SUPPLIER').map(row=>{
+                    const id=String(row.id || '');
+                    const place=String(row.google_place_id || '');
+                    return <div key={id} style={{border:'1px solid #475569',borderRadius:12,padding:14,background:'#0f172a',display:'grid',gap:8}}>
+                      <strong>{String(row.customer_name || 'Customer')} · {String(row.grade || 'RMC')} · {String(row.quantity_m3 || '')} m³</strong>
+                      <span>Current outreach: {String(row.outreach_status || 'NOT_CONTACTED')}</span>
+                      {place && <button type="button" disabled={busy}
+                        onClick={()=>window.open('https://www.google.com/maps/search/?api=1&query=RMC%20Plant&query_place_id='+encodeURIComponent(place),'_blank','noopener,noreferrer')}
+                        style={{...buttonStyle,marginTop:0,background:'#334155'}}>View Selected Supplier on Google Maps</button>}
+                      <label>Internal follow-up note
+                        <input value={rfqOutreachNotes[id] ?? String(row.outreach_notes || '')}
+                          onChange={e=>setRfqOutreachNotes(prev=>({...prev,[id]:e.target.value}))} maxLength={1000}
+                          style={inputStyle} disabled={busy} />
+                      </label>
+                      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                        <button type="button" disabled={busy} onClick={()=>void recordRfqOutreach(id,'INVITATION_SHARED')} style={{...buttonStyle,width:'auto',marginTop:0}}>Record Invite Shared</button>
+                        <button type="button" disabled={busy} onClick={()=>void recordRfqOutreach(id,'CONTACTED')} style={{...buttonStyle,width:'auto',marginTop:0,background:'#166534'}}>Mark Contacted</button>
+                        <button type="button" disabled={busy} onClick={()=>void recordRfqOutreach(id,'DECLINED')} style={{...buttonStyle,width:'auto',marginTop:0,background:'#7f1d1d'}}>Mark Declined</button>
+                      </div>
+                    </div>;
+                  })}
+                </div>}
                 <button disabled={busy||workspaceOffset===0} onClick={()=>void loadWorkspace(workspace,Math.max(0,workspaceOffset-25))}>Previous</button>
                 <button disabled={busy||records.length<25} onClick={()=>void loadWorkspace(workspace,workspaceOffset+25)}>Next</button>
               </>}
