@@ -69,19 +69,34 @@ async fn plant(db: &PgPool, owner: Uuid) -> Uuid {
     id
 }
 fn token(state: &AppState, user: Uuid, role: &str) -> String {
-    generate_token(user,role,"",None,&state.config.jwt_secret,1).unwrap()
+    generate_token(user, role, "", None, &state.config.jwt_secret, 1).unwrap()
 }
-async fn call(app: &Router, path: &str, method: &str, body: Option<Value>, token: &str) -> (StatusCode, Value) {
-    let response = app.clone().oneshot(
-        Request::builder().uri(path).method(method)
-        .header("Authorization", format!("Bearer {token}"))
-        .header("Content-Type","application/json")
-        .body(Body::from(body.map(|b| b.to_string()).unwrap_or_default()))
-        .unwrap()
-    ).await.unwrap();
+async fn call(
+    app: &Router,
+    path: &str,
+    method: &str,
+    body: Option<Value>,
+    token: &str,
+) -> (StatusCode, Value) {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(path)
+                .method(method)
+                .header("Authorization", format!("Bearer {token}"))
+                .header("Content-Type", "application/json")
+                .body(Body::from(body.map(|b| b.to_string()).unwrap_or_default()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     let status = response.status();
-    let content = to_bytes(response.into_body(),100_000).await.unwrap();
-    (status,serde_json::from_slice(&content).unwrap_or(Value::Null))
+    let content = to_bytes(response.into_body(), 100_000).await.unwrap();
+    (
+        status,
+        serde_json::from_slice(&content).unwrap_or(Value::Null),
+    )
 }
 fn request_body(plant_id: Uuid, request_key: Uuid) -> Value {
     json!({
