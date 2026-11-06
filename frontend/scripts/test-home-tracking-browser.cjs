@@ -20,6 +20,16 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  await page.goto('http://127.0.0.1:8765/customer/');
  // Verify real SVG layout (rather than PNG pixel dimensions) at mobile and desktop widths.
  await page.getByTestId('action-new').waitFor({timeout:30000});
+ // The first paint can use a two-column fallback before onLayout measures
+ // the grid. Assert after the responsive four-column calculation settles.
+ await page.waitForFunction(() => {
+   const ids=['action-new','action-track','action-plants','action-orders'];
+   const nodes=ids.map(id=>document.querySelector(`[data-testid="${id}"]`));
+   if(nodes.some(node=>!node))return false;
+   const ys=nodes.map(node=>node.getBoundingClientRect().top);
+   return ys.every(y=>Math.abs(y-ys[0])<2);
+ },{timeout:15000});
+
  const actualVectorSize = async (testId) => page.getByTestId(testId).locator('svg').first()
    .evaluate(node => [Math.round(node.getBoundingClientRect().width), Math.round(node.getBoundingClientRect().height)]);
  for(const id of ['action-new','action-track','action-plants','action-orders']) {
