@@ -203,12 +203,16 @@ pub async fn request(
         if let Some(place) = lead.google_place_id.as_deref() {
             let matches_plant: bool = sqlx::query_scalar(
                 "SELECT EXISTS(SELECT 1 FROM rmc_plants
-                 WHERE id=$1 AND google_place_id=$2 AND is_active=TRUE)"
+                 WHERE id=$1 AND google_place_id=$2 AND is_active=TRUE)",
             )
-            .bind(payload.plant_id).bind(place)
-            .fetch_one(&mut *tx).await?;
+            .bind(payload.plant_id)
+            .bind(place)
+            .fetch_one(&mut *tx)
+            .await?;
             if !matches_plant {
-                return Err(AppError::BadRequest("Google listing does not match the selected plant".into()));
+                return Err(AppError::BadRequest(
+                    "Google listing does not match the selected plant".into(),
+                ));
             }
         }
         let existing: Option<Uuid> = sqlx::query_scalar(
