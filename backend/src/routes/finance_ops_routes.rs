@@ -297,7 +297,7 @@ pub async fn record_plant_expense(
         &auth_user,
         plant_id,
         "expenses",
-        super::staff_module_permissions::Action::Edit,
+        super::staff_module_permissions::Action::Create,
     )
     .await?;
 
@@ -434,7 +434,7 @@ pub async fn record_diesel_transaction(
         &auth_user,
         plant_id,
         "diesel_ledger",
-        super::staff_module_permissions::Action::Edit,
+        super::staff_module_permissions::Action::Create,
     )
     .await?;
 
@@ -562,7 +562,7 @@ pub async fn record_purchase_receipt(
         &auth_user,
         plant_id,
         "purchases",
-        super::staff_module_permissions::Action::Edit,
+        super::staff_module_permissions::Action::Create,
     )
     .await?;
 
