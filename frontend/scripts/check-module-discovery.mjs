@@ -87,10 +87,14 @@ for (const key of homeKeys) {
 }
 assert.ok(customerHome.includes('const DIRECTORY = modulesForRole("customer");'));
 assert.ok(customerHome.includes("const CUSTOMER_MODULES = HOME_MODULE_KEYS.flatMap(key => DIRECTORY.filter(module => module.key === key));"));
-for (const name of ["home-quick-actions", "customer-module-grid", "home-other-services"]) {
+for (const name of ["home-quick-actions", "home-other-services"]) {
   assert.ok(customerHome.includes(`testID="${name}"`), `Missing grouped Home card: ${name}`);
 }
-assert.ok(customerHome.includes('<HomeCarousel />'), "Preserve existing carousel component.");
+assert.ok(customerHome.includes('testID={testID}') &&
+  customerHome.includes('"customer-module-grid"') &&
+  customerHome.includes('"home-advice-grid"'),
+  "Both four-item customer groups must use the shared module renderer with stable test IDs.");
+assert.ok(customerHome.includes('<HomeCarousel style={{ width: Math.min(viewportWidth, 720), borderRadius: 0, borderWidth: 0 }} />'), "Preserve five-slide carousel and make the customer banner edge-to-edge.");
 assert.ok(customerHome.includes('<KycBanner status={data.kyc_status} />'), "Preserve KYC state machine.");
 assert.ok(customerHome.includes('<ActiveTransitMixerCard'), "Preserve real order and demo tracking.");
 assert.ok(customerHome.includes('homeAboveFold: { width: "100%", gap: 4 }'), "Carousel, Quick Actions, KYC and RMC Tools must be separated by 4 dp.");
@@ -98,9 +102,17 @@ assert.ok(customerHome.includes('scrollContent: { paddingHorizontal: 16, padding
 assert.ok(customerHome.includes('groupCard: { width: "100%", maxWidth: 620, alignSelf: "center", paddingHorizontal: 0, paddingVertical: 0, gap: 4 }'), "Remove extra group padding and keep compact spacing.");
 assert.ok(customerHome.includes('justifyContent: "space-between", rowGap: 4 }'), "Home grid rows must use 4 dp spacing.");
 assert.ok(customerHome.includes('tightGroup: { paddingVertical: 0, gap: 0 }'), "Unheaded groups must have no extra vertical padding.");
-assert.ok(!customerHome.includes('>Quick Actions</AppText>'), "Quick Actions heading must be removed.");
+assert.ok(customerHome.includes('>Quick Actions</AppText>'), "The four circular quick actions need a visible heading.");
 assert.ok(!customerHome.includes('>RMC Tools</AppText>'), "RMC Tools heading must be removed.");
-assert.ok(customerHome.includes('>Other Services</AppText>'), "Keep Other Services heading unchanged.");
+assert.ok(customerHome.includes('>Supply & Workforce</AppText>'), "Supply & Workforce heading must replace Other Services.");
+assert.ok(customerHome.includes('>Active Projects & Planning</AppText>') || customerHome.includes('"Active Projects & Planning", "customer-module-grid"'), "Planning section heading required.");
+assert.ok(customerHome.includes('"Free Tools & Expert Advice", "home-advice-grid"'), "Four-item advice section required.");
+assert.ok(customerHome.includes('>Built Better</AppText>') && customerHome.includes('name="shield-checkmark"'), "Built Better green shield slogan required.");
+assert.ok(customerHome.includes('["pour-planner", "compare-plants", "projects", "saved-sites"]'), "Planning tools must be presented in the requested order.");
+assert.ok(customerHome.includes('["free-tools", "receiving-guide", "cube-tests", "customer-support"]'), "Expert advice must use the four existing authorized routes.");
+assert.ok(customerHome.includes('testID="home-pump-rental-promo"') && customerHome.includes('onPress={() => router.push("/support")}'), "Pump-rental callout must reach existing customer support, not a dead end.");
+assert.ok(customerHome.includes('On Time,') && customerHome.includes('Everytime'), "Delivery slogan callout required.");
+assert.ok(customerHome.includes('quickCircle: { width: 56, height: 56, borderRadius: 28'), "52 dp action artwork must have a circular, clipping frame.");
 assert.ok(customerHome.includes('{ key: "plants", label: "Plants"'), "The third action label must remain Plants.");
 assert.ok(customerHome.includes('fourQuickColumns ? "24.25%" : "49%"'), "Quick Actions must use four compact columns when wide and two when narrow for full 52-unit icons.");
 assert.ok(customerHome.includes('fourToolColumns ? "24.25%" : "49%"'), "RMC Tools must use four compact columns when they fit or two on narrow displays.");
@@ -108,7 +120,7 @@ assert.ok(customerHome.includes('width: "32.5%"'), "Other Services must use thre
 assert.ok(!customerHome.includes('<Card testID="customer-module-grid"'), "Redundant RMC Tools outer border must be removed.");
 assert.ok(!customerHome.includes('<Card testID="home-quick-actions"'), "Redundant Quick Actions outer border must be removed.");
 assert.ok(!customerHome.includes('<Card testID="home-other-services"'), "Redundant Other Services outer border must be removed.");
-for (const key of ["quickTile: { height: 80, paddingVertical: 3, gap: 3 }", "toolTile: { minHeight: 108 }", "serviceTile: { minHeight: 104 }", "maxWidth: 620"]) {
+for (const key of ["quickTile: { minHeight: 98", "toolTile: { minHeight: 101", "serviceTile: { minHeight: 103", "maxWidth: 620"]) {
   assert.ok(customerHome.includes(key), `Compact card sizing missing: ${key}`);
 }
 // Newly uploaded Other Services SVG masters must render on the actual home cards.

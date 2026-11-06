@@ -42,7 +42,10 @@ export function ActiveTransitMixerCard({ order, onNewOrder, onRefreshHome }: {
     { label: t.callPlant, icon: "business", run: () => order && tracking?.plant_phone ? void dial(tracking.plant_phone) : router.push("/customer/plants") },
   ];
   return <View style={{ gap: 12 }} onLayout={event => setWidth(event.nativeEvent.layout.width)}>
-    <AppText style={{ fontFamily: fonts.displayBold, fontSize: 20 }}>{t.title}</AppText>
+    <View style={styles.trackingHeading}>
+      <AppText style={{ fontFamily: fonts.displayBold, fontSize: 19 }}>Track My RMC</AppText>
+      <AppText variant="caption">{t.title}</AppText>
+    </View>
     <View testID={order ? "real-tracking-card" : "demo-tracking-card"} style={[styles.card, { flexDirection: width >= 760 ? "row" : "column", borderColor: colors.border, backgroundColor: colors.surfaceSecondary }]}>
       <View style={[styles.info, width >= 760 && { width: "34%" }]}>
         <Pressable accessibilityRole="button" disabled={!!order} onPress={onNewOrder} style={{ minHeight: 44, justifyContent: "center" }}><AppText style={styles.title}>{order?.order_number || demo.title}</AppText></Pressable>
@@ -73,12 +76,13 @@ export function ActiveTransitMixerCard({ order, onNewOrder, onRefreshHome }: {
   </View>;
 }
 const styles = StyleSheet.create({
-  card: { borderWidth: 1, borderRadius: 24, overflow: "hidden" }, info: { padding: 18, gap: 10 },
+  trackingHeading: { gap: 1 },
+  card: { borderWidth: 1, borderRadius: 18, overflow: "hidden" }, info: { padding: 14, gap: 8 },
   title: { fontFamily: fonts.bold, fontSize: 19 }, status: { color: "#B65400", fontFamily: fonts.medium, fontSize: 14 },
   grade: { fontFamily: fonts.semibold, fontSize: 15 }, site: { flexDirection: "row", gap: 5, marginBottom: 12 },
   metrics: { flexDirection: "row", gap: 15, borderTopWidth: 1, borderTopColor: "#EDF0F2", paddingTop: 15 }, value: { fontFamily: fonts.bold, fontSize: 16 },
   print: { flexDirection: "row", gap: 8, minHeight: 48, alignItems: "center", justifyContent: "center", marginTop: 8 },
   badge: { position: "absolute", top: 10, right: 10, backgroundColor: "#B95100", borderRadius: 7, padding: 7 }, badgeText: { fontFamily: fonts.bold, fontSize: 11, color: "white" },
-  actions: { flexDirection: "row", padding: 10, gap: 8, backgroundColor: "transparent" }, action: { flex: 1, minWidth: 0, minHeight: 64, borderWidth: 1, borderRadius: 10, alignItems: "center", justifyContent: "center", gap: 5, padding: 4 }, actionText: { fontFamily: fonts.medium, fontSize: 12, textAlign: "center" },
+  actions: { flexDirection: "row", padding: 8, gap: 6, backgroundColor: "transparent" }, action: { flex: 1, minWidth: 0, minHeight: 56, borderWidth: 1, borderRadius: 10, alignItems: "center", justifyContent: "center", gap: 5, padding: 4 }, actionText: { fontFamily: fonts.medium, fontSize: 12, textAlign: "center" },
   realMap: { width: "100%", aspectRatio: 2, overflow: "hidden" }, waiting: { flex: 1, padding: 16, alignItems: "center", justifyContent: "center", gap: 10, backgroundColor: "transparent" }, realStatus: { gap: 4, padding: 10 },
 });
