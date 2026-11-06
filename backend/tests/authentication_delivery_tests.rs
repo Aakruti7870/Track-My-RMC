@@ -843,6 +843,7 @@ async fn registered_email_invitation_claim_lifecycle_and_rehire_are_atomic(db: P
     assert_eq!(status, StatusCode::OK);
     let employee = Uuid::parse_str(invitation["staff_user_id"].as_str().unwrap()).unwrap();
     assert_eq!(invitation["status"], "PENDING");
+    assert_eq!(call(&app,&invite,Some(json!({"email":"new-dispatcher@example.invalid","full_name":"Same identity","role":"operator","reason":"Conflicting identity role must be denied"})),Some(&owner_session.token)).await.0,StatusCode::CONFLICT);
     assert_eq!(call(&app,&invite,Some(json!({"email":"replacement@example.invalid","full_name":"Replacement","role":"dispatcher","reason":"Conflicting pending role invitation"})),Some(&owner_session.token)).await.0,StatusCode::CONFLICT);
     assert_eq!(
         sqlx::query_scalar::<_, i64>(
@@ -963,6 +964,18 @@ async fn registered_email_invitation_claim_lifecycle_and_rehire_are_atomic(db: P
         StatusCode::UNAUTHORIZED
     );
     assert!(refresh::rotate(&state, credential).await.is_err());
+    assert_eq!(
+        call(
+            &app,
+            "/api/auth/otp/email/send",
+            Some(json!({"email":"new-dispatcher@example.invalid"})),
+            None
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN,
+        "Suspension must block further staff authentication"
+    );
     assert_eq!(
         call(&app, &invite, Some(body.clone()), owner_token).await.0,
         StatusCode::CONFLICT
@@ -1104,6 +1117,62 @@ async fn put_json(app: &Router, path: &str, body: Value, token: &str) -> (Status
     let status = response.status();
     let bytes = to_bytes(response.into_body(), 100000).await.unwrap();
     (status, serde_json::from_slice(&bytes).unwrap())
+}
+
+#[sqlx::test]
+async fn fleet_driver_creation_and_edit_are_independent_owner_grants(db: PgPool) {
+    use trackmyrmc_backend::auth::refresh;
+    let state = state(db.clone());
+    let owner = identity(&db, "owner", None, None).await;
+    let fleet = identity(
+        &db,
+        "fleet_manager",
+        Some("fleet-create@example.invalid"),
+        None,
+    )
+    .await;
+    let plant:Uuid=sqlx::query_scalar("INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,address_line,city,state,pincode,contact_phone) VALUES($1,'Fleet grants CI',$2,0,0,'CI','CI','CI','0','0') RETURNING id")
+        .bind(owner).bind(Uuid::new_v4().simple().to_string()).fetch_one(&db).await.unwrap();
+    sqlx::query("INSERT INTO plant_staff(plant_id,user_id,role) VALUES($1,$2,'fleet_manager')")
+        .bind(plant)
+        .bind(fleet)
+        .execute(&db)
+        .await
+        .unwrap();
+    let login = refresh::issue_after_auth(&state, fleet, "fleet_manager", "", None, 1)
+        .await
+        .unwrap();
+    let token = Some(login.token.as_str());
+    let app = build_app_router(state);
+    let path = format!("/api/business/plants/{plant}/drivers/invitations");
+    let body = json!({"name":"Pending CI Driver","phone":"+12025550997","reason":"Explicit fleet onboarding delegation"});
+    assert_eq!(
+        call(&app, &path, Some(body.clone()), token).await.0,
+        StatusCode::FORBIDDEN
+    );
+    sqlx::query("INSERT INTO plant_staff_module_permissions(plant_id,user_id,module_key,can_view,can_edit,can_create,updated_by) VALUES($1,$2,'driver_roster',TRUE,TRUE,FALSE,$3)").bind(plant).bind(fleet).bind(owner).execute(&db).await.unwrap();
+    assert_eq!(
+        call(&app, &path, Some(body.clone()), token).await.0,
+        StatusCode::FORBIDDEN,
+        "Edit cannot substitute for the separate Create grant"
+    );
+    sqlx::query("UPDATE plant_staff_module_permissions SET can_create=TRUE,can_edit=FALSE WHERE plant_id=$1 AND user_id=$2 AND module_key='driver_roster'").bind(plant).bind(fleet).execute(&db).await.unwrap();
+    let (status, invitation) = call(&app, &path, Some(body), token).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        call(
+            &app,
+            &format!(
+                "/api/business/plants/{plant}/drivers/{}/status",
+                invitation["driver_id"].as_str().unwrap()
+            ),
+            Some(json!({"active":false,"reason":"Create-only delegate cannot edit access"})),
+            token
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
 }
 
 #[sqlx::test]
@@ -1883,4 +1952,250 @@ async fn plant_manager_delegation_is_owner_scoped_revocable_and_cannot_escalate(
         .1["enabled"],
         false
     );
+}
+
+#[sqlx::test]
+async fn driver_employment_reserves_pending_and_suspended_until_explicit_release(db: PgPool) {
+    use trackmyrmc_backend::auth::refresh;
+    let mut state = state(db.clone());
+    let delivery = Arc::new(MemoryDelivery::default());
+    state.otp_delivery = delivery.clone();
+    let mut owners = Vec::new();
+    let mut plants = Vec::new();
+    let mut tokens = Vec::new();
+    for _ in 0..2 {
+        let owner = identity(&db, "owner", None, None).await;
+        let plant:Uuid=sqlx::query_scalar("INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,address_line,city,state,pincode,contact_phone) VALUES($1,'Driver scope CI',$2,0,0,'CI','CI','CI','0','0') RETURNING id").bind(owner).bind(Uuid::new_v4().simple().to_string()).fetch_one(&db).await.unwrap();
+        tokens.push(
+            refresh::issue_after_auth(&state, owner, "owner", "", None, 1)
+                .await
+                .unwrap()
+                .token,
+        );
+        owners.push(owner);
+        plants.push(plant);
+    }
+    let app = build_app_router(state.clone());
+    let invitation = json!({"name":"Transfer CI Driver","phone":"+12025550996","reason":"Owner approved Driver onboarding"});
+    let paths: Vec<_> = plants
+        .iter()
+        .map(|p| format!("/api/business/plants/{p}/drivers/invitations"))
+        .collect();
+    let (status, invited) = call(&app, &paths[0], Some(invitation.clone()), Some(&tokens[0])).await;
+    assert_eq!(status, StatusCode::OK);
+    let driver: Uuid = invited["driver_id"].as_str().unwrap().parse().unwrap();
+    assert_eq!(
+        call(&app, &paths[1], Some(invitation.clone()), Some(&tokens[1]))
+            .await
+            .0,
+        StatusCode::CONFLICT,
+        "Pending employment must reserve the Driver"
+    );
+    assert!(
+        refresh::issue_after_auth(&state, driver, "driver", "12025550996", None, 1)
+            .await
+            .is_err(),
+        "Pending invitation cannot issue a session before OTP claim"
+    );
+    assert_eq!(
+        call(
+            &app,
+            "/api/auth/otp/whatsapp/send",
+            Some(json!({"phone":"+12025550996","purpose":"driver_login"})),
+            None
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let code = delivery.take_code("12025550996");
+    let (status, login) = call(
+        &app,
+        "/api/auth/otp/whatsapp/verify",
+        Some(json!({"phone":"+12025550996","otp":code,"purpose":"driver_login"})),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let access = format!("/api/business/plants/{}/drivers/{driver}/status", plants[0]);
+    assert_eq!(
+        call(
+            &app,
+            &access,
+            Some(json!({"active":false,"reason":"Suspend current Driver assignment"})),
+            Some(&tokens[0])
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        call(&app, &paths[1], Some(invitation.clone()), Some(&tokens[1]))
+            .await
+            .0,
+        StatusCode::CONFLICT,
+        "Suspension must not release employment"
+    );
+    assert_eq!(
+        call(&app, "/api/me", None, login["token"].as_str()).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        call(
+            &app,
+            &access,
+            Some(json!({"active":true,"reason":"Owner reactivated verified Driver"})),
+            Some(&tokens[0])
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let mixer:Uuid=sqlx::query_scalar("INSERT INTO transit_mixers(plant_id,registration_number,capacity_m3,driver_id) VALUES($1,'TRANSFER-CI',6,$2) RETURNING id").bind(plants[0]).bind(driver).fetch_one(&db).await.unwrap();
+    assert_eq!(call(&app,&access,Some(json!({"active":false,"terminate":true,"reason":"Employment ended with approved release"})),Some(&tokens[0])).await.0,StatusCode::OK);
+    assert!(sqlx::query_scalar::<_, Option<Uuid>>(
+        "SELECT driver_id FROM transit_mixers WHERE id=$1"
+    )
+    .bind(mixer)
+    .fetch_one(&db)
+    .await
+    .unwrap()
+    .is_none());
+    assert_eq!(
+        call(&app, &paths[1], Some(invitation), Some(&tokens[1]))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    for active in [false, true] {
+        assert_eq!(
+            call(
+                &app,
+                &access,
+                Some(json!({"active":active,"reason":"Old employer cannot change new assignment"})),
+                Some(&tokens[0])
+            )
+            .await
+            .0,
+            StatusCode::FORBIDDEN
+        );
+    }
+    let profile = json!({"phone":"+12025550996","employee_id":"REASSIGN","company_joining_date":"2025-01-01","total_driving_experience_months":24});
+    // Even a previously verified identity must reverify after a new invitation.
+    assert!(!put_json(
+        &app,
+        &format!("/api/business/plants/{}/drivers", plants[1]),
+        profile.clone(),
+        &tokens[1]
+    )
+    .await
+    .0
+    .is_success());
+    sqlx::query("UPDATE users SET is_verified=TRUE WHERE id=$1")
+        .bind(driver)
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE driver_employment_profiles SET employment_status='ACTIVE',is_active=TRUE WHERE driver_id=$1 AND released_at IS NULL").bind(driver).execute(&db).await.unwrap();
+    assert_eq!(
+        put_json(
+            &app,
+            &format!("/api/business/plants/{}/drivers", plants[1]),
+            profile.clone(),
+            &tokens[1]
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        put_json(
+            &app,
+            &format!("/api/business/plants/{}/drivers", plants[0]),
+            profile,
+            &tokens[0]
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT count(*) FROM driver_employment_profiles WHERE driver_id=$1"
+        )
+        .bind(driver)
+        .fetch_one(&db)
+        .await
+        .unwrap(),
+        2,
+        "Historical employment is retained"
+    );
+    assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM audit_logs WHERE resource_id=$1::text AND action='driver.access.terminate'").bind(driver).fetch_one(&db).await.unwrap(),1);
+}
+
+#[sqlx::test]
+async fn revoked_manager_cannot_commit_driver_profile_after_waiting_for_identity_lock(db: PgPool) {
+    use trackmyrmc_backend::auth::refresh;
+    let state = state(db.clone());
+    let owner = identity(&db, "owner", None, None).await;
+    let manager = identity(
+        &db,
+        "supervisor",
+        Some("driver-manager@example.invalid"),
+        None,
+    )
+    .await;
+    let driver = identity(&db, "driver", None, Some("12025550995")).await;
+    sqlx::query("UPDATE users SET is_verified=TRUE WHERE id=$1")
+        .bind(driver)
+        .execute(&db)
+        .await
+        .unwrap();
+    let plant:Uuid=sqlx::query_scalar("INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,address_line,city,state,pincode,contact_phone) VALUES($1,'Manager race CI',$2,0,0,'CI','CI','CI','0','0') RETURNING id").bind(owner).bind(Uuid::new_v4().simple().to_string()).fetch_one(&db).await.unwrap();
+    sqlx::query("INSERT INTO plant_staff(plant_id,user_id,role) VALUES($1,$2,'supervisor')")
+        .bind(plant)
+        .bind(manager)
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO driver_employment_profiles(plant_id,driver_id,employee_code) VALUES($1,$2,'ORIGINAL')").bind(plant).bind(driver).execute(&db).await.unwrap();
+    let owner_login = refresh::issue_after_auth(&state, owner, "owner", "", None, 1)
+        .await
+        .unwrap();
+    let manager_login = refresh::issue_after_auth(&state, manager, "supervisor", "", None, 1)
+        .await
+        .unwrap();
+    let app = build_app_router(state);
+    assert_eq!(call(&app,&format!("/api/business/plants/{plant}/staff/{manager}/manager/grant"),Some(json!({"can_manage_drivers":true,"can_manage_staff":false,"can_manage_permissions":false,"can_manage_fleet":false,"permission_limits":{}})),Some(&owner_login.token)).await.0,StatusCode::OK);
+    let mut blocker = db.begin().await.unwrap();
+    sqlx::query("SELECT id FROM users WHERE id=$1 FOR UPDATE")
+        .bind(driver)
+        .execute(&mut *blocker)
+        .await
+        .unwrap();
+    let task_app = app.clone();
+    let task_token = manager_login.token.clone();
+    let edit = tokio::spawn(async move {
+        put_json(&task_app,&format!("/api/business/plants/{plant}/drivers"),json!({"phone":"12025550995","employee_id":"UNAUTHORIZED","company_joining_date":"2025-01-01","total_driving_experience_months":24}),&task_token).await
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(10),async {
+        loop {
+            let waiting:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE 'SELECT id FROM users WHERE regexp_replace%')").fetch_one(&db).await.unwrap();
+            if waiting {break;}tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    }).await.expect("Manager edit must reach the blocked Driver identity lock");
+    assert_eq!(
+        call(
+            &app,
+            &format!("/api/business/plants/{plant}/staff/{manager}/manager/revoke"),
+            Some(json!({"reason":"Owner revoked Driver management delegation"})),
+            Some(&owner_login.token)
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    blocker.commit().await.unwrap();
+    assert_eq!(edit.await.unwrap().0, StatusCode::FORBIDDEN);
+    assert_eq!(sqlx::query_scalar::<_,String>("SELECT employee_code FROM driver_employment_profiles WHERE plant_id=$1 AND driver_id=$2").bind(plant).bind(driver).fetch_one(&db).await.unwrap(),"ORIGINAL");
 }

@@ -6,11 +6,17 @@ Merging main can trigger the existing AWS deployment and startup migrations.
 
 ## Migration and compatibility contract
 
-Existing migration files 1–45 retain their checksums. Migration 46 adds verified
+Existing migration files 1–46 retain their published checksums. Migration 46 adds verified
 work-email metadata, explicit employment states and assignment generations,
 append-only staff history, bounded Manager capabilities and Create/Export flags.
 It adds a case-normalized email index. Case collisions abort migration and require
 operator review; no identity is deleted, merged or automatically repaired.
+Migration 47 reserves each Driver identity across pending, active and suspended
+employment. Legacy duplicate Driver records abort the migration for operator
+review. Explicit termination releases employment, revokes credentials and clears
+the current mixer assignment while retaining employment and delivery history.
+A new employer must invite the released identity and obtain a fresh WhatsApp
+OTP claim. Historical employers cannot change the new employment or global access.
 
 Pending and suspended assignments retain `removed_at IS NULL`, so migration 42's
 partial unique index still reserves the role. Termination, cancellation, explicit
@@ -51,8 +57,8 @@ unapproved ownership. Existing clients receive explicit authorization errors.
    perform an operator-approved isolated restore and application smoke test.
    This task does not create a billable restore instance or production backup.
 4. Rehearse upgrade from production-shaped history with 44 already recorded and
-   42/43/45/46 pending. SQLx tests cover that order, repeat startup, old checksums,
-   application records, duplicate-slot rollback and email-conflict rollback.
+   42/43/45/46/47 pending. SQLx tests cover that order, repeat startup, old checksums,
+   application records, duplicate-slot rollback, email-conflict rollback and Driver-conflict rollback.
 5. Confirm all existing active assignments' compatibility grants and new Manager
    limits with Owners. Unverified staff identities use invitation claiming;
    suspended staff cannot be silently reactivated by linking their UUID again.

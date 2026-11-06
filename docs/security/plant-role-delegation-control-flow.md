@@ -119,3 +119,12 @@ role routes and SVG assets are retained. No Python/FastAPI/MongoDB runtime,
 replacement RBAC system, live payment/KYC credential change or paid resource was
 introduced. See `docs/release/controlled-plant-access-rollout.md` for preflight,
 backup/restore requirements, migration recovery and remaining external gates.
+
+Driver employment reserves the identity while PENDING, ACTIVE or SUSPENDED. A
+users-row lock and partial unique index serialize competing plants. Termination
+requires the current plant's live delegated Edit authority and an audit reason;
+it releases employment and the current mixer assignment without deleting history.
+Rehire requires an invitation and fresh phone OTP claim. Historical employers
+cannot suspend, reactivate or edit the new plant's Driver. Manager authorization
+is locked inside profile mutations, including edits without a mixer change.
+RFQ SEND requires Quotations Create; DECLINE requires Edit.

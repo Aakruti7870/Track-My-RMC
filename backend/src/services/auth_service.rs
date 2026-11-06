@@ -219,12 +219,25 @@ pub async fn verify_whatsapp_otp(
     }
 
     if user.role == "driver" {
+        // Serialize the verified claim with invitations and employment changes.
+        // An OTP that raced a suspension must not reactivate the account.
+        let mut tx = state.db.begin().await?;
+        let active: bool = sqlx::query_scalar(
+            "SELECT is_active FROM users WHERE id=$1 AND role='driver' FOR UPDATE",
+        )
+        .bind(user.id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if !active {
+            return Err(AppError::Forbidden("Driver access is inactive".into()));
+        }
         sqlx::query("UPDATE users SET is_verified=TRUE WHERE id=$1")
             .bind(user.id)
-            .execute(&state.db)
+            .execute(&mut *tx)
             .await?;
-        sqlx::query("UPDATE driver_employment_profiles SET is_active=TRUE,updated_at=NOW() WHERE driver_id=$1 AND is_active=FALSE AND NOT EXISTS(SELECT 1 FROM audit_logs WHERE action='driver.access.suspend' AND resource_id=$1::text)")
-            .bind(user.id).execute(&state.db).await?;
+        sqlx::query("UPDATE driver_employment_profiles SET is_active=TRUE,employment_status='ACTIVE',updated_at=NOW() WHERE driver_id=$1 AND employment_status='PENDING' AND released_at IS NULL")
+            .bind(user.id).execute(&mut *tx).await?;
+        tx.commit().await?;
     }
 
     let profile = user_repo::get_user_profile(&state.db, user.id).await?;

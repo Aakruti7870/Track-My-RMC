@@ -68,6 +68,13 @@ where
         }
 
         let current_role: String = row.get("role");
+        if current_role == "driver" {
+            let blocked:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM driver_employment_profiles WHERE driver_id=$1 AND released_at IS NULL AND employment_status<>'ACTIVE')")
+                .bind(claims.sub).fetch_one(&app_state.db).await?;
+            if blocked {
+                return Err(AppError::SessionRevoked);
+            }
+        }
         if crate::routes::staff_lifecycle::ROLES.contains(&current_role.as_str()) {
             let assigned:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM plant_staff ps JOIN rmc_plants p ON p.id=ps.plant_id WHERE ps.user_id=$1 AND ps.role=$2 AND ps.is_active AND ps.removed_at IS NULL AND ps.employment_status='ACTIVE' AND p.is_active)")
                 .bind(claims.sub).bind(&current_role).fetch_one(&app_state.db).await?;

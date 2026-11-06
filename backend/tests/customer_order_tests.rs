@@ -869,6 +869,55 @@ async fn customer_rfq_owner_response_acceptance_and_order_use_exact_shared_contr
     assert_eq!(queue["requests"][0]["status"], "REQUESTED");
     let path = format!("/api/ops/plants/{plant}/quotation-requests/{id}/respond");
     let response = json!({"action":"SEND","rate_per_m3":4500.01,"transport_amount":100.01,"pumping_amount":0.02,"gst_rate":18});
+    let accountant = identity(&db, "accountant").await;
+    sqlx::query("INSERT INTO plant_staff(plant_id,user_id,role) VALUES($1,$2,'accountant')")
+        .bind(plant)
+        .bind(accountant)
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO plant_staff_module_permissions(plant_id,user_id,module_key,can_view,can_edit,can_create,updated_by) VALUES($1,$2,'quotations',TRUE,TRUE,FALSE,$3)")
+        .bind(plant).bind(accountant).bind(owner).execute(&db).await.unwrap();
+    let accountant_token = generate_token(
+        accountant,
+        "accountant",
+        "",
+        None,
+        &state.config.jwt_secret,
+        1,
+    )
+    .unwrap();
+    assert_eq!(
+        call(&app, &path, Some(response.clone()), &accountant_token)
+            .await
+            .0,
+        StatusCode::FORBIDDEN,
+        "Edit must not create a quotation via RFQ SEND"
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM plant_quotations WHERE request_id=$1")
+            .bind(id.parse::<Uuid>().unwrap())
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+        0
+    );
+    let (_,decline_request)=call(&app,"/api/customer/quotation-requests",Some(json!({"plant_id":plant,"grade":"M25","quantity":4,"site_name":"Declined site","site_address":"Customer supplied address","pump_required":false})),&token).await;
+    assert_eq!(
+        call(
+            &app,
+            &format!(
+                "/api/ops/plants/{plant}/quotation-requests/{}/respond",
+                decline_request["id"].as_str().unwrap()
+            ),
+            Some(json!({"action":"DECLINE","decline_reason":"Plant has no capacity on requested day"})),
+            &accountant_token
+        )
+        .await
+        .0,
+        StatusCode::OK,
+        "Edit still permits a decline without issuing a quotation"
+    );
     let foreign = identity(&db, "admin").await;
     let foreign_token =
         generate_token(foreign, "admin", "", None, &state.config.jwt_secret, 1).unwrap();

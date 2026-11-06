@@ -18,7 +18,7 @@ type DriverRecord = {
   total_driving_experience_months: number | null; blood_group: string | null;
   emergency_contact_1_name: string | null; emergency_contact_1_phone: string | null;
   emergency_contact_2_name: string | null; emergency_contact_2_phone: string | null;
-  tm_number: string | null; is_active: boolean;verified:boolean;
+  tm_number: string | null; is_active: boolean;verified:boolean; employment_status:string; released_at:string|null;
 };
 const empty = {
   phone: "", employee_id: "", company_joining_date: "",
@@ -44,10 +44,14 @@ export default function OwnerDriverManagement() {
   const [error, setError] = useState<string | null>(null);
   const isOwner = user?.role === "plant_owner" || user?.role === "owner";
   const [delegated,setDelegated]=useState(false);
+  const [fleetPolicy,setFleetPolicy]=useState({view:false,create:false,edit:false});
   const [invitationName,setInvitationName]=useState("");
   const [invitationPhone,setInvitationPhone]=useState("");
   const [changeReason,setChangeReason]=useState("");
-  const canEdit=isOwner || delegated;
+  const [termination,setTermination]=useState<DriverRecord|null>(null);
+  const canEdit=isOwner || delegated || fleetPolicy.edit;
+  const canInvite=isOwner || delegated || fleetPolicy.create;
+  const canView=isOwner || delegated || fleetPolicy.view;
   useEffect(()=>{
     if (!token || isOwner) return;
     let active=true;
@@ -55,8 +59,9 @@ export default function OwnerDriverManagement() {
       const manager=await apiGet<{enabled:boolean;can_manage_drivers?:boolean}>("/staff/manager-access",token);
       if(manager.enabled && manager.can_manage_drivers){if(active)setDelegated(true);return;}
       if(user?.role==="fleet_manager"){
-        const grants=await apiGet<{permissions:Array<{key:string;edit:boolean}>}>("/staff/module-permissions",token);
-        if(active)setDelegated(grants.permissions.some(g=>g.key==="driver_roster" && g.edit));
+        const grants=await apiGet<{permissions:Array<{key:string;view:boolean;create:boolean;edit:boolean}>}>("/staff/module-permissions",token);
+        const grant=grants.permissions.find(g=>g.key==="driver_roster");
+        if(active)setFleetPolicy({view:grant?.view===true,create:grant?.create===true,edit:grant?.edit===true});
       }
     })().catch(()=>{if(active)setDelegated(false);});
     return ()=>{active=false;};
@@ -64,7 +69,7 @@ export default function OwnerDriverManagement() {
   const setField = (key: keyof Form) => (value: string) => setForm(prev => ({ ...prev, [key]: value }));
 
   const loadPlants = useCallback(async () => {
-    if (!token || !canEdit) return;
+    if (!token || !canView) return;
     try {
       const response = await apiGet<{ plants: Plant[] }>("/master/my-plants", token);
       setPlants(response.plants ?? []);
@@ -74,9 +79,9 @@ export default function OwnerDriverManagement() {
       setError(apiErrorDetail(err, "Unable to load plants"));
       setLoading(false);
     }
-  }, [token, canEdit]);
+  }, [token, canView]);
   const loadDrivers = useCallback(async () => {
-    if (!token || !plantId || !canEdit) return;
+    if (!token || !plantId || !canView) return;
     setError(null); setLoading(true);
     try {
       const [d, m] = await Promise.all([
@@ -90,7 +95,7 @@ export default function OwnerDriverManagement() {
     } finally {
       setLoading(false);
     }
-  }, [token, plantId, canEdit]);
+  }, [token, plantId, canView]);
   useEffect(() => { void loadPlants(); }, [loadPlants]);
   useEffect(() => { void loadDrivers(); }, [loadDrivers]);
 
@@ -110,8 +115,10 @@ export default function OwnerDriverManagement() {
       transit_mixer_id: "",
     });
   };
+  const existingProfile=drivers.find(d=>d.phone.replace(/\D/g,"")===form.phone.replace(/\D/g,""));
+  const canSave=existingProfile ? canEdit && !existingProfile.released_at : canInvite;
   const save = async () => {
-    if (!plantId || !token || !canEdit) return;
+    if (!plantId || !token || !canSave) return;
     const years = Number(form.exp_years);
     const months = Number(form.exp_months);
     if (!form.phone.trim() || !/^[A-Za-z0-9_-]{2,50}$/.test(form.employee_id.trim())
@@ -145,7 +152,7 @@ export default function OwnerDriverManagement() {
       setSaving(false);
     }
   };
-  if (!canEdit) {
+  if (!canView) {
     return <View style={{ flex: 1, backgroundColor: colors.surface, padding: 20 }}>
       <AppText>Owner-approved Driver management access is required.</AppText>
     </View>;
@@ -169,7 +176,7 @@ export default function OwnerDriverManagement() {
         <Input label="Driver name" value={invitationName} onChangeText={setInvitationName}/>
         <Input label="Phone with country code" value={invitationPhone} onChangeText={setInvitationPhone}/>
         <Input label="Reason for Driver invitation or access change" value={changeReason} onChangeText={setChangeReason}/>
-        <Button label="Register Driver invitation" disabled={!plantId || saving} onPress={async()=>{
+        <Button label="Register Driver invitation" disabled={!plantId || saving || !canInvite} onPress={async()=>{
           if(!token || !plantId)return;setSaving(true);
           try{await apiPost(`/business/plants/${plantId}/drivers/invitations`,token,{name:invitationName,phone:invitationPhone,reason:changeReason});
             setInvitationName("");setInvitationPhone("");await loadDrivers();toast("Driver must complete WhatsApp OTP before vehicle assignment","success");
@@ -207,23 +214,34 @@ export default function OwnerDriverManagement() {
             <AppText>{m.registration_number}</AppText>
           </Pressable>)}
         </View>
-        <Button label="Save Driver Profile" loading={saving} disabled={!plantId || saving} onPress={() => void save()} />
+        <Button label="Save Driver Profile" loading={saving} disabled={!plantId || saving || !canSave} onPress={() => void save()} />
       </Card>
+      {termination ? <Card style={{gap:8}}>
+        <AppText variant="heading">Terminate {termination.driver_name}?</AppText>
+        <AppText>Access and the current mixer assignment will end. Employment and delivery history will be retained. Use the reason above.</AppText>
+        <Button label="Confirm termination" disabled={saving || !canEdit || changeReason.trim().length<10} onPress={async()=>{
+          if(!token || !plantId)return;setSaving(true);
+          try{await apiPost(`/business/plants/${plantId}/drivers/${termination.driver_id}/status`,token,{active:false,terminate:true,reason:changeReason});setTermination(null);await loadDrivers();toast("Driver employment terminated","success");}
+          catch(e){setError(apiErrorDetail(e,"Termination failed"));}finally{setSaving(false);}
+        }}/>
+        <Button label="Cancel" variant="outline" onPress={()=>setTermination(null)}/>
+      </Card> : null}
       <Card style={{ gap: 8 }}>
         <AppText variant="heading">Existing Driver Records</AppText>
         {loading ? <AppText variant="caption">Loading records…</AppText> : null}
         {drivers.length === 0 && !loading ? <AppText variant="caption">No drivers onboarded for this plant yet.</AppText> : null}
         {drivers.map(d => (
-          <Pressable key={d.driver_id} accessibilityRole="button" onPress={() => chooseDriver(d)}
+          <Pressable key={d.driver_id} accessibilityRole="button" onPress={() => {if(!d.released_at)chooseDriver(d);}}
             style={{ padding: 10, borderWidth: 1, borderColor: colors.border, borderRadius: 10, gap: 2, backgroundColor: colors.surfaceSecondary }}>
             <AppText style={{ fontFamily: fonts.bold }}>{d.driver_name} · {d.employee_id || "ID pending"}</AppText>
-            <AppText variant="caption">{d.tm_number || "No mixer"} · {d.phone} · {d.is_active ? "Active" : "Inactive"}</AppText>
-            <AppText style={{ color: colors.brand, fontFamily: fonts.semibold }}>Edit profile</AppText>
-            {d.verified ? <Button label={d.is_active?"Suspend Driver access":"Reactivate verified Driver"} variant="outline" disabled={saving} onPress={async()=>{
+            <AppText variant="caption">{d.tm_number || "No mixer"} · {d.phone} · {d.employment_status || (d.is_active ? "Active" : "Inactive")}</AppText>
+            {!d.released_at ? <AppText style={{ color: colors.brand, fontFamily: fonts.semibold }}>Edit profile</AppText> : <AppText variant="caption">Historical employment. A new invitation is required to rehire.</AppText>}
+            {!d.released_at && d.verified ? <Button label={d.is_active?"Suspend Driver access":"Reactivate verified Driver"} variant="outline" disabled={saving || !canEdit} onPress={async()=>{
               if(!token || !plantId)return;setSaving(true);
               try{await apiPost(`/business/plants/${plantId}/drivers/${d.driver_id}/status`,token,{active:!d.is_active,reason:changeReason});await loadDrivers();}
               catch(e){setError(apiErrorDetail(e,"Driver access change failed"));}finally{setSaving(false);}
-            }}/> : <AppText variant="caption">Pending WhatsApp identity verification</AppText>}
+            }}/> : !d.released_at ? <AppText variant="caption">Pending WhatsApp identity verification</AppText> : null}
+            {!d.released_at ? <Button label="Terminate employment" variant="outline" disabled={saving || !canEdit} onPress={()=>setTermination(d)}/> : null}
           </Pressable>
         ))}
       </Card>

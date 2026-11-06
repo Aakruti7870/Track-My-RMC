@@ -127,7 +127,15 @@ pub async fn respond_quotation_request(
         &auth_user,
         plant_id,
         "quotations",
-        super::staff_module_permissions::Action::Edit,
+        match payload.action.as_str() {
+            "SEND" => super::staff_module_permissions::Action::Create,
+            "DECLINE" => super::staff_module_permissions::Action::Edit,
+            _ => {
+                return Err(AppError::BadRequest(
+                    "Action must be SEND or DECLINE".into(),
+                ))
+            }
+        },
     )
     .await?;
     Ok(Json(

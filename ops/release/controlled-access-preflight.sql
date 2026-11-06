@@ -37,6 +37,14 @@ SELECT count(*) AS duplicate_reserved_identities FROM (
                       'quality_engineer','fleet_manager','store_manager')
     GROUP BY ps.user_id HAVING count(*)>1
 ) conflicts;
+SELECT count(*) AS duplicate_driver_employments FROM (
+    SELECT d.driver_id FROM driver_employment_profiles d
+    WHERE to_jsonb(d)->>'released_at' IS NULL
+    GROUP BY d.driver_id HAVING count(*)>1
+) conflicts;
+SELECT count(*) AS cross_plant_driver_vehicles
+FROM driver_employment_profiles d JOIN transit_mixers tm ON tm.driver_id=d.driver_id
+WHERE to_jsonb(d)->>'released_at' IS NULL AND tm.plant_id<>d.plant_id;
 SELECT max(version) AS applied_migration_max,
        count(*) FILTER(WHERE NOT success) AS failed_migrations
 FROM _sqlx_migrations;

@@ -58,6 +58,15 @@ pub async fn issue_in_tx(
     if !active || canonical(&current_role) != canonical(role) {
         return Err(AppError::Unauthorized("Account permissions changed".into()));
     }
+    if current_role == "driver" {
+        let blocked: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM driver_employment_profiles WHERE driver_id=$1 AND released_at IS NULL AND employment_status<>'ACTIVE')")
+            .bind(user).fetch_one(&mut **tx).await?;
+        if blocked {
+            return Err(AppError::Forbidden(
+                "An active verified Driver employment is required".into(),
+            ));
+        }
+    }
     if matches!(
         current_role.as_str(),
         "dispatcher"

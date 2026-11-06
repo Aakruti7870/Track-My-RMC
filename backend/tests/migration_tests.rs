@@ -181,7 +181,7 @@ async fn late_session_migrations_apply_after_existing_rfq_version_44(pool: sqlx:
     let deployed = sqlx::migrate::Migrator {
         migrations: Cow::Owned(
             all.iter()
-                .filter(|migration| !matches!(migration.version, 42 | 43 | 45 | 46))
+                .filter(|migration| !matches!(migration.version, 42 | 43 | 45 | 46 | 47))
                 .cloned()
                 .collect(),
         ),
@@ -226,7 +226,7 @@ async fn late_session_migrations_apply_after_existing_rfq_version_44(pool: sqlx:
     all.run(&pool)
         .await
         .expect("pending session and refresh migrations must apply after version 44");
-    for version in [42_i64, 43, 45, 46] {
+    for version in [42_i64, 43, 45, 46, 47] {
         let applied: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM _sqlx_migrations WHERE version=$1 AND success=TRUE)",
         )
@@ -251,7 +251,7 @@ async fn late_session_migrations_apply_after_existing_rfq_version_44(pool: sqlx:
             .unwrap();
     assert_eq!(customer_before, customer_after);
     let history_after: Vec<(i64, Vec<u8>)> = sqlx::query_as(
-        "SELECT version,checksum FROM _sqlx_migrations WHERE version NOT IN (42,43,45,46) ORDER BY version",
+        "SELECT version,checksum FROM _sqlx_migrations WHERE version NOT IN (42,43,45,46,47) ORDER BY version",
     )
     .fetch_all(&pool)
     .await
@@ -275,7 +275,7 @@ async fn duplicate_slots_abort_upgrade_without_record_loss(pool: sqlx::PgPool) {
     let baseline = sqlx::migrate::Migrator {
         migrations: Cow::Owned(
             all.iter()
-                .filter(|migration| !matches!(migration.version, 42 | 43 | 45 | 46))
+                .filter(|migration| !matches!(migration.version, 42 | 43 | 45 | 46 | 47))
                 .cloned()
                 .collect(),
         ),
@@ -447,4 +447,57 @@ async fn lifecycle_upgrade_materializes_legacy_policy_and_preserves_explicit_den
             );
         }
     }
+}
+
+#[sqlx::test(migrations = false)]
+async fn duplicate_driver_employment_aborts_reservation_upgrade_without_record_loss(
+    pool: sqlx::PgPool,
+) {
+    use std::borrow::Cow;
+    let all = sqlx::migrate!("./migrations");
+    let baseline = sqlx::migrate::Migrator {
+        migrations: Cow::Owned(all.iter().filter(|m| m.version < 47).cloned().collect()),
+        ..sqlx::migrate!("./migrations")
+    };
+    baseline.run(&pool).await.unwrap();
+    let owner:uuid::Uuid=sqlx::query_scalar("INSERT INTO users(phone,hashed_password,full_name,role) VALUES('driver-owner-ci','unused','Owner','owner') RETURNING id").fetch_one(&pool).await.unwrap();
+    let driver:uuid::Uuid=sqlx::query_scalar("INSERT INTO users(phone,hashed_password,full_name,role) VALUES('driver-conflict-ci','unused','Driver','driver') RETURNING id").fetch_one(&pool).await.unwrap();
+    for code in ["DRIVER-A", "DRIVER-B"] {
+        let plant:uuid::Uuid=sqlx::query_scalar("INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,address_line,city,state,pincode,contact_phone) VALUES($1,'Driver legacy CI',$2,0,0,'CI','CI','CI','0','0') RETURNING id").bind(owner).bind(code).fetch_one(&pool).await.unwrap();
+        sqlx::query(
+            "INSERT INTO driver_employment_profiles(plant_id,driver_id,is_active) VALUES($1,$2,$3)",
+        )
+        .bind(plant)
+        .bind(driver)
+        .bind(code == "DRIVER-B")
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    let before: Vec<(i64, Vec<u8>)> =
+        sqlx::query_as("SELECT version,checksum FROM _sqlx_migrations ORDER BY version")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert!(
+        all.run(&pool).await.is_err(),
+        "An inactive legacy employment still reserves the Driver until reviewed"
+    );
+    let after: Vec<(i64, Vec<u8>)> =
+        sqlx::query_as("SELECT version,checksum FROM _sqlx_migrations ORDER BY version")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(before, after);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT count(*) FROM driver_employment_profiles WHERE driver_id=$1"
+        )
+        .bind(driver)
+        .fetch_one(&pool)
+        .await
+        .unwrap(),
+        2
+    );
+    assert!(!sqlx::query_scalar::<_,bool>("SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='driver_employment_profiles' AND column_name='released_at')").fetch_one(&pool).await.unwrap(),"Failed migration rolls back all DDL");
 }
