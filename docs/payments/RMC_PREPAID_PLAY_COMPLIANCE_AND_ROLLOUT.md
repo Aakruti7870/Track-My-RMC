@@ -7,6 +7,9 @@
 - Google's Payments policy section 3(a) excludes payments for physical goods/services from Google Play Billing. TrackMyRMC may use an independent payment processor **only** for genuine concrete/delivery invoices. Do not bundle subscriptions, AI bots, digital services or activation fees into these payment orders.
 - Accurate **Data safety** disclosures must include purchase history, any collected transaction/payment metadata, identity/location details and third-party SDK sharing as applicable. Card/UPI credentials collected entirely by Cashfree must not be captured, logged or retained by TrackMyRMC.
 - Review app **Privacy Policy**, account deletion, payment/refund terms, vendor identity, GST/tax, delivery charges, amount and delivery date disclosure, customer support and Play reviewer access. Play review approval is never guaranteed.
+- In Play Console, review and complete the **Financial features declaration** truthfully for the features the released app actually includes. Distinguish an ordinary merchant checkout for physical concrete from a wallet, money-transfer service, digital subscription, or lending product; do not select a category that the app does not provide.
+- Reconcile the published Data safety form with collected purchase history, transaction metadata and any payment-provider data sharing. Test reviewer access, cancellation/refund support and hosted privacy/deletion links with the exact AAB.
+- **Explicit exclusion:** no Plant Owner subscription purchase, recurring plan, website-activation charge, AI-bot fee, or digital entitlement may be paid through these customer-order Cashfree endpoints. Owner plans remain onboarding/request-and-manual-discussion only, with no in-app payment or subscription checkout linked from this feature.
 - Sources:
   - https://support.google.com/googleplay/android-developer/answer/9858738?hl=en-IN
   - https://support.google.com/googleplay/android-developer/answer/10144311?hl=en
