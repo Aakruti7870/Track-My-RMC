@@ -68,11 +68,25 @@ pub async fn issue_in_tx(
             | "fleet_manager"
             | "store_manager"
     ) {
+        // Called only after complete authentication. OTP verification alone
+        // records email ownership but cannot activate an assignment or session.
+        let activated:Vec<Uuid>=sqlx::query_scalar("UPDATE plant_staff ps SET employment_status='ACTIVE',is_active=TRUE
+            FROM users u WHERE u.id=ps.user_id AND ps.user_id=$1 AND ps.role=$2
+            AND ps.employment_status='PENDING' AND ps.removed_at IS NULL AND ps.invitation_expires_at>clock_timestamp()
+            AND u.work_email_verified_at IS NOT NULL
+            AND EXISTS(SELECT 1 FROM user_totp_credentials t WHERE t.user_id=u.id AND t.is_enabled=TRUE)
+            RETURNING ps.plant_id")
+            .bind(user).bind(&current_role).fetch_all(&mut **tx).await?;
+        for plant in activated {
+            sqlx::query("INSERT INTO plant_staff_lifecycle_audit(assignment_id,plant_id,staff_user_id,actor_user_id,actor_role,role,action,old_status,new_status,reason)
+                SELECT assignment_id,plant_id,user_id,user_id,role,role,'CLAIMED','PENDING','ACTIVE','Verified registered email and completed MFA' FROM plant_staff WHERE plant_id=$1 AND user_id=$2")
+                .bind(plant).bind(user).execute(&mut **tx).await?;
+        }
         let assigned: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM plant_staff ps
              JOIN rmc_plants p ON p.id=ps.plant_id
              WHERE ps.user_id=$1 AND ps.role=$2 AND ps.is_active=TRUE
-             AND ps.removed_at IS NULL AND p.is_active=TRUE)",
+             AND ps.removed_at IS NULL AND ps.employment_status='ACTIVE' AND p.is_active=TRUE)",
         )
         .bind(user)
         .bind(&current_role)

@@ -20,15 +20,17 @@ pub mod loads_routes;
 pub mod maps_routes;
 pub mod master_data_routes;
 pub mod notifications;
+pub mod owner_access;
 pub mod owner_routes;
 pub mod payroll_routes;
 pub mod permission_consent;
 pub mod plant_onboarding;
-pub mod plant_staff_manager;
 pub mod plant_plans_routes;
+pub mod plant_staff_manager;
 pub mod play_review;
 pub mod rmc_rfq_leads;
 pub mod staff_collections;
+pub mod staff_lifecycle;
 pub mod staff_module_permissions;
 pub mod staff_routes;
 pub mod storage_routes;
@@ -204,6 +206,10 @@ pub fn build_app_router(state: AppState) -> Router {
             get(master_data_routes::get_plant_summary),
         )
         .route(
+            "/api/master/plants/:plant_id/summary/export",
+            get(master_data_routes::export_plant_summary),
+        )
+        .route(
             "/api/master/plants/:plant_id/people",
             get(master_data_routes::list_plant_people),
         )
@@ -284,6 +290,18 @@ pub fn build_app_router(state: AppState) -> Router {
             get(master_data_routes::list_plant_people).post(business_routes::add_plant_staff),
         )
         .route(
+            "/api/business/plants/:plant_id/staff/invitations",
+            post(staff_lifecycle::invite),
+        )
+        .route(
+            "/api/business/plants/:plant_id/staff/history",
+            get(staff_lifecycle::history),
+        )
+        .route(
+            "/api/business/plants/:plant_id/staff/:user_id/lifecycle",
+            post(staff_lifecycle::transition),
+        )
+        .route(
             "/api/business/plants/:plant_id/people/:user_id/suspend",
             post(business_routes::suspend_plant_staff),
         )
@@ -315,6 +333,14 @@ pub fn build_app_router(state: AppState) -> Router {
             "/api/business/plants/:plant_id/drivers",
             get(driver_profile_routes::list_plant_drivers)
                 .put(driver_profile_routes::save_driver_profile),
+        )
+        .route(
+            "/api/business/plants/:plant_id/drivers/invitations",
+            post(driver_profile_routes::invite_driver),
+        )
+        .route(
+            "/api/business/plants/:plant_id/drivers/:user_id/status",
+            post(driver_profile_routes::set_driver_status),
         )
         .route(
             "/api/business/plants/:plant_id/customers",
@@ -713,6 +739,10 @@ pub fn build_app_router(state: AppState) -> Router {
             get(owner_routes::get_billing_overview),
         )
         .route("/api/owner/home", get(owner_routes::get_owner_home))
+        .route(
+            "/api/control-center/owners/:user_id/status",
+            post(owner_access::status),
+        )
         .route(
             "/api/owner/orders/:order_id/production",
             get(staff_routes::get_production_status),

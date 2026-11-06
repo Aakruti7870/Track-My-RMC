@@ -53,7 +53,7 @@ where
 
         let is_active: bool = row.get("is_active");
         if !is_active {
-            return Err(AppError::Forbidden("Account is inactive".to_string()));
+            return Err(AppError::SessionRevoked);
         }
 
         let revoked_at: Option<chrono::DateTime<chrono::Utc>> = row.get("auth_revoked_at");
@@ -64,10 +64,17 @@ where
                     issued <= ts.timestamp_micros()
                 })
         }) {
-            return Err(AppError::Unauthorized("Session revoked".to_string()));
+            return Err(AppError::SessionRevoked);
         }
 
         let current_role: String = row.get("role");
+        if crate::routes::staff_lifecycle::ROLES.contains(&current_role.as_str()) {
+            let assigned:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM plant_staff ps JOIN rmc_plants p ON p.id=ps.plant_id WHERE ps.user_id=$1 AND ps.role=$2 AND ps.is_active AND ps.removed_at IS NULL AND ps.employment_status='ACTIVE' AND p.is_active)")
+                .bind(claims.sub).bind(&current_role).fetch_one(&app_state.db).await?;
+            if !assigned {
+                return Err(AppError::SessionRevoked);
+            }
+        }
         let canonical = |role: &str| {
             if role == "plant_owner" {
                 "owner".to_string()
@@ -76,9 +83,7 @@ where
             }
         };
         if canonical(&current_role) != canonical(&claims.role) {
-            return Err(AppError::Unauthorized(
-                "Account permissions changed; sign in again".into(),
-            ));
+            return Err(AppError::SessionRevoked);
         }
         let current_jti: Option<Uuid> = row.get("active_session_jti");
         if current_jti.is_some() && current_jti != claims.jti {

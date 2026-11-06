@@ -1,11 +1,9 @@
 use crate::{
-    auth::password::hash_password,
-    auth::{middleware::check_role, AuthUser},
-    error::AppError,
-    state::AppState,
+    auth::control_center::WebAdmin, auth::password::hash_password, error::AppError, state::AppState,
 };
 use axum::{
     extract::{Path, Query, State},
+    http::HeaderMap,
     response::IntoResponse,
     Json,
 };
@@ -364,9 +362,9 @@ pub async fn submit_onboarding(
 
 pub async fn list_requests(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    auth_user: WebAdmin,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["admin"])?;
+    auth_user.require("plant_owners.manage")?;
     let requests = sqlx::query_as::<_, PlantListingRequest>(
         "SELECT id, request_number, source, google_place_id, name, address, city, state,
                 lat, lng, contact_phone, status, requested_role, claim_requested,
@@ -384,11 +382,13 @@ pub async fn list_requests(
 
 pub async fn reject_listing(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    auth_user: WebAdmin,
     Path(request_id): Path<Uuid>,
+    headers: HeaderMap,
     Json(payload): Json<RejectListingBody>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["admin"])?;
+    auth_user.require("plant_owners.manage")?;
+    super::control_center_routes::require_recent_step_up(&state, &auth_user, &headers).await?;
     let reason = payload
         .reason
         .as_deref()
@@ -438,11 +438,13 @@ pub async fn reject_listing(
 
 pub async fn approve_listing(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    auth_user: WebAdmin,
     Path(request_id): Path<Uuid>,
+    headers: HeaderMap,
     Json(payload): Json<ApproveListingBody>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["admin"])?;
+    auth_user.require("plant_owners.manage")?;
+    super::control_center_routes::require_recent_step_up(&state, &auth_user, &headers).await?;
     let city = bounded_text(&payload.city, 2, 100, "City")?;
     let region = bounded_text(&payload.state, 2, 100, "State")?;
     let pincode = bounded_text(&payload.pincode, 4, 10, "PIN code")?;

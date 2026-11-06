@@ -399,7 +399,7 @@ pub async fn create_mix_design(
         &auth_user,
         plant_id,
         "mix_designs",
-        super::staff_module_permissions::Action::Edit,
+        super::staff_module_permissions::Action::Create,
     )
     .await?;
 
@@ -449,11 +449,10 @@ pub async fn get_plant_resources(
     // This shared supporting endpoint is loaded by many pages. Keep its shape
     // but do not leak fleet or raw stock data when the Owner has revoked
     // that specific module's read permission for a plant staff member.
-    let fleet_visible = super::staff_module_permissions::require(
+    let fleet_visible = super::business_routes::require_fleet_access(
         &state,
         &auth_user,
         plant_id,
-        "fleet_availability",
         super::staff_module_permissions::Action::View,
     )
     .await
@@ -536,7 +535,7 @@ pub async fn list_plant_people(
 
     let rows = sqlx::query(
         r#"
-        SELECT ps.id as staff_id, ps.user_id, ps.role, ps.is_active, ps.joined_at, ps.removed_at,
+        SELECT ps.id as staff_id, ps.user_id, ps.role, ps.is_active, ps.joined_at, ps.removed_at,ps.employment_status,
                u.full_name, u.phone, u.email,
                 EXISTS(SELECT 1 FROM plant_staff_manager_delegations d
                        WHERE d.plant_id=ps.plant_id AND d.user_id=ps.user_id
@@ -573,7 +572,7 @@ pub async fn list_plant_people(
                 "email": email,
                 "active": is_active,
                 "is_manager": is_manager,
-                "status": if is_active {"active"} else {"suspended"},
+                "status": r.get::<String,_>("employment_status").to_ascii_lowercase(),
                 "joined_at": joined_at
             })
         })
@@ -661,7 +660,7 @@ pub async fn create_plant_supplier(
         &auth_user,
         plant_id,
         "suppliers",
-        super::staff_module_permissions::Action::Edit,
+        super::staff_module_permissions::Action::Create,
     )
     .await?;
 
@@ -720,7 +719,7 @@ pub async fn get_plant_summary(
     State(state): State<AppState>,
     auth_user: AuthUser,
     Path(plant_id): Path<Uuid>,
-) -> Result<impl IntoResponse, AppError> {
+) -> Result<Json<serde_json::Value>, AppError> {
     check_role(
         &auth_user,
         &[
@@ -778,4 +777,37 @@ pub async fn get_plant_summary(
             { "id": "stock_low", "name": "Materials at reorder level", "status": format!("{low_stock} items") }
         ]
     })))
+}
+
+pub async fn export_plant_summary(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(plant): Path<Uuid>,
+) -> Result<axum::response::Response, AppError> {
+    super::staff_module_permissions::require(
+        &state,
+        &user,
+        plant,
+        "plant_reports",
+        super::staff_module_permissions::Action::Export,
+    )
+    .await?;
+    let Json(summary) = get_plant_summary(State(state), user, Path(plant)).await?;
+    let mut csv = String::from("metric,value\r\n");
+    for row in summary["reports"].as_array().into_iter().flatten() {
+        let name = row["name"].as_str().unwrap_or("").replace('"', "\"\"");
+        let value = row["status"].as_str().unwrap_or("").replace('"', "\"\"");
+        csv.push_str(&format!("\"{name}\",\"{value}\"\r\n"));
+    }
+    Ok((
+        [
+            (axum::http::header::CONTENT_TYPE, "text/csv; charset=utf-8"),
+            (
+                axum::http::header::CONTENT_DISPOSITION,
+                "attachment; filename=plant-summary.csv",
+            ),
+        ],
+        csv,
+    )
+        .into_response())
 }

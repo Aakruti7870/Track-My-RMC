@@ -244,7 +244,7 @@ async fn call(
 
 async fn identity(db: &PgPool, role: &str, email: Option<&str>, phone: Option<&str>) -> Uuid {
     let generated_phone = Uuid::new_v4().simple().to_string()[..18].to_string();
-    sqlx::query_scalar("INSERT INTO users (phone,email,hashed_password,full_name,role) VALUES ($1,$2,'unused','Synthetic Test',$3) RETURNING id")
+    sqlx::query_scalar("INSERT INTO users (phone,email,hashed_password,full_name,role,work_email_verified_at) VALUES ($1,$2,'unused','Synthetic Test',$3,CASE WHEN $2 IS NOT NULL THEN NOW() END) RETURNING id")
         .bind(phone.unwrap_or(&generated_phone)).bind(email).bind(role).fetch_one(db).await.unwrap()
 }
 
@@ -812,6 +812,556 @@ async fn rotating_refresh_rejects_suspended_identity(db: PgPool) {
 }
 
 #[sqlx::test]
+async fn registered_email_invitation_claim_lifecycle_and_rehire_are_atomic(db: PgPool) {
+    use trackmyrmc_backend::auth::{jwt::generate_token, refresh};
+    let mut state = state(db.clone());
+    let delivery = Arc::new(MemoryDelivery::default());
+    state.otp_delivery = delivery.clone();
+    let owner = identity(&db, "owner", Some("invite-owner@example.invalid"), None).await;
+    let plant:Uuid=sqlx::query_scalar("INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,address_line,city,state,pincode,contact_phone) VALUES($1,'Invitation CI',$2,0,0,'CI','CI','CI','0','0') RETURNING id")
+        .bind(owner).bind(Uuid::new_v4().simple().to_string()).fetch_one(&db).await.unwrap();
+    let owner_session = refresh::issue_after_auth(
+        &state,
+        owner,
+        "owner",
+        "",
+        Some("invite-owner@example.invalid"),
+        1,
+    )
+    .await
+    .unwrap();
+    let app = build_app_router(state.clone());
+    let invite = format!("/api/business/plants/{plant}/staff/invitations");
+    let body = json!({"email":"new-dispatcher@example.invalid","full_name":"Synthetic Dispatcher","role":"dispatcher","reason":"Owner approved synthetic recruitment"});
+    let (status, invitation) = call(
+        &app,
+        &invite,
+        Some(body.clone()),
+        Some(&owner_session.token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let employee = Uuid::parse_str(invitation["staff_user_id"].as_str().unwrap()).unwrap();
+    assert_eq!(invitation["status"], "PENDING");
+    assert_eq!(call(&app,&invite,Some(json!({"email":"replacement@example.invalid","full_name":"Replacement","role":"dispatcher","reason":"Conflicting pending role invitation"})),Some(&owner_session.token)).await.0,StatusCode::CONFLICT);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM users WHERE email='replacement@example.invalid'"
+        )
+        .fetch_one(&db)
+        .await
+        .unwrap(),
+        0,
+        "failed slot acquisition must roll back identity creation"
+    );
+    let forged_legacy = generate_token(
+        employee,
+        "dispatcher",
+        "",
+        Some("new-dispatcher@example.invalid"),
+        &state.config.jwt_secret,
+        1,
+    )
+    .unwrap();
+    assert_eq!(
+        call(&app, "/api/me", None, Some(&forged_legacy)).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        call(
+            &app,
+            "/api/auth/otp/email/send",
+            Some(json!({"email":"unregistered@example.invalid"})),
+            None
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    let challenge = email_challenge(&app, &delivery, "new-dispatcher@example.invalid").await;
+    assert_eq!(
+        sqlx::query_scalar::<_, String>(
+            "SELECT employment_status FROM plant_staff WHERE user_id=$1"
+        )
+        .bind(employee)
+        .fetch_one(&db)
+        .await
+        .unwrap(),
+        "PENDING"
+    );
+    let (status, enrollment) = call(
+        &app,
+        "/api/auth/staff/mfa/enroll/start",
+        Some(json!({"challenge_token":challenge["challenge_token"]})),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let code = TotpEngine::compute_code(
+        enrollment["manual_key"].as_str().unwrap(),
+        chrono::Utc::now().timestamp() as u64,
+    )
+    .unwrap();
+    let (status, enabled) = call(
+        &app,
+        "/api/auth/staff/mfa/enroll/confirm",
+        Some(json!({"challenge_token":challenge["challenge_token"],"code":code})),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, login) = call(
+        &app,
+        "/api/auth/staff/mfa/verify-totp",
+        Some(json!({"challenge_token":enabled["challenge_token"],"code":code})),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let access = login["token"].as_str().unwrap();
+    let credential = login["refresh_token"].as_str().unwrap();
+    let (home_status, home) = call(&app, "/api/staff/home", None, Some(access)).await;
+    assert_eq!(home_status, StatusCode::OK);
+    assert!(
+        home["kpis"].as_array().unwrap().is_empty(),
+        "Home cannot leak metrics when no modules are granted"
+    );
+    assert_eq!(
+        call(&app, "/api/me", None, Some(access)).await.0,
+        StatusCode::OK
+    );
+    let (_, modules) = call(&app, "/api/staff/module-permissions", None, Some(access)).await;
+    assert!(
+        modules["permissions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|g| g["view"] == false && g["edit"] == false),
+        "missing grants must default to deny"
+    );
+    let lifecycle = format!("/api/business/plants/{plant}/staff/{employee}/lifecycle");
+    let owner_token = Some(owner_session.token.as_str());
+    let first_assignment: Uuid =
+        sqlx::query_scalar("SELECT assignment_id FROM plant_staff WHERE user_id=$1")
+            .bind(employee)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert_eq!(
+        call(
+            &app,
+            &lifecycle,
+            Some(json!({"action":"suspend","reason":"Suspending synthetic test employee"})),
+            owner_token
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        call(&app, "/api/me", None, Some(access)).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert!(refresh::rotate(&state, credential).await.is_err());
+    assert_eq!(
+        call(&app, &invite, Some(body.clone()), owner_token).await.0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        call(
+            &app,
+            &lifecycle,
+            Some(json!({"action":"reactivate","reason":"Authorized synthetic reactivation"})),
+            owner_token
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert!(
+        refresh::rotate(&state, credential).await.is_err(),
+        "reactivation cannot restore credentials"
+    );
+    assert_eq!(
+        call(
+            &app,
+            &lifecycle,
+            Some(json!({"action":"terminate","reason":"Terminating synthetic employment"})),
+            owner_token
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        call(
+            &app,
+            "/api/auth/otp/email/send",
+            Some(json!({"email":"new-dispatcher@example.invalid"})),
+            None
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    let (status, rehire) = call(&app, &invite, Some(body), owner_token).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(rehire["staff_user_id"], employee.to_string());
+    let second_assignment: Uuid =
+        sqlx::query_scalar("SELECT assignment_id FROM plant_staff WHERE user_id=$1")
+            .bind(employee)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert_ne!(first_assignment, second_assignment);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM plant_staff_module_permissions WHERE user_id=$1"
+        )
+        .bind(employee)
+        .fetch_one(&db)
+        .await
+        .unwrap(),
+        0
+    );
+    let (_, history) = call(
+        &app,
+        &format!("/api/business/plants/{plant}/staff/history"),
+        None,
+        owner_token,
+    )
+    .await;
+    assert_eq!(history["slots"].as_array().unwrap().len(), 7);
+    assert!(history["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|e| e["new_status"] == "TERMINATED"
+            && e["assignment_id"] == first_assignment.to_string()));
+    assert!(history["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|e| e["reason"].as_str().unwrap().len() >= 10));
+    assert!(
+        sqlx::query("DELETE FROM plant_staff_lifecycle_audit WHERE staff_user_id=$1")
+            .bind(employee)
+            .execute(&db)
+            .await
+            .is_err(),
+        "Lifecycle audit must be append-only"
+    );
+}
+
+#[sqlx::test]
+async fn concurrent_invitations_reserve_one_slot_and_different_plants_are_independent(db: PgPool) {
+    use trackmyrmc_backend::auth::refresh;
+    let state = state(db.clone());
+    let owner = identity(&db, "owner", Some("race-owner@example.invalid"), None).await;
+    let session = refresh::issue_after_auth(&state, owner, "owner", "", None, 1)
+        .await
+        .unwrap();
+    let app = build_app_router(state);
+    for _ in 0..2 {
+        let plant:Uuid=sqlx::query_scalar("INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,address_line,city,state,pincode,contact_phone) VALUES($1,'Race CI',$2,0,0,'CI','CI','CI','0','0') RETURNING id")
+            .bind(owner).bind(Uuid::new_v4().simple().to_string()).fetch_one(&db).await.unwrap();
+        let path = format!("/api/business/plants/{plant}/staff/invitations");
+        let a = json!({"email":format!("{}@example.invalid",Uuid::new_v4()),"full_name":"Racer A","role":"dispatcher","reason":"Concurrent synthetic role acquisition"});
+        let b = json!({"email":format!("{}@example.invalid",Uuid::new_v4()),"full_name":"Racer B","role":"dispatcher","reason":"Concurrent synthetic role acquisition"});
+        let (a, b) = tokio::join!(
+            call(&app, &path, Some(a), Some(&session.token)),
+            call(&app, &path, Some(b), Some(&session.token))
+        );
+        assert!([a.0, b.0].contains(&StatusCode::OK));
+        assert!([a.0, b.0].contains(&StatusCode::CONFLICT));
+        assert_eq!(
+            sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM plant_staff WHERE plant_id=$1 AND removed_at IS NULL"
+            )
+            .bind(plant)
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+            1
+        );
+    }
+}
+
+async fn put_json(app: &Router, path: &str, body: Value, token: &str) -> (StatusCode, Value) {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(path)
+                .header("Authorization", format!("Bearer {token}"))
+                .header("Content-Type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), 100000).await.unwrap();
+    (status, serde_json::from_slice(&bytes).unwrap())
+}
+
+#[sqlx::test]
+async fn manager_limits_fleet_driver_verification_and_inventory_approval_fail_closed(db: PgPool) {
+    use trackmyrmc_backend::auth::refresh;
+    let mut state = state(db.clone());
+    let delivery = Arc::new(MemoryDelivery::default());
+    state.otp_delivery = delivery.clone();
+    let owner = identity(&db, "owner", Some("caps-owner@example.invalid"), None).await;
+    let manager = identity(
+        &db,
+        "supervisor",
+        Some("caps-manager@example.invalid"),
+        None,
+    )
+    .await;
+    let employee = identity(&db, "operator", Some("caps-operator@example.invalid"), None).await;
+    let store = identity(
+        &db,
+        "store_manager",
+        Some("caps-store@example.invalid"),
+        None,
+    )
+    .await;
+    let mut plants = Vec::new();
+    for _ in 0..2 {
+        plants.push(sqlx::query_scalar::<_,Uuid>("INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,address_line,city,state,pincode,contact_phone) VALUES($1,'Delegation CI',$2,0,0,'CI','CI','CI','0','0') RETURNING id")
+            .bind(owner).bind(Uuid::new_v4().simple().to_string()).fetch_one(&db).await.unwrap());
+    }
+    let plant = plants[0];
+    for (id, role) in [
+        (manager, "supervisor"),
+        (employee, "operator"),
+        (store, "store_manager"),
+    ] {
+        sqlx::query("INSERT INTO plant_staff(plant_id,user_id,role) VALUES($1,$2,$3)")
+            .bind(plant)
+            .bind(id)
+            .bind(role)
+            .execute(&db)
+            .await
+            .unwrap();
+    }
+    let owner_login = refresh::issue_after_auth(&state, owner, "owner", "", None, 1)
+        .await
+        .unwrap();
+    let manager_login = refresh::issue_after_auth(&state, manager, "supervisor", "", None, 1)
+        .await
+        .unwrap();
+    let store_login = refresh::issue_after_auth(&state, store, "store_manager", "", None, 1)
+        .await
+        .unwrap();
+    let app = build_app_router(state.clone());
+    let ot = Some(owner_login.token.as_str());
+    let mt = Some(manager_login.token.as_str());
+    let grant = format!("/api/business/plants/{plant}/staff/{manager}/manager/grant");
+    let mut policy = json!({"can_manage_staff":true,"can_manage_permissions":true,"can_manage_fleet":false,"can_manage_drivers":false,
+        "permission_limits":{"production_queue":{"view":true,"create":false,"edit":false,"approve":false,"export":false}}});
+    let invite = json!({"email":"manager-invite@example.invalid","full_name":"Invited accountant","role":"accountant","reason":"Owner delegated limited staff recruitment"});
+    let invite_path = format!("/api/business/plants/{plant}/staff/invitations");
+    assert_eq!(
+        call(&app, &invite_path, Some(invite.clone()), mt).await.0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        call(&app, &grant, Some(policy.clone()), ot).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        call(&app, &invite_path, Some(invite), mt).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(call(&app,&format!("/api/business/plants/{}/staff/invitations",plants[1]),Some(json!({"email":"cross-plant@example.invalid","full_name":"Denied","role":"dispatcher","reason":"Cross-plant assignment must be rejected"})),mt).await.0,StatusCode::FORBIDDEN);
+    let permission_path = format!("/api/owner/plants/{plant}/staff/{employee}/module-permissions");
+    let (status, permissions) = call(&app, &permission_path, None, ot).await;
+    assert_eq!(status, StatusCode::OK);
+    let mut edits:Vec<Value>=permissions["permissions"].as_array().unwrap().iter().map(|g|json!({"key":g["key"],"view":g["key"]=="production_queue","create":false,"edit":false,"approve":false,"export":false})).collect();
+    assert_eq!(
+        put_json(
+            &app,
+            &permission_path,
+            json!({"permissions":edits}),
+            &manager_login.token
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    edits
+        .iter_mut()
+        .find(|g| g["key"] == "production_queue")
+        .unwrap()["edit"] = json!(true);
+    assert_eq!(
+        put_json(
+            &app,
+            &permission_path,
+            json!({"permissions":edits}),
+            &manager_login.token
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        put_json(
+            &app,
+            &format!("/api/owner/plants/{plant}/staff/{manager}/module-permissions"),
+            json!({"permissions":[]}),
+            &manager_login.token
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    let vehicles = format!("/api/business/plants/{plant}/vehicles");
+    assert_eq!(
+        call(
+            &app,
+            &vehicles,
+            Some(json!({"registration_number":"CI-MANAGER-1","capacity_m3":6})),
+            mt
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    let driver_invite = format!("/api/business/plants/{plant}/drivers/invitations");
+    let driver_body = json!({"name":"Verified CI Driver","phone":"+12025550999","reason":"Delegated fleet driver recruitment"});
+    assert_eq!(
+        call(&app, &driver_invite, Some(driver_body.clone()), mt)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    policy["can_manage_fleet"] = json!(true);
+    assert_eq!(
+        call(&app, &grant, Some(policy.clone()), ot).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        call(
+            &app,
+            &vehicles,
+            Some(json!({"registration_number":"CI-MANAGER-1","capacity_m3":6})),
+            mt
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        call(&app, &driver_invite, Some(driver_body.clone()), mt)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    policy["can_manage_drivers"] = json!(true);
+    assert_eq!(call(&app, &grant, Some(policy), ot).await.0, StatusCode::OK);
+    let (status, driver) = call(&app, &driver_invite, Some(driver_body), mt).await;
+    assert_eq!(status, StatusCode::OK);
+    let driver_id = driver["driver_id"].as_str().unwrap();
+    let tm = json!({"registration_number":"CI-MANAGER-2","capacity_m3":6,"driver_id":driver_id});
+    assert_eq!(
+        call(&app, &vehicles, Some(tm.clone()), mt).await.0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        call(
+            &app,
+            "/api/auth/otp/whatsapp/send",
+            Some(json!({"phone":"+12025550999","purpose":"driver_login"})),
+            None
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let code = delivery.take_code("12025550999");
+    let (status, driver_login) = call(
+        &app,
+        "/api/auth/otp/whatsapp/verify",
+        Some(json!({"phone":"+12025550999","otp":code,"purpose":"driver_login"})),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(call(&app, &vehicles, Some(tm), mt).await.0, StatusCode::OK);
+    assert_eq!(
+        call(
+            &app,
+            &format!("/api/business/plants/{}/vehicles", plants[1]),
+            Some(json!({"registration_number":"CI-CROSS-TM","driver_id":driver_id})),
+            ot
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        call(
+            &app,
+            &format!("/api/business/plants/{plant}/drivers/{driver_id}/status"),
+            Some(json!({"active":false,"reason":"Suspend compromised synthetic driver"})),
+            mt
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        call(&app, "/api/me", None, driver_login["token"].as_str())
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert!(
+        refresh::rotate(&state, driver_login["refresh_token"].as_str().unwrap())
+            .await
+            .is_err()
+    );
+    sqlx::query("INSERT INTO plant_staff_module_permissions(plant_id,user_id,module_key,can_view,can_edit,can_create,updated_by) VALUES($1,$2,'material_inventory',TRUE,TRUE,TRUE,$3)").bind(plant).bind(store).bind(owner).execute(&db).await.unwrap();
+    let material:Uuid=sqlx::query_scalar("INSERT INTO plant_materials(plant_id,name,material_type,unit,current_stock) VALUES($1,'CI Cement','cement','kg',100) RETURNING id").bind(plant).fetch_one(&db).await.unwrap();
+    let adjust = format!("/api/business/plants/{plant}/materials/{material}/adjust");
+    assert_eq!(
+        call(
+            &app,
+            &adjust,
+            Some(json!({"quantity_change":-5,"reason":"Unapproved negative stock write-off"})),
+            Some(&store_login.token)
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, f64>(
+            "SELECT current_stock::float8 FROM plant_materials WHERE id=$1"
+        )
+        .bind(material)
+        .fetch_one(&db)
+        .await
+        .unwrap(),
+        100.0
+    );
+    assert_eq!(
+        call(
+            &app,
+            &adjust,
+            Some(json!({"quantity_change":-5,"reason":"Owner-approved synthetic reconciliation"})),
+            ot
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+}
+
+#[sqlx::test]
 async fn incomplete_staff_login_preserves_session_until_final_mfa(db: PgPool) {
     use trackmyrmc_backend::auth::refresh;
     let mut state = state(db.clone());
@@ -1111,77 +1661,226 @@ async fn staff_role_changes_are_soft_audited_and_reserve_suspended_slots(db: PgP
     );
 }
 
-
 #[sqlx::test]
 async fn plant_manager_delegation_is_owner_scoped_revocable_and_cannot_escalate(db: PgPool) {
     use trackmyrmc_backend::auth::refresh;
     let state = state(db.clone());
     let owner = identity(&db, "owner", Some("mgr-owner@example.invalid"), None).await;
     let foreign_owner = identity(&db, "owner", Some("mgr-foreign@example.invalid"), None).await;
-    let manager = identity(&db, "supervisor", Some("mgr-supervisor@example.invalid"), None).await;
-    let employee = identity(&db, "dispatcher", Some("mgr-dispatcher@example.invalid"), None).await;
-    let replacement_manager = identity(&db, "operator", Some("mgr-operator@example.invalid"), None).await;
+    let manager = identity(
+        &db,
+        "supervisor",
+        Some("mgr-supervisor@example.invalid"),
+        None,
+    )
+    .await;
+    let employee = identity(
+        &db,
+        "dispatcher",
+        Some("mgr-dispatcher@example.invalid"),
+        None,
+    )
+    .await;
+    let replacement_manager =
+        identity(&db, "operator", Some("mgr-operator@example.invalid"), None).await;
     let plant: Uuid = sqlx::query_scalar(
         "INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,address_line,
          city,state,pincode,contact_phone) VALUES($1,'Delegation CI',$2,0,0,'CI','CI','MH','0','0')
          RETURNING id",
-    ).bind(owner).bind(Uuid::new_v4().simple().to_string())
-     .fetch_one(&db).await.unwrap();
-    for (user, role) in [(manager,"supervisor"),(employee,"dispatcher"),(replacement_manager,"operator")] {
+    )
+    .bind(owner)
+    .bind(Uuid::new_v4().simple().to_string())
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    for (user, role) in [
+        (manager, "supervisor"),
+        (employee, "dispatcher"),
+        (replacement_manager, "operator"),
+    ] {
         sqlx::query("INSERT INTO plant_staff(plant_id,user_id,role) VALUES($1,$2,$3)")
-            .bind(plant).bind(user).bind(role).execute(&db).await.unwrap();
+            .bind(plant)
+            .bind(user)
+            .bind(role)
+            .execute(&db)
+            .await
+            .unwrap();
     }
-    let owner_login=refresh::issue_after_auth(&state,owner,"owner","",Some("mgr-owner@example.invalid"),1).await.unwrap();
-    let foreign_login=refresh::issue_after_auth(&state,foreign_owner,"owner","",Some("mgr-foreign@example.invalid"),1).await.unwrap();
-    let manager_login=refresh::issue_after_auth(&state,manager,"supervisor","",Some("mgr-supervisor@example.invalid"),1).await.unwrap();
-    let app=build_app_router(state.clone());
-    let grant=format!("/api/business/plants/{plant}/staff/{manager}/manager/grant");
-    let revoke=format!("/api/business/plants/{plant}/staff/{manager}/manager/revoke");
-    let owner_token=Some(owner_login.token.as_str());
-    let manager_token=Some(manager_login.token.as_str());
-    assert_eq!(call(&app,&grant,Some(json!({})),Some(&foreign_login.token)).await.0,StatusCode::FORBIDDEN);
-    assert_eq!(call(&app,&grant,Some(json!({})),manager_token).await.0,StatusCode::FORBIDDEN);
-    assert_eq!(call(&app,&grant,Some(json!({})),owner_token).await.0,StatusCode::OK);
-    let (status,access)=call(&app,"/api/staff/manager-access",None,manager_token).await;
-    assert_eq!(status,StatusCode::OK);
-    assert_eq!(access["enabled"],true);
+    let owner_login = refresh::issue_after_auth(
+        &state,
+        owner,
+        "owner",
+        "",
+        Some("mgr-owner@example.invalid"),
+        1,
+    )
+    .await
+    .unwrap();
+    let foreign_login = refresh::issue_after_auth(
+        &state,
+        foreign_owner,
+        "owner",
+        "",
+        Some("mgr-foreign@example.invalid"),
+        1,
+    )
+    .await
+    .unwrap();
+    let manager_login = refresh::issue_after_auth(
+        &state,
+        manager,
+        "supervisor",
+        "",
+        Some("mgr-supervisor@example.invalid"),
+        1,
+    )
+    .await
+    .unwrap();
+    let app = build_app_router(state.clone());
+    let grant = format!("/api/business/plants/{plant}/staff/{manager}/manager/grant");
+    let revoke = format!("/api/business/plants/{plant}/staff/{manager}/manager/revoke");
+    let owner_token = Some(owner_login.token.as_str());
+    let manager_token = Some(manager_login.token.as_str());
     assert_eq!(
-        call(&app,&format!("/api/business/plants/{plant}/staff/{replacement_manager}/manager/grant"),Some(json!({})),owner_token).await.0,
+        call(&app, &grant, Some(json!({})), Some(&foreign_login.token))
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        call(&app, &grant, Some(json!({})), manager_token).await.0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        call(&app, &grant, Some(json!({})), owner_token).await.0,
+        StatusCode::OK
+    );
+    let (status, access) = call(&app, "/api/staff/manager-access", None, manager_token).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(access["enabled"], true);
+    assert_eq!(
+        call(
+            &app,
+            &format!("/api/business/plants/{plant}/staff/{replacement_manager}/manager/grant"),
+            Some(json!({})),
+            owner_token
+        )
+        .await
+        .0,
         StatusCode::CONFLICT
     );
     assert_eq!(
-        call(&app,&format!("/api/business/plants/{plant}/people/{manager}/remove"),Some(json!({})),manager_token).await.0,
+        call(
+            &app,
+            &format!("/api/business/plants/{plant}/people/{manager}/remove"),
+            Some(json!({})),
+            manager_token
+        )
+        .await
+        .0,
         StatusCode::FORBIDDEN
     );
     assert_eq!(
-        call(&app,&format!("/api/business/plants/{plant}/people/{employee}/suspend"),Some(json!({})),manager_token).await.0,
+        call(
+            &app,
+            &format!("/api/business/plants/{plant}/people/{employee}/suspend"),
+            Some(json!({})),
+            manager_token
+        )
+        .await
+        .0,
         StatusCode::OK
     );
     assert_eq!(
-        call(&app,&format!("/api/business/plants/{plant}/people/{employee}/activate"),Some(json!({})),manager_token).await.0,
+        call(
+            &app,
+            &format!("/api/business/plants/{plant}/people/{employee}/activate"),
+            Some(json!({})),
+            manager_token
+        )
+        .await
+        .0,
         StatusCode::OK
     );
-    assert_eq!(call(&app,&revoke,Some(json!({})),manager_token).await.0,StatusCode::FORBIDDEN);
-    assert_eq!(call(&app,&revoke,Some(json!({})),owner_token).await.0,StatusCode::OK);
-    assert_eq!(call(&app,"/api/staff/manager-access",None,manager_token).await.1["enabled"],false);
     assert_eq!(
-        call(&app,&format!("/api/business/plants/{plant}/people/{employee}/remove"),Some(json!({})),manager_token).await.0,
+        call(&app, &revoke, Some(json!({})), manager_token).await.0,
         StatusCode::FORBIDDEN
     );
-    assert_eq!(call(&app,&grant,Some(json!({})),owner_token).await.0,StatusCode::OK);
     assert_eq!(
-        call(&app,&format!("/api/business/plants/{plant}/people/{manager}/suspend"),Some(json!({})),owner_token).await.0,
+        call(&app, &revoke, Some(json!({})), owner_token).await.0,
         StatusCode::OK
     );
-    let active_delegations:i64=sqlx::query_scalar(
+    assert_eq!(
+        call(&app, "/api/staff/manager-access", None, manager_token)
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        call(
+            &app,
+            &format!("/api/business/plants/{plant}/people/{employee}/remove"),
+            Some(json!({})),
+            manager_token
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        call(&app, &grant, Some(json!({})), owner_token).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        call(
+            &app,
+            &format!("/api/business/plants/{plant}/people/{manager}/suspend"),
+            Some(json!({})),
+            owner_token
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let active_delegations: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM plant_staff_manager_delegations
          WHERE plant_id=$1 AND revoked_at IS NULL",
-    ).bind(plant).fetch_one(&db).await.unwrap();
-    assert_eq!(active_delegations,0);
+    )
+    .bind(plant)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(active_delegations, 0);
     assert_eq!(
-        call(&app,&format!("/api/business/plants/{plant}/people/{manager}/activate"),Some(json!({})),owner_token).await.0,
+        call(
+            &app,
+            &format!("/api/business/plants/{plant}/people/{manager}/activate"),
+            Some(json!({})),
+            owner_token
+        )
+        .await
+        .0,
         StatusCode::OK
     );
-    let new_login=refresh::issue_after_auth(&state,manager,"supervisor","",Some("mgr-supervisor@example.invalid"),1).await.unwrap();
-    assert_eq!(call(&app,"/api/staff/manager-access",None,Some(&new_login.token)).await.1["enabled"],false);
+    let new_login = refresh::issue_after_auth(
+        &state,
+        manager,
+        "supervisor",
+        "",
+        Some("mgr-supervisor@example.invalid"),
+        1,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        call(
+            &app,
+            "/api/staff/manager-access",
+            None,
+            Some(&new_login.token)
+        )
+        .await
+        .1["enabled"],
+        false
+    );
 }

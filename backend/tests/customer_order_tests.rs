@@ -1,3 +1,4 @@
+mod support;
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
@@ -740,6 +741,7 @@ async fn generic_dispatcher_status_cannot_skip_production_and_pod(db: PgPool) {
         .execute(&db)
         .await
         .unwrap();
+    support::approve_fixture_assignments(&db).await;
     sqlx::query("UPDATE orders SET status='scheduled' WHERE id=$1")
         .bind(id)
         .execute(&db)
@@ -1447,7 +1449,11 @@ async fn support_threads_bind_orders_retries_messages_and_mutations_to_the_custo
         let denied = generate_token(user, role, "", None, &state.config.jwt_secret, 1).unwrap();
         assert_eq!(
             call(&app, &detail, None, &denied).await.0,
-            StatusCode::FORBIDDEN
+            if role == "dispatcher" {
+                StatusCode::UNAUTHORIZED
+            } else {
+                StatusCode::FORBIDDEN
+            }
         );
         assert_eq!(
             call(
@@ -1458,13 +1464,21 @@ async fn support_threads_bind_orders_retries_messages_and_mutations_to_the_custo
             )
             .await
             .0,
-            StatusCode::FORBIDDEN
+            if role == "dispatcher" {
+                StatusCode::UNAUTHORIZED
+            } else {
+                StatusCode::FORBIDDEN
+            }
         );
         assert_eq!(
             call(&app, "/api/assistant/support/staff/cases", None, &denied)
                 .await
                 .0,
-            StatusCode::FORBIDDEN
+            if role == "dispatcher" {
+                StatusCode::UNAUTHORIZED
+            } else {
+                StatusCode::FORBIDDEN
+            }
         );
         assert_eq!(
             call(
@@ -1475,7 +1489,11 @@ async fn support_threads_bind_orders_retries_messages_and_mutations_to_the_custo
             )
             .await
             .0,
-            StatusCode::FORBIDDEN
+            if role == "dispatcher" {
+                StatusCode::UNAUTHORIZED
+            } else {
+                StatusCode::FORBIDDEN
+            }
         );
     }
     assert_eq!(
@@ -1650,6 +1668,7 @@ async fn actual_customer_and_owner_dashboards_return_the_mobile_contract_and_sco
                 .execute(&db)
                 .await
                 .unwrap();
+            support::approve_fixture_assignments(&db).await;
             assert_eq!(
                 call(&app, "/api/owner/home", None, &other_token).await.1["plant_count"],
                 1
@@ -1819,7 +1838,11 @@ async fn quality_recording_requires_active_plant_engineer_and_matching_load(db: 
             call(&app, "/api/staff/quality", Some(payload.clone()), &other)
                 .await
                 .0,
-            StatusCode::FORBIDDEN
+            if trackmyrmc_backend::routes::staff_lifecycle::ROLES.contains(&role) {
+                StatusCode::UNAUTHORIZED
+            } else {
+                StatusCode::FORBIDDEN
+            }
         );
     }
     // A JWT claiming a different privileged role than the current database role
@@ -1853,7 +1876,7 @@ async fn quality_recording_requires_active_plant_engineer_and_matching_load(db: 
         call(&app, "/api/staff/quality", Some(payload.clone()), &other)
             .await
             .0,
-        StatusCode::FORBIDDEN
+        StatusCode::UNAUTHORIZED
     );
     sqlx::query("UPDATE plant_staff SET is_active=FALSE WHERE user_id=$1")
         .bind(engineer)
@@ -1864,7 +1887,7 @@ async fn quality_recording_requires_active_plant_engineer_and_matching_load(db: 
         call(&app, "/api/staff/quality", Some(payload.clone()), &token)
             .await
             .0,
-        StatusCode::FORBIDDEN
+        StatusCode::UNAUTHORIZED
     );
     sqlx::query("UPDATE plant_staff SET is_active=TRUE WHERE user_id=$1")
         .bind(engineer)
@@ -1910,7 +1933,7 @@ async fn quality_recording_requires_active_plant_engineer_and_matching_load(db: 
         call(&app, "/api/staff/quality", Some(payload), &token)
             .await
             .0,
-        StatusCode::FORBIDDEN
+        StatusCode::UNAUTHORIZED
     );
 }
 

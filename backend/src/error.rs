@@ -27,6 +27,8 @@ pub enum AppError {
 
     #[error("Session replaced by a newer authenticated login")]
     SessionReplaced,
+    #[error("Session revoked")]
+    SessionRevoked,
 
     #[error("Forbidden: {0}")]
     Forbidden(String),
@@ -72,6 +74,11 @@ impl IntoResponse for AppError {
                 StatusCode::UNAUTHORIZED,
                 "Signed in on another device. Please sign in again.".to_string(),
                 Some("SESSION_REPLACED".to_string()),
+            ),
+            AppError::SessionRevoked => (
+                StatusCode::UNAUTHORIZED,
+                "Your session was ended for security. Sign in again.".into(),
+                Some("SESSION_REVOKED".into()),
             ),
             AppError::Forbidden(msg) => (
                 StatusCode::FORBIDDEN,

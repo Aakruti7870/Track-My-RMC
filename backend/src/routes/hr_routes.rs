@@ -57,6 +57,18 @@ pub async fn list_employees(
 
     let mut plants_json = Vec::new();
     for plant_id in plant_ids {
+        super::staff_module_permissions::require(
+            &state,
+            &auth_user,
+            plant_id,
+            if auth_user.role == "supervisor" {
+                "workforce"
+            } else {
+                "payroll"
+            },
+            super::staff_module_permissions::Action::View,
+        )
+        .await?;
         let rows = sqlx::query(
             r#"
             SELECT u.id as user_id, u.full_name, u.phone, u.email, ps.role,
@@ -536,6 +548,18 @@ async fn ensure_employee_access(
     employee: Uuid,
 ) -> Result<(), AppError> {
     super::business_routes::ensure_plant_staff_or_owner(state, user, plant).await?;
+    super::staff_module_permissions::require(
+        state,
+        user,
+        plant,
+        if user.role == "supervisor" {
+            "workforce"
+        } else {
+            "payroll"
+        },
+        super::staff_module_permissions::Action::View,
+    )
+    .await?;
     let exists: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM plant_staff WHERE plant_id=$1 AND user_id=$2)",
     )

@@ -127,7 +127,10 @@ pub async fn get_driver_identity(
 }
 
 async fn require_driver_management(
-    state: &AppState, user: &AuthUser, plant: Uuid, edit: bool,
+    state: &AppState,
+    user: &AuthUser,
+    plant: Uuid,
+    edit: bool,
 ) -> Result<(), AppError> {
     // PII and emergency contacts are restricted to explicitly authorized plant identities.
     if matches!(user.role.as_str(), "owner" | "plant_owner") {
@@ -136,12 +139,19 @@ async fn require_driver_management(
     if user.role == "fleet_manager" {
         super::business_routes::ensure_plant_staff_or_owner(state, user, plant).await?;
         return super::staff_module_permissions::require(
-            state, user, plant, "driver_roster",
-            if edit { super::staff_module_permissions::Action::Edit }
-            else { super::staff_module_permissions::Action::View },
-        ).await;
+            state,
+            user,
+            plant,
+            "driver_roster",
+            if edit {
+                super::staff_module_permissions::Action::Edit
+            } else {
+                super::staff_module_permissions::Action::View
+            },
+        )
+        .await;
     }
-    super::plant_staff_manager::require_manager_or_owner(state, user, plant).await
+    super::plant_staff_manager::require_capability(state, user, plant, "drivers").await
 }
 
 pub async fn list_plant_drivers(
@@ -152,7 +162,7 @@ pub async fn list_plant_drivers(
     require_driver_management(&state, &auth_user, plant_id, false).await?;
     let drivers: Vec<Value> = sqlx::query_scalar(
         r#"SELECT jsonb_build_object(
-            'driver_id', d.id, 'driver_name', d.full_name, 'phone', d.phone,
+            'driver_id', d.id, 'driver_name', d.full_name, 'phone', d.phone, 'verified',d.is_verified,
             'employee_id', ep.employee_code, 'company_joining_date', ep.company_joining_date,
             'total_driving_experience_months', ep.total_driving_experience_months,
             'blood_group', ep.blood_group,
@@ -186,6 +196,122 @@ pub struct UpsertDriverProfile {
     pub emergency_contact_2_name: Option<String>,
     pub emergency_contact_2_phone: Option<String>,
     pub transit_mixer_id: Option<Uuid>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DriverInvitation {
+    pub phone: String,
+    pub name: String,
+    pub reason: String,
+}
+pub async fn invite_driver(
+    State(state): State<AppState>,
+    actor: AuthUser,
+    Path(plant): Path<Uuid>,
+    Json(body): Json<DriverInvitation>,
+) -> Result<Json<Value>, AppError> {
+    require_driver_management(&state, &actor, plant, true).await?;
+    let phone = crate::security::phone::canonical_login_phone(&body.phone).ok_or_else(|| {
+        AppError::BadRequest("Enter a valid driver phone with country code".into())
+    })?;
+    if body.name.trim().is_empty()
+        || body.name.len() > 120
+        || !(10..=500).contains(&body.reason.trim().len())
+    {
+        return Err(AppError::BadRequest(
+            "Provide a driver name and onboarding reason".into(),
+        ));
+    }
+    let mut tx = state.db.begin().await?;
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 1))")
+        .bind(&phone)
+        .execute(&mut *tx)
+        .await?;
+    let existing: Option<(Uuid, String, bool)> =
+        sqlx::query_as("SELECT id,role,is_active FROM users WHERE phone=$1 FOR UPDATE")
+            .bind(&phone)
+            .fetch_optional(&mut *tx)
+            .await?;
+    let driver=match existing {
+        Some((id,role,true)) if role=="driver"=>id,
+        Some(_)=>return Err(AppError::Conflict("Phone belongs to an incompatible or inactive identity".into())),
+        None=>sqlx::query_scalar("INSERT INTO users(phone,full_name,hashed_password,role,is_verified) VALUES($1,$2,'!whatsapp-otp-only','driver',FALSE) RETURNING id")
+            .bind(&phone).bind(body.name.trim()).fetch_one(&mut *tx).await?,
+    };
+    let assigned: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM driver_employment_profiles WHERE driver_id=$1)",
+    )
+    .bind(driver)
+    .fetch_one(&mut *tx)
+    .await?;
+    if assigned {
+        return Err(AppError::Conflict(
+            "Driver already has an employment record; use the audited management workflow".into(),
+        ));
+    }
+    if actor.role != "fleet_manager" {
+        super::plant_staff_manager::lock_authorization(&mut tx, &actor, plant, "drivers").await?;
+    }
+    sqlx::query(
+        "INSERT INTO driver_employment_profiles(plant_id,driver_id,is_active) VALUES($1,$2,FALSE)",
+    )
+    .bind(plant)
+    .bind(driver)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'driver.invite','driver',$2,$3)")
+        .bind(actor.user_id).bind(driver).bind(json!({"plant_id":plant,"reason":body.reason,"actor_role":actor.role})).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(Json(
+        json!({"success":true,"driver_id":driver,"status":"PENDING","message":"Driver must verify this phone using WhatsApp OTP before vehicle assignment."}),
+    ))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DriverStatus {
+    pub active: bool,
+    pub reason: String,
+}
+pub async fn set_driver_status(
+    State(state): State<AppState>,
+    actor: AuthUser,
+    Path((plant, driver)): Path<(Uuid, Uuid)>,
+    Json(body): Json<DriverStatus>,
+) -> Result<Json<Value>, AppError> {
+    require_driver_management(&state, &actor, plant, true).await?;
+    if !(10..=500).contains(&body.reason.trim().len()) {
+        return Err(AppError::BadRequest(
+            "Provide a reason of 10 to 500 characters".into(),
+        ));
+    }
+    let mut tx = state.db.begin().await?;
+    sqlx::query("SELECT id FROM users WHERE id=$1 FOR UPDATE")
+        .bind(driver)
+        .execute(&mut *tx)
+        .await?;
+    if actor.role != "fleet_manager" {
+        super::plant_staff_manager::lock_authorization(&mut tx, &actor, plant, "drivers").await?;
+    }
+    let changed=sqlx::query("UPDATE driver_employment_profiles SET is_active=$3,updated_at=NOW() WHERE plant_id=$1 AND driver_id=$2")
+        .bind(plant).bind(driver).bind(body.active).execute(&mut *tx).await?;
+    if changed.rows_affected() != 1 {
+        return Err(AppError::NotFound(
+            "Driver is not assigned to this plant".into(),
+        ));
+    }
+    sqlx::query("UPDATE users SET is_active=$2 WHERE id=$1 AND role='driver'")
+        .bind(driver)
+        .bind(body.active)
+        .execute(&mut *tx)
+        .await?;
+    super::staff_lifecycle::revoke_in_tx(&mut tx, driver, actor.user_id).await?;
+    sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,$2,'driver',$3,$4)")
+        .bind(actor.user_id).bind(if body.active{"driver.access.reactivate"}else{"driver.access.suspend"}).bind(driver)
+        .bind(json!({"plant_id":plant,"reason":body.reason,"actor_role":actor.role})).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(Json(json!({"success":true})))
 }
 
 fn bounded_optional(
@@ -307,6 +433,21 @@ pub async fn save_driver_profile(
         ));
     }
     if let Some(mixer_id) = input.transit_mixer_id {
+        if matches!(auth_user.role.as_str(), "owner" | "plant_owner") {
+            super::plant_staff_manager::require_owner(&state, &auth_user, plant_id).await?;
+        } else if auth_user.role == "fleet_manager" {
+            super::staff_module_permissions::require(
+                &state,
+                &auth_user,
+                plant_id,
+                "fleet_availability",
+                super::staff_module_permissions::Action::Edit,
+            )
+            .await?;
+        } else {
+            super::plant_staff_manager::lock_authorization(&mut tx, &auth_user, plant_id, "fleet")
+                .await?;
+        }
         let other: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM transit_mixers WHERE plant_id=$1 AND driver_id=$2 AND id<>$3)",
         ).bind(plant_id).bind(driver_id).bind(mixer_id).fetch_one(&mut *tx).await?;

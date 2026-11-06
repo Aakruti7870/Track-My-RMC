@@ -218,6 +218,15 @@ pub async fn verify_whatsapp_otp(
         ));
     }
 
+    if user.role == "driver" {
+        sqlx::query("UPDATE users SET is_verified=TRUE WHERE id=$1")
+            .bind(user.id)
+            .execute(&state.db)
+            .await?;
+        sqlx::query("UPDATE driver_employment_profiles SET is_active=TRUE,updated_at=NOW() WHERE driver_id=$1 AND is_active=FALSE AND NOT EXISTS(SELECT 1 FROM audit_logs WHERE action='driver.access.suspend' AND resource_id=$1::text)")
+            .bind(user.id).execute(&state.db).await?;
+    }
+
     let profile = user_repo::get_user_profile(&state.db, user.id).await?;
     let kyc_status = profile
         .as_ref()
@@ -299,6 +308,8 @@ pub async fn send_email_otp(state: &AppState, req: SendEmailOtpRequest) -> Resul
             "Email OTP is restricted to staff, owner, and administrator accounts.".to_string(),
         ));
     }
+
+    crate::routes::staff_lifecycle::require_login_eligible(state, user.id, &user.role).await?;
 
     let _ = req.plant_code.as_deref();
     state.otp_delivery.validate("email")?;
@@ -429,6 +440,11 @@ pub async fn verify_email_otp(
         ));
     }
     OtpEngine::verify_otp(state, &destination, "email", "staff_login", &req.otp).await?;
+    crate::routes::staff_lifecycle::require_login_eligible(state, user.id, &user.role).await?;
+    sqlx::query("UPDATE users SET work_email_verified_at=clock_timestamp() WHERE id=$1")
+        .bind(user.id)
+        .execute(&state.db)
+        .await?;
     let enabled: Option<bool> =
         sqlx::query_scalar("SELECT is_enabled FROM user_totp_credentials WHERE user_id=$1")
             .bind(user.id)

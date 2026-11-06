@@ -62,6 +62,143 @@ fn app(state: AppState) -> Router {
 }
 
 #[sqlx::test]
+async fn only_step_up_control_center_can_issue_and_revoke_plant_owner_access(db: PgPool) {
+    use trackmyrmc_backend::{auth::refresh, routes::build_app_router};
+    let state = state(db.clone());
+    let router = build_app_router(state.clone());
+    let (admin, email, secret) =
+        identity(&db, "central_admin", true, vec!["plant_owners.manage"]).await;
+    let (mobile, _, _) = identity(&db, "admin", true, vec!["plant_owners.manage"]).await;
+    let mobile_token =
+        generate_token(mobile, "admin", "", None, &state.config.jwt_secret, 1).unwrap();
+    assert_eq!(
+        request(
+            &router,
+            "/api/plant-discovery/requests",
+            Some(&mobile_token),
+            None
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    let pending:Uuid=sqlx::query_scalar("INSERT INTO plant_listing_requests(name,address,lat,lng,applicant_owner_name,applicant_email,applicant_mobile) VALUES('Owner approval CI','Synthetic test address',0,0,'New Owner','authority-owner@example.invalid','12025550888') RETURNING id")
+        .fetch_one(&db).await.unwrap();
+    let path = format!("/api/plant-discovery/requests/{pending}/approve");
+    let body = json!({"city":"Test City","state":"Test Region","pincode":"400001"});
+    let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
+    let (status, login) = request(
+        &router,
+        "/api/admin/auth/verify-totp",
+        None,
+        Some(json!({"identifier":email,"code":code})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let token = login["token"].as_str().unwrap();
+    assert_eq!(
+        request(&router, &path, Some(token), Some(body.clone()))
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        request(
+            &router,
+            "/api/admin/auth/step-up",
+            Some(token),
+            Some(json!({"code":code}))
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let (status, approved) = request(&router, &path, Some(token), Some(body)).await;
+    assert_eq!(status, StatusCode::OK);
+    let owner = Uuid::parse_str(approved["owner_id"].as_str().unwrap()).unwrap();
+    let plant = Uuid::parse_str(approved["plant_id"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, Uuid>("SELECT owner_id FROM rmc_plants WHERE id=$1")
+            .bind(plant)
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+        owner
+    );
+    let owner_session = refresh::issue_after_auth(
+        &state,
+        owner,
+        "owner",
+        "12025550888",
+        Some("authority-owner@example.invalid"),
+        1,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        request(
+            &router,
+            "/api/plant-discovery/requests",
+            Some(&owner_session.token),
+            None
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    let status_path = format!("/api/control-center/owners/{owner}/status");
+    assert_eq!(
+        request(
+            &router,
+            &status_path,
+            Some(&mobile_token),
+            Some(json!({"active":false,"reason":"Unprivileged mobile role must be denied"}))
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        request(
+            &router,
+            &status_path,
+            Some(token),
+            Some(json!({"active":false,"reason":"Compromised synthetic Owner session"}))
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        request(&router, "/api/me", Some(&owner_session.token), None)
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert!(refresh::rotate(&state, &owner_session.refresh_token)
+        .await
+        .is_err());
+    assert_eq!(
+        request(
+            &router,
+            &status_path,
+            Some(token),
+            Some(json!({"active":true,"reason":"Authorized synthetic Owner reactivation"}))
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        request(&router, "/api/me", Some(&owner_session.token), None)
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM audit_logs WHERE user_id=$1 AND action IN ('plant_listing.approve','plant_owner.status')").bind(admin).fetch_one(&db).await.unwrap(),3);
+}
+
+#[sqlx::test]
 async fn support_staff_requires_recorded_web_mfa_grants_and_fresh_status_step_up(db: PgPool) {
     let state = state(db.clone());
     let router = trackmyrmc_backend::routes::build_app_router(state.clone());

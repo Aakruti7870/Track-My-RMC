@@ -198,6 +198,15 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 .bind(role)
                 .execute(&mut *tx)
                 .await?;
+            // Explicit fixture Owner approval. Production missing grants deny.
+            for key in trackmyrmc_backend::routes::staff_module_permissions::ALL_KEYS {
+                if let Some(g) =
+                    trackmyrmc_backend::routes::staff_module_permissions::role_ceiling(role, key)
+                {
+                    sqlx::query("INSERT INTO plant_staff_module_permissions(plant_id,user_id,module_key,can_view,can_edit,can_approve,can_create,can_export,updated_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)")
+                        .bind(plant).bind(id).bind(key).bind(g.view).bind(g.edit).bind(g.approve).bind(g.create).bind(g.export).bind(owner).execute(&mut *tx).await?;
+                }
+            }
         }
     }
     let mixer:Uuid=sqlx::query_scalar("INSERT INTO transit_mixers(plant_id,registration_number,driver_id) VALUES($1,'CI-MOBILE-TM',$2) RETURNING id").bind(plant).bind(driver).fetch_one(&mut *tx).await?;

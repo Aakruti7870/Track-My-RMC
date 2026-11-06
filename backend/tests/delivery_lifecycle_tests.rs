@@ -1,3 +1,4 @@
+mod support;
 use sqlx::PgPool;
 use trackmyrmc_backend::{
     error::AppError,
@@ -49,6 +50,7 @@ async fn produced_load_requires_challan_gate_pass_and_finishes_delivery(pool: Pg
         .execute(&pool)
         .await
         .unwrap();
+    support::approve_fixture_assignments(&pool).await;
     let operator_user = trackmyrmc_backend::auth::AuthUser {
         user_id: operator,
         role: "operator".into(),
@@ -892,7 +894,8 @@ async fn revoked_billing_edit_blocks_invoice_and_payment_aliases_without_writes(
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::query("INSERT INTO plant_staff_module_permissions(plant_id,user_id,module_key,can_view,can_edit,can_approve,updated_by) VALUES($1,$2,'billing_ledger',TRUE,FALSE,FALSE,$3)")
+        support::approve_fixture_assignments(&pool).await;
+        sqlx::query("INSERT INTO plant_staff_module_permissions(plant_id,user_id,module_key,can_view,can_edit,can_approve,updated_by) VALUES($1,$2,'billing_ledger',TRUE,FALSE,FALSE,$3) ON CONFLICT(plant_id,user_id,module_key) DO UPDATE SET can_view=TRUE,can_edit=FALSE,can_create=FALSE,can_approve=FALSE")
             .bind(plant).bind(staff).bind(owner).execute(&pool).await.unwrap();
         let token =
             generate_token(staff, role, "test", None, &app_state.config.jwt_secret, 1).unwrap();
@@ -1145,6 +1148,7 @@ async fn payroll_requires_separate_roles_and_posts_expense_once_before_immutable
     let accountant:Uuid=sqlx::query_scalar("INSERT INTO users(phone,hashed_password,full_name,role) VALUES('pay-accountant','unused','Payroll Accountant','accountant') RETURNING id").fetch_one(&pool).await.unwrap();
     let employee:Uuid=sqlx::query_scalar("INSERT INTO users(phone,hashed_password,full_name,role) VALUES('pay-driver','unused','Original Employee','driver') RETURNING id").fetch_one(&pool).await.unwrap();
     sqlx::query("INSERT INTO plant_staff(plant_id,user_id,role) VALUES($1,$2,'accountant'),($1,$3,'driver')").bind(plant).bind(accountant).bind(employee).execute(&pool).await.unwrap();
+    support::approve_fixture_assignments(&pool).await;
     let app = state(pool.clone());
     let owner = AuthUser {
         user_id: owner_id,

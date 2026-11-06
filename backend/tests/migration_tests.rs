@@ -181,7 +181,7 @@ async fn late_session_migrations_apply_after_existing_rfq_version_44(pool: sqlx:
     let deployed = sqlx::migrate::Migrator {
         migrations: Cow::Owned(
             all.iter()
-                .filter(|migration| !matches!(migration.version, 42 | 43 | 45))
+                .filter(|migration| !matches!(migration.version, 42 | 43 | 45 | 46))
                 .cloned()
                 .collect(),
         ),
@@ -226,7 +226,7 @@ async fn late_session_migrations_apply_after_existing_rfq_version_44(pool: sqlx:
     all.run(&pool)
         .await
         .expect("pending session and refresh migrations must apply after version 44");
-    for version in [42_i64, 43, 45] {
+    for version in [42_i64, 43, 45, 46] {
         let applied: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM _sqlx_migrations WHERE version=$1 AND success=TRUE)",
         )
@@ -251,7 +251,7 @@ async fn late_session_migrations_apply_after_existing_rfq_version_44(pool: sqlx:
             .unwrap();
     assert_eq!(customer_before, customer_after);
     let history_after: Vec<(i64, Vec<u8>)> = sqlx::query_as(
-        "SELECT version,checksum FROM _sqlx_migrations WHERE version NOT IN (42,43,45) ORDER BY version",
+        "SELECT version,checksum FROM _sqlx_migrations WHERE version NOT IN (42,43,45,46) ORDER BY version",
     )
     .fetch_all(&pool)
     .await
@@ -275,7 +275,7 @@ async fn duplicate_slots_abort_upgrade_without_record_loss(pool: sqlx::PgPool) {
     let baseline = sqlx::migrate::Migrator {
         migrations: Cow::Owned(
             all.iter()
-                .filter(|migration| !matches!(migration.version, 42 | 43 | 45))
+                .filter(|migration| !matches!(migration.version, 42 | 43 | 45 | 46))
                 .cloned()
                 .collect(),
         ),
@@ -341,4 +341,110 @@ async fn duplicate_slots_abort_upgrade_without_record_loss(pool: sqlx::PgPool) {
     .await
     .unwrap();
     assert!(!partial_schema);
+}
+
+#[sqlx::test(migrations = false)]
+async fn case_conflicts_abort_lifecycle_upgrade_without_rewriting_history(pool: sqlx::PgPool) {
+    use std::borrow::Cow;
+    let all = sqlx::migrate!("./migrations");
+    let baseline = sqlx::migrate::Migrator {
+        migrations: Cow::Owned(all.iter().filter(|m| m.version < 46).cloned().collect()),
+        ..sqlx::migrate!("./migrations")
+    };
+    baseline.run(&pool).await.unwrap();
+    let first:uuid::Uuid=sqlx::query_scalar("INSERT INTO users(phone,email,hashed_password,full_name,role) VALUES('case-ci-1','Employee@example.invalid','unused','First CI identity','customer') RETURNING id").fetch_one(&pool).await.unwrap();
+    let second:uuid::Uuid=sqlx::query_scalar("INSERT INTO users(phone,email,hashed_password,full_name,role) VALUES('case-ci-2','employee@example.invalid','unused','Second CI identity','customer') RETURNING id").fetch_one(&pool).await.unwrap();
+    let before: Vec<(i64, Vec<u8>)> =
+        sqlx::query_as("SELECT version,checksum FROM _sqlx_migrations ORDER BY version")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert!(
+        all.run(&pool).await.is_err(),
+        "Case collisions require operator review"
+    );
+    let after: Vec<(i64, Vec<u8>)> =
+        sqlx::query_as("SELECT version,checksum FROM _sqlx_migrations ORDER BY version")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(before, after);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users WHERE id=ANY($1)")
+            .bind(vec![first, second])
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        2
+    );
+    let partially_added:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='work_email_verified_at')").fetch_one(&pool).await.unwrap();
+    assert!(
+        !partially_added,
+        "Failed migration must roll back all its DDL"
+    );
+    // Explicit operator-reviewed correction in a disposable fixture, never an
+    // application-side conflict resolver or deletion of either identity.
+    sqlx::query("UPDATE users SET email='reviewed-second@example.invalid' WHERE id=$1")
+        .bind(second)
+        .execute(&pool)
+        .await
+        .unwrap();
+    all.run(&pool).await.unwrap();
+    all.run(&pool).await.unwrap();
+    let unchanged: Vec<(i64, Vec<u8>)> = sqlx::query_as(
+        "SELECT version,checksum FROM _sqlx_migrations WHERE version<46 ORDER BY version",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(before, unchanged);
+}
+
+#[sqlx::test(migrations = false)]
+async fn lifecycle_upgrade_materializes_legacy_policy_and_preserves_explicit_denials(
+    pool: sqlx::PgPool,
+) {
+    use std::borrow::Cow;
+    use trackmyrmc_backend::routes::{
+        staff_lifecycle::ROLES,
+        staff_module_permissions::{role_ceiling, ALL_KEYS},
+    };
+    let all = sqlx::migrate!("./migrations");
+    let baseline = sqlx::migrate::Migrator {
+        migrations: Cow::Owned(all.iter().filter(|m| m.version < 46).cloned().collect()),
+        ..sqlx::migrate!("./migrations")
+    };
+    baseline.run(&pool).await.unwrap();
+    let owner:uuid::Uuid=sqlx::query_scalar("INSERT INTO users(phone,hashed_password,full_name,role) VALUES('legacy-policy-owner','unused','Owner','owner') RETURNING id").fetch_one(&pool).await.unwrap();
+    let plant:uuid::Uuid=sqlx::query_scalar("INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,address_line,city,state,pincode,contact_phone) VALUES($1,'Legacy policy','LEGACY-POLICY',0,0,'CI','CI','CI','0','0') RETURNING id").bind(owner).fetch_one(&pool).await.unwrap();
+    let mut identities = Vec::new();
+    for (i, role) in ROLES.iter().enumerate() {
+        let staff:uuid::Uuid=sqlx::query_scalar("INSERT INTO users(phone,hashed_password,full_name,role) VALUES($1,'unused','Legacy staff',$2) RETURNING id").bind(format!("policy-ci-{i}")).bind(role).fetch_one(&pool).await.unwrap();
+        sqlx::query("INSERT INTO plant_staff(plant_id,user_id,role) VALUES($1,$2,$3)")
+            .bind(plant)
+            .bind(staff)
+            .bind(role)
+            .execute(&pool)
+            .await
+            .unwrap();
+        identities.push((staff, *role));
+    }
+    sqlx::query("INSERT INTO plant_staff_module_permissions(plant_id,user_id,module_key,can_view,can_edit,can_approve,updated_by) VALUES($1,$2,'dispatch_queue',FALSE,FALSE,FALSE,$3)").bind(plant).bind(identities[0].0).bind(owner).execute(&pool).await.unwrap();
+    all.run(&pool).await.unwrap();
+    for (staff, role) in identities {
+        for key in ALL_KEYS {
+            let grant:Option<(bool,bool,bool)>=sqlx::query_as("SELECT can_view,can_edit,can_create FROM plant_staff_module_permissions WHERE plant_id=$1 AND user_id=$2 AND module_key=$3").bind(plant).bind(staff).bind(key).fetch_optional(&pool).await.unwrap();
+            if role == "dispatcher" && key == "dispatch_queue" {
+                assert_eq!(grant, Some((false, false, false)));
+                continue;
+            }
+            let expected = role_ceiling(role, key)
+                .filter(|g| g.view)
+                .map(|g| (g.view, g.edit, g.create));
+            assert_eq!(
+                grant, expected,
+                "Legacy role policy changed for {role}/{key}"
+            );
+        }
+    }
 }

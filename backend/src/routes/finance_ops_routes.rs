@@ -73,7 +73,7 @@ pub async fn create_plant_quotation(
         &auth_user,
         plant_id,
         "quotations",
-        super::staff_module_permissions::Action::Edit,
+        super::staff_module_permissions::Action::Create,
     )
     .await?;
     Ok(Json(

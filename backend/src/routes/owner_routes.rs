@@ -2,7 +2,6 @@ use crate::{
     auth::{middleware::check_role, AuthUser},
     error::AppError,
     models::plant::CreatePlantRequest,
-    repositories::plant_repo,
     state::AppState,
 };
 use axum::{
@@ -80,32 +79,16 @@ pub async fn list_owner_plants(
     Ok(Json(json!({ "success": true, "plants": plants })))
 }
 
+/// Compatibility endpoint: additional plants require reviewed onboarding.
+/// An operational Owner/Admin session cannot issue approved ownership.
 pub async fn create_plant(
-    State(state): State<AppState>,
-    auth_user: AuthUser,
-    Json(req): Json<CreatePlantRequest>,
-) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
-    let plant = plant_repo::create_plant(
-        &state.db,
-        crate::repositories::plant_repo::NewPlant {
-            owner_id: auth_user.user_id,
-            name: &req.name,
-            code: &req.code,
-            lat: req.latitude,
-            lng: req.longitude,
-            address_line: &req.address_line,
-            city: &req.city,
-            state: &req.state,
-            pincode: &req.pincode,
-            contact_phone: &req.contact_phone,
-            contact_email: req.contact_email.as_deref(),
-            capacity: req.capacity_m3_per_hr.unwrap_or(60.0),
-        },
-    )
-    .await?;
-
-    Ok(Json(json!({ "success": true, "plant": plant })))
+    State(_state): State<AppState>,
+    _auth_user: AuthUser,
+    Json(_req): Json<CreatePlantRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    Err(AppError::Forbidden(
+        "Submit plant onboarding for Control Center approval before creating an owned plant".into(),
+    ))
 }
 
 pub async fn get_billing_overview(
