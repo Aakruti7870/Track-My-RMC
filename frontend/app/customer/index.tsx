@@ -86,15 +86,15 @@ export default function CustomerHome() {
   // Four circular shortcuts match the reference's visual hierarchy; all original
   // actions, 52 dp vector artwork and KYC guards remain unchanged.
   const quickActions = (
-    <View testID="home-quick-actions" style={[styles.groupCard, styles.tightGroup]}>
+    <View testID="home-quick-actions" style={[styles.groupCard, styles.tightGroup, styles.quickActionsGroup]}>
       <View style={styles.sectionHeaderRow}>
         <AppText style={[styles.sectionTitle, { color: colors.onSurface }]}>Quick Actions</AppText>
-        <View style={styles.slogan} accessibilityLabel="Built Better">
+        <View style={[styles.slogan, { backgroundColor: colors.verified + "14" }]} accessibilityLabel="Built Better">
           <Ionicons name="shield-checkmark" size={19} color={colors.verified} />
           <AppText style={[styles.sloganText, { color: colors.verified }]}>Built Better</AppText>
         </View>
       </View>
-      <View style={styles.grid} onLayout={event => {
+      <View style={[styles.grid, styles.quickGrid]} onLayout={event => {
         const width = event.nativeEvent.layout.width;
         setQuickGridWidth(previous => Math.abs(previous - width) > 1 ? width : previous);
       }}>
@@ -286,21 +286,25 @@ const styles = StyleSheet.create({
   groupCard: { width: "100%", maxWidth: 620, alignSelf: "center", paddingHorizontal: 0, paddingVertical: 0, gap: 4 },
   homeAboveFold: { width: "100%", gap: 4 },
   tightGroup: { paddingVertical: 0, gap: 0 },
-  sectionHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8, minHeight: 30 },
+  sectionHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8, minHeight: 20 },
+  // 19+20+9+96+16 = 160dp on four-column phone layouts. The surrounding
+  // 4dp carousel gap yields about 23dp from banner to header text.
+  quickActionsGroup: { paddingTop: 19, paddingBottom: 16 },
+  quickGrid: { marginTop: 9 },
   sectionTitle: { fontFamily: "Roboto", fontWeight: "700", fontSize: 14, lineHeight: 20, paddingHorizontal: 2 },
-  slogan: { flexDirection: "row", alignItems: "center", gap: 5, paddingRight: 2 },
+  slogan: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, width: 106, minHeight: 28, borderRadius: 14, paddingHorizontal: 5 },
   sloganText: { fontFamily: "Roboto", fontWeight: "700", fontSize: 14, lineHeight: 20 },
   grid: { flexDirection: "row", flexWrap: "wrap", width: "100%", justifyContent: "space-between", rowGap: 4 },
   tile: { alignItems: "center", justifyContent: "center", paddingHorizontal: 1, paddingVertical: 2, gap: 4 },
-  quickTile: { minHeight: 98, paddingVertical: 3, gap: 5, borderWidth: 0 },
+  quickTile: { minHeight: 96, paddingVertical: 0, gap: 8, borderWidth: 0 },
   quickCircle: { width: 56, height: 56, borderRadius: 28, overflow: "hidden", borderWidth: 1, alignItems: "center", justifyContent: "center" },
-  quickLabel: { fontFamily: fonts.semibold, fontSize: 12, lineHeight: 15, textAlign: "center", minHeight: 30 },
+  quickLabel: { fontFamily: "Roboto", fontWeight: "400", fontSize: 14, lineHeight: 16, textAlign: "center", minHeight: 32 },
   toolTile: { minHeight: 101, paddingVertical: 0, gap: 4, justifyContent: "flex-start" },
   toolPlate: { width: "100%", height: 56, borderRadius: radius.md, borderWidth: 1, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   tileLabel: { fontFamily: fonts.semibold, fontSize: 11, lineHeight: 13, textAlign: "center" },
   // The 65% and 28% cards leave a 7% responsive gap without unsupported percentage "gap" styles.
-  promoRow: { flexDirection: "row", justifyContent: "space-between", width: "100%", maxWidth: 620, alignSelf: "center" },
-  promoCard: { minWidth: 0, minHeight: 36, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, borderWidth: 1, borderRadius: 6, paddingHorizontal: 4, paddingVertical: 4 },
+  promoRow: { flexDirection: "row", justifyContent: "space-between", width: "100%", maxWidth: 620, alignSelf: "center", minHeight: 52, paddingVertical: 7 },
+  promoCard: { minWidth: 0, minHeight: 38, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, borderWidth: 1, borderRadius: 6, paddingHorizontal: 4, paddingVertical: 4 },
   promoPrimaryCard: { width: "65%" },
   // Stack the 32dp clock above its caption; a horizontal 32dp icon and 12sp
   // label cannot fit together inside 28% of a 320dp phone layout.
