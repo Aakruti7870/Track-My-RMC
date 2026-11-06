@@ -460,6 +460,16 @@ pub async fn cancel_order(
     }
 
     if status != "cancelled" {
+        // Never cancel an already-confirmed prepaid order without a separate
+        // financial refund/reconciliation decision. This also protects retries.
+        let prepaid_verified: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM cashfree_rmc_prepaid_intents WHERE order_id=$1 AND status IN ('VERIFIED','HOLD_REFUND_REVIEW'))"
+        ).bind(order_id).fetch_one(&mut *tx).await?;
+        if prepaid_verified {
+            return Err(AppError::Conflict(
+                "Prepaid order requires refund assessment by authorized support before cancellation".into()
+            ));
+        }
         sqlx::query("UPDATE orders SET status = 'cancelled', updated_at = NOW() WHERE id = $1")
             .bind(order_id)
             .execute(&mut *tx)
