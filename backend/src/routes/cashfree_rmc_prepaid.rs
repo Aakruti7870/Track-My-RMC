@@ -156,6 +156,30 @@ fn check_order_identity(
     Ok(())
 }
 
+// Bind every successful gateway payment to the exact Cashfree order and INR
+// amount. A paid order summary alone is not sufficient transaction evidence.
+fn successful_payment_id(payment: &Value, gateway_id: &str, payable: f64) -> Option<String> {
+    if payment["payment_status"].as_str() != Some("SUCCESS")
+        || payment["order_id"].as_str() != Some(gateway_id)
+        || payment["payment_currency"].as_str() != Some("INR")
+        || !payment["payment_amount"]
+            .as_f64()
+            .is_some_and(|amount| (amount - payable).abs() < 0.001)
+    {
+        return None;
+    }
+    payment["cf_payment_id"]
+        .as_u64()
+        .filter(|id| *id > 0)
+        .map(|id| id.to_string())
+        .or_else(|| {
+            payment["cf_payment_id"]
+                .as_str()
+                .filter(|id| !id.is_empty() && id.bytes().all(|byte| byte.is_ascii_digit()))
+                .map(str::to_owned)
+        })
+}
+
 async fn fetch_cashfree(
     client: &Client,
     keys: &(String, String),
@@ -364,15 +388,8 @@ async fn reconcile(
         payments
             .as_array()
             .and_then(|items| {
-                items.iter().find(|p| {
-                    p["payment_status"].as_str() == Some("SUCCESS")
-                        && p["payment_amount"]
-                            .as_f64()
-                            .is_some_and(|a| (a - payable).abs() < 0.001)
-                        && p["payment_currency"].as_str().is_none_or(|s| s == "INR")
-                })
+                items.iter().find_map(|payment| successful_payment_id(payment, &gateway, payable))
             })
-            .and_then(|p| p["cf_payment_id"].as_i64().map(|id| id.to_string()))
             .ok_or_else(|| {
                 AppError::Conflict(
                     "Cashfree PAID status lacks a matching successful payment".into(),
@@ -522,6 +539,43 @@ mod tests {
         corrupt = good.clone();
         corrupt["order_amount"] = json!(101.0);
         assert!(check_order_identity(&corrupt, "trmc_rmc_good", 100.0, "plant_1").is_err());
+    }
+    #[test]
+    fn payment_proof_must_match_gateway_order_currency_and_amount() {
+        let good = json!({
+            "order_id": "trmc_rmc_expected",
+            "payment_status": "SUCCESS",
+            "payment_currency": "INR",
+            "payment_amount": 100.0,
+            "cf_payment_id": 987654321_i64,
+        });
+        assert_eq!(
+            successful_payment_id(&good, "trmc_rmc_expected", 100.0).as_deref(),
+            Some("987654321")
+        );
+        let mut changed = good.clone();
+        changed["order_id"] = json!("trmc_rmc_another_order");
+        assert!(successful_payment_id(&changed, "trmc_rmc_expected", 100.0).is_none());
+        changed = good.clone();
+        changed["payment_currency"] = json!("USD");
+        assert!(successful_payment_id(&changed, "trmc_rmc_expected", 100.0).is_none());
+        changed = good.clone();
+        changed.as_object_mut().unwrap().remove("payment_currency");
+        assert!(successful_payment_id(&changed, "trmc_rmc_expected", 100.0).is_none());
+        changed = good.clone();
+        changed["payment_status"] = json!("PENDING");
+        assert!(successful_payment_id(&changed, "trmc_rmc_expected", 100.0).is_none());
+        changed = good.clone();
+        changed["payment_amount"] = json!(99.99);
+        assert!(successful_payment_id(&changed, "trmc_rmc_expected", 100.0).is_none());
+        changed = good.clone();
+        changed["cf_payment_id"] = json!("987654321");
+        assert_eq!(
+            successful_payment_id(&changed, "trmc_rmc_expected", 100.0).as_deref(),
+            Some("987654321")
+        );
+        changed["cf_payment_id"] = json!("unverified");
+        assert!(successful_payment_id(&changed, "trmc_rmc_expected", 100.0).is_none());
     }
     #[test]
     fn signed_raw_webhook_rejects_tampering_and_expired_timestamp() {
