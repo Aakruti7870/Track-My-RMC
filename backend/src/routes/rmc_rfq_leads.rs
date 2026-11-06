@@ -244,16 +244,32 @@ pub async fn create(
         ));
     }
     let mut tx = state.db.begin().await?;
-    let lead_id: Uuid = sqlx::query_scalar(
+    let inserted: Option<Uuid> = sqlx::query_scalar(
         "INSERT INTO rmc_rfq_leads(customer_id,request_key,google_place_id,customer_name,customer_email,customer_gstin,grade,quantity_m3,site_address,site_lat,site_lng,delivery_date,pump_required,site_contact_phone,sharing_consent_at,status)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW(),'PENDING_SUPPLIER') RETURNING id"
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW(),'PENDING_SUPPLIER')
+         ON CONFLICT(customer_id,request_key) DO NOTHING RETURNING id"
     )
     .bind(auth.user_id).bind(payload.request_key).bind(payload.google_place_id.as_deref())
     .bind(payload.customer_name.trim()).bind(payload.customer_email.as_deref())
     .bind(payload.customer_gstin.as_deref()).bind(crate::services::customer_order::canonical_grade(&payload.grade))
     .bind(payload.quantity_m3).bind(payload.site_address.trim()).bind(payload.site_lat).bind(payload.site_lng)
     .bind(payload.delivery_date).bind(payload.pump_required).bind(payload.site_contact_phone.trim())
-    .fetch_one(&mut *tx).await?;
+    .fetch_optional(&mut *tx).await?;
+    let lead_id = match inserted {
+        Some(id) => id,
+        None => {
+            let existing: (Uuid, String, Option<Uuid>) = sqlx::query_as(
+                "SELECT id,status,canonical_request_id FROM rmc_rfq_leads
+                 WHERE customer_id=$1 AND request_key=$2"
+            )
+            .bind(auth.user_id).bind(payload.request_key)
+            .fetch_one(&mut *tx).await?;
+            return Ok(Json(json!({
+                "id":existing.0,"status":existing.1,
+                "canonical_request_id":existing.2,"idempotent_replay":true
+            })));
+        }
+    };
     sqlx::query(
         "INSERT INTO notifications(user_id,title,body,notification_type,reference_id)
          SELECT id,'New RMC supplier enquiry',$1,'rmc_rfq_lead',$2 FROM users WHERE role='admin' AND is_active"
