@@ -168,6 +168,8 @@ pub async fn set_owner_rule(
     Path((plant,key)): Path<(Uuid,String)>,
     Json(body): Json<PlantRule>,
 ) -> Result<Json<Value>, AppError> {
+    // Managers and staff can never activate rules, even if they hold delegation.
+    super::plant_staff_manager::require_owner(&state, &owner, plant).await?;
     let mut tx = state.db.begin().await?;
     // Hold live active-Owner authorization until the configuration commits.
     super::plant_staff_manager::lock_authorization(&mut tx, &owner, plant, "staff").await?;
