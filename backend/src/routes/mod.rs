@@ -1217,6 +1217,18 @@ pub fn build_app_router(state: AppState) -> Router {
             get(native_automation_routes::admin_health),
         )
         .route(
+            "/api/control-center/automation/jobs/:job_id/requeue",
+            post(native_automation_routes::admin_requeue_dead_letter),
+        )
+        .route(
+            "/api/owner/plants/:plant_id/automation/tasks",
+            get(native_automation_routes::owner_tasks),
+        )
+        .route(
+            "/api/owner/plants/:plant_id/automation/history",
+            get(native_automation_routes::owner_history),
+        )
+        .route(
             "/api/owner/plants/:plant_id/automation/rules",
             get(native_automation_routes::owner_rules),
         )
