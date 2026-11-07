@@ -249,7 +249,7 @@ pub(crate) async fn rotate_password(
          step_up_window_started_at=CASE WHEN step_up_window_started_at<NOW()-INTERVAL '5 minutes'
          THEN NOW() ELSE step_up_window_started_at END
          WHERE user_id=$1 AND token_hash=$2 AND revoked_at IS NULL AND expires_at>NOW()
-         RETURNING step_up_attempts"
+         RETURNING step_up_attempts",
     )
     .bind(user_id)
     .bind(session_hash)
@@ -257,11 +257,13 @@ pub(crate) async fn rotate_password(
     .await?
     .ok_or_else(|| AppError::Unauthorized("Privileged session expired".into()))?;
     if attempts > 5 {
-        return Err(AppError::Forbidden("Credential rotation temporarily locked".into()));
+        return Err(AppError::Forbidden(
+            "Credential rotation temporarily locked".into(),
+        ));
     }
     let original: String = sqlx::query_scalar(
         "SELECT hashed_password FROM users WHERE id=$1 AND is_active
-         AND role IN ('central_admin','authority')"
+         AND role IN ('central_admin','authority')",
     )
     .bind(user_id)
     .fetch_optional(&state.db)
@@ -271,7 +273,9 @@ pub(crate) async fn rotate_password(
         || !crate::auth::password::verify_password(&body.current_password, &original)
             .unwrap_or(false)
     {
-        return Err(AppError::Unauthorized("Current credentials are invalid".into()));
+        return Err(AppError::Unauthorized(
+            "Current credentials are invalid".into(),
+        ));
     }
     crate::auth::totp::verify_staff_totp_login(&state.db, user_id, &body.code).await?;
     let replacement = crate::auth::password::hash_password(&body.new_password)?;
@@ -279,7 +283,7 @@ pub(crate) async fn rotate_password(
     let updated = sqlx::query(
         "UPDATE users SET hashed_password=$2,active_session_jti=NULL,
          auth_revoked_at=clock_timestamp(),updated_at=NOW()
-         WHERE id=$1 AND hashed_password=$3 AND is_active"
+         WHERE id=$1 AND hashed_password=$3 AND is_active",
     )
     .bind(user_id)
     .bind(replacement)
@@ -287,11 +291,13 @@ pub(crate) async fn rotate_password(
     .execute(&mut *tx)
     .await?;
     if updated.rows_affected() != 1 {
-        return Err(AppError::Conflict("Credential state changed; restart rotation".into()));
+        return Err(AppError::Conflict(
+            "Credential state changed; restart rotation".into(),
+        ));
     }
     sqlx::query(
         "UPDATE control_center_sessions SET revoked_at=clock_timestamp()
-         WHERE user_id=$1 AND revoked_at IS NULL"
+         WHERE user_id=$1 AND revoked_at IS NULL",
     )
     .bind(user_id)
     .execute(&mut *tx)
@@ -306,7 +312,7 @@ pub(crate) async fn rotate_password(
         .await?;
     sqlx::query(
         "INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata)
-         VALUES($1,'control_center.password.rotated','privileged_user',$2,$3)"
+         VALUES($1,'control_center.password.rotated','privileged_user',$2,$3)",
     )
     .bind(user_id)
     .bind(user_id.to_string())
