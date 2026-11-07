@@ -66,7 +66,7 @@ async fn verified_outcome(
             .await?;
             Ok(replenished
                 .filter(|value| *value)
-                .map(|_| ("RESOLVED", "STOCK_REPLENISHED")))
+                .map(|_| ("RESOLVED", "STOCK_ABOVE_MIN")))
         }
         WORKFORCE => {
             let status: Option<String> = sqlx::query_scalar(
@@ -155,6 +155,7 @@ pub async fn reconcile(db: &PgPool) -> Result<usize, sqlx::Error> {
                  JOIN native_automation_plant_rules r ON r.plant_id=p.id
                  JOIN native_automation_templates t ON t.template_key=r.template_key
                  WHERE p.id=$1 AND r.template_key=$2 AND p.is_active AND r.enabled
+                   AND u.role IN ('owner','plant_owner')
                    AND t.published AND NOT t.globally_paused
                    AND t.action_type='CREATE_DOMAIN_REVIEW'
                  FOR SHARE OF p,u,r,t",
