@@ -693,6 +693,8 @@ function CommandCenter() {
             <input id="mfa-code" type="text" autoComplete="one-time-code" required maxLength={16}
               value={mfaCode} onChange={(event) => setMfaCode(event.target.value)} style={inputStyle} disabled={busy} />
             <button type="submit" disabled={busy} style={buttonStyle}>{busy ? 'Verifying…' : 'Verify MFA and sign in'}</button>
+            <button type="button" onClick={()=>{setStage('authority-login');setMfaCode('');setChallengeToken('');setError('');}}
+              style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Authority enrolled? Continue to dedicated Authority sign in</button>
           </form>
         )}
 
@@ -701,7 +703,7 @@ function CommandCenter() {
             <div style={{ marginTop: 20, padding: 16, border: '1px solid #334155', borderRadius: 10, background: '#111827' }}>
               <p style={{ margin: '0 0 8px' }}><strong>Signed in as</strong> {user.full_name || user.email || user.phone || 'Staff user'}</p>
               <p style={{ margin: '0 0 8px' }}><strong>Role</strong> {user.role}</p>
-              <p style={{ margin: 0 }}><strong>Session</strong> {user.role === 'central_admin' ? 'Dedicated web authenticator session' : 'Email OTP + MFA verified'}</p>
+              <p style={{ margin: 0 }}><strong>Session</strong> {user.role === 'central_admin' || user.role === 'authority' ? 'Dedicated one-hour web authenticator session' : 'Email OTP + MFA verified'}</p>
             </div>
             <div style={{ marginTop: 14, padding: 16, border: '1px solid #334155', borderRadius: 10 }}>
               <h2 style={{ marginTop: 0, fontSize: 18 }}>Service health</h2>
@@ -794,6 +796,62 @@ function CommandCenter() {
                     </div>)}
                     {!automationJobs.length && <p style={{fontSize:12,color:'#94a3b8'}}>No executions recorded.</p>}
                   </div>}
+                </>}
+              </section>
+            )}
+
+            {user.role === 'central_admin' && permissions.includes('admin_access.manage') && (
+              <section aria-label="Authority governance" style={{marginTop:18,padding:16,border:'1px solid #334155',borderRadius:12}}>
+                <h2 style={{margin:'0 0 6px',fontSize:19}}>Authority Access Governance</h2>
+                <p style={{fontSize:13,color:'#cbd5e1',lineHeight:1.5}}>
+                  Issue or revoke separate web-only Authority identities. Delegation never grants Central Admin,
+                  payments, reviewer settings, platform automation policy or session administration.
+                </p>
+                <button type="button" disabled={busy} onClick={()=>void loadAuthorityAccounts()} style={buttonStyle}>
+                  {showAuthorityAccounts?'Refresh Authority accounts':'Manage Authority accounts'}
+                </button>
+                {showAuthorityAccounts && <>
+                  <div style={{display:'grid',gap:9,margin:'12px 0'}}>
+                    {authorityAccounts.map(account=><article key={account.id} style={{border:'1px solid #475569',borderRadius:10,padding:12,background:'#111827'}}>
+                      <strong>{account.full_name}</strong><div style={{fontSize:13,color:'#cbd5e1'}}>{account.email}</div>
+                      <div style={{fontSize:12,marginTop:5}}>{account.enabled?'Approved':'Disabled'} · MFA {account.mfa_enrolled?'enrolled':'not enrolled'} · {account.permissions.join(', ')||'No grants'}</div>
+                      <button type="button" disabled={busy} onClick={()=>{
+                        setAuthorityEmail(account.email||'');setAuthorityName(account.full_name||'');
+                        setAuthorityEnabled(account.enabled);setAuthorityGrants(account.permissions);
+                        setAuthorityReason('');setAuthorityAdminCode('');
+                      }} style={{...buttonStyle,width:'auto',background:'#334155'}}>Edit delegation</button>
+                    </article>)}
+                    {!authorityAccounts.length && <p>No Authority accounts provisioned. Create an approved identity below.</p>}
+                  </div>
+                  <form onSubmit={saveAuthorityAccount} style={{display:'grid',gap:10}}>
+                    <h3 style={{fontSize:16,margin:'6px 0'}}>Issue / update Authority access</h3>
+                    <label>Work email<input required type="email" autoComplete="off" value={authorityEmail}
+                      onChange={e=>setAuthorityEmail(e.target.value)} style={inputStyle} disabled={busy}/></label>
+                    <label>Full name<input required minLength={2} maxLength={100} value={authorityName}
+                      onChange={e=>setAuthorityName(e.target.value)} style={inputStyle} disabled={busy}/></label>
+                    <label style={{display:'flex',gap:9,alignItems:'center'}}>
+                      <input type="checkbox" checked={authorityEnabled} onChange={e=>setAuthorityEnabled(e.target.checked)} disabled={busy}/>
+                      Approved / active
+                    </label>
+                    <fieldset style={{border:'1px solid #475569',borderRadius:8,display:'grid',gap:7}}>
+                      <legend>Explicit delegation</legend>
+                      {AUTHORITY_GRANTS.map(grant=><label key={grant.key} style={{display:'flex',gap:9,alignItems:'center',fontSize:13}}>
+                        <input type="checkbox" checked={authorityGrants.includes(grant.key)} disabled={busy}
+                          onChange={e=>setAuthorityGrants(old=>e.target.checked?[...old,grant.key]:old.filter(p=>p!==grant.key))}/>
+                        {grant.label}
+                      </label>)}
+                    </fieldset>
+                    <label>Reason for access change<input required minLength={10} maxLength={500} value={authorityReason}
+                      onChange={e=>setAuthorityReason(e.target.value)} style={inputStyle} disabled={busy}/></label>
+                    <label>Fresh Central Admin authenticator code<input required inputMode="numeric" pattern="[0-9]{6}"
+                      maxLength={6} type="password" value={authorityAdminCode} onChange={e=>setAuthorityAdminCode(e.target.value)}
+                      style={inputStyle} autoComplete="off" disabled={busy}/></label>
+                    <button type="submit" disabled={busy} style={buttonStyle}>Save grants and revoke previous sessions</button>
+                  </form>
+                  <p style={{fontSize:12,color:'#94a3b8'}}>
+                    First-time Authority login: use the approved email to enroll an authenticator on this web portal,
+                    then sign in via Delegated Authority. Never share authenticator recovery codes.
+                  </p>
                 </>}
               </section>
             )}
