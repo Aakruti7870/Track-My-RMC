@@ -26,6 +26,7 @@ pub struct TemplatePolicy {
 #[serde(deny_unknown_fields)]
 pub struct PlantRule {
     pub enabled: bool,
+    pub reminder_after_minutes: Option<i32>,
 }
 
 pub async fn admin_templates(
@@ -155,7 +156,8 @@ pub async fn owner_rules(
     let items: Vec<Value> = sqlx::query_scalar(
         "SELECT jsonb_build_object('key',t.template_key,'label',t.label,
                 'published',t.published,'globally_paused',t.globally_paused,
-                'enabled',COALESCE(r.enabled,FALSE))
+                'enabled',COALESCE(r.enabled,FALSE),
+                'reminder_after_minutes',COALESCE(r.reminder_after_minutes,60))
          FROM native_automation_templates t
          LEFT JOIN native_automation_plant_rules r
            ON r.plant_id=$1 AND r.template_key=t.template_key
@@ -175,6 +177,18 @@ pub async fn set_owner_rule(
 ) -> Result<Json<Value>, AppError> {
     // Managers and staff can never activate rules, even if they hold delegation.
     super::plant_staff_manager::require_owner(&state, &owner, plant).await?;
+    if body.reminder_after_minutes.is_some_and(|n| !(15..=1440).contains(&n)) {
+        return Err(AppError::BadRequest(
+            "Reminder interval must be between 15 and 1440 minutes".into(),
+        ));
+    }
+    if body.reminder_after_minutes.is_some()
+        && key != crate::services::native_automation::PENDING_REMINDER
+    {
+        return Err(AppError::BadRequest(
+            "Only the pending-order reminder accepts an interval".into(),
+        ));
+    }
     let mut tx = state.db.begin().await?;
     // Hold live active-Owner authorization until the configuration commits.
     super::plant_staff_manager::lock_authorization(&mut tx, &owner, plant, "staff").await?;
@@ -195,16 +209,18 @@ pub async fn set_owner_rule(
 
     sqlx::query(
         "INSERT INTO native_automation_plant_rules
-         (plant_id,template_key,enabled,updated_by)
-         VALUES($1,$2,$3,$4)
+         (plant_id,template_key,enabled,updated_by,reminder_after_minutes)
+         VALUES($1,$2,$3,$4,COALESCE($5,60))
          ON CONFLICT (plant_id,template_key)
          DO UPDATE SET enabled=EXCLUDED.enabled,
+            reminder_after_minutes=COALESCE($5,native_automation_plant_rules.reminder_after_minutes),
             updated_by=EXCLUDED.updated_by,updated_at=NOW()",
     )
     .bind(plant)
     .bind(&key)
     .bind(body.enabled)
     .bind(owner.user_id)
+    .bind(body.reminder_after_minutes)
     .execute(&mut *tx)
     .await?;
     sqlx::query(
@@ -213,10 +229,101 @@ pub async fn set_owner_rule(
     )
     .bind(owner.user_id)
     .bind(plant.to_string())
-    .bind(json!({"template_key":key,"enabled":body.enabled}))
+    .bind(json!({"template_key":key,"enabled":body.enabled,
+                     "reminder_after_minutes":body.reminder_after_minutes}))
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
     Ok(Json(json!({"success":true,"plant_id":plant,
                    "template_key":key,"enabled":body.enabled})))
+}
+
+ 
+/// Owner-only task inbox. The order remains actionable only through the
+/// existing order approval/rejection endpoints and existing role checks.
+pub async fn owner_tasks(
+    State(state): State<AppState>,
+    owner: AuthUser,
+    Path(plant): Path<Uuid>,
+) -> Result<Json<Value>, AppError> {
+    super::plant_staff_manager::require_owner(&state, &owner, plant).await?;
+    let items: Vec<Value> = sqlx::query_scalar(
+        "SELECT jsonb_build_object(
+             'id',t.id,'order_id',t.order_id,'order_number',o.order_number,
+             'task_kind',t.task_kind,'status',t.status,
+             'created_at',t.created_at,'resolved_at',t.resolved_at)
+         FROM native_automation_tasks t
+         JOIN orders o ON o.id=t.order_id AND o.plant_id=t.plant_id
+         WHERE t.plant_id=$1
+         ORDER BY (t.status='OPEN' AND o.status='pending') DESC,t.created_at DESC
+         LIMIT 100",
+    )
+    .bind(plant)
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(json!({"plant_id":plant,"tasks":items})))
+}
+
+/// Owner's read-only execution history, excluding other plants and customer PII.
+pub async fn owner_history(
+    State(state): State<AppState>,
+    owner: AuthUser,
+    Path(plant): Path<Uuid>,
+) -> Result<Json<Value>, AppError> {
+    super::plant_staff_manager::require_owner(&state, &owner, plant).await?;
+    let items: Vec<Value> = sqlx::query_scalar(
+        "SELECT jsonb_build_object(
+             'id',id,'order_id',order_id,'template_key',template_key,
+             'status',status,'attempts',attempts,'created_at',created_at,
+             'updated_at',updated_at)
+         FROM native_automation_jobs
+         WHERE plant_id=$1 ORDER BY created_at DESC LIMIT 100",
+    )
+    .bind(plant)
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(json!({"plant_id":plant,"jobs":items})))
+}
+
+/// Administrator-supervised retry is available only after a verified MFA
+/// step-up. Requeueing does not bypass the worker's live rule/plant checks.
+pub async fn admin_requeue_dead_letter(
+    State(state): State<AppState>,
+    admin: WebAdmin,
+    headers: HeaderMap,
+    Path(job): Path<Uuid>,
+) -> Result<Json<Value>, AppError> {
+    admin.require("automation.manage")?;
+    super::control_center_routes::require_recent_step_up(&state, &admin.user, &headers).await?;
+    let mut tx = state.db.begin().await?;
+    let status: Option<String> = sqlx::query_scalar(
+        "SELECT status FROM native_automation_jobs WHERE id=$1 FOR UPDATE",
+    )
+    .bind(job)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if status.as_deref() != Some("DEAD_LETTER") {
+        return Err(AppError::Conflict(
+            "Only dead-letter automation jobs can be requeued".into(),
+        ));
+    }
+    sqlx::query(
+        "UPDATE native_automation_jobs
+         SET status='RETRY',attempts=0,available_at=NOW(),last_error=NULL,updated_at=NOW()
+         WHERE id=$1",
+    )
+    .bind(job)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata)
+         VALUES($1,'automation.job.requeue','native_automation_job',$2,$3)",
+    )
+    .bind(admin.user_id)
+    .bind(job.to_string())
+    .bind(json!({"previous_status":"DEAD_LETTER"}))
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(json!({"success":true,"job_id":job,"status":"RETRY"})))
 }
