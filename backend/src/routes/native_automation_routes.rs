@@ -128,8 +128,7 @@ pub async fn admin_jobs(
     admin.require("audit.view")?;
     let items: Vec<Value> = sqlx::query_scalar(
         "SELECT jsonb_build_object(
-            'id',id,'plant_id',plant_id,'order_id',order_id,
-            'template_key',template_key,'status',status,
+            'id',id,'template_key',template_key,'status',status,
             'attempts',attempts,'available_at',available_at,'created_at',created_at,
             'updated_at',updated_at)
          FROM native_automation_jobs ORDER BY created_at DESC LIMIT 100",
