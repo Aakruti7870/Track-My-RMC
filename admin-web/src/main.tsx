@@ -125,6 +125,7 @@ function CommandCenter() {
   const [authorityReason,setAuthorityReason]=useState('');
   const [authorityAdminCode,setAuthorityAdminCode]=useState('');
   const [authorityReviewCode,setAuthorityReviewCode]=useState('');
+  const [authorityReviewReason,setAuthorityReviewReason]=useState('');
   const [centralKycReason,setCentralKycReason]=useState('');
   const [centralKycCode,setCentralKycCode]=useState('');
   const [supportCase,setSupportCase]=useState<Record<string,any>|null>(null);
@@ -488,10 +489,12 @@ function CommandCenter() {
   async function reviewAuthorityKyc(customerId:string, approve:boolean) {
     setBusy(true);setError('');
     try {
-      if (!/^[0-9]{6}$/.test(authorityReviewCode.trim())) throw new Error('Enter a fresh six-digit authenticator code.');
+      if (!/^[0-9]{6}$/.test(authorityReviewCode.trim()) || authorityReviewReason.trim().length<10 || authorityReviewReason.trim().length>500)
+        throw new Error('Enter a fresh six-digit authenticator code and a specific reason (10-500 characters).');
       await apiClient.post('/api/authority/auth/step-up',{code:authorityReviewCode.trim()});
-      await apiClient.post('/api/staff/customers/'+encodeURIComponent(customerId)+'/kyc/'+(approve?'approve':'reject'));
-      setAuthorityReviewCode('');
+      await apiClient.post('/api/staff/customers/'+encodeURIComponent(customerId)+'/kyc/'+(approve?'approve':'reject'),
+        {reason:authorityReviewReason.trim()});
+      setAuthorityReviewCode('');setAuthorityReviewReason('');
       setNotice('KYC decision recorded in the audit log.');
       const response=await apiClient.get('/api/authority/collections/kyc',{params:{limit:25,offset:0}});
       setRecords(response.data?.items||[]);setWorkspaceOffset(0);
@@ -1174,14 +1177,18 @@ function CommandCenter() {
                       <label>Fresh Authority authenticator code<input type="password" autoComplete="off"
                         inputMode="numeric" maxLength={6} pattern="[0-9]{6}" value={authorityReviewCode}
                         onChange={e=>setAuthorityReviewCode(e.target.value)} style={inputStyle} disabled={busy}/></label>
+                      <label>Decision reason for the audit log (10-500 characters)
+                        <textarea maxLength={500} rows={2} value={authorityReviewReason}
+                          onChange={e=>setAuthorityReviewReason(e.target.value)} style={inputStyle} disabled={busy}/>
+                      </label>
                       {records.map(row=><div key={String(row.customer_id)} style={{borderTop:'1px solid #334155',padding:'10px 0'}}>
                         <strong>{String(row.customer||'Customer')}</strong>
                         <p style={{fontSize:12}}>Verified name: {String(row.verified_name||'Missing')} · Provider evidence: {row.evidence_verified?'Confirmed':'Not confirmed'}</p>
                         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                          <button type="button" disabled={busy||authorityReviewCode.length!==6||!row.evidence_verified||!row.verified_name}
+                          <button type="button" disabled={busy||authorityReviewCode.length!==6||authorityReviewReason.trim().length<10||!row.evidence_verified||!row.verified_name}
                             onClick={()=>void reviewAuthorityKyc(String(row.customer_id),true)}
                             style={{...buttonStyle,width:'auto',background:'#166534'}}>Approve KYC</button>
-                          <button type="button" disabled={busy||authorityReviewCode.length!==6}
+                          <button type="button" disabled={busy||authorityReviewCode.length!==6||authorityReviewReason.trim().length<10}
                             onClick={()=>void reviewAuthorityKyc(String(row.customer_id),false)}
                             style={{...buttonStyle,width:'auto',background:'#7f1d1d'}}>Reject KYC</button>
                         </div>
