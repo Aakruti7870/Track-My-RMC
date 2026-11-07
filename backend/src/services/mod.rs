@@ -1,4 +1,5 @@
 pub mod auth_service;
+pub mod native_automation;
 pub mod commercial_service;
 pub mod customer_observations;
 pub mod customer_order;
