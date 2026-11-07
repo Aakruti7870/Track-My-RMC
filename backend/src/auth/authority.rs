@@ -145,6 +145,52 @@ pub async fn logout(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StepUp {
+    pub code: String,
+}
+
+/// A recent authenticator proof is required before delegated KYC decisions.
+pub async fn step_up(
+    State(state): State<AppState>,
+    authority: WebAuthority,
+    Json(body): Json<StepUp>,
+) -> Result<Json<Value>, AppError> {
+    authority.require("kyc.review")?;
+    let code = body.code.trim();
+    if code.len() != 6 || !code.bytes().all(|c| c.is_ascii_digit()) {
+        return Err(AppError::Unauthorized("A six-digit authenticator code is required".into()));
+    }
+    let attempts: i32 = sqlx::query_scalar(
+        "UPDATE control_center_sessions SET
+         step_up_attempts=CASE WHEN step_up_window_started_at<NOW()-INTERVAL '5 minutes'
+         THEN 1 ELSE step_up_attempts+1 END,
+         step_up_window_started_at=CASE WHEN step_up_window_started_at<NOW()-INTERVAL '5 minutes'
+         THEN NOW() ELSE step_up_window_started_at END
+         WHERE user_id=$1 AND token_hash=$2 AND revoked_at IS NULL AND expires_at>NOW()
+         RETURNING step_up_attempts",
+    )
+    .bind(authority.user_id)
+    .bind(&authority.token_hash)
+    .fetch_one(&state.db)
+    .await?;
+    if attempts > 5 {
+        return Err(AppError::Forbidden("Authenticator verification temporarily locked".into()));
+    }
+    crate::auth::totp::verify_staff_totp_login(&state.db, authority.user_id, code).await?;
+    sqlx::query(
+        "INSERT INTO control_center_step_ups(user_id,token_hash,expires_at)
+         VALUES($1,$2,NOW()+INTERVAL '5 minutes')
+         ON CONFLICT(user_id,token_hash) DO UPDATE SET expires_at=EXCLUDED.expires_at",
+    )
+    .bind(authority.user_id)
+    .bind(&authority.token_hash)
+    .execute(&state.db)
+    .await?;
+    Ok(Json(json!({"success":true,"expires_in_seconds":300})))
+}
+
+#[derive(Deserialize)]
 pub struct Page {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
