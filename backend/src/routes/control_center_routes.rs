@@ -4,7 +4,7 @@ use crate::{
     state::AppState,
 };
 use axum::{
-    extract::State,
+    extract::{Path, State},
     http::{header::AUTHORIZATION, HeaderMap},
     response::IntoResponse,
     Json,
@@ -34,6 +34,7 @@ pub async fn collection(
         "support"=>("support.view","SELECT jsonb_build_object('id',id,'subject',subject,'status',status,'created_at',created_at) FROM support_cases ORDER BY id LIMIT $1 OFFSET $2"),
         "service_enquiries"=>("support.view","SELECT jsonb_build_object('id',id,'service_type',service_type,'contact_name',contact_name,'contact_phone',contact_phone,'location',location,'required_date',required_date,'details',details,'status',status,'created_at',created_at) FROM customer_service_enquiries ORDER BY created_at DESC LIMIT $1 OFFSET $2"),
         "rmc_rfq_leads"=>("support.view","SELECT jsonb_build_object('id',id,'customer_name',customer_name,'customer_email',customer_email,'customer_gstin',customer_gstin,'site_contact_phone',site_contact_phone,'grade',grade,'quantity_m3',quantity_m3::DOUBLE PRECISION,'site_address',site_address,'delivery_date',delivery_date,'pump_required',pump_required,'google_place_id',google_place_id,'status',status,'outreach_status',outreach_status,'outreach_notes',outreach_notes,'created_at',created_at) FROM rmc_rfq_leads ORDER BY created_at DESC LIMIT $1 OFFSET $2"),
+        "kyc"=>("kyc.view","SELECT jsonb_build_object('customer_id',p.user_id,'customer',u.full_name,'verified_name',p.verified_name,'status',p.kyc_status,'evidence_verified',EXISTS(SELECT 1 FROM customer_digilocker_sessions d WHERE d.user_id=p.user_id AND d.status='PENDING' AND d.verified_at IS NOT NULL)) FROM user_profiles p JOIN users u ON u.id=p.user_id WHERE u.role='customer' AND u.is_active AND p.kyc_status='pending' ORDER BY p.updated_at LIMIT $1 OFFSET $2"),
         "audit"=>("audit.view","SELECT jsonb_build_object('id',id,'action',action,'resource_type',resource_type,'resource_id',resource_id,'created_at',created_at) FROM audit_logs ORDER BY id LIMIT $1 OFFSET $2"),
         "sessions"=>("session.view","SELECT jsonb_build_object('user_id',user_id,'created_at',created_at,'expires_at',expires_at,'revoked',revoked_at IS NOT NULL) FROM control_center_sessions ORDER BY created_at,token_hash LIMIT $1 OFFSET $2"),
         _=>return Err(AppError::NotFound("Control Center workspace not found".into())),
@@ -50,6 +51,70 @@ pub async fn collection(
         .fetch_all(&state.db)
         .await?;
     Ok(Json(json!({"items":rows,"limit":limit,"offset":offset})))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CentralKycDecision {
+    pub reason: String,
+}
+
+/// Only a Central Admin with explicit KYC permissions and a fresh step-up may
+/// decide a customer KYC case. Provider-confirmed consent is mandatory for approval.
+pub async fn central_kyc_decision(
+    State(state): State<AppState>,
+    admin: WebAdmin,
+    headers: HeaderMap,
+    Path((customer_id, decision)): Path<(Uuid, String)>,
+    Json(body): Json<CentralKycDecision>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    admin.require("kyc.review")?;
+    require_recent_step_up(&state, &admin, &headers).await?;
+    let reason = body.reason.trim();
+    if reason.len() < 10 || reason.len() > 500 {
+        return Err(AppError::BadRequest(
+            "A KYC decision requires a specific reason (10-500 characters)".into(),
+        ));
+    }
+    let status = match decision.as_str() {
+        "approve" => "verified",
+        "reject" => "rejected",
+        "reset" => "unverified",
+        _ => return Err(AppError::BadRequest("Unknown KYC decision".into())),
+    };
+    let mut tx = state.db.begin().await?;
+    let updated: Option<Uuid> = sqlx::query_scalar(
+        "UPDATE user_profiles AS p SET kyc_status=$2,updated_at=NOW()
+         FROM users u WHERE p.user_id=$1 AND p.user_id=u.id AND u.role='customer'
+         AND u.is_active
+         AND (($2='verified' AND p.kyc_status='pending' AND p.verified_name IS NOT NULL
+               AND EXISTS (SELECT 1 FROM customer_digilocker_sessions d
+                           WHERE d.user_id=p.user_id AND d.status='PENDING'
+                           AND d.verified_at IS NOT NULL))
+           OR ($2='rejected' AND p.kyc_status='pending')
+           OR ($2='unverified' AND p.kyc_status IN ('verified','rejected')))
+         RETURNING p.user_id",
+    )
+    .bind(customer_id)
+    .bind(status)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if updated != Some(customer_id) {
+        return Err(AppError::Conflict(
+            "KYC state transition denied; approved provider evidence may be missing".into(),
+        ));
+    }
+    sqlx::query(
+        "INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata)
+         VALUES($1,'control_center.kyc.review','customer',$2,$3)",
+    )
+    .bind(admin.user_id)
+    .bind(customer_id.to_string())
+    .bind(json!({"status":status,"reason":reason}))
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(json!({"success":true,"status":status})))
 }
 
 fn session_token_hash(headers: &HeaderMap) -> Result<String, AppError> {
