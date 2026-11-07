@@ -116,7 +116,7 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
     return cancelLocation;
   }, [token, cancelLocation]);
 
-  const lookup = useCallback(async (address?: string) => {
+  const lookup = useCallback(async (address?: string, revealFailure = false) => {
     if (!token || busy.current) return;
     const id = ++request.current;
     busy.current = true;
@@ -136,7 +136,13 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
       setSelection({ token, label: result.locality });
       setSheet(null);
     } catch (error) {
-      if (id === request.current) setLocationError(controller.signal.aborted ? "Location lookup timed out. Please retry." : apiErrorDetail(error, error instanceof Error ? error.message : "Could not find location. Please retry."));
+      if (id === request.current) {
+        setLocationError(controller.signal.aborted ? "Location lookup timed out. Please retry." : apiErrorDetail(error, error instanceof Error ? error.message : "Could not find location. Please retry."));
+        // A refresh from the compact header must surface a denial, timeout, or
+        // geocode error and offer the existing manual location fallback.
+        // Silent foreground auto-lookup never opens the location sheet.
+        if (revealFailure) setSheet("location");
+      }
     } finally {
       if (timeout) clearTimeout(timeout);
       if (id === request.current) { busy.current = false; setLocationBusy(false); }
@@ -168,7 +174,7 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
     <View style={[styles.safeArea, { paddingTop: insets.top, backgroundColor: glassSurface, borderColor: glassBorder, shadowColor: colors.shadow }]}>
       <View testID="customer-home-header" style={[styles.row, { minHeight: size.headerHeight }]}>
         <Pressable testID="header-location-refresh" accessibilityRole="button" accessibilityLabel="Refresh current location" disabled={locationBusy}
-          onPress={() => void lookup()} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(44, size.headerTarget) }]}>
+          onPress={() => void lookup(undefined, true)} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(44, size.headerTarget) }]}>
           {locationBusy ? <ActivityIndicator size="small" color={colors.brand} /> : <Ionicons name="refresh-outline" size={Math.min(24, size.headerBell)} color={colors.onSurface} />}
         </Pressable>
         <Pressable testID="header-location" accessibilityRole="button" accessibilityLabel={`Location: ${label}. Select location`} onPress={() => setSheet("location")} style={[styles.location, { minHeight: Math.max(44, size.headerTarget) }]}>
