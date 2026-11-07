@@ -344,3 +344,53 @@ async fn disabling_rule_prevents_queued_review_task(db: PgPool) {
     .unwrap();
     assert_eq!(count, 0);
 }
+
+#[sqlx::test]
+async fn strict_rule_conditions_skip_nonmatching_orders(db: PgPool) {
+    let owner = user(&db, "owner").await;
+    let customer = user(&db, "customer").await;
+    let (plant, order_id) = order(&db, owner, customer).await;
+    sqlx::query(
+        "UPDATE native_automation_templates
+         SET published=TRUE,globally_paused=FALSE,
+             conditions='{"min_quantity_m3":10.0,"grade_in":["M25"]}'::jsonb
+         WHERE template_key='ORDER_ACCEPTED_NOTICE'",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO native_automation_plant_rules(plant_id,template_key,enabled,updated_by)
+         VALUES($1,'ORDER_ACCEPTED_NOTICE',TRUE,$2)",
+    )
+    .bind(plant)
+    .bind(owner)
+    .execute(&db)
+    .await
+    .unwrap();
+    let mut tx = db.begin().await.unwrap();
+    enqueue_order_decision(&mut tx, order_id, "confirmed")
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+
+    // The fixture order is 6 m3; the approved rule requires at least 10.
+    assert_eq!(tick(&db).await.unwrap(), 0);
+    let outcome: String = sqlx::query_scalar(
+        "SELECT last_error FROM native_automation_jobs WHERE order_id=$1",
+    )
+    .bind(order_id)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(outcome, "conditions_not_met");
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM notifications
+         WHERE user_id=$1 AND notification_type='order_status'",
+    )
+    .bind(customer)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(count, 0);
+}
