@@ -66,6 +66,10 @@ pub fn build_app_router(state: AppState) -> Router {
             post(crate::auth::control_center::login),
         )
         .route("/api/admin/auth/me", get(crate::auth::control_center::me))
+        .route(
+            "/api/admin/auth/change-password",
+            post(crate::auth::control_center::change_admin_password),
+        )
         // Authority has its own web-only authentication surface and scoped sessions.
         .route(
             "/api/authority/auth/verify-totp",
@@ -76,6 +80,10 @@ pub fn build_app_router(state: AppState) -> Router {
             post(crate::auth::authority::set_initial_password),
         )
         .route("/api/authority/auth/me", get(crate::auth::authority::me))
+        .route(
+            "/api/authority/auth/change-password",
+            post(crate::auth::authority::change_password),
+        )
         .route(
             "/api/authority/auth/logout",
             post(crate::auth::authority::logout),
