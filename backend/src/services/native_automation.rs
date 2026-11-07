@@ -139,7 +139,7 @@ pub async fn tick(db: &PgPool) -> Result<usize, sqlx::Error> {
         let Some(row) = sqlx::query(
             "SELECT id,plant_id,order_id,template_key,attempts,max_attempts
              FROM native_automation_jobs
-             WHERE status IN ('PENDING','RETRY') AND available_at <= NOW()
+             WHERE order_id IS NOT NULL AND status IN ('PENDING','RETRY') AND available_at <= NOW()
              ORDER BY available_at,id LIMIT 1 FOR UPDATE SKIP LOCKED",
         )
         .fetch_optional(&mut *tx)
@@ -314,7 +314,8 @@ pub async fn tick(db: &PgPool) -> Result<usize, sqlx::Error> {
     )
     .execute(db)
     .await?;
-    Ok(completed)
+    let domain_count = super::native_domain_automation::tick(db).await?;
+    Ok(completed + domain_count)
 }
 
 /// Only the order's active owning plant may receive a human review task.
