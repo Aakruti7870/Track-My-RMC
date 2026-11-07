@@ -127,6 +127,12 @@ function CommandCenter() {
   const [authorityReviewCode,setAuthorityReviewCode]=useState('');
   const [centralKycReason,setCentralKycReason]=useState('');
   const [centralKycCode,setCentralKycCode]=useState('');
+  const [supportCase,setSupportCase]=useState<Record<string,any>|null>(null);
+  const [supportReply,setSupportReply]=useState('');
+  const [supportInternal,setSupportInternal]=useState(false);
+  const [supportStepUp,setSupportStepUp]=useState('');
+  const [serviceReason,setServiceReason]=useState('');
+  const [serviceStepUp,setServiceStepUp]=useState('');
 
 
   useEffect(() => {
@@ -289,7 +295,7 @@ function CommandCenter() {
   },[automationKey,automationTemplates]);
 
   async function loadWorkspace(kind:string,offset=0) {
-    setBusy(true);setError('');setWorkspace(kind);
+    setBusy(true);setError('');setWorkspace(kind);setSupportCase(null);
     try {
       const prefix=user?.role==='authority'?'/api/authority/collections/':'/api/control-center/collections/';
       const response=await apiClient.get(prefix+encodeURIComponent(kind),{params:{limit:25,offset}});
@@ -377,6 +383,60 @@ function CommandCenter() {
         setNotice('Onboarding message copied. Share only with consented supplier contacts.');
       }
     } catch(err) { setError(errorMessage(err)); }
+  }
+
+  async function openSupportCase(caseId:string) {
+    setBusy(true);setError('');
+    try {
+      const response=await apiClient.get('/api/assistant/support/staff/cases/'+encodeURIComponent(caseId));
+      setSupportCase(response.data?.case||null);
+    } catch(err) {setError(errorMessage(err));setSupportCase(null);}
+    finally {setBusy(false);}
+  }
+
+  async function sendSupportReply() {
+    if(!supportCase?.id||!supportReply.trim()||!permissions.includes('support.reply'))return;
+    setBusy(true);setError('');
+    try {
+      await apiClient.post('/api/assistant/support/staff/cases/'+encodeURIComponent(String(supportCase.id))+'/replies',{
+        message:supportReply.trim(),internal:supportInternal,
+      });
+      setSupportReply('');setNotice('Support response recorded.');
+      const response=await apiClient.get('/api/assistant/support/staff/cases/'+encodeURIComponent(String(supportCase.id)));
+      setSupportCase(response.data?.case||null);
+    } catch(err){setError(errorMessage(err));}
+    finally {setBusy(false);}
+  }
+
+  async function updateSupportStatus(status:string) {
+    if(!supportCase?.id||!permissions.includes('support.manage'))return;
+    setBusy(true);setError('');
+    try {
+      if(!/^[0-9]{6}$/.test(supportStepUp.trim()))throw new Error('Enter a current authenticator code.');
+      await apiClient.post('/api/control-center/step-up',{code:supportStepUp.trim()});
+      await apiClient.post('/api/assistant/support/staff/cases/'+encodeURIComponent(String(supportCase.id))+'/status',{status});
+      setSupportStepUp('');setNotice('Support case status updated and audited.');
+      const response=await apiClient.get('/api/assistant/support/staff/cases/'+encodeURIComponent(String(supportCase.id)));
+      setSupportCase(response.data?.case||null);
+    } catch(err){setError(errorMessage(err));setSupportStepUp('');}
+    finally {setBusy(false);}
+  }
+
+  async function updateServiceEnquiry(id:string,status:string) {
+    if(!permissions.includes('support.manage'))return;
+    setBusy(true);setError('');
+    try {
+      if(serviceReason.trim().length<10||!/^[0-9]{6}$/.test(serviceStepUp.trim()))
+        throw new Error('Enter an audit reason (10+ characters) and a fresh authenticator code.');
+      await apiClient.post('/api/control-center/step-up',{code:serviceStepUp.trim()});
+      await apiClient.patch('/api/admin/service-enquiries/'+encodeURIComponent(id)+'/status',{
+        status,reason:serviceReason.trim(),
+      });
+      setServiceStepUp('');setServiceReason('');setNotice('Service enquiry status updated.');
+      const response=await apiClient.get('/api/control-center/collections/service_enquiries',{params:{limit:25,offset:workspaceOffset}});
+      setRecords(response.data?.items||[]);
+    }catch(err){setError(errorMessage(err));setServiceStepUp('');}
+    finally{setBusy(false);}
   }
 
   async function loadAuthorityAccounts() {
@@ -961,6 +1021,60 @@ function CommandCenter() {
                   <thead><tr>{Object.keys(records[0]||{}).map(key=><th key={key} style={{textAlign:'left',padding:8}}>{key.replace(/_/g,' ')}</th>)}</tr></thead>
                   <tbody>{records.map((row,index)=><tr key={String(row.id||index)}>{Object.entries(row).map(([key,value])=><td key={key} style={{padding:8,borderTop:'1px solid #334155'}}>{value===null?'—':typeof value==='object'?JSON.stringify(value):String(value)}</td>)}</tr>)}</tbody>
                 </table></div>
+                {workspace === 'support' && permissions.includes('support.view') && (
+                  <section aria-label="Support case management" style={{border:'1px solid #475569',borderRadius:12,padding:14,marginTop:14}}>
+                    <h3 style={{fontSize:16}}>Customer Support Operations</h3>
+                    <p style={{fontSize:12,color:'#cbd5e1'}}>Open a case to view its conversation. Replies and status changes use dedicated server-enforced permissions.</p>
+                    <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                      {records.map(row=><button type="button" key={String(row.id)} disabled={busy}
+                        style={{...buttonStyle,width:'auto',background:'#334155',marginTop:0}}
+                        onClick={()=>void openSupportCase(String(row.id))}>Open {String(row.subject||row.id)}</button>)}
+                    </div>
+                    {supportCase && <div style={{borderTop:'1px solid #334155',paddingTop:12,marginTop:12,display:'grid',gap:8}}>
+                      <strong>{String(supportCase.case_number||'Support case')} · {String(supportCase.status||'')}</strong>
+                      <p>{String(supportCase.subject||'')}</p>
+                      <div style={{maxHeight:360,overflowY:'auto',display:'grid',gap:7}}>
+                        {((supportCase.messages||[]) as Array<Record<string,unknown>>).map((entry,i)=>
+                          <div key={String(entry.id||i)} style={{background:'#172334',borderRadius:8,padding:10,fontSize:13}}>
+                            <strong>{entry.internal?'Internal note':'Conversation'}</strong><div>{String(entry.message||'')}</div>
+                          </div>)}
+                      </div>
+                      {permissions.includes('support.reply') && <>
+                        <label>Reply or note<textarea rows={3} maxLength={1000} value={supportReply} onChange={e=>setSupportReply(e.target.value)}
+                          style={inputStyle} disabled={busy}/></label>
+                        <label style={{display:'flex',alignItems:'center',gap:8}}><input type="checkbox" checked={supportInternal}
+                          onChange={e=>setSupportInternal(e.target.checked)} disabled={busy}/>Internal note (not visible to customer)</label>
+                        <button type="button" disabled={busy||!supportReply.trim()} onClick={()=>void sendSupportReply()} style={{...buttonStyle,width:'auto'}}>
+                          {supportInternal?'Save internal note':'Send support reply'}</button>
+                      </>}
+                      {permissions.includes('support.manage') && <>
+                        <label>Fresh authenticator code for status change<input type="password" inputMode="numeric" maxLength={6}
+                          value={supportStepUp} onChange={e=>setSupportStepUp(e.target.value)} style={inputStyle} disabled={busy}/></label>
+                        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                          {['OPEN','IN_PROGRESS','RESOLVED','CLOSED'].filter(x=>x!==supportCase.status).map(status=>
+                            <button type="button" key={status} disabled={busy||supportStepUp.length!==6}
+                              style={{...buttonStyle,width:'auto',background:'#334155'}} onClick={()=>void updateSupportStatus(status)}>{status.replace('_',' ')}</button>)}
+                        </div>
+                      </>}
+                    </div>}
+                  </section>
+                )}
+                {workspace === 'service_enquiries' && permissions.includes('support.manage') && (
+                  <section aria-label="Service enquiry approvals" style={{border:'1px solid #475569',borderRadius:12,padding:14,marginTop:14,display:'grid',gap:10}}>
+                    <h3 style={{fontSize:16}}>Service Enquiry Follow-up</h3>
+                    <label>Required audit reason<input maxLength={500} minLength={10} value={serviceReason} onChange={e=>setServiceReason(e.target.value)} style={inputStyle} disabled={busy}/></label>
+                    <label>Fresh authenticator code<input type="password" maxLength={6} value={serviceStepUp} onChange={e=>setServiceStepUp(e.target.value)} style={inputStyle} disabled={busy}/></label>
+                    {records.map(row=><div key={String(row.id)} style={{padding:10,border:'1px solid #334155',borderRadius:8}}>
+                      <strong>{String(row.service_type||'Service')} · {String(row.status||'NEW')}</strong>
+                      <div style={{display:'flex',gap:7,flexWrap:'wrap'}}>
+                        {['CONTACTED','QUOTED','CLOSED'].filter(x=>x!==row.status).map(status=>
+                          <button key={status} type="button" disabled={busy||serviceReason.trim().length<10||serviceStepUp.length!==6}
+                            onClick={()=>void updateServiceEnquiry(String(row.id),status)}
+                            style={{...buttonStyle,width:'auto',background:'#334155'}}>{status}</button>)}
+                      </div>
+                    </div>)}
+                  </section>
+                )}
                 {workspace === 'kyc' && permissions.includes('kyc.review') && <div style={{marginTop:18,display:'grid',gap:12,border:'1px solid #475569',borderRadius:10,padding:14}}>
                   <h3 style={{fontSize:16,margin:0}}>Customer Identity Review</h3>
                   <p style={{fontSize:12,color:'#cbd5e1'}}>Approve only where the backend confirms provider consent and a verified name. Rejection and reset require an audit reason.</p>
