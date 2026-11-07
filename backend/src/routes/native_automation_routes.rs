@@ -174,9 +174,11 @@ pub async fn admin_health(
         .ok()
         .as_deref()
         == Some("true");
-    Ok(Json(json!({"worker_enabled":configured,"heartbeat":heartbeat,
+    Ok(Json(
+        json!({"worker_enabled":configured,"heartbeat":heartbeat,
                    "job_counts":counts,"task_counts":task_counts,
-                   "escalated_unresolved":escalated_unresolved})))
+                   "escalated_unresolved":escalated_unresolved}),
+    ))
 }
 
 pub async fn owner_rules(
@@ -226,10 +228,14 @@ pub async fn set_owner_rule(
         ));
     }
     if body.sla_minutes.is_some_and(|n| !(15..=1440).contains(&n)) {
-        return Err(AppError::BadRequest("SLA must be between 15 and 1440 minutes".into()));
+        return Err(AppError::BadRequest(
+            "SLA must be between 15 and 1440 minutes".into(),
+        ));
     }
     if body.sla_minutes.is_some() && key.starts_with("ORDER_") {
-        return Err(AppError::BadRequest("Domain review SLA cannot be set on an order template".into()));
+        return Err(AppError::BadRequest(
+            "Domain review SLA cannot be set on an order template".into(),
+        ));
     }
     let mut tx = state.db.begin().await?;
     // Hold live active-Owner authorization until the configuration commits.
@@ -375,7 +381,9 @@ pub async fn owner_task_events(
     .bind(plant)
     .fetch_all(&state.db)
     .await?;
-    Ok(Json(json!({"task_id":task,"plant_id":plant,"events":events})))
+    Ok(Json(
+        json!({"task_id":task,"plant_id":plant,"events":events}),
+    ))
 }
 
 /// Owner's read-only execution history, excluding other plants and customer PII.
