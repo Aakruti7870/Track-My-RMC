@@ -1037,6 +1037,17 @@ async fn native_automation_plant_settings_reject_cross_tenant_and_staff_writes(d
         1,
     )
     .unwrap();
+    // Activate the operational assignment so the access check reaches
+    // the automation endpoint rather than failing at session validation.
+    sqlx::query(
+        "INSERT INTO plant_staff(plant_id,user_id,role)
+         VALUES($1,$2,'dispatcher')",
+    )
+    .bind(plant_a)
+    .bind(staff)
+    .execute(&db)
+    .await
+    .unwrap();
     let staff_token = generate_token(
         staff,
         "dispatcher",
