@@ -36,7 +36,7 @@ The event history endpoint checks owner role and plant isolation.
 |---|---|---|---|
 | Dispatch | Load has both a driver and mixer assigned | Load/order cancelled or rejected | Missing records, unassigned loads |
 | RFQ | Supplier authorized response is `QUOTED` or `DECLINED` | Explicitly cancelled RFQ | Pending/unrecognized statuses |
-| Inventory | `current_stock > minimum_stock > 0` | — | Still below minimum, absent records |
+| Inventory | `current_stock > minimum_stock > 0` (including an authorized threshold adjustment) | — | Still below minimum, absent records |
 | Workforce | Leave state `APPROVED` or `REJECTED` | Explicitly cancelled request | Pending/unrecognized statuses |
 | Quality | Not automatically resolved | Not automatically cancelled | Explicit failed engineer assessment |
 
