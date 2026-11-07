@@ -8,6 +8,13 @@ use uuid::Uuid;
 
 pub const ACCEPTED: &str = "ORDER_ACCEPTED_NOTICE";
 pub const REJECTED: &str = "ORDER_REJECTED_NOTICE";
+pub const SUBMITTED_TASK: &str = "ORDER_SUBMITTED_TASK";
+pub const PENDING_REMINDER: &str = "ORDER_PENDING_REMINDER";
+
+enum Effect {
+    Notification(Uuid),
+    Task,
+}
 
 fn template_for_status(status: &str) -> Option<&'static str> {
     match status {
@@ -38,6 +45,54 @@ pub async fn enqueue_order_decision(
     .execute(&mut **tx)
     .await?;
     Ok(())
+}
+
+/// Create an owner review task in the same transaction as order placement.
+/// This does not authorize, accept or otherwise mutate the order.
+pub async fn enqueue_order_submitted(
+    tx: &mut Transaction<'_, Postgres>,
+    order_id: Uuid,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO native_automation_jobs(event_key,plant_id,order_id,template_key)
+         SELECT $1,o.plant_id,o.id,$2 FROM orders o
+         WHERE o.id=$3 AND o.status='pending'
+         ON CONFLICT (event_key) DO NOTHING",
+    )
+    .bind(format!("order-submitted:{order_id}"))
+    .bind(SUBMITTED_TASK)
+    .bind(order_id)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+/// Periodic, bounded, idempotent due-order scan. Plant owners opt in and select
+/// a reminder window from 15 minutes to 24 hours. Only pending orders qualify.
+pub async fn schedule_due_reminders(db: &PgPool) -> Result<u64, sqlx::Error> {
+    let result = sqlx::query(
+        "INSERT INTO native_automation_jobs(event_key,plant_id,order_id,template_key)
+         SELECT 'order-pending-reminder:' || o.id::text,o.plant_id,o.id,$1
+         FROM orders o
+         JOIN rmc_plants p ON p.id=o.plant_id AND p.is_active
+         JOIN users u ON u.id=p.owner_id AND u.is_active
+         JOIN native_automation_plant_rules r
+           ON r.plant_id=o.plant_id AND r.template_key=$1 AND r.enabled
+         JOIN native_automation_templates t
+           ON t.template_key=r.template_key AND t.published AND NOT t.globally_paused
+         WHERE o.status='pending'
+           AND o.created_at + (r.reminder_after_minutes * INTERVAL '1 minute') <= NOW()
+           AND NOT EXISTS (
+             SELECT 1 FROM native_automation_jobs j
+             WHERE j.event_key='order-pending-reminder:' || o.id::text
+           )
+         ORDER BY o.created_at,o.id LIMIT 50
+         ON CONFLICT (event_key) DO NOTHING",
+    )
+    .bind(PENDING_REMINDER)
+    .execute(db)
+    .await?;
+    Ok(result.rows_affected())
 }
 
 async fn record_outcome(
@@ -76,6 +131,7 @@ async fn record_outcome(
 /// claiming without Redis, separate AWS resources, or an HTTP worker token.
 /// Internal notification insertion and job completion commit atomically.
 pub async fn tick(db: &PgPool) -> Result<usize, sqlx::Error> {
+    schedule_due_reminders(db).await?;
     let mut completed = 0usize;
     for _ in 0..25 {
         let mut tx = db.begin().await?;
@@ -99,53 +155,30 @@ pub async fn tick(db: &PgPool) -> Result<usize, sqlx::Error> {
         let attempts: i32 = row.get::<i32, _>("attempts") + 1;
         let max_attempts: i32 = row.get("max_attempts");
 
-        // Both levels must be enabled. Missing plant settings default to deny.
-        let allowed: bool = sqlx::query_scalar(
-            "SELECT EXISTS(
-              SELECT 1 FROM native_automation_templates t
-              JOIN native_automation_plant_rules r ON r.template_key=t.template_key
-              JOIN rmc_plants p ON p.id=r.plant_id
-              WHERE t.template_key=$1 AND r.plant_id=$2 AND r.enabled
-                AND t.published AND NOT t.globally_paused AND p.is_active
-            )",
+        // Hold row-share locks for both policy levels until delivery commits.
+        // Global pause and plant opt-out cannot overtake an in-flight action.
+        let action: Option<String> = sqlx::query_scalar(
+            "SELECT t.action_type
+             FROM native_automation_templates t
+             JOIN native_automation_plant_rules r ON r.template_key=t.template_key
+             JOIN rmc_plants p ON p.id=r.plant_id
+             WHERE t.template_key=$1 AND r.plant_id=$2 AND r.enabled
+               AND t.published AND NOT t.globally_paused AND p.is_active
+             FOR SHARE OF t,r,p",
         )
         .bind(&template)
         .bind(plant)
-        .fetch_one(&mut *tx)
-        .await?;
-
-        if !allowed {
-            record_outcome(
-                &mut tx,
-                id,
-                attempts,
-                "SKIPPED",
-                Some("rule_disabled"),
-                None,
-            )
-            .await?;
-            tx.commit().await?;
-            continue;
-        }
-
-        // Only configured, built-in action kinds can execute.
-        let action: Option<String> = sqlx::query_scalar(
-            "SELECT action_type FROM native_automation_templates
-             WHERE template_key=$1 AND published AND NOT globally_paused",
-        )
-        .bind(&template)
         .fetch_optional(&mut *tx)
         .await?;
-        if action.as_deref() != Some("IN_APP_NOTIFICATION") {
-            record_outcome(
-                &mut tx,
-                id,
-                attempts,
-                "SKIPPED",
-                Some("action_not_allowed"),
-                None,
-            )
-            .await?;
+        let Some(action) = action else {
+            record_outcome(&mut tx, id, attempts, "SKIPPED", Some("rule_disabled"), None)
+                .await?;
+            tx.commit().await?;
+            continue;
+        };
+        if !matches!(action.as_str(), "IN_APP_NOTIFICATION" | "CREATE_APPROVAL_TASK") {
+            record_outcome(&mut tx, id, attempts, "SKIPPED", Some("action_not_allowed"), None)
+                .await?;
             tx.commit().await?;
             continue;
         }
@@ -155,18 +188,27 @@ pub async fn tick(db: &PgPool) -> Result<usize, sqlx::Error> {
         sqlx::query("SAVEPOINT native_delivery")
             .execute(&mut *tx)
             .await?;
-        let result = deliver_internal_notification(&mut tx, plant, order, &template).await;
+        let result = match (action.as_str(), template.as_str()) {
+            ("IN_APP_NOTIFICATION", ACCEPTED | REJECTED | PENDING_REMINDER) => {
+                deliver_internal_notification(&mut tx, plant, order, &template)
+                    .await
+                    .map(|id| id.map(Effect::Notification))
+            }
+            ("CREATE_APPROVAL_TASK", SUBMITTED_TASK) => {
+                create_review_task(&mut tx, id, plant, order)
+                    .await
+                    .map(|task| task.map(|_| Effect::Task))
+            }
+            _ => Ok(None),
+        };
         match result {
-            Ok(Some(notification_id)) => {
-                record_outcome(
-                    &mut tx,
-                    id,
-                    attempts,
-                    "COMPLETED",
-                    None,
-                    Some(notification_id),
-                )
-                .await?;
+            Ok(Some(effect)) => {
+                let notification = match effect {
+                    Effect::Notification(notification_id) => Some(notification_id),
+                    Effect::Task => None,
+                };
+                record_outcome(&mut tx, id, attempts, "COMPLETED", None, notification)
+                    .await?;
                 completed += 1;
             }
             Ok(None) => {
@@ -218,31 +260,88 @@ pub async fn tick(db: &PgPool) -> Result<usize, sqlx::Error> {
     Ok(completed)
 }
 
+/// Only the order's active owning plant may receive a human review task.
+/// The task is informational: the owner must approve/reject through the
+/// existing protected order endpoints, never by this worker.
+async fn create_review_task(
+    tx: &mut Transaction<'_, Postgres>,
+    job: Uuid,
+    plant: Uuid,
+    order: Uuid,
+) -> Result<Option<Uuid>, sqlx::Error> {
+    let owner: Option<Uuid> = sqlx::query_scalar(
+        "SELECT p.owner_id FROM orders o
+         JOIN rmc_plants p ON p.id=o.plant_id AND p.is_active
+         JOIN users u ON u.id=p.owner_id AND u.is_active
+         WHERE o.id=$1 AND o.plant_id=$2 AND o.status='pending'
+         FOR SHARE OF o,p,u",
+    )
+    .bind(order)
+    .bind(plant)
+    .fetch_optional(&mut **tx)
+    .await?;
+    let Some(owner) = owner else {
+        return Ok(None);
+    };
+    let task: Uuid = sqlx::query_scalar(
+        "INSERT INTO native_automation_tasks
+         (source_job_id,plant_id,order_id,assigned_to,task_kind)
+         VALUES($1,$2,$3,$4,'REVIEW_ORDER')
+         ON CONFLICT (source_job_id) DO UPDATE SET updated_at=NOW()
+         RETURNING id",
+    )
+    .bind(job)
+    .bind(plant)
+    .bind(order)
+    .bind(owner)
+    .fetch_one(&mut **tx)
+    .await?;
+    Ok(Some(task))
+}
+
 async fn deliver_internal_notification(
     tx: &mut Transaction<'_, Postgres>,
     plant: Uuid,
     order: Uuid,
     template: &str,
 ) -> Result<Option<Uuid>, sqlx::Error> {
-    let recipient: Option<Uuid> = sqlx::query_scalar(
-        "SELECT o.customer_id FROM orders o
-         JOIN users u ON u.id=o.customer_id AND u.is_active
-         WHERE o.id=$1 AND o.plant_id=$2",
-    )
-    .bind(order)
-    .bind(plant)
-    .fetch_optional(&mut **tx)
-    .await?;
+    let (recipient, title, message): (Option<Uuid>, &str, &str) = match template {
+        ACCEPTED | REJECTED => {
+            let customer: Option<Uuid> = sqlx::query_scalar(
+                "SELECT o.customer_id FROM orders o
+                 JOIN users u ON u.id=o.customer_id AND u.is_active
+                 WHERE o.id=$1 AND o.plant_id=$2",
+            )
+            .bind(order)
+            .bind(plant)
+            .fetch_optional(&mut **tx)
+            .await?;
+            if template == ACCEPTED {
+                (customer, "Order accepted", "Your RMC plant has accepted your order.")
+            } else {
+                (customer, "Order rejected", "The RMC plant did not accept your order. Please review the order details.")
+            }
+        }
+        PENDING_REMINDER => {
+            // Recheck pending state while holding the order share lock.
+            // If approval occurred while queued, no stale reminder is sent.
+            let owner: Option<Uuid> = sqlx::query_scalar(
+                "SELECT p.owner_id FROM orders o
+                 JOIN rmc_plants p ON p.id=o.plant_id AND p.is_active
+                 JOIN users u ON u.id=p.owner_id AND u.is_active
+                 WHERE o.id=$1 AND o.plant_id=$2 AND o.status='pending'
+                 FOR SHARE OF o,p,u",
+            )
+            .bind(order)
+            .bind(plant)
+            .fetch_optional(&mut **tx)
+            .await?;
+            (owner, "Order awaiting review", "An RMC order is still waiting for your approval or rejection.")
+        }
+        _ => return Ok(None),
+    };
     let Some(recipient) = recipient else {
         return Ok(None);
-    };
-    let (title, message) = match template {
-        ACCEPTED => ("Order accepted", "Your RMC plant has accepted your order."),
-        REJECTED => (
-            "Order rejected",
-            "The RMC plant did not accept your order. Please review the order details.",
-        ),
-        _ => return Ok(None),
     };
     let notification: Uuid = sqlx::query_scalar(
         "INSERT INTO notifications(user_id,title,body,notification_type,reference_id)
@@ -260,6 +359,7 @@ async fn deliver_internal_notification(
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn only_approved_order_transitions_generate_jobs() {
         assert_eq!(template_for_status("confirmed"), Some(ACCEPTED));
