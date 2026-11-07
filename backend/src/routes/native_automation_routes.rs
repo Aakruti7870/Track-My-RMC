@@ -470,41 +470,55 @@ pub async fn admin_revisions(
 pub async fn owner_acknowledge_domain_task(
     State(state): State<AppState>,
     owner: AuthUser,
-    Path((plant,task_id)): Path<(Uuid,Uuid)>,
-) -> Result<Json<Value>,AppError> {
-    super::plant_staff_manager::require_owner(&state,&owner,plant).await?;
-    let mut tx=state.db.begin().await?;
-    super::plant_staff_manager::lock_authorization(&mut tx,&owner,plant,"staff").await?;
-    let existing:Option<(String,String)>=sqlx::query_as(
+    Path((plant, task_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<Value>, AppError> {
+    super::plant_staff_manager::require_owner(&state, &owner, plant).await?;
+    let mut tx = state.db.begin().await?;
+    super::plant_staff_manager::lock_authorization(&mut tx, &owner, plant, "staff").await?;
+    let existing: Option<(String, String)> = sqlx::query_as(
         "SELECT template_key,status FROM native_automation_domain_tasks
          WHERE id=$1 AND plant_id=$2 AND assigned_to=$3 FOR UPDATE",
     )
-    .bind(task_id).bind(plant).bind(owner.user_id)
-    .fetch_optional(&mut *tx).await?;
-    let Some((template,status))=existing else {
-        return Err(AppError::NotFound("Review task not found in this plant".into()));
+    .bind(task_id)
+    .bind(plant)
+    .bind(owner.user_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some((template, status)) = existing else {
+        return Err(AppError::NotFound(
+            "Review task not found in this plant".into(),
+        ));
     };
-    if status=="ACKNOWLEDGED" {
+    if status == "ACKNOWLEDGED" {
         tx.commit().await?;
-        return Ok(Json(json!({"success":true,"status":"ACKNOWLEDGED","idempotent_replay":true})));
+        return Ok(Json(
+            json!({"success":true,"status":"ACKNOWLEDGED","idempotent_replay":true}),
+        ));
     }
-    if status!="OPEN" {
-        return Err(AppError::Conflict("Review task cannot be acknowledged in this state".into()));
+    if status != "OPEN" {
+        return Err(AppError::Conflict(
+            "Review task cannot be acknowledged in this state".into(),
+        ));
     }
     sqlx::query(
         "UPDATE native_automation_domain_tasks
          SET status='ACKNOWLEDGED',resolved_at=NOW(),updated_at=NOW()
          WHERE id=$1 AND plant_id=$2 AND assigned_to=$3",
     )
-    .bind(task_id).bind(plant).bind(owner.user_id)
-    .execute(&mut *tx).await?;
+    .bind(task_id)
+    .bind(plant)
+    .bind(owner.user_id)
+    .execute(&mut *tx)
+    .await?;
     sqlx::query(
         "INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata)
          VALUES($1,'automation.domain_task.acknowledged','native_domain_task',$2,$3)",
     )
-    .bind(owner.user_id).bind(task_id.to_string())
+    .bind(owner.user_id)
+    .bind(task_id.to_string())
     .bind(json!({"plant_id":plant,"template_key":template,"business_record_unchanged":true}))
-    .execute(&mut *tx).await?;
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
     Ok(Json(json!({"success":true,"status":"ACKNOWLEDGED",
                    "business_record_unchanged":true})))
