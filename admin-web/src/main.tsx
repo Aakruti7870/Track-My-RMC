@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import apiClient from './api';
 
-type Stage = 'central-login' | 'authority-login' | 'email' | 'otp' | 'mfa-enroll' | 'mfa-login' | 'authenticated';
+type Stage = 'central-login' | 'authority-login' | 'authority-password' | 'email' | 'otp' | 'mfa-enroll' | 'mfa-login' | 'authenticated';
 
 type StaffUser = {
   id?: string;
@@ -82,6 +82,9 @@ function CommandCenter() {
   const [otp, setOtp] = useState('');
   const [mfaCode, setMfaCode] = useState('');
   const [privilegedPassword, setPrivilegedPassword] = useState('');
+  const [newAuthorityPassword, setNewAuthorityPassword] = useState('');
+  const [confirmAuthorityPassword, setConfirmAuthorityPassword] = useState('');
+  const [authorityEnrollment, setAuthorityEnrollment] = useState(false);
   const [challengeToken, setChallengeToken] = useState('');
   const [enrollment, setEnrollment] = useState<Enrollment | null>(null);
   const [recoveryCodesSaved, setRecoveryCodesSaved] = useState(false);
@@ -560,8 +563,10 @@ function CommandCenter() {
         setStage('mfa-enroll');
         setNotice('First-time setup required. Add this account to your authenticator and store the recovery codes before continuing.');
       } else {
-        setStage('mfa-login');
-        setNotice('Email verified. Enter the current authenticator code or an unused recovery code.');
+        setStage(authorityEnrollment ? 'authority-password' : 'mfa-login');
+        setNotice(authorityEnrollment
+          ? 'Email verified. Set your Authority password using your authenticator code.'
+          : 'Email verified. Enter the current authenticator code or an unused recovery code.');
       }
     } catch (requestError) {
       setError(errorMessage(requestError));
@@ -588,13 +593,32 @@ function CommandCenter() {
       setChallengeToken(response.data.challenge_token);
       setEnrollment(null);
       setMfaCode('');
-      setStage('mfa-login');
-      setNotice('Authenticator enabled. Staff can complete login; delegated Authority must use its dedicated web sign-in.');
+      setStage(authorityEnrollment ? 'authority-password' : 'mfa-login');
+      setNotice(authorityEnrollment
+        ? 'Authenticator enabled. Set a distinct Authority password to finish enrollment.'
+        : 'Authenticator enabled. Complete staff sign-in with MFA.');
     } catch (requestError) {
       setError(errorMessage(requestError));
     } finally {
       setBusy(false);
     }
+  }
+
+  async function completeAuthorityEnrollment(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();setBusy(true);setError('');setNotice('');
+    try {
+      if (newAuthorityPassword.length < 16 || newAuthorityPassword.length > 128 ||
+        newAuthorityPassword !== confirmAuthorityPassword || !/^[0-9]{6}$/.test(mfaCode.trim()))
+        throw new Error('Use a distinct 16-128 character password, matching confirmation, and a six-digit authenticator code.');
+      await apiClient.post('/api/authority/auth/set-initial-password',{
+        challenge_token:challengeToken,password:newAuthorityPassword,code:mfaCode.trim(),
+      });
+      setNewAuthorityPassword('');setConfirmAuthorityPassword('');
+      setMfaCode('');setChallengeToken('');setAuthorityEnrollment(false);
+      setStage('authority-login');
+      setNotice('Authority credentials enrolled. Sign in with your password and authenticator.');
+    } catch(requestError) {setError(errorMessage(requestError));}
+    finally{setBusy(false);}
   }
 
   async function verifyMfa(event: React.FormEvent<HTMLFormElement>) {
@@ -711,7 +735,7 @@ function CommandCenter() {
             <input id="central-code" inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" maxLength={6} value={mfaCode} onChange={e => setMfaCode(e.target.value)} style={inputStyle} disabled={busy} />
             <button type="submit" disabled={busy} style={buttonStyle}>{busy ? 'Verifying…' : 'Sign in with password + authenticator'}</button>
             <button type="button" onClick={() => {setStage('authority-login');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Delegated Authority sign in</button>
-            <button type="button" onClick={() => {setStage('email');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Plant staff / approved MFA setup</button>
+            <button type="button" onClick={() => {setAuthorityEnrollment(false);setStage('email');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Plant staff / approved MFA setup</button>
           </form>
         )}
 
@@ -725,7 +749,7 @@ function CommandCenter() {
             <label htmlFor="authority-login-code" style={{display:'block',marginTop:18}}>Authenticator code</label>
             <input id="authority-login-code" inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" maxLength={6} value={mfaCode} onChange={e=>setMfaCode(e.target.value)} style={inputStyle} disabled={busy}/>
             <button type="submit" disabled={busy} style={buttonStyle}>Sign in with password + authenticator</button>
-            <button type="button" onClick={()=>{setStage('email');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>First sign-in: verify email and enroll authenticator</button>
+            <button type="button" onClick={()=>{setAuthorityEnrollment(true);setStage('email');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>First sign-in: verify email and enroll authenticator</button>
             <button type="button" onClick={()=>{setStage('central-login');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Central Admin sign in</button>
           </form>
         )}
@@ -779,6 +803,26 @@ function CommandCenter() {
             <input id="enroll-code" type="text" inputMode="numeric" autoComplete="one-time-code" required maxLength={8}
               value={mfaCode} onChange={(event) => setMfaCode(event.target.value)} style={inputStyle} disabled={busy} />
             <button type="submit" disabled={busy || !recoveryCodesSaved} style={buttonStyle}>{busy ? 'Enabling…' : 'Confirm authenticator setup'}</button>
+          </form>
+        )}
+
+        {stage === 'authority-password' && (
+          <form onSubmit={completeAuthorityEnrollment}>
+            <h2 style={{fontSize:19}}>Set your private Authority password</h2>
+            <p style={{color:'#cbd5e1'}}>This one-time step requires your approved work-email challenge and enrolled authenticator. It never signs you into Expo.</p>
+            <label htmlFor="authority-initial-password">New password (16-128 characters)</label>
+            <input id="authority-initial-password" type="password" autoComplete="new-password" required minLength={16}
+              maxLength={128} value={newAuthorityPassword} onChange={e=>setNewAuthorityPassword(e.target.value)}
+              style={inputStyle} disabled={busy}/>
+            <label htmlFor="authority-confirm-password" style={{display:'block',marginTop:14}}>Confirm password</label>
+            <input id="authority-confirm-password" type="password" autoComplete="new-password" required minLength={16}
+              maxLength={128} value={confirmAuthorityPassword} onChange={e=>setConfirmAuthorityPassword(e.target.value)}
+              style={inputStyle} disabled={busy}/>
+            <label htmlFor="authority-enrollment-code" style={{display:'block',marginTop:14}}>Current authenticator code</label>
+            <input id="authority-enrollment-code" inputMode="numeric" autoComplete="one-time-code" required
+              pattern="[0-9]{6}" maxLength={6} value={mfaCode} onChange={e=>setMfaCode(e.target.value)}
+              style={inputStyle} disabled={busy}/>
+            <button type="submit" disabled={busy} style={buttonStyle}>Finish Authority enrollment</button>
           </form>
         )}
 
