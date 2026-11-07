@@ -16,7 +16,7 @@ type AutomationRule = {
   enabled: boolean;
   reminder_after_minutes: number;
 };
-type OwnerTask = { id: string; order_number: string; status: string };
+type OwnerTask = { id: string; order_number: string; task_kind: string; status: string };
 type AutomationHistory = { id: string; template_key: string; status: string; attempts: number };
 const REMINDER_MINUTES = [30, 60, 120, 240] as const;
 
@@ -124,8 +124,16 @@ export default function OwnerOperations() {
           <AppText style={{ color: p.muted, fontSize: 12 }}>
             {(tasks?.tasks ?? []).filter(task => task.status === "OPEN").length} open review tasks
           </AppText>
-          {(tasks?.tasks ?? []).filter(task => task.status === "OPEN").slice(0, 3).map(task =>
-            <AppText key={task.id} style={{ color: p.text, fontSize: 12 }}>Order {task.order_number} — requires owner review</AppText>)}
+          {(tasks?.tasks ?? []).filter(task => task.status === "OPEN").slice(0, 5).map(task =>
+            <AppText key={task.id} style={{ color: p.text, fontSize: 12 }}>
+              {task.order_number ? `Order ${task.order_number} — owner review` :
+                task.task_kind === "DISPATCH_UNASSIGNED_LOAD" ? "Dispatch — assign a planned load" :
+                task.task_kind === "RFQ_PENDING_PLANT" ? "RFQ — respond to quotation request" :
+                task.task_kind === "QUALITY_INSPECTION_FAILED" ? "Quality — review failed engineer inspection" :
+                task.task_kind === "INVENTORY_BELOW_MIN" ? "Inventory — review material stock" :
+                task.task_kind === "WORKFORCE_LEAVE_PENDING" ? "Workforce — review leave application" :
+                "Plant operation — review required"}
+            </AppText>)}
           <AppText style={{ color: p.muted, fontSize: 11 }}>
             Decisions must be made through the existing Plant Orders screen.
           </AppText>
