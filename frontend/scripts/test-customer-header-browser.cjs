@@ -45,8 +45,8 @@ const out=process.env.HEADER_PREVIEW_DIR||'header-previews';fs.mkdirSync(out,{re
   assert.equal(await page.getByTestId('header-kyc').count(),0);
   await header.screenshot({path:`${out}/header-${scheme}-${width}.png`});
   if(width===390){
-   await page.getByTestId('header-location').click();
-   await page.getByRole('button',{name:'Refresh current location',exact:true}).last().click();
+   // Header refresh must explain GPS failures and expose manual location selection.
+   await page.getByTestId('header-location-refresh').click();
    await page.getByText('Location permission was denied. Select a city manually.',{exact:true}).waitFor();
    await page.evaluate(()=>{window.headerGeoMode='timeout';});
    await page.getByRole('button',{name:'Refresh current location',exact:true}).last().click();
