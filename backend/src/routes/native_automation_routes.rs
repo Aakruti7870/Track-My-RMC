@@ -4,8 +4,8 @@
 use crate::{
     auth::{control_center::WebAdmin, AuthUser},
     error::AppError,
-    state::AppState,
     services::native_rule_conditions::OrderConditions,
+    state::AppState,
 };
 use axum::{
     extract::{Path, State},
@@ -195,7 +195,10 @@ pub async fn set_owner_rule(
 ) -> Result<Json<Value>, AppError> {
     // Managers and staff can never activate rules, even if they hold delegation.
     super::plant_staff_manager::require_owner(&state, &owner, plant).await?;
-    if body.reminder_after_minutes.is_some_and(|n| !(15..=1440).contains(&n)) {
+    if body
+        .reminder_after_minutes
+        .is_some_and(|n| !(15..=1440).contains(&n))
+    {
         return Err(AppError::BadRequest(
             "Reminder interval must be between 15 and 1440 minutes".into(),
         ));
@@ -256,7 +259,6 @@ pub async fn set_owner_rule(
                    "template_key":key,"enabled":body.enabled})))
 }
 
- 
 /// Owner-only task inbox. The order remains actionable only through the
 /// existing order approval/rejection endpoints and existing role checks.
 pub async fn owner_tasks(
@@ -314,12 +316,11 @@ pub async fn admin_requeue_dead_letter(
     admin.require("automation.manage")?;
     super::control_center_routes::require_recent_step_up(&state, &admin.user, &headers).await?;
     let mut tx = state.db.begin().await?;
-    let status: Option<String> = sqlx::query_scalar(
-        "SELECT status FROM native_automation_jobs WHERE id=$1 FOR UPDATE",
-    )
-    .bind(job)
-    .fetch_optional(&mut *tx)
-    .await?;
+    let status: Option<String> =
+        sqlx::query_scalar("SELECT status FROM native_automation_jobs WHERE id=$1 FOR UPDATE")
+            .bind(job)
+            .fetch_optional(&mut *tx)
+            .await?;
     if status.as_deref() != Some("DEAD_LETTER") {
         return Err(AppError::Conflict(
             "Only dead-letter automation jobs can be requeued".into(),
@@ -410,15 +411,16 @@ pub async fn admin_set_conditions(
         .execute(&mut *tx)
         .await?;
     }
-    let version: i32 = sqlx::query_scalar(
-        "SELECT version FROM native_automation_templates WHERE template_key=$1",
-    )
-    .bind(&key)
-    .fetch_one(&mut *tx)
-    .await?;
+    let version: i32 =
+        sqlx::query_scalar("SELECT version FROM native_automation_templates WHERE template_key=$1")
+            .bind(&key)
+            .fetch_one(&mut *tx)
+            .await?;
     tx.commit().await?;
-    Ok(Json(json!({"success":true,"template_key":key,"version":version,
-                   "conditions":body.conditions})))
+    Ok(Json(
+        json!({"success":true,"template_key":key,"version":version,
+                   "conditions":body.conditions}),
+    ))
 }
 
 /// Immutable historical revisions (not executable scripts) for governance.
