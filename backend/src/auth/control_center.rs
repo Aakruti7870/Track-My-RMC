@@ -100,6 +100,18 @@ pub async fn login(
     State(state): State<AppState>,
     Json(body): Json<AdminLogin>,
 ) -> Result<Json<Value>, AppError> {
+    login_for_role(state, body, "central_admin").await
+}
+
+/// The role is server-selected by the route; no request can choose its own role.
+pub async fn login_for_role(
+    state: AppState,
+    body: AdminLogin,
+    role: &'static str,
+) -> Result<Json<Value>, AppError> {
+    if !matches!(role, "central_admin" | "authority") {
+        return Err(AppError::Forbidden("Unknown privileged web role".into()));
+    }
     let identifier = body.identifier.trim().to_lowercase();
     if identifier.len() < 3
         || identifier.len() > 254
@@ -128,12 +140,12 @@ pub async fn login(
     }
     sqlx::query("UPDATE control_center_login_limits SET attempts=$2, window_started_at=CASE WHEN $2=1 THEN NOW() ELSE window_started_at END WHERE identifier_hash=$1")
         .bind(&key).bind(attempts+1).execute(&mut *tx).await?;
-    let identity: Option<(Uuid, String, Option<String>, String, String)> = sqlx::query_as(
+    let identity: Option<(Uuid, Option<String>, Option<String>, String, String)> = sqlx::query_as(
         "SELECT u.id, u.phone, u.email, u.full_name, t.secret_key FROM users u
          JOIN control_center_access a ON a.user_id=u.id
          JOIN user_totp_credentials t ON t.user_id=u.id AND t.is_enabled=TRUE
-         WHERE LOWER(u.email)=$1 AND u.role='central_admin' AND u.is_active=TRUE AND a.approved=TRUE",
-    ).bind(&identifier).fetch_optional(&mut *tx).await?;
+         WHERE LOWER(u.email)=$1 AND u.role=$2 AND u.is_active=TRUE AND a.approved=TRUE",
+    ).bind(&identifier).bind(role).fetch_optional(&mut *tx).await?;
     let verified_step = identity.as_ref().and_then(|i| {
         [-1_i64, 0, 1]
             .into_iter()
@@ -154,8 +166,8 @@ pub async fn login(
     let token = account_sessions::issue_in_tx(
         &mut tx,
         id,
-        "central_admin",
-        &phone,
+        role,
+        phone.as_deref().unwrap_or(""),
         email.as_deref(),
         &state.config.jwt_secret,
         1,
@@ -182,8 +194,8 @@ pub async fn login(
         .bind(id).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(Json(
-        json!({"success":true,"token":token,"access_token":token,"role":"central_admin",
-        "user":{"id":id,"email":email,"full_name":full_name,"role":"central_admin"}}),
+        json!({"success":true,"token":token,"access_token":token,"role":role,
+        "user":{"id":id,"email":email,"full_name":full_name,"role":role}}),
     ))
 }
 
