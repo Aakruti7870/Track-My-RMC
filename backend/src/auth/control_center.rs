@@ -145,7 +145,11 @@ pub async fn login_for_role(
          JOIN control_center_access a ON a.user_id=u.id
          JOIN user_totp_credentials t ON t.user_id=u.id AND t.is_enabled=TRUE
          WHERE LOWER(u.email)=$1 AND u.role=$2 AND u.is_active=TRUE AND a.approved=TRUE",
-    ).bind(&identifier).bind(role).fetch_optional(&mut *tx).await?;
+    )
+    .bind(&identifier)
+    .bind(role)
+    .fetch_optional(&mut *tx)
+    .await?;
     let verified_step = identity.as_ref().and_then(|i| {
         [-1_i64, 0, 1]
             .into_iter()
