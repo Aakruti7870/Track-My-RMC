@@ -1,0 +1,215 @@
+//! Native automation governance. Central Admin controls publication;
+//! Plant Owners can only opt in within their own active plant.
+//! Authority is intentionally not aliased to Central Admin.
+use crate::{
+    auth::{control_center::WebAdmin, AuthUser},
+    error::AppError,
+    state::AppState,
+};
+use axum::{
+    extract::{Path, State},
+    http::HeaderMap,
+    Json,
+};
+use serde::Deserialize;
+use serde_json::{json, Value};
+use uuid::Uuid;
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TemplatePolicy {
+    pub published: bool,
+    pub globally_paused: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlantRule {
+    pub enabled: bool,
+}
+
+pub async fn admin_templates(
+    State(state): State<AppState>,
+    admin: WebAdmin,
+) -> Result<Json<Value>, AppError> {
+    admin.require("system.view")?;
+    let items: Vec<Value> = sqlx::query_scalar(
+        "SELECT jsonb_build_object('key',t.template_key,'label',t.label,
+             'event_type',t.event_type,'action_type',t.action_type,
+             'version',t.version,'published',t.published,'globally_paused',t.globally_paused,
+             'enabled_plants',(SELECT COUNT(*) FROM native_automation_plant_rules r
+                                WHERE r.template_key=t.template_key AND r.enabled))
+         FROM native_automation_templates t ORDER BY t.template_key",
+    )
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(json!({"templates":items})))
+}
+
+/// Publishing or unpausing affects every enabled plant; require a dedicated
+/// approved Central Admin session, explicit automation.manage, and recent MFA.
+pub async fn set_template_policy(
+    State(state): State<AppState>,
+    admin: WebAdmin,
+    headers: HeaderMap,
+    Path(key): Path<String>,
+    Json(body): Json<TemplatePolicy>,
+) -> Result<Json<Value>, AppError> {
+    admin.require("automation.manage")?;
+    super::control_center_routes::require_recent_step_up(&state, &admin.user, &headers).await?;
+    if !body.published && !body.globally_paused {
+        return Err(AppError::BadRequest(
+            "Unpublished automation must remain paused".into(),
+        ));
+    }
+    let mut tx = state.db.begin().await?;
+    let current: Option<(bool,bool)> = sqlx::query_as(
+        "SELECT published,globally_paused FROM native_automation_templates
+         WHERE template_key=$1 FOR UPDATE",
+    )
+    .bind(&key)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some((published,paused)) = current else {
+        return Err(AppError::NotFound("Unknown automation template".into()));
+    };
+    if published != body.published || paused != body.globally_paused {
+        sqlx::query(
+            "UPDATE native_automation_templates
+             SET published=$2,globally_paused=$3,version=version+1,
+                 updated_by=$4,updated_at=NOW() WHERE template_key=$1",
+        )
+        .bind(&key)
+        .bind(body.published)
+        .bind(body.globally_paused)
+        .bind(admin.user_id)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata)
+             VALUES($1,'automation.template.policy','automation_template',$2,$3)",
+        )
+        .bind(admin.user_id)
+        .bind(&key)
+        .bind(json!({"old_published":published,"old_paused":paused,
+                     "published":body.published,"globally_paused":body.globally_paused}))
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+    Ok(Json(json!({"success":true,"template_key":key,
+                   "published":body.published,"globally_paused":body.globally_paused})))
+}
+
+pub async fn admin_jobs(
+    State(state): State<AppState>,
+    admin: WebAdmin,
+) -> Result<Json<Value>, AppError> {
+    admin.require("audit.view")?;
+    let items: Vec<Value> = sqlx::query_scalar(
+        "SELECT jsonb_build_object(
+            'id',id,'plant_id',plant_id,'order_id',order_id,
+            'template_key',template_key,'status',status,
+            'attempts',attempts,'available_at',available_at,'created_at',created_at,
+            'updated_at',updated_at)
+         FROM native_automation_jobs ORDER BY created_at DESC LIMIT 100",
+    )
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(json!({"jobs":items})))
+}
+
+pub async fn admin_health(
+    State(state): State<AppState>,
+    admin: WebAdmin,
+) -> Result<Json<Value>, AppError> {
+    admin.require("system.view")?;
+    let counts: Vec<Value> = sqlx::query_scalar(
+        "SELECT jsonb_build_object('status',status,'count',COUNT(*))
+         FROM native_automation_jobs GROUP BY status",
+    )
+    .fetch_all(&state.db)
+    .await?;
+    let heartbeat: Option<Value> = sqlx::query_scalar(
+        "SELECT jsonb_build_object('last_seen_at',last_seen_at,
+                    'last_success_at',last_success_at,'recent',last_seen_at>NOW()-INTERVAL '1 minute')
+         FROM native_automation_worker_heartbeat WHERE worker_name='native-internal-worker'",
+    )
+    .fetch_optional(&state.db)
+    .await?;
+    let configured = std::env::var("NATIVE_AUTOMATION_WORKER_ENABLED").ok().as_deref() == Some("true");
+    Ok(Json(json!({"worker_enabled":configured,"heartbeat":heartbeat,"job_counts":counts})))
+}
+
+pub async fn owner_rules(
+    State(state): State<AppState>,
+    owner: AuthUser,
+    Path(plant): Path<Uuid>,
+) -> Result<Json<Value>, AppError> {
+    super::plant_staff_manager::require_owner(&state, &owner, plant).await?;
+    let items: Vec<Value> = sqlx::query_scalar(
+        "SELECT jsonb_build_object('key',t.template_key,'label',t.label,
+                'published',t.published,'globally_paused',t.globally_paused,
+                'enabled',COALESCE(r.enabled,FALSE))
+         FROM native_automation_templates t
+         LEFT JOIN native_automation_plant_rules r
+           ON r.plant_id=$1 AND r.template_key=t.template_key
+         ORDER BY t.template_key",
+    )
+    .bind(plant)
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(json!({"plant_id":plant,"rules":items})))
+}
+
+pub async fn set_owner_rule(
+    State(state): State<AppState>,
+    owner: AuthUser,
+    Path((plant,key)): Path<(Uuid,String)>,
+    Json(body): Json<PlantRule>,
+) -> Result<Json<Value>, AppError> {
+    let mut tx = state.db.begin().await?;
+    // Hold live active-Owner authorization until the configuration commits.
+    super::plant_staff_manager::lock_authorization(&mut tx, &owner, plant, "staff").await?;
+    let published: Option<bool> = sqlx::query_scalar(
+        "SELECT published FROM native_automation_templates WHERE template_key=$1",
+    )
+    .bind(&key)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some(published) = published else {
+        return Err(AppError::NotFound("Unknown automation template".into()));
+    };
+    if body.enabled && !published {
+        return Err(AppError::Conflict(
+            "Only centrally published automation templates can be enabled".into(),
+        ));
+    }
+
+    sqlx::query(
+        "INSERT INTO native_automation_plant_rules
+         (plant_id,template_key,enabled,updated_by)
+         VALUES($1,$2,$3,$4)
+         ON CONFLICT (plant_id,template_key)
+         DO UPDATE SET enabled=EXCLUDED.enabled,
+            updated_by=EXCLUDED.updated_by,updated_at=NOW()",
+    )
+    .bind(plant)
+    .bind(&key)
+    .bind(body.enabled)
+    .bind(owner.user_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata)
+         VALUES($1,'automation.plant.rule','plant',$2,$3)",
+    )
+    .bind(owner.user_id)
+    .bind(plant.to_string())
+    .bind(json!({"template_key":key,"enabled":body.enabled}))
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(json!({"success":true,"plant_id":plant,
+                   "template_key":key,"enabled":body.enabled})))
+}
