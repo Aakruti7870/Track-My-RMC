@@ -380,7 +380,9 @@ async fn privileged_password_rotation_revokes_session_and_cannot_cross_roles(db:
                 "code":code,
                 "reason":"Authorized password-rotation regression fixture"
             })),
-        ).await.0,
+        )
+        .await
+        .0,
         StatusCode::FORBIDDEN,
     );
     assert_eq!(
@@ -394,7 +396,9 @@ async fn privileged_password_rotation_revokes_session_and_cannot_cross_roles(db:
                 "code":code,
                 "reason":"Reject incorrect existing password proof"
             })),
-        ).await.0,
+        )
+        .await
+        .0,
         StatusCode::UNAUTHORIZED,
     );
     let (status, response) = call(
@@ -407,7 +411,8 @@ async fn privileged_password_rotation_revokes_session_and_cannot_cross_roles(db:
             "code":code,
             "reason":"Authorized credential rotation with a fresh authenticator"
         })),
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(response["session_revoked"], true);
     assert_eq!(
