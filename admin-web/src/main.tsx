@@ -125,6 +125,8 @@ function CommandCenter() {
   const [authorityReason,setAuthorityReason]=useState('');
   const [authorityAdminCode,setAuthorityAdminCode]=useState('');
   const [authorityReviewCode,setAuthorityReviewCode]=useState('');
+  const [centralKycReason,setCentralKycReason]=useState('');
+  const [centralKycCode,setCentralKycCode]=useState('');
 
 
   useEffect(() => {
@@ -406,6 +408,23 @@ function CommandCenter() {
     finally {setBusy(false);}
   }
 
+  async function reviewCentralKyc(customerId:string, decision:'approve'|'reject'|'reset') {
+    setBusy(true);setError('');
+    try {
+      if (!/^[0-9]{6}$/.test(centralKycCode.trim()) || centralKycReason.trim().length<10) {
+        throw new Error('A current six-digit authenticator code and specific reason (10+ characters) are required.');
+      }
+      await apiClient.post('/api/control-center/step-up',{code:centralKycCode.trim()});
+      await apiClient.post('/api/control-center/customers/'+encodeURIComponent(customerId)+'/kyc/'+decision,
+        {reason:centralKycReason.trim()});
+      setCentralKycCode('');setCentralKycReason('');
+      setNotice('Central Admin KYC decision recorded in the audit log.');
+      const response=await apiClient.get('/api/control-center/collections/kyc',{params:{limit:25,offset:0}});
+      setRecords(response.data?.items||[]);setWorkspaceOffset(0);
+    } catch(err) {setError(errorMessage(err));setCentralKycCode('');}
+    finally {setBusy(false);}
+  }
+
   async function reviewAuthorityKyc(customerId:string, approve:boolean) {
     setBusy(true);setError('');
     try {
@@ -563,6 +582,7 @@ function CommandCenter() {
       setMfaCode('');
       setAuthorityAdminCode('');
       setAuthorityReviewCode('');
+      setCentralKycReason('');setCentralKycCode('');
       setShowAuthorityAccounts(false);
       setStage('central-login');
       setNotice('Signed out of this browser session.');
@@ -916,7 +936,7 @@ function CommandCenter() {
                 </section>}
               </>}
               <nav style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                {['users','plants','orders','support','service_enquiries','rmc_rfq_leads','audit','sessions'].filter(kind=>permissions.includes(({users:'user.view',plants:'plant.view',orders:'order.view',support:'support.view',service_enquiries:'support.view',rmc_rfq_leads:'support.view',audit:'audit.view',sessions:'session.view'} as Record<string,string>)[kind])).map(kind=>
+                {['users','plants','orders','support','service_enquiries','rmc_rfq_leads','kyc','audit','sessions'].filter(kind=>permissions.includes(({users:'user.view',plants:'plant.view',orders:'order.view',support:'support.view',service_enquiries:'support.view',rmc_rfq_leads:'support.view',kyc:'kyc.view',audit:'audit.view',sessions:'session.view'} as Record<string,string>)[kind])).map(kind=>
                   <button key={kind} disabled={busy} onClick={()=>void loadWorkspace(kind)} style={{...buttonStyle,width:'auto',textTransform:'capitalize'}}>{kind}</button>)}
               </nav>
               {workspace && <><h2 style={{textTransform:'capitalize'}}>{workspace}</h2>
@@ -925,6 +945,27 @@ function CommandCenter() {
                   <thead><tr>{Object.keys(records[0]||{}).map(key=><th key={key} style={{textAlign:'left',padding:8}}>{key.replace(/_/g,' ')}</th>)}</tr></thead>
                   <tbody>{records.map((row,index)=><tr key={String(row.id||index)}>{Object.entries(row).map(([key,value])=><td key={key} style={{padding:8,borderTop:'1px solid #334155'}}>{value===null?'—':typeof value==='object'?JSON.stringify(value):String(value)}</td>)}</tr>)}</tbody>
                 </table></div>
+                {workspace === 'kyc' && permissions.includes('kyc.review') && <div style={{marginTop:18,display:'grid',gap:12,border:'1px solid #475569',borderRadius:10,padding:14}}>
+                  <h3 style={{fontSize:16,margin:0}}>Customer Identity Review</h3>
+                  <p style={{fontSize:12,color:'#cbd5e1'}}>Approve only where the backend confirms provider consent and a verified name. Rejection and reset require an audit reason.</p>
+                  <label>Reason for review<input required minLength={10} maxLength={500} value={centralKycReason}
+                    onChange={e=>setCentralKycReason(e.target.value)} style={inputStyle} disabled={busy}/></label>
+                  <label>Fresh Super Admin authenticator code<input type="password" autoComplete="off" inputMode="numeric"
+                    pattern="[0-9]{6}" maxLength={6} value={centralKycCode} onChange={e=>setCentralKycCode(e.target.value)}
+                    style={inputStyle} disabled={busy}/></label>
+                  {records.map(row=><article key={String(row.customer_id)} style={{borderTop:'1px solid #475569',padding:12}}>
+                    <strong>{String(row.customer||'Customer')}</strong>
+                    <p style={{fontSize:12,color:'#cbd5e1'}}>Provider-verified name: {String(row.verified_name||'Not confirmed')} · Consent evidence: {row.evidence_verified?'Recorded':'Missing'}</p>
+                    <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+                      <button type="button" disabled={busy||!row.evidence_verified||!row.verified_name||centralKycReason.length<10||centralKycCode.length!==6}
+                        onClick={()=>void reviewCentralKyc(String(row.customer_id),'approve')}
+                        style={{...buttonStyle,width:'auto',background:'#166534'}}>Approve verified identity</button>
+                      <button type="button" disabled={busy||centralKycReason.length<10||centralKycCode.length!==6}
+                        onClick={()=>void reviewCentralKyc(String(row.customer_id),'reject')}
+                        style={{...buttonStyle,width:'auto',background:'#7f1d1d'}}>Reject</button>
+                    </div>
+                  </article>)}
+                </div>}
                 {workspace === 'rmc_rfq_leads' && <div style={{marginTop:18,display:'grid',gap:12}}>
                   <p style={{color:'#cbd5e1',lineHeight:1.5}}>
                     Unregistered suppliers have not received these enquiries. Use approved, permission-based outreach.
@@ -1005,8 +1046,9 @@ function CommandCenter() {
                         onChange={e=>setAuthorityReviewCode(e.target.value)} style={inputStyle} disabled={busy}/></label>
                       {records.map(row=><div key={String(row.customer_id)} style={{borderTop:'1px solid #334155',padding:'10px 0'}}>
                         <strong>{String(row.customer||'Customer')}</strong>
+                        <p style={{fontSize:12}}>Verified name: {String(row.verified_name||'Missing')} · Provider evidence: {row.evidence_verified?'Confirmed':'Not confirmed'}</p>
                         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                          <button type="button" disabled={busy||authorityReviewCode.length!==6}
+                          <button type="button" disabled={busy||authorityReviewCode.length!==6||!row.evidence_verified||!row.verified_name}
                             onClick={()=>void reviewAuthorityKyc(String(row.customer_id),true)}
                             style={{...buttonStyle,width:'auto',background:'#166534'}}>Approve KYC</button>
                           <button type="button" disabled={busy||authorityReviewCode.length!==6}
