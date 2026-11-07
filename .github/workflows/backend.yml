@@ -99,6 +99,8 @@ jobs:
       - name: Verify admin browser against Rust and PostgreSQL
         if: success() && matrix.postgres == 18
         env:
+          # Public disposable fixture credential, never a real account password.
+          CI_CONTROL_CENTER_TEST_PASSWORD: Synthetic-CI-Only-Password-2026!
           DATABASE_URL: postgres://trackmyrmc_user:securepassword@localhost:5432/trackmyrmc_test
           JWT_SECRET: isolated_ci_only_secret_that_exceeds_sixty_four_bytes_12345678901234567890
           OTP_PEPPER: isolated_ci_only_otp_pepper_12345678901234567890
