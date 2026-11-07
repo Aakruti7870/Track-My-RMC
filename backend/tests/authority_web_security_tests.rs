@@ -14,6 +14,9 @@ use trackmyrmc_backend::{
 };
 use uuid::Uuid;
 
+const SYNTHETIC_PASSWORD: &str = "Synthetic-CI-Only-Password-2026!";
+const SYNTHETIC_PASSWORD_HASH: &str = "$argon2id$v=19$m=19456,t=2,p=1$SvWTeNFS61/Ui+SOXVyNJw$JGIBa6UrWI3fvkiDP+jDI+a6plEeoYVpTM72VyGddR8";
+
 fn state(db: PgPool) -> AppState {
     AppState::new(
         db,
@@ -86,11 +89,12 @@ async fn identity(db: &PgPool, role: &str, permissions: &[&str]) -> (Uuid, Strin
     let secret = TotpEngine::generate_secret();
     sqlx::query(
         "INSERT INTO users(id,phone,email,hashed_password,full_name,role,is_active)
-         VALUES($1,NULL,$2,'!web-only!','Web Security Test',$3,TRUE)",
+         VALUES($1,NULL,$2,$4,'Web Security Test',$3,TRUE)",
     )
     .bind(id)
     .bind(&email)
     .bind(role)
+    .bind(SYNTHETIC_PASSWORD_HASH)
     .execute(db)
     .await
     .unwrap();
@@ -125,7 +129,7 @@ async fn authority_web_login_cannot_cross_into_super_admin_or_mobile(db: PgPool)
             &app,
             "/api/admin/auth/verify-totp",
             None,
-            Some(json!({"identifier":email,"code":code})),
+            Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":code})),
         )
         .await
         .0,
@@ -135,7 +139,7 @@ async fn authority_web_login_cannot_cross_into_super_admin_or_mobile(db: PgPool)
         &app,
         "/api/authority/auth/verify-totp",
         None,
-        Some(json!({"identifier":email,"code":code})),
+        Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":code})),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -196,7 +200,7 @@ async fn super_admin_revocation_invalidates_authority_web_session(db: PgPool) {
         &app,
         "/api/authority/auth/verify-totp",
         None,
-        Some(json!({"identifier":email,"code":code})),
+        Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":code})),
     )
     .await;
     let token = authenticated["token"].as_str().unwrap();
@@ -214,7 +218,7 @@ async fn super_admin_revocation_invalidates_authority_web_session(db: PgPool) {
         &app,
         "/api/admin/auth/verify-totp",
         None,
-        Some(json!({"identifier":admin_email,"code":admin_code})),
+        Some(json!({"identifier":admin_email,"password":SYNTHETIC_PASSWORD,"code":admin_code})),
     )
     .await;
     assert_eq!(login_status, StatusCode::OK);
@@ -285,7 +289,7 @@ async fn plant_admin_cannot_access_global_service_enquiry_control(db: PgPool) {
         &app,
         "/api/admin/auth/verify-totp",
         None,
-        Some(json!({"identifier":email,"code":code})),
+        Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":code})),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
