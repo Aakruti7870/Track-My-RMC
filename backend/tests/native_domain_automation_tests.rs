@@ -388,7 +388,7 @@ async fn closed_loop_inventory_escalation_is_idempotent_and_source_verified(db: 
     .await
     .unwrap();
     assert_eq!(status, "RESOLVED");
-    assert_eq!(reason.as_deref(), Some("STOCK_REPLENISHED"));
+    assert_eq!(reason.as_deref(), Some("STOCK_ABOVE_MIN"));
     assert_eq!(count, 1);
     assert_eq!(reconcile(&db).await.unwrap(), 0);
 }
