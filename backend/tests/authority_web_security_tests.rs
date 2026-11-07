@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 use sqlx::PgPool;
 use tower::ServiceExt;
 use trackmyrmc_backend::{
-    auth::totp::TotpEngine, config::AppConfig, routes::build_app_router, state::AppState,
+    auth::{jwt::generate_token, totp::TotpEngine}, config::AppConfig, routes::build_app_router, state::AppState,
 };
 use uuid::Uuid;
 
@@ -236,4 +236,56 @@ async fn super_admin_revocation_invalidates_authority_web_session(db: PgPool) {
         StatusCode::UNAUTHORIZED
     );
     assert_ne!(admin_id, Uuid::nil());
+}
+
+#[sqlx::test]
+async fn plant_admin_cannot_access_global_service_enquiry_control(db: PgPool) {
+    let config=state(db.clone());
+    let app=build_app_router(config.clone());
+    let (id,email,_) = identity(&db,"admin",&["support.view","support.manage"]).await;
+    let token = generate_token(
+        id, "admin", "", Some(&email), &config.config.jwt_secret, 1
+    )
+    .unwrap();
+    assert_eq!(
+        call(&app, "/api/admin/service-enquiries", Some(&token), None)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        call(
+            &app,
+            &format!("/api/admin/service-enquiries/{}/status", Uuid::new_v4()),
+            Some(&token),
+            Some(json!({"status":"CONTACTED","reason":"Should be denied"})),
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+
+    let (_,email,secret) = identity(&db,"central_admin",&["support.view"]).await;
+    let code = TotpEngine::compute_code(&secret,chrono::Utc::now().timestamp() as u64).unwrap();
+    let (status,login)=call(
+        &app,
+        "/api/admin/auth/verify-totp",
+        None,
+        Some(json!({"identifier":email,"code":code})),
+    ).await;
+    assert_eq!(status,StatusCode::OK);
+    let web_token=login["token"].as_str().unwrap();
+    assert_eq!(
+        call(&app,"/api/admin/service-enquiries",Some(web_token),None).await.0,
+        StatusCode::OK,
+    );
+    assert_eq!(
+        call(
+            &app,
+            &format!("/api/admin/service-enquiries/{}/status", Uuid::new_v4()),
+            Some(web_token),
+            Some(json!({"status":"CONTACTED","reason":"Insufficient capabilities"})),
+        ).await.0,
+        StatusCode::FORBIDDEN,
+    );
 }
