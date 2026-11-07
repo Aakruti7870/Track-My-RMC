@@ -5,6 +5,7 @@ pub mod customer_order;
 pub mod dispatch_service;
 pub mod email_service;
 pub mod native_automation;
+pub mod native_rule_conditions;
 pub mod order_service;
 pub mod otp_delivery;
 pub mod payroll_service;
