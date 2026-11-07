@@ -25,7 +25,10 @@ pub struct AuthorityGrant {
 fn validate_grants(grants: &[String]) -> Result<(), AppError> {
     if grants.len() > 6
         || grants.iter().any(|p| !is_delegable(p))
-        || grants.iter().enumerate().any(|(i, p)| grants[..i].contains(p))
+        || grants
+            .iter()
+            .enumerate()
+            .any(|(i, p)| grants[..i].contains(p))
     {
         return Err(AppError::BadRequest(
             "Authority permissions must be distinct, explicitly delegable capabilities".into(),
@@ -34,10 +37,7 @@ fn validate_grants(grants: &[String]) -> Result<(), AppError> {
     Ok(())
 }
 
-pub async fn list(
-    State(state): State<AppState>,
-    admin: WebAdmin,
-) -> Result<Json<Value>, AppError> {
+pub async fn list(State(state): State<AppState>, admin: WebAdmin) -> Result<Json<Value>, AppError> {
     admin.require("admin_access.manage")?;
     let rows = sqlx::query(
         "SELECT u.id,u.email,u.full_name,u.is_active,a.approved,a.permissions,
@@ -88,16 +88,17 @@ pub async fn upsert(
         || payload.reason.trim().len() < 10
         || payload.reason.len() > 500
     {
-        return Err(AppError::BadRequest("Invalid Authority identity or audit reason".into()));
+        return Err(AppError::BadRequest(
+            "Invalid Authority identity or audit reason".into(),
+        ));
     }
     validate_grants(&payload.permissions)?;
     let mut tx = state.db.begin().await?;
-    let existing: Option<(Uuid, String)> = sqlx::query_as(
-        "SELECT id,role FROM users WHERE LOWER(email)=$1 FOR UPDATE",
-    )
-    .bind(&email)
-    .fetch_optional(&mut *tx)
-    .await?;
+    let existing: Option<(Uuid, String)> =
+        sqlx::query_as("SELECT id,role FROM users WHERE LOWER(email)=$1 FOR UPDATE")
+            .bind(&email)
+            .fetch_optional(&mut *tx)
+            .await?;
     let id = if let Some((id, role)) = existing {
         if role != "authority" {
             return Err(AppError::Forbidden(
@@ -189,8 +190,8 @@ mod tests {
     use super::*;
     #[test]
     fn restricted_permission_grants_fail_closed() {
-        assert!(validate_grants(&["support.view".into(),"kyc.review".into()]).is_ok());
+        assert!(validate_grants(&["support.view".into(), "kyc.review".into()]).is_ok());
         assert!(validate_grants(&["admin_access.manage".into()]).is_err());
-        assert!(validate_grants(&["kyc.review".into(),"kyc.review".into()]).is_err());
+        assert!(validate_grants(&["kyc.review".into(), "kyc.review".into()]).is_err());
     }
 }
