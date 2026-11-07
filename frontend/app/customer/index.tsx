@@ -208,7 +208,7 @@ export default function CustomerHome() {
           </Pressable>
         ))}
       </View>
-      <AppText variant="caption" style={{ textAlign: "center", fontSize: homeSize.serviceLabel, lineHeight: homeSize.serviceLabelLine, marginTop: homeSize.sectionGap }}>Send an enquiry; our team will contact you.</AppText>
+      <AppText variant="caption" style={{ textAlign: "center", fontSize: homeSize.serviceLabel, lineHeight: Math.max(18, homeSize.serviceLabelLine), marginTop: homeSize.sectionGap }}>Send an enquiry; our team will contact you.</AppText>
     </View>
   );
 
