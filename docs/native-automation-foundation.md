@@ -35,6 +35,48 @@ execution path is contained in TrackMyRMC.
 | `ORDER_REJECTED_NOTICE` | Authorized order rejection | Customer in-app notification |
 | `ORDER_PENDING_REMINDER` | Pending order older than a configured 15..1440 minutes | Owner in-app reminder |
 
+## Additional native domain workflows (all off by default)
+
+| Template key | Source condition | Internal effect |
+|---|---|---|
+| `DISPATCH_UNASSIGNED_LOAD` | Planned load remains without mixer/driver for 15 minutes | Owner review task and in-app alert |
+| `RFQ_PENDING_PLANT` | Approved plant quotation request is pending at least 15 minutes | Owner review task and in-app alert |
+| `QUALITY_INSPECTION_FAILED` | Quality Engineer records explicit `FAIL` with validated inspection provenance | Owner review task and in-app alert |
+| `INVENTORY_BELOW_MIN` | Material at/below positive minimum stock for 15 minutes | Owner review task and alert, at most once per material per day |
+| `WORKFORCE_LEAVE_PENDING` | Active assigned employee's leave request pending for 15 minutes | Owner review task and in-app alert |
+
+Only the current, active Plant Owner receives these alerts. There is no automatic
+dispatch assignment, supplier outreach, quotation decision, quality certification,
+purchase order, payroll action, attendance edit, or leave authorization.
+
+A bounded, compiled SQL source scanner inserts unique durable jobs (up to 150
+per scan). `FOR UPDATE SKIP LOCKED` claims up to 25 domain jobs per worker
+tick. Under transaction locks, source eligibility, active owner identity,
+central publication, plant consent and fixed action type are checked **again**.
+The task + owner notification + completed job state commit atomically.
+Stale/disabled jobs record `SKIPPED` without an effect. Failed attempts have
+bounded retry/backoff and dead-letter states.
+
+Domain templates never accept arbitrary custom conditions, webhooks, scripts
+or external messaging adapters. An arbitrary rule editor does not change these
+fixed, reviewed handlers. The five source scanner queries are first-party code.
+
+### Owner acknowledgement
+
+The owner Operations page shows domain tasks in the existing Automation Center.
+`POST /api/owner/plants/:plant_id/automation/domain-tasks/:task_id/acknowledge`
+requires a currently active **owner of that exact plant**, performs a locked,
+audited transition `OPEN → ACKNOWLEDGED`, and is idempotent.
+
+**Acknowledged means only that the alert was viewed/reviewed.** It does not
+change the underlying dispatch load, quotation, material stock, quality record
+or leave request. The owner must use the existing protected operational screens
+for any actual decision. Owners cannot acknowledge other plants' tasks.
+
+Unregistered Google-listed suppliers are excluded; their enquiries remain in
+the existing Central Admin lead workflow, never sent externally by automation.
+
+
 The existing new-order owner notification is retained. The native task simply
 offers a secondary structured inbox; **it cannot approve or reject orders**.
 An authorized owner decision automatically resolves any existing review task in
@@ -81,9 +123,9 @@ Plant Owner:
 - `GET /api/owner/plants/:plant_id/automation/history`
 
 ## Database changes
-New append-only migrations 0049, 0050 and 0051: template catalog, plant
+New append-only migrations 0049 through 0053: template catalog, plant
 settings, job queue, attempts, worker heartbeat, bounded reminders, human
-tasks, safe conditions and policy revisions. All previous migration files remain
+tasks, safe conditions, five tenant-scoped domain templates, review acknowledgements and policy revisions. All previous migration files remain
 untouched. Changes are applied to disposable PostgreSQL 16 and 18 CI databases;
 **production migration is not authorized by this PR**.
 
