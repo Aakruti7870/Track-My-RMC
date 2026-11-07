@@ -305,6 +305,8 @@ pub async fn tick(db: &PgPool) -> Result<usize, sqlx::Error> {
         tx.commit().await?;
     }
 
+    let domain_count = super::native_domain_automation::tick(db).await?;
+    // Report success only after both order and cross-domain processing succeed.
     sqlx::query(
         "INSERT INTO native_automation_worker_heartbeat
          (worker_name,last_seen_at,last_success_at,last_error)
@@ -314,7 +316,6 @@ pub async fn tick(db: &PgPool) -> Result<usize, sqlx::Error> {
     )
     .execute(db)
     .await?;
-    let domain_count = super::native_domain_automation::tick(db).await?;
     Ok(completed + domain_count)
 }
 
