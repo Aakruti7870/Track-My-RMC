@@ -879,8 +879,7 @@ async fn native_automation_global_policy_requires_explicit_grant_and_recent_mfa(
         vec!["system.view", "audit.view"],
     )
     .await;
-    let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64)
-        .unwrap();
+    let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
     let (status, logged_in) = request(
         &router,
         "/api/admin/auth/verify-totp",
@@ -901,8 +900,7 @@ async fn native_automation_global_policy_requires_explicit_grant_and_recent_mfa(
         .0,
         StatusCode::OK,
     );
-    let policy_path =
-        "/api/control-center/automation/templates/ORDER_ACCEPTED_NOTICE/policy";
+    let policy_path = "/api/control-center/automation/templates/ORDER_ACCEPTED_NOTICE/policy";
     let activate = json!({"published":true,"globally_paused":false});
 
     // Read-only Central Admin cannot publish or activate a rule.
@@ -977,15 +975,7 @@ async fn native_automation_global_policy_requires_explicit_grant_and_recent_mfa(
     .fetch_one(&db)
     .await
     .unwrap();
-    let mobile = generate_token(
-        mobile_id,
-        "admin",
-        "",
-        None,
-        &state.config.jwt_secret,
-        1,
-    )
-    .unwrap();
+    let mobile = generate_token(mobile_id, "admin", "", None, &state.config.jwt_secret, 1).unwrap();
     assert_eq!(
         request(
             &router,
@@ -1028,15 +1018,8 @@ async fn native_automation_plant_settings_reject_cross_tenant_and_staff_writes(d
     .fetch_one(&db)
     .await
     .unwrap();
-    let owner_token = generate_token(
-        owner_a,
-        "owner",
-        "",
-        None,
-        &state.config.jwt_secret,
-        1,
-    )
-    .unwrap();
+    let owner_token =
+        generate_token(owner_a, "owner", "", None, &state.config.jwt_secret, 1).unwrap();
     // Activate the operational assignment so the access check reaches
     // the automation endpoint rather than failing at session validation.
     sqlx::query(
@@ -1048,28 +1031,12 @@ async fn native_automation_plant_settings_reject_cross_tenant_and_staff_writes(d
     .execute(&db)
     .await
     .unwrap();
-    let staff_token = generate_token(
-        staff,
-        "dispatcher",
-        "",
-        None,
-        &state.config.jwt_secret,
-        1,
-    )
-    .unwrap();
-    let path_a = format!(
-        "/api/owner/plants/{plant_a}/automation/rules/ORDER_PENDING_REMINDER"
-    );
-    let path_b = format!(
-        "/api/owner/plants/{plant_b}/automation/rules/ORDER_PENDING_REMINDER"
-    );
+    let staff_token =
+        generate_token(staff, "dispatcher", "", None, &state.config.jwt_secret, 1).unwrap();
+    let path_a = format!("/api/owner/plants/{plant_a}/automation/rules/ORDER_PENDING_REMINDER");
+    let path_b = format!("/api/owner/plants/{plant_b}/automation/rules/ORDER_PENDING_REMINDER");
 
-    async fn update(
-        app: &Router,
-        path: &str,
-        token: &str,
-        enabled: bool,
-    ) -> StatusCode {
+    async fn update(app: &Router, path: &str, token: &str, enabled: bool) -> StatusCode {
         let response = app
             .clone()
             .oneshot(
