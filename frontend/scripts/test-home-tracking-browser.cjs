@@ -145,10 +145,10 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      throw Error('All four module vectors must fit one row');
  }
  for (const [kind,boxes,minHeight,maxHeight] of [
-   ['Quick Action',actionBoxes.map(box=>({h:box.height,x:box.x,y:box.y,w:box.width})),95,124],
-   ['Planning Tool',toolBoxes,94,146],
-   ['Expert Advice',adviceBoxes,94,146],
-   ['Supply',serviceBoxes,92,130],
+   ['Quick Action',actionBoxes.map(box=>({h:box.height,x:box.x,y:box.y,w:box.width})),expected.quickTile-1,expected.quickTile+30],
+   ['Planning Tool',toolBoxes,expected.toolTile-8,expected.toolTile+45],
+   ['Expert Advice',adviceBoxes,expected.toolTile-8,expected.toolTile+45],
+   ['Supply',serviceBoxes,expected.serviceTile-10,expected.serviceTile+35],
  ]) {
    for(const box of boxes) {
      if(box.h<minHeight||box.h>maxHeight)throw Error(`${kind} card height ${box.h} outside ${minHeight}-${maxHeight}`);
@@ -165,8 +165,11 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  if(promoCards.length!==1)throw Error('Pump CTA must be the only promotional card');
  const pump=await promoCards[0].boundingBox();
  const row=await page.getByTestId('home-pump-rental-promo').boundingBox();
- if(!pump||!row||Math.abs(pump.width-240)>1||Math.abs(pump.height-50)>1)
-   throw Error('Pump CTA must remain 240x50dp: '+JSON.stringify({pump,row}));
+ if(!pump||!row||Math.abs(pump.width-expected.pumpWidth)>1||Math.abs(pump.height-expected.pumpHeight)>1)
+   throw Error('Pump CTA dimensions mismatch at '+width+': '+JSON.stringify({pump,row}));
+ const pumpSvg=await promoCards[0].locator('svg').first().boundingBox();
+ if(!pumpSvg||Math.abs(pumpSvg.width-expected.pumpIconWidth)>1||Math.abs(pumpSvg.height-expected.pumpIconHeight)>1)
+   throw Error('Pump CTA SVG size mismatch at '+width+': '+JSON.stringify(pumpSvg));
  if(Math.abs((pump.x+pump.width/2)-(row.x+row.width/2))>1)
    throw Error('Single pump CTA must be horizontally centered');
  if(await page.getByText('On Time, Everytime').count())
@@ -174,15 +177,31 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  if(!await page.getByRole('button',{name:'Book Your Pump Online!'}).count())throw Error('Accessible pump CTA missing');
  for(const title of ['Quick Actions','Active Projects & Planning','Free Tools & Expert Advice','Supply & Workforce','Track My RMC','Built Better']){
    const style=await page.getByText(title,{exact:true}).first().evaluate(el=>{const s=getComputedStyle(el);return {size:s.fontSize,height:s.lineHeight,family:s.fontFamily};});
-   if(style.size!=='15px'||style.height!=='22px'||!style.family.toLowerCase().includes('raleway-bold'))
+   if(style.size!==expected.heading+'px'||style.height!==expected.headingLine+'px'||!style.family.toLowerCase().includes('raleway-bold'))
      throw Error('Home heading typography regression '+title+': '+JSON.stringify(style));
  }
- for(const [title,size,family] of [['Streamline Your Pour','13px','raleway-medium'],['Book Your Pump Online!','15px','raleway-semibold']]){
+ for(const [title,size,family] of [['Streamline Your Pour',expected.pumpFirst+'px','raleway-medium'],['Book Your Pump Online!',expected.pumpSecond+'px','raleway-semibold']]){
    const style=await page.getByText(title,{exact:true}).first().evaluate(el=>{const s=getComputedStyle(el);return {size:s.fontSize,family:s.fontFamily};});
    if(style.size!==size||!style.family.toLowerCase().includes(family))
      throw Error('Pump CTA font regression '+title+': '+JSON.stringify(style));
  }
  if(!await page.getByTestId('header-location').count())throw Error('Location header missing');
+ const locationFont=await page.getByTestId('header-location').getByText('Select Location',{exact:true})
+   .evaluate(el=>getComputedStyle(el).fontSize);
+ if(locationFont!==expected.location+'px')throw Error('Location typography mismatch at '+width+': '+locationFont);
+ for(const [id,icon,plate] of [['customer-module-projects',expected.tool,expected.toolPlate],['service-cement',expected.service,expected.servicePlate]]){
+   const dims=await page.getByTestId(id).locator('svg').first().evaluate(el=>{
+     const b=el.getBoundingClientRect(),p=el.parentElement.getBoundingClientRect();
+     return {w:b.width,h:b.height,top:b.y,plateTop:p.y,plateBottom:p.bottom,plateHeight:p.height};
+   });
+   if(Math.abs(dims.w-icon)>1||Math.abs(dims.h-icon)>1||Math.abs(dims.plateHeight-plate)>1||
+      dims.top<dims.plateTop-1||dims.top+dims.h>dims.plateBottom+1)
+     throw Error('Responsive vector plate clipped at '+width+': '+id+' '+JSON.stringify(dims));
+ }
+ for(const [id,label,font] of [['customer-module-projects','Project Hub',expected.toolFont],['service-cement','Cement',expected.serviceFont]]){
+   const actual=await page.getByTestId(id).getByText(label,{exact:true}).evaluate(el=>getComputedStyle(el).fontSize);
+   if(actual!==font+'px')throw Error('Responsive label mismatch at '+width+': '+id+' '+actual);
+ }
 
  // Export full-page Home references at the exact mobile/desktop sizes that
  // the layout gates check; CI uploads them for human visual comparison.
