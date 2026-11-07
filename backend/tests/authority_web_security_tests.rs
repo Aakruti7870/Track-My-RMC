@@ -7,10 +7,7 @@ use serde_json::{json, Value};
 use sqlx::PgPool;
 use tower::ServiceExt;
 use trackmyrmc_backend::{
-    auth::totp::TotpEngine,
-    config::AppConfig,
-    routes::build_app_router,
-    state::AppState,
+    auth::totp::TotpEngine, config::AppConfig, routes::build_app_router, state::AppState,
 };
 use uuid::Uuid;
 
@@ -42,7 +39,12 @@ fn state(db: PgPool) -> AppState {
     )
 }
 
-async fn call(app: &Router, path: &str, token: Option<&str>, body: Option<Value>) -> (StatusCode, Value) {
+async fn call(
+    app: &Router,
+    path: &str,
+    token: Option<&str>,
+    body: Option<Value>,
+) -> (StatusCode, Value) {
     let mut req = Request::builder()
         .uri(path)
         .method(if body.is_some() { "POST" } else { "GET" });
@@ -131,21 +133,29 @@ async fn authority_web_login_cannot_cross_into_super_admin_or_mobile(db: PgPool)
         id.to_string()
     );
     assert_eq!(
-        call(&app, "/api/admin/auth/me", Some(token), None)
-            .await
-            .0,
+        call(&app, "/api/admin/auth/me", Some(token), None).await.0,
         StatusCode::FORBIDDEN
     );
     assert_eq!(
-        call(&app, "/api/authority/collections/sessions", Some(token), None)
-            .await
-            .0,
+        call(
+            &app,
+            "/api/authority/collections/sessions",
+            Some(token),
+            None
+        )
+        .await
+        .0,
         StatusCode::NOT_FOUND
     );
     assert_eq!(
-        call(&app, "/api/authority/collections/support", Some(token), None)
-            .await
-            .0,
+        call(
+            &app,
+            "/api/authority/collections/support",
+            Some(token),
+            None
+        )
+        .await
+        .0,
         StatusCode::OK
     );
     assert_eq!(
