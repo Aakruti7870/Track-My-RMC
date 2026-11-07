@@ -998,3 +998,129 @@ async fn native_automation_global_policy_requires_explicit_grant_and_recent_mfa(
         StatusCode::FORBIDDEN,
     );
 }
+
+#[sqlx::test]
+async fn native_automation_plant_settings_reject_cross_tenant_and_staff_writes(db: PgPool) {
+    let state = state(db.clone());
+    let router = trackmyrmc_backend::routes::build_app_router(state.clone());
+    let (owner_a, _, _) = identity(&db, "owner", false, vec![]).await;
+    let (owner_b, _, _) = identity(&db, "owner", false, vec![]).await;
+    let (staff, _, _) = identity(&db, "dispatcher", false, vec![]).await;
+    let plant_a: Uuid = sqlx::query_scalar(
+        "INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,
+            address_line,city,state,pincode,contact_phone)
+         VALUES($1,'Automation A',$2,19,73,'A','Panvel','Maharashtra','410206','0000000000')
+         RETURNING id",
+    )
+    .bind(owner_a)
+    .bind(Uuid::new_v4().simple().to_string()[..14].to_string())
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    let plant_b: Uuid = sqlx::query_scalar(
+        "INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,
+            address_line,city,state,pincode,contact_phone)
+         VALUES($1,'Automation B',$2,19,73,'B','Panvel','Maharashtra','410206','0000000000')
+         RETURNING id",
+    )
+    .bind(owner_b)
+    .bind(Uuid::new_v4().simple().to_string()[..14].to_string())
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    let owner_token = generate_token(
+        owner_a,
+        "owner",
+        "",
+        None,
+        &state.config.jwt_secret,
+        1,
+    )
+    .unwrap();
+    let staff_token = generate_token(
+        staff,
+        "dispatcher",
+        "",
+        None,
+        &state.config.jwt_secret,
+        1,
+    )
+    .unwrap();
+    let path_a = format!(
+        "/api/owner/plants/{plant_a}/automation/rules/ORDER_PENDING_REMINDER"
+    );
+    let path_b = format!(
+        "/api/owner/plants/{plant_b}/automation/rules/ORDER_PENDING_REMINDER"
+    );
+
+    async fn update(
+        app: &Router,
+        path: &str,
+        token: &str,
+        enabled: bool,
+    ) -> StatusCode {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(path)
+                    .method("PUT")
+                    .header("Authorization", format!("Bearer {token}"))
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(
+                        json!({"enabled":enabled,"reminder_after_minutes":60}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        response.status()
+    }
+
+    // No published template is available to activate by default.
+    assert_eq!(
+        update(&router, &path_a, &owner_token, true).await,
+        StatusCode::CONFLICT,
+    );
+    sqlx::query(
+        "UPDATE native_automation_templates SET published=TRUE
+         WHERE template_key='ORDER_PENDING_REMINDER'",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+    assert_eq!(
+        update(&router, &path_a, &owner_token, true).await,
+        StatusCode::OK,
+    );
+    assert_eq!(
+        update(&router, &path_b, &owner_token, true).await,
+        StatusCode::FORBIDDEN,
+    );
+    assert_eq!(
+        update(&router, &path_a, &staff_token, true).await,
+        StatusCode::FORBIDDEN,
+    );
+
+    // Owners must remain free to opt out even if Central Admin pauses.
+    sqlx::query(
+        "UPDATE native_automation_templates SET globally_paused=TRUE
+         WHERE template_key='ORDER_PENDING_REMINDER'",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+    assert_eq!(
+        update(&router, &path_a, &owner_token, false).await,
+        StatusCode::OK,
+    );
+    let enabled: bool = sqlx::query_scalar(
+        "SELECT enabled FROM native_automation_plant_rules
+         WHERE plant_id=$1 AND template_key='ORDER_PENDING_REMINDER'",
+    )
+    .bind(plant_a)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert!(!enabled);
+}
