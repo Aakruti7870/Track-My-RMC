@@ -3,6 +3,7 @@ pub mod admin_routes;
 pub mod assistant_routes;
 pub mod auth_routes;
 pub mod automation_routes;
+pub mod native_automation_routes;
 pub mod business_routes;
 pub mod cashfree_sandbox;
 pub mod control_center_routes;
@@ -1197,6 +1198,31 @@ pub fn build_app_router(state: AppState) -> Router {
         .route(
             "/api/control-center/summary",
             get(control_center_routes::get_portal_summary),
+        )
+        // --- Native Rust automation (no external automation engine) ---
+        .route(
+            "/api/control-center/automation/templates",
+            get(native_automation_routes::admin_templates),
+        )
+        .route(
+            "/api/control-center/automation/templates/:template_key/policy",
+            post(native_automation_routes::set_template_policy),
+        )
+        .route(
+            "/api/control-center/automation/jobs",
+            get(native_automation_routes::admin_jobs),
+        )
+        .route(
+            "/api/control-center/automation/health",
+            get(native_automation_routes::admin_health),
+        )
+        .route(
+            "/api/owner/plants/:plant_id/automation/rules",
+            get(native_automation_routes::owner_rules),
+        )
+        .route(
+            "/api/owner/plants/:plant_id/automation/rules/:template_key",
+            put(native_automation_routes::set_owner_rule),
         )
         // --- Order Status Automation Queue & Worker Endpoints ---
         .route(
