@@ -215,7 +215,7 @@ export default function CustomerHome() {
           </Pressable>
         ))}
       </View>
-      <AppText variant="caption" style={{ textAlign: "center" }}>Send an enquiry; our team will contact you.</AppText>
+      <AppText variant="caption" style={{ textAlign: "center", marginTop: 10 }}>Send an enquiry; our team will contact you.</AppText>
     </View>
   );
 
