@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from "react";
-import { AppState, Linking, Pressable, StyleSheet, View } from "react-native";
+import { AppState, Linking, Platform, Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { AppText } from "./ui/AppText";
@@ -8,7 +8,7 @@ import { DemoTrackingPreview } from "./DemoTrackingPreview";
 import { useToast } from "./ui/Toast";
 import { useGet } from "@/src/hooks/useApi";
 import type { Order } from "@/src/domain/order";
-import { fonts } from "@/src/theme/tokens";
+import { customerHomeSizes, fonts } from "@/src/theme/tokens";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { DEMO_TRACKING_CARD as demo, trackingCardStrings as t, dialable, freshGPS, selectedLoad, validPoint, type HomeTracking } from "@/src/tracking/homeTracking";
 
@@ -16,6 +16,8 @@ export function ActiveTransitMixerCard({ order, onNewOrder, onRefreshHome }: {
   order: Order | null; onNewOrder: () => void; onRefreshHome: () => Promise<void>;
 }) {
   const router = useRouter(); const toast = useToast(); const { colors } = useTheme();
+  const { width: viewportWidth } = useWindowDimensions();
+  const size = customerHomeSizes(viewportWidth, Platform.OS);
   const [width, setWidth] = useState(0); const [now, setNow] = useState(Date.now());
   const { data: tracking, error, refetch } = useGet<HomeTracking>(order ? `/customer/orders/${order.id}/tracking` : null);
   useFocusEffect(useCallback(() => {
@@ -41,20 +43,20 @@ export function ActiveTransitMixerCard({ order, onNewOrder, onRefreshHome }: {
     { label: t.callDriver, icon: "call", run: () => order ? void dial(tracking?.active ? load?.driver_mobile : null) : toast(t.demoDriver, "info") },
     { label: t.callPlant, icon: "business", run: () => order && tracking?.plant_phone ? void dial(tracking.plant_phone) : router.push("/customer/plants") },
   ];
-  return <View style={{ gap: 12 }} onLayout={event => setWidth(event.nativeEvent.layout.width)}>
+  return <View style={{ gap: size.sectionGap + 2 }} onLayout={event => setWidth(event.nativeEvent.layout.width)}>
     <View style={styles.trackingHeading}>
-      <AppText style={{ fontFamily: "Raleway-Bold", fontSize: 15, lineHeight: 22 }}>Track My RMC</AppText>
-      <AppText variant="caption">{t.title}</AppText>
+      <AppText style={{ fontFamily: "Raleway-Bold", fontSize: size.headerSize, lineHeight: size.headerLine }}>Track My RMC</AppText>
+      <AppText variant="caption" style={{ fontSize: size.serviceLabel, lineHeight: size.serviceLabelLine }}>{t.title}</AppText>
     </View>
     <View testID={order ? "real-tracking-card" : "demo-tracking-card"} style={[styles.card, { flexDirection: width >= 760 ? "row" : "column", borderColor: colors.border, backgroundColor: colors.surfaceSecondary }]}>
       <View style={[styles.info, width >= 760 && { width: "34%" }]}>
-        <Pressable accessibilityRole="button" disabled={!!order} onPress={onNewOrder} style={{ minHeight: 44, justifyContent: "center" }}><AppText style={styles.title}>{order?.order_number || demo.title}</AppText></Pressable>
-        <AppText style={styles.status}>● {order ? order.status.replace(/_/g, " ") : demo.status}</AppText>
-        <AppText style={styles.grade}>{order ? `${order.grade} Grade · ${order.quantity} m³` : "M-25 Grade · 6 m³"}</AppText>
+        <Pressable accessibilityRole="button" disabled={!!order} onPress={onNewOrder} style={{ minHeight: 44, justifyContent: "center" }}><AppText style={[styles.title, { fontSize: size.headerSize + 4 }]}>{order?.order_number || demo.title}</AppText></Pressable>
+        <AppText style={[styles.status, { fontSize: size.headerSize - 1 }]}>● {order ? order.status.replace(/_/g, " ") : demo.status}</AppText>
+        <AppText style={[styles.grade, { fontSize: size.headerSize }]}>{order ? `${order.grade} Grade · ${order.quantity} m³` : "M-25 Grade · 6 m³"}</AppText>
         <View style={styles.site}><Ionicons name="location-outline" size={17} color={colors.onSurfaceSecondary} /><AppText style={{ flex: 1 }}>{order?.site_name || demo.siteName}</AppText></View>
         <View style={[styles.metrics, { borderTopColor: colors.border }]}>
-          <View style={{ flex: 1 }}><AppText variant="caption">{t.eta}</AppText><AppText style={styles.value}>{!order ? demo.etaLabel : live && load?.route?.eta_text ? load.route.eta_text : t.unavailable}</AppText></View>
-          <View style={{ flex: 1 }}><AppText variant="caption">{order ? t.orderedQuantity : t.quantity}</AppText><AppText style={styles.value}>{order?.quantity ?? demo.quantityM3} m³</AppText></View>
+          <View style={{ flex: 1 }}><AppText variant="caption">{t.eta}</AppText><AppText style={[styles.value, { fontSize: size.headerSize + 1 }]}>{!order ? demo.etaLabel : live && load?.route?.eta_text ? load.route.eta_text : t.unavailable}</AppText></View>
+          <View style={{ flex: 1 }}><AppText variant="caption">{order ? t.orderedQuantity : t.quantity}</AppText><AppText style={[styles.value, { fontSize: size.headerSize + 1 }]}>{order?.quantity ?? demo.quantityM3} m³</AppText></View>
         </View>
         <Pressable accessibilityRole="button" accessibilityHint={t.noChallan} testID="home-print-challan" onPress={() => order && tracking?.challan_available ? router.push(`/challan/${order.id}` as any) : toast(t.noChallan, "info")} style={styles.print}><Ionicons name="print-outline" size={20} color={colors.onSurfaceSecondary} /><AppText style={{ fontFamily: fonts.semibold }}>{t.printChallan}</AppText></Pressable>
       </View>
