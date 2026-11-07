@@ -236,18 +236,19 @@ pub async fn update_status(
     admin.require("support.manage")?;
     super::control_center_routes::require_recent_step_up(&state, &admin, &headers).await?;
     if update.reason.trim().len() < 10 || update.reason.trim().len() > 500 {
-        return Err(AppError::BadRequest("Service enquiry changes require an audit reason (10-500 characters)".into()));
+        return Err(AppError::BadRequest(
+            "Service enquiry changes require an audit reason (10-500 characters)".into(),
+        ));
     }
     if !["NEW", "CONTACTED", "QUOTED", "CLOSED"].contains(&update.status.as_str()) {
         return Err(AppError::BadRequest("Invalid enquiry status".into()));
     }
     let mut tx = state.db.begin().await?;
-    let previous: Option<String> = sqlx::query_scalar(
-        "SELECT status FROM customer_service_enquiries WHERE id=$1 FOR UPDATE",
-    )
-    .bind(id)
-    .fetch_optional(&mut *tx)
-    .await?;
+    let previous: Option<String> =
+        sqlx::query_scalar("SELECT status FROM customer_service_enquiries WHERE id=$1 FOR UPDATE")
+            .bind(id)
+            .fetch_optional(&mut *tx)
+            .await?;
     let previous = previous.ok_or_else(|| AppError::NotFound("Enquiry not found".into()))?;
     if previous != update.status {
         sqlx::query(
@@ -268,7 +269,9 @@ pub async fn update_status(
         .await?;
     }
     tx.commit().await?;
-    Ok(Json(json!({"success": true, "id": id, "status": update.status})))
+    Ok(Json(
+        json!({"success": true, "id": id, "status": update.status}),
+    ))
 }
 
 #[cfg(test)]
