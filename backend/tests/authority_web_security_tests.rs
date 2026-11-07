@@ -74,7 +74,10 @@ async fn call_method(
         .unwrap();
     let status = response.status();
     let bytes = to_bytes(response.into_body(), 100000).await.unwrap();
-    (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
 }
 
 async fn identity(db: &PgPool, role: &str, permissions: &[&str]) -> (Uuid, String, String) {
