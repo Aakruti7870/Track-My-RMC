@@ -351,10 +351,10 @@ async fn strict_rule_conditions_skip_nonmatching_orders(db: PgPool) {
     let customer = user(&db, "customer").await;
     let (plant, order_id) = order(&db, owner, customer).await;
     sqlx::query(
-        "UPDATE native_automation_templates
+        r#"UPDATE native_automation_templates
          SET published=TRUE,globally_paused=FALSE,
              conditions='{"min_quantity_m3":10.0,"grade_in":["M25"]}'::jsonb
-         WHERE template_key='ORDER_ACCEPTED_NOTICE'",
+         WHERE template_key='ORDER_ACCEPTED_NOTICE'"#,
     )
     .execute(&db)
     .await
