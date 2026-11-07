@@ -78,14 +78,24 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    const bannerToTitle=titleBox.y-(carouselBox.y+carouselBox.height);
    if(bannerToTitle<10||bannerToTitle>18)
      throw Error('Quick Actions title must fit below the 10dp section gap: '+bannerToTitle);
-   const slogan=await page.getByText('Built Better',{exact:true}).locator('xpath=..').boundingBox();
-   if(Math.abs(slogan.width-132)>1||Math.abs(slogan.height-28)>2)
-     throw Error('Built Better pill must be 132x28dp: '+JSON.stringify(slogan));
+
    for(const [id,label] of [['action-new','New Order'],['action-track','Track Order'],['action-plants','Plants'],['action-orders','My Orders']]){
      const font=await page.getByTestId(id).getByText(label,{exact:true}).evaluate(el=>getComputedStyle(el).fontSize);
      if(font!=='14px')throw Error('Quick Action label must be 14sp: '+id+' '+font);
    }
  }
+ const slogan=await page.getByText('Built Better',{exact:true}).locator('xpath=..').boundingBox();
+ if(Math.abs(slogan.width-expected.sloganWidth)>1||Math.abs(slogan.height-expected.sloganHeight)>2)
+   throw Error('Slogan geometry mismatch at '+width+': '+JSON.stringify(slogan));
+ const expectedQuickHeight=expected.sloganHeight+expected.sectionGap+expected.quickTile;
+ if(Math.abs(quickSectionBox.height-expectedQuickHeight)>7)
+   throw Error('Quick Actions height mismatch at '+width+': '+quickSectionBox.height+' vs '+expectedQuickHeight);
+ const kycIcon=await actualVectorSize('kyc-banner');
+ if(kycIcon[0]!==expected.kyc||kycIcon[1]!==expected.kyc)
+   throw Error('KYC symbol mismatch at '+width+': '+kycIcon);
+ const kycTitleSize=await page.getByTestId('kyc-banner').getByText('KYC VERIFIED',{exact:true})
+   .evaluate(el=>getComputedStyle(el).fontSize);
+ if(kycTitleSize!==expected.kycTitle+'px')throw Error('KYC title mismatch at '+width+': '+kycTitleSize);
  const kycBox=await page.getByTestId('kyc-banner').boundingBox();
  const toolSectionBox=await page.getByTestId('customer-module-grid').boundingBox();
  const pumpSectionBox=await page.getByTestId('home-pump-rental-promo').boundingBox();
