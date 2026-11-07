@@ -45,9 +45,18 @@ async fn call(
     token: Option<&str>,
     body: Option<Value>,
 ) -> (StatusCode, Value) {
-    let mut req = Request::builder()
-        .uri(path)
-        .method(if body.is_some() { "POST" } else { "GET" });
+    let method = if body.is_some() { "POST" } else { "GET" };
+    call_method(app, path, token, body, method).await
+}
+
+async fn call_method(
+    app: &Router,
+    path: &str,
+    token: Option<&str>,
+    body: Option<Value>,
+    method: &str,
+) -> (StatusCode, Value) {
+    let mut req = Request::builder().uri(path).method(method);
     if let Some(token) = token {
         req = req.header("Authorization", format!("Bearer {token}"));
     }
@@ -62,7 +71,7 @@ async fn call(
         .unwrap();
     let status = response.status();
     let bytes = to_bytes(response.into_body(), 100000).await.unwrap();
-    (status, serde_json::from_slice(&bytes).unwrap())
+    (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
 }
 
 async fn identity(db: &PgPool, role: &str, permissions: &[&str]) -> (Uuid, String, String) {
@@ -254,11 +263,12 @@ async fn plant_admin_cannot_access_global_service_enquiry_control(db: PgPool) {
         StatusCode::FORBIDDEN
     );
     assert_eq!(
-        call(
+        call_method(
             &app,
             &format!("/api/admin/service-enquiries/{}/status", Uuid::new_v4()),
             Some(&token),
             Some(json!({"status":"CONTACTED","reason":"Should be denied"})),
+            "PATCH",
         )
         .await
         .0,
@@ -280,11 +290,12 @@ async fn plant_admin_cannot_access_global_service_enquiry_control(db: PgPool) {
         StatusCode::OK,
     );
     assert_eq!(
-        call(
+        call_method(
             &app,
             &format!("/api/admin/service-enquiries/{}/status", Uuid::new_v4()),
             Some(web_token),
             Some(json!({"status":"CONTACTED","reason":"Insufficient capabilities"})),
+            "PATCH",
         ).await.0,
         StatusCode::FORBIDDEN,
     );
