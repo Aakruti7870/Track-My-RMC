@@ -14,7 +14,7 @@ Status: **implementation in PR #157; not automatically approved for production**
 
 | Responsibility | Central Admin | Delegated Authority |
 | --- | --- | --- |
-| Account authentication | `POST /api/admin/auth/verify-totp` | `POST /api/authority/auth/verify-totp` |
+| Account authentication | Email + independently hashed Argon2id password + TOTP at `POST /api/admin/auth/verify-totp` | Email + Argon2id password + TOTP at `POST /api/authority/auth/verify-totp` |
 | Session / identity | `/api/admin/auth/me`, logout | `/api/authority/auth/me`, logout |
 | Delegation | `/api/control-center/authority-access` with `admin_access.manage` and MFA step-up | No ability to grant permissions or manage other Authority identities |
 | Users / plants / orders | Permission-gated Control Center collections | Explicit `user.view`, `plant.view`, `order.view` grants; no global edit |
@@ -30,7 +30,7 @@ Status: **implementation in PR #157; not automatically approved for production**
 
 Only these **six** permissions may be assigned by Central Admin: `user.view`, `plant.view`, `order.view`, `support.view`, `kyc.view`, `kyc.review`.
 
-An existing Customer, Driver, Owner, Staff, Plant Admin or Central Admin account cannot be silently promoted to Authority. A dedicated Authority account must be created or changed using the Central Admin authenticated web session and an audit reason. Revocation or any permission change invalidates previous Authority sessions. The Authority web session requires an active, approved account and a successfully enrolled authenticator. Authority first-time authenticator enrollment uses verified work-email OTP on the existing server-bound enrollment flow. No staff/mobile authentication completion can issue an Authority session.
+An existing Customer, Driver, Owner, Staff, Plant Admin or Central Admin account cannot be silently promoted to Authority. A dedicated Authority account must be created or changed using the Central Admin authenticated web session and an audit reason. Revocation or any permission change invalidates previous Authority sessions. The Authority web session requires an active approved account, an Argon2id password and a successfully enrolled authenticator. First-time Authority enrollment requires verified work-email OTP, followed by authenticator enrollment and a one-use server-bound login challenge plus fresh TOTP at `POST /api/authority/auth/set-initial-password`. This can only replace `!web-only-no-password!` on a dedicated Authority account. No staff/mobile authentication completion can issue an Authority session.
 
 ### Approval and evidence
 
@@ -44,8 +44,61 @@ Required before merge/release:
 2. `admin-web` `npm run build` and browser tests at mobile/tablet/desktop widths.
 3. An approved Central Admin fixture tests grant, reject, revoke and expired-session behavior. An approved Authority fixture tests wrong-role denial, no mobile login/token refresh, KYC evidence gates, and cross-tenant/privacy restrictions.
 4. Validate production migrations, email OTP delivery and authenticator enrollment **without emitting secret keys or real customer data**; verify the expected production database.
-5. Review Central Admin two-factor strength and establish an independently controlled, tested recovery/bootstrap process. Email address + TOTP code alone is not two independent factors.
-6. Explicit release approval. No live marketing broadcasts, payments, AWS resource changes, production database writes or production deployment occur in this PR.
+5. Verify password + TOTP enforcement including wrong-password, missing-password, stale challenge, role mismatch, session replacement and initial Authority enrollment. Account recovery requires controlled operator verification, never email-only self-service.
+6. Explicit release approval and independently verified production identity/bootstrap rehearsal. No live marketing broadcasts or payments are automatically enabled, and no AWS production write or deployment is performed by CI.
+
+
+## Production bootstrap runbook (operator-controlled)
+
+There is no seeded root account, default password, email allowlist bypass, or public registration
+route for Central Admin. The bootstrap example exists only as an explicit operator command.
+**Never use CI, production startup, an automated deployment hook, or a remote logged terminal
+to provision privileged credentials.**
+
+1. Obtain two-person approval of the named Central Admin identity and exact production
+   database. Verify current DB name, account, network path, migration checksums and
+   current backups separately. Do not infer the database name from the RDS instance name.
+2. From a trusted interactive terminal with secure secret-handling controls, run the
+   SHA-pinned source's `backend/examples/bootstrap_central_admin.rs` using:
+   `cargo run --release --example bootstrap_central_admin -- --apply --expected-database <VERIFIED_DATABASE> --email <APPROVED_EMAIL> --name <APPROVED_NAME>`
+   with `DATABASE_URL` supplied securely outside shell history.
+3. The tool requires a private terminal, validates the current database, refuses any
+   existing Central Admin identity or email collision, accepts a hidden password,
+   generates a new authenticator, checks a live code **before** a single transactional
+   account creation, hashes backup codes and writes an audit event.
+4. Store the printed authenticator provisioning URI and single-use recovery codes securely,
+   separate from the password. Do not allow shell/SSM/CI session output capture, helpdesk
+   screenshots or centralized transcript logging of these secrets.
+5. Validate a separate browser login using password + authenticator; verify account
+   permissions, wrong-role denial and logout/session replacement before enabling operational
+   modules. Use only consented real accounts for live acceptance.
+
+**Existing root account:** This first-account command intentionally refuses to overwrite
+existing Central Admin identities. An old TOTP-only root record has no usable password
+and must not be silently upgraded. Recovery requires an independently approved
+out-of-band identity verification and audited database credential rotation by authorized
+operators. There is no unverified email-only password recovery API or backdoor.
+
+### Authority first-time login
+
+1. Central Admin grants exactly the required six-capability subset using fresh step-up
+   and a written audit reason. Existing staff/customer/owner identities are never promoted.
+2. The approved Authority chooses **First sign-in** on the web portal, verifies the
+   registered work email via OTP and enrolls the authenticator. Existing staff MFA
+   continues through its own login path.
+3. The Authority sets a private 16-128 byte password through a five-minute, single-use
+   challenge and current TOTP code. No web or mobile JWT is issued by enrollment.
+4. Subsequent Authority sign-in requires the password and a new authenticator code.
+   A change of grants or account suspension invalidates existing sessions immediately.
+
+## Release-blocking external evidence
+
+- Successful latest-commit PG16/18 format, check, Clippy, tests, and browser CI.
+- Isolated real browser Authority first-time enrollment, password rejection and revocation.
+- Provider-consented DigiLocker proof acceptance; no synthetic session may be represented as real verification.
+- Production database/backup/rollback and secret-delivery verification against the exact AWS target.
+- Verified account-specific recovery process and release approval. Public messaging and
+  payment features remain independent gated integrations.
 
 ### Remaining integration work
 
