@@ -5,10 +5,10 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
  for(const width of [320,390,768,960,1024,1440]){
   const expected=width>=1024
-    ? {quick:72,tool:72,service:80,circle:76,toolPlate:76,servicePlate:84,quickTile:124,toolTile:132,serviceTile:140,quickFont:16,toolFont:14,serviceFont:15,heading:18,headingLine:26,sectionGap:16,sloganWidth:166,sloganHeight:36,pumpWidth:360,pumpHeight:70,pumpIconWidth:54,pumpIconHeight:48,pumpFirst:16,pumpSecond:18,kyc:36,kycTitle:18,location:18}
+    ? {quick:72,tool:72,service:80,circle:76,toolPlate:76,servicePlate:84,quickTile:104,toolTile:132,serviceTile:140,quickFont:16,toolFont:14,serviceFont:15,heading:18,headingLine:24,sectionGap:16,sloganWidth:166,sloganHeight:36,pumpWidth:360,pumpHeight:70,pumpIconWidth:54,pumpIconHeight:48,pumpFirst:16,pumpSecond:18,kyc:36,kycTitle:18,location:15}
     : width>=600
-      ? {quick:64,tool:64,service:70,circle:68,toolPlate:68,servicePlate:74,quickTile:116,toolTile:119,serviceTile:125,quickFont:15,toolFont:13,serviceFont:14,heading:16,headingLine:24,sectionGap:12,sloganWidth:146,sloganHeight:32,pumpWidth:300,pumpHeight:62,pumpIconWidth:48,pumpIconHeight:42,pumpFirst:14,pumpSecond:16,kyc:32,kycTitle:16,location:16}
-      : {quick:52,tool:52,service:58,circle:56,toolPlate:56,servicePlate:62,quickTile:96,toolTile:101,serviceTile:103,quickFont:14,toolFont:11,serviceFont:12,heading:15,headingLine:22,sectionGap:10,sloganWidth:132,sloganHeight:28,pumpWidth:240,pumpHeight:50,pumpIconWidth:40,pumpIconHeight:35,pumpFirst:13,pumpSecond:15,kyc:28,kycTitle:15,location:14};
+      ? {quick:64,tool:64,service:70,circle:68,toolPlate:68,servicePlate:74,quickTile:94,toolTile:119,serviceTile:125,quickFont:15,toolFont:13,serviceFont:14,heading:16,headingLine:22,sectionGap:12,sloganWidth:146,sloganHeight:32,pumpWidth:300,pumpHeight:62,pumpIconWidth:48,pumpIconHeight:42,pumpFirst:14,pumpSecond:16,kyc:32,kycTitle:16,location:14}
+      : {quick:52,tool:52,service:58,circle:56,toolPlate:56,servicePlate:62,quickTile:82,toolTile:101,serviceTile:103,quickFont:14,toolFont:11,serviceFont:12,heading:15,headingLine:20,sectionGap:10,sloganWidth:132,sloganHeight:28,pumpWidth:240,pumpHeight:50,pumpIconWidth:40,pumpIconHeight:35,pumpFirst:13,pumpSecond:15,kyc:28,kycTitle:15,location:13};
  let mode='demo';
  const page=await browser.newPage({viewport:{width,height:1000}});
  await page.addInitScript(()=>localStorage.setItem('tmrmc_token',JSON.stringify('isolated-browser-fixture')));
@@ -68,8 +68,8 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  const quickSectionBox=await page.getByTestId('home-quick-actions').boundingBox();
  // Geometry measured from the PhonePe reference, expressed in viewport dp on web.
  if(width<=390) {
-   if(Math.abs(quickSectionBox.height-134)>5)
-     throw Error('Quick Actions section should be about 134dp: '+quickSectionBox.height);
+   if(Math.abs(quickSectionBox.height-120)>(width<=340?20:7))
+     throw Error('Quick Actions section should be 120-140dp depending on label wrapping: '+quickSectionBox.height);
    const titleBox=await page.getByText('Quick Actions',{exact:true}).boundingBox();
    const bannerToSection=quickSectionBox.y-(carouselBox.y+carouselBox.height);
    if(Math.abs(bannerToSection-10)>1)
@@ -88,7 +88,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  if(Math.abs(slogan.width-expected.sloganWidth)>1||Math.abs(slogan.height-expected.sloganHeight)>2)
    throw Error('Slogan geometry mismatch at '+width+': '+JSON.stringify(slogan));
  const expectedQuickHeight=expected.sloganHeight+expected.sectionGap+expected.quickTile;
- if(Math.abs(quickSectionBox.height-expectedQuickHeight)>7)
+ if(Math.abs(quickSectionBox.height-expectedQuickHeight)>(width<=340?20:7))
    throw Error('Quick Actions height mismatch at '+width+': '+quickSectionBox.height+' vs '+expectedQuickHeight);
  const kycIcon=await actualVectorSize('kyc-banner');
  if(kycIcon[0]!==expected.kyc||kycIcon[1]!==expected.kyc)
@@ -177,10 +177,10 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  if(!await page.getByRole('button',{name:'Book Your Pump Online!'}).count())throw Error('Accessible pump CTA missing');
  for(const title of ['Quick Actions','Active Projects & Planning','Free Tools & Expert Advice','Supply & Workforce','Track My RMC','Built Better']){
    const style=await page.getByText(title,{exact:true}).first().evaluate(el=>{const s=getComputedStyle(el);return {size:s.fontSize,height:s.lineHeight,family:s.fontFamily};});
-   if(style.size!==expected.heading+'px'||style.height!==expected.headingLine+'px'||!style.family.toLowerCase().includes('raleway-bold'))
+   if(style.size!==expected.heading+'px'||style.height!==expected.headingLine+'px'||!style.family.toLowerCase().includes('jakarta-bold'))
      throw Error('Home heading typography regression '+title+': '+JSON.stringify(style));
  }
- for(const [title,size,family] of [['Streamline Your Pour',expected.pumpFirst+'px','raleway-medium'],['Book Your Pump Online!',expected.pumpSecond+'px','raleway-semibold']]){
+ for(const [title,size,family] of [['Streamline Your Pour',expected.pumpFirst+'px','jakarta-medium'],['Book Your Pump Online!',expected.pumpSecond+'px','jakarta-semibold']]){
    const style=await page.getByText(title,{exact:true}).first().evaluate(el=>{const s=getComputedStyle(el);return {size:s.fontSize,family:s.fontFamily};});
    if(style.size!==size||!style.family.toLowerCase().includes(family))
      throw Error('Pump CTA font regression '+title+': '+JSON.stringify(style));
@@ -216,8 +216,11 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  if(Math.abs((mid-centers[1])-(centers[2]-mid))>4 || Math.abs((mid-centers[0])-(centers[3]-mid))>4)throw Error('Tab spacing is not symmetric');
  const card=page.getByTestId('demo-tracking-card'); try { await card.waitFor({timeout:30000}); } catch(e) { await page.screenshot({path:`tracking-previews/failure-${width}.png`,fullPage:true}); console.error(await page.locator('body').innerText()); throw e; }
  await card.evaluate(el=>el.scrollIntoView({block:'start'}));
- const b=await card.boundingBox();const m=await page.getByTestId('demo-tracking-map').boundingBox();
- if(Math.abs(m.width/m.height-2)>0.05)throw Error('map ratio');
+ const b=await card.boundingBox();
+ if(await page.getByTestId('demo-tracking-map').count())throw Error('The home tracking map should be collapsed initially');
+ await card.getByTestId('home-toggle-tracking-map').click();
+ const m=await page.getByTestId('demo-tracking-map').boundingBox();
+ if(!m||Math.abs(m.width/m.height-2)>0.05)throw Error('map ratio');
  if(b.x<0||b.x+b.width>width+1)throw Error('overflow');
  for(const text of ['Place Your First order','M-25 Grade · 6 m³','Project site 1','Print Challan','Track TM','Call Driver','Call Plant'])if(!await card.getByText(text,{exact:true}).count())throw Error(text);
  await card.screenshot({path:`tracking-previews/tracking-${width}.png`});
@@ -232,7 +235,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    await real.getByText('CUSTOMER-ORDER',{exact:true}).waitFor();
    await real.getByText('Actual project',{exact:true}).waitFor();
    if(await page.getByTestId('demo-tracking-map').count())throw Error('real order used demo route');
-   if(state==='pending')await real.getByText('Waiting for dispatch',{exact:true}).waitFor();
+   if(state==='pending'){await real.getByTestId('home-toggle-tracking-map').click();await real.getByText('Waiting for dispatch',{exact:true}).waitFor();}
    if(state==='live'){
      await real.getByText('LIVE TRACKING',{exact:true}).waitFor();
      await real.getByText('Transit Mixer · ASSIGNED-MIXER',{exact:true}).waitFor();

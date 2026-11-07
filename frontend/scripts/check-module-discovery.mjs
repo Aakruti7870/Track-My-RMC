@@ -112,7 +112,7 @@ assert.ok(customerHome.includes('>Supply & Workforce</AppText>'), "Supply & Work
 assert.ok(customerHome.includes('>Active Projects & Planning</AppText>') || customerHome.includes('"Active Projects & Planning", "customer-module-grid"'), "Planning section heading required.");
 assert.ok(customerHome.includes('"Free Tools & Expert Advice", "home-advice-grid"'), "Four-item advice section required.");
 assert.ok(customerHome.includes('>Built Better</AppText>') && customerHome.includes('name="shield-checkmark"'), "Built Better green shield slogan required.");
-assert.ok(customerHome.includes('sectionTitle: { fontFamily: "Raleway-Bold", fontSize: 15, lineHeight: 22'), "Home mobile headings must retain Raleway Bold at 15dp.");
+assert.ok(customerHome.includes('sectionTitle: { fontFamily: fonts.bold, fontSize: 15, lineHeight: 20'), "Home mobile headings use Jakarta Bold 15dp / compact 20dp line.");
 assert.ok(customerHome.includes('customerHomeSizes(viewportWidth, Platform.OS)'), "Use viewport and platform to size the Home consistently.");
 const responsiveHome = read("src/theme/tokens.ts");
 assert.ok(responsiveHome.includes('platform !== "web" || viewportWidth < 600') && responsiveHome.includes("viewportWidth < 1024"), "Only tablet and desktop web may scale the approved native/mobile design.");
@@ -134,7 +134,7 @@ assert.ok(customerHome.includes('width: "32.5%"'), "Other Services must use thre
 assert.ok(!customerHome.includes('<Card testID="customer-module-grid"'), "Redundant RMC Tools outer border must be removed.");
 assert.ok(!customerHome.includes('<Card testID="home-quick-actions"'), "Redundant Quick Actions outer border must be removed.");
 assert.ok(!customerHome.includes('<Card testID="home-other-services"'), "Redundant Other Services outer border must be removed.");
-for (const key of ["quickTile: { minHeight: 96", "toolTile: { minHeight: 101", "serviceTile: { minHeight: 103", "maxWidth: 620"]) {
+for (const key of ["quickTile: { minHeight: 82", "toolTile: { minHeight: 101", "serviceTile: { minHeight: 103", "maxWidth: 620"]) {
   assert.ok(customerHome.includes(key), `Compact card sizing missing: ${key}`);
 }
 // Newly uploaded Other Services SVG masters must render on the actual home cards.
