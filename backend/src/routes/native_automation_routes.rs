@@ -5,6 +5,7 @@ use crate::{
     auth::{control_center::WebAdmin, AuthUser},
     error::AppError,
     state::AppState,
+    services::native_rule_conditions::OrderConditions,
 };
 use axum::{
     extract::{Path, State},
@@ -29,6 +30,12 @@ pub struct PlantRule {
     pub reminder_after_minutes: Option<i32>,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConditionPolicy {
+    pub conditions: OrderConditions,
+}
+
 pub async fn admin_templates(
     State(state): State<AppState>,
     admin: WebAdmin,
@@ -38,6 +45,7 @@ pub async fn admin_templates(
         "SELECT jsonb_build_object('key',t.template_key,'label',t.label,
              'event_type',t.event_type,'action_type',t.action_type,
              'version',t.version,'published',t.published,'globally_paused',t.globally_paused,
+             'conditions',t.conditions,
              'enabled_plants',(SELECT COUNT(*) FROM native_automation_plant_rules r
                                 WHERE r.template_key=t.template_key AND r.enabled))
          FROM native_automation_templates t ORDER BY t.template_key",
@@ -83,6 +91,17 @@ pub async fn set_template_policy(
         .bind(&key)
         .bind(body.published)
         .bind(body.globally_paused)
+        .bind(admin.user_id)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "INSERT INTO native_automation_template_revisions
+             (template_key,version,published,globally_paused,conditions,changed_by)
+             SELECT template_key,version,published,globally_paused,conditions,$2
+             FROM native_automation_templates WHERE template_key=$1
+             ON CONFLICT (template_key,version) DO NOTHING",
+        )
+        .bind(&key)
         .bind(admin.user_id)
         .execute(&mut *tx)
         .await?;
@@ -156,7 +175,7 @@ pub async fn owner_rules(
     let items: Vec<Value> = sqlx::query_scalar(
         "SELECT jsonb_build_object('key',t.template_key,'label',t.label,
                 'published',t.published,'globally_paused',t.globally_paused,
-                'enabled',COALESCE(r.enabled,FALSE),
+                'conditions',t.conditions,'enabled',COALESCE(r.enabled,FALSE),
                 'reminder_after_minutes',COALESCE(r.reminder_after_minutes,60))
          FROM native_automation_templates t
          LEFT JOIN native_automation_plant_rules r
@@ -326,4 +345,108 @@ pub async fn admin_requeue_dead_letter(
     .await?;
     tx.commit().await?;
     Ok(Json(json!({"success":true,"job_id":job,"status":"RETRY"})))
+}
+
+/// Only the dedicated Central Admin can change bounded rule conditions.
+/// Active templates must be paused first; publication is a separate MFA action.
+pub async fn admin_set_conditions(
+    State(state): State<AppState>,
+    admin: WebAdmin,
+    headers: HeaderMap,
+    Path(key): Path<String>,
+    Json(body): Json<ConditionPolicy>,
+) -> Result<Json<Value>, AppError> {
+    admin.require("automation.manage")?;
+    super::control_center_routes::require_recent_step_up(&state, &admin.user, &headers).await?;
+    body.conditions
+        .validate()
+        .map_err(|message| AppError::BadRequest(message.into()))?;
+    let serialized = serde_json::to_value(&body.conditions)
+        .map_err(|_| AppError::BadRequest("Invalid automation conditions".into()))?;
+    let mut tx = state.db.begin().await?;
+    let existing: Option<(bool, Value)> = sqlx::query_as(
+        "SELECT globally_paused,conditions
+         FROM native_automation_templates WHERE template_key=$1 FOR UPDATE",
+    )
+    .bind(&key)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some((paused, old_conditions)) = existing else {
+        return Err(AppError::NotFound("Unknown automation template".into()));
+    };
+    if !paused {
+        return Err(AppError::Conflict(
+            "Pause the template before modifying its conditions".into(),
+        ));
+    }
+    if serialized != old_conditions {
+        sqlx::query(
+            "UPDATE native_automation_templates
+             SET conditions=$2,version=version+1,updated_by=$3,updated_at=NOW()
+             WHERE template_key=$1",
+        )
+        .bind(&key)
+        .bind(&serialized)
+        .bind(admin.user_id)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "INSERT INTO native_automation_template_revisions
+             (template_key,version,published,globally_paused,conditions,changed_by)
+             SELECT template_key,version,published,globally_paused,conditions,$2
+             FROM native_automation_templates WHERE template_key=$1
+             ON CONFLICT (template_key,version) DO NOTHING",
+        )
+        .bind(&key)
+        .bind(admin.user_id)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata)
+             VALUES($1,'automation.template.conditions','automation_template',$2,$3)",
+        )
+        .bind(admin.user_id)
+        .bind(&key)
+        .bind(json!({"previous":old_conditions,"new":serialized}))
+        .execute(&mut *tx)
+        .await?;
+    }
+    let version: i32 = sqlx::query_scalar(
+        "SELECT version FROM native_automation_templates WHERE template_key=$1",
+    )
+    .bind(&key)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(json!({"success":true,"template_key":key,"version":version,
+                   "conditions":body.conditions})))
+}
+
+/// Immutable historical revisions (not executable scripts) for governance.
+pub async fn admin_revisions(
+    State(state): State<AppState>,
+    admin: WebAdmin,
+    Path(key): Path<String>,
+) -> Result<Json<Value>, AppError> {
+    admin.require("audit.view")?;
+    let exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM native_automation_templates WHERE template_key=$1)",
+    )
+    .bind(&key)
+    .fetch_one(&state.db)
+    .await?;
+    if !exists {
+        return Err(AppError::NotFound("Unknown automation template".into()));
+    }
+    let revisions: Vec<Value> = sqlx::query_scalar(
+        "SELECT jsonb_build_object('version',version,'published',published,
+            'globally_paused',globally_paused,'conditions',conditions,
+            'changed_by',changed_by,'created_at',created_at)
+         FROM native_automation_template_revisions
+         WHERE template_key=$1 ORDER BY version DESC LIMIT 100",
+    )
+    .bind(&key)
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(json!({"template_key":key,"revisions":revisions})))
 }
