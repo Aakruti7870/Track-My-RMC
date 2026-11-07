@@ -1209,6 +1209,14 @@ pub fn build_app_router(state: AppState) -> Router {
             post(native_automation_routes::set_template_policy),
         )
         .route(
+            "/api/control-center/automation/templates/:template_key/conditions",
+            put(native_automation_routes::admin_set_conditions),
+        )
+        .route(
+            "/api/control-center/automation/templates/:template_key/revisions",
+            get(native_automation_routes::admin_revisions),
+        )
+        .route(
             "/api/control-center/automation/jobs",
             get(native_automation_routes::admin_jobs),
         )
