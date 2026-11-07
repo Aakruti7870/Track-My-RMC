@@ -4,6 +4,7 @@ use axum::{
     Router,
 };
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use tower::ServiceExt;
 use trackmyrmc_backend::{
@@ -188,6 +189,82 @@ async fn authority_web_login_cannot_cross_into_super_admin_or_mobile(db: PgPool)
             .await
             .0,
         StatusCode::UNAUTHORIZED
+    );
+}
+
+#[sqlx::test]
+async fn authority_password_bootstrap_requires_email_challenge_and_totp(db: PgPool) {
+    let app = build_app_router(state(db.clone()));
+    let (user_id, email, secret) = identity(&db, "authority", &["support.view"]).await;
+    sqlx::query(
+        "UPDATE users SET hashed_password='!web-only-no-password!',
+         work_email_verified_at=NOW() WHERE id=$1",
+    )
+    .bind(user_id)
+    .execute(&db)
+    .await
+    .unwrap();
+    let token = "SyntheticTestChallengeTokenWhichIsExactlyFortyEight";
+    assert_eq!(token.len(), 48);
+    let challenge_hash = hex::encode(Sha256::digest(token.as_bytes()));
+    sqlx::query(
+        "INSERT INTO staff_mfa_challenges(user_id,token_hash,purpose,expires_at)
+         VALUES($1,$2,'login',NOW()+INTERVAL '5 minutes')",
+    )
+    .bind(user_id)
+    .bind(challenge_hash)
+    .execute(&db)
+    .await
+    .unwrap();
+    let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
+    let (before, _) = call(
+        &app,
+        "/api/authority/auth/verify-totp",
+        None,
+        Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":code})),
+    )
+    .await;
+    assert_eq!(before, StatusCode::UNAUTHORIZED);
+
+    let (wrong, _) = call(
+        &app,
+        "/api/authority/auth/set-initial-password",
+        None,
+        Some(json!({"challenge_token":token,"password":SYNTHETIC_PASSWORD,"code":"wrong"})),
+    )
+    .await;
+    assert_eq!(wrong, StatusCode::BAD_REQUEST);
+    let (enrolled, _) = call(
+        &app,
+        "/api/authority/auth/set-initial-password",
+        None,
+        Some(json!({"challenge_token":token,"password":SYNTHETIC_PASSWORD,"code":code})),
+    )
+    .await;
+    assert_eq!(enrolled, StatusCode::OK);
+    let (reused, _) = call(
+        &app,
+        "/api/authority/auth/set-initial-password",
+        None,
+        Some(json!({"challenge_token":token,"password":SYNTHETIC_PASSWORD,"code":code})),
+    )
+    .await;
+    assert_eq!(reused, StatusCode::UNAUTHORIZED);
+
+    let (logged_in, session) = call(
+        &app,
+        "/api/authority/auth/verify-totp",
+        None,
+        Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":code})),
+    )
+    .await;
+    assert_eq!(logged_in, StatusCode::OK);
+    assert!(session["token"].is_string());
+    assert_eq!(
+        call(&app, "/api/admin/auth/me", session["token"].as_str(), None)
+            .await
+            .0,
+        StatusCode::FORBIDDEN,
     );
 }
 
