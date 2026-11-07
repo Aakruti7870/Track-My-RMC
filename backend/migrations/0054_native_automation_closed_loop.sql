@@ -22,3 +22,19 @@ WHERE status='ACKNOWLEDGED' AND acknowledged_at IS NULL;
 CREATE INDEX idx_native_domain_tasks_reconcile
     ON native_automation_domain_tasks(next_check_at,id)
     WHERE status IN ('OPEN','ACKNOWLEDGED');
+
+-- Append-only technical audit. Automated transitions must not impersonate
+-- an owner in the operational audit_logs actor field.
+CREATE TABLE native_automation_domain_task_events (
+    id BIGSERIAL PRIMARY KEY,
+    task_id UUID NOT NULL REFERENCES native_automation_domain_tasks(id) ON DELETE CASCADE,
+    plant_id UUID NOT NULL REFERENCES rmc_plants(id) ON DELETE CASCADE,
+    event_type VARCHAR(32) NOT NULL
+        CHECK (event_type IN ('ACKNOWLEDGED','SLA_ESCALATED','SOURCE_RESOLVED','SOURCE_CANCELLED')),
+    actor_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    details JSONB NOT NULL DEFAULT '{}'::jsonb
+        CHECK (jsonb_typeof(details)='object'),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_native_domain_task_events_lookup
+    ON native_automation_domain_task_events(plant_id,task_id,created_at DESC);
