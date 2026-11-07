@@ -6,7 +6,7 @@ import { useIsFocused } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
 import * as Location from "expo-location";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Circle, ClipPath, Defs, G, Line, Path, Rect } from "react-native-svg";
+import Svg, { Circle, ClipPath, Defs, G, Line, Rect } from "react-native-svg";
 
 import { apiGet, apiErrorDetail } from "@/src/api/client";
 import { useAuth } from "@/src/auth/AuthContext";
@@ -17,9 +17,9 @@ import { useTheme } from "@/src/theme/ThemeProvider";
 import { AppText } from "@/src/components/ui/AppText";
 import { Button } from "@/src/components/ui/Button";
 import { Input } from "@/src/components/ui/Input";
-import { customerHomeSizes, glass } from "@/src/theme/tokens";
+import { customerHomeSizes, fonts, glass } from "@/src/theme/tokens";
 
-type Sheet = "help" | "location" | "kyc" | null;
+type Sheet = "help" | "location" | null;
 type Geocode = { locality: string; formatted_address: string };
 
 function IndianFlag({ size }: { size: number }) {
@@ -30,13 +30,6 @@ function IndianFlag({ size }: { size: number }) {
       <Circle cx="12" cy="12" r="3" fill="none" stroke="#000080" strokeWidth="0.6" />
       {Array.from({ length: 12 }, (_, i) => <Line key={i} x1="12" y1="12" x2={12 + 3 * Math.cos(i * Math.PI / 6)} y2={12 + 3 * Math.sin(i * Math.PI / 6)} stroke="#000080" strokeWidth="0.35" />)}
     </G><Circle cx="12" cy="12" r="11" fill="none" stroke="#FFFFFF" strokeWidth="0.7" />
-  </Svg>;
-}
-
-function VerifiedBadge({ color, size }: { color: string; size: number }) {
-  return <Svg width={size} height={size} viewBox="0 0 32 32" accessible={false}>
-    <Path d="M16 1 20 3 24 3 26 7 30 9 30 13 32 16 30 20 30 24 26 26 24 30 20 30 16 32 12 30 8 30 6 26 2 24 2 20 0 16 2 12 2 8 6 6 8 2 12 2Z" fill={color} />
-    <Path d="m9 16 5 5 9-10" fill="none" stroke="#FFFFFF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>;
 }
 
@@ -64,7 +57,6 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
   const size = customerHomeSizes(width, Platform.OS);
   const focused = useIsFocused();
   const permissions = usePermissions();
-  const { data: profile, error: profileError, refetch: refreshProfile } = useGet<{ kyc_status: string }>("/me");
   const { data: feed, error: feedError, refetch: refreshFeed } = useGet<{ unread: number }>("/notifications?limit=1");
   const [sheet, setSheet] = useState<Sheet>(null);
   const [selection, setSelection] = useState<{ token: string; label: string } | null>(null);
@@ -75,15 +67,12 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
   const attemptedFor = useRef<string | null>(null);
   const busy = useRef(false);
   const locationController = useRef<AbortController | null>(null);
-  const status = profileError ? "UNAVAILABLE" : (profile?.kyc_status || "UNAVAILABLE").toUpperCase();
-  const verified = status === "VERIFIED";
   const unread = !feedError && typeof feed?.unread === "number" && feed.unread > 0;
   const label = selection?.token === token ? selection.label : "Select Location";
 
   const refresh = useCallback(() => {
-    void refreshProfile();
     void refreshFeed();
-  }, [refreshProfile, refreshFeed]);
+  }, [refreshFeed]);
 
   useFocusEffect(useCallback(() => {
     refresh();
@@ -178,23 +167,20 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
     {focused ? <StatusBar style={colors.isDark ? "light" : "dark"} /> : null}
     <View style={[styles.safeArea, { paddingTop: insets.top, backgroundColor: glassSurface, borderColor: glassBorder, shadowColor: colors.shadow }]}>
       <View testID="customer-home-header" style={[styles.row, { minHeight: size.headerHeight }]}>
-        <Pressable testID="header-kyc" accessibilityRole="button" accessibilityLabel={`KYC status: ${status.replace(/_/g, " ")}`} onPress={() => setSheet("kyc")} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(48, size.headerTarget) }]}>
-          {verified ? <VerifiedBadge color={colors.verified} size={size.headerVerified} /> : <Ionicons name="shield-outline" size={size.headerShield} color={colors.onSurfaceTertiary} />}
+        <Pressable testID="header-location-refresh" accessibilityRole="button" accessibilityLabel="Refresh current location" disabled={locationBusy}
+          onPress={() => void lookup()} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(44, size.headerTarget) }]}>
+          {locationBusy ? <ActivityIndicator size="small" color={colors.brand} /> : <Ionicons name="refresh-outline" size={Math.min(24, size.headerBell)} color={colors.onSurface} />}
         </Pressable>
-        <Pressable testID="header-location" accessibilityRole="button" accessibilityLabel={`Location: ${label}. Refresh or select location`} onPress={() => setSheet("location")} style={[styles.location, { minHeight: Math.max(48, size.headerTarget) }]}>
+        <Pressable testID="header-location" accessibilityRole="button" accessibilityLabel={`Location: ${label}. Select location`} onPress={() => setSheet("location")} style={[styles.location, { minHeight: Math.max(44, size.headerTarget) }]}>
           <IndianFlag size={size.headerFlag} />
           <AppText numberOfLines={1} ellipsizeMode="tail" style={[styles.locationText, { fontSize: size.locationSize, lineHeight: size.locationLine, color: colors.onSurface }]}>{locationBusy ? "Locating…" : label}</AppText>
           <Ionicons name="chevron-down" size={size.headerChevron} color={colors.onSurface} />
         </Pressable>
-        <Pressable testID="header-qr-disabled" disabled accessibilityRole="button" accessibilityState={{ disabled: true }} accessibilityLabel="QR Scanner — Coming Soon" style={[styles.target, { width: size.headerTarget, minHeight: Math.max(48, size.headerTarget) }]}>
-          <Ionicons name="scan-outline" size={size.headerScan} color={colors.disabledContent} />
-          <View pointerEvents="none" style={styles.qrInner}><Ionicons name="qr-code-outline" size={size.headerQR} color={colors.disabledContent} /></View>
-        </Pressable>
-        <Pressable testID="notifications-bell" accessibilityRole="button" accessibilityLabel={unread ? `${feed!.unread} unread notifications` : "Notifications"} onPress={() => router.push("/notifications")} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(48, size.headerTarget) }]}>
+        <Pressable testID="notifications-bell" accessibilityRole="button" accessibilityLabel={unread ? `${feed!.unread} unread notifications` : "Notifications"} onPress={() => router.push("/notifications")} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(44, size.headerTarget) }]}>
           <Ionicons name="notifications-outline" size={size.headerBell} color={colors.onSurface} />
           {unread ? <View testID="header-unread-dot" style={[styles.dot, { backgroundColor: colors.verified, borderColor: glassSurface }]} /> : null}
         </Pressable>
-        <Pressable testID="header-help" accessibilityRole="button" accessibilityLabel="Customer help" onPress={() => setSheet("help")} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(48, size.headerTarget) }]}>
+        <Pressable testID="header-help" accessibilityRole="button" accessibilityLabel="Customer help" onPress={() => setSheet("help")} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(44, size.headerTarget) }]}>
           <Ionicons name="help-circle-outline" size={size.headerHelp} color={colors.onSurface} />
         </Pressable>
       </View>
@@ -204,8 +190,8 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
         <Pressable accessibilityRole="button" accessibilityLabel="Close dialog" onPress={close} style={StyleSheet.absoluteFill} />
         <View accessibilityViewIsModal onAccessibilityEscape={close} style={[styles.sheet, { backgroundColor: glassSurface, borderColor: glassBorder, shadowColor: colors.shadow, paddingBottom: Math.max(insets.bottom, 16) }]}>
           <View style={styles.sheetTitle}>
-            <AppText variant="heading">{sheet === "help" ? "Customer Help" : sheet === "location" ? "Choose Location" : "KYC Status"}</AppText>
-            <Pressable accessibilityRole="button" accessibilityLabel="Close dialog" onPress={close} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(48, size.headerTarget) }]}><Ionicons name="close" size={24} color={colors.onSurface} /></Pressable>
+            <AppText variant="heading">{sheet === "help" ? "Customer Help" : "Choose Location"}</AppText>
+            <Pressable accessibilityRole="button" accessibilityLabel="Close dialog" onPress={close} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(44, size.headerTarget) }]}><Ionicons name="close" size={24} color={colors.onSurface} /></Pressable>
           </View>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.sheetContent}>
             {sheet === "help" ? <>
@@ -218,9 +204,6 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
               <Button label="Use selected location" disabled={locationBusy || manual.trim().length < 3} onPress={() => void lookup(manual.trim())} />
               {locationBusy ? <ActivityIndicator accessibilityLabel="Finding location" color={colors.brand} /> : null}
               {locationError ? <AppText accessibilityLiveRegion="polite" color={colors.error}>{locationError}</AppText> : null}
-            </> : <>
-              <AppText accessibilityLiveRegion="polite">{verified ? "KYC verified" : status === "UNAVAILABLE" ? "KYC status is unavailable. Please retry." : `KYC status: ${status.replace(/_/g, " ").toLowerCase()}`}</AppText>
-              <Button label={verified ? "View KYC status" : "Open KYC verification"} onPress={() => { close(); router.push("/kyc"); }} />
             </>}
           </ScrollView>
         </View>
@@ -231,11 +214,10 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
 
 const styles = StyleSheet.create({
   safeArea: { borderWidth: 1, borderTopWidth: 0, borderBottomLeftRadius: 14, borderBottomRightRadius: 14, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.10, shadowRadius: 18, elevation: 3 },
-  row: { width: "100%", maxWidth: 1100, alignSelf: "center", minHeight: 64, paddingHorizontal: 8, flexDirection: "row", alignItems: "center" },
-  target: { width: 44, minHeight: 48, flexShrink: 0, alignItems: "center", justifyContent: "center" },
-  location: { flex: 1, minWidth: 0, minHeight: 48, flexDirection: "row", gap: 6, alignItems: "center", paddingHorizontal: 4 },
-  locationText: { flex: 1, minWidth: 0, fontFamily: "Roboto", fontWeight: "700", fontSize: 14, lineHeight: 20 },
-  qrInner: { position: "absolute", alignItems: "center", justifyContent: "center" },
+  row: { width: "100%", maxWidth: 1100, alignSelf: "center", minHeight: 52, paddingHorizontal: 8, flexDirection: "row", alignItems: "center" },
+  target: { width: 44, minHeight: 44, flexShrink: 0, alignItems: "center", justifyContent: "center" },
+  location: { flex: 1, minWidth: 0, minHeight: 44, flexDirection: "row", gap: 6, alignItems: "center", paddingHorizontal: 4 },
+  locationText: { flex: 1, minWidth: 0, fontFamily: fonts.semibold, fontSize: 13, lineHeight: 18 },
   dot: { position: "absolute", top: 8, right: 9, width: 10, height: 10, borderRadius: 5, borderWidth: 1.5 },
   overlay: { flex: 1, justifyContent: "flex-end", backgroundColor: glass.overlay },
   sheet: { width: "100%", maxWidth: 560, maxHeight: "85%", alignSelf: "center", borderWidth: 1, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 16, shadowOffset: { width: 0, height: -6 }, shadowOpacity: 0.12, shadowRadius: 24, elevation: 6 },

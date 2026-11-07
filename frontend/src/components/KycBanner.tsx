@@ -5,7 +5,7 @@ import { VectorSymbol, type VectorSymbolName } from "./VectorSymbol";
 import { useRouter } from "expo-router";
 
 import { useTheme } from "@/src/theme/ThemeProvider";
-import { customerHomeSizes } from "@/src/theme/tokens";
+import { customerHomeSizes, fonts } from "@/src/theme/tokens";
 import { AppText } from "./ui/AppText";
 
 const CONFIG: Record<
@@ -55,7 +55,7 @@ export function KycBanner({ status }: { status: string }) {
     >
       <VectorSymbol name={cfg.symbol} size={size.kycSymbol} />
       <View style={styles.copy}>
-        <AppText style={{ fontFamily: "Raleway-Bold", fontSize: size.kycTitle, lineHeight: size.kycTitleLine, color: isVerified ? tone : colors.onSurface }}>
+        <AppText style={{ fontFamily: fonts.bold, fontSize: size.kycTitle, lineHeight: size.kycTitleLine, color: isVerified ? tone : colors.onSurface }}>
           {cfg.title}
         </AppText>
         <AppText variant="caption" style={{ fontSize: size.kycSubtitle, lineHeight: size.kycSubtitleLine }}>{cfg.sub}</AppText>

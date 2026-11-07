@@ -417,7 +417,7 @@ export default function CustomerPlants() {
                   <View style={{flexDirection:"row",alignItems:"center",justifyContent:"space-between",gap:8}}>
                     <AppText variant="heading">Nearby RMC Plants</AppText>
                     <AppText accessibilityLabel="Google Maps" numberOfLines={1}
-                      style={{fontFamily:"Roboto",fontSize:14,fontWeight:"400",color:colors.onSurfaceTertiary}}>
+                      style={{fontFamily:fonts.regular,fontSize:14,color:colors.onSurfaceTertiary}}>
                       Google Maps
                     </AppText>
                   </View>
