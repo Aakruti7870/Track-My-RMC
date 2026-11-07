@@ -46,7 +46,7 @@ export function ActiveTransitMixerCard({ order, onNewOrder, onRefreshHome }: {
   return <View style={{ gap: size.sectionGap + 2 }} onLayout={event => setWidth(event.nativeEvent.layout.width)}>
     <View style={styles.trackingHeading}>
       <AppText style={{ fontFamily: "Raleway-Bold", fontSize: size.headerSize, lineHeight: size.headerLine }}>Track My RMC</AppText>
-      <AppText variant="caption" style={{ fontSize: size.serviceLabel, lineHeight: size.serviceLabelLine }}>{t.title}</AppText>
+      <AppText variant="caption" style={{ fontSize: size.serviceLabel, lineHeight: Math.max(18, size.serviceLabelLine) }}>{t.title}</AppText>
     </View>
     <View testID={order ? "real-tracking-card" : "demo-tracking-card"} style={[styles.card, { flexDirection: width >= 760 ? "row" : "column", borderColor: colors.border, backgroundColor: colors.surfaceSecondary }]}>
       <View style={[styles.info, width >= 760 && { width: "34%" }]}>
