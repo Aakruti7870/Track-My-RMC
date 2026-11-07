@@ -488,3 +488,55 @@ async fn paused_quality_template_never_escalates_or_auto_closes_failure(db: PgPo
     assert_eq!(status, "OPEN");
     assert_eq!(escalations, 0);
 }
+
+#[sqlx::test]
+async fn revoked_owner_role_cannot_receive_new_escalation(db: PgPool) {
+    let owner = user(&db, "owner").await;
+    let customer = user(&db, "customer").await;
+    let (plant, _) = plant_and_order(&db, owner, customer).await;
+    let material: Uuid = sqlx::query_scalar(
+        "INSERT INTO plant_materials
+         (plant_id,name,material_type,current_stock,minimum_stock,updated_at)
+         VALUES($1,'Sand','sand',5,20,NOW()-INTERVAL '20 minutes')
+         RETURNING id",
+    )
+    .bind(plant)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    enable(&db, plant, owner, &[INVENTORY]).await;
+    assert_eq!(tick(&db).await.unwrap(), 1);
+    let task: Uuid = sqlx::query_scalar(
+        "SELECT id FROM native_automation_domain_tasks WHERE domain_entity_id=$1",
+    )
+    .bind(material)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    // Current plant ownership identifier is not sufficient: live role must
+    // still authorize the account to receive a plant-owner escalation.
+    sqlx::query("UPDATE users SET role='customer' WHERE id=$1")
+        .bind(owner)
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::query(
+        "UPDATE native_automation_domain_tasks
+         SET next_check_at=NOW()-INTERVAL '1 minute',
+             next_escalation_at=NOW()-INTERVAL '1 minute' WHERE id=$1",
+    )
+    .bind(task)
+    .execute(&db)
+    .await
+    .unwrap();
+    assert_eq!(reconcile(&db).await.unwrap(), 0);
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM notifications
+         WHERE user_id=$1 AND notification_type='automation_escalation'",
+    )
+    .bind(owner)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(count, 0);
+}
