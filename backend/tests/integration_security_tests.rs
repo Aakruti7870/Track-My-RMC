@@ -1172,7 +1172,9 @@ async fn native_domain_alert_acknowledgement_is_scoped_and_not_an_approval(db: P
     assert_eq!(inbox_status, StatusCode::OK);
     assert_eq!(inbox["tasks"][0]["source_label"], "Material: Cement");
     assert_eq!(
-        request(&router, &inbox_path, Some(&owner_b_token), None).await.0,
+        request(&router, &inbox_path, Some(&owner_b_token), None)
+            .await
+            .0,
         StatusCode::FORBIDDEN
     );
     let path = format!("/api/owner/plants/{plant}/automation/domain-tasks/{task}/acknowledge");
