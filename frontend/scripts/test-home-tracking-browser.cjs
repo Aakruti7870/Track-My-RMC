@@ -66,9 +66,13 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    if(Math.abs(quickSectionBox.height-134)>5)
      throw Error('Quick Actions section should be about 134dp: '+quickSectionBox.height);
    const titleBox=await page.getByText('Quick Actions',{exact:true}).boundingBox();
+   const bannerToSection=quickSectionBox.y-(carouselBox.y+carouselBox.height);
+   if(Math.abs(bannerToSection-10)>1)
+     throw Error('Carousel-to-Quick Actions section gap must be 10dp: '+bannerToSection);
+   // The 28dp header row vertically centers its 22dp title text.
    const bannerToTitle=titleBox.y-(carouselBox.y+carouselBox.height);
-   if(Math.abs(bannerToTitle-10)>1)
-     throw Error('Banner-to-header gap must be 10dp: '+bannerToTitle);
+   if(bannerToTitle<10||bannerToTitle>18)
+     throw Error('Quick Actions title must fit below the 10dp section gap: '+bannerToTitle);
    const slogan=await page.getByText('Built Better',{exact:true}).locator('xpath=..').boundingBox();
    if(Math.abs(slogan.width-132)>1||Math.abs(slogan.height-28)>2)
      throw Error('Built Better pill must be 132x28dp: '+JSON.stringify(slogan));
