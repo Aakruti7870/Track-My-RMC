@@ -85,17 +85,18 @@ where
     }
 }
 
-type PrivilegedWebIdentity = (Uuid, Option<String>, Option<String>, String, String);
+type PrivilegedWebIdentity = (Uuid, Option<String>, Option<String>, String, String, String);
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AdminLogin {
     pub identifier: String,
+    pub password: String,
     pub code: String,
 }
 
 pub async fn method() -> Json<Value> {
-    Json(json!({"status":"AUTHENTICATOR_REQUIRED", "method":"totp"}))
+    Json(json!({"status":"PASSWORD_AND_AUTHENTICATOR_REQUIRED", "method":"password_totp"}))
 }
 
 pub async fn login(
@@ -117,6 +118,7 @@ pub async fn login_for_role(
     let identifier = body.identifier.trim().to_lowercase();
     if identifier.len() < 3
         || identifier.len() > 254
+        || !(12..=128).contains(&body.password.len())
         || body.code.len() != 6
         || !body.code.bytes().all(|b| b.is_ascii_digit())
     {
@@ -143,7 +145,7 @@ pub async fn login_for_role(
     sqlx::query("UPDATE control_center_login_limits SET attempts=$2, window_started_at=CASE WHEN $2=1 THEN NOW() ELSE window_started_at END WHERE identifier_hash=$1")
         .bind(&key).bind(attempts+1).execute(&mut *tx).await?;
     let identity: Option<PrivilegedWebIdentity> = sqlx::query_as(
-        "SELECT u.id, u.phone, u.email, u.full_name, t.secret_key FROM users u
+        "SELECT u.id, u.phone, u.email, u.full_name, t.secret_key, u.hashed_password FROM users u
          JOIN control_center_access a ON a.user_id=u.id
          JOIN user_totp_credentials t ON t.user_id=u.id AND t.is_enabled=TRUE
          WHERE LOWER(u.email)=$1 AND u.role=$2 AND u.is_active=TRUE AND a.approved=TRUE",
@@ -152,7 +154,13 @@ pub async fn login_for_role(
     .bind(role)
     .fetch_optional(&mut *tx)
     .await?;
-    let verified_step = identity.as_ref().and_then(|i| {
+    // Independently prove knowledge of the Argon2id password and possession of
+    // the enrolled authenticator. Placeholder and legacy hashes fail closed.
+    let valid_password = identity.as_ref().is_some_and(|i| {
+        i.5.starts_with("$argon2id$")
+            && crate::auth::password::verify_password(&body.password, &i.5).unwrap_or(false)
+    });
+    let verified_step = identity.as_ref().filter(|_| valid_password).and_then(|i| {
         [-1_i64, 0, 1]
             .into_iter()
             .map(|offset| now.timestamp() / 30 + offset)
@@ -168,7 +176,7 @@ pub async fn login_for_role(
         tx.commit().await?;
         return Err(AppError::Unauthorized("Authentication failed".into()));
     };
-    let (id, phone, email, full_name, _) = identity.expect("verified identity");
+    let (id, phone, email, full_name, _, _) = identity.expect("verified identity");
     let token = account_sessions::issue_in_tx(
         &mut tx,
         id,
@@ -196,7 +204,7 @@ pub async fn login_for_role(
         .bind(hash).bind(id).execute(&mut *tx).await?;
     sqlx::query("UPDATE control_center_login_limits SET attempts=0,last_totp_step=$2 WHERE identifier_hash=$1")
         .bind(key).bind(step).execute(&mut *tx).await?;
-    sqlx::query("INSERT INTO audit_logs (user_id,action,resource_type,metadata) VALUES ($1,'admin.auth.succeeded','admin_session','{\"auth_surface\":\"control_center_web\"}')")
+    sqlx::query("INSERT INTO audit_logs (user_id,action,resource_type,metadata) VALUES ($1,'admin.auth.succeeded','admin_session','{\"auth_surface\":\"control_center_web\",\"factors\":[\"argon2id_password\",\"totp\"]}')")
         .bind(id).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(Json(
