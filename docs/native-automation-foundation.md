@@ -92,13 +92,24 @@ untouched. Changes are applied to disposable PostgreSQL 16 and 18 CI databases;
    tests, PostgreSQL 16/18 migration parity and web/mobile regression.
 2. Complete a security review for scoped owner reads, global pause races,
    step-up enforcement, stale jobs, dead-letter retry and revoke/disable.
-3. Provide a minimal interface in the existing admin-web and Owner screens
-   (do not rewrite the Expo application or create unrelated TypeScript files).
-4. Add further typed, vetted action handlers for dispatch, RFQ, quality,
+3. Integration UI is now included in the **existing** Admin dashboard
+   (`admin-web/src/main.tsx`) and Plant Owner Operations page
+   (`frontend/app/owner/operations.tsx`). Admin can inspect health, review
+   template policies, perform MFA-protected controls and check job states.
+   Owner sees own-plant templates, opt-in controls, bounded reminder settings,
+   review tasks and history. Neither UI can bypass its API permissions.
+4. Provision `automation.manage` only through **explicit, audited Control
+   Center access administration** after reviewing the recipient's identity.
+   It is deliberately NOT automatically granted by migration or by logging
+   in with the Central Admin role. `system.view` alone only supports read
+   access; `audit.view` grants access to redacted job summaries. Until a
+   dedicated authorization ceremony is approved, keep policy management
+   inaccessible, not silently elevated.
+5. Add further typed, vetted action handlers for dispatch, RFQ, quality,
    inventory and workforce only after each domain's role authorization audit.
-5. **Do not activate `NATIVE_AUTOMATION_WORKER_ENABLED=true`, publish
+6. **Do not activate `NATIVE_AUTOMATION_WORKER_ENABLED=true`, publish
    templates, merge or deploy** without release review and owner opt-in.
-6. No real WhatsApp marketing or external messaging is implemented here.
+7. No real WhatsApp marketing or external messaging is implemented here.
    Broadcasting to plant owners requires separate consent, template approvals,
    Authority/Control Center permission review, and provider-compliance checks.
 
