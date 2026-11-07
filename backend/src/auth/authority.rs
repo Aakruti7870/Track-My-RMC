@@ -198,6 +198,14 @@ pub async fn set_initial_password(
     ))
 }
 
+pub async fn change_password(
+    State(state): State<AppState>,
+    authority: WebAuthority,
+    Json(body): Json<control_center::PasswordRotation>,
+) -> Result<Json<Value>, AppError> {
+    control_center::rotate_password(&state, authority.user_id, &authority.token_hash, body).await
+}
+
 pub async fn me(authority: WebAuthority) -> Json<Value> {
     Json(json!({
         "user": {"id": authority.user_id, "email": authority.email, "role": "authority"},
