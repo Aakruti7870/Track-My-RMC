@@ -565,20 +565,18 @@ async fn revoked_owner_role_cannot_receive_initial_domain_alert(db: PgPool) {
         .unwrap();
     assert_eq!(scan_due(&db).await.unwrap(), 0);
     assert_eq!(tick(&db).await.unwrap(), 0);
-    let tasks: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM native_automation_domain_tasks WHERE plant_id=$1",
-    )
-    .bind(plant)
-    .fetch_one(&db)
-    .await
-    .unwrap();
+    let tasks: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM native_automation_domain_tasks WHERE plant_id=$1")
+            .bind(plant)
+            .fetch_one(&db)
+            .await
+            .unwrap();
     assert_eq!(tasks, 0);
-    let notifications: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM notifications WHERE user_id=$1",
-    )
-    .bind(owner)
-    .fetch_one(&db)
-    .await
-    .unwrap();
+    let notifications: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM notifications WHERE user_id=$1")
+            .bind(owner)
+            .fetch_one(&db)
+            .await
+            .unwrap();
     assert_eq!(notifications, 0);
 }
