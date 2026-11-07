@@ -1081,7 +1081,7 @@ async fn ensure_authority_review_session(
 ) -> Result<(), AppError> {
     check_role(user, &["authority"])?;
     let hash = crate::auth::control_center::token_hash(headers)?;
-    let approved:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM control_center_sessions s JOIN control_center_access a ON a.user_id=s.user_id WHERE s.token_hash=$1 AND s.user_id=$2 AND s.revoked_at IS NULL AND s.expires_at>NOW() AND a.approved=TRUE AND 'kyc.review'=ANY(a.permissions))").bind(hash).bind(user.user_id).fetch_one(&state.db).await?;
+    let approved:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM control_center_sessions s JOIN control_center_access a ON a.user_id=s.user_id JOIN control_center_step_ups step ON step.user_id=s.user_id AND step.token_hash=s.token_hash AND step.expires_at>NOW() WHERE s.token_hash=$1 AND s.user_id=$2 AND s.revoked_at IS NULL AND s.expires_at>NOW() AND a.approved=TRUE AND 'kyc.review'=ANY(a.permissions))").bind(hash).bind(user.user_id).fetch_one(&state.db).await?;
     if !approved {
         return Err(AppError::Forbidden(
             "Approved Authority review session is required".into(),
