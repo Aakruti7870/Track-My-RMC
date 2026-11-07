@@ -237,7 +237,7 @@ pub async fn collection(
         ),
         "kyc" => (
             "kyc.view",
-            "SELECT jsonb_build_object('customer_id',p.user_id,'customer',u.full_name,'status',p.kyc_status,'updated_at',p.updated_at) FROM user_profiles p JOIN users u ON u.id=p.user_id WHERE u.role='customer' AND u.is_active AND p.kyc_status='pending' ORDER BY p.updated_at LIMIT $1 OFFSET $2",
+            "SELECT jsonb_build_object('customer_id',p.user_id,'customer',u.full_name,'verified_name',p.verified_name,'status',p.kyc_status,'updated_at',p.updated_at,'evidence_verified',EXISTS(SELECT 1 FROM customer_digilocker_sessions d WHERE d.user_id=p.user_id AND d.status='PENDING' AND d.verified_at IS NOT NULL)) FROM user_profiles p JOIN users u ON u.id=p.user_id WHERE u.role='customer' AND u.is_active AND p.kyc_status='pending' ORDER BY p.updated_at LIMIT $1 OFFSET $2",
         ),
         _ => return Err(AppError::NotFound("Authority workspace not found".into())),
     };
