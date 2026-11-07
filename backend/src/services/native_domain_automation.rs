@@ -56,6 +56,7 @@ pub async fn scan_due(db: &PgPool) -> Result<u64, sqlx::Error> {
          FROM events e
          JOIN rmc_plants p ON p.id=e.plant_id AND p.is_active
          JOIN users owner ON owner.id=p.owner_id AND owner.is_active
+           AND owner.role IN ('owner','plant_owner')
          JOIN native_automation_plant_rules r
            ON r.plant_id=e.plant_id AND r.template_key=e.template_key AND r.enabled
          JOIN native_automation_templates t ON t.template_key=e.template_key
@@ -230,6 +231,7 @@ pub async fn tick(db: &PgPool) -> Result<usize, sqlx::Error> {
              JOIN native_automation_plant_rules r ON r.template_key=t.template_key
              JOIN rmc_plants p ON p.id=r.plant_id
              JOIN users u ON u.id=p.owner_id AND u.is_active
+               AND u.role IN ('owner','plant_owner')
              WHERE t.template_key=$1 AND r.plant_id=$2 AND r.enabled
                AND t.published AND NOT t.globally_paused AND p.is_active
                AND t.action_type='CREATE_DOMAIN_REVIEW'
