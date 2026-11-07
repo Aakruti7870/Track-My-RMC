@@ -1237,6 +1237,10 @@ pub fn build_app_router(state: AppState) -> Router {
             get(native_automation_routes::owner_history),
         )
         .route(
+            "/api/owner/plants/:plant_id/automation/domain-tasks/:task_id/acknowledge",
+            post(native_automation_routes::owner_acknowledge_domain_task),
+        )
+        .route(
             "/api/owner/plants/:plant_id/automation/rules",
             get(native_automation_routes::owner_rules),
         )
