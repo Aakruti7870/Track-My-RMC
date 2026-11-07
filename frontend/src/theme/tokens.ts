@@ -252,3 +252,65 @@ export function statusColor(colors: ThemeColors, status?: string) {
   if (["CANCELLED", "REJECTED", "UNPAID", "NOT_STARTED", "SUSPENDED", "DECLINED"].includes(s)) return colors.error;
   return colors.onSurfaceTertiary;
 }
+
+
+// Customer Home design sizes. The Android/iOS app and mobile web retain the
+// approved PR #152 measurements. Only wider *web* viewports use larger values.
+// React Native layout units are dp on native and CSS px on web.
+const customerHomeMobile = {
+  sectionGap: 10, gridGap: 10, headerSize: 15, headerLine: 22,
+  quickSymbol: 52, quickCircle: 56, quickTile: 96, quickLabel: 14, quickLabelLine: 16, quickLabelMin: 32,
+  toolSymbol: 52, toolPlate: 56, toolTile: 101, toolLabel: 11, toolLabelLine: 13,
+  serviceSymbol: 58, servicePlate: 62, serviceTile: 103, serviceLabel: 12, serviceLabelLine: 15,
+  sloganWidth: 132, sloganHeight: 28, sloganIcon: 19,
+  pumpWidth: 240, pumpHeight: 50, pumpIconWidth: 40, pumpIconHeight: 35,
+  pumpFirstSize: 13, pumpFirstLine: 16, pumpSecondSize: 15, pumpSecondLine: 18,
+  pumpGap: 4, pumpPadding: 4, pumpRadius: 10,
+  kycSymbol: 28, kycArrow: 25, kycArrowIcon: 17, kycTitle: 15, kycTitleLine: 22,
+  kycSubtitle: 10, kycSubtitleLine: 18, kycGap: 10, kycPadding: 6, kycRadius: 4,
+  locationSize: 14, locationLine: 20, headerHeight: 64, headerTarget: 44,
+  headerShield: 35, headerFlag: 22, headerChevron: 16, headerScan: 32,
+  headerQR: 19, headerBell: 26, headerHelp: 29, headerVerified: 32,
+} as const;
+
+const customerHomeTablet = {
+  ...customerHomeMobile,
+  sectionGap: 12, gridGap: 12, headerSize: 16, headerLine: 24,
+  quickSymbol: 64, quickCircle: 68, quickTile: 116, quickLabel: 15, quickLabelLine: 18, quickLabelMin: 36,
+  toolSymbol: 64, toolPlate: 68, toolTile: 119, toolLabel: 13, toolLabelLine: 16,
+  serviceSymbol: 70, servicePlate: 74, serviceTile: 125, serviceLabel: 14, serviceLabelLine: 18,
+  sloganWidth: 146, sloganHeight: 32, sloganIcon: 21,
+  pumpWidth: 300, pumpHeight: 62, pumpIconWidth: 48, pumpIconHeight: 42,
+  pumpFirstSize: 14, pumpFirstLine: 18, pumpSecondSize: 16, pumpSecondLine: 20,
+  pumpGap: 8, pumpPadding: 8, pumpRadius: 12,
+  kycSymbol: 32, kycArrow: 28, kycArrowIcon: 19, kycTitle: 16, kycTitleLine: 24,
+  kycSubtitle: 11, kycSubtitleLine: 19, kycGap: 12, kycPadding: 8, kycRadius: 8,
+  locationSize: 16, locationLine: 24, headerHeight: 72, headerTarget: 48,
+  headerShield: 40, headerFlag: 24, headerChevron: 18, headerScan: 36,
+  headerQR: 22, headerBell: 30, headerHelp: 32, headerVerified: 36,
+} as const;
+
+const customerHomeDesktop = {
+  ...customerHomeTablet,
+  sectionGap: 16, gridGap: 16, headerSize: 18, headerLine: 26,
+  quickSymbol: 72, quickCircle: 76, quickTile: 124, quickLabel: 16, quickLabelLine: 20, quickLabelMin: 40,
+  toolSymbol: 72, toolPlate: 76, toolTile: 132, toolLabel: 14, toolLabelLine: 18,
+  serviceSymbol: 80, servicePlate: 84, serviceTile: 140, serviceLabel: 15, serviceLabelLine: 20,
+  sloganWidth: 166, sloganHeight: 36, sloganIcon: 23,
+  pumpWidth: 360, pumpHeight: 70, pumpIconWidth: 54, pumpIconHeight: 48,
+  pumpFirstSize: 16, pumpFirstLine: 20, pumpSecondSize: 18, pumpSecondLine: 22,
+  pumpGap: 10, pumpPadding: 10, pumpRadius: 14,
+  kycSymbol: 36, kycArrow: 32, kycArrowIcon: 21, kycTitle: 18, kycTitleLine: 26,
+  kycSubtitle: 12, kycSubtitleLine: 20, kycGap: 14, kycPadding: 10, kycRadius: 10,
+  locationSize: 18, locationLine: 26, headerHeight: 80, headerTarget: 52,
+  headerShield: 44, headerFlag: 28, headerChevron: 20, headerScan: 40,
+  headerQR: 24, headerBell: 32, headerHelp: 36, headerVerified: 40,
+} as const;
+
+export function customerHomeSizes(viewportWidth: number, platform: string) {
+  // Breakpoints use the actual viewport width, not a device model or user agent.
+  // Native tablet apps intentionally preserve the established mobile design.
+  if (platform !== "web" || viewportWidth < 600) return customerHomeMobile;
+  if (viewportWidth < 1024) return customerHomeTablet;
+  return customerHomeDesktop;
+}
