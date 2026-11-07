@@ -377,6 +377,49 @@ function CommandCenter() {
     } catch(err) { setError(errorMessage(err)); }
   }
 
+  async function loadAuthorityAccounts() {
+    setBusy(true); setError(''); setShowAuthorityAccounts(true);
+    try {
+      const response=await apiClient.get('/api/control-center/authority-access');
+      setAuthorityAccounts(response.data?.accounts||[]);
+    } catch(err) { setError(errorMessage(err)); }
+    finally { setBusy(false); }
+  }
+
+  async function saveAuthorityAccount(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();setBusy(true);setError('');
+    try {
+      if (!authorityEmail.trim() || !authorityName.trim() || authorityReason.trim().length<10
+        || !/^[0-9]{6}$/.test(authorityAdminCode.trim())) {
+        throw new Error('Provide approved email, full name, an audit reason (10+ characters), and a current six-digit authenticator code.');
+      }
+      await apiClient.post('/api/control-center/step-up',{code:authorityAdminCode.trim()});
+      await apiClient.post('/api/control-center/authority-access',{
+        email:authorityEmail.trim().toLowerCase(), full_name:authorityName.trim(),
+        enabled:authorityEnabled,permissions:authorityGrants,reason:authorityReason.trim(),
+      });
+      setAuthorityAdminCode('');setAuthorityReason('');
+      setNotice('Authority access saved. Previous sessions were revoked.');
+      const response=await apiClient.get('/api/control-center/authority-access');
+      setAuthorityAccounts(response.data?.accounts||[]);
+    } catch(err) {setError(errorMessage(err));setAuthorityAdminCode('');}
+    finally {setBusy(false);}
+  }
+
+  async function reviewAuthorityKyc(customerId:string, approve:boolean) {
+    setBusy(true);setError('');
+    try {
+      if (!/^[0-9]{6}$/.test(authorityReviewCode.trim())) throw new Error('Enter a fresh six-digit authenticator code.');
+      await apiClient.post('/api/authority/auth/step-up',{code:authorityReviewCode.trim()});
+      await apiClient.post('/api/staff/customers/'+encodeURIComponent(customerId)+'/kyc/'+(approve?'approve':'reject'));
+      setAuthorityReviewCode('');
+      setNotice('KYC decision recorded in the audit log.');
+      const response=await apiClient.get('/api/authority/collections/kyc',{params:{limit:25,offset:0}});
+      setRecords(response.data?.items||[]);setWorkspaceOffset(0);
+    } catch(err) {setError(errorMessage(err));setAuthorityReviewCode('');}
+    finally {setBusy(false);}
+  }
+
   async function centralLogin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError('');
     try {
