@@ -1200,6 +1200,25 @@ async fn native_domain_alert_acknowledgement_is_scoped_and_not_an_approval(db: P
             .await
             .unwrap();
     assert_eq!(task_status, "ACKNOWLEDGED");
+    let (seen, still_unresolved): (bool, bool) = sqlx::query_as(
+        "SELECT acknowledged_at IS NOT NULL,resolved_at IS NULL
+         FROM native_automation_domain_tasks WHERE id=$1",
+    )
+    .bind(task)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert!(seen && still_unresolved);
+    let lifecycle_events: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM native_automation_domain_task_events
+         WHERE task_id=$1 AND event_type='ACKNOWLEDGED' AND actor_id=$2",
+    )
+    .bind(task)
+    .bind(owner_a)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(lifecycle_events, 1);
     let stock: i64 =
         sqlx::query_scalar("SELECT current_stock::bigint FROM plant_materials WHERE id=$1")
             .bind(material)
