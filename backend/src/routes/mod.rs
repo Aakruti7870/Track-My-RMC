@@ -2,6 +2,7 @@ pub mod account_deletion;
 pub mod admin_routes;
 pub mod assistant_routes;
 pub mod auth_routes;
+pub mod authority_governance;
 pub mod automation_routes;
 pub mod business_routes;
 pub mod cashfree_sandbox;
@@ -9,7 +10,6 @@ pub mod control_center_routes;
 pub mod customer_routes;
 pub mod customer_services;
 pub mod digilocker_kyc;
-pub mod authority_governance;
 pub mod discovery;
 pub mod dispatcher_routes;
 pub mod driver_profile_routes;
@@ -72,8 +72,14 @@ pub fn build_app_router(state: AppState) -> Router {
             post(crate::auth::authority::login),
         )
         .route("/api/authority/auth/me", get(crate::auth::authority::me))
-        .route("/api/authority/auth/logout", post(crate::auth::authority::logout))
-        .route("/api/authority/auth/step-up", post(crate::auth::authority::step_up))
+        .route(
+            "/api/authority/auth/logout",
+            post(crate::auth::authority::logout),
+        )
+        .route(
+            "/api/authority/auth/step-up",
+            post(crate::auth::authority::step_up),
+        )
         .route(
             "/api/authority/collections/:kind",
             get(crate::auth::authority::collection),
