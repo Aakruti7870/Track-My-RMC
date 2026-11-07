@@ -3,6 +3,7 @@
 //! third-party workflow runner, or permission-elevating business mutations.
 //! A transactional event insert plus row-locked delivery prevents lost/duplicate
 //! notifications even after process restarts or concurrent worker ticks.
+use crate::services::native_rule_conditions::OrderConditions;
 use sqlx::{PgPool, Postgres, Row, Transaction};
 use uuid::Uuid;
 
@@ -157,8 +158,8 @@ pub async fn tick(db: &PgPool) -> Result<usize, sqlx::Error> {
 
         // Hold row-share locks for both policy levels until delivery commits.
         // Global pause and plant opt-out cannot overtake an in-flight action.
-        let action: Option<String> = sqlx::query_scalar(
-            "SELECT t.action_type
+        let policy: Option<(String, serde_json::Value)> = sqlx::query_as(
+            "SELECT t.action_type,t.conditions
              FROM native_automation_templates t
              JOIN native_automation_plant_rules r ON r.template_key=t.template_key
              JOIN rmc_plants p ON p.id=r.plant_id
@@ -170,7 +171,7 @@ pub async fn tick(db: &PgPool) -> Result<usize, sqlx::Error> {
         .bind(plant)
         .fetch_optional(&mut *tx)
         .await?;
-        let Some(action) = action else {
+        let Some((action, raw_conditions)) = policy else {
             record_outcome(&mut tx, id, attempts, "SKIPPED", Some("rule_disabled"), None)
                 .await?;
             tx.commit().await?;
@@ -178,6 +179,25 @@ pub async fn tick(db: &PgPool) -> Result<usize, sqlx::Error> {
         };
         if !matches!(action.as_str(), "IN_APP_NOTIFICATION" | "CREATE_APPROVAL_TASK") {
             record_outcome(&mut tx, id, attempts, "SKIPPED", Some("action_not_allowed"), None)
+                .await?;
+            tx.commit().await?;
+            continue;
+        }
+        // Strictly typed, allowlisted rule conditions. Unknown fields fail closed.
+        let Ok(conditions) = serde_json::from_value::<OrderConditions>(raw_conditions) else {
+            record_outcome(&mut tx, id, attempts, "SKIPPED", Some("invalid_conditions"), None)
+                .await?;
+            tx.commit().await?;
+            continue;
+        };
+        if conditions.validate().is_err() {
+            record_outcome(&mut tx, id, attempts, "SKIPPED", Some("invalid_conditions"), None)
+                .await?;
+            tx.commit().await?;
+            continue;
+        }
+        if !conditions.matches_order(&mut tx, order, plant).await? {
+            record_outcome(&mut tx, id, attempts, "SKIPPED", Some("conditions_not_met"), None)
                 .await?;
             tx.commit().await?;
             continue;
