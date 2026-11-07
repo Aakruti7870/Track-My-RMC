@@ -290,6 +290,16 @@ pub async fn approve_order(
         sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'order_review','order',$2,$3)").bind(auth_user.user_id).bind(order_id.to_string()).bind(json!({"from":current,"to":"confirmed"})).execute(&mut *tx).await?;
         crate::services::native_automation::enqueue_order_decision(&mut tx, order_id, "confirmed")
             .await?;
+        // Reflect the real, authorized owner decision in any open review tasks.
+        sqlx::query(
+            "UPDATE native_automation_tasks
+             SET status='RESOLVED',resolved_by=$2,resolved_at=NOW(),updated_at=NOW()
+             WHERE order_id=$1 AND status='OPEN'"
+        )
+        .bind(order_id)
+        .bind(auth_user.user_id)
+        .execute(&mut *tx)
+        .await?;
     }
     tx.commit().await?;
 
@@ -325,6 +335,15 @@ pub async fn reject_order(
         sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'order_review','order',$2,$3)").bind(auth_user.user_id).bind(order_id.to_string()).bind(json!({"from":current,"to":"rejected"})).execute(&mut *tx).await?;
         crate::services::native_automation::enqueue_order_decision(&mut tx, order_id, "rejected")
             .await?;
+        sqlx::query(
+            "UPDATE native_automation_tasks
+             SET status='RESOLVED',resolved_by=$2,resolved_at=NOW(),updated_at=NOW()
+             WHERE order_id=$1 AND status='OPEN'"
+        )
+        .bind(order_id)
+        .bind(auth_user.user_id)
+        .execute(&mut *tx)
+        .await?;
     }
     tx.commit().await?;
 
