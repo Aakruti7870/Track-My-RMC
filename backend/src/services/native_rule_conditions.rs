@@ -79,8 +79,7 @@ impl OrderConditions {
         .bind(plant)
         .fetch_optional(&mut **tx)
         .await?;
-        Ok(record
-            .is_some_and(|(grade, quantity)| self.matches(&grade, quantity)))
+        Ok(record.is_some_and(|(grade, quantity)| self.matches(&grade, quantity)))
     }
 }
 
