@@ -1,59 +1,106 @@
-# Native Automation: Controlled Foundation (Draft)
+# TrackMyRMC Native Automation — Rust/PostgreSQL Controlled Foundation
 
-## Scope and provenance
-This is a TrackMyRMC-owned Rust/SQLx/Tokio implementation. The workflow/approval concepts were
-reviewed against `Aakruti7870/Marketing-API-Rust`, but its generic HTTP_REQUEST/WHATSAPP
-nodes, workspace `SYSTEM_ADMIN` override, and non-atomic scheduler were **not** copied.
-There is no network dependency on Marketing-API-Rust, Redis, n8n, Vapi, or Zapier.
+Status: **draft PR only; no merge, rollout, or production worker activation**.
 
-## Security boundaries
-- Only the **dedicated Central Admin** web MFA session can change global template policy;
-  this also requires explicit `automation.manage` and a fresh step-up challenge.
-- Only an **active Plant Owner** can opt in/out for their own active plant. Managers and
-  other staff cannot change these settings, regardless of delegation.
-- Templates are predefined and initially unpublished/paused. Plant settings are
-  initially absent (deny). `NATIVE_AUTOMATION_WORKER_ENABLED=true` must be set only after
-  controlled migration, testing, rollout approval and owner opt-in.
-- Worker executes only built-in internal notifications. It cannot mutate orders, approve
-  payments, issue refunds, run arbitrary SQL/scripts or make outbound HTTP requests.
-- Existing order-create owner alerts are unchanged: this slice adds only customer
-  notifications following an authorized *order approval/rejection*.
-- No external marketing/broadcast messaging is executed.
+## Source and architecture
+This is an independently maintained TrackMyRMC module built with Rust, Tokio, SQLx,
+Axum and the existing PostgreSQL database. Marketing-API-Rust was inspected for
+design ideas only. No Marketing-API-Rust runtime, HTTP server, database, third-party
+workflow platform, Redis, n8n, Zapier or Vapi is required. The entire internal
+execution path is contained in TrackMyRMC.
 
-## Flow
-```mermaid
-flowchart TD
-  A[Authorized owner reviews order] --> B[Order mutation + unique outbox row in one transaction]
-  B --> C[PostgreSQL due queue]
-  C --> D[Tokio worker: SKIP LOCKED]
-  D --> E{Global published and unpaused; plant opted in?}
-  E -->|No| F[Record skipped]
-  E -->|Yes| G[Resolve active customer within order plant]
-  G --> H[Insert native notification + completed outcome atomically]
-  H --> I[Audit and monitoring]
-```
+### Deliberate security design
+- **Central Admin**, through the approved, dedicated MFA web session and explicit
+  `automation.manage` permission, publishes/pauses predefined templates,
+  edits strictly typed conditions and retries dead letters only after fresh
+  authenticator step-up.
+- **Active Plant Owner** can only opt into centrally approved templates for an
+  owned active plant, set bounded reminder windows and read their own task/inbox
+  and execution history. Manager/Staff delegation does not grant automation
+  administration.
+- **Authority** is not an alias for Central Admin. Broadcaster/Authority user
+  interface and promotional outreach belong to a separate controlled module.
+- No automation action accepts SQL, scripts, HTTP URLs, arbitrary code, financial
+  mutations, order approvals, payroll actions or operational impersonation.
+- Every worker tick checks live template publication/pause and plant opt-in.
+  Row share locks ensure policy changes cannot overtake execution mid-transaction.
+- Live orders, staff login, MFA, payment and existing push/login routes are unchanged.
 
-## Existing interfaces preserved
-The original `/api/automation/events/*` endpoints, migration 0018, API compatibility,
-role login behavior, Expo frontend and Admin web UI are not removed or rewritten.
+## Built-in templates (all unpublished, paused and plant-disabled by default)
 
-## Additive APIs
-- `GET /api/control-center/automation/templates` — Central Admin with `system.view`.
-- `POST /api/control-center/automation/templates/:template_key/policy` — dedicated Central Admin, `automation.manage`, recent step-up.
-- `GET /api/control-center/automation/jobs` — dedicated Central Admin with `audit.view`.
-- `GET /api/control-center/automation/health` — dedicated Central Admin with `system.view`.
-- `GET /api/owner/plants/:plant_id/automation/rules` — own active plant only.
-- `PUT /api/owner/plants/:plant_id/automation/rules/:template_key` — active Plant Owner only.
+| Key | Event source | Native action |
+|---|---|---|
+| `ORDER_SUBMITTED_TASK` | New pending customer order | Owner's internal review task |
+| `ORDER_ACCEPTED_NOTICE` | Authorized order acceptance | Customer in-app notification |
+| `ORDER_REJECTED_NOTICE` | Authorized order rejection | Customer in-app notification |
+| `ORDER_PENDING_REMINDER` | Pending order older than a configured 15..1440 minutes | Owner in-app reminder |
 
-## Further work before user-facing launch
-1. Complete CI on PostgreSQL 16/18, including migrations, Rust fmt, check, Clippy and tests.
-2. Add isolated service tests of global policy and owner endpoint authorization.
-3. Add explicit Central Admin permission assignment/revocation UI, owner settings UI,
-   and a read-only execution-history screen with no new login roles.
-4. Expand versioned, centrally reviewed templates to RFQ, dispatch, workforce and quality,
-   using durable scheduled jobs, action typing, failure remediation and human approvals.
-5. Authority Broadcast Center is **out of scope here**: dedicated Authority authentication
-   and workspace acceptance must be completed before granting broadcast access. A future
-   separate controlled PR may reuse contact/segment/offer ideas, with marketing consent
-   and approved WhatsApp templates; do not inherit Marketing-API-Rust's unsafe direct-send path.
-6. Do not merge or deploy until an explicit release decision and production preflight.
+The existing new-order owner notification is retained. The native task simply
+offers a secondary structured inbox; **it cannot approve or reject orders**.
+An authorized owner decision automatically resolves any existing review task in
+the same transaction. An order status transition and its unique event enqueue
+commit atomically. No additional payments or external messaging.
+
+## Controlled condition engine
+Central Admin may edit the conditions of **paused** templates only, with an MFA
+step-up and an immutable revision snapshot. Supported fields:
+`min_quantity_m3`, `max_quantity_m3`, `grade_in`. Conditions are parsed
+into the strict Rust `OrderConditions` type, validated, and evaluated only
+against the scoped order row. Unknown keys fail closed. Published templates
+are versioned and changes are written to `audit_logs` plus
+`native_automation_template_revisions`. No generic node execution is exposed.
+
+## Reliability
+- PostgreSQL `FOR UPDATE SKIP LOCKED` serializes processing of each job across
+  concurrent Tokio workers without Redis or another AWS service.
+- Each internal action and job completion is atomic. Logical event keys are
+  unique, so duplicate API retries cannot create duplicate effects.
+- Scheduled pending-order scan is bounded to 50 eligible orders per tick and
+  uses a plant-specific opt-in and bounded interval.
+- Retries have exponential backoff, a maximum attempts budget and a dead-letter
+  state; only an MFA-approved Central Admin can request a retry.
+- Heartbeats report actual worker execution, not merely queue availability.
+- Historical attempts, template revisions, and governed policy changes are
+  retained for diagnostics. The original migration 0018/queue is preserved.
+
+## Additive interfaces
+
+Central Admin:
+- `GET /api/control-center/automation/templates`
+- `POST /api/control-center/automation/templates/:template_key/policy`
+- `PUT /api/control-center/automation/templates/:template_key/conditions`
+- `GET /api/control-center/automation/templates/:template_key/revisions`
+- `GET /api/control-center/automation/jobs`
+- `POST /api/control-center/automation/jobs/:job_id/requeue`
+- `GET /api/control-center/automation/health`
+
+Plant Owner:
+- `GET /api/owner/plants/:plant_id/automation/rules`
+- `PUT /api/owner/plants/:plant_id/automation/rules/:template_key`
+- `GET /api/owner/plants/:plant_id/automation/tasks`
+- `GET /api/owner/plants/:plant_id/automation/history`
+
+## Database changes
+New append-only migrations 0049, 0050 and 0051: template catalog, plant
+settings, job queue, attempts, worker heartbeat, bounded reminders, human
+tasks, safe conditions and policy revisions. All previous migration files remain
+untouched. Changes are applied to disposable PostgreSQL 16 and 18 CI databases;
+**production migration is not authorized by this PR**.
+
+## Required release gates and remaining development
+1. Finish Rust fmt, Cargo Check, Clippy, SQLx integration/negative security
+   tests, PostgreSQL 16/18 migration parity and web/mobile regression.
+2. Complete a security review for scoped owner reads, global pause races,
+   step-up enforcement, stale jobs, dead-letter retry and revoke/disable.
+3. Provide a minimal interface in the existing admin-web and Owner screens
+   (do not rewrite the Expo application or create unrelated TypeScript files).
+4. Add further typed, vetted action handlers for dispatch, RFQ, quality,
+   inventory and workforce only after each domain's role authorization audit.
+5. **Do not activate `NATIVE_AUTOMATION_WORKER_ENABLED=true`, publish
+   templates, merge or deploy** without release review and owner opt-in.
+6. No real WhatsApp marketing or external messaging is implemented here.
+   Broadcasting to plant owners requires separate consent, template approvals,
+   Authority/Control Center permission review, and provider-compliance checks.
+
+The current build is a **controlled advanced foundation**, not a dynamic
+arbitrary-node workflow editor or a completed production deployment.
