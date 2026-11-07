@@ -197,7 +197,7 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
             {sheet === "help" ? <>
               <Button label="Customer Support" onPress={() => { close(); router.push("/support"); }} />
               <Button label="Delete Account" variant="outline" onPress={() => { close(); router.push("/account-deletion"); }} />
-            </> : sheet === "location" ? <>
+            </> : <>
               <AppText>Use your location once, or search for a city or locality.</AppText>
               <Button label="Refresh current location" disabled={locationBusy} onPress={() => void lookup()} />
               <Input label="City, locality or PIN code" testID="header-manual-location" value={manual} onChangeText={setManual} maxLength={200} editable={!locationBusy} />
