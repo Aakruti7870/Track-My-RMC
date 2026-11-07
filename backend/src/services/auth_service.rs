@@ -335,7 +335,9 @@ pub async fn send_email_otp(state: &AppState, req: SendEmailOtpRequest) -> Resul
     }
 
     if user.role == "authority" && !approved_authority(state, user.id).await? {
-        return Err(AppError::Forbidden("Authority requires Central Admin approval".into()));
+        return Err(AppError::Forbidden(
+            "Authority requires Central Admin approval".into(),
+        ));
     }
     crate::routes::staff_lifecycle::require_login_eligible(state, user.id, &user.role).await?;
 
@@ -470,7 +472,9 @@ pub async fn verify_email_otp(
     }
     OtpEngine::verify_otp(state, &destination, "email", "staff_login", &req.otp).await?;
     if user.role == "authority" && !approved_authority(state, user.id).await? {
-        return Err(AppError::Forbidden("Authority requires Central Admin approval".into()));
+        return Err(AppError::Forbidden(
+            "Authority requires Central Admin approval".into(),
+        ));
     }
     crate::routes::staff_lifecycle::require_login_eligible(state, user.id, &user.role).await?;
     sqlx::query("UPDATE users SET work_email_verified_at=clock_timestamp() WHERE id=$1")
@@ -542,7 +546,8 @@ pub async fn start_staff_mfa_enrollment(
     let user = user_repo::find_by_id(&state.db, user_id)
         .await?
         .ok_or_else(|| AppError::Unauthorized("Account not found".to_string()))?;
-    if !user.is_active || !is_email_login_role(&user.role)
+    if !user.is_active
+        || !is_email_login_role(&user.role)
         || (user.role == "authority" && !approved_authority(state, user.id).await?)
     {
         return Err(AppError::Forbidden(
@@ -584,7 +589,8 @@ pub async fn confirm_staff_mfa_enrollment(
     let user = user_repo::find_by_id(&state.db, user_id)
         .await?
         .ok_or_else(|| AppError::Unauthorized("Account not found".into()))?;
-    if !user.is_active || !is_email_login_role(&user.role)
+    if !user.is_active
+        || !is_email_login_role(&user.role)
         || (user.role == "authority" && !approved_authority(state, user.id).await?)
     {
         return Err(AppError::Forbidden(
