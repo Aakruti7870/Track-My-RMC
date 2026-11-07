@@ -157,13 +157,26 @@ pub async fn admin_health(
     )
     .fetch_optional(&state.db)
     .await?;
+    // Aggregates only; no cross-plant task content leaks to Admin health.
+    let task_counts: Vec<Value> = sqlx::query_scalar(
+        "SELECT jsonb_build_object('status',status,'count',COUNT(*))
+         FROM native_automation_domain_tasks GROUP BY status",
+    )
+    .fetch_all(&state.db)
+    .await?;
+    let escalated_unresolved: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM native_automation_domain_tasks
+         WHERE status IN ('OPEN','ACKNOWLEDGED') AND escalation_count>0",
+    )
+    .fetch_one(&state.db)
+    .await?;
     let configured = std::env::var("NATIVE_AUTOMATION_WORKER_ENABLED")
         .ok()
         .as_deref()
         == Some("true");
-    Ok(Json(
-        json!({"worker_enabled":configured,"heartbeat":heartbeat,"job_counts":counts}),
-    ))
+    Ok(Json(json!({"worker_enabled":configured,"heartbeat":heartbeat,
+                   "job_counts":counts,"task_counts":task_counts,
+                   "escalated_unresolved":escalated_unresolved})))
 }
 
 pub async fn owner_rules(
@@ -330,6 +343,39 @@ pub async fn owner_tasks(
     .fetch_all(&state.db)
     .await?;
     Ok(Json(json!({"plant_id":plant,"tasks":items})))
+}
+
+/// Owner-only, immutable technical timeline for one tenant-scoped domain case.
+/// Actor identifiers are hidden from the response; no customer PII is included.
+pub async fn owner_task_events(
+    State(state): State<AppState>,
+    owner: AuthUser,
+    Path((plant, task)): Path<(Uuid, Uuid)>,
+) -> Result<Json<Value>, AppError> {
+    super::plant_staff_manager::require_owner(&state, &owner, plant).await?;
+    let exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM native_automation_domain_tasks
+         WHERE id=$1 AND plant_id=$2)",
+    )
+    .bind(task)
+    .bind(plant)
+    .fetch_one(&state.db)
+    .await?;
+    if !exists {
+        return Err(AppError::NotFound("Automation task not found".into()));
+    }
+    let events: Vec<Value> = sqlx::query_scalar(
+        "SELECT jsonb_build_object(
+            'event_type',event_type,'details',details,'created_at',created_at)
+         FROM native_automation_domain_task_events
+         WHERE task_id=$1 AND plant_id=$2
+         ORDER BY created_at DESC,id DESC LIMIT 100",
+    )
+    .bind(task)
+    .bind(plant)
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(json!({"task_id":task,"plant_id":plant,"events":events})))
 }
 
 /// Owner's read-only execution history, excluding other plants and customer PII.
