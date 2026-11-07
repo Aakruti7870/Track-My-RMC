@@ -64,7 +64,9 @@ async fn verified_outcome(
             .bind(plant)
             .fetch_optional(&mut **tx)
             .await?;
-            Ok(replenished.filter(|value| *value).map(|_| ("RESOLVED", "STOCK_REPLENISHED")))
+            Ok(replenished
+                .filter(|value| *value)
+                .map(|_| ("RESOLVED", "STOCK_REPLENISHED")))
         }
         WORKFORCE => {
             let status: Option<String> = sqlx::query_scalar(
@@ -135,7 +137,11 @@ pub async fn reconcile(db: &PgPool) -> Result<usize, sqlx::Error> {
             )
             .bind(id)
             .bind(plant)
-            .bind(if state == "RESOLVED" { "SOURCE_RESOLVED" } else { "SOURCE_CANCELLED" })
+            .bind(if state == "RESOLVED" {
+                "SOURCE_RESOLVED"
+            } else {
+                "SOURCE_CANCELLED"
+            })
             .bind(json!({"verified_reason":reason}))
             .execute(&mut *tx)
             .await?;
