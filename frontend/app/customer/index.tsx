@@ -1,5 +1,5 @@
 import React from "react";
-import { Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
+import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Svg, { Circle, Path, Rect } from "react-native-svg";
 import { useRouter } from "expo-router";
@@ -19,7 +19,7 @@ import { HomeCarousel } from "@/src/components/HomeCarousel";
 import { CustomerHomeHeader } from "@/src/components/customer/CustomerHomeHeader";
 import type { OrderData } from "@/src/components/OrderCard";
 import type { PlantData } from "@/src/components/PlantCard";
-import { fonts, radius, spacing } from "@/src/theme/tokens";
+import { customerHomeSizes, fonts, radius, spacing } from "@/src/theme/tokens";
 import { modulesForRole } from "@/src/navigation/moduleCatalog";
 
 type HomeData = {
@@ -58,6 +58,10 @@ export default function CustomerHome() {
   const { colors } = useTheme();
   const { width: viewportWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  // One viewport policy sizes symbols, cards, typography and spacing together.
+  // Native devices always retain the approved PR #152 mobile dimensions.
+  const homeSize = customerHomeSizes(viewportWidth, Platform.OS);
+  const headingSize = { fontSize: homeSize.headerSize, lineHeight: homeSize.headerLine };
   const [quickGridWidth, setQuickGridWidth] = React.useState(0);
   // At small viewports, two columns preserve the requested 52-unit SVGs without clipping.
   const fourQuickColumns = quickGridWidth >= 270;
@@ -85,18 +89,18 @@ export default function CustomerHome() {
     router.push({ pathname: "/customer/service-enquiry", params: { service } });
   };
 
-  // Four circular shortcuts match the reference's visual hierarchy; all original
-  // actions, 52 dp vector artwork and KYC guards remain unchanged.
+  // The mobile shortcuts preserve their 52dp symbols and KYC guards.
+  // Tablet/desktop web frames and captions grow with the symbol artwork.
   const quickActions = (
     <View testID="home-quick-actions" style={[styles.groupCard, styles.tightGroup, styles.quickActionsGroup]}>
       <View style={styles.sectionHeaderRow}>
-        <AppText style={[styles.sectionTitle, { color: colors.onSurface }]}>Quick Actions</AppText>
-        <View style={[styles.slogan, { backgroundColor: colors.verified + "14" }]} accessibilityLabel="Built Better">
-          <Ionicons name="shield-checkmark" size={19} color={colors.verified} />
-          <AppText style={[styles.sloganText, { color: colors.verified }]}>Built Better</AppText>
+        <AppText style={[styles.sectionTitle, headingSize, { color: colors.onSurface }]}>Quick Actions</AppText>
+        <View style={[styles.slogan, { width: homeSize.sloganWidth, minHeight: homeSize.sloganHeight, borderRadius: homeSize.sloganHeight / 2, backgroundColor: colors.verified + "14" }]} accessibilityLabel="Built Better">
+          <Ionicons name="shield-checkmark" size={homeSize.sloganIcon} color={colors.verified} />
+          <AppText style={[styles.sloganText, headingSize, { color: colors.verified }]}>Built Better</AppText>
         </View>
       </View>
-      <View style={[styles.grid, styles.quickGrid]} onLayout={event => {
+      <View style={[styles.grid, styles.quickGrid, { marginTop: homeSize.sectionGap, rowGap: homeSize.gridGap }]} onLayout={event => {
         const width = event.nativeEvent.layout.width;
         setQuickGridWidth(previous => Math.abs(previous - width) > 1 ? width : previous);
       }}>
@@ -107,13 +111,13 @@ export default function CustomerHome() {
             accessibilityRole="button"
             accessibilityLabel={action.label}
             onPress={() => onAction(action.key)}
-            style={({ pressed }) => [styles.tile, styles.quickTile, { width: fourQuickColumns ? "24.25%" : "49%", opacity: pressed ? 0.7 : 1 }]}
+            style={({ pressed }) => [styles.tile, styles.quickTile, { minHeight: homeSize.quickTile, width: fourQuickColumns ? "24.25%" : "49%", opacity: pressed ? 0.7 : 1 }]}
           >
-            <View style={[styles.quickCircle, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-              <VectorSymbol name={action.symbol} size={52} />
+            <View style={[styles.quickCircle, { width: homeSize.quickCircle, height: homeSize.quickCircle, borderRadius: homeSize.quickCircle / 2, backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+              <VectorSymbol name={action.symbol} size={homeSize.quickSymbol} />
             </View>
             <AppText numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.85}
-              style={[styles.quickLabel, { color: colors.onSurface }]}>{action.label}</AppText>
+              style={[styles.quickLabel, { fontSize: homeSize.quickLabel, lineHeight: homeSize.quickLabelLine, minHeight: homeSize.quickLabelMin, color: colors.onSurface }]}>{action.label}</AppText>
           </Pressable>
         ))}
       </View>
@@ -124,8 +128,8 @@ export default function CustomerHome() {
   // present them as two clearly named four-item sections.
   const renderModuleGroup = (keys: readonly string[], title: string, testID: string) => (
     <View testID={testID} style={[styles.groupCard, styles.tightGroup]}>
-      <AppText style={[styles.sectionTitle, { color: colors.onSurface }]}>{title}</AppText>
-      <View style={[styles.grid, styles.toolGrid]}>
+      <AppText style={[styles.sectionTitle, headingSize, { color: colors.onSurface }]}>{title}</AppText>
+      <View style={[styles.grid, styles.toolGrid, { marginTop: homeSize.sectionGap, rowGap: homeSize.gridGap }]}>
         {keys.flatMap(key => CUSTOMER_MODULES.filter(module => module.key === key)).map(module => (
           <Pressable
             key={module.key}
@@ -133,13 +137,13 @@ export default function CustomerHome() {
             accessibilityRole="button"
             accessibilityLabel={module.label}
             onPress={() => router.push(module.route)}
-            style={({ pressed }) => [styles.tile, styles.toolTile, { width: fourToolColumns ? "24.25%" : "49%", opacity: pressed ? 0.7 : 1 }]}
+            style={({ pressed }) => [styles.tile, styles.toolTile, { minHeight: homeSize.toolTile, width: fourToolColumns ? "24.25%" : "49%", opacity: pressed ? 0.7 : 1 }]}
           >
-            <View style={[styles.toolPlate, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-              {module.symbol ? <VectorSymbol name={module.symbol} size={52} /> : <Ionicons name={module.icon} size={52} color={colors.brand} />}
+            <View style={[styles.toolPlate, { height: homeSize.toolPlate, backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+              {module.symbol ? <VectorSymbol name={module.symbol} size={homeSize.toolSymbol} /> : <Ionicons name={module.icon} size={homeSize.toolSymbol} color={colors.brand} />}
             </View>
             <AppText numberOfLines={3} adjustsFontSizeToFit minimumFontScale={0.85}
-              style={[styles.tileLabel, { color: colors.onSurface }]}>
+              style={[styles.tileLabel, { fontSize: homeSize.toolLabel, lineHeight: homeSize.toolLabelLine, color: colors.onSurface }]}>
               {module.key === "projects" ? "Project Hub" : module.key === "free-tools" ? "RMC Calculator" : module.label}
             </AppText>
           </Pressable>
@@ -163,8 +167,8 @@ export default function CustomerHome() {
       <Pressable accessibilityRole="button" accessibilityLabel="Book Your Pump Online!"
         accessibilityHint="Opens Customer Support for a pump rental enquiry"
         onPress={() => router.push("/support")}
-        style={({ pressed }) => [styles.promoCard, styles.promoPrimaryCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.76 : 1 }]}>
-        <Svg width={40} height={35} viewBox="0 0 64 64" accessible={false}>
+        style={({ pressed }) => [styles.promoCard, styles.promoPrimaryCard, { width: homeSize.pumpWidth, height: homeSize.pumpHeight, borderRadius: homeSize.pumpRadius, paddingHorizontal: homeSize.pumpPadding, gap: homeSize.pumpGap, backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.76 : 1 }]}>
+        <Svg width={homeSize.pumpIconWidth} height={homeSize.pumpIconHeight} viewBox="0 0 64 64" accessible={false}>
           <Rect x="4" y="34" width="40" height="14" rx="3" fill={colors.brand} />
           <Rect x="28" y="27" width="15" height="9" rx="2" fill={colors.surface} stroke={colors.brand} strokeWidth="2" />
           <Path d="M10 34 20 16 31 26 42 11 54 21 54 34" stroke={colors.brand} strokeWidth="5"
@@ -176,9 +180,9 @@ export default function CustomerHome() {
         </Svg>
         <View style={styles.promoCopy}>
           <AppText numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}
-            style={[styles.promoFirstLine, { color: colors.onSurface }]}>Streamline Your Pour</AppText>
+            style={[styles.promoFirstLine, { fontSize: homeSize.pumpFirstSize, lineHeight: homeSize.pumpFirstLine, color: colors.onSurface }]}>Streamline Your Pour</AppText>
           <AppText numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}
-            style={[styles.promoSecondLine, { color: colors.onSurface }]}>Book Your Pump Online!</AppText>
+            style={[styles.promoSecondLine, { fontSize: homeSize.pumpSecondSize, lineHeight: homeSize.pumpSecondLine, color: colors.onSurface }]}>Book Your Pump Online!</AppText>
         </View>
       </Pressable>
     </View>
@@ -186,8 +190,8 @@ export default function CustomerHome() {
 
   const otherServices = (
     <View testID="home-other-services" style={styles.groupCard}>
-      <AppText style={[styles.sectionTitle, { color: colors.onSurface }]}>Supply & Workforce</AppText>
-      <View style={[styles.grid, styles.serviceGrid]}>
+      <AppText style={[styles.sectionTitle, headingSize, { color: colors.onSurface }]}>Supply & Workforce</AppText>
+      <View style={[styles.grid, styles.serviceGrid, { marginTop: homeSize.sectionGap, rowGap: homeSize.gridGap }]}>
         {SERVICES.map(service => (
           <Pressable
             key={service.key}
@@ -195,16 +199,16 @@ export default function CustomerHome() {
             accessibilityRole="button"
             accessibilityLabel={`${service.label} enquiry`}
             onPress={() => openService(service.key)}
-            style={({ pressed }) => [styles.tile, styles.serviceTile, { width: "32.5%", opacity: pressed ? 0.7 : 1 }]}
+            style={({ pressed }) => [styles.tile, styles.serviceTile, { minHeight: homeSize.serviceTile, width: "32.5%", opacity: pressed ? 0.7 : 1 }]}
           >
-            <View style={[styles.servicePlate, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-              <VectorSymbol name={service.symbol} size={58} />
+            <View style={[styles.servicePlate, { height: homeSize.servicePlate, backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+              <VectorSymbol name={service.symbol} size={homeSize.serviceSymbol} />
             </View>
-            <AppText numberOfLines={2} style={[styles.serviceLabel, { color: colors.onSurface }]}>{service.label}</AppText>
+            <AppText numberOfLines={2} style={[styles.serviceLabel, { fontSize: homeSize.serviceLabel, lineHeight: homeSize.serviceLabelLine, color: colors.onSurface }]}>{service.label}</AppText>
           </Pressable>
         ))}
       </View>
-      <AppText variant="caption" style={{ textAlign: "center", marginTop: 10 }}>Send an enquiry; our team will contact you.</AppText>
+      <AppText variant="caption" style={{ textAlign: "center", fontSize: homeSize.serviceLabel, lineHeight: homeSize.serviceLabelLine, marginTop: homeSize.sectionGap }}>Send an enquiry; our team will contact you.</AppText>
     </View>
   );
 
@@ -215,14 +219,14 @@ export default function CustomerHome() {
 
       <ScrollView
         testID="customer-home-scroll"
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: 88 + insets.bottom }]}
+        contentContainerStyle={[styles.scrollContent, { gap: homeSize.sectionGap, paddingBottom: 88 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={colors.brand} />}
       >
         {error && !data ? (
           <>
             <ErrorView message={error} onRetry={reload} />
-            <View style={styles.homeAboveFold}>
+            <View style={[styles.homeAboveFold, { gap: homeSize.sectionGap }]}>
               {quickActions}
               <View style={styles.groupCard}><KycBanner status={user?.kyc_status || "NOT_STARTED"} /></View>
               {planningTools}
@@ -241,7 +245,7 @@ export default function CustomerHome() {
         ) : data ? (
           <>
             {/* Existing carousel and its five images remain unchanged. */}
-            <View style={styles.homeAboveFold}>
+            <View style={[styles.homeAboveFold, { gap: homeSize.sectionGap }]}>
               <HomeCarousel style={{ width: Math.min(viewportWidth, 720), borderRadius: 0, borderWidth: 0 }} />
               {quickActions}
               <View style={styles.groupCard}><KycBanner status={data.kyc_status} /></View>
