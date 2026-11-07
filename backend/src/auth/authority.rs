@@ -135,16 +135,19 @@ pub async fn set_initial_password(
     .bind(&hash)
     .fetch_optional(&state.db)
     .await?;
-    let user = user.ok_or_else(|| AppError::Unauthorized(
-        "Authority enrollment challenge is invalid or expired".into()
-    ))?;
+    let user = user.ok_or_else(|| {
+        AppError::Unauthorized("Authority enrollment challenge is invalid or expired".into())
+    })?;
     if let Err(error) =
         crate::auth::totp::verify_staff_totp_login(&state.db, user, &body.code).await
     {
         sqlx::query(
             "UPDATE staff_mfa_challenges SET attempts=attempts+1
-             WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>NOW()"
-        ).bind(&hash).execute(&state.db).await?;
+             WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>NOW()",
+        )
+        .bind(&hash)
+        .execute(&state.db)
+        .await?;
         return Err(error);
     }
     let password_hash = crate::auth::password::hash_password(&body.password)?;
@@ -153,10 +156,16 @@ pub async fn set_initial_password(
         "UPDATE staff_mfa_challenges SET consumed_at=clock_timestamp()
          WHERE token_hash=$1 AND user_id=$2 AND purpose='login'
            AND consumed_at IS NULL AND expires_at>NOW() AND attempts<max_attempts
-         RETURNING user_id"
-    ).bind(&hash).bind(user).fetch_optional(&mut *tx).await?;
+         RETURNING user_id",
+    )
+    .bind(&hash)
+    .bind(user)
+    .fetch_optional(&mut *tx)
+    .await?;
     if consumed != Some(user) {
-        return Err(AppError::Unauthorized("Authority enrollment was already consumed".into()));
+        return Err(AppError::Unauthorized(
+            "Authority enrollment was already consumed".into(),
+        ));
     }
     let updated = sqlx::query(
         "UPDATE users SET hashed_password=$2,updated_at=NOW()
@@ -164,17 +173,29 @@ pub async fn set_initial_password(
            AND hashed_password='!web-only-no-password!'
            AND work_email_verified_at IS NOT NULL
            AND EXISTS(SELECT 1 FROM control_center_access a
-                      WHERE a.user_id=users.id AND a.approved=TRUE)"
-    ).bind(user).bind(password_hash).execute(&mut *tx).await?;
+                      WHERE a.user_id=users.id AND a.approved=TRUE)",
+    )
+    .bind(user)
+    .bind(password_hash)
+    .execute(&mut *tx)
+    .await?;
     if updated.rows_affected() != 1 {
-        return Err(AppError::Forbidden("Authority initial password cannot be reset here".into()));
+        return Err(AppError::Forbidden(
+            "Authority initial password cannot be reset here".into(),
+        ));
     }
     sqlx::query(
         "INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata)
-         VALUES($1,'authority.password.enrolled','authority',$2,'{}')"
-    ).bind(user).bind(user.to_string()).execute(&mut *tx).await?;
+         VALUES($1,'authority.password.enrolled','authority',$2,'{}')",
+    )
+    .bind(user)
+    .bind(user.to_string())
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
-    Ok(Json(json!({"success":true,"message":"Authority password enrolled. Sign in using password and authenticator."})))
+    Ok(Json(
+        json!({"success":true,"message":"Authority password enrolled. Sign in using password and authenticator."}),
+    ))
 }
 
 pub async fn me(authority: WebAuthority) -> Json<Value> {
