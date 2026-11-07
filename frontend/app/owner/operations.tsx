@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Pressable, View } from "react-native";
+import { useRouter } from "expo-router";
 import { useAuth } from "@/src/auth/AuthContext";
 import { apiErrorDetail, apiPost, apiPut } from "@/src/api/client";
 import { useGet } from "@/src/hooks/useApi";
@@ -22,8 +23,24 @@ type AutomationHistory = { id: string; template_key: string; status: string; att
 const REMINDER_MINUTES = [30, 60, 120, 240] as const;
 const SLA_MINUTES = [30, 60, 120, 240] as const;
 
+type AutomationWorkspace = "/owner/orders" | "/owner/quotation-requests" | "/business/inventory" | "/workforce";
+
+function workspaceForTask(kind: string): AutomationWorkspace | null {
+  switch (kind) {
+    case "REVIEW_ORDER":
+    case "DISPATCH_UNASSIGNED_LOAD": return "/owner/orders";
+    case "RFQ_PENDING_PLANT": return "/owner/quotation-requests";
+    case "INVENTORY_BELOW_MIN": return "/business/inventory";
+    case "WORKFORCE_LEAVE_PENDING": return "/workforce";
+    // A failed quality assessment cannot be closed from Owner Operations;
+    // it requires an authorized Quality Engineer workflow.
+    default: return null;
+  }
+}
+
 export default function OwnerOperations() {
   const p = useOwnerPalette();
+  const router = useRouter();
   const { token } = useAuth();
   const [plantId, setPlantId] = useState("");
   const [busyRule, setBusyRule] = useState<string | null>(null);
@@ -37,8 +54,8 @@ export default function OwnerOperations() {
   }, [plants]);
   const base = plantId ? `/owner/plants/${encodeURIComponent(plantId)}/automation` : null;
   const { data: rules, error: ruleError, loading: rulesLoading, refetch: refreshRules } =
-    useGet<{ rules: AutomationRule[] }>(base ? `${base}/rules` : null);
-  const { data: tasks, refetch: refreshTasks } =
+    useGet<{ rules: AutomationRule[]; worker_enabled: boolean }>(base ? `${base}/rules` : null);
+  const { data: tasks, error: tasksError, refetch: refreshTasks } =
     useGet<{ tasks: OwnerTask[] }>(base ? `${base}/tasks` : null);
   const { data: history, refetch: refreshHistory } =
     useGet<{ jobs: AutomationHistory[] }>(base ? `${base}/history` : null);
@@ -100,6 +117,9 @@ export default function OwnerOperations() {
         {requestError ? <AppText accessibilityRole="alert" style={{ color: "#FCA5A5" }}>{requestError}</AppText> : null}
         {notice ? <AppText style={{ color: p.text }}>{notice}</AppText> : null}
         {rulesLoading && !rules ? <AppText style={{ color: p.muted }}>Loading automation settings…</AppText> : null}
+        {rules && !rules.worker_enabled ? <AppText accessibilityRole="alert" style={{ color: "#F59E0B", fontSize: 12 }}>
+          Automation engine not activated. Preferences are saved, but the background worker is currently off.
+        </AppText> : null}
         {(rules?.rules ?? []).map(rule => {
           const available = rule.published && !rule.globally_paused;
           const isReminder = rule.key === "ORDER_PENDING_REMINDER";
@@ -154,11 +174,19 @@ export default function OwnerOperations() {
           </OwnerGlass>;
         })}
         {plantId ? <OwnerGlass style={{ padding: 12, gap: 6 }}>
-          <AppText style={{ color: p.text, fontWeight: "700" }}>Review tasks</AppText>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <AppText style={{ color: p.text, fontWeight: "700" }}>Review tasks</AppText>
+            <Pressable testID="owner-automation-refresh-cases" accessibilityRole="button"
+              onPress={() => void Promise.all([refreshTasks(), refreshHistory()])}
+              style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: p.canvas }}>
+              <AppText style={{ color: p.text, fontSize: 11 }}>Refresh cases</AppText>
+            </Pressable>
+          </View>
+          {tasksError ? <AppText accessibilityRole="alert" style={{ color: "#FCA5A5", fontSize: 12 }}>{tasksError}</AppText> : null}
           <AppText style={{ color: p.muted, fontSize: 12 }}>
             {(tasks?.tasks ?? []).filter(task => ["OPEN", "ACKNOWLEDGED"].includes(task.status)).length} unresolved review tasks
           </AppText>
-          {(tasks?.tasks ?? []).filter(task => ["OPEN", "ACKNOWLEDGED"].includes(task.status)).slice(0, 5).map(task =>
+          {(tasks?.tasks ?? []).filter(task => ["OPEN", "ACKNOWLEDGED"].includes(task.status)).slice(0, 10).map(task =>
             <View key={task.id} style={{ gap: 6 }}>
               <AppText style={{ color: p.text, fontSize: 12 }}>
                 {task.order_number ? `Order ${task.order_number} — owner review` :
@@ -177,6 +205,18 @@ export default function OwnerOperations() {
               </AppText> : null}
               {(task.escalation_count ?? 0) > 0 ? <AppText style={{ color: "#F59E0B", fontSize: 11 }}>
                 SLA escalated {task.escalation_count} time(s)
+              </AppText> : null}
+              {workspaceForTask(task.task_kind) ? <Pressable testID={`owner-automation-workspace-${task.id}`}
+                accessibilityRole="button" onPress={() => {
+                  const destination = workspaceForTask(task.task_kind);
+                  if (destination) router.push(destination);
+                }}
+                style={{ alignSelf: "flex-start", borderRadius: 8, paddingVertical: 8,
+                  paddingHorizontal: 12, backgroundColor: p.canvas }}>
+                <AppText style={{ color: p.text, fontSize: 11 }}>Open operational module</AppText>
+              </Pressable> : null}
+              {task.task_kind === "QUALITY_INSPECTION_FAILED" ? <AppText style={{ color: p.muted, fontSize: 11 }}>
+                Requires Quality Engineer verification. Acknowledgement does not close the failed inspection.
               </AppText> : null}
               {!task.order_number && task.status === "OPEN" ? <Pressable testID={`owner-automation-ack-${task.id}`}
                 accessibilityRole="button" disabled={Boolean(busyTask)}
