@@ -85,6 +85,8 @@ where
     }
 }
 
+type PrivilegedWebIdentity = (Uuid, Option<String>, Option<String>, String, String);
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AdminLogin {
@@ -140,7 +142,7 @@ pub async fn login_for_role(
     }
     sqlx::query("UPDATE control_center_login_limits SET attempts=$2, window_started_at=CASE WHEN $2=1 THEN NOW() ELSE window_started_at END WHERE identifier_hash=$1")
         .bind(&key).bind(attempts+1).execute(&mut *tx).await?;
-    let identity: Option<(Uuid, Option<String>, Option<String>, String, String)> = sqlx::query_as(
+    let identity: Option<PrivilegedWebIdentity> = sqlx::query_as(
         "SELECT u.id, u.phone, u.email, u.full_name, t.secret_key FROM users u
          JOIN control_center_access a ON a.user_id=u.id
          JOIN user_totp_credentials t ON t.user_id=u.id AND t.is_enabled=TRUE
