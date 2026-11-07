@@ -147,16 +147,15 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    }
  }
  const promoCards=await page.getByTestId('home-pump-rental-promo').locator(':scope > *').all();
- if(promoCards.length!==2)throw Error('Both pump and On Time cards must exist');
- const [left,right]=await Promise.all(promoCards.map(card=>card.boundingBox()));
- if(Math.abs(left.width-240)>1||Math.abs(left.height-50)>1||Math.abs(right.height-50)>1)
-   throw Error('Pump CTA must be 240x50dp and On Time card 50dp: '+JSON.stringify({left,right}));
- if(width<378){
-   if(Math.abs(right.y-(left.y+left.height)-10)>1)throw Error('Promo cards should stack at a 10dp gap on narrow screens');
- } else {
-   if(Math.abs(right.y-left.y)>1||Math.abs(right.x-(left.x+left.width)-10)>1)
-     throw Error('Promo cards should share one row at a 10dp gap');
- }
+ if(promoCards.length!==1)throw Error('Pump CTA must be the only promotional card');
+ const pump=await promoCards[0].boundingBox();
+ const row=await page.getByTestId('home-pump-rental-promo').boundingBox();
+ if(!pump||!row||Math.abs(pump.width-240)>1||Math.abs(pump.height-50)>1)
+   throw Error('Pump CTA must remain 240x50dp: '+JSON.stringify({pump,row}));
+ if(Math.abs((pump.x+pump.width/2)-(row.x+row.width/2))>1)
+   throw Error('Single pump CTA must be horizontally centered');
+ if(await page.getByText('On Time, Everytime').count())
+   throw Error('Removed On Time card still appears');
  if(!await page.getByRole('button',{name:'Book Your Pump Online!'}).count())throw Error('Accessible pump CTA missing');
  for(const title of ['Quick Actions','Active Projects & Planning','Free Tools & Expert Advice','Supply & Workforce','Track My RMC','Built Better']){
    const style=await page.getByText(title,{exact:true}).first().evaluate(el=>{const s=getComputedStyle(el);return {size:s.fontSize,height:s.lineHeight,family:s.fontFamily};});
