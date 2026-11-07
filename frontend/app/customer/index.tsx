@@ -208,7 +208,7 @@ export default function CustomerHome() {
           </Pressable>
         ))}
       </View>
-      <AppText variant="caption" style={{ textAlign: "center", fontSize: homeSize.serviceLabel, lineHeight: Math.max(18, homeSize.serviceLabelLine), marginTop: homeSize.sectionGap }}>Send an enquiry; our team will contact you.</AppText>
+      <AppText variant="caption" style={{ textAlign: "center", fontSize: homeSize.serviceLabel, lineHeight: Math.max(18, homeSize.serviceLabelLine), marginTop: Math.min(6, homeSize.sectionGap) }}>Send an enquiry; our team will contact you.</AppText>
     </View>
   );
 
@@ -292,25 +292,25 @@ const styles = StyleSheet.create({
   quickGrid: { marginTop: 10 },
   toolGrid: { marginTop: 10 },
   serviceGrid: { marginTop: 10 },
-  sectionTitle: { fontFamily: "Raleway-Bold", fontSize: 15, lineHeight: 22, paddingHorizontal: 2 },
+  sectionTitle: { fontFamily: fonts.bold, fontSize: 15, lineHeight: 20, paddingHorizontal: 2 },
   slogan: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, width: 132, minHeight: 28, borderRadius: 14, paddingHorizontal: 5 },
-  sloganText: { fontFamily: "Raleway-Bold", fontSize: 15, lineHeight: 22 },
+  sloganText: { fontFamily: fonts.bold, fontSize: 15, lineHeight: 20 },
   grid: { flexDirection: "row", flexWrap: "wrap", width: "100%", justifyContent: "space-between", rowGap: 10 },
   tile: { alignItems: "center", justifyContent: "center", paddingHorizontal: 1, paddingVertical: 2, gap: 4 },
-  quickTile: { minHeight: 96, paddingVertical: 0, gap: 8, borderWidth: 0 },
+  quickTile: { minHeight: 82, paddingVertical: 0, gap: 6, borderWidth: 0, justifyContent: "flex-start" },
   quickCircle: { width: 56, height: 56, borderRadius: 28, overflow: "hidden", borderWidth: 1, alignItems: "center", justifyContent: "center" },
-  quickLabel: { fontFamily: "Roboto", fontWeight: "400", fontSize: 14, lineHeight: 16, textAlign: "center", minHeight: 32 },
+  quickLabel: { fontFamily: fonts.medium, fontSize: 14, lineHeight: 18, textAlign: "center", minHeight: 18 },
   toolTile: { minHeight: 101, paddingVertical: 0, gap: 4, justifyContent: "flex-start" },
   toolPlate: { width: "100%", height: 56, borderRadius: radius.md, borderWidth: 1, alignItems: "center", justifyContent: "center", overflow: "hidden" },
-  tileLabel: { fontFamily: fonts.semibold, fontSize: 11, lineHeight: 13, textAlign: "center" },
+  tileLabel: { fontFamily: fonts.medium, fontSize: 11, lineHeight: 13, textAlign: "center" },
   // Center the sole 240x50dp pump CTA; no empty secondary promo slot.
   promoRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", width: "100%", maxWidth: 620, alignSelf: "center" },
   promoCard: { minWidth: 0, height: 50, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, borderWidth: 1, borderRadius: 10, paddingHorizontal: 4, paddingVertical: 2 },
   promoPrimaryCard: { width: 240 },
   promoCopy: { flex: 1, minWidth: 0, justifyContent: "center", gap: 1 },
-  promoFirstLine: { fontFamily: "Raleway-Medium", fontSize: 13, lineHeight: 16 },
-  promoSecondLine: { fontFamily: "Raleway-SemiBold", fontSize: 15, lineHeight: 18 },
+  promoFirstLine: { fontFamily: fonts.medium, fontSize: 13, lineHeight: 16 },
+  promoSecondLine: { fontFamily: fonts.semibold, fontSize: 15, lineHeight: 18 },
   serviceTile: { minHeight: 103, paddingVertical: 0, gap: 4, justifyContent: "flex-start" },
   servicePlate: { width: "100%", height: 62, borderRadius: radius.md, borderWidth: 1, alignItems: "center", justifyContent: "center", overflow: "hidden" },
-  serviceLabel: { fontFamily: fonts.semibold, fontSize: 12, lineHeight: 15, textAlign: "center" },
+  serviceLabel: { fontFamily: fonts.medium, fontSize: 12, lineHeight: 15, textAlign: "center" },
 });
