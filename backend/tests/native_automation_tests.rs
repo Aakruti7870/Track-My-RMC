@@ -501,3 +501,56 @@ async fn accepted_notice_remains_valid_after_normal_production_progress(db: PgPo
     .unwrap();
     assert_eq!(notices, 1);
 }
+
+#[sqlx::test]
+async fn revoked_owner_cannot_receive_queued_order_review_task(db: PgPool) {
+    let owner = user(&db, "owner").await;
+    let customer = user(&db, "customer").await;
+    let (plant, order_id) = order(&db, owner, customer).await;
+    sqlx::query(
+        "UPDATE native_automation_templates
+         SET published=TRUE,globally_paused=FALSE
+         WHERE template_key='ORDER_SUBMITTED_TASK'",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO native_automation_plant_rules(plant_id,template_key,enabled,updated_by)
+         VALUES($1,'ORDER_SUBMITTED_TASK',TRUE,$2)",
+    )
+    .bind(plant)
+    .bind(owner)
+    .execute(&db)
+    .await
+    .unwrap();
+    let mut tx = db.begin().await.unwrap();
+    enqueue_order_submitted(&mut tx, order_id).await.unwrap();
+    tx.commit().await.unwrap();
+    sqlx::query("UPDATE users SET role='customer' WHERE id=$1")
+        .bind(owner)
+        .execute(&db)
+        .await
+        .unwrap();
+
+    assert_eq!(tick(&db).await.unwrap(), 0);
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM native_automation_tasks
+         WHERE order_id=$1 AND plant_id=$2",
+    )
+    .bind(order_id)
+    .bind(plant)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(count, 0);
+    let job_status: String = sqlx::query_scalar(
+        "SELECT status FROM native_automation_jobs
+         WHERE order_id=$1 AND template_key='ORDER_SUBMITTED_TASK'",
+    )
+    .bind(order_id)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(job_status, "SKIPPED");
+}
