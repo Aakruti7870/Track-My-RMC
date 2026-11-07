@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, AppState, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { ActivityIndicator, AppState, Modal, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useIsFocused } from "@react-navigation/native";
@@ -17,13 +17,13 @@ import { useTheme } from "@/src/theme/ThemeProvider";
 import { AppText } from "@/src/components/ui/AppText";
 import { Button } from "@/src/components/ui/Button";
 import { Input } from "@/src/components/ui/Input";
-import { glass } from "@/src/theme/tokens";
+import { customerHomeSizes, glass } from "@/src/theme/tokens";
 
 type Sheet = "help" | "location" | "kyc" | null;
 type Geocode = { locality: string; formatted_address: string };
 
-function IndianFlag() {
-  return <Svg width={22} height={22} viewBox="0 0 24 24" accessible={false}>
+function IndianFlag({ size }: { size: number }) {
+  return <Svg width={size} height={size} viewBox="0 0 24 24" accessible={false}>
     <Defs><ClipPath id="headerFlag"><Circle cx="12" cy="12" r="11" /></ClipPath></Defs>
     <G clipPath="url(#headerFlag)">
       <Rect width="24" height="8" fill="#FF9933" /><Rect y="8" width="24" height="8" fill="#FFFFFF" /><Rect y="16" width="24" height="8" fill="#138808" />
@@ -33,8 +33,8 @@ function IndianFlag() {
   </Svg>;
 }
 
-function VerifiedBadge({ color }: { color: string }) {
-  return <Svg width={32} height={32} viewBox="0 0 32 32" accessible={false}>
+function VerifiedBadge({ color, size }: { color: string; size: number }) {
+  return <Svg width={size} height={size} viewBox="0 0 32 32" accessible={false}>
     <Path d="M16 1 20 3 24 3 26 7 30 9 30 13 32 16 30 20 30 24 26 26 24 30 20 30 16 32 12 30 8 30 6 26 2 24 2 20 0 16 2 12 2 8 6 6 8 2 12 2Z" fill={color} />
     <Path d="m9 16 5 5 9-10" fill="none" stroke="#FFFFFF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>;
@@ -60,6 +60,8 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
   const { colors } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const size = customerHomeSizes(width, Platform.OS);
   const focused = useIsFocused();
   const permissions = usePermissions();
   const { data: profile, error: profileError, refetch: refreshProfile } = useGet<{ kyc_status: string }>("/me");
@@ -175,25 +177,25 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
   return <>
     {focused ? <StatusBar style={colors.isDark ? "light" : "dark"} /> : null}
     <View style={[styles.safeArea, { paddingTop: insets.top, backgroundColor: glassSurface, borderColor: glassBorder, shadowColor: colors.shadow }]}>
-      <View testID="customer-home-header" style={styles.row}>
-        <Pressable testID="header-kyc" accessibilityRole="button" accessibilityLabel={`KYC status: ${status.replace(/_/g, " ")}`} onPress={() => setSheet("kyc")} style={styles.target}>
-          {verified ? <VerifiedBadge color={colors.verified} /> : <Ionicons name="shield-outline" size={35} color={colors.onSurfaceTertiary} />}
+      <View testID="customer-home-header" style={[styles.row, { minHeight: size.headerHeight }]}>
+        <Pressable testID="header-kyc" accessibilityRole="button" accessibilityLabel={`KYC status: ${status.replace(/_/g, " ")}`} onPress={() => setSheet("kyc")} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(48, size.headerTarget) }]}>
+          {verified ? <VerifiedBadge color={colors.verified} size={size.headerVerified} /> : <Ionicons name="shield-outline" size={size.headerShield} color={colors.onSurfaceTertiary} />}
         </Pressable>
-        <Pressable testID="header-location" accessibilityRole="button" accessibilityLabel={`Location: ${label}. Refresh or select location`} onPress={() => setSheet("location")} style={styles.location}>
-          <IndianFlag />
-          <AppText numberOfLines={1} ellipsizeMode="tail" style={[styles.locationText, { color: colors.onSurface }]}>{locationBusy ? "Locating…" : label}</AppText>
-          <Ionicons name="chevron-down" size={16} color={colors.onSurface} />
+        <Pressable testID="header-location" accessibilityRole="button" accessibilityLabel={`Location: ${label}. Refresh or select location`} onPress={() => setSheet("location")} style={[styles.location, { minHeight: Math.max(48, size.headerTarget) }]}>
+          <IndianFlag size={size.headerFlag} />
+          <AppText numberOfLines={1} ellipsizeMode="tail" style={[styles.locationText, { fontSize: size.locationSize, lineHeight: size.locationLine, color: colors.onSurface }]}>{locationBusy ? "Locating…" : label}</AppText>
+          <Ionicons name="chevron-down" size={size.headerChevron} color={colors.onSurface} />
         </Pressable>
-        <Pressable testID="header-qr-disabled" disabled accessibilityRole="button" accessibilityState={{ disabled: true }} accessibilityLabel="QR Scanner — Coming Soon" style={styles.target}>
-          <Ionicons name="scan-outline" size={32} color={colors.disabledContent} />
-          <View pointerEvents="none" style={styles.qrInner}><Ionicons name="qr-code-outline" size={19} color={colors.disabledContent} /></View>
+        <Pressable testID="header-qr-disabled" disabled accessibilityRole="button" accessibilityState={{ disabled: true }} accessibilityLabel="QR Scanner — Coming Soon" style={[styles.target, { width: size.headerTarget, minHeight: Math.max(48, size.headerTarget) }]}>
+          <Ionicons name="scan-outline" size={size.headerScan} color={colors.disabledContent} />
+          <View pointerEvents="none" style={styles.qrInner}><Ionicons name="qr-code-outline" size={size.headerQR} color={colors.disabledContent} /></View>
         </Pressable>
-        <Pressable testID="notifications-bell" accessibilityRole="button" accessibilityLabel={unread ? `${feed!.unread} unread notifications` : "Notifications"} onPress={() => router.push("/notifications")} style={styles.target}>
-          <Ionicons name="notifications-outline" size={26} color={colors.onSurface} />
+        <Pressable testID="notifications-bell" accessibilityRole="button" accessibilityLabel={unread ? `${feed!.unread} unread notifications` : "Notifications"} onPress={() => router.push("/notifications")} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(48, size.headerTarget) }]}>
+          <Ionicons name="notifications-outline" size={size.headerBell} color={colors.onSurface} />
           {unread ? <View testID="header-unread-dot" style={[styles.dot, { backgroundColor: colors.verified, borderColor: glassSurface }]} /> : null}
         </Pressable>
-        <Pressable testID="header-help" accessibilityRole="button" accessibilityLabel="Customer help" onPress={() => setSheet("help")} style={styles.target}>
-          <Ionicons name="help-circle-outline" size={29} color={colors.onSurface} />
+        <Pressable testID="header-help" accessibilityRole="button" accessibilityLabel="Customer help" onPress={() => setSheet("help")} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(48, size.headerTarget) }]}>
+          <Ionicons name="help-circle-outline" size={size.headerHelp} color={colors.onSurface} />
         </Pressable>
       </View>
     </View>
@@ -203,7 +205,7 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
         <View accessibilityViewIsModal onAccessibilityEscape={close} style={[styles.sheet, { backgroundColor: glassSurface, borderColor: glassBorder, shadowColor: colors.shadow, paddingBottom: Math.max(insets.bottom, 16) }]}>
           <View style={styles.sheetTitle}>
             <AppText variant="heading">{sheet === "help" ? "Customer Help" : sheet === "location" ? "Choose Location" : "KYC Status"}</AppText>
-            <Pressable accessibilityRole="button" accessibilityLabel="Close dialog" onPress={close} style={styles.target}><Ionicons name="close" size={24} color={colors.onSurface} /></Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="Close dialog" onPress={close} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(48, size.headerTarget) }]}><Ionicons name="close" size={24} color={colors.onSurface} /></Pressable>
           </View>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.sheetContent}>
             {sheet === "help" ? <>
