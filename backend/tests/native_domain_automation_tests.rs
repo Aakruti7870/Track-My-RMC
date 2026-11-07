@@ -540,3 +540,45 @@ async fn revoked_owner_role_cannot_receive_new_escalation(db: PgPool) {
     .unwrap();
     assert_eq!(count, 0);
 }
+
+#[sqlx::test]
+async fn revoked_owner_role_cannot_receive_initial_domain_alert(db: PgPool) {
+    let owner = user(&db, "owner").await;
+    let customer = user(&db, "customer").await;
+    let (plant, _) = plant_and_order(&db, owner, customer).await;
+    let _material: Uuid = sqlx::query_scalar(
+        "INSERT INTO plant_materials
+         (plant_id,name,material_type,current_stock,minimum_stock,updated_at)
+         VALUES($1,'Sand','sand',5,20,NOW()-INTERVAL '20 minutes')
+         RETURNING id",
+    )
+    .bind(plant)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    enable(&db, plant, owner, &[INVENTORY]).await;
+    // A role revocation can happen before the worker sees the due event.
+    sqlx::query("UPDATE users SET role='customer' WHERE id=$1")
+        .bind(owner)
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(scan_due(&db).await.unwrap(), 0);
+    assert_eq!(tick(&db).await.unwrap(), 0);
+    let tasks: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM native_automation_domain_tasks WHERE plant_id=$1",
+    )
+    .bind(plant)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(tasks, 0);
+    let notifications: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM notifications WHERE user_id=$1",
+    )
+    .bind(owner)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(notifications, 0);
+}
