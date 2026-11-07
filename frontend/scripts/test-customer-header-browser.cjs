@@ -38,15 +38,18 @@ const out=process.env.HEADER_PREVIEW_DIR||'header-previews';fs.mkdirSync(out,{re
 
   assert.equal(await page.evaluate(()=>window.headerGeoCalls),0,'manual consent triggered GPS');
   let previousRight=0;
-  for(const id of ['header-location-refresh','header-location','notifications-bell','header-help']){
+  for(const id of ['header-location-chevron','header-location','notifications-bell','header-help']){
    const b=await page.getByTestId(id).boundingBox();assert(b&&b.x>=previousRight-1&&b.x+b.width<=width+1&&b.height>=44,`${id} overlap, clipping or small target at ${width}`);previousRight=b.x+b.width;
   }
+  assert.equal(await page.getByTestId('header-location-refresh').count(),0, 'No standalone refresh icon in the header');
+  assert.equal(await page.getByTestId('header-location-chevron').getAttribute('aria-label'),'Choose location');
   assert.equal(await page.getByTestId('header-qr-disabled').count(),0);
   assert.equal(await page.getByTestId('header-kyc').count(),0);
   await header.screenshot({path:`${out}/header-${scheme}-${width}.png`});
   if(width===390){
-   // Header refresh must explain GPS failures and expose manual location selection.
-   await page.getByTestId('header-location-refresh').click();
+   // The leftmost down-arrow opens the same selector, with manual fallback on GPS failures.
+   await page.getByTestId('header-location-chevron').click();
+   await page.getByRole('button',{name:'Refresh current location',exact:true}).click();
    await page.getByText('Location permission was denied. Select a city manually.',{exact:true}).waitFor();
    await page.evaluate(()=>{window.headerGeoMode='timeout';});
    await page.getByRole('button',{name:'Refresh current location',exact:true}).last().click();
@@ -57,6 +60,10 @@ const out=process.env.HEADER_PREVIEW_DIR||'header-previews';fs.mkdirSync(out,{re
    await page.getByRole('button',{name:'Use selected location',exact:true}).click();
    await page.getByTestId('header-location').getByText('Panvel',{exact:true}).waitFor();
    await header.screenshot({path:`${out}/header-${scheme}-selected-location.png`});
+   // The location label itself remains selectable and opens the same sheet.
+   await page.getByTestId('header-location').click();
+   await page.getByText('Choose Location',{exact:true}).waitFor();
+   await page.getByRole('button',{name:'Close dialog',exact:true}).last().click();
    await page.getByTestId('notifications-bell').click();await page.getByTestId('notif-read-all').click();
    await page.getByTestId('notif-read-all').waitFor({state:'detached'});kyc='PENDING';
    await page.getByTestId('notif-back').click();
@@ -77,7 +84,7 @@ const out=process.env.HEADER_PREVIEW_DIR||'header-previews';fs.mkdirSync(out,{re
    await page.getByRole('textbox',{name:'Type "DELETE" to confirm',exact:true}).fill('DELETE');
    assert.notEqual(await submit.getAttribute('aria-disabled'),'true');assert.equal(deletionRequests,0);
   }
-  assert.deepEqual(errors,[]);console.log(`PASS ${scheme} ${width}px: four controls, direct GPS refresh, no QR/shield${width===390?', location errors/retry, unread sync, support and deletion safeguards':''}`);
+  assert.deepEqual(errors,[]);console.log(`PASS ${scheme} ${width}px: four controls, left-hand location chevron, no header refresh or QR/shield${width===390?', location errors/retry, unread sync, support and deletion safeguards':''}`);
   await context.close();
  }}finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1);});
