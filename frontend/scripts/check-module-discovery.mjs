@@ -101,10 +101,10 @@ assert.ok(customerHome.includes('testID={testID}') &&
 assert.ok(customerHome.includes('<HomeCarousel style={{ width: Math.min(viewportWidth, 720), borderRadius: 0, borderWidth: 0 }} />'), "Preserve five-slide carousel and make the customer banner edge-to-edge.");
 assert.ok(customerHome.includes('<KycBanner status={data.kyc_status} />'), "Preserve KYC state machine.");
 assert.ok(customerHome.includes('<ActiveTransitMixerCard'), "Preserve real order and demo tracking.");
-assert.ok(customerHome.includes('homeAboveFold: { width: "100%", gap: 4 }'), "Carousel, Quick Actions, KYC and RMC Tools must be separated by 4 dp.");
-assert.ok(customerHome.includes('scrollContent: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 190, gap: 4,'), "Every Home section must use a 4 dp vertical gap.");
-assert.ok(customerHome.includes('groupCard: { width: "100%", maxWidth: 620, alignSelf: "center", paddingHorizontal: 0, paddingVertical: 0, gap: 4 }'), "Remove extra group padding and keep compact spacing.");
-assert.ok(customerHome.includes('justifyContent: "space-between", rowGap: 4 }'), "Home grid rows must use 4 dp spacing.");
+assert.ok(customerHome.includes('homeAboveFold: { width: "100%", gap: 10 }'), "Home sections must be separated by 10 dp.");
+assert.ok(customerHome.includes('scrollContent: { paddingHorizontal: 16, paddingTop: 0, paddingBottom: 88, gap: 10,'), "Home sections need 10dp gaps and safe bottom padding.");
+assert.ok(customerHome.includes('groupCard: { width: "100%", maxWidth: 620, alignSelf: "center", paddingHorizontal: 0, paddingVertical: 0, gap: 0 }'), "Avoid stacked internal gaps.");
+assert.ok(customerHome.includes('justifyContent: "space-between", rowGap: 10 }'), "Home grid rows must use 10 dp spacing.");
 assert.ok(customerHome.includes('tightGroup: { paddingVertical: 0, gap: 0 }'), "Unheaded groups must have no extra vertical padding.");
 assert.ok(customerHome.includes('>Quick Actions</AppText>'), "The four circular quick actions need a visible heading.");
 assert.ok(!customerHome.includes('>RMC Tools</AppText>'), "RMC Tools heading must be removed.");
@@ -112,10 +112,20 @@ assert.ok(customerHome.includes('>Supply & Workforce</AppText>'), "Supply & Work
 assert.ok(customerHome.includes('>Active Projects & Planning</AppText>') || customerHome.includes('"Active Projects & Planning", "customer-module-grid"'), "Planning section heading required.");
 assert.ok(customerHome.includes('"Free Tools & Expert Advice", "home-advice-grid"'), "Four-item advice section required.");
 assert.ok(customerHome.includes('>Built Better</AppText>') && customerHome.includes('name="shield-checkmark"'), "Built Better green shield slogan required.");
+assert.ok(customerHome.includes('sectionTitle: { fontFamily: "Raleway-Bold", fontSize: 15, lineHeight: 22'), "Home mobile headings must retain Raleway Bold at 15dp.");
+assert.ok(customerHome.includes('customerHomeSizes(viewportWidth, Platform.OS)'), "Use viewport and platform to size the Home consistently.");
+const responsiveHome = read("src/theme/tokens.ts");
+assert.ok(responsiveHome.includes('platform !== "web" || viewportWidth < 600') && responsiveHome.includes("viewportWidth < 1024"), "Only tablet and desktop web may scale the approved native/mobile design.");
+for (const mobile of ["quickSymbol: 52", "toolSymbol: 52", "serviceSymbol: 58", "sectionGap: 10", "headerSize: 15", "pumpWidth: 240", "pumpHeight: 50"]) {
+  assert.ok(responsiveHome.includes(mobile), `Missing locked PR #152 mobile design token: ${mobile}`);
+}
+assert.ok(customerHome.includes('quickGrid: { marginTop: 10 }') && customerHome.includes('toolGrid: { marginTop: 10 }') && customerHome.includes('serviceGrid: { marginTop: 10 }'), "Keep a 10dp gap between each section header and row.");
+assert.ok(customerHome.includes('promoPrimaryCard: { width: 240 }') && customerHome.includes('height: 50'), "Pump CTA must retain its 240x50dp dimensions.");
+assert.ok(customerHome.includes("Streamline Your Pour") && customerHome.includes("Book Your Pump Online!"), "Pump CTA copy mismatch.");
 assert.ok(customerHome.includes('["pour-planner", "compare-plants", "projects", "saved-sites"]'), "Planning tools must be presented in the requested order.");
 assert.ok(customerHome.includes('["free-tools", "receiving-guide", "cube-tests", "customer-support"]'), "Expert advice must use the four existing authorized routes.");
 assert.ok(customerHome.includes('testID="home-pump-rental-promo"') && customerHome.includes('onPress={() => router.push("/support")}'), "Pump-rental callout must reach existing customer support, not a dead end.");
-assert.ok(customerHome.includes('On Time,') && customerHome.includes('Everytime'), "Delivery slogan callout required.");
+assert.ok(!customerHome.includes('On Time,') && !customerHome.includes('Everytime') && !customerHome.includes('promoSecondaryCard'), "Remove the old On Time promotional card entirely.");
 assert.ok(customerHome.includes('quickCircle: { width: 56, height: 56, borderRadius: 28'), "52 dp action artwork must have a circular, clipping frame.");
 assert.ok(customerHome.includes('{ key: "plants", label: "Plants"'), "The third action label must remain Plants.");
 assert.ok(customerHome.includes('fourQuickColumns ? "24.25%" : "49%"'), "Quick Actions must use four compact columns when wide and two when narrow for full 52-unit icons.");
@@ -138,10 +148,10 @@ for (const [key, symbol] of [
     `Missing Other Services SVG assignment for ${key}`,
   );
 }
-assert.ok(customerHome.includes('<VectorSymbol name={service.symbol} size={58} />'), "Other Services must show 58-unit uploaded artwork.");
+assert.ok(customerHome.includes('<VectorSymbol name={service.symbol} size={homeSize.serviceSymbol} />'), "Other Services must use responsive uploaded SVG artwork.");
 assert.ok(!customerHome.includes('<Ionicons name={service.icon}'), "Do not regress to generic service icons.");
-assert.ok(customerHome.includes('<VectorSymbol name={action.symbol} size={52} />'), "Quick Actions must show 52-unit assigned vector artwork.");
-assert.ok(customerHome.includes('<VectorSymbol name={module.symbol} size={52} />'), "RMC Tools must show 52-unit assigned vector artwork.");
+assert.ok(customerHome.includes('<VectorSymbol name={action.symbol} size={homeSize.quickSymbol} />'), "Quick Actions must use responsive assigned vector artwork.");
+assert.ok(customerHome.includes('<VectorSymbol name={module.symbol} size={homeSize.toolSymbol} />'), "RMC Tools must use responsive assigned vector artwork.");
 for (const wrapper of ["styles.actionIcon", "styles.toolIcon", "styles.serviceIcon"]) {
   assert.ok(!customerHome.includes(wrapper), `Decorative icon plate must be removed: ${wrapper}`);
 }

@@ -46,6 +46,9 @@ export default function RootLayout() {
     "Jakarta-Medium": require("../assets/fonts/Jakarta-Medium.ttf"),
     "Jakarta-SemiBold": require("../assets/fonts/Jakarta-SemiBold.ttf"),
     "Jakarta-Bold": require("../assets/fonts/Jakarta-Bold.ttf"),
+    "Raleway-Medium": require("../assets/fonts/Raleway-Medium.ttf"),
+    "Raleway-SemiBold": require("../assets/fonts/Raleway-SemiBold.ttf"),
+    "Raleway-Bold": require("../assets/fonts/Raleway-Bold.ttf"),
   });
 
   const iconsReady = iconsLoaded || !!iconError;
