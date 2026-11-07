@@ -71,6 +71,10 @@ pub fn build_app_router(state: AppState) -> Router {
             "/api/authority/auth/verify-totp",
             post(crate::auth::authority::login),
         )
+        .route(
+            "/api/authority/auth/set-initial-password",
+            post(crate::auth::authority::set_initial_password),
+        )
         .route("/api/authority/auth/me", get(crate::auth::authority::me))
         .route(
             "/api/authority/auth/logout",
