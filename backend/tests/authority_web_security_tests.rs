@@ -204,7 +204,7 @@ async fn authority_password_bootstrap_requires_email_challenge_and_totp(db: PgPo
     .execute(&db)
     .await
     .unwrap();
-    let token = "SyntheticTestChallengeTokenWhichIsExactlyFortyEight";
+    let token = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF";
     assert_eq!(token.len(), 48);
     let challenge_hash = hex::encode(Sha256::digest(token.as_bytes()));
     sqlx::query(
