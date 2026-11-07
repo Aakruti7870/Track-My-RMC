@@ -9,6 +9,7 @@ pub mod control_center_routes;
 pub mod customer_routes;
 pub mod customer_services;
 pub mod digilocker_kyc;
+pub mod authority_governance;
 pub mod discovery;
 pub mod dispatcher_routes;
 pub mod driver_profile_routes;
@@ -65,6 +66,17 @@ pub fn build_app_router(state: AppState) -> Router {
             post(crate::auth::control_center::login),
         )
         .route("/api/admin/auth/me", get(crate::auth::control_center::me))
+        // Authority has its own web-only authentication surface and scoped sessions.
+        .route(
+            "/api/authority/auth/verify-totp",
+            post(crate::auth::authority::login),
+        )
+        .route("/api/authority/auth/me", get(crate::auth::authority::me))
+        .route("/api/authority/auth/logout", post(crate::auth::authority::logout))
+        .route(
+            "/api/authority/collections/:kind",
+            get(crate::auth::authority::collection),
+        )
         .route(
             "/api/admin/auth/step-up",
             post(control_center_routes::admin_step_up),
@@ -1178,6 +1190,10 @@ pub fn build_app_router(state: AppState) -> Router {
             "/api/control-center/admin-access",
             get(control_center_routes::list_admin_access)
                 .post(control_center_routes::update_admin_access),
+        )
+        .route(
+            "/api/control-center/authority-access",
+            get(authority_governance::list).post(authority_governance::upsert),
         )
         .route(
             "/api/control-center/unowned-plants",
