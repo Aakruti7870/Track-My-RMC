@@ -1102,3 +1102,101 @@ async fn native_automation_plant_settings_reject_cross_tenant_and_staff_writes(d
     .unwrap();
     assert!(!enabled);
 }
+
+#[sqlx::test]
+async fn native_domain_alert_acknowledgement_is_scoped_and_not_an_approval(db: PgPool) {
+    let state = state(db.clone());
+    let router = trackmyrmc_backend::routes::build_app_router(state.clone());
+    let (owner_a, _, _) = identity(&db, "owner", false, vec![]).await;
+    let (owner_b, _, _) = identity(&db, "owner", false, vec![]).await;
+    let plant: Uuid = sqlx::query_scalar(
+        "INSERT INTO rmc_plants
+         (owner_id,name,code,latitude,longitude,address_line,city,state,pincode,contact_phone)
+         VALUES($1,'Review Plant',$2,19,73,'Test','Panvel','Maharashtra','410206','0000000000')
+         RETURNING id",
+    )
+    .bind(owner_a)
+    .bind(Uuid::new_v4().simple().to_string()[..14].to_string())
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    let material: Uuid = sqlx::query_scalar(
+        "INSERT INTO plant_materials(plant_id,name,material_type,current_stock,minimum_stock)
+         VALUES($1,'Cement','cement',10,100) RETURNING id",
+    )
+    .bind(plant)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    let job: Uuid = sqlx::query_scalar(
+        "INSERT INTO native_automation_jobs
+         (event_key,plant_id,domain_entity_id,template_key,status)
+         VALUES($1,$2,$3,'INVENTORY_BELOW_MIN','COMPLETED') RETURNING id",
+    )
+    .bind(format!("test-stock:{}", Uuid::new_v4()))
+    .bind(plant)
+    .bind(material)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    let task: Uuid = sqlx::query_scalar(
+        "INSERT INTO native_automation_domain_tasks
+         (source_job_id,plant_id,domain_entity_id,template_key,assigned_to)
+         VALUES($1,$2,$3,'INVENTORY_BELOW_MIN',$4) RETURNING id",
+    )
+    .bind(job)
+    .bind(plant)
+    .bind(material)
+    .bind(owner_a)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    let owner_a_token =
+        generate_token(owner_a, "owner", "", None, &state.config.jwt_secret, 1).unwrap();
+    let owner_b_token =
+        generate_token(owner_b, "owner", "", None, &state.config.jwt_secret, 1).unwrap();
+    let path = format!(
+        "/api/owner/plants/{plant}/automation/domain-tasks/{task}/acknowledge"
+    );
+    assert_eq!(
+        request(&router, &path, Some(&owner_b_token), Some(json!({})))
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        request(&router, &path, Some(&owner_a_token), Some(json!({})))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let (status, replay) =
+        request(&router, &path, Some(&owner_a_token), Some(json!({}))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(replay["idempotent_replay"], true);
+    let task_status: String = sqlx::query_scalar(
+        "SELECT status FROM native_automation_domain_tasks WHERE id=$1",
+    )
+    .bind(task)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(task_status, "ACKNOWLEDGED");
+    let stock: i64 = sqlx::query_scalar(
+        "SELECT current_stock::bigint FROM plant_materials WHERE id=$1",
+    )
+    .bind(material)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(stock, 10);
+    let audit_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM audit_logs
+         WHERE user_id=$1 AND action='automation.domain_task.acknowledged'",
+    )
+    .bind(owner_a)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(audit_count, 1);
+}
