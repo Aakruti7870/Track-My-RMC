@@ -213,6 +213,118 @@ pub async fn login_for_role(
     ))
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PasswordRotation {
+    pub current_password: String,
+    pub new_password: String,
+    pub code: String,
+    pub reason: String,
+}
+
+/// Self-service rotation never re-enrolls an authenticator or creates a JWT.
+/// The caller must already hold a valid, dedicated, role-bound web session.
+pub(crate) async fn rotate_password(
+    state: &AppState,
+    user_id: Uuid,
+    session_hash: &str,
+    body: PasswordRotation,
+) -> Result<Json<Value>, AppError> {
+    let reason = body.reason.trim();
+    if !(16..=128).contains(&body.new_password.len())
+        || !(10..=500).contains(&reason.len())
+        || body.new_password == body.current_password
+        || body.code.len() != 6
+        || !body.code.bytes().all(|b| b.is_ascii_digit())
+    {
+        return Err(AppError::BadRequest(
+            "Use a distinct password (16-128 bytes), current authenticator and audit reason".into(),
+        ));
+    }
+    // Commit the throttle even when a proof fails: rolled-back counters invite guessing.
+    let attempts: i32 = sqlx::query_scalar(
+        "UPDATE control_center_sessions SET
+         step_up_attempts=CASE WHEN step_up_window_started_at<NOW()-INTERVAL '5 minutes'
+         THEN 1 ELSE step_up_attempts+1 END,
+         step_up_window_started_at=CASE WHEN step_up_window_started_at<NOW()-INTERVAL '5 minutes'
+         THEN NOW() ELSE step_up_window_started_at END
+         WHERE user_id=$1 AND token_hash=$2 AND revoked_at IS NULL AND expires_at>NOW()
+         RETURNING step_up_attempts"
+    )
+    .bind(user_id)
+    .bind(session_hash)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| AppError::Unauthorized("Privileged session expired".into()))?;
+    if attempts > 5 {
+        return Err(AppError::Forbidden("Credential rotation temporarily locked".into()));
+    }
+    let original: String = sqlx::query_scalar(
+        "SELECT hashed_password FROM users WHERE id=$1 AND is_active
+         AND role IN ('central_admin','authority')"
+    )
+    .bind(user_id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| AppError::Unauthorized("Privileged account is unavailable".into()))?;
+    if !original.starts_with("$argon2id$")
+        || !crate::auth::password::verify_password(&body.current_password, &original)
+            .unwrap_or(false)
+    {
+        return Err(AppError::Unauthorized("Current credentials are invalid".into()));
+    }
+    crate::auth::totp::verify_staff_totp_login(&state.db, user_id, &body.code).await?;
+    let replacement = crate::auth::password::hash_password(&body.new_password)?;
+    let mut tx = state.db.begin().await?;
+    let updated = sqlx::query(
+        "UPDATE users SET hashed_password=$2,active_session_jti=NULL,
+         auth_revoked_at=clock_timestamp(),updated_at=NOW()
+         WHERE id=$1 AND hashed_password=$3 AND is_active"
+    )
+    .bind(user_id)
+    .bind(replacement)
+    .bind(&original)
+    .execute(&mut *tx)
+    .await?;
+    if updated.rows_affected() != 1 {
+        return Err(AppError::Conflict("Credential state changed; restart rotation".into()));
+    }
+    sqlx::query(
+        "UPDATE control_center_sessions SET revoked_at=clock_timestamp()
+         WHERE user_id=$1 AND revoked_at IS NULL"
+    )
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query("DELETE FROM control_center_step_ups WHERE user_id=$1")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM account_refresh_tokens WHERE user_id=$1")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query(
+        "INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata)
+         VALUES($1,'control_center.password.rotated','privileged_user',$2,$3)"
+    )
+    .bind(user_id)
+    .bind(user_id.to_string())
+    .bind(json!({"reason":reason}))
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(json!({"success":true,"session_revoked":true})))
+}
+
+pub async fn change_admin_password(
+    State(state): State<AppState>,
+    admin: WebAdmin,
+    Json(body): Json<PasswordRotation>,
+) -> Result<Json<Value>, AppError> {
+    rotate_password(&state, admin.user_id, &admin.token_hash, body).await
+}
+
 pub async fn me(admin: WebAdmin) -> Json<Value> {
     Json(
         json!({"user":{"id":admin.user_id,"email":admin.email,"role":admin.role},"permissions":admin.permissions}),
