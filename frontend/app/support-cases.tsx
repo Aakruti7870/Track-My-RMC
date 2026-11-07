@@ -17,10 +17,10 @@ type Case = { id: string; case_number: string; category: string; status: Status;
 const STATUSES: Status[] = ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"];
 
 export default function SupportCases() {
-  const { token, user } = useAuth(); const { colors } = useTheme(); const insets = useSafeAreaInsets();
-  // Keep the operational support workflow available until its mutation
-  // controls have actually moved to the Control Center.
-  const authorized = user?.role === "authority" || user?.role === "central_admin";
+  const { token } = useAuth(); const { colors } = useTheme(); const insets = useSafeAreaInsets();
+  // Privileged support workflows are web-only. This legacy Expo screen stays
+  // fail-closed until it is removed from all deep-link references.
+  const authorized = false;
   const [filter, setFilter] = useState<Status>("OPEN"); const [caseId, setCaseId] = useState<string | null>(null);
   const [message, setMessage] = useState(""); const [internal, setInternal] = useState(false); const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null);
   const cases = useGet<{ cases: Case[] }>(authorized && token ? "/assistant/support/staff/cases" : null);
