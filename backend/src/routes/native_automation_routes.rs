@@ -270,16 +270,41 @@ pub async fn owner_tasks(
     let items: Vec<Value> = sqlx::query_scalar(
         "SELECT jsonb_build_object('id',tasks.id,'order_id',tasks.order_id,
               'order_number',tasks.order_number,'task_kind',tasks.task_kind,
+              'source_label',tasks.source_label,
               'status',tasks.status,'created_at',tasks.created_at,
               'resolved_at',tasks.resolved_at)
          FROM (
            SELECT t.id,t.order_id,o.order_number,t.task_kind,t.status,
-                  t.created_at,t.resolved_at
+                  t.created_at,t.resolved_at,
+                  ('Order '||o.order_number)::text AS source_label
            FROM native_automation_tasks t
            JOIN orders o ON o.id=t.order_id AND o.plant_id=t.plant_id
            WHERE t.plant_id=$1
            UNION ALL
-           SELECT d.id,NULL::uuid,'',d.template_key,d.status,d.created_at,d.resolved_at
+           SELECT d.id,NULL::uuid,''::text,d.template_key,d.status,
+                  d.created_at,d.resolved_at,
+                  COALESCE(CASE d.template_key
+                    WHEN 'DISPATCH_UNASSIGNED_LOAD' THEN (
+                      SELECT 'Load #'||l.load_number::text||' / Order '||o.order_number
+                      FROM order_loads l JOIN orders o ON o.id=l.order_id
+                      WHERE l.id=d.domain_entity_id AND o.plant_id=d.plant_id)
+                    WHEN 'RFQ_PENDING_PLANT' THEN (
+                      SELECT 'RFQ '||LEFT(q.id::text,8)||' / '||q.grade
+                      FROM customer_quotation_requests q
+                      WHERE q.id=d.domain_entity_id AND q.plant_id=d.plant_id)
+                    WHEN 'QUALITY_INSPECTION_FAILED' THEN (
+                      SELECT 'Inspection '||LEFT(q.id::text,8)||' / Order '||o.order_number
+                      FROM cube_tests q JOIN orders o ON o.id=q.order_id
+                      WHERE q.id=d.domain_entity_id AND o.plant_id=d.plant_id)
+                    WHEN 'INVENTORY_BELOW_MIN' THEN (
+                      SELECT 'Material: '||m.name
+                      FROM plant_materials m
+                      WHERE m.id=d.domain_entity_id AND m.plant_id=d.plant_id)
+                    WHEN 'WORKFORCE_LEAVE_PENDING' THEN (
+                      SELECT 'Leave '||LEFT(l.id::text,8)||' / '||l.start_date::text
+                      FROM workforce_leave_requests l
+                      WHERE l.id=d.domain_entity_id AND l.plant_id=d.plant_id)
+                    END,LEFT(d.domain_entity_id::text,8)) AS source_label
            FROM native_automation_domain_tasks d WHERE d.plant_id=$1
          ) tasks ORDER BY (tasks.status='OPEN') DESC,tasks.created_at DESC LIMIT 100",
     )
