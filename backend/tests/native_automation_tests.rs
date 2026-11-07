@@ -1,6 +1,8 @@
 //! PostgreSQL integration tests for the first native automation slice.
 use sqlx::{PgPool, Row};
-use trackmyrmc_backend::services::native_automation::{enqueue_order_decision, tick};
+use trackmyrmc_backend::services::native_automation::{
+    enqueue_order_decision, enqueue_order_submitted, schedule_due_reminders, tick,
+};
 use uuid::Uuid;
 
 async fn user(db: &PgPool, role: &str) -> Uuid {
@@ -187,4 +189,158 @@ async fn another_plants_opt_in_cannot_enable_my_plant(db: PgPool) {
     .await
     .unwrap();
     assert_eq!(notified, 1);
+}
+
+#[sqlx::test]
+async fn native_review_tasks_are_idempotent_and_do_not_approve_orders(db: PgPool) {
+    let owner = user(&db, "owner").await;
+    let customer = user(&db, "customer").await;
+    let (plant, order_id) = order(&db, owner, customer).await;
+    sqlx::query(
+        "UPDATE native_automation_templates
+         SET published=TRUE,globally_paused=FALSE
+         WHERE template_key='ORDER_SUBMITTED_TASK'",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO native_automation_plant_rules(plant_id,template_key,enabled,updated_by)
+         VALUES($1,'ORDER_SUBMITTED_TASK',TRUE,$2)",
+    )
+    .bind(plant)
+    .bind(owner)
+    .execute(&db)
+    .await
+    .unwrap();
+    let mut tx = db.begin().await.unwrap();
+    enqueue_order_submitted(&mut tx, order_id).await.unwrap();
+    enqueue_order_submitted(&mut tx, order_id).await.unwrap();
+    tx.commit().await.unwrap();
+
+    let (a, b) = tokio::join!(tick(&db), tick(&db));
+    assert_eq!(a.unwrap() + b.unwrap(), 1);
+    assert_eq!(tick(&db).await.unwrap(), 0);
+
+    let row = sqlx::query(
+        "SELECT assigned_to,status,task_kind FROM native_automation_tasks
+         WHERE order_id=$1",
+    )
+    .bind(order_id)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(row.get::<Uuid, _>("assigned_to"), owner);
+    assert_eq!(row.get::<String, _>("status"), "OPEN");
+    assert_eq!(row.get::<String, _>("task_kind"), "REVIEW_ORDER");
+    let status: String = sqlx::query_scalar("SELECT status FROM orders WHERE id=$1")
+        .bind(order_id)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(status, "pending");
+}
+
+#[sqlx::test]
+async fn due_reminders_respect_plant_opt_in_and_order_state(db: PgPool) {
+    let owner = user(&db, "owner").await;
+    let customer = user(&db, "customer").await;
+    let (plant, first) = order(&db, owner, customer).await;
+    let (_, second) = order(&db, owner, customer).await;
+    sqlx::query(
+        "UPDATE native_automation_templates
+         SET published=TRUE,globally_paused=FALSE
+         WHERE template_key='ORDER_PENDING_REMINDER'",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+    // Before plant opt-in no reminders may be generated.
+    sqlx::query(
+        "UPDATE orders SET created_at=NOW()-INTERVAL '65 minutes' WHERE id=$1",
+    )
+    .bind(first)
+    .execute(&db)
+    .await
+    .unwrap();
+    assert_eq!(schedule_due_reminders(&db).await.unwrap(), 0);
+    sqlx::query(
+        "INSERT INTO native_automation_plant_rules
+         (plant_id,template_key,enabled,updated_by,reminder_after_minutes)
+         VALUES($1,'ORDER_PENDING_REMINDER',TRUE,$2,60)",
+    )
+    .bind(plant)
+    .bind(owner)
+    .execute(&db)
+    .await
+    .unwrap();
+
+    assert_eq!(schedule_due_reminders(&db).await.unwrap(), 1);
+    assert_eq!(schedule_due_reminders(&db).await.unwrap(), 0);
+    assert_eq!(tick(&db).await.unwrap(), 1);
+    // The order is untouched; only the owner is notified.
+    let notified_owner: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM notifications
+         WHERE user_id=$1 AND reference_id=$2 AND notification_type='order_status'",
+    )
+    .bind(owner)
+    .bind(first.to_string())
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(notified_owner, 1);
+
+    sqlx::query(
+        "UPDATE orders SET created_at=NOW()-INTERVAL '65 minutes' WHERE id=$1",
+    )
+    .bind(second)
+    .execute(&db)
+    .await
+    .unwrap();
+    // This second fixture is in a different plant; it must never pick up the
+    // first plant's opt-in or recipient.
+    assert_eq!(schedule_due_reminders(&db).await.unwrap(), 0);
+}
+
+#[sqlx::test]
+async fn disabling_rule_prevents_queued_review_task(db: PgPool) {
+    let owner = user(&db, "owner").await;
+    let customer = user(&db, "customer").await;
+    let (plant, order_id) = order(&db, owner, customer).await;
+    sqlx::query(
+        "UPDATE native_automation_templates
+         SET published=TRUE,globally_paused=FALSE
+         WHERE template_key='ORDER_SUBMITTED_TASK'",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO native_automation_plant_rules(plant_id,template_key,enabled,updated_by)
+         VALUES($1,'ORDER_SUBMITTED_TASK',TRUE,$2)",
+    )
+    .bind(plant)
+    .bind(owner)
+    .execute(&db)
+    .await
+    .unwrap();
+    let mut tx = db.begin().await.unwrap();
+    enqueue_order_submitted(&mut tx, order_id).await.unwrap();
+    tx.commit().await.unwrap();
+    sqlx::query(
+        "UPDATE native_automation_templates SET globally_paused=TRUE
+         WHERE template_key='ORDER_SUBMITTED_TASK'",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+    assert_eq!(tick(&db).await.unwrap(), 0);
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM native_automation_tasks WHERE order_id=$1",
+    )
+    .bind(order_id)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(count, 0);
 }
