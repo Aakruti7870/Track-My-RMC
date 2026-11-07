@@ -3,6 +3,7 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimen
 import { Ionicons } from "@expo/vector-icons";
 import Svg, { Circle, Path, Rect } from "react-native-svg";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
 import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeProvider";
@@ -56,6 +57,8 @@ const SERVICES: readonly { key: ServiceKey; label: string; symbol: VectorSymbolN
 export default function CustomerHome() {
   const { colors } = useTheme();
   const { width: viewportWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const stackedPromos = viewportWidth < 378;
   const [quickGridWidth, setQuickGridWidth] = React.useState(0);
   // At small viewports, two columns preserve the requested 52-unit SVGs without clipping.
   const fourQuickColumns = quickGridWidth >= 270;
@@ -123,7 +126,7 @@ export default function CustomerHome() {
   const renderModuleGroup = (keys: readonly string[], title: string, testID: string) => (
     <View testID={testID} style={[styles.groupCard, styles.tightGroup]}>
       <AppText style={[styles.sectionTitle, { color: colors.onSurface }]}>{title}</AppText>
-      <View style={styles.grid}>
+      <View style={[styles.grid, styles.toolGrid]}>
         {keys.flatMap(key => CUSTOMER_MODULES.filter(module => module.key === key)).map(module => (
           <Pressable
             key={module.key}
@@ -157,12 +160,12 @@ export default function CustomerHome() {
   // A pump-rental module is not yet implemented. Route enquiries to the
   // existing, authorized support screen rather than an unrelated order form.
   const pumpOffer = (
-    <View testID="home-pump-rental-promo" style={styles.promoRow}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Book Concrete Pump"
+    <View testID="home-pump-rental-promo" style={[styles.promoRow, stackedPromos && styles.promoRowStacked]}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Book Your Pump Online!"
         accessibilityHint="Opens Customer Support for a pump rental enquiry"
         onPress={() => router.push("/support")}
         style={({ pressed }) => [styles.promoCard, styles.promoPrimaryCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.76 : 1 }]}>
-        <Svg width={32} height={32} viewBox="0 0 64 64" accessible={false}>
+        <Svg width={40} height={35} viewBox="0 0 64 64" accessible={false}>
           <Rect x="4" y="34" width="40" height="14" rx="3" fill={colors.brand} />
           <Rect x="28" y="27" width="15" height="9" rx="2" fill={colors.surface} stroke={colors.brand} strokeWidth="2" />
           <Path d="M10 34 20 16 31 26 42 11 54 21 54 34" stroke={colors.brand} strokeWidth="5"
@@ -172,18 +175,22 @@ export default function CustomerHome() {
           <Circle cx="15" cy="49" r="2.5" fill={colors.surface} />
           <Circle cx="36" cy="49" r="2.5" fill={colors.surface} />
         </Svg>
-        <AppText numberOfLines={2} style={[styles.promoText, styles.promoPrimaryText, { color: colors.onSurface }]}>Book Concrete{"\n"}Pump</AppText>
-        <Ionicons name="chevron-forward" size={16} color={colors.onSurfaceSecondary} />
+        <View style={styles.promoCopy}>
+          <AppText numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}
+            style={[styles.promoFirstLine, { color: colors.onSurface }]}>Streamline Your Pour</AppText>
+          <AppText numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}
+            style={[styles.promoSecondLine, { color: colors.onSurface }]}>Book Your Pump Online!</AppText>
+        </View>
       </Pressable>
       <View accessibilityLabel="On Time, Everytime" style={[styles.promoCard, styles.promoSecondaryCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-        <Svg width={32} height={32} viewBox="0 0 44 52" accessible={false}>
+        <Svg width={20} height={20} viewBox="0 0 44 52" accessible={false}>
           <Rect x="16" y="1" width="12" height="10" rx="3" fill={colors.brand} />
           <Rect x="16" y="41" width="12" height="10" rx="3" fill={colors.brand} />
           <Circle cx="22" cy="26" r="17" fill={colors.surface} stroke={colors.brand} strokeWidth="4" />
           <Path d="M22 15 V26 L30 31" fill="none" stroke={colors.brand} strokeWidth="3.5"
             strokeLinecap="round" strokeLinejoin="round" />
         </Svg>
-        <AppText numberOfLines={2} style={[styles.promoText, styles.promoSecondaryText, { color: colors.onSurface }]}>On Time,{"\n"}Everytime</AppText>
+        <AppText numberOfLines={2} style={[styles.promoSecondaryText, { color: colors.onSurface }]}>On Time,{"\n"}Everytime</AppText>
       </View>
     </View>
   );
@@ -191,7 +198,7 @@ export default function CustomerHome() {
   const otherServices = (
     <View testID="home-other-services" style={styles.groupCard}>
       <AppText style={[styles.sectionTitle, { color: colors.onSurface }]}>Supply & Workforce</AppText>
-      <View style={styles.grid}>
+      <View style={[styles.grid, styles.serviceGrid]}>
         {SERVICES.map(service => (
           <Pressable
             key={service.key}
@@ -219,7 +226,7 @@ export default function CustomerHome() {
 
       <ScrollView
         testID="customer-home-scroll"
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 88 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={colors.brand} />}
       >
@@ -280,21 +287,22 @@ const styles = StyleSheet.create({
   kycPending: { minHeight: 42, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, alignItems: "center", justifyContent: "center" },
   iconBtn: { width: 44, height: 44, borderRadius: 16, alignItems: "center", justifyContent: "center", borderWidth: 1 },
   dot: { position: "absolute", top: 7, right: 7, width: 8, height: 8, borderRadius: 4 },
-  scrollContent: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 190, gap: 4, maxWidth: 1100, alignSelf: "center", width: "100%" },
-  // Four-dp spacing across sections, with the carousel extending to the
-  // viewport edges. The surrounding scroll content keeps 16-dp gutters.
-  groupCard: { width: "100%", maxWidth: 620, alignSelf: "center", paddingHorizontal: 0, paddingVertical: 0, gap: 4 },
-  homeAboveFold: { width: "100%", gap: 4 },
+  scrollContent: { paddingHorizontal: 16, paddingTop: 0, paddingBottom: 88, gap: 10, maxWidth: 1100, alignSelf: "center", width: "100%" },
+  // Ten-dp separation between Home sections, while the carousel extends to
+  // the viewport edges and the content keeps 16-dp side gutters.
+  groupCard: { width: "100%", maxWidth: 620, alignSelf: "center", paddingHorizontal: 0, paddingVertical: 0, gap: 0 },
+  homeAboveFold: { width: "100%", gap: 10 },
   tightGroup: { paddingVertical: 0, gap: 0 },
   sectionHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8, minHeight: 20 },
-  // 19+28+9+96+8 = 160dp (the slogan pill makes the header 28dp tall).
-  // Retain 4+19 = 23dp from the carousel bottom to the heading.
-  quickActionsGroup: { paddingTop: 19, paddingBottom: 8 },
-  quickGrid: { marginTop: 9 },
-  sectionTitle: { fontFamily: "Roboto", fontWeight: "700", fontSize: 14, lineHeight: 20, paddingHorizontal: 2 },
-  slogan: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, width: 106, minHeight: 28, borderRadius: 14, paddingHorizontal: 5 },
-  sloganText: { fontFamily: "Roboto", fontWeight: "700", fontSize: 14, lineHeight: 20 },
-  grid: { flexDirection: "row", flexWrap: "wrap", width: "100%", justifyContent: "space-between", rowGap: 4 },
+  // Keep a 10dp gap from the carousel and below each section heading.
+  quickActionsGroup: { paddingTop: 0, paddingBottom: 0 },
+  quickGrid: { marginTop: 10 },
+  toolGrid: { marginTop: 10 },
+  serviceGrid: { marginTop: 10 },
+  sectionTitle: { fontFamily: "Raleway-Bold", fontSize: 15, lineHeight: 22, paddingHorizontal: 2 },
+  slogan: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, width: 132, minHeight: 28, borderRadius: 14, paddingHorizontal: 5 },
+  sloganText: { fontFamily: "Raleway-Bold", fontSize: 15, lineHeight: 22 },
+  grid: { flexDirection: "row", flexWrap: "wrap", width: "100%", justifyContent: "space-between", rowGap: 10 },
   tile: { alignItems: "center", justifyContent: "center", paddingHorizontal: 1, paddingVertical: 2, gap: 4 },
   quickTile: { minHeight: 96, paddingVertical: 0, gap: 8, borderWidth: 0 },
   quickCircle: { width: 56, height: 56, borderRadius: 28, overflow: "hidden", borderWidth: 1, alignItems: "center", justifyContent: "center" },
@@ -302,16 +310,16 @@ const styles = StyleSheet.create({
   toolTile: { minHeight: 101, paddingVertical: 0, gap: 4, justifyContent: "flex-start" },
   toolPlate: { width: "100%", height: 56, borderRadius: radius.md, borderWidth: 1, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   tileLabel: { fontFamily: fonts.semibold, fontSize: 11, lineHeight: 13, textAlign: "center" },
-  // The 65% and 28% cards leave a 7% responsive gap without unsupported percentage "gap" styles.
-  promoRow: { flexDirection: "row", justifyContent: "space-between", width: "100%", maxWidth: 620, alignSelf: "center", minHeight: 52, paddingVertical: 7 },
-  promoCard: { minWidth: 0, minHeight: 38, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, borderWidth: 1, borderRadius: 6, paddingHorizontal: 4, paddingVertical: 4 },
-  promoPrimaryCard: { width: "65%" },
-  // Stack the 32dp clock above its caption; a horizontal 32dp icon and 12sp
-  // label cannot fit together inside 28% of a 320dp phone layout.
-  promoSecondaryCard: { width: "28%", flexDirection: "column", gap: 0 },
-  promoText: { flex: 1, minWidth: 0, fontFamily: "Roboto", fontWeight: "700", fontSize: 12, lineHeight: 13, textAlign: "center" },
-  promoPrimaryText: { fontSize: 11 },
-  promoSecondaryText: { flex: 0, width: "100%" },
+  // Exact 240x50dp primary CTA; two-row fallback prevents narrow clipping.
+  promoRow: { flexDirection: "row", alignItems: "center", gap: 10, width: "100%", maxWidth: 620, alignSelf: "center" },
+  promoRowStacked: { flexDirection: "column", alignItems: "flex-start" },
+  promoCard: { minWidth: 0, height: 50, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, borderWidth: 1, borderRadius: 10, paddingHorizontal: 4, paddingVertical: 2 },
+  promoPrimaryCard: { width: 240 },
+  promoCopy: { flex: 1, minWidth: 0, justifyContent: "center", gap: 1 },
+  promoFirstLine: { fontFamily: "Raleway-Medium", fontSize: 13, lineHeight: 16 },
+  promoSecondLine: { fontFamily: "Raleway-SemiBold", fontSize: 15, lineHeight: 18 },
+  promoSecondaryCard: { width: 110, flexShrink: 1, flexDirection: "column", gap: 0 },
+  promoSecondaryText: { fontFamily: "Raleway-SemiBold", fontSize: 11, lineHeight: 12, textAlign: "center" },
   serviceTile: { minHeight: 103, paddingVertical: 0, gap: 4, justifyContent: "flex-start" },
   servicePlate: { width: "100%", height: 62, borderRadius: radius.md, borderWidth: 1, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   serviceLabel: { fontFamily: fonts.semibold, fontSize: 12, lineHeight: 15, textAlign: "center" },
