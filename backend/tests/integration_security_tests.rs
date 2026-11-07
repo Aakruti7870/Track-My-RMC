@@ -1219,6 +1219,17 @@ async fn native_domain_alert_acknowledgement_is_scoped_and_not_an_approval(db: P
     .await
     .unwrap();
     assert_eq!(lifecycle_events, 1);
+    let events_path = format!("/api/owner/plants/{plant}/automation/domain-tasks/{task}/events");
+    let (history_status, history) =
+        request(&router, &events_path, Some(&owner_a_token), None).await;
+    assert_eq!(history_status, StatusCode::OK);
+    assert_eq!(history["events"][0]["event_type"], "ACKNOWLEDGED");
+    assert_eq!(
+        request(&router, &events_path, Some(&owner_b_token), None)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
     let stock: i64 =
         sqlx::query_scalar("SELECT current_stock::bigint FROM plant_materials WHERE id=$1")
             .bind(material)
