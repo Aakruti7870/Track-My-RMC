@@ -1167,6 +1167,14 @@ async fn native_domain_alert_acknowledgement_is_scoped_and_not_an_approval(db: P
         generate_token(owner_a, "owner", "", None, &state.config.jwt_secret, 1).unwrap();
     let owner_b_token =
         generate_token(owner_b, "owner", "", None, &state.config.jwt_secret, 1).unwrap();
+    let inbox_path = format!("/api/owner/plants/{plant}/automation/tasks");
+    let (inbox_status, inbox) = request(&router, &inbox_path, Some(&owner_a_token), None).await;
+    assert_eq!(inbox_status, StatusCode::OK);
+    assert_eq!(inbox["tasks"][0]["source_label"], "Material: Cement");
+    assert_eq!(
+        request(&router, &inbox_path, Some(&owner_b_token), None).await.0,
+        StatusCode::FORBIDDEN
+    );
     let path = format!("/api/owner/plants/{plant}/automation/domain-tasks/{task}/acknowledge");
     assert_eq!(
         request(&router, &path, Some(&owner_b_token), Some(json!({})))
