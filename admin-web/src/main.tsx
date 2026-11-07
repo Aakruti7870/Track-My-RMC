@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import apiClient from './api';
 
-type Stage = 'central-login' | 'email' | 'otp' | 'mfa-enroll' | 'mfa-login' | 'authenticated';
+type Stage = 'central-login' | 'authority-login' | 'email' | 'otp' | 'mfa-enroll' | 'mfa-login' | 'authenticated';
 
 type StaffUser = {
   id?: string;
@@ -20,6 +20,18 @@ type Health = {
 };
 
 type PortalKpi = { label: string; value: string | number };
+type AuthorityAccount = {
+  id: string; email: string; full_name: string; enabled: boolean;
+  mfa_enrolled: boolean; permissions: string[];
+};
+const AUTHORITY_GRANTS = [
+  { key:'user.view', label:'Customer and role directory' },
+  { key:'plant.view', label:'Plant directory' },
+  { key:'order.view', label:'Order status' },
+  { key:'support.view', label:'Service, RFQ and marketing lead monitoring' },
+  { key:'kyc.view', label:'Customer KYC review queue' },
+  { key:'kyc.review', label:'Approve/reject customer KYC with recent MFA' },
+];
 
 type NativeAutomationTemplate = {
   key: string;
@@ -104,6 +116,15 @@ function CommandCenter() {
   const [plantProfileQueue,setPlantProfileQueue]=useState<Array<Record<string,any>>>([]);
   const [plantProfileCode,setPlantProfileCode]=useState('');
   const [plantProfileReason,setPlantProfileReason]=useState('');
+  const [authorityAccounts,setAuthorityAccounts]=useState<AuthorityAccount[]>([]);
+  const [showAuthorityAccounts,setShowAuthorityAccounts]=useState(false);
+  const [authorityEmail,setAuthorityEmail]=useState('');
+  const [authorityName,setAuthorityName]=useState('');
+  const [authorityEnabled,setAuthorityEnabled]=useState(true);
+  const [authorityGrants,setAuthorityGrants]=useState<string[]>(['support.view','kyc.view']);
+  const [authorityReason,setAuthorityReason]=useState('');
+  const [authorityAdminCode,setAuthorityAdminCode]=useState('');
+  const [authorityReviewCode,setAuthorityReviewCode]=useState('');
 
 
   useEffect(() => {
@@ -115,9 +136,13 @@ function CommandCenter() {
       .then(async (response) => {
         const currentUser = response.data?.user as StaffUser | undefined;
         if (!active || !currentUser?.role) return;
-        if (currentUser.role === 'central_admin') {
-          const session=await apiClient.get('/api/admin/auth/me');
+        if (currentUser.role === 'central_admin' || currentUser.role === 'authority') {
+          const endpoint = currentUser.role === 'authority' ? '/api/authority/auth/me' : '/api/admin/auth/me';
+          const session = await apiClient.get(endpoint);
           setPermissions(session.data?.permissions || []);
+        } else if (!['plant_owner','owner','dispatcher','operator','supervisor',
+          'quality_engineer','store_manager','accountant','fleet_manager','admin'].includes(currentUser.role)) {
+          throw new Error('Not a supported web account');
         }
         setUser(currentUser);
         setStage('authenticated');
@@ -264,7 +289,8 @@ function CommandCenter() {
   async function loadWorkspace(kind:string,offset=0) {
     setBusy(true);setError('');setWorkspace(kind);
     try {
-      const response=await apiClient.get('/api/control-center/collections/'+kind,{params:{limit:25,offset}});
+      const prefix=user?.role==='authority'?'/api/authority/collections/':'/api/control-center/collections/';
+      const response=await apiClient.get(prefix+encodeURIComponent(kind),{params:{limit:25,offset}});
       setRecords(response.data.items || []);setWorkspaceOffset(offset);
     } catch(error) {setRecords([]);setError(errorMessage(error));}
     finally {setBusy(false);}
@@ -354,10 +380,13 @@ function CommandCenter() {
   async function centralLogin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError('');
     try {
-      const response = await apiClient.post('/api/admin/auth/verify-totp', { identifier: email.trim(), code: mfaCode.trim() });
-      if (!response.data?.token || response.data?.user?.role !== 'central_admin') throw new Error('Administrator session was not established.');
+      const authority = stage === 'authority-login';
+      const expectedRole = authority ? 'authority' : 'central_admin';
+      const prefix = authority ? '/api/authority/auth' : '/api/admin/auth';
+      const response = await apiClient.post(prefix+'/verify-totp', { identifier: email.trim(), code: mfaCode.trim() });
+      if (!response.data?.token || response.data?.user?.role !== expectedRole) throw new Error('Privileged web session was not established.');
       window.sessionStorage.setItem('trackmyrmc_admin_token', response.data.token);
-      const session=await apiClient.get('/api/admin/auth/me');
+      const session=await apiClient.get(prefix+'/me');
       setPermissions(session.data?.permissions || []);
       setUser(response.data.user); setMfaCode(''); setStage('authenticated');
     } catch (error) { setError(errorMessage(error)); }
@@ -432,7 +461,7 @@ function CommandCenter() {
       setEnrollment(null);
       setMfaCode('');
       setStage('mfa-login');
-      setNotice('Authenticator enabled. Enter a fresh authenticator code to finish signing in.');
+      setNotice('Authenticator enabled. Staff can complete login; delegated Authority must use its dedicated web sign-in.');
     } catch (requestError) {
       setError(errorMessage(requestError));
     } finally {
@@ -474,7 +503,7 @@ function CommandCenter() {
   async function logout() {
     setBusy(true);
     try {
-      await apiClient.post(user?.role === 'central_admin' ? '/api/admin/auth/logout' : '/api/auth/logout');
+      await apiClient.post(user?.role === 'central_admin' ? '/api/admin/auth/logout' : user?.role === 'authority' ? '/api/authority/auth/logout' : '/api/auth/logout');
     } catch {
       // Always clear this browser session, even if the server is temporarily unreachable.
     } finally {
@@ -489,6 +518,9 @@ function CommandCenter() {
       setChallengeToken('');
       setOtp('');
       setMfaCode('');
+      setAuthorityAdminCode('');
+      setAuthorityReviewCode('');
+      setShowAuthorityAccounts(false);
       setStage('central-login');
       setNotice('Signed out of this browser session.');
       setError('');
@@ -525,12 +557,12 @@ function CommandCenter() {
           TrackMyRMC · Secure Access
         </div>
         <h1 id="portal-title" style={{ margin: '10px 0 6px', fontSize: 30, lineHeight: 1.2 }}>
-          {stage === 'authenticated' ? 'Command Center' : stage === 'central-login' ? 'Central Admin sign in' : 'Plant staff sign in'}
+          {stage === 'authenticated' ? 'Command Center' : stage === 'central-login' ? 'Central Admin sign in' : stage === 'authority-login' ? 'Delegated Authority sign in' : 'Verified email sign in'}
         </h1>
         <p style={{ color: '#cbd5e1', lineHeight: 1.6, marginTop: 0 }}>
           {stage === 'authenticated'
             ? 'Your access is restricted to the permissions assigned to your account.'
-            : stage === 'central-login' ? 'Approved Central Admin accounts use the enrolled authenticator. Staff sessions do not grant Control Center access.' : 'Plant staff use email verification followed by authenticator MFA.'}
+            : stage === 'central-login' ? 'Approved Central Admin accounts use the enrolled authenticator. Staff and Authority sessions cannot manage platform governance.' : stage === 'authority-login' ? 'Authority uses a separate, short-lived browser session with permissions assigned by Central Admin.' : 'Approved staff and first-time Authority accounts use email verification followed by authenticator MFA.'}
         </p>
 
         {error && <div role="alert" style={{ padding: 12, borderRadius: 8, background: '#451a1a', border: '1px solid #b91c1c', color: '#fecaca', margin: '16px 0' }}>{error}</div>}
@@ -543,7 +575,20 @@ function CommandCenter() {
             <label htmlFor="central-code" style={{display:'block',marginTop:18}}>Authenticator code</label>
             <input id="central-code" inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" maxLength={6} value={mfaCode} onChange={e => setMfaCode(e.target.value)} style={inputStyle} disabled={busy} />
             <button type="submit" disabled={busy} style={buttonStyle}>{busy ? 'Verifying…' : 'Sign in with authenticator'}</button>
-            <button type="button" onClick={() => {setStage('email');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Plant staff sign in</button>
+            <button type="button" onClick={() => {setStage('authority-login');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Delegated Authority sign in</button>
+            <button type="button" onClick={() => {setStage('email');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Plant staff / approved MFA setup</button>
+          </form>
+        )}
+
+        {stage === 'authority-login' && (
+          <form onSubmit={centralLogin}>
+            <label htmlFor="authority-login-email">Approved Authority email</label>
+            <input id="authority-login-email" type="email" autoComplete="username" required value={email} onChange={e=>setEmail(e.target.value)} style={inputStyle} disabled={busy}/>
+            <label htmlFor="authority-login-code" style={{display:'block',marginTop:18}}>Authenticator code</label>
+            <input id="authority-login-code" inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" maxLength={6} value={mfaCode} onChange={e=>setMfaCode(e.target.value)} style={inputStyle} disabled={busy}/>
+            <button type="submit" disabled={busy} style={buttonStyle}>Sign in to Authority workspace</button>
+            <button type="button" onClick={()=>{setStage('email');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>First sign-in: verify email and enroll authenticator</button>
+            <button type="button" onClick={()=>{setStage('central-login');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Central Admin sign in</button>
           </form>
         )}
 
