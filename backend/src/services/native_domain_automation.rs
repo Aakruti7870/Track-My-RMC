@@ -66,6 +66,10 @@ pub async fn scan_due(db: &PgPool) -> Result<u64, sqlx::Error> {
            AND NOT EXISTS(SELECT 1 FROM native_automation_domain_tasks d
                WHERE d.plant_id=e.plant_id AND d.template_key=e.template_key
                  AND d.domain_entity_id=e.entity_id AND d.status IN ('OPEN','ACKNOWLEDGED'))
+           AND NOT EXISTS(SELECT 1 FROM native_automation_jobs queued
+               WHERE queued.plant_id=e.plant_id AND queued.template_key=e.template_key
+                 AND queued.domain_entity_id=e.entity_id
+                 AND queued.status IN ('PENDING','RETRY'))
          ORDER BY e.template_key,e.event_key LIMIT 150
          ON CONFLICT(event_key) DO NOTHING",
     )
