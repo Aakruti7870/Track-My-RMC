@@ -52,7 +52,7 @@ export function KycBanner({ status }: { status: string }) {
     >
       <VectorSymbol name={cfg.symbol} size={28} />
       <View style={styles.copy}>
-        <AppText style={{ fontFamily: fonts.bold, fontSize: 12, lineHeight: 18, color: isVerified ? tone : colors.onSurface }}>
+        <AppText style={{ fontFamily: "Raleway-Bold", fontSize: 15, lineHeight: 22, color: isVerified ? tone : colors.onSurface }}>
           {cfg.title}
         </AppText>
         <AppText variant="caption" style={{ fontSize: 10, lineHeight: 18 }}>{cfg.sub}</AppText>
