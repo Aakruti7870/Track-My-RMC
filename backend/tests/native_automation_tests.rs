@@ -388,3 +388,116 @@ async fn strict_rule_conditions_skip_nonmatching_orders(db: PgPool) {
     .unwrap();
     assert_eq!(count, 0);
 }
+
+#[sqlx::test]
+async fn accepted_notice_is_suppressed_if_order_cancelled_before_worker_delivery(db: PgPool) {
+    let owner = user(&db, "owner").await;
+    let customer = user(&db, "customer").await;
+    let (plant, order_id) = order(&db, owner, customer).await;
+    sqlx::query(
+        "UPDATE native_automation_templates
+         SET published=TRUE,globally_paused=FALSE
+         WHERE template_key='ORDER_ACCEPTED_NOTICE'",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO native_automation_plant_rules(plant_id,template_key,enabled,updated_by)
+         VALUES($1,'ORDER_ACCEPTED_NOTICE',TRUE,$2)",
+    )
+    .bind(plant)
+    .bind(owner)
+    .execute(&db)
+    .await
+    .unwrap();
+
+    let mut tx = db.begin().await.unwrap();
+    sqlx::query("UPDATE orders SET status='confirmed' WHERE id=$1")
+        .bind(order_id)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    enqueue_order_decision(&mut tx, order_id, "confirmed")
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+
+    // A later authorized cancellation must not produce a misleading
+    // "order accepted" notification when the delayed worker catches up.
+    sqlx::query("UPDATE orders SET status='cancelled' WHERE id=$1")
+        .bind(order_id)
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(tick(&db).await.unwrap(), 0);
+    let notices: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM notifications
+         WHERE user_id=$1 AND reference_id=$2 AND notification_type='order_status'",
+    )
+    .bind(customer)
+    .bind(order_id.to_string())
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(notices, 0);
+    let status: String = sqlx::query_scalar(
+        "SELECT status FROM native_automation_jobs WHERE order_id=$1",
+    )
+    .bind(order_id)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(status, "SKIPPED");
+}
+
+#[sqlx::test]
+async fn accepted_notice_remains_valid_after_normal_production_progress(db: PgPool) {
+    let owner = user(&db, "owner").await;
+    let customer = user(&db, "customer").await;
+    let (plant, order_id) = order(&db, owner, customer).await;
+    sqlx::query(
+        "UPDATE native_automation_templates
+         SET published=TRUE,globally_paused=FALSE
+         WHERE template_key='ORDER_ACCEPTED_NOTICE'",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO native_automation_plant_rules(plant_id,template_key,enabled,updated_by)
+         VALUES($1,'ORDER_ACCEPTED_NOTICE',TRUE,$2)",
+    )
+    .bind(plant)
+    .bind(owner)
+    .execute(&db)
+    .await
+    .unwrap();
+    let mut tx = db.begin().await.unwrap();
+    sqlx::query("UPDATE orders SET status='confirmed' WHERE id=$1")
+        .bind(order_id)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    enqueue_order_decision(&mut tx, order_id, "confirmed")
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+
+    sqlx::query("UPDATE orders SET status='in_production' WHERE id=$1")
+        .bind(order_id)
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(tick(&db).await.unwrap(), 1);
+    let notices: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM notifications
+         WHERE user_id=$1 AND reference_id=$2 AND notification_type='order_status'",
+    )
+    .bind(customer)
+    .bind(order_id.to_string())
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(notices, 1);
+}
