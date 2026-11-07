@@ -961,6 +961,68 @@ function CommandCenter() {
                 <button disabled={busy||records.length<25} onClick={()=>void loadWorkspace(workspace,workspaceOffset+25)}>Next</button>
               </>}
             </section>}
+            {user.role === 'authority' && (
+              <section aria-label="Delegated Authority Operations" style={{marginTop:18,padding:16,border:'1px solid #334155',borderRadius:12}}>
+                <h2 style={{margin:'0 0 8px',fontSize:20}}>Authority Operations</h2>
+                <p style={{fontSize:13,color:'#cbd5e1',lineHeight:1.55}}>
+                  Centrally delegated service operations only. Platform policy, financial mutations,
+                  staff role elevation, automation settings and Central Admin access remain restricted.
+                </p>
+                <h3 style={{fontSize:15}}>Authorized service workspaces</h3>
+                <nav aria-label="Authority workspaces" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:8}}>
+                  {([
+                    ['users','user.view','User Directory'],
+                    ['plants','plant.view','Approved Plants'],
+                    ['orders','order.view','Order Monitoring'],
+                    ['support','support.view','Customer Support'],
+                    ['service_enquiries','support.view','Service Enquiries'],
+                    ['rmc_rfq_leads','support.view','RFQ / Marketing Leads'],
+                    ['kyc','kyc.view','KYC Review Queue'],
+                  ] as const).filter(([,permission])=>permissions.includes(permission)).map(([kind,,label])=>
+                    <button key={kind} type="button" disabled={busy} onClick={()=>void loadWorkspace(kind)}
+                      style={{...buttonStyle,marginTop:0,background:workspace===kind?'#166534':'#334155'}}>{label}</button>)}
+                </nav>
+                {workspace && <>
+                  <h3 style={{margin:'18px 0 6px',fontSize:16,textTransform:'capitalize'}}>{workspace.replace(/_/g,' ')}</h3>
+                  <p style={{fontSize:12,color:'#94a3b8'}}>Current permission-scoped records. This view cannot broadcast to customers or suppliers.</p>
+                  <div style={{overflowX:'auto',border:'1px solid #334155',borderRadius:8}}>
+                    <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                      <thead><tr>{Object.keys(records[0]||{}).map(key=>
+                        <th key={key} scope="col" style={{textAlign:'left',padding:9,borderBottom:'1px solid #475569'}}>{key.replace(/_/g,' ')}</th>)}</tr></thead>
+                      <tbody>{records.map((row,index)=><tr key={String(row.id||row.customer_id||index)}>
+                        {Object.entries(row).map(([key,value])=>
+                          <td key={key} style={{padding:9,borderTop:'1px solid #334155'}}>{value===null?'—':typeof value==='object'?JSON.stringify(value):String(value)}</td>)}
+                      </tr>)}</tbody>
+                    </table>
+                  </div>
+                  {!busy && !records.length && <p>No records in this workspace.</p>}
+                  {workspace==='kyc' && permissions.includes('kyc.review') && records.length>0 && (
+                    <div style={{marginTop:12,padding:12,border:'1px solid #475569',borderRadius:10}}>
+                      <h3 style={{fontSize:15}}>Customer verification decisions</h3>
+                      <p style={{fontSize:12,color:'#cbd5e1'}}>Review trusted evidence under the approved KYC process before making a decision. Each change requires recent authenticator verification.</p>
+                      <label>Fresh Authority authenticator code<input type="password" autoComplete="off"
+                        inputMode="numeric" maxLength={6} pattern="[0-9]{6}" value={authorityReviewCode}
+                        onChange={e=>setAuthorityReviewCode(e.target.value)} style={inputStyle} disabled={busy}/></label>
+                      {records.map(row=><div key={String(row.customer_id)} style={{borderTop:'1px solid #334155',padding:'10px 0'}}>
+                        <strong>{String(row.customer||'Customer')}</strong>
+                        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                          <button type="button" disabled={busy||authorityReviewCode.length!==6}
+                            onClick={()=>void reviewAuthorityKyc(String(row.customer_id),true)}
+                            style={{...buttonStyle,width:'auto',background:'#166534'}}>Approve KYC</button>
+                          <button type="button" disabled={busy||authorityReviewCode.length!==6}
+                            onClick={()=>void reviewAuthorityKyc(String(row.customer_id),false)}
+                            style={{...buttonStyle,width:'auto',background:'#7f1d1d'}}>Reject KYC</button>
+                        </div>
+                      </div>)}
+                    </div>
+                  )}
+                  <div style={{display:'flex',gap:10}}>
+                    <button type="button" disabled={busy||workspaceOffset===0} onClick={()=>void loadWorkspace(workspace,Math.max(0,workspaceOffset-25))}>Previous</button>
+                    <button type="button" disabled={busy||records.length<25} onClick={()=>void loadWorkspace(workspace,workspaceOffset+25)}>Next</button>
+                  </div>
+                </>}
+              </section>
+            )}
             <button type="button" onClick={logout} disabled={busy} style={buttonStyle}>{busy ? 'Signing out…' : 'Sign out and revoke session'}</button>
           </div>
         )}
