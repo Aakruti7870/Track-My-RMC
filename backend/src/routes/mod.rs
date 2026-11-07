@@ -73,6 +73,7 @@ pub fn build_app_router(state: AppState) -> Router {
         )
         .route("/api/authority/auth/me", get(crate::auth::authority::me))
         .route("/api/authority/auth/logout", post(crate::auth::authority::logout))
+        .route("/api/authority/auth/step-up", post(crate::auth::authority::step_up))
         .route(
             "/api/authority/collections/:kind",
             get(crate::auth::authority::collection),
