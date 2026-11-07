@@ -81,6 +81,7 @@ function CommandCenter() {
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
   const [mfaCode, setMfaCode] = useState('');
+  const [privilegedPassword, setPrivilegedPassword] = useState('');
   const [challengeToken, setChallengeToken] = useState('');
   const [enrollment, setEnrollment] = useState<Enrollment | null>(null);
   const [recoveryCodesSaved, setRecoveryCodesSaved] = useState(false);
@@ -508,12 +509,14 @@ function CommandCenter() {
       const authority = stage === 'authority-login';
       const expectedRole = authority ? 'authority' : 'central_admin';
       const prefix = authority ? '/api/authority/auth' : '/api/admin/auth';
-      const response = await apiClient.post(prefix+'/verify-totp', { identifier: email.trim(), code: mfaCode.trim() });
+      const response = await apiClient.post(prefix+'/verify-totp', {
+        identifier: email.trim(), password: privilegedPassword, code: mfaCode.trim(),
+      });
       if (!response.data?.token || response.data?.user?.role !== expectedRole) throw new Error('Privileged web session was not established.');
       window.sessionStorage.setItem('trackmyrmc_admin_token', response.data.token);
       const session=await apiClient.get(prefix+'/me');
       setPermissions(session.data?.permissions || []);
-      setUser(response.data.user); setMfaCode(''); setStage('authenticated');
+      setUser(response.data.user); setMfaCode(''); setPrivilegedPassword(''); setStage('authenticated');
     } catch (error) { setError(errorMessage(error)); }
     finally { setBusy(false); }
   }
@@ -633,7 +636,7 @@ function CommandCenter() {
       // Always clear this browser session, even if the server is temporarily unreachable.
     } finally {
       window.sessionStorage.removeItem('trackmyrmc_admin_token');
-      setUser(null);setPermissions([]);setRecords([]);setWorkspace('');setRfqOutreachCode('');setRfqOutreachNotes({});
+      setUser(null);setPrivilegedPassword('');setPermissions([]);setRecords([]);setWorkspace('');setRfqOutreachCode('');setRfqOutreachNotes({});
       setShowNativeAutomation(false);setAutomationTemplates([]);setAutomationHealth(null);
       setAutomationJobs([]);setAutomationCode('');setAutomationKey('');
       setHealth(null);
@@ -691,7 +694,7 @@ function CommandCenter() {
         <p style={{ color: '#cbd5e1', lineHeight: 1.6, marginTop: 0 }}>
           {stage === 'authenticated'
             ? 'Your access is restricted to the permissions assigned to your account.'
-            : stage === 'central-login' ? 'Approved Central Admin accounts use the enrolled authenticator. Staff and Authority sessions cannot manage platform governance.' : stage === 'authority-login' ? 'Authority uses a separate, short-lived browser session with permissions assigned by Central Admin.' : 'Approved staff and first-time Authority accounts use email verification followed by authenticator MFA.'}
+            : stage === 'central-login' ? 'Approved Central Admin accounts require an account password and enrolled authenticator. Staff and Authority sessions cannot manage platform governance.' : stage === 'authority-login' ? 'Authority uses a password, authenticator and separate one-hour browser session with scoped permissions.' : 'Approved staff and first-time Authority accounts use email verification followed by authenticator MFA.'}
         </p>
 
         {error && <div role="alert" style={{ padding: 12, borderRadius: 8, background: '#451a1a', border: '1px solid #b91c1c', color: '#fecaca', margin: '16px 0' }}>{error}</div>}
@@ -701,9 +704,12 @@ function CommandCenter() {
           <form onSubmit={centralLogin}>
             <label htmlFor="central-email">Approved administrator email</label>
             <input id="central-email" type="email" autoComplete="username" required value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} disabled={busy} />
+            <label htmlFor="central-password" style={{display:'block',marginTop:18}}>Account password</label>
+            <input id="central-password" type="password" autoComplete="current-password" required minLength={12} maxLength={128}
+              value={privilegedPassword} onChange={e=>setPrivilegedPassword(e.target.value)} style={inputStyle} disabled={busy}/>
             <label htmlFor="central-code" style={{display:'block',marginTop:18}}>Authenticator code</label>
             <input id="central-code" inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" maxLength={6} value={mfaCode} onChange={e => setMfaCode(e.target.value)} style={inputStyle} disabled={busy} />
-            <button type="submit" disabled={busy} style={buttonStyle}>{busy ? 'Verifying…' : 'Sign in with authenticator'}</button>
+            <button type="submit" disabled={busy} style={buttonStyle}>{busy ? 'Verifying…' : 'Sign in with password + authenticator'}</button>
             <button type="button" onClick={() => {setStage('authority-login');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Delegated Authority sign in</button>
             <button type="button" onClick={() => {setStage('email');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Plant staff / approved MFA setup</button>
           </form>
@@ -713,9 +719,12 @@ function CommandCenter() {
           <form onSubmit={centralLogin}>
             <label htmlFor="authority-login-email">Approved Authority email</label>
             <input id="authority-login-email" type="email" autoComplete="username" required value={email} onChange={e=>setEmail(e.target.value)} style={inputStyle} disabled={busy}/>
+            <label htmlFor="authority-login-password" style={{display:'block',marginTop:18}}>Account password</label>
+            <input id="authority-login-password" type="password" autoComplete="current-password" required minLength={12} maxLength={128}
+              value={privilegedPassword} onChange={e=>setPrivilegedPassword(e.target.value)} style={inputStyle} disabled={busy}/>
             <label htmlFor="authority-login-code" style={{display:'block',marginTop:18}}>Authenticator code</label>
             <input id="authority-login-code" inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" maxLength={6} value={mfaCode} onChange={e=>setMfaCode(e.target.value)} style={inputStyle} disabled={busy}/>
-            <button type="submit" disabled={busy} style={buttonStyle}>Sign in to Authority workspace</button>
+            <button type="submit" disabled={busy} style={buttonStyle}>Sign in with password + authenticator</button>
             <button type="button" onClick={()=>{setStage('email');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>First sign-in: verify email and enroll authenticator</button>
             <button type="button" onClick={()=>{setStage('central-login');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Central Admin sign in</button>
           </form>
