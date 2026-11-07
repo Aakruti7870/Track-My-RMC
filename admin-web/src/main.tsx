@@ -525,8 +525,11 @@ function CommandCenter() {
       const session=await apiClient.get(prefix+'/me');
       setPermissions(session.data?.permissions || []);
       setUser(response.data.user); setMfaCode(''); setPrivilegedPassword(''); setStage('authenticated');
-    } catch (error) { setError(errorMessage(error)); }
-    finally { setBusy(false); }
+    } catch (error) {
+      window.sessionStorage.removeItem('trackmyrmc_admin_token');
+      setPrivilegedPassword('');
+      setError(errorMessage(error));
+    } finally { setBusy(false); }
   }
 
   async function sendEmailOtp(event: React.FormEvent<HTMLFormElement>) {
