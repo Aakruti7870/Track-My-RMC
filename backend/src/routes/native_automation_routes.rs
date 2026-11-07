@@ -28,6 +28,7 @@ pub struct TemplatePolicy {
 pub struct PlantRule {
     pub enabled: bool,
     pub reminder_after_minutes: Option<i32>,
+    pub sla_minutes: Option<i32>,
 }
 
 #[derive(Deserialize)]
@@ -175,7 +176,8 @@ pub async fn owner_rules(
         "SELECT jsonb_build_object('key',t.template_key,'label',t.label,
                 'published',t.published,'globally_paused',t.globally_paused,
                 'conditions',t.conditions,'enabled',COALESCE(r.enabled,FALSE),
-                'reminder_after_minutes',COALESCE(r.reminder_after_minutes,60))
+                'reminder_after_minutes',COALESCE(r.reminder_after_minutes,60),
+                'sla_minutes',COALESCE(r.sla_minutes,60))
          FROM native_automation_templates t
          LEFT JOIN native_automation_plant_rules r
            ON r.plant_id=$1 AND r.template_key=t.template_key
@@ -210,11 +212,17 @@ pub async fn set_owner_rule(
             "Only the pending-order reminder accepts an interval".into(),
         ));
     }
+    if body.sla_minutes.is_some_and(|n| !(15..=1440).contains(&n)) {
+        return Err(AppError::BadRequest("SLA must be between 15 and 1440 minutes".into()));
+    }
+    if body.sla_minutes.is_some() && key.starts_with("ORDER_") {
+        return Err(AppError::BadRequest("Domain review SLA cannot be set on an order template".into()));
+    }
     let mut tx = state.db.begin().await?;
     // Hold live active-Owner authorization until the configuration commits.
     super::plant_staff_manager::lock_authorization(&mut tx, &owner, plant, "staff").await?;
     let policy: Option<(bool, bool)> = sqlx::query_as(
-        "SELECT published,globally_paused FROM native_automation_templates WHERE template_key=$1",
+        "SELECT published,globally_paused FROM native_automation_templates WHERE template_key=$1 FOR SHARE",
     )
     .bind(&key)
     .fetch_optional(&mut *tx)
@@ -230,11 +238,12 @@ pub async fn set_owner_rule(
 
     sqlx::query(
         "INSERT INTO native_automation_plant_rules
-         (plant_id,template_key,enabled,updated_by,reminder_after_minutes)
-         VALUES($1,$2,$3,$4,COALESCE($5,60))
+         (plant_id,template_key,enabled,updated_by,reminder_after_minutes,sla_minutes)
+         VALUES($1,$2,$3,$4,COALESCE($5,60),COALESCE($6,60))
          ON CONFLICT (plant_id,template_key)
          DO UPDATE SET enabled=EXCLUDED.enabled,
             reminder_after_minutes=COALESCE($5,native_automation_plant_rules.reminder_after_minutes),
+            sla_minutes=COALESCE($6,native_automation_plant_rules.sla_minutes),
             updated_by=EXCLUDED.updated_by,updated_at=NOW()",
     )
     .bind(plant)
@@ -242,6 +251,7 @@ pub async fn set_owner_rule(
     .bind(body.enabled)
     .bind(owner.user_id)
     .bind(body.reminder_after_minutes)
+    .bind(body.sla_minutes)
     .execute(&mut *tx)
     .await?;
     sqlx::query(
@@ -251,7 +261,8 @@ pub async fn set_owner_rule(
     .bind(owner.user_id)
     .bind(plant.to_string())
     .bind(json!({"template_key":key,"enabled":body.enabled,
-                     "reminder_after_minutes":body.reminder_after_minutes}))
+                     "reminder_after_minutes":body.reminder_after_minutes,
+                     "sla_minutes":body.sla_minutes}))
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
@@ -272,11 +283,17 @@ pub async fn owner_tasks(
               'order_number',tasks.order_number,'task_kind',tasks.task_kind,
               'source_label',tasks.source_label,
               'status',tasks.status,'created_at',tasks.created_at,
+              'acknowledged_at',tasks.acknowledged_at,
+              'escalation_count',tasks.escalation_count,
+              'resolution_reason',tasks.resolution_reason,
               'resolved_at',tasks.resolved_at)
          FROM (
            SELECT t.id,t.order_id,o.order_number,t.task_kind,t.status,
                   t.created_at,t.resolved_at,
-                  ('Order '||o.order_number)::text AS source_label
+                  ('Order '||o.order_number)::text AS source_label,
+                  NULL::timestamptz AS acknowledged_at,
+                  0::integer AS escalation_count,
+                  NULL::text AS resolution_reason
            FROM native_automation_tasks t
            JOIN orders o ON o.id=t.order_id AND o.plant_id=t.plant_id
            WHERE t.plant_id=$1
@@ -304,9 +321,10 @@ pub async fn owner_tasks(
                       SELECT 'Leave '||LEFT(l.id::text,8)||' / '||l.start_date::text
                       FROM workforce_leave_requests l
                       WHERE l.id=d.domain_entity_id AND l.plant_id=d.plant_id)
-                    END,LEFT(d.domain_entity_id::text,8)) AS source_label
+                    END,LEFT(d.domain_entity_id::text,8)) AS source_label,
+                  d.acknowledged_at,d.escalation_count,d.resolution_reason
            FROM native_automation_domain_tasks d WHERE d.plant_id=$1
-         ) tasks ORDER BY (tasks.status='OPEN') DESC,tasks.created_at DESC LIMIT 100",
+         ) tasks ORDER BY (tasks.status IN ('OPEN','ACKNOWLEDGED')) DESC,tasks.created_at DESC LIMIT 100",
     )
     .bind(plant)
     .fetch_all(&state.db)
@@ -528,11 +546,23 @@ pub async fn owner_acknowledge_domain_task(
     }
     sqlx::query(
         "UPDATE native_automation_domain_tasks
-         SET status='ACKNOWLEDGED',resolved_at=NOW(),updated_at=NOW()
+         SET status='ACKNOWLEDGED',acknowledged_at=NOW(),acknowledged_by=$3,
+             resolved_at=NULL,updated_at=NOW()
          WHERE id=$1 AND plant_id=$2",
     )
     .bind(task_id)
     .bind(plant)
+    .bind(owner.user_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "INSERT INTO native_automation_domain_task_events
+         (task_id,plant_id,event_type,actor_id,details)
+         VALUES($1,$2,'ACKNOWLEDGED',$3,'{}'::jsonb)",
+    )
+    .bind(task_id)
+    .bind(plant)
+    .bind(owner.user_id)
     .execute(&mut *tx)
     .await?;
     sqlx::query(
