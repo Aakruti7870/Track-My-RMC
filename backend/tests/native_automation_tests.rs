@@ -441,13 +441,12 @@ async fn accepted_notice_is_suppressed_if_order_cancelled_before_worker_delivery
     .await
     .unwrap();
     assert_eq!(notices, 0);
-    let status: String = sqlx::query_scalar(
-        "SELECT status FROM native_automation_jobs WHERE order_id=$1",
-    )
-    .bind(order_id)
-    .fetch_one(&db)
-    .await
-    .unwrap();
+    let status: String =
+        sqlx::query_scalar("SELECT status FROM native_automation_jobs WHERE order_id=$1")
+            .bind(order_id)
+            .fetch_one(&db)
+            .await
+            .unwrap();
     assert_eq!(status, "SKIPPED");
 }
 
