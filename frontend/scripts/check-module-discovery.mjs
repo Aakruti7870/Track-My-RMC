@@ -112,7 +112,13 @@ assert.ok(customerHome.includes('>Supply & Workforce</AppText>'), "Supply & Work
 assert.ok(customerHome.includes('>Active Projects & Planning</AppText>') || customerHome.includes('"Active Projects & Planning", "customer-module-grid"'), "Planning section heading required.");
 assert.ok(customerHome.includes('"Free Tools & Expert Advice", "home-advice-grid"'), "Four-item advice section required.");
 assert.ok(customerHome.includes('>Built Better</AppText>') && customerHome.includes('name="shield-checkmark"'), "Built Better green shield slogan required.");
-assert.ok(customerHome.includes('sectionTitle: { fontFamily: "Raleway-Bold", fontSize: 15, lineHeight: 22'), "Home headings need licensed Raleway Bold at 15dp.");
+assert.ok(customerHome.includes('sectionTitle: { fontFamily: "Raleway-Bold", fontSize: 15, lineHeight: 22'), "Home mobile headings must retain Raleway Bold at 15dp.");
+assert.ok(customerHome.includes('customerHomeSizes(viewportWidth, Platform.OS)'), "Use viewport and platform to size the Home consistently.");
+const responsiveHome = read("src/theme/tokens.ts");
+assert.ok(responsiveHome.includes('platform !== "web" || viewportWidth < 600') && responsiveHome.includes("viewportWidth < 1024"), "Only tablet and desktop web may scale the approved native/mobile design.");
+for (const mobile of ["quickSymbol: 52", "toolSymbol: 52", "serviceSymbol: 58", "sectionGap: 10", "headerSize: 15", "pumpWidth: 240", "pumpHeight: 50"]) {
+  assert.ok(responsiveHome.includes(mobile), `Missing locked PR #152 mobile design token: ${mobile}`);
+}
 assert.ok(customerHome.includes('quickGrid: { marginTop: 10 }') && customerHome.includes('toolGrid: { marginTop: 10 }') && customerHome.includes('serviceGrid: { marginTop: 10 }'), "Keep a 10dp gap between each section header and row.");
 assert.ok(customerHome.includes('promoPrimaryCard: { width: 240 }') && customerHome.includes('height: 50'), "Pump CTA must retain its 240x50dp dimensions.");
 assert.ok(customerHome.includes("Streamline Your Pour") && customerHome.includes("Book Your Pump Online!"), "Pump CTA copy mismatch.");
@@ -142,10 +148,10 @@ for (const [key, symbol] of [
     `Missing Other Services SVG assignment for ${key}`,
   );
 }
-assert.ok(customerHome.includes('<VectorSymbol name={service.symbol} size={58} />'), "Other Services must show 58-unit uploaded artwork.");
+assert.ok(customerHome.includes('<VectorSymbol name={service.symbol} size={homeSize.serviceSymbol} />'), "Other Services must use responsive uploaded SVG artwork.");
 assert.ok(!customerHome.includes('<Ionicons name={service.icon}'), "Do not regress to generic service icons.");
-assert.ok(customerHome.includes('<VectorSymbol name={action.symbol} size={52} />'), "Quick Actions must show 52-unit assigned vector artwork.");
-assert.ok(customerHome.includes('<VectorSymbol name={module.symbol} size={52} />'), "RMC Tools must show 52-unit assigned vector artwork.");
+assert.ok(customerHome.includes('<VectorSymbol name={action.symbol} size={homeSize.quickSymbol} />'), "Quick Actions must use responsive assigned vector artwork.");
+assert.ok(customerHome.includes('<VectorSymbol name={module.symbol} size={homeSize.toolSymbol} />'), "RMC Tools must use responsive assigned vector artwork.");
 for (const wrapper of ["styles.actionIcon", "styles.toolIcon", "styles.serviceIcon"]) {
   assert.ok(!customerHome.includes(wrapper), `Decorative icon plate must be removed: ${wrapper}`);
 }
