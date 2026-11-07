@@ -44,13 +44,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Fail-closed by default: enable only after rollout validation.
     // Row-level PostgreSQL locks allow multiple Tokio workers safely.
-    if std::env::var("NATIVE_AUTOMATION_WORKER_ENABLED").ok().as_deref() == Some("true") {
+    if std::env::var("NATIVE_AUTOMATION_WORKER_ENABLED")
+        .ok()
+        .as_deref()
+        == Some("true")
+    {
         let automation_db = state.db.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
             loop {
                 interval.tick().await;
-                if let Err(err) = trackmyrmc_backend::services::native_automation::tick(&automation_db).await {
+                if let Err(err) =
+                    trackmyrmc_backend::services::native_automation::tick(&automation_db).await
+                {
                     tracing::error!(error = ?err, "Native automation tick failed");
                 }
             }
