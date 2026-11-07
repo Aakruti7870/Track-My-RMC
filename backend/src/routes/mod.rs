@@ -1203,6 +1203,10 @@ pub fn build_app_router(state: AppState) -> Router {
             get(authority_governance::list).post(authority_governance::upsert),
         )
         .route(
+            "/api/control-center/customers/:customer_id/kyc/:decision",
+            post(control_center_routes::central_kyc_decision),
+        )
+        .route(
             "/api/control-center/unowned-plants",
             get(control_center_routes::list_unowned_plants),
         )
