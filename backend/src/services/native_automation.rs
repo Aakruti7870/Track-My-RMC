@@ -366,13 +366,24 @@ async fn deliver_internal_notification(
 ) -> Result<Option<Uuid>, sqlx::Error> {
     let (recipient, title, message): (Option<Uuid>, &str, &str) = match template {
         ACCEPTED | REJECTED => {
+            // Prevent queued acceptance/rejection notifications from
+            // misrepresenting a later cancellation or changed order state.
+            // Hold the order share lock through notification insertion.
             let customer: Option<Uuid> = sqlx::query_scalar(
                 "SELECT o.customer_id FROM orders o
                  JOIN users u ON u.id=o.customer_id AND u.is_active
-                 WHERE o.id=$1 AND o.plant_id=$2",
+                 WHERE o.id=$1 AND o.plant_id=$2
+                   AND (
+                     ($3='ORDER_ACCEPTED_NOTICE' AND o.status IN
+                       ('confirmed','scheduled','in_production',
+                        'ready_to_dispatch','dispatched','delivered','completed'))
+                     OR ($3='ORDER_REJECTED_NOTICE' AND o.status='rejected')
+                   )
+                 FOR SHARE OF o,u",
             )
             .bind(order)
             .bind(plant)
+            .bind(template)
             .fetch_optional(&mut **tx)
             .await?;
             if template == ACCEPTED {
