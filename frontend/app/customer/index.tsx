@@ -58,7 +58,6 @@ export default function CustomerHome() {
   const { colors } = useTheme();
   const { width: viewportWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const stackedPromos = viewportWidth < 378;
   const [quickGridWidth, setQuickGridWidth] = React.useState(0);
   // At small viewports, two columns preserve the requested 52-unit SVGs without clipping.
   const fourQuickColumns = quickGridWidth >= 270;
@@ -160,7 +159,7 @@ export default function CustomerHome() {
   // A pump-rental module is not yet implemented. Route enquiries to the
   // existing, authorized support screen rather than an unrelated order form.
   const pumpOffer = (
-    <View testID="home-pump-rental-promo" style={[styles.promoRow, stackedPromos && styles.promoRowStacked]}>
+    <View testID="home-pump-rental-promo" style={styles.promoRow}>
       <Pressable accessibilityRole="button" accessibilityLabel="Book Your Pump Online!"
         accessibilityHint="Opens Customer Support for a pump rental enquiry"
         onPress={() => router.push("/support")}
@@ -182,16 +181,6 @@ export default function CustomerHome() {
             style={[styles.promoSecondLine, { color: colors.onSurface }]}>Book Your Pump Online!</AppText>
         </View>
       </Pressable>
-      <View accessibilityLabel="On Time, Everytime" style={[styles.promoCard, styles.promoSecondaryCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-        <Svg width={20} height={20} viewBox="0 0 44 52" accessible={false}>
-          <Rect x="16" y="1" width="12" height="10" rx="3" fill={colors.brand} />
-          <Rect x="16" y="41" width="12" height="10" rx="3" fill={colors.brand} />
-          <Circle cx="22" cy="26" r="17" fill={colors.surface} stroke={colors.brand} strokeWidth="4" />
-          <Path d="M22 15 V26 L30 31" fill="none" stroke={colors.brand} strokeWidth="3.5"
-            strokeLinecap="round" strokeLinejoin="round" />
-        </Svg>
-        <AppText numberOfLines={2} style={[styles.promoSecondaryText, { color: colors.onSurface }]}>On Time,{"\n"}Everytime</AppText>
-      </View>
     </View>
   );
 
@@ -310,16 +299,13 @@ const styles = StyleSheet.create({
   toolTile: { minHeight: 101, paddingVertical: 0, gap: 4, justifyContent: "flex-start" },
   toolPlate: { width: "100%", height: 56, borderRadius: radius.md, borderWidth: 1, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   tileLabel: { fontFamily: fonts.semibold, fontSize: 11, lineHeight: 13, textAlign: "center" },
-  // Exact 240x50dp primary CTA; two-row fallback prevents narrow clipping.
-  promoRow: { flexDirection: "row", alignItems: "center", gap: 10, width: "100%", maxWidth: 620, alignSelf: "center" },
-  promoRowStacked: { flexDirection: "column", alignItems: "flex-start" },
+  // Center the sole 240x50dp pump CTA; no empty secondary promo slot.
+  promoRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", width: "100%", maxWidth: 620, alignSelf: "center" },
   promoCard: { minWidth: 0, height: 50, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, borderWidth: 1, borderRadius: 10, paddingHorizontal: 4, paddingVertical: 2 },
   promoPrimaryCard: { width: 240 },
   promoCopy: { flex: 1, minWidth: 0, justifyContent: "center", gap: 1 },
   promoFirstLine: { fontFamily: "Raleway-Medium", fontSize: 13, lineHeight: 16 },
   promoSecondLine: { fontFamily: "Raleway-SemiBold", fontSize: 15, lineHeight: 18 },
-  promoSecondaryCard: { width: 110, flexShrink: 1, flexDirection: "column", gap: 0 },
-  promoSecondaryText: { fontFamily: "Raleway-SemiBold", fontSize: 11, lineHeight: 12, textAlign: "center" },
   serviceTile: { minHeight: 103, paddingVertical: 0, gap: 4, justifyContent: "flex-start" },
   servicePlate: { width: "100%", height: 62, borderRadius: radius.md, borderWidth: 1, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   serviceLabel: { fontFamily: fonts.semibold, fontSize: 12, lineHeight: 15, textAlign: "center" },
