@@ -256,13 +256,11 @@ async fn due_reminders_respect_plant_opt_in_and_order_state(db: PgPool) {
     .await
     .unwrap();
     // Before plant opt-in no reminders may be generated.
-    sqlx::query(
-        "UPDATE orders SET created_at=NOW()-INTERVAL '65 minutes' WHERE id=$1",
-    )
-    .bind(first)
-    .execute(&db)
-    .await
-    .unwrap();
+    sqlx::query("UPDATE orders SET created_at=NOW()-INTERVAL '65 minutes' WHERE id=$1")
+        .bind(first)
+        .execute(&db)
+        .await
+        .unwrap();
     assert_eq!(schedule_due_reminders(&db).await.unwrap(), 0);
     sqlx::query(
         "INSERT INTO native_automation_plant_rules
@@ -290,13 +288,11 @@ async fn due_reminders_respect_plant_opt_in_and_order_state(db: PgPool) {
     .unwrap();
     assert_eq!(notified_owner, 1);
 
-    sqlx::query(
-        "UPDATE orders SET created_at=NOW()-INTERVAL '65 minutes' WHERE id=$1",
-    )
-    .bind(second)
-    .execute(&db)
-    .await
-    .unwrap();
+    sqlx::query("UPDATE orders SET created_at=NOW()-INTERVAL '65 minutes' WHERE id=$1")
+        .bind(second)
+        .execute(&db)
+        .await
+        .unwrap();
     // This second fixture is in a different plant; it must never pick up the
     // first plant's opt-in or recipient.
     assert_eq!(schedule_due_reminders(&db).await.unwrap(), 0);
@@ -335,13 +331,12 @@ async fn disabling_rule_prevents_queued_review_task(db: PgPool) {
     .await
     .unwrap();
     assert_eq!(tick(&db).await.unwrap(), 0);
-    let count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM native_automation_tasks WHERE order_id=$1",
-    )
-    .bind(order_id)
-    .fetch_one(&db)
-    .await
-    .unwrap();
+    let count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM native_automation_tasks WHERE order_id=$1")
+            .bind(order_id)
+            .fetch_one(&db)
+            .await
+            .unwrap();
     assert_eq!(count, 0);
 }
 
@@ -376,13 +371,12 @@ async fn strict_rule_conditions_skip_nonmatching_orders(db: PgPool) {
 
     // The fixture order is 6 m3; the approved rule requires at least 10.
     assert_eq!(tick(&db).await.unwrap(), 0);
-    let outcome: String = sqlx::query_scalar(
-        "SELECT last_error FROM native_automation_jobs WHERE order_id=$1",
-    )
-    .bind(order_id)
-    .fetch_one(&db)
-    .await
-    .unwrap();
+    let outcome: String =
+        sqlx::query_scalar("SELECT last_error FROM native_automation_jobs WHERE order_id=$1")
+            .bind(order_id)
+            .fetch_one(&db)
+            .await
+            .unwrap();
     assert_eq!(outcome, "conditions_not_met");
     let count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM notifications
