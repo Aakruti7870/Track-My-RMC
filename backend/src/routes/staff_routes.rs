@@ -1011,6 +1011,12 @@ async fn update_reviewed_customer_kyc(
          FROM users AS u
          WHERE p.user_id=$1 AND u.id=p.user_id
            AND u.role='customer' AND u.is_active=TRUE
+           AND ($2 <> 'verified' OR (
+                p.kyc_status='pending' AND p.verified_name IS NOT NULL
+                AND EXISTS(SELECT 1 FROM customer_digilocker_sessions d
+                           WHERE d.user_id=p.user_id AND d.status='PENDING'
+                           AND d.verified_at IS NOT NULL)
+           ))
          RETURNING p.user_id",
     )
     .bind(customer_id)
@@ -1129,6 +1135,18 @@ mod authority_kyc_customer_scope_tests {
                 .unwrap();
         sqlx::query("INSERT INTO user_profiles(user_id) VALUES($1)")
             .bind(owner)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        // The test records the same verified consent milestone as the provider.
+        sqlx::query("UPDATE user_profiles SET kyc_status='pending', verified_name='Verified Customer' WHERE user_id=$1")
+            .bind(customer)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO customer_digilocker_sessions(user_id,status,verified_at) VALUES($1,'PENDING',NOW())")
+            .bind(customer)
             .execute(&pool)
             .await
             .unwrap();
