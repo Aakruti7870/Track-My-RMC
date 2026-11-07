@@ -85,6 +85,11 @@ function CommandCenter() {
   const [newAuthorityPassword, setNewAuthorityPassword] = useState('');
   const [confirmAuthorityPassword, setConfirmAuthorityPassword] = useState('');
   const [authorityEnrollment, setAuthorityEnrollment] = useState(false);
+  const [oldWebPassword, setOldWebPassword] = useState('');
+  const [newWebPassword, setNewWebPassword] = useState('');
+  const [newWebPasswordConfirm, setNewWebPasswordConfirm] = useState('');
+  const [rotationCode, setRotationCode] = useState('');
+  const [rotationReason, setRotationReason] = useState('');
   const [challengeToken, setChallengeToken] = useState('');
   const [enrollment, setEnrollment] = useState<Enrollment | null>(null);
   const [recoveryCodesSaved, setRecoveryCodesSaved] = useState(false);
@@ -652,6 +657,28 @@ function CommandCenter() {
     }
   }
 
+  async function rotateWebPassword(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();setBusy(true);setError('');setNotice('');
+    try {
+      if(!user || !['central_admin','authority'].includes(user.role)
+        || newWebPassword.length<16 || newWebPassword.length>128
+        || newWebPassword!==newWebPasswordConfirm || newWebPassword===oldWebPassword
+        || !/^[0-9]{6}$/.test(rotationCode.trim()) || rotationReason.trim().length<10) {
+        throw new Error('Current password, distinct 16-128 character new password, matching confirmation, current authenticator code and audit reason are required.');
+      }
+      const prefix=user.role==='authority'?'/api/authority/auth':'/api/admin/auth';
+      await apiClient.post(prefix+'/change-password',{
+        current_password:oldWebPassword,new_password:newWebPassword,
+        code:rotationCode.trim(),reason:rotationReason.trim(),
+      });
+      setOldWebPassword('');setNewWebPassword('');setNewWebPasswordConfirm('');
+      setRotationCode('');setRotationReason('');
+      await logout();
+      setNotice('Password rotated. All existing privileged sessions were revoked; sign in again.');
+    }catch(err){setError(errorMessage(err));}
+    finally{setBusy(false);}
+  }
+
   async function logout() {
     setBusy(true);
     try {
@@ -845,6 +872,31 @@ function CommandCenter() {
               <p style={{ margin: '0 0 8px' }}><strong>Role</strong> {user.role}</p>
               <p style={{ margin: 0 }}><strong>Session</strong> {user.role === 'central_admin' || user.role === 'authority' ? 'Dedicated one-hour web authenticator session' : 'Email OTP + MFA verified'}</p>
             </div>
+            {['central_admin','authority'].includes(user.role) && (
+              <details style={{marginTop:14,padding:14,border:'1px solid #334155',borderRadius:10}}>
+                <summary style={{cursor:'pointer',fontWeight:700}}>Account security · Change password</summary>
+                <p style={{fontSize:12,color:'#cbd5e1'}}>Requires your current password, authenticator and audit reason. Every session will be revoked.</p>
+                <form onSubmit={rotateWebPassword}>
+                  <label htmlFor="rotate-current">Current password</label>
+                  <input id="rotate-current" type="password" autoComplete="current-password" required
+                    value={oldWebPassword} onChange={e=>setOldWebPassword(e.target.value)} style={inputStyle} disabled={busy}/>
+                  <label htmlFor="rotate-new" style={{display:'block',marginTop:12}}>New password (16-128 characters)</label>
+                  <input id="rotate-new" type="password" autoComplete="new-password" required minLength={16} maxLength={128}
+                    value={newWebPassword} onChange={e=>setNewWebPassword(e.target.value)} style={inputStyle} disabled={busy}/>
+                  <label htmlFor="rotate-confirm" style={{display:'block',marginTop:12}}>Confirm new password</label>
+                  <input id="rotate-confirm" type="password" autoComplete="new-password" required minLength={16} maxLength={128}
+                    value={newWebPasswordConfirm} onChange={e=>setNewWebPasswordConfirm(e.target.value)} style={inputStyle} disabled={busy}/>
+                  <label htmlFor="rotate-code" style={{display:'block',marginTop:12}}>Current authenticator code</label>
+                  <input id="rotate-code" type="password" inputMode="numeric" autoComplete="one-time-code" required
+                    maxLength={6} pattern="[0-9]{6}" value={rotationCode} onChange={e=>setRotationCode(e.target.value)}
+                    style={inputStyle} disabled={busy}/>
+                  <label htmlFor="rotate-reason" style={{display:'block',marginTop:12}}>Reason (10-500 characters)</label>
+                  <textarea id="rotate-reason" required minLength={10} maxLength={500} rows={2}
+                    value={rotationReason} onChange={e=>setRotationReason(e.target.value)} style={inputStyle} disabled={busy}/>
+                  <button type="submit" style={buttonStyle} disabled={busy}>Rotate password and sign out everywhere</button>
+                </form>
+              </details>
+            )}
             <div style={{ marginTop: 14, padding: 16, border: '1px solid #334155', borderRadius: 10 }}>
               <h2 style={{ marginTop: 0, fontSize: 18 }}>Service health</h2>
               <p><strong>API:</strong> {health?.status || 'Unavailable'}</p>
