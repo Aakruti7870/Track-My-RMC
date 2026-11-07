@@ -592,13 +592,16 @@ function CommandCenter() {
   }
 
   const pageStyle: React.CSSProperties = {
-    minHeight: '100vh', padding: '32px 18px', boxSizing: 'border-box',
+    minHeight: '100vh', padding: stage === 'authenticated' ? '20px clamp(10px, 3vw, 38px)' : '32px 18px',
+    boxSizing: 'border-box',
     fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     background: 'radial-gradient(ellipse at top, #1e3a5f 0%, #0f172a 52%, #020617 100%)',
-    color: '#f8fafc', display: 'flex', justifyContent: 'center', alignItems: 'center',
+    color: '#f8fafc', display: 'flex', justifyContent: 'center',
+    alignItems: stage === 'authenticated' ? 'flex-start' : 'center',
   };
   const panelStyle: React.CSSProperties = {
-    width: '100%', maxWidth: 560, boxSizing: 'border-box', padding: 28,
+    width: '100%', maxWidth: stage === 'authenticated' ? 1280 : 560,
+    boxSizing: 'border-box', padding: stage === 'authenticated' ? 'clamp(14px, 3vw, 30px)' : 28,
     borderRadius: 18, border: '1px solid #334155', background: 'rgba(15, 23, 42, 0.94)',
     boxShadow: '0 24px 80px rgba(0,0,0,0.3)',
   };
@@ -720,7 +723,8 @@ function CommandCenter() {
 
         {stage === 'authenticated' && user && (
           <div>
-            <div style={{ marginTop: 20, padding: 16, border: '1px solid #334155', borderRadius: 10, background: '#111827' }}>
+            <div style={{ marginTop: 20, padding: 16, border: '1px solid #334155', borderRadius: 10, background: '#111827',
+              display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:8 }}>
               <p style={{ margin: '0 0 8px' }}><strong>Signed in as</strong> {user.full_name || user.email || user.phone || 'Staff user'}</p>
               <p style={{ margin: '0 0 8px' }}><strong>Role</strong> {user.role}</p>
               <p style={{ margin: 0 }}><strong>Session</strong> {user.role === 'central_admin' || user.role === 'authority' ? 'Dedicated one-hour web authenticator session' : 'Email OTP + MFA verified'}</p>
@@ -733,7 +737,19 @@ function CommandCenter() {
               <p style={{ color: '#94a3b8', fontSize: 12 }}>This portal is being connected incrementally to secured Rust APIs. Privileged actions require recent authenticator verification.</p>
             </div>
             {user.role === 'central_admin' && (
-              <section aria-label="Platform overview" style={{ marginTop: 14, padding: 16, border: '1px solid #334155', borderRadius: 10 }}>
+              <nav aria-label="Control Center sections" style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:14}}>
+                {([
+                  ['#platform-overview','Platform KPIs'],
+                  ['#automation-governance','Automation'],
+                  ['#authority-governance','Authority'],
+                  ['#operations-workspaces','Operations & Marketing'],
+                ] as const).map(([href,label])=><a key={href} href={href}
+                  style={{padding:'9px 13px',borderRadius:8,color:'#f8fafc',background:'#25364e',
+                    border:'1px solid #475569',textDecoration:'none',fontSize:13,fontWeight:650}}>{label}</a>)}
+              </nav>
+            )}
+            {user.role === 'central_admin' && (
+              <section id="platform-overview" aria-label="Platform overview" style={{ marginTop: 14, padding: 16, border: '1px solid #334155', borderRadius: 10 }}>
                 <h2 style={{ marginTop: 0, fontSize: 18 }}>Live platform overview</h2>
                 {adminOverviewError && <p role="alert" style={{ color: '#fecaca' }}>Unable to load overview: {adminOverviewError}</p>}
                 {!adminOverviewError && adminKpis.length === 0 && <p style={{ color: '#94a3b8' }}>No overview data available.</p>}
@@ -749,7 +765,7 @@ function CommandCenter() {
               </section>
             )}
             {user.role === 'central_admin' && permissions.includes('system.view') && (
-              <section aria-label="Native automation governance" style={{marginTop:18,padding:14,border:'1px solid #334155',borderRadius:10}}>
+              <section id="automation-governance" aria-label="Native automation governance" style={{marginTop:18,padding:14,border:'1px solid #334155',borderRadius:10}}>
                 <h2 style={{marginTop:0,fontSize:19}}>Native Automation Center</h2>
                 <p style={{fontSize:12,color:'#cbd5e1'}}>TrackMyRMC-owned Rust workflows. Central policy is separate from each Plant Owner's activation.</p>
                 <button type="button" disabled={busy} onClick={()=>void loadNativeAutomation()} style={buttonStyle}>
@@ -821,7 +837,7 @@ function CommandCenter() {
             )}
 
             {user.role === 'central_admin' && permissions.includes('admin_access.manage') && (
-              <section aria-label="Authority governance" style={{marginTop:18,padding:16,border:'1px solid #334155',borderRadius:12}}>
+              <section id="authority-governance" aria-label="Authority governance" style={{marginTop:18,padding:16,border:'1px solid #334155',borderRadius:12}}>
                 <h2 style={{margin:'0 0 6px',fontSize:19}}>Authority Access Governance</h2>
                 <p style={{fontSize:13,color:'#cbd5e1',lineHeight:1.5}}>
                   Issue or revoke separate web-only Authority identities. Delegation never grants Central Admin,
@@ -876,7 +892,7 @@ function CommandCenter() {
               </section>
             )}
 
-            {user.role === 'central_admin' && <section aria-label="Authorized workspaces" style={{marginTop:18}}>
+            {user.role === 'central_admin' && <section id="operations-workspaces" aria-label="Authorized workspaces" style={{marginTop:18}}>
 
               {permissions.includes('plant_owners.manage') && permissions.includes('plant.view') && <>
                 <button onClick={()=>void loadPlantProfileQueue()} disabled={busy} style={buttonStyle}>Plant Profile · Verification Queue</button>
