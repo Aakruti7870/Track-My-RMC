@@ -114,12 +114,12 @@ assert.ok(customerHome.includes('"Free Tools & Expert Advice", "home-advice-grid
 assert.ok(customerHome.includes('>Built Better</AppText>') && customerHome.includes('name="shield-checkmark"'), "Built Better green shield slogan required.");
 assert.ok(customerHome.includes('sectionTitle: { fontFamily: "Raleway-Bold", fontSize: 15, lineHeight: 22'), "Home headings need licensed Raleway Bold at 15dp.");
 assert.ok(customerHome.includes('quickGrid: { marginTop: 10 }') && customerHome.includes('toolGrid: { marginTop: 10 }') && customerHome.includes('serviceGrid: { marginTop: 10 }'), "Keep a 10dp gap between each section header and row.");
-assert.ok(customerHome.includes('promoPrimaryCard: { width: 240 }') && customerHome.includes('height: 50') && customerHome.includes('promoRowStacked'), "Pump CTA must use 240x50dp with a narrow-screen fallback.");
+assert.ok(customerHome.includes('promoPrimaryCard: { width: 240 }') && customerHome.includes('height: 50'), "Pump CTA must retain its 240x50dp dimensions.");
 assert.ok(customerHome.includes("Streamline Your Pour") && customerHome.includes("Book Your Pump Online!"), "Pump CTA copy mismatch.");
 assert.ok(customerHome.includes('["pour-planner", "compare-plants", "projects", "saved-sites"]'), "Planning tools must be presented in the requested order.");
 assert.ok(customerHome.includes('["free-tools", "receiving-guide", "cube-tests", "customer-support"]'), "Expert advice must use the four existing authorized routes.");
 assert.ok(customerHome.includes('testID="home-pump-rental-promo"') && customerHome.includes('onPress={() => router.push("/support")}'), "Pump-rental callout must reach existing customer support, not a dead end.");
-assert.ok(customerHome.includes('On Time,') && customerHome.includes('Everytime'), "Delivery slogan callout required.");
+assert.ok(!customerHome.includes('On Time,') && !customerHome.includes('Everytime') && !customerHome.includes('promoSecondaryCard'), "Remove the old On Time promotional card entirely.");
 assert.ok(customerHome.includes('quickCircle: { width: 56, height: 56, borderRadius: 28'), "52 dp action artwork must have a circular, clipping frame.");
 assert.ok(customerHome.includes('{ key: "plants", label: "Plants"'), "The third action label must remain Plants.");
 assert.ok(customerHome.includes('fourQuickColumns ? "24.25%" : "49%"'), "Quick Actions must use four compact columns when wide and two when narrow for full 52-unit icons.");
