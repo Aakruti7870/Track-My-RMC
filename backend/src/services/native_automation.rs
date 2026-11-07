@@ -172,33 +172,71 @@ pub async fn tick(db: &PgPool) -> Result<usize, sqlx::Error> {
         .fetch_optional(&mut *tx)
         .await?;
         let Some((action, raw_conditions)) = policy else {
-            record_outcome(&mut tx, id, attempts, "SKIPPED", Some("rule_disabled"), None)
-                .await?;
+            record_outcome(
+                &mut tx,
+                id,
+                attempts,
+                "SKIPPED",
+                Some("rule_disabled"),
+                None,
+            )
+            .await?;
             tx.commit().await?;
             continue;
         };
-        if !matches!(action.as_str(), "IN_APP_NOTIFICATION" | "CREATE_APPROVAL_TASK") {
-            record_outcome(&mut tx, id, attempts, "SKIPPED", Some("action_not_allowed"), None)
-                .await?;
+        if !matches!(
+            action.as_str(),
+            "IN_APP_NOTIFICATION" | "CREATE_APPROVAL_TASK"
+        ) {
+            record_outcome(
+                &mut tx,
+                id,
+                attempts,
+                "SKIPPED",
+                Some("action_not_allowed"),
+                None,
+            )
+            .await?;
             tx.commit().await?;
             continue;
         }
         // Strictly typed, allowlisted rule conditions. Unknown fields fail closed.
         let Ok(conditions) = serde_json::from_value::<OrderConditions>(raw_conditions) else {
-            record_outcome(&mut tx, id, attempts, "SKIPPED", Some("invalid_conditions"), None)
-                .await?;
+            record_outcome(
+                &mut tx,
+                id,
+                attempts,
+                "SKIPPED",
+                Some("invalid_conditions"),
+                None,
+            )
+            .await?;
             tx.commit().await?;
             continue;
         };
         if conditions.validate().is_err() {
-            record_outcome(&mut tx, id, attempts, "SKIPPED", Some("invalid_conditions"), None)
-                .await?;
+            record_outcome(
+                &mut tx,
+                id,
+                attempts,
+                "SKIPPED",
+                Some("invalid_conditions"),
+                None,
+            )
+            .await?;
             tx.commit().await?;
             continue;
         }
         if !conditions.matches_order(&mut tx, order, plant).await? {
-            record_outcome(&mut tx, id, attempts, "SKIPPED", Some("conditions_not_met"), None)
-                .await?;
+            record_outcome(
+                &mut tx,
+                id,
+                attempts,
+                "SKIPPED",
+                Some("conditions_not_met"),
+                None,
+            )
+            .await?;
             tx.commit().await?;
             continue;
         }
@@ -227,8 +265,7 @@ pub async fn tick(db: &PgPool) -> Result<usize, sqlx::Error> {
                     Effect::Notification(notification_id) => Some(notification_id),
                     Effect::Task => None,
                 };
-                record_outcome(&mut tx, id, attempts, "COMPLETED", None, notification)
-                    .await?;
+                record_outcome(&mut tx, id, attempts, "COMPLETED", None, notification).await?;
                 completed += 1;
             }
             Ok(None) => {
@@ -337,9 +374,17 @@ async fn deliver_internal_notification(
             .fetch_optional(&mut **tx)
             .await?;
             if template == ACCEPTED {
-                (customer, "Order accepted", "Your RMC plant has accepted your order.")
+                (
+                    customer,
+                    "Order accepted",
+                    "Your RMC plant has accepted your order.",
+                )
             } else {
-                (customer, "Order rejected", "The RMC plant did not accept your order. Please review the order details.")
+                (
+                    customer,
+                    "Order rejected",
+                    "The RMC plant did not accept your order. Please review the order details.",
+                )
             }
         }
         PENDING_REMINDER => {
@@ -356,7 +401,11 @@ async fn deliver_internal_notification(
             .bind(plant)
             .fetch_optional(&mut **tx)
             .await?;
-            (owner, "Order awaiting review", "An RMC order is still waiting for your approval or rejection.")
+            (
+                owner,
+                "Order awaiting review",
+                "An RMC order is still waiting for your approval or rejection.",
+            )
         }
         _ => return Ok(None),
     };
