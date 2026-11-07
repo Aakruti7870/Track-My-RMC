@@ -1010,7 +1010,10 @@ async fn legacy_order_routes_enforce_tenancy_and_lifecycle(pool: PgPool) {
             State(app.clone()),
             foreign,
             axum::http::HeaderMap::new(),
-            Path(Uuid::new_v4())
+            Path(Uuid::new_v4()),
+            Json(staff_routes::AuthorityKycDecision {
+                reason: "Unauthorized account cannot approve KYC".into(),
+            })
         )
         .await,
         Err(AppError::Forbidden(_))
@@ -1020,7 +1023,10 @@ async fn legacy_order_routes_enforce_tenancy_and_lifecycle(pool: PgPool) {
             State(app.clone()),
             owner,
             axum::http::HeaderMap::new(),
-            Path(Uuid::new_v4())
+            Path(Uuid::new_v4()),
+            Json(staff_routes::AuthorityKycDecision {
+                reason: "Unauthorized account cannot approve KYC".into(),
+            })
         )
         .await,
         Err(AppError::Forbidden(_))
