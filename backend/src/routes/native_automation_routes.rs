@@ -63,14 +63,14 @@ pub async fn set_template_policy(
         ));
     }
     let mut tx = state.db.begin().await?;
-    let current: Option<(bool,bool)> = sqlx::query_as(
+    let current: Option<(bool, bool)> = sqlx::query_as(
         "SELECT published,globally_paused FROM native_automation_templates
          WHERE template_key=$1 FOR UPDATE",
     )
     .bind(&key)
     .fetch_optional(&mut *tx)
     .await?;
-    let Some((published,paused)) = current else {
+    let Some((published, paused)) = current else {
         return Err(AppError::NotFound("Unknown automation template".into()));
     };
     if published != body.published || paused != body.globally_paused {
@@ -137,8 +137,13 @@ pub async fn admin_health(
     )
     .fetch_optional(&state.db)
     .await?;
-    let configured = std::env::var("NATIVE_AUTOMATION_WORKER_ENABLED").ok().as_deref() == Some("true");
-    Ok(Json(json!({"worker_enabled":configured,"heartbeat":heartbeat,"job_counts":counts})))
+    let configured = std::env::var("NATIVE_AUTOMATION_WORKER_ENABLED")
+        .ok()
+        .as_deref()
+        == Some("true");
+    Ok(Json(
+        json!({"worker_enabled":configured,"heartbeat":heartbeat,"job_counts":counts}),
+    ))
 }
 
 pub async fn owner_rules(
@@ -165,7 +170,7 @@ pub async fn owner_rules(
 pub async fn set_owner_rule(
     State(state): State<AppState>,
     owner: AuthUser,
-    Path((plant,key)): Path<(Uuid,String)>,
+    Path((plant, key)): Path<(Uuid, String)>,
     Json(body): Json<PlantRule>,
 ) -> Result<Json<Value>, AppError> {
     // Managers and staff can never activate rules, even if they hold delegation.
