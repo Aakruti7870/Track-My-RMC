@@ -54,27 +54,35 @@ async fn disabled_by_default_and_unique_order_events(db: PgPool) {
     let customer = user(&db, "customer").await;
     let (_, order_id) = order(&db, owner, customer).await;
     let mut tx = db.begin().await.unwrap();
-    enqueue_order_decision(&mut tx, order_id, "confirmed").await.unwrap();
-    enqueue_order_decision(&mut tx, order_id, "confirmed").await.unwrap();
-    enqueue_order_decision(&mut tx, order_id, "paid").await.unwrap();
+    enqueue_order_decision(&mut tx, order_id, "confirmed")
+        .await
+        .unwrap();
+    enqueue_order_decision(&mut tx, order_id, "confirmed")
+        .await
+        .unwrap();
+    enqueue_order_decision(&mut tx, order_id, "paid")
+        .await
+        .unwrap();
     tx.commit().await.unwrap();
 
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM native_automation_jobs")
-        .fetch_one(&db).await.unwrap();
+        .fetch_one(&db)
+        .await
+        .unwrap();
     assert_eq!(count, 1);
     assert_eq!(tick(&db).await.unwrap(), 0);
-    let row = sqlx::query(
-        "SELECT status,attempts FROM native_automation_jobs WHERE order_id=$1",
-    )
-    .bind(order_id)
-    .fetch_one(&db)
-    .await
-    .unwrap();
+    let row = sqlx::query("SELECT status,attempts FROM native_automation_jobs WHERE order_id=$1")
+        .bind(order_id)
+        .fetch_one(&db)
+        .await
+        .unwrap();
     assert_eq!(row.get::<String, _>("status"), "SKIPPED");
     assert_eq!(row.get::<i32, _>("attempts"), 1);
     assert_eq!(
         sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM notifications")
-            .fetch_one(&db).await.unwrap(),
+            .fetch_one(&db)
+            .await
+            .unwrap(),
         0
     );
 }
@@ -105,8 +113,13 @@ async fn enabled_rules_deliver_once_under_concurrent_workers(db: PgPool) {
 
     let mut tx = db.begin().await.unwrap();
     sqlx::query("UPDATE orders SET status='confirmed' WHERE id=$1")
-        .bind(order_id).execute(&mut *tx).await.unwrap();
-    enqueue_order_decision(&mut tx, order_id, "confirmed").await.unwrap();
+        .bind(order_id)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    enqueue_order_decision(&mut tx, order_id, "confirmed")
+        .await
+        .unwrap();
     tx.commit().await.unwrap();
 
     let (a, b) = tokio::join!(tick(&db), tick(&db));
@@ -147,7 +160,8 @@ async fn another_plants_opt_in_cannot_enable_my_plant(db: PgPool) {
          WHERE template_key='ORDER_ACCEPTED_NOTICE'",
     )
     .execute(&db)
-    .await.unwrap();
+    .await
+    .unwrap();
     sqlx::query(
         "INSERT INTO native_automation_plant_rules(plant_id,template_key,enabled,updated_by)
          VALUES($1,'ORDER_ACCEPTED_NOTICE',TRUE,$2)",
@@ -155,10 +169,13 @@ async fn another_plants_opt_in_cannot_enable_my_plant(db: PgPool) {
     .bind(other_plant)
     .bind(second_owner)
     .execute(&db)
-    .await.unwrap();
+    .await
+    .unwrap();
 
     let mut tx = db.begin().await.unwrap();
-    enqueue_order_decision(&mut tx, my_order, "confirmed").await.unwrap();
+    enqueue_order_decision(&mut tx, my_order, "confirmed")
+        .await
+        .unwrap();
     tx.commit().await.unwrap();
     assert_eq!(tick(&db).await.unwrap(), 0);
     let notified: i64 = sqlx::query_scalar(
@@ -166,6 +183,8 @@ async fn another_plants_opt_in_cannot_enable_my_plant(db: PgPool) {
          WHERE plant_id=$1 AND status='SKIPPED'",
     )
     .bind(my_plant)
-    .fetch_one(&db).await.unwrap();
+    .fetch_one(&db)
+    .await
+    .unwrap();
     assert_eq!(notified, 1);
 }
