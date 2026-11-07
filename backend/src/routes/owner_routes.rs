@@ -288,6 +288,8 @@ pub async fn approve_order(
             .execute(&mut *tx)
             .await?;
         sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'order_review','order',$2,$3)").bind(auth_user.user_id).bind(order_id.to_string()).bind(json!({"from":current,"to":"confirmed"})).execute(&mut *tx).await?;
+        crate::services::native_automation::enqueue_order_decision(&mut tx, order_id, "confirmed")
+            .await?;
     }
     tx.commit().await?;
 
@@ -321,6 +323,8 @@ pub async fn reject_order(
             .execute(&mut *tx)
             .await?;
         sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'order_review','order',$2,$3)").bind(auth_user.user_id).bind(order_id.to_string()).bind(json!({"from":current,"to":"rejected"})).execute(&mut *tx).await?;
+        crate::services::native_automation::enqueue_order_decision(&mut tx, order_id, "rejected")
+            .await?;
     }
     tx.commit().await?;
 
