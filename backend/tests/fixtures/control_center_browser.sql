@@ -1,6 +1,6 @@
 -- Synthetic disposable CI identity. Never run against production.
 INSERT INTO users (id,phone,email,hashed_password,full_name,role,is_active)
-VALUES ('00000000-0000-4000-8000-000000000040','ci-admin','ci-admin@example.invalid','unused','CI Central Admin','central_admin',TRUE);
+VALUES ('00000000-0000-4000-8000-000000000040','ci-admin','ci-admin@example.invalid','$argon2id$v=19$m=19456,t=2,p=1$SvWTeNFS61/Ui+SOXVyNJw$JGIBa6UrWI3fvkiDP+jDI+a6plEeoYVpTM72VyGddR8','CI Central Admin','central_admin',TRUE);
 INSERT INTO user_totp_credentials (user_id,secret_key,is_enabled)
 VALUES ('00000000-0000-4000-8000-000000000040','GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ',TRUE);
 INSERT INTO control_center_access (user_id,approved,permissions)
