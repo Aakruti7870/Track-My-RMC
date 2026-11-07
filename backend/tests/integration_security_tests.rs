@@ -1067,6 +1067,18 @@ async fn native_automation_plant_settings_reject_cross_tenant_and_staff_writes(d
     .execute(&db)
     .await
     .unwrap();
+    // A centrally paused template must not be enabled by a direct API call.
+    assert_eq!(
+        update(&router, &path_a, &owner_token, true).await,
+        StatusCode::CONFLICT,
+    );
+    sqlx::query(
+        "UPDATE native_automation_templates SET globally_paused=FALSE
+         WHERE template_key='ORDER_PENDING_REMINDER'",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
     assert_eq!(
         update(&router, &path_a, &owner_token, true).await,
         StatusCode::OK,
