@@ -41,7 +41,7 @@ export default function OwnerOperations() {
     useGet<{ jobs: AutomationHistory[] }>(base ? `${base}/history` : null);
 
   async function updateRule(rule: AutomationRule, enabled: boolean, reminderMinutes?: number) {
-    if (!base || !token || busyRule || !rule.published || rule.globally_paused) return;
+    if (!base || !token || busyRule || (enabled && (!rule.published || rule.globally_paused))) return;
     setBusyRule(rule.key);
     setRequestError("");
     setNotice("");
@@ -94,8 +94,8 @@ export default function OwnerOperations() {
                 </AppText>
               </View>
               <Pressable testID={`owner-automation-toggle-${rule.key}`} accessibilityRole="switch"
-                accessibilityState={{ checked: rule.enabled && available, disabled: !available || Boolean(busyRule) }}
-                disabled={!available || Boolean(busyRule)}
+                accessibilityState={{ checked: rule.enabled && available, disabled: (!available && !rule.enabled) || Boolean(busyRule) }}
+                disabled={(!available && !rule.enabled) || Boolean(busyRule)}
                 onPress={() => void updateRule(rule, !rule.enabled)}
                 style={{ minWidth: 72, padding: 10, borderRadius: 12,
                   backgroundColor: rule.enabled && available ? p.accent : p.canvas }}>
