@@ -389,16 +389,22 @@ async fn privileged_password_rotation_revokes_session_and_cannot_cross_roles(db:
     assert_eq!(status, StatusCode::OK);
     assert_eq!(response["session_revoked"], true);
     assert_eq!(
-        call(&app,"/api/authority/auth/me",Some(session),None).await.0,
+        call(&app, "/api/authority/auth/me", Some(session), None)
+            .await
+            .0,
         StatusCode::UNAUTHORIZED,
     );
-    let password_hash: String = sqlx::query_scalar(
-        "SELECT hashed_password FROM users WHERE id=$1"
-    ).bind(id).fetch_one(&db).await.unwrap();
+    let password_hash: String = sqlx::query_scalar("SELECT hashed_password FROM users WHERE id=$1")
+        .bind(id)
+        .fetch_one(&db)
+        .await
+        .unwrap();
     assert!(password_hash.starts_with("$argon2id$"));
     assert!(trackmyrmc_backend::auth::password::verify_password(
-        "Second-Synthetic-Password-For-Isolated-Testing-2026",&password_hash
-    ).unwrap());
+        "Second-Synthetic-Password-For-Isolated-Testing-2026",
+        &password_hash
+    )
+    .unwrap());
 }
 
 #[sqlx::test]
