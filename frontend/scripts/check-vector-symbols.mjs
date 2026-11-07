@@ -117,10 +117,12 @@ const kyc = read("src/components/KycBanner.tsx");
 assert.ok(kyc.includes('<VectorSymbol name={cfg.symbol} size={size.kycSymbol} />'), "KYC artwork must use the shared responsive size");
 assert.ok(!kyc.includes("styles.icon"), "KYC icon plate must be absent");
 const header = read("src/components/customer/CustomerHomeHeader.tsx");
-for (const expected of ['name="refresh-outline" size={Math.min(24, size.headerBell)}', 'name="notifications-outline" size={size.headerBell}']) {
+for (const expected of ['name="chevron-down" size={size.headerChevron}', 'name="notifications-outline" size={size.headerBell}']) {
   assert.ok(header.includes(expected), `Header symbol missing responsive dimension: ${expected}`);
 }
-assert.ok(!header.includes('header-qr-disabled') && !header.includes('testID="header-kyc"'), "Deprecated QR and shield are not visible on the header");
+assert.ok(!header.includes('header-qr-disabled') && !header.includes('testID="header-kyc"') && !header.includes('header-location-refresh'), "Deprecated QR, shield, and refresh controls must not appear in the header");
+assert.equal((header.match(/name="chevron-down"/g) || []).length, 1, "Exactly one location dropdown chevron must remain");
+assert.ok(header.includes('testID="header-location-chevron"') && header.includes('onPress={() => setSheet("location")}'), "Left chevron must open the existing selector");
 const homeSizes = read("src/theme/tokens.ts");
 for (const baseline of ["quickSymbol: 52", "toolSymbol: 52", "serviceSymbol: 58", "kycSymbol: 28", "headerShield: 35", "headerScan: 32", "headerQR: 19", "headerBell: 22"]) {
   assert.ok(homeSizes.includes(baseline), `Native/mobile SVG baseline changed unexpectedly: ${baseline}`);
