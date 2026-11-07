@@ -1224,6 +1224,57 @@ async fn native_domain_alert_acknowledgement_is_scoped_and_not_an_approval(db: P
         request(&router, &events_path, Some(&owner_a_token), None).await;
     assert_eq!(history_status, StatusCode::OK);
     assert_eq!(history["events"][0]["event_type"], "ACKNOWLEDGED");
+    // Application DB users cannot rewrite or directly anonymize audit events.
+    assert!(sqlx::query(
+        "UPDATE native_automation_domain_task_events
+         SET details='{\"forged\":true}'::jsonb WHERE task_id=$1",
+    )
+    .bind(task)
+    .execute(&db)
+    .await
+    .is_err());
+    assert!(sqlx::query(
+        "UPDATE native_automation_domain_task_events
+         SET actor_id=NULL WHERE task_id=$1",
+    )
+    .bind(task)
+    .execute(&db)
+    .await
+    .is_err());
+    // A nested users FK ON DELETE SET NULL must remain functional, unlike
+    // direct mutation. The event survives with its actor reference scrubbed.
+    let temp_actor: Uuid = sqlx::query_scalar(
+        "INSERT INTO users(phone,hashed_password,full_name,role)
+         VALUES($1,'unused','Transient audit actor','dispatcher') RETURNING id",
+    )
+    .bind(Uuid::new_v4().simple().to_string()[..18].to_string())
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    let scrub_event: i64 = sqlx::query_scalar(
+        "INSERT INTO native_automation_domain_task_events
+         (task_id,plant_id,event_type,actor_id)
+         VALUES($1,$2,'ACKNOWLEDGED',$3) RETURNING id",
+    )
+    .bind(task)
+    .bind(plant)
+    .bind(temp_actor)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    sqlx::query("DELETE FROM users WHERE id=$1")
+        .bind(temp_actor)
+        .execute(&db)
+        .await
+        .unwrap();
+    let actor_scrubbed: bool = sqlx::query_scalar(
+        "SELECT actor_id IS NULL FROM native_automation_domain_task_events WHERE id=$1",
+    )
+    .bind(scrub_event)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert!(actor_scrubbed);
     assert_eq!(
         request(&router, &events_path, Some(&owner_b_token), None)
             .await
