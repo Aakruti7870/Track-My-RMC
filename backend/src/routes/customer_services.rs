@@ -210,9 +210,9 @@ pub async fn list_customer(
 
 pub async fn list_admin(
     State(state): State<AppState>,
-    auth: AuthUser,
+    admin: crate::auth::control_center::WebAdmin,
 ) -> Result<Json<Value>, AppError> {
-    check_role(&auth, &["admin"])?;
+    admin.require("support.view")?;
     let enquiries: Vec<Value> = sqlx::query_scalar(
         "SELECT jsonb_build_object('id', id, 'customer_id', customer_id, 'service_type', service_type, 'contact_name', contact_name, 'contact_phone', contact_phone, 'location', location, 'required_date', required_date, 'details', details, 'status', status, 'created_at', created_at) FROM customer_service_enquiries ORDER BY created_at DESC LIMIT 200",
     ).fetch_all(&state.db).await?;
@@ -223,25 +223,52 @@ pub async fn list_admin(
 #[serde(deny_unknown_fields)]
 pub struct StatusUpdate {
     pub status: String,
+    pub reason: String,
 }
 
 pub async fn update_status(
     State(state): State<AppState>,
-    auth: AuthUser,
+    admin: crate::auth::control_center::WebAdmin,
+    headers: axum::http::HeaderMap,
     Path(id): Path<Uuid>,
     Json(update): Json<StatusUpdate>,
 ) -> Result<Json<Value>, AppError> {
-    check_role(&auth, &["admin"])?;
+    admin.require("support.manage")?;
+    super::control_center_routes::require_recent_step_up(&state, &admin, &headers).await?;
+    if update.reason.trim().len() < 10 || update.reason.trim().len() > 500 {
+        return Err(AppError::BadRequest("Service enquiry changes require an audit reason (10-500 characters)".into()));
+    }
     if !["NEW", "CONTACTED", "QUOTED", "CLOSED"].contains(&update.status.as_str()) {
         return Err(AppError::BadRequest("Invalid enquiry status".into()));
     }
-    let changed: Option<Uuid> = sqlx::query_scalar(
-        "UPDATE customer_service_enquiries SET status=$1, updated_at=NOW() WHERE id=$2 RETURNING id",
-    ).bind(&update.status).bind(id).fetch_optional(&state.db).await?;
-    changed.ok_or_else(|| AppError::NotFound("Enquiry not found".into()))?;
-    Ok(Json(
-        json!({"success": true, "id": id, "status": update.status}),
-    ))
+    let mut tx = state.db.begin().await?;
+    let previous: Option<String> = sqlx::query_scalar(
+        "SELECT status FROM customer_service_enquiries WHERE id=$1 FOR UPDATE",
+    )
+    .bind(id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let previous = previous.ok_or_else(|| AppError::NotFound("Enquiry not found".into()))?;
+    if previous != update.status {
+        sqlx::query(
+            "UPDATE customer_service_enquiries SET status=$1, updated_at=NOW() WHERE id=$2",
+        )
+        .bind(&update.status)
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata)
+             VALUES($1,'control_center.service_enquiry.status','service_enquiry',$2,$3)",
+        )
+        .bind(admin.user_id)
+        .bind(id.to_string())
+        .bind(json!({"old_status": previous, "new_status": update.status, "reason": update.reason.trim()}))
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+    Ok(Json(json!({"success": true, "id": id, "status": update.status})))
 }
 
 #[cfg(test)]
