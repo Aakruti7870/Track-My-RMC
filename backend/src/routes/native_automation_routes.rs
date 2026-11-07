@@ -475,13 +475,14 @@ pub async fn owner_acknowledge_domain_task(
     super::plant_staff_manager::require_owner(&state, &owner, plant).await?;
     let mut tx = state.db.begin().await?;
     super::plant_staff_manager::lock_authorization(&mut tx, &owner, plant, "staff").await?;
+    // The current owner may acknowledge alerts created before ownership
+    // transfer; the original assignee remains in the immutable job record.
     let existing: Option<(String, String)> = sqlx::query_as(
         "SELECT template_key,status FROM native_automation_domain_tasks
-         WHERE id=$1 AND plant_id=$2 AND assigned_to=$3 FOR UPDATE",
+         WHERE id=$1 AND plant_id=$2 FOR UPDATE",
     )
     .bind(task_id)
     .bind(plant)
-    .bind(owner.user_id)
     .fetch_optional(&mut *tx)
     .await?;
     let Some((template, status)) = existing else {
@@ -503,11 +504,10 @@ pub async fn owner_acknowledge_domain_task(
     sqlx::query(
         "UPDATE native_automation_domain_tasks
          SET status='ACKNOWLEDGED',resolved_at=NOW(),updated_at=NOW()
-         WHERE id=$1 AND plant_id=$2 AND assigned_to=$3",
+         WHERE id=$1 AND plant_id=$2",
     )
     .bind(task_id)
     .bind(plant)
-    .bind(owner.user_id)
     .execute(&mut *tx)
     .await?;
     sqlx::query(
