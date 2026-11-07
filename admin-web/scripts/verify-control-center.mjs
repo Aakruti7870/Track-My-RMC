@@ -15,8 +15,9 @@ try {
   const page = await browser.newPage();
   await page.goto('http://127.0.0.1:4173');
   await page.getByLabel('Approved administrator email').fill('ci-admin@example.invalid');
+  await page.getByLabel('Account password', { exact: true }).fill(process.env.CI_CONTROL_CENTER_TEST_PASSWORD || '');
   await page.getByLabel('Authenticator code', { exact: true }).fill(currentCode());
-  await page.getByRole('button', { name: 'Sign in with authenticator', exact: true }).click();
+  await page.getByRole('button', { name: 'Sign in with password + authenticator', exact: true }).click();
   await page.getByRole('heading', { name: 'Command Center', exact: true }).waitFor();
   await page.getByRole('button', { name: 'users', exact: true }).click();
   await page.locator('tbody').getByText('CI Central Admin', { exact: true }).waitFor();
