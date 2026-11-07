@@ -268,15 +268,20 @@ pub async fn owner_tasks(
 ) -> Result<Json<Value>, AppError> {
     super::plant_staff_manager::require_owner(&state, &owner, plant).await?;
     let items: Vec<Value> = sqlx::query_scalar(
-        "SELECT jsonb_build_object(
-             'id',t.id,'order_id',t.order_id,'order_number',o.order_number,
-             'task_kind',t.task_kind,'status',t.status,
-             'created_at',t.created_at,'resolved_at',t.resolved_at)
-         FROM native_automation_tasks t
-         JOIN orders o ON o.id=t.order_id AND o.plant_id=t.plant_id
-         WHERE t.plant_id=$1
-         ORDER BY (t.status='OPEN' AND o.status='pending') DESC,t.created_at DESC
-         LIMIT 100",
+        "SELECT jsonb_build_object('id',tasks.id,'order_id',tasks.order_id,
+              'order_number',tasks.order_number,'task_kind',tasks.task_kind,
+              'status',tasks.status,'created_at',tasks.created_at,
+              'resolved_at',tasks.resolved_at)
+         FROM (
+           SELECT t.id,t.order_id,o.order_number,t.task_kind,t.status,
+                  t.created_at,t.resolved_at
+           FROM native_automation_tasks t
+           JOIN orders o ON o.id=t.order_id AND o.plant_id=t.plant_id
+           WHERE t.plant_id=$1
+           UNION ALL
+           SELECT d.id,NULL::uuid,'',d.template_key,d.status,d.created_at,d.resolved_at
+           FROM native_automation_domain_tasks d WHERE d.plant_id=$1
+         ) tasks ORDER BY (tasks.status='OPEN') DESC,tasks.created_at DESC LIMIT 100",
     )
     .bind(plant)
     .fetch_all(&state.db)
@@ -293,7 +298,7 @@ pub async fn owner_history(
     super::plant_staff_manager::require_owner(&state, &owner, plant).await?;
     let items: Vec<Value> = sqlx::query_scalar(
         "SELECT jsonb_build_object(
-             'id',id,'order_id',order_id,'template_key',template_key,
+             'id',id,'order_id',order_id,'domain_entity_id',domain_entity_id,'template_key',template_key,
              'status',status,'attempts',attempts,'created_at',created_at,
              'updated_at',updated_at)
          FROM native_automation_jobs
@@ -374,6 +379,13 @@ pub async fn admin_set_conditions(
     let Some((paused, old_conditions)) = existing else {
         return Err(AppError::NotFound("Unknown automation template".into()));
     };
+    // Quantity/grade filters apply only to original order workflows.
+    // Cross-domain workflows use fixed Rust predicates and empty conditions.
+    if !key.starts_with("ORDER_") {
+        return Err(AppError::BadRequest(
+            "Domain workflows have fixed, reviewed eligibility checks".into(),
+        ));
+    }
     if !paused {
         return Err(AppError::Conflict(
             "Pause the template before modifying its conditions".into(),
