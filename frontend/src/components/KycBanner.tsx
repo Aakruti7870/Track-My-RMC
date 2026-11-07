@@ -1,10 +1,11 @@
 import React from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Platform, Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { VectorSymbol, type VectorSymbolName } from "./VectorSymbol";
 import { useRouter } from "expo-router";
 
 import { useTheme } from "@/src/theme/ThemeProvider";
+import { customerHomeSizes } from "@/src/theme/tokens";
 import { AppText } from "./ui/AppText";
 
 const CONFIG: Record<
@@ -21,6 +22,8 @@ const CONFIG: Record<
 export function KycBanner({ status }: { status: string }) {
   const { colors } = useTheme();
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  const size = customerHomeSizes(width, Platform.OS);
   const cfg = CONFIG[status] || CONFIG.NOT_STARTED;
   const tone = {
     verified: colors.verified,
@@ -40,6 +43,7 @@ export function KycBanner({ status }: { status: string }) {
       onPress={() => router.push("/kyc")}
       style={({ pressed }) => [
         styles.wrap,
+        { gap: size.kycGap, paddingHorizontal: size.kycPadding, paddingVertical: size.kycPadding, borderRadius: size.kycRadius },
         {
           backgroundColor: colors.surfaceSecondary,
           borderColor: isVerified ? tone + "60" : tone + "34",
@@ -49,15 +53,15 @@ export function KycBanner({ status }: { status: string }) {
         },
       ]}
     >
-      <VectorSymbol name={cfg.symbol} size={28} />
+      <VectorSymbol name={cfg.symbol} size={size.kycSymbol} />
       <View style={styles.copy}>
-        <AppText style={{ fontFamily: "Raleway-Bold", fontSize: 15, lineHeight: 22, color: isVerified ? tone : colors.onSurface }}>
+        <AppText style={{ fontFamily: "Raleway-Bold", fontSize: size.kycTitle, lineHeight: size.kycTitleLine, color: isVerified ? tone : colors.onSurface }}>
           {cfg.title}
         </AppText>
-        <AppText variant="caption" style={{ fontSize: 10, lineHeight: 18 }}>{cfg.sub}</AppText>
+        <AppText variant="caption" style={{ fontSize: size.kycSubtitle, lineHeight: size.kycSubtitleLine }}>{cfg.sub}</AppText>
       </View>
-      <View style={[styles.trailing, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-        <Ionicons name={isVerified ? "checkmark" : "chevron-forward"} size={17} color={isVerified ? tone : colors.onSurfaceTertiary} />
+      <View style={[styles.trailing, { width: size.kycArrow, height: size.kycArrow, borderRadius: size.kycArrow / 2, backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+        <Ionicons name={isVerified ? "checkmark" : "chevron-forward"} size={size.kycArrowIcon} color={isVerified ? tone : colors.onSurfaceTertiary} />
       </View>
     </Pressable>
   );
