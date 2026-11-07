@@ -1155,9 +1155,7 @@ async fn native_domain_alert_acknowledgement_is_scoped_and_not_an_approval(db: P
         generate_token(owner_a, "owner", "", None, &state.config.jwt_secret, 1).unwrap();
     let owner_b_token =
         generate_token(owner_b, "owner", "", None, &state.config.jwt_secret, 1).unwrap();
-    let path = format!(
-        "/api/owner/plants/{plant}/automation/domain-tasks/{task}/acknowledge"
-    );
+    let path = format!("/api/owner/plants/{plant}/automation/domain-tasks/{task}/acknowledge");
     assert_eq!(
         request(&router, &path, Some(&owner_b_token), Some(json!({})))
             .await
@@ -1170,25 +1168,22 @@ async fn native_domain_alert_acknowledgement_is_scoped_and_not_an_approval(db: P
             .0,
         StatusCode::OK
     );
-    let (status, replay) =
-        request(&router, &path, Some(&owner_a_token), Some(json!({}))).await;
+    let (status, replay) = request(&router, &path, Some(&owner_a_token), Some(json!({}))).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(replay["idempotent_replay"], true);
-    let task_status: String = sqlx::query_scalar(
-        "SELECT status FROM native_automation_domain_tasks WHERE id=$1",
-    )
-    .bind(task)
-    .fetch_one(&db)
-    .await
-    .unwrap();
+    let task_status: String =
+        sqlx::query_scalar("SELECT status FROM native_automation_domain_tasks WHERE id=$1")
+            .bind(task)
+            .fetch_one(&db)
+            .await
+            .unwrap();
     assert_eq!(task_status, "ACKNOWLEDGED");
-    let stock: i64 = sqlx::query_scalar(
-        "SELECT current_stock::bigint FROM plant_materials WHERE id=$1",
-    )
-    .bind(material)
-    .fetch_one(&db)
-    .await
-    .unwrap();
+    let stock: i64 =
+        sqlx::query_scalar("SELECT current_stock::bigint FROM plant_materials WHERE id=$1")
+            .bind(material)
+            .fetch_one(&db)
+            .await
+            .unwrap();
     assert_eq!(stock, 10);
     let audit_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM audit_logs
