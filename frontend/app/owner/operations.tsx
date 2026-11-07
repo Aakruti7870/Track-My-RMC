@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Pressable, View } from "react-native";
 import { useAuth } from "@/src/auth/AuthContext";
-import { apiErrorDetail, apiPut } from "@/src/api/client";
+import { apiErrorDetail, apiPost, apiPut } from "@/src/api/client";
 import { useGet } from "@/src/hooks/useApi";
 import { AppText } from "@/src/components/ui/AppText";
 import { OwnerFrame, OwnerGlass, OwnerList, OwnerModuleRow, useOwnerPalette } from "@/src/owner/OwnerUI";
@@ -25,6 +25,7 @@ export default function OwnerOperations() {
   const { token } = useAuth();
   const [plantId, setPlantId] = useState("");
   const [busyRule, setBusyRule] = useState<string | null>(null);
+  const [busyTask, setBusyTask] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [requestError, setRequestError] = useState("");
   const { data: plants, error: plantsError } = useGet<{ plants: Plant[] }>("/master/my-plants");
@@ -56,6 +57,22 @@ export default function OwnerOperations() {
       setRequestError(apiErrorDetail(error, "Automation setting could not be updated."));
     } finally {
       setBusyRule(null);
+    }
+  }
+
+  async function acknowledgeTask(task: OwnerTask) {
+    if (!base || !token || busyTask || task.task_kind === "REVIEW_ORDER") return;
+    setBusyTask(task.id);
+    setRequestError("");
+    setNotice("");
+    try {
+      await apiPost(`${base}/domain-tasks/${encodeURIComponent(task.id)}/acknowledge`, token, {});
+      setNotice("Review alert acknowledged. The underlying plant issue is not approved or closed.");
+      await Promise.all([refreshTasks(), refreshHistory()]);
+    } catch (error) {
+      setRequestError(apiErrorDetail(error, "Could not acknowledge the alert."));
+    } finally {
+      setBusyTask(null);
     }
   }
 
@@ -125,15 +142,26 @@ export default function OwnerOperations() {
             {(tasks?.tasks ?? []).filter(task => task.status === "OPEN").length} open review tasks
           </AppText>
           {(tasks?.tasks ?? []).filter(task => task.status === "OPEN").slice(0, 5).map(task =>
-            <AppText key={task.id} style={{ color: p.text, fontSize: 12 }}>
-              {task.order_number ? `Order ${task.order_number} — owner review` :
-                task.task_kind === "DISPATCH_UNASSIGNED_LOAD" ? "Dispatch — assign a planned load" :
-                task.task_kind === "RFQ_PENDING_PLANT" ? "RFQ — respond to quotation request" :
-                task.task_kind === "QUALITY_INSPECTION_FAILED" ? "Quality — review failed engineer inspection" :
-                task.task_kind === "INVENTORY_BELOW_MIN" ? "Inventory — review material stock" :
-                task.task_kind === "WORKFORCE_LEAVE_PENDING" ? "Workforce — review leave application" :
-                "Plant operation — review required"}
-            </AppText>)}
+            <View key={task.id} style={{ gap: 6 }}>
+              <AppText style={{ color: p.text, fontSize: 12 }}>
+                {task.order_number ? `Order ${task.order_number} — owner review` :
+                  task.task_kind === "DISPATCH_UNASSIGNED_LOAD" ? "Dispatch — assign a planned load" :
+                  task.task_kind === "RFQ_PENDING_PLANT" ? "RFQ — respond to quotation request" :
+                  task.task_kind === "QUALITY_INSPECTION_FAILED" ? "Quality — review failed engineer inspection" :
+                  task.task_kind === "INVENTORY_BELOW_MIN" ? "Inventory — review material stock" :
+                  task.task_kind === "WORKFORCE_LEAVE_PENDING" ? "Workforce — review leave application" :
+                  "Plant operation — review required"}
+              </AppText>
+              {!task.order_number ? <Pressable testID={`owner-automation-ack-${task.id}`}
+                accessibilityRole="button" disabled={Boolean(busyTask)}
+                onPress={() => void acknowledgeTask(task)}
+                style={{ alignSelf: "flex-start", borderRadius: 8, paddingVertical: 8,
+                  paddingHorizontal: 12, backgroundColor: p.canvas }}>
+                <AppText style={{ color: p.text, fontSize: 11 }}>
+                  {busyTask === task.id ? "Saving acknowledgement" : "Acknowledge alert (not approval)"}
+                </AppText>
+              </Pressable> : null}
+            </View>)}
           <AppText style={{ color: p.muted, fontSize: 11 }}>
             Decisions must be made through the existing Plant Orders screen.
           </AppText>
