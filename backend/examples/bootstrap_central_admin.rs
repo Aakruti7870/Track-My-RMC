@@ -11,9 +11,10 @@ use trackmyrmc_backend::auth::{password, totp::TotpEngine};
 use uuid::Uuid;
 
 fn value_of(args: &[String], flag: &str) -> Result<String, Box<dyn Error>> {
-    let index = args.iter().position(|arg| arg == flag).ok_or_else(|| {
-        io::Error::new(io::ErrorKind::InvalidInput, format!("Missing {flag}"))
-    })?;
+    let index = args
+        .iter()
+        .position(|arg| arg == flag)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, format!("Missing {flag}")))?;
     Ok(args
         .get(index + 1)
         .filter(|arg| !arg.starts_with("--"))
@@ -95,7 +96,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .iter()
         .map(|code| hash_recovery_code(code, &secret))
         .collect();
-    println!("\nConfigure this one-time secret in your authenticator on a separately protected device:");
+    println!(
+        "\nConfigure this one-time secret in your authenticator on a separately protected device:"
+    );
     println!("{}", TotpEngine::get_otpauth_uri(&secret, &email));
     let code = rpassword::prompt_password("Enter a current six-digit authenticator code: ")?;
     if !TotpEngine::verify_code(&secret, &code)? {
@@ -110,14 +113,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .fetch_one(&mut *tx)
         .await?;
     if count != 0 {
-        return Err("Central Admin already exists; bootstrap cannot overwrite or recover it".into());
+        return Err(
+            "Central Admin already exists; bootstrap cannot overwrite or recover it".into(),
+        );
     }
-    let exists: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM users WHERE LOWER(email)=$1)",
-    )
-    .bind(&email)
-    .fetch_one(&mut *tx)
-    .await?;
+    let exists: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM users WHERE LOWER(email)=$1)")
+            .bind(&email)
+            .fetch_one(&mut *tx)
+            .await?;
     if exists {
         return Err("Existing user email cannot be promoted to Central Admin".into());
     }
@@ -144,11 +148,24 @@ async fn main() -> Result<(), Box<dyn Error>> {
     .await?;
     // The bootstrap operator must review this fixed list before using --apply.
     let permissions = vec![
-        "admin_access.manage", "system.view", "user.view", "plant.view",
-        "order.view", "support.view", "support.reply", "support.manage",
-        "kyc.view", "kyc.review", "audit.view", "session.view",
-        "reviewer_access.manage", "plant_owners.manage", "owner.assign",
-        "automation.manage", "payment.view", "ai.diagnose",
+        "admin_access.manage",
+        "system.view",
+        "user.view",
+        "plant.view",
+        "order.view",
+        "support.view",
+        "support.reply",
+        "support.manage",
+        "kyc.view",
+        "kyc.review",
+        "audit.view",
+        "session.view",
+        "reviewer_access.manage",
+        "plant_owners.manage",
+        "owner.assign",
+        "automation.manage",
+        "payment.view",
+        "ai.diagnose",
     ];
     sqlx::query(
         "INSERT INTO control_center_access(user_id,approved,permissions)
