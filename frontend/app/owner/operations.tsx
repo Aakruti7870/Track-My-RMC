@@ -16,7 +16,7 @@ type AutomationRule = {
   enabled: boolean;
   reminder_after_minutes: number;
 };
-type OwnerTask = { id: string; order_number: string; task_kind: string; status: string };
+type OwnerTask = { id: string; order_number: string; task_kind: string; status: string; source_label?: string };
 type AutomationHistory = { id: string; template_key: string; status: string; attempts: number };
 const REMINDER_MINUTES = [30, 60, 120, 240] as const;
 
@@ -152,6 +152,9 @@ export default function OwnerOperations() {
                   task.task_kind === "WORKFORCE_LEAVE_PENDING" ? "Workforce — review leave application" :
                   "Plant operation — review required"}
               </AppText>
+              {!task.order_number && task.source_label ? <AppText style={{ color: p.muted, fontSize: 11 }}>
+                {task.source_label}
+              </AppText> : null}
               {!task.order_number ? <Pressable testID={`owner-automation-ack-${task.id}`}
                 accessibilityRole="button" disabled={Boolean(busyTask)}
                 onPress={() => void acknowledgeTask(task)}
