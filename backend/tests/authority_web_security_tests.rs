@@ -128,6 +128,28 @@ async fn authority_web_login_cannot_cross_into_super_admin_or_mobile(db: PgPool)
     assert_eq!(
         call(
             &app,
+            "/api/authority/auth/verify-totp",
+            None,
+            Some(json!({"identifier":email,"code":code})),
+        )
+        .await
+        .0,
+        StatusCode::UNPROCESSABLE_ENTITY,
+    );
+    assert_eq!(
+        call(
+            &app,
+            "/api/authority/auth/verify-totp",
+            None,
+            Some(json!({"identifier":email,"password":"Invalid synthetic password","code":code})),
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED,
+    );
+    assert_eq!(
+        call(
+            &app,
             "/api/admin/auth/verify-totp",
             None,
             Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":code})),
