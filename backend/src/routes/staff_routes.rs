@@ -1063,7 +1063,14 @@ pub async fn approve_customer_kyc(
     Json(body): Json<AuthorityKycDecision>,
 ) -> Result<impl IntoResponse, AppError> {
     ensure_authority_review_session(&state, &auth_user, &headers).await?;
-    update_reviewed_customer_kyc(&state.db, auth_user.user_id, customer_id, "verified", &body.reason).await?;
+    update_reviewed_customer_kyc(
+        &state.db,
+        auth_user.user_id,
+        customer_id,
+        "verified",
+        &body.reason,
+    )
+    .await?;
     Ok(Json(
         json!({ "success": true, "message": "KYC profile approved" }),
     ))
@@ -1077,7 +1084,14 @@ pub async fn reject_customer_kyc(
     Json(body): Json<AuthorityKycDecision>,
 ) -> Result<impl IntoResponse, AppError> {
     ensure_authority_review_session(&state, &auth_user, &headers).await?;
-    update_reviewed_customer_kyc(&state.db, auth_user.user_id, customer_id, "rejected", &body.reason).await?;
+    update_reviewed_customer_kyc(
+        &state.db,
+        auth_user.user_id,
+        customer_id,
+        "rejected",
+        &body.reason,
+    )
+    .await?;
     Ok(Json(
         json!({ "success": true, "message": "KYC profile rejected" }),
     ))
@@ -1091,7 +1105,14 @@ pub async fn reset_customer_kyc(
     Json(body): Json<AuthorityKycDecision>,
 ) -> Result<impl IntoResponse, AppError> {
     ensure_authority_review_session(&state, &auth_user, &headers).await?;
-    update_reviewed_customer_kyc(&state.db, auth_user.user_id, customer_id, "unverified", &body.reason).await?;
+    update_reviewed_customer_kyc(
+        &state.db,
+        auth_user.user_id,
+        customer_id,
+        "unverified",
+        &body.reason,
+    )
+    .await?;
     Ok(Json(
         json!({ "success": true, "message": "KYC profile reset for re-verification" }),
     ))
@@ -1170,9 +1191,15 @@ mod authority_kyc_customer_scope_tests {
 
         // The route uses the customer's users.id, which differs from user_profiles.id.
         assert_ne!(profile, customer);
-        update_reviewed_customer_kyc(&pool, actor, customer, "verified", "Verified provider evidence reviewed")
-            .await
-            .unwrap();
+        update_reviewed_customer_kyc(
+            &pool,
+            actor,
+            customer,
+            "verified",
+            "Verified provider evidence reviewed",
+        )
+        .await
+        .unwrap();
         let status: String =
             sqlx::query_scalar("SELECT kyc_status FROM user_profiles WHERE user_id=$1")
                 .bind(customer)
@@ -1194,7 +1221,14 @@ mod authority_kyc_customer_scope_tests {
         // Passing a profile primary key or a different role cannot approve KYC.
         for id in [profile, owner, Uuid::new_v4()] {
             assert!(matches!(
-                update_reviewed_customer_kyc(&pool, actor, id, "verified", "Invalid user ID scoped review").await,
+                update_reviewed_customer_kyc(
+                    &pool,
+                    actor,
+                    id,
+                    "verified",
+                    "Invalid user ID scoped review"
+                )
+                .await,
                 Err(AppError::Conflict(_))
             ));
         }
@@ -1207,20 +1241,48 @@ mod authority_kyc_customer_scope_tests {
         assert_eq!(owner_status, "unverified");
         // Authority may not reject a completed verification as though it were pending.
         assert!(matches!(
-            update_reviewed_customer_kyc(&pool, actor, customer, "rejected", "Incorrect transition attempt").await,
+            update_reviewed_customer_kyc(
+                &pool,
+                actor,
+                customer,
+                "rejected",
+                "Incorrect transition attempt"
+            )
+            .await,
             Err(AppError::Conflict(_))
         ));
-        update_reviewed_customer_kyc(&pool, actor, customer, "unverified", "Return verified identity to review")
-            .await
-            .unwrap();
+        update_reviewed_customer_kyc(
+            &pool,
+            actor,
+            customer,
+            "unverified",
+            "Return verified identity to review",
+        )
+        .await
+        .unwrap();
         sqlx::query("UPDATE user_profiles SET kyc_status='pending' WHERE user_id=$1")
-            .bind(customer).execute(&pool).await.unwrap();
-        update_reviewed_customer_kyc(&pool, actor, customer, "rejected", "Pending KYC record has inconsistent evidence")
+            .bind(customer)
+            .execute(&pool)
             .await
             .unwrap();
-        update_reviewed_customer_kyc(&pool, actor, customer, "unverified", "Reopen rejected review after correction")
-            .await
-            .unwrap();
+        update_reviewed_customer_kyc(
+            &pool,
+            actor,
+            customer,
+            "rejected",
+            "Pending KYC record has inconsistent evidence",
+        )
+        .await
+        .unwrap();
+        update_reviewed_customer_kyc(
+            &pool,
+            actor,
+            customer,
+            "unverified",
+            "Reopen rejected review after correction",
+        )
+        .await
+        .unwrap();
         assert!(matches!(
             update_reviewed_customer_kyc(&pool, actor, customer, "verified", "short").await,
             Err(AppError::BadRequest(_))
