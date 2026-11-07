@@ -294,7 +294,7 @@ pub async fn approve_order(
         sqlx::query(
             "UPDATE native_automation_tasks
              SET status='RESOLVED',resolved_by=$2,resolved_at=NOW(),updated_at=NOW()
-             WHERE order_id=$1 AND status='OPEN'"
+             WHERE order_id=$1 AND status='OPEN'",
         )
         .bind(order_id)
         .bind(auth_user.user_id)
@@ -338,7 +338,7 @@ pub async fn reject_order(
         sqlx::query(
             "UPDATE native_automation_tasks
              SET status='RESOLVED',resolved_by=$2,resolved_at=NOW(),updated_at=NOW()
-             WHERE order_id=$1 AND status='OPEN'"
+             WHERE order_id=$1 AND status='OPEN'",
         )
         .bind(order_id)
         .bind(auth_user.user_id)
