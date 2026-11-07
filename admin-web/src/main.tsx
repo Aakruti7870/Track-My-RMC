@@ -21,6 +21,31 @@ type Health = {
 
 type PortalKpi = { label: string; value: string | number };
 
+type NativeAutomationTemplate = {
+  key: string;
+  label: string;
+  event_type: string;
+  action_type: string;
+  version: number;
+  published: boolean;
+  globally_paused: boolean;
+  enabled_plants: number;
+  conditions: {
+    min_quantity_m3?: number | null;
+    max_quantity_m3?: number | null;
+    grade_in?: string[];
+  };
+};
+type NativeAutomationHealth = {
+  worker_enabled: boolean;
+  heartbeat: { recent: boolean; last_seen_at: string } | null;
+  job_counts: { status: string; count: number }[];
+};
+type NativeAutomationJob = {
+  id: string; template_key: string; status: string; attempts: number;
+  updated_at: string;
+};
+
 type Enrollment = {
   account: string;
   manual_key: string;
@@ -67,6 +92,15 @@ function CommandCenter() {
   const [ownerFields,setOwnerFields]=useState<Record<string,{city:string;state:string;pincode:string}>>({});
   const [showOwners,setShowOwners]=useState(false);
   const [showPlantProfiles,setShowPlantProfiles]=useState(false);
+  const [showNativeAutomation,setShowNativeAutomation]=useState(false);
+  const [automationTemplates,setAutomationTemplates]=useState<NativeAutomationTemplate[]>([]);
+  const [automationHealth,setAutomationHealth]=useState<NativeAutomationHealth | null>(null);
+  const [automationJobs,setAutomationJobs]=useState<NativeAutomationJob[]>([]);
+  const [automationCode,setAutomationCode]=useState('');
+  const [automationMin,setAutomationMin]=useState('');
+  const [automationMax,setAutomationMax]=useState('');
+  const [automationGrades,setAutomationGrades]=useState('');
+  const [automationKey,setAutomationKey]=useState('');
   const [plantProfileQueue,setPlantProfileQueue]=useState<Array<Record<string,any>>>([]);
   const [plantProfileCode,setPlantProfileCode]=useState('');
   const [plantProfileReason,setPlantProfileReason]=useState('');
@@ -128,6 +162,104 @@ function CommandCenter() {
       });
     return () => { active = false; };
   }, [stage, user?.role]);
+
+  async function loadNativeAutomation() {
+    setShowNativeAutomation(true);setBusy(true);setError('');
+    try {
+      // List/health use system.view. Cross-plant private records are intentionally
+      // absent from the global monitoring response.
+      const [catalog,health,history] = await Promise.all([
+        apiClient.get('/api/control-center/automation/templates'),
+        apiClient.get('/api/control-center/automation/health'),
+        permissions.includes('audit.view')
+          ? apiClient.get('/api/control-center/automation/jobs') : Promise.resolve(null),
+      ]);
+      const items:NativeAutomationTemplate[]=catalog.data?.templates||[];
+      setAutomationTemplates(items);
+      setAutomationHealth(health.data as NativeAutomationHealth);
+      setAutomationJobs(history?.data?.jobs||[]);
+      setAutomationKey(current => items.some(item => item.key === current) ? current : items[0]?.key||'');
+    } catch(err) {setError(errorMessage(err));}
+    finally {setBusy(false);}
+  }
+
+  async function updateAutomationPolicy(template:NativeAutomationTemplate,published:boolean,paused:boolean) {
+    if (!permissions.includes('automation.manage') || !automationCode.trim()) {
+      setError('Automation management permission and a fresh authenticator code are required.');
+      return;
+    }
+    if (!paused && !window.confirm('Resume this workflow for all opted-in plants?')) return;
+    setBusy(true);setError('');setNotice('');
+    try {
+      await apiClient.post('/api/control-center/step-up',{code:automationCode.trim()});
+      setAutomationCode('');
+      await apiClient.post('/api/control-center/automation/templates/'+encodeURIComponent(template.key)+'/policy',
+        {published,globally_paused:paused});
+      setNotice('Automation policy updated and audited.');
+      await loadNativeAutomation();
+    } catch(err) {setError(errorMessage(err));}
+    finally {setBusy(false);}
+  }
+
+  async function updateAutomationConditions() {
+    if (!permissions.includes('automation.manage') || !automationCode.trim()) {
+      setError('Automation management permission and a fresh authenticator code are required.');
+      return;
+    }
+    const selected=automationTemplates.find(item=>item.key===automationKey);
+    if (!selected?.globally_paused) {
+      setError('Pause the selected workflow before changing its conditions.');
+      return;
+    }
+    const min=automationMin.trim() === '' ? null : Number(automationMin);
+    const max=automationMax.trim() === '' ? null : Number(automationMax);
+    if ([min,max].some(value=>value!==null && (!Number.isFinite(value) || value<0 || value>100000))
+      || (min!==null && max!==null && min>max)) {
+      setError('Quantity limits must be between 0 and 100000 m³, minimum no greater than maximum.');
+      return;
+    }
+    const grades=automationGrades.split(',').map(value=>value.trim()).filter(Boolean);
+    if (grades.length>16 || grades.some(value=>!/^[A-Za-z0-9-]{1,24}$/.test(value))) {
+      setError('Use at most 16 valid concrete grades, separated by commas.');
+      return;
+    }
+    setBusy(true);setError('');setNotice('');
+    try {
+      await apiClient.post('/api/control-center/step-up',{code:automationCode.trim()});
+      setAutomationCode('');
+      await apiClient.put('/api/control-center/automation/templates/'+encodeURIComponent(automationKey)+'/conditions',{
+        conditions:{min_quantity_m3:min,max_quantity_m3:max,grade_in:grades}
+      });
+      setNotice('Versioned rule conditions saved; workflow remains paused.');
+      await loadNativeAutomation();
+    } catch(err) {setError(errorMessage(err));}
+    finally {setBusy(false);}
+  }
+
+  async function retryNativeAutomationJob(job:string) {
+    if (!permissions.includes('automation.manage') || !automationCode.trim()) {
+      setError('Automation management permission and a fresh authenticator code are required.');
+      return;
+    }
+    if (!window.confirm('Requeue this dead-letter job under current live security rules?')) return;
+    setBusy(true);setError('');setNotice('');
+    try {
+      await apiClient.post('/api/control-center/step-up',{code:automationCode.trim()});
+      setAutomationCode('');
+      await apiClient.post('/api/control-center/automation/jobs/'+encodeURIComponent(job)+'/requeue');
+      setNotice('Dead-letter job requeued for authorization checks.');
+      await loadNativeAutomation();
+    } catch(err) {setError(errorMessage(err));}
+    finally {setBusy(false);}
+  }
+
+  useEffect(()=>{
+    const item=automationTemplates.find(template=>template.key===automationKey);
+    if (!item) {setAutomationMin('');setAutomationMax('');setAutomationGrades('');return;}
+    setAutomationMin(item.conditions?.min_quantity_m3?.toString()??'');
+    setAutomationMax(item.conditions?.max_quantity_m3?.toString()??'');
+    setAutomationGrades((item.conditions?.grade_in||[]).join(', '));
+  },[automationKey,automationTemplates]);
 
   async function loadWorkspace(kind:string,offset=0) {
     setBusy(true);setError('');setWorkspace(kind);
@@ -348,6 +480,8 @@ function CommandCenter() {
     } finally {
       window.sessionStorage.removeItem('trackmyrmc_admin_token');
       setUser(null);setPermissions([]);setRecords([]);setWorkspace('');setRfqOutreachCode('');setRfqOutreachNotes({});
+      setShowNativeAutomation(false);setAutomationTemplates([]);setAutomationHealth(null);
+      setAutomationJobs([]);setAutomationCode('');setAutomationKey('');
       setHealth(null);
       setAdminKpis([]);
       setAdminOverviewError('');
@@ -504,6 +638,78 @@ function CommandCenter() {
                 <p style={{ color: '#94a3b8', fontSize: 12 }}>Read-only statistics from the Rust API. This is not the complete reference Control Center.</p>
               </section>
             )}
+            {user.role === 'central_admin' && permissions.includes('system.view') && (
+              <section aria-label="Native automation governance" style={{marginTop:18,padding:14,border:'1px solid #334155',borderRadius:10}}>
+                <h2 style={{marginTop:0,fontSize:19}}>Native Automation Center</h2>
+                <p style={{fontSize:12,color:'#cbd5e1'}}>TrackMyRMC-owned Rust workflows. Central policy is separate from each Plant Owner's activation.</p>
+                <button type="button" disabled={busy} onClick={()=>void loadNativeAutomation()} style={buttonStyle}>
+                  {showNativeAutomation ? 'Refresh automation health and templates' : 'Open Automation Center'}
+                </button>
+                {showNativeAutomation && <>
+                  <p><strong>Internal worker:</strong> {automationHealth?.worker_enabled ? 'Configured on this API' : 'Disabled (safe default)'}</p>
+                  <p><strong>Heartbeat:</strong> {automationHealth?.heartbeat?.recent ? 'Recent worker heartbeat' : 'No recent verified worker heartbeat'}</p>
+                  <p style={{fontSize:12,color:'#cbd5e1'}}>Queue status: {(automationHealth?.job_counts||[]).map(item=>`${item.status}: ${item.count}`).join(' · ') || 'No jobs recorded'}</p>
+                  {!permissions.includes('automation.manage') && <p style={{color:'#fbbf24',fontSize:12}}>
+                    Read-only access. Automation policy changes require separately approved automation.manage access.
+                  </p>}
+                  {permissions.includes('automation.manage') && <>
+                    <label htmlFor="automation-mfa">Fresh authenticator code (required before each change)</label>
+                    <input id="automation-mfa" autoComplete="off" type="password" value={automationCode}
+                      onChange={e=>setAutomationCode(e.target.value)} style={inputStyle}/>
+                  </>}
+                  <div style={{display:'grid',gap:10,marginTop:14}}>
+                    {automationTemplates.map(template=><div key={template.key} style={{border:'1px solid #475569',borderRadius:9,padding:12}}>
+                      <strong>{template.label}</strong>
+                      <p style={{color:'#cbd5e1',fontSize:12,margin:'7px 0'}}>
+                        {template.event_type} · Version {template.version} · {template.enabled_plants} plant opt-ins
+                      </p>
+                      <p style={{fontSize:12,margin:'6px 0'}}>Policy: {!template.published ? 'Unpublished' : template.globally_paused ? 'Paused' : 'Published and active'}</p>
+                      {permissions.includes('automation.manage') && <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+                        <button type="button" disabled={busy || template.globally_paused}
+                          onClick={()=>void updateAutomationPolicy(template,template.published,true)}
+                          style={{...buttonStyle,width:'auto',marginTop:4,background:'#9a3412'}}>Emergency pause</button>
+                        <button type="button" disabled={busy || (template.published && !template.globally_paused)}
+                          onClick={()=>void updateAutomationPolicy(template,true,false)}
+                          style={{...buttonStyle,width:'auto',marginTop:4,background:'#166534'}}>Publish and resume</button>
+                        <button type="button" disabled={busy || (!template.published && template.globally_paused)}
+                          onClick={()=>void updateAutomationPolicy(template,false,true)}
+                          style={{...buttonStyle,width:'auto',marginTop:4,background:'#475569'}}>Unpublish</button>
+                      </div>}
+                    </div>)}
+                  </div>
+                  {permissions.includes('automation.manage') && automationTemplates.length>0 && <div style={{border:'1px solid #475569',padding:12,borderRadius:9,marginTop:12}}>
+                    <h3 style={{marginTop:0}}>Edit bounded order conditions</h3>
+                    <p style={{fontSize:12,color:'#cbd5e1'}}>Only paused templates can be changed. Unknown fields, scripts and URLs are not supported.</p>
+                    <label htmlFor="automation-key">Rule</label>
+                    <select id="automation-key" style={inputStyle} value={automationKey} onChange={e=>setAutomationKey(e.target.value)}>
+                      {automationTemplates.map(template=><option value={template.key} key={template.key}>{template.label}</option>)}
+                    </select>
+                    <label htmlFor="automation-min">Minimum quantity (m³, optional)</label>
+                    <input id="automation-min" type="number" min={0} max={100000} step="any" style={inputStyle}
+                      value={automationMin} onChange={e=>setAutomationMin(e.target.value)} />
+                    <label htmlFor="automation-max">Maximum quantity (m³, optional)</label>
+                    <input id="automation-max" type="number" min={0} max={100000} step="any" style={inputStyle}
+                      value={automationMax} onChange={e=>setAutomationMax(e.target.value)}/>
+                    <label htmlFor="automation-grades">Allowed concrete grades (comma-separated, empty = all)</label>
+                    <input id="automation-grades" style={inputStyle} value={automationGrades} onChange={e=>setAutomationGrades(e.target.value)}/>
+                    <button type="button" disabled={busy || !automationTemplates.find(item=>item.key===automationKey)?.globally_paused}
+                      style={buttonStyle} onClick={()=>void updateAutomationConditions()}>Save and version rule</button>
+                  </div>}
+                  {permissions.includes('audit.view') && <div style={{marginTop:14}}>
+                    <h3>Recent execution history</h3>
+                    <p style={{fontSize:12,color:'#cbd5e1'}}>Global governance shows status only, without private plant or order details.</p>
+                    {automationJobs.slice(0,12).map(job=><div key={job.id} style={{borderTop:'1px solid #334155',padding:'8px 0'}}>
+                      <div style={{fontSize:12}}>{job.template_key} · {job.status} · {job.attempts} attempts</div>
+                      {job.status==='DEAD_LETTER' && permissions.includes('automation.manage') &&
+                        <button type="button" disabled={busy} onClick={()=>void retryNativeAutomationJob(job.id)}
+                          style={{...buttonStyle,width:'auto',marginTop:5}}>MFA retry dead letter</button>}
+                    </div>)}
+                    {!automationJobs.length && <p style={{fontSize:12,color:'#94a3b8'}}>No executions recorded.</p>}
+                  </div>}
+                </>}
+              </section>
+            )}
+
             {user.role === 'central_admin' && <section aria-label="Authorized workspaces" style={{marginTop:18}}>
 
               {permissions.includes('plant_owners.manage') && permissions.includes('plant.view') && <>
