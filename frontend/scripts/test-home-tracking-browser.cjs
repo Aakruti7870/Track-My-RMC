@@ -63,15 +63,15 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  const quickSectionBox=await page.getByTestId('home-quick-actions').boundingBox();
  // Geometry measured from the PhonePe reference, expressed in viewport dp on web.
  if(width<=390) {
-   if(Math.abs(quickSectionBox.height-160)>4)
-     throw Error('Quick Actions reference section must be about 160dp: '+quickSectionBox.height);
+   if(Math.abs(quickSectionBox.height-134)>5)
+     throw Error('Quick Actions section should be about 134dp: '+quickSectionBox.height);
    const titleBox=await page.getByText('Quick Actions',{exact:true}).boundingBox();
    const bannerToTitle=titleBox.y-(carouselBox.y+carouselBox.height);
-   if(bannerToTitle<21||bannerToTitle>27)
-     throw Error('Banner-to-header text gap must be about 23dp: '+bannerToTitle);
+   if(Math.abs(bannerToTitle-10)>1)
+     throw Error('Banner-to-header gap must be 10dp: '+bannerToTitle);
    const slogan=await page.getByText('Built Better',{exact:true}).locator('xpath=..').boundingBox();
-   if(Math.abs(slogan.width-106)>1||Math.abs(slogan.height-28)>2)
-     throw Error('Built Better pill must be 106x28dp: '+JSON.stringify(slogan));
+   if(Math.abs(slogan.width-132)>1||Math.abs(slogan.height-28)>2)
+     throw Error('Built Better pill must be 132x28dp: '+JSON.stringify(slogan));
    for(const [id,label] of [['action-new','New Order'],['action-track','Track Order'],['action-plants','Plants'],['action-orders','My Orders']]){
      const font=await page.getByTestId(id).getByText(label,{exact:true}).evaluate(el=>getComputedStyle(el).fontSize);
      if(font!=='14px')throw Error('Quick Action label must be 14sp: '+id+' '+font);
@@ -92,7 +92,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    ['pump rental to advice',gapBetween(pumpSectionBox,adviceSectionBox)],
    ['advice to supply',gapBetween(adviceSectionBox,otherServicesSectionBox)],
    ['supply to tracking',gapBetween(otherServicesSectionBox,trackingSectionBox)],
- ])if(Math.abs(actual-4)>1)throw Error(`${name} must be 4dp; got ${actual}`);
+ ])if(Math.abs(actual-10)>1)throw Error(`${name} must be 10dp; got ${actual}`);
  for(const title of ['Quick Actions','Active Projects & Planning','Free Tools & Expert Advice','Supply & Workforce','Track My RMC']){
    if(!await page.getByText(title,{exact:true}).count())throw Error(`Home heading missing: ${title}`);
  }
@@ -143,20 +143,26 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    }
  }
  const promoCards=await page.getByTestId('home-pump-rental-promo').locator(':scope > *').all();
- if(promoCards.length!==2)throw Error('Rental and On Time callouts must be in one row');
+ if(promoCards.length!==2)throw Error('Both pump and On Time cards must exist');
  const [left,right]=await Promise.all(promoCards.map(card=>card.boundingBox()));
- if(Math.abs(left.height-right.height)>1)throw Error('Rental and watch cards must have equal height');
- // A 65% booking card + 28% delivery card leaves exactly 7% blank space.
- const row=await page.getByTestId('home-pump-rental-promo').boundingBox();
- if(Math.abs(left.width-row.width*0.65)>1)throw Error('Booking card width must be 65%');
- if(Math.abs(right.width-row.width*0.28)>1)throw Error('On Time card width must be 28%');
- if(Math.abs(right.x-(left.x+left.width)-row.width*0.07)>1)throw Error('Promo gap must be 7%');
- if(left.height<36||right.height<36)throw Error('Promo cards shorter than 36dp minimum');
- if(!await page.getByRole('button',{name:'Book Concrete Pump'}).count())throw Error('Booking accessible button missing');
+ if(Math.abs(left.width-240)>1||Math.abs(left.height-50)>1||Math.abs(right.height-50)>1)
+   throw Error('Pump CTA must be 240x50dp and On Time card 50dp: '+JSON.stringify({left,right}));
+ if(width<378){
+   if(Math.abs(right.y-(left.y+left.height)-10)>1)throw Error('Promo cards should stack at a 10dp gap on narrow screens');
+ } else {
+   if(Math.abs(right.y-left.y)>1||Math.abs(right.x-(left.x+left.width)-10)>1)
+     throw Error('Promo cards should share one row at a 10dp gap');
+ }
+ if(!await page.getByRole('button',{name:'Book Your Pump Online!'}).count())throw Error('Accessible pump CTA missing');
  for(const title of ['Quick Actions','Active Projects & Planning','Free Tools & Expert Advice','Supply & Workforce','Track My RMC','Built Better']){
-   const style=await page.getByText(title,{exact:true}).first().evaluate(el=>{const s=getComputedStyle(el);return {size:s.fontSize,height:s.lineHeight,family:s.fontFamily,weight:s.fontWeight};});
-   if(style.size!=='14px'||style.height!=='20px'||!style.family.toLowerCase().includes('roboto')||Number(style.weight)!==700)
+   const style=await page.getByText(title,{exact:true}).first().evaluate(el=>{const s=getComputedStyle(el);return {size:s.fontSize,height:s.lineHeight,family:s.fontFamily};});
+   if(style.size!=='15px'||style.height!=='22px'||!style.family.toLowerCase().includes('raleway-bold'))
      throw Error('Home heading typography regression '+title+': '+JSON.stringify(style));
+ }
+ for(const [title,size,family] of [['Streamline Your Pour','13px','raleway-medium'],['Book Your Pump Online!','15px','raleway-semibold']]){
+   const style=await page.getByText(title,{exact:true}).first().evaluate(el=>{const s=getComputedStyle(el);return {size:s.fontSize,family:s.fontFamily};});
+   if(style.size!==size||!style.family.toLowerCase().includes(family))
+     throw Error('Pump CTA font regression '+title+': '+JSON.stringify(style));
  }
  if(!await page.getByTestId('header-location').count())throw Error('Location header missing');
 
