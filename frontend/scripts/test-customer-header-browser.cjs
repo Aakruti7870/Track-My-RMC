@@ -38,18 +38,18 @@ const out=process.env.HEADER_PREVIEW_DIR||'header-previews';fs.mkdirSync(out,{re
 
   assert.equal(await page.evaluate(()=>window.headerGeoCalls),0,'manual consent triggered GPS');
   let previousRight=0;
-  for(const id of ['header-kyc','header-location','header-qr-disabled','notifications-bell','header-help']){
+  for(const id of ['header-location-refresh','header-location','notifications-bell','header-help']){
    const b=await page.getByTestId(id).boundingBox();assert(b&&b.x>=previousRight-1&&b.x+b.width<=width+1&&b.height>=44,`${id} overlap, clipping or small target at ${width}`);previousRight=b.x+b.width;
   }
-  assert.equal(await page.getByTestId('header-qr-disabled').getAttribute('aria-disabled'),'true');
-  assert.match(await page.getByTestId('header-kyc').getAttribute('aria-label'),/VERIFIED/);
+  assert.equal(await page.getByTestId('header-qr-disabled').count(),0);
+  assert.equal(await page.getByTestId('header-kyc').count(),0);
   await header.screenshot({path:`${out}/header-${scheme}-${width}.png`});
   if(width===390){
-   await page.getByTestId('header-location').click();
-   await page.getByRole('button',{name:'Refresh current location',exact:true}).click();
+   // Header refresh must explain GPS failures and expose manual location selection.
+   await page.getByTestId('header-location-refresh').click();
    await page.getByText('Location permission was denied. Select a city manually.',{exact:true}).waitFor();
    await page.evaluate(()=>{window.headerGeoMode='timeout';});
-   await page.getByRole('button',{name:'Refresh current location',exact:true}).click();
+   await page.getByRole('button',{name:'Refresh current location',exact:true}).last().click();
    await page.getByText('Location is unavailable or timed out. Please retry or select a city.',{exact:true}).waitFor();
    await page.getByTestId('header-manual-location').fill('Panvel');locationFailure=true;
    await page.getByRole('button',{name:'Use selected location',exact:true}).click();
@@ -60,10 +60,8 @@ const out=process.env.HEADER_PREVIEW_DIR||'header-previews';fs.mkdirSync(out,{re
    await page.getByTestId('notifications-bell').click();await page.getByTestId('notif-read-all').click();
    await page.getByTestId('notif-read-all').waitFor({state:'detached'});kyc='PENDING';
    await page.getByTestId('notif-back').click();
-   await page.waitForFunction(()=>document.querySelector('[data-testid="header-kyc"]')?.getAttribute('aria-label')?.includes('PENDING'));
+   assert.equal(await page.getByTestId('header-kyc').count(),0);
    await page.getByTestId('header-unread-dot').waitFor({state:'detached'});
-   await page.getByTestId('header-kyc').click();await page.getByText('KYC status: pending',{exact:true}).waitFor();
-   await page.getByRole('button',{name:'Close dialog',exact:true}).last().click();
    await page.getByTestId('header-help').click();
    await page.getByRole('button',{name:'Customer Support',exact:true}).last().waitFor();await page.getByRole('button',{name:'Delete Account',exact:true}).waitFor();
    assert.equal(await page.getByRole('button',{name:/^(Profile|Settings|Logout)$/}).count(),0);
@@ -79,7 +77,7 @@ const out=process.env.HEADER_PREVIEW_DIR||'header-previews';fs.mkdirSync(out,{re
    await page.getByRole('textbox',{name:'Type "DELETE" to confirm',exact:true}).fill('DELETE');
    assert.notEqual(await submit.getAttribute('aria-disabled'),'true');assert.equal(deletionRequests,0);
   }
-  assert.deepEqual(errors,[]);console.log(`PASS ${scheme} ${width}px: five controls, backend status, QR disabled${width===390?', location errors/retry, unread sync, KYC transition, support and deletion safeguards':''}`);
+  assert.deepEqual(errors,[]);console.log(`PASS ${scheme} ${width}px: four controls, direct GPS refresh, no QR/shield${width===390?', location errors/retry, unread sync, support and deletion safeguards':''}`);
   await context.close();
  }}finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1);});

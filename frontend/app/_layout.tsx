@@ -40,15 +40,10 @@ export default function RootLayout() {
   const [showOpeningArtwork, setShowOpeningArtwork] = useState(true);
   const [iconsLoaded, iconError] = useIconFonts();
   const [fontsLoaded, fontError] = useFonts({
-    "Outfit-SemiBold": require("../assets/fonts/Outfit-SemiBold.ttf"),
-    "Outfit-Bold": require("../assets/fonts/Outfit-Bold.ttf"),
     "Jakarta-Regular": require("../assets/fonts/Jakarta-Regular.ttf"),
     "Jakarta-Medium": require("../assets/fonts/Jakarta-Medium.ttf"),
     "Jakarta-SemiBold": require("../assets/fonts/Jakarta-SemiBold.ttf"),
     "Jakarta-Bold": require("../assets/fonts/Jakarta-Bold.ttf"),
-    "Raleway-Medium": require("../assets/fonts/Raleway-Medium.ttf"),
-    "Raleway-SemiBold": require("../assets/fonts/Raleway-SemiBold.ttf"),
-    "Raleway-Bold": require("../assets/fonts/Raleway-Bold.ttf"),
   });
 
   const iconsReady = iconsLoaded || !!iconError;
