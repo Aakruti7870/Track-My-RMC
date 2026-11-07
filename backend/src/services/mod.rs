@@ -1,10 +1,10 @@
 pub mod auth_service;
-pub mod native_automation;
 pub mod commercial_service;
 pub mod customer_observations;
 pub mod customer_order;
 pub mod dispatch_service;
 pub mod email_service;
+pub mod native_automation;
 pub mod order_service;
 pub mod otp_delivery;
 pub mod payroll_service;
