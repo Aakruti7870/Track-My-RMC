@@ -335,6 +335,73 @@ async fn super_admin_revocation_invalidates_authority_web_session(db: PgPool) {
 }
 
 #[sqlx::test]
+async fn privileged_password_rotation_revokes_session_and_cannot_cross_roles(db: PgPool) {
+    let app = build_app_router(state(db.clone()));
+    let (id, email, secret) = identity(&db, "authority", &["support.view"]).await;
+    let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
+    let (_, logged_in) = call(
+        &app,
+        "/api/authority/auth/verify-totp",
+        None,
+        Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":code})),
+    )
+    .await;
+    let session = logged_in["token"].as_str().unwrap();
+    assert_eq!(
+        call(
+            &app,
+            "/api/admin/auth/change-password",
+            Some(session),
+            Some(json!({
+                "current_password":SYNTHETIC_PASSWORD,
+                "new_password":"Second-Synthetic-Password-For-Isolated-Testing-2026",
+                "code":code,
+                "reason":"Authorized password-rotation regression fixture"
+            })),
+        ).await.0,
+        StatusCode::FORBIDDEN,
+    );
+    assert_eq!(
+        call(
+            &app,
+            "/api/authority/auth/change-password",
+            Some(session),
+            Some(json!({
+                "current_password":"Incorrect account password",
+                "new_password":"Second-Synthetic-Password-For-Isolated-Testing-2026",
+                "code":code,
+                "reason":"Reject incorrect existing password proof"
+            })),
+        ).await.0,
+        StatusCode::UNAUTHORIZED,
+    );
+    let (status, response) = call(
+        &app,
+        "/api/authority/auth/change-password",
+        Some(session),
+        Some(json!({
+            "current_password":SYNTHETIC_PASSWORD,
+            "new_password":"Second-Synthetic-Password-For-Isolated-Testing-2026",
+            "code":code,
+            "reason":"Authorized credential rotation with a fresh authenticator"
+        })),
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(response["session_revoked"], true);
+    assert_eq!(
+        call(&app,"/api/authority/auth/me",Some(session),None).await.0,
+        StatusCode::UNAUTHORIZED,
+    );
+    let password_hash: String = sqlx::query_scalar(
+        "SELECT hashed_password FROM users WHERE id=$1"
+    ).bind(id).fetch_one(&db).await.unwrap();
+    assert!(password_hash.starts_with("$argon2id$"));
+    assert!(trackmyrmc_backend::auth::password::verify_password(
+        "Second-Synthetic-Password-For-Isolated-Testing-2026",&password_hash
+    ).unwrap());
+}
+
+#[sqlx::test]
 async fn plant_admin_cannot_access_global_service_enquiry_control(db: PgPool) {
     let config = state(db.clone());
     let app = build_app_router(config.clone());
