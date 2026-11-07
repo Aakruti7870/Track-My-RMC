@@ -5,7 +5,6 @@ import { VectorSymbol, type VectorSymbolName } from "./VectorSymbol";
 import { useRouter } from "expo-router";
 
 import { useTheme } from "@/src/theme/ThemeProvider";
-import { fonts } from "@/src/theme/tokens";
 import { AppText } from "./ui/AppText";
 
 const CONFIG: Record<
