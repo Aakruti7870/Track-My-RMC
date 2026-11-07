@@ -201,7 +201,15 @@ pub async fn owner_rules(
     .bind(plant)
     .fetch_all(&state.db)
     .await?;
-    Ok(Json(json!({"plant_id":plant,"rules":items})))
+    // An owner opt-in is a saved preference, not proof the worker is active.
+    // Make rollout state explicit so the UI never claims live automation
+    // while the independently gated background worker is disabled.
+    let worker_enabled = std::env::var("NATIVE_AUTOMATION_WORKER_ENABLED")
+        .ok()
+        .as_deref()
+        == Some("true");
+    Ok(Json(json!({"plant_id":plant,"rules":items,
+                   "worker_enabled":worker_enabled})))
 }
 
 pub async fn set_owner_rule(
