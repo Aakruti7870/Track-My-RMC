@@ -867,3 +867,134 @@ async fn reviewer_disable_revokes_current_replaced_and_legacy_access(db: PgPool)
         StatusCode::UNAUTHORIZED
     );
 }
+
+#[sqlx::test]
+async fn native_automation_global_policy_requires_explicit_grant_and_recent_mfa(db: PgPool) {
+    let state = state(db.clone());
+    let router = trackmyrmc_backend::routes::build_app_router(state.clone());
+    let (admin, email, secret) = identity(
+        &db,
+        "central_admin",
+        true,
+        vec!["system.view", "audit.view"],
+    )
+    .await;
+    let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64)
+        .unwrap();
+    let (status, logged_in) = request(
+        &router,
+        "/api/admin/auth/verify-totp",
+        None,
+        Some(json!({"identifier":email,"code":code})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let token = logged_in["token"].as_str().unwrap();
+    assert_eq!(
+        request(
+            &router,
+            "/api/control-center/automation/templates",
+            Some(token),
+            None,
+        )
+        .await
+        .0,
+        StatusCode::OK,
+    );
+    let policy_path =
+        "/api/control-center/automation/templates/ORDER_ACCEPTED_NOTICE/policy";
+    let activate = json!({"published":true,"globally_paused":false});
+
+    // Read-only Central Admin cannot publish or activate a rule.
+    assert_eq!(
+        request(&router, policy_path, Some(token), Some(activate.clone()))
+            .await
+            .0,
+        StatusCode::FORBIDDEN,
+    );
+    sqlx::query(
+        "UPDATE control_center_access
+         SET permissions=ARRAY['system.view','audit.view','automation.manage']
+         WHERE user_id=$1",
+    )
+    .bind(admin)
+    .execute(&db)
+    .await
+    .unwrap();
+
+    // A live Admin session without a fresh MFA step-up is still denied.
+    assert_eq!(
+        request(&router, policy_path, Some(token), Some(activate.clone()))
+            .await
+            .0,
+        StatusCode::FORBIDDEN,
+    );
+    assert_eq!(
+        request(
+            &router,
+            "/api/admin/auth/step-up",
+            Some(token),
+            Some(json!({"code":code})),
+        )
+        .await
+        .0,
+        StatusCode::OK,
+    );
+
+    assert_eq!(
+        request(&router, policy_path, Some(token), Some(activate))
+            .await
+            .0,
+        StatusCode::OK,
+    );
+    let rule: (bool, bool, i32) = sqlx::query_as(
+        "SELECT published,globally_paused,version
+         FROM native_automation_templates
+         WHERE template_key='ORDER_ACCEPTED_NOTICE'",
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert!(rule.0);
+    assert!(!rule.1);
+    assert_eq!(rule.2, 2);
+    let revisions: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM native_automation_template_revisions
+         WHERE template_key='ORDER_ACCEPTED_NOTICE'",
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(revisions, 2);
+
+    // An ordinary plant-level Admin cannot turn the global worker on,
+    // even with a forged list of claimed permissions in the request body.
+    let mobile_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO users(phone,hashed_password,full_name,role)
+         VALUES($1,'unused','Plant Admin','admin') RETURNING id",
+    )
+    .bind(Uuid::new_v4().simple().to_string()[..18].to_string())
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    let mobile = generate_token(
+        mobile_id,
+        "admin",
+        "",
+        None,
+        &state.config.jwt_secret,
+        1,
+    )
+    .unwrap();
+    assert_eq!(
+        request(
+            &router,
+            policy_path,
+            Some(&mobile),
+            Some(json!({"published":false,"globally_paused":true})),
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN,
+    );
+}
