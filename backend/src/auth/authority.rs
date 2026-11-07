@@ -13,6 +13,7 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
+use sha2::Digest;
 use std::ops::Deref;
 
 pub const DELEGABLE: &[&str] = &[
@@ -94,6 +95,86 @@ pub async fn login(
     Json(body): Json<control_center::AdminLogin>,
 ) -> Result<Json<Value>, AppError> {
     control_center::login_for_role(state, body, "authority").await
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AuthorityPasswordEnrollment {
+    pub challenge_token: String,
+    pub password: String,
+    pub code: String,
+}
+
+/// One-time enrollment: approved Authority + delivered email OTP + enrolled TOTP.
+/// A web-only password can only be set while the account has the initial
+/// non-hash sentinel. Existing passwords cannot be reset through this endpoint.
+pub async fn set_initial_password(
+    State(state): State<AppState>,
+    Json(body): Json<AuthorityPasswordEnrollment>,
+) -> Result<Json<Value>, AppError> {
+    if !(16..=128).contains(&body.password.len())
+        || body.challenge_token.len() != 48
+        || body.code.len() != 6
+        || !body.code.bytes().all(|c| c.is_ascii_digit())
+    {
+        return Err(AppError::BadRequest(
+            "Initial Authority password requires 16-128 bytes and an authenticator code".into(),
+        ));
+    }
+    let hash = hex::encode(sha2::Sha256::digest(body.challenge_token.as_bytes()));
+    let user: Option<uuid::Uuid> = sqlx::query_scalar(
+        "SELECT c.user_id FROM staff_mfa_challenges c
+         JOIN users u ON u.id=c.user_id
+         JOIN control_center_access a ON a.user_id=u.id
+         JOIN user_totp_credentials t ON t.user_id=u.id AND t.is_enabled=TRUE
+         WHERE c.token_hash=$1 AND c.purpose='login' AND c.consumed_at IS NULL
+           AND c.expires_at>NOW() AND c.attempts<c.max_attempts
+           AND u.role='authority' AND u.is_active AND u.work_email_verified_at IS NOT NULL
+           AND u.hashed_password='!web-only-no-password!' AND a.approved=TRUE",
+    )
+    .bind(&hash)
+    .fetch_optional(&state.db)
+    .await?;
+    let user = user.ok_or_else(|| AppError::Unauthorized(
+        "Authority enrollment challenge is invalid or expired".into()
+    ))?;
+    if let Err(error) =
+        crate::auth::totp::verify_staff_totp_login(&state.db, user, &body.code).await
+    {
+        sqlx::query(
+            "UPDATE staff_mfa_challenges SET attempts=attempts+1
+             WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>NOW()"
+        ).bind(&hash).execute(&state.db).await?;
+        return Err(error);
+    }
+    let password_hash = crate::auth::password::hash_password(&body.password)?;
+    let mut tx = state.db.begin().await?;
+    let consumed: Option<uuid::Uuid> = sqlx::query_scalar(
+        "UPDATE staff_mfa_challenges SET consumed_at=clock_timestamp()
+         WHERE token_hash=$1 AND user_id=$2 AND purpose='login'
+           AND consumed_at IS NULL AND expires_at>NOW() AND attempts<max_attempts
+         RETURNING user_id"
+    ).bind(&hash).bind(user).fetch_optional(&mut *tx).await?;
+    if consumed != Some(user) {
+        return Err(AppError::Unauthorized("Authority enrollment was already consumed".into()));
+    }
+    let updated = sqlx::query(
+        "UPDATE users SET hashed_password=$2,updated_at=NOW()
+         WHERE id=$1 AND role='authority' AND is_active=TRUE
+           AND hashed_password='!web-only-no-password!'
+           AND work_email_verified_at IS NOT NULL
+           AND EXISTS(SELECT 1 FROM control_center_access a
+                      WHERE a.user_id=users.id AND a.approved=TRUE)"
+    ).bind(user).bind(password_hash).execute(&mut *tx).await?;
+    if updated.rows_affected() != 1 {
+        return Err(AppError::Forbidden("Authority initial password cannot be reset here".into()));
+    }
+    sqlx::query(
+        "INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata)
+         VALUES($1,'authority.password.enrolled','authority',$2,'{}')"
+    ).bind(user).bind(user.to_string()).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(Json(json!({"success":true,"message":"Authority password enrolled. Sign in using password and authenticator."})))
 }
 
 pub async fn me(authority: WebAuthority) -> Json<Value> {
