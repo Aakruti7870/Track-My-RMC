@@ -213,18 +213,18 @@ pub async fn set_owner_rule(
     let mut tx = state.db.begin().await?;
     // Hold live active-Owner authorization until the configuration commits.
     super::plant_staff_manager::lock_authorization(&mut tx, &owner, plant, "staff").await?;
-    let published: Option<bool> = sqlx::query_scalar(
-        "SELECT published FROM native_automation_templates WHERE template_key=$1",
+    let policy: Option<(bool, bool)> = sqlx::query_as(
+        "SELECT published,globally_paused FROM native_automation_templates WHERE template_key=$1",
     )
     .bind(&key)
     .fetch_optional(&mut *tx)
     .await?;
-    let Some(published) = published else {
+    let Some((published, globally_paused)) = policy else {
         return Err(AppError::NotFound("Unknown automation template".into()));
     };
-    if body.enabled && !published {
+    if body.enabled && (!published || globally_paused) {
         return Err(AppError::Conflict(
-            "Only centrally published automation templates can be enabled".into(),
+            "Only centrally published, unpaused automation templates can be enabled".into(),
         ));
     }
 
