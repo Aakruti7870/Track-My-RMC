@@ -86,7 +86,8 @@ pub async fn tick(db: &PgPool) -> Result<usize, sqlx::Error> {
              ORDER BY available_at,id LIMIT 1 FOR UPDATE SKIP LOCKED",
         )
         .fetch_optional(&mut *tx)
-        .await? else {
+        .await?
+        else {
             tx.commit().await?;
             break;
         };
@@ -114,7 +115,15 @@ pub async fn tick(db: &PgPool) -> Result<usize, sqlx::Error> {
         .await?;
 
         if !allowed {
-            record_outcome(&mut tx, id, attempts, "SKIPPED", Some("rule_disabled"), None).await?;
+            record_outcome(
+                &mut tx,
+                id,
+                attempts,
+                "SKIPPED",
+                Some("rule_disabled"),
+                None,
+            )
+            .await?;
             tx.commit().await?;
             continue;
         }
@@ -128,30 +137,53 @@ pub async fn tick(db: &PgPool) -> Result<usize, sqlx::Error> {
         .fetch_optional(&mut *tx)
         .await?;
         if action.as_deref() != Some("IN_APP_NOTIFICATION") {
-            record_outcome(&mut tx, id, attempts, "SKIPPED", Some("action_not_allowed"), None)
-                .await?;
+            record_outcome(
+                &mut tx,
+                id,
+                attempts,
+                "SKIPPED",
+                Some("action_not_allowed"),
+                None,
+            )
+            .await?;
             tx.commit().await?;
             continue;
         }
 
         // PostgreSQL SAVEPOINT permits controlled retry after a database
         // statement error, while keeping the claimed job row locked.
-        sqlx::query("SAVEPOINT native_delivery").execute(&mut *tx).await?;
+        sqlx::query("SAVEPOINT native_delivery")
+            .execute(&mut *tx)
+            .await?;
         let result = deliver_internal_notification(&mut tx, plant, order, &template).await;
         match result {
             Ok(Some(notification_id)) => {
                 record_outcome(
-                    &mut tx, id, attempts, "COMPLETED", None, Some(notification_id),
-                ).await?;
+                    &mut tx,
+                    id,
+                    attempts,
+                    "COMPLETED",
+                    None,
+                    Some(notification_id),
+                )
+                .await?;
                 completed += 1;
             }
             Ok(None) => {
                 record_outcome(
-                    &mut tx, id, attempts, "SKIPPED", Some("recipient_unavailable"), None,
-                ).await?;
+                    &mut tx,
+                    id,
+                    attempts,
+                    "SKIPPED",
+                    Some("recipient_unavailable"),
+                    None,
+                )
+                .await?;
             }
             Err(err) => {
-                sqlx::query("ROLLBACK TO SAVEPOINT native_delivery").execute(&mut *tx).await?;
+                sqlx::query("ROLLBACK TO SAVEPOINT native_delivery")
+                    .execute(&mut *tx)
+                    .await?;
                 let is_final = attempts >= max_attempts;
                 let next_status = if is_final { "DEAD_LETTER" } else { "RETRY" };
                 let safe_error = err.to_string().chars().take(500).collect::<String>();
@@ -206,7 +238,10 @@ async fn deliver_internal_notification(
     };
     let (title, message) = match template {
         ACCEPTED => ("Order accepted", "Your RMC plant has accepted your order."),
-        REJECTED => ("Order rejected", "The RMC plant did not accept your order. Please review the order details."),
+        REJECTED => (
+            "Order rejected",
+            "The RMC plant did not accept your order. Please review the order details.",
+        ),
         _ => return Ok(None),
     };
     let notification: Uuid = sqlx::query_scalar(
