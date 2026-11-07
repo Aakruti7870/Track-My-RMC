@@ -300,7 +300,9 @@ async fn plant_admin_cannot_access_global_service_enquiry_control(db: PgPool) {
             Some(web_token),
             Some(json!({"status":"CONTACTED","reason":"Insufficient capabilities"})),
             "PATCH",
-        ).await.0,
+        )
+        .await
+        .0,
         StatusCode::FORBIDDEN,
     );
 }
