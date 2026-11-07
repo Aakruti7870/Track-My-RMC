@@ -77,6 +77,7 @@ pub async fn schedule_due_reminders(db: &PgPool) -> Result<u64, sqlx::Error> {
          FROM orders o
          JOIN rmc_plants p ON p.id=o.plant_id AND p.is_active
          JOIN users u ON u.id=p.owner_id AND u.is_active
+           AND u.role IN ('owner','plant_owner')
          JOIN native_automation_plant_rules r
            ON r.plant_id=o.plant_id AND r.template_key=$1 AND r.enabled
          JOIN native_automation_templates t
@@ -332,6 +333,7 @@ async fn create_review_task(
         "SELECT p.owner_id FROM orders o
          JOIN rmc_plants p ON p.id=o.plant_id AND p.is_active
          JOIN users u ON u.id=p.owner_id AND u.is_active
+           AND u.role IN ('owner','plant_owner')
          WHERE o.id=$1 AND o.plant_id=$2 AND o.status='pending'
          FOR SHARE OF o,p,u",
     )
@@ -366,13 +368,24 @@ async fn deliver_internal_notification(
 ) -> Result<Option<Uuid>, sqlx::Error> {
     let (recipient, title, message): (Option<Uuid>, &str, &str) = match template {
         ACCEPTED | REJECTED => {
+            // Prevent queued acceptance/rejection notifications from
+            // misrepresenting a later cancellation or changed order state.
+            // Hold the order share lock through notification insertion.
             let customer: Option<Uuid> = sqlx::query_scalar(
                 "SELECT o.customer_id FROM orders o
                  JOIN users u ON u.id=o.customer_id AND u.is_active
-                 WHERE o.id=$1 AND o.plant_id=$2",
+                 WHERE o.id=$1 AND o.plant_id=$2
+                   AND (
+                     ($3='ORDER_ACCEPTED_NOTICE' AND o.status IN
+                       ('confirmed','scheduled','in_production',
+                        'ready_to_dispatch','dispatched','delivered','completed'))
+                     OR ($3='ORDER_REJECTED_NOTICE' AND o.status='rejected')
+                   )
+                 FOR SHARE OF o,u",
             )
             .bind(order)
             .bind(plant)
+            .bind(template)
             .fetch_optional(&mut **tx)
             .await?;
             if template == ACCEPTED {
@@ -396,6 +409,7 @@ async fn deliver_internal_notification(
                 "SELECT p.owner_id FROM orders o
                  JOIN rmc_plants p ON p.id=o.plant_id AND p.is_active
                  JOIN users u ON u.id=p.owner_id AND u.is_active
+                   AND u.role IN ('owner','plant_owner')
                  WHERE o.id=$1 AND o.plant_id=$2 AND o.status='pending'
                  FOR SHARE OF o,p,u",
             )

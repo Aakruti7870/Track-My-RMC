@@ -299,6 +299,12 @@ META_GRAPH_API_VERSION="$(printf '%s' "$APP_JSON" | jq -r '.META_GRAPH_API_VERSI
 PLAY_SIGNING_SHA256="$(printf '%s' "$APP_JSON" | jq -r '.PLAY_SIGNING_SHA256 // empty')"
 PLAY_REVIEW_ACCESS_CODE="$(printf '%s' "$APP_JSON" | jq -r '.PLAY_REVIEW_ACCESS_CODE // empty')"
 GOOGLE_PLACES_API_KEY="$(printf '%s' "$APP_JSON" | jq -r '.GOOGLE_PLACES_API_KEY // empty')"
+# A single existing Secrets Manager key controls the native worker. Existing
+# production releases remain fail-closed unless explicitly approved/activated.
+NATIVE_AUTOMATION_WORKER_ENABLED="$(printf '%s' "$APP_JSON" | jq -er '
+  (.NATIVE_AUTOMATION_WORKER_ENABLED // false)
+  | if type == "boolean" then tostring else error("Invalid native automation worker flag") end
+')"
 # DigiLocker activation is opt-in, environment-scoped and uses different
 # credentials for Test versus Live. Generic KYC_API_KEY values are NOT fallback.
 TRACKMYRMC_KYC_ENABLED="$(printf '%s' "$APP_JSON" | jq -r '.TRACKMYRMC_KYC_ENABLED // "false" | tostring')"
@@ -441,6 +447,7 @@ META_GRAPH_API_VERSION=$META_GRAPH_API_VERSION
 PLAY_SIGNING_SHA256=$PLAY_SIGNING_SHA256
 PLAY_REVIEW_ACCESS_CODE=$PLAY_REVIEW_ACCESS_CODE
 GOOGLE_PLACES_API_KEY=$GOOGLE_PLACES_API_KEY
+NATIVE_AUTOMATION_WORKER_ENABLED=$NATIVE_AUTOMATION_WORKER_ENABLED
 TRACKMYRMC_KYC_ENABLED=$TRACKMYRMC_KYC_ENABLED
 TRACKMYRMC_KYC_ENV=$TRACKMYRMC_KYC_ENV
 TRACKMYRMC_KYC_LIVE_APPROVED=$TRACKMYRMC_KYC_LIVE_APPROVED

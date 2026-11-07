@@ -56,6 +56,7 @@ pub async fn scan_due(db: &PgPool) -> Result<u64, sqlx::Error> {
          FROM events e
          JOIN rmc_plants p ON p.id=e.plant_id AND p.is_active
          JOIN users owner ON owner.id=p.owner_id AND owner.is_active
+           AND owner.role IN ('owner','plant_owner')
          JOIN native_automation_plant_rules r
            ON r.plant_id=e.plant_id AND r.template_key=e.template_key AND r.enabled
          JOIN native_automation_templates t ON t.template_key=e.template_key
@@ -63,6 +64,13 @@ pub async fn scan_due(db: &PgPool) -> Result<u64, sqlx::Error> {
            AND t.action_type='CREATE_DOMAIN_REVIEW' AND t.conditions='{}'::jsonb
          WHERE NOT EXISTS(SELECT 1 FROM native_automation_jobs j
                           WHERE j.event_key=e.event_key)
+           AND NOT EXISTS(SELECT 1 FROM native_automation_domain_tasks d
+               WHERE d.plant_id=e.plant_id AND d.template_key=e.template_key
+                 AND d.domain_entity_id=e.entity_id AND d.status IN ('OPEN','ACKNOWLEDGED'))
+           AND NOT EXISTS(SELECT 1 FROM native_automation_jobs queued
+               WHERE queued.plant_id=e.plant_id AND queued.template_key=e.template_key
+                 AND queued.domain_entity_id=e.entity_id
+                 AND queued.status IN ('PENDING','RETRY'))
          ORDER BY e.template_key,e.event_key LIMIT 150
          ON CONFLICT(event_key) DO NOTHING",
     )
@@ -223,6 +231,7 @@ pub async fn tick(db: &PgPool) -> Result<usize, sqlx::Error> {
              JOIN native_automation_plant_rules r ON r.template_key=t.template_key
              JOIN rmc_plants p ON p.id=r.plant_id
              JOIN users u ON u.id=p.owner_id AND u.is_active
+               AND u.role IN ('owner','plant_owner')
              WHERE t.template_key=$1 AND r.plant_id=$2 AND r.enabled
                AND t.published AND NOT t.globally_paused AND p.is_active
                AND t.action_type='CREATE_DOMAIN_REVIEW'
@@ -278,8 +287,10 @@ pub async fn tick(db: &PgPool) -> Result<usize, sqlx::Error> {
         let delivered = async {
             sqlx::query(
                 "INSERT INTO native_automation_domain_tasks
-                 (source_job_id,plant_id,domain_entity_id,template_key,assigned_to)
-                 VALUES($1,$2,$3,$4,$5)
+                 (source_job_id,plant_id,domain_entity_id,template_key,assigned_to,next_escalation_at)
+                 SELECT $1,$2,$3,$4,$5,NOW()+(r.sla_minutes*INTERVAL '1 minute')
+                 FROM native_automation_plant_rules r
+                 WHERE r.plant_id=$2 AND r.template_key=$4 AND r.enabled
                  ON CONFLICT(source_job_id) DO NOTHING",
             )
             .bind(id)
@@ -339,7 +350,8 @@ pub async fn tick(db: &PgPool) -> Result<usize, sqlx::Error> {
         }
         tx.commit().await?;
     }
-    Ok(processed)
+    let transitions = super::native_closed_loop::reconcile(db).await?;
+    Ok(processed + transitions)
 }
 
 #[cfg(test)]
