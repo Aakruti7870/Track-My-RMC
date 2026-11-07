@@ -25,6 +25,10 @@ still requires `NATIVE_AUTOMATION_WORKER_ENABLED=true` and remains OFF by defaul
 The worker never writes operational source records. It only updates its own
 tasks, alerts and audit events. An action and its event commit atomically;
 `FOR UPDATE SKIP LOCKED` prevents concurrent duplicate notifications.
+Lifecycle event UPDATEs are rejected by a database trigger, except the nested
+foreign-key scrub of an actor identifier on account deletion. Events are
+retained **while their parent task and plant exist**; parent deletion cascades
+are intentional for data-deletion compliance, not permanent legal audit retention.
 
 Only the current active owner of the same active plant can receive escalations;
 global pause, unpublished templates, and plant opt-out prevent new escalation.
