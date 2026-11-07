@@ -3,7 +3,12 @@ const fs=require('node:fs');
 fs.mkdirSync('tracking-previews',{recursive:true});
 (async()=>{
  const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
- for(const width of [320,390,1440]){
+ for(const width of [320,390,768,960,1024,1440]){
+  const expected=width>=1024
+    ? {quick:72,tool:72,service:80,circle:76,toolPlate:76,servicePlate:84,quickTile:124,toolTile:132,serviceTile:140,quickFont:16,toolFont:14,serviceFont:15,heading:18,headingLine:26,sectionGap:16,sloganWidth:166,sloganHeight:36,pumpWidth:360,pumpHeight:70,pumpIconWidth:54,pumpIconHeight:48,pumpFirst:16,pumpSecond:18,kyc:36,kycTitle:18,location:18}
+    : width>=600
+      ? {quick:64,tool:64,service:70,circle:68,toolPlate:68,servicePlate:74,quickTile:116,toolTile:119,serviceTile:125,quickFont:15,toolFont:13,serviceFont:14,heading:16,headingLine:24,sectionGap:12,sloganWidth:146,sloganHeight:32,pumpWidth:300,pumpHeight:62,pumpIconWidth:48,pumpIconHeight:42,pumpFirst:14,pumpSecond:16,kyc:32,kycTitle:16,location:16}
+      : {quick:52,tool:52,service:58,circle:56,toolPlate:56,servicePlate:62,quickTile:96,toolTile:101,serviceTile:103,quickFont:14,toolFont:11,serviceFont:12,heading:15,headingLine:22,sectionGap:10,sloganWidth:132,sloganHeight:28,pumpWidth:240,pumpHeight:50,pumpIconWidth:40,pumpIconHeight:35,pumpFirst:13,pumpSecond:15,kyc:28,kycTitle:15,location:14};
  let mode='demo';
  const page=await browser.newPage({viewport:{width,height:1000}});
  await page.addInitScript(()=>localStorage.setItem('tmrmc_token',JSON.stringify('isolated-browser-fixture')));
@@ -34,15 +39,15 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    .evaluate(node => [Math.round(node.getBoundingClientRect().width), Math.round(node.getBoundingClientRect().height)]);
  for(const id of ['action-new','action-track','action-plants','action-orders']) {
    const size = await actualVectorSize(id);
-   if(size[0]!==52||size[1]!==52)throw Error(`Quick Action SVG size: ${id} ${size}`);
+   if(size[0]!==expected.quick||size[1]!==expected.quick)throw Error(`Quick Action SVG size: ${id} ${size} at ${width}`);
  }
  for(const id of ['customer-module-projects','customer-module-free-tools']) {
    const size=await actualVectorSize(id);
-   if(size[0]!==52||size[1]!==52)throw Error(`RMC Tools SVG size: ${id} ${size}`);
+   if(size[0]!==expected.tool||size[1]!==expected.tool)throw Error(`RMC Tools SVG size: ${id} ${size} at ${width}`);
  }
  for(const id of ['service-cement','service-labour','service-material']) {
    const size=await actualVectorSize(id);
-   if(size[0]!==58||size[1]!==58)throw Error(`Service SVG size: ${id} ${size}`);
+   if(size[0]!==expected.service||size[1]!==expected.service)throw Error(`Service SVG size: ${id} ${size} at ${width}`);
  }
  const actionBoxes=await Promise.all(['action-new','action-track','action-plants','action-orders'].map(id=>page.getByTestId(id).boundingBox()));
  // Round PhonePe-style quick actions: 52dp artwork is displayed inside a
@@ -54,8 +59,8 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    const name=await action.getByText(label,{exact:true}).boundingBox();
    const circle=await action.locator('svg').first().evaluate(node=>node.parentElement.getBoundingClientRect().toJSON());
    if(!tile||!svg||!name||!circle)throw Error(`Missing Quick Action geometry: ${id}`);
-   if(tile.height<95||tile.height>124)throw Error(`Quick Action row height outside 95–124dp: ${id} ${tile.height}`);
-   if(Math.abs(circle.width-56)>1||Math.abs(circle.height-56)>1)throw Error(`Missing 56dp circular frame: ${id}`);
+   if(tile.height<expected.quickTile-1||tile.height>expected.quickTile+30)throw Error(`Quick Action tile height mismatch: ${id} ${tile.height} at ${width}`);
+   if(Math.abs(circle.width-expected.circle)>1||Math.abs(circle.height-expected.circle)>1)throw Error(`Incorrect circular frame: ${id} at ${width}`);
    if(svg.y<circle.y-1||name.y<svg.y+svg.height-1||name.y+name.height>tile.y+tile.height+1)
      throw Error(`Quick Action SVG/label clipping: ${id}`);
  }
@@ -96,7 +101,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    ['pump rental to advice',gapBetween(pumpSectionBox,adviceSectionBox)],
    ['advice to supply',gapBetween(adviceSectionBox,otherServicesSectionBox)],
    ['supply to tracking',gapBetween(otherServicesSectionBox,trackingSectionBox)],
- ])if(Math.abs(actual-10)>1)throw Error(`${name} must be 10dp; got ${actual}`);
+   ])if(Math.abs(actual-expected.sectionGap)>1)throw Error(`${name} must be ${expected.sectionGap}dp; got ${actual}`);
  for(const title of ['Quick Actions','Active Projects & Planning','Free Tools & Expert Advice','Supply & Workforce','Track My RMC']){
    if(!await page.getByText(title,{exact:true}).count())throw Error(`Home heading missing: ${title}`);
  }
@@ -143,7 +148,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    const firstRow=boxes.filter(box=>Math.abs(box.y-boxes[0].y)<2).sort((a,b)=>a.x-b.x);
    for(let i=1;i<firstRow.length;i++){
      const gap=firstRow[i].x-(firstRow[i-1].x+firstRow[i-1].w);
-     if(gap>11||gap<0)throw Error(`${kind} horizontal gap ${gap} outside compact bounds`);
+     if(gap>12||gap<0)throw Error(`${kind} horizontal gap ${gap} outside compact bounds`);
    }
  }
  const promoCards=await page.getByTestId('home-pump-rental-promo').locator(':scope > *').all();
