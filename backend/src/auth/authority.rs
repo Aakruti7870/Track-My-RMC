@@ -63,7 +63,9 @@ where
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, AppError> {
         let user = AuthUser::from_request_parts(parts, state).await?;
         if user.role != "authority" {
-            return Err(AppError::Forbidden("Dedicated Authority web session required".into()));
+            return Err(AppError::Forbidden(
+                "Dedicated Authority web session required".into(),
+            ));
         }
         let token_hash = control_center::token_hash(&parts.headers)?;
         let app = AppState::from_ref(state);
@@ -159,7 +161,9 @@ pub async fn step_up(
     authority.require("kyc.review")?;
     let code = body.code.trim();
     if code.len() != 6 || !code.bytes().all(|c| c.is_ascii_digit()) {
-        return Err(AppError::Unauthorized("A six-digit authenticator code is required".into()));
+        return Err(AppError::Unauthorized(
+            "A six-digit authenticator code is required".into(),
+        ));
     }
     let attempts: i32 = sqlx::query_scalar(
         "UPDATE control_center_sessions SET
@@ -175,7 +179,9 @@ pub async fn step_up(
     .fetch_one(&state.db)
     .await?;
     if attempts > 5 {
-        return Err(AppError::Forbidden("Authenticator verification temporarily locked".into()));
+        return Err(AppError::Forbidden(
+            "Authenticator verification temporarily locked".into(),
+        ));
     }
     crate::auth::totp::verify_staff_totp_login(&state.db, authority.user_id, code).await?;
     sqlx::query(
@@ -255,11 +261,19 @@ mod tests {
     #[test]
     fn delegated_permissions_never_include_platform_root_capabilities() {
         for forbidden in [
-            "admin_access.manage", "session.view", "audit.view",
-            "automation.manage", "reviewer_access.manage",
-            "payment.manage", "owner.assign", "plant_owners.manage",
+            "admin_access.manage",
+            "session.view",
+            "audit.view",
+            "automation.manage",
+            "reviewer_access.manage",
+            "payment.manage",
+            "owner.assign",
+            "plant_owners.manage",
         ] {
-            assert!(!is_delegable(forbidden), "{forbidden} must remain Central Admin only");
+            assert!(
+                !is_delegable(forbidden),
+                "{forbidden} must remain Central Admin only"
+            );
         }
         assert!(is_delegable("kyc.review"));
         assert!(is_delegable("support.view"));
