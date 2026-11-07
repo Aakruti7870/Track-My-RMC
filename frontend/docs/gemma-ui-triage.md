@@ -5,7 +5,7 @@ This note records which Gemma full-application findings are accepted, rejected, 
 ## Locked product boundary
 
 - Central/Super Admin control-plane access is web-only through the dedicated Control Center after restricted MFA bootstrap and re-authentication.
-- Authority remains an operational Plant Staff role and continues through the approved Plant Staff email/MFA authentication flow. Authority is not a Central Admin and does not receive Control Center provenance.
+- Authority is a separate delegated web-only privileged role, controlled by Central Admin approval and scoped permissions. Email OTP may establish first-time authenticator enrollment, but mobile staff authentication cannot issue Authority tokens and Authority never receives Central Admin provenance.
 - Mobile must not add a `central_admin` route/directory or expose Authority as a Google Play reviewer identity. Authority operational authentication is preserved even though former public Authority control-plane pages are not restored to the mobile route tree.
 - Plant-side `admin` and `accountant` are legitimate operational mobile roles and must not be removed merely because their names sound privileged.
 - Authentication, six-digit OTP, KYC/DigiLocker, payments, orders, tracking, role routing and Play policy behavior remain protected.
