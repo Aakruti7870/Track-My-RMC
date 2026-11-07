@@ -373,6 +373,9 @@ pub async fn place_with_preview(
     if !req.save_draft {
         sqlx::query("INSERT INTO notifications(user_id,title,body,notification_type,reference_id) VALUES($1,$2,$3,'new_order',$4)")
             .bind(validated.owner).bind(format!("New order {}",order.order_number)).bind(format!("{} ordered {} m³ of {}",validated.name,req.quantity_m3,req.concrete_grade)).bind(order.id.to_string()).execute(&mut *tx).await?;
+        // Native review task is an optional, separate internal action. The
+        // existing owner notification is intentionally preserved.
+        crate::services::native_automation::enqueue_order_submitted(&mut tx, order.id).await?;
     }
     tx.commit().await?;
     Ok(order)

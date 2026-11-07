@@ -19,6 +19,7 @@ pub mod hr_routes;
 pub mod loads_routes;
 pub mod maps_routes;
 pub mod master_data_routes;
+pub mod native_automation_routes;
 pub mod notifications;
 pub mod owner_access;
 pub mod owner_routes;
@@ -1197,6 +1198,55 @@ pub fn build_app_router(state: AppState) -> Router {
         .route(
             "/api/control-center/summary",
             get(control_center_routes::get_portal_summary),
+        )
+        // --- Native Rust automation (no external automation engine) ---
+        .route(
+            "/api/control-center/automation/templates",
+            get(native_automation_routes::admin_templates),
+        )
+        .route(
+            "/api/control-center/automation/templates/:template_key/policy",
+            post(native_automation_routes::set_template_policy),
+        )
+        .route(
+            "/api/control-center/automation/templates/:template_key/conditions",
+            put(native_automation_routes::admin_set_conditions),
+        )
+        .route(
+            "/api/control-center/automation/templates/:template_key/revisions",
+            get(native_automation_routes::admin_revisions),
+        )
+        .route(
+            "/api/control-center/automation/jobs",
+            get(native_automation_routes::admin_jobs),
+        )
+        .route(
+            "/api/control-center/automation/health",
+            get(native_automation_routes::admin_health),
+        )
+        .route(
+            "/api/control-center/automation/jobs/:job_id/requeue",
+            post(native_automation_routes::admin_requeue_dead_letter),
+        )
+        .route(
+            "/api/owner/plants/:plant_id/automation/tasks",
+            get(native_automation_routes::owner_tasks),
+        )
+        .route(
+            "/api/owner/plants/:plant_id/automation/history",
+            get(native_automation_routes::owner_history),
+        )
+        .route(
+            "/api/owner/plants/:plant_id/automation/domain-tasks/:task_id/acknowledge",
+            post(native_automation_routes::owner_acknowledge_domain_task),
+        )
+        .route(
+            "/api/owner/plants/:plant_id/automation/rules",
+            get(native_automation_routes::owner_rules),
+        )
+        .route(
+            "/api/owner/plants/:plant_id/automation/rules/:template_key",
+            put(native_automation_routes::set_owner_rule),
         )
         // --- Order Status Automation Queue & Worker Endpoints ---
         .route(

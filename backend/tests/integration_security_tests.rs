@@ -867,3 +867,353 @@ async fn reviewer_disable_revokes_current_replaced_and_legacy_access(db: PgPool)
         StatusCode::UNAUTHORIZED
     );
 }
+
+#[sqlx::test]
+async fn native_automation_global_policy_requires_explicit_grant_and_recent_mfa(db: PgPool) {
+    let state = state(db.clone());
+    let router = trackmyrmc_backend::routes::build_app_router(state.clone());
+    let (admin, email, secret) = identity(
+        &db,
+        "central_admin",
+        true,
+        vec!["system.view", "audit.view"],
+    )
+    .await;
+    let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
+    let (status, logged_in) = request(
+        &router,
+        "/api/admin/auth/verify-totp",
+        None,
+        Some(json!({"identifier":email,"code":code})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let token = logged_in["token"].as_str().unwrap();
+    assert_eq!(
+        request(
+            &router,
+            "/api/control-center/automation/templates",
+            Some(token),
+            None,
+        )
+        .await
+        .0,
+        StatusCode::OK,
+    );
+    let policy_path = "/api/control-center/automation/templates/ORDER_ACCEPTED_NOTICE/policy";
+    let activate = json!({"published":true,"globally_paused":false});
+
+    // Read-only Central Admin cannot publish or activate a rule.
+    assert_eq!(
+        request(&router, policy_path, Some(token), Some(activate.clone()))
+            .await
+            .0,
+        StatusCode::FORBIDDEN,
+    );
+    sqlx::query(
+        "UPDATE control_center_access
+         SET permissions=ARRAY['system.view','audit.view','automation.manage']
+         WHERE user_id=$1",
+    )
+    .bind(admin)
+    .execute(&db)
+    .await
+    .unwrap();
+
+    // A live Admin session without a fresh MFA step-up is still denied.
+    assert_eq!(
+        request(&router, policy_path, Some(token), Some(activate.clone()))
+            .await
+            .0,
+        StatusCode::FORBIDDEN,
+    );
+    assert_eq!(
+        request(
+            &router,
+            "/api/admin/auth/step-up",
+            Some(token),
+            Some(json!({"code":code})),
+        )
+        .await
+        .0,
+        StatusCode::OK,
+    );
+
+    assert_eq!(
+        request(&router, policy_path, Some(token), Some(activate))
+            .await
+            .0,
+        StatusCode::OK,
+    );
+    let rule: (bool, bool, i32) = sqlx::query_as(
+        "SELECT published,globally_paused,version
+         FROM native_automation_templates
+         WHERE template_key='ORDER_ACCEPTED_NOTICE'",
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert!(rule.0);
+    assert!(!rule.1);
+    assert_eq!(rule.2, 2);
+    let revisions: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM native_automation_template_revisions
+         WHERE template_key='ORDER_ACCEPTED_NOTICE'",
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(revisions, 2);
+
+    // An ordinary plant-level Admin cannot turn the global worker on,
+    // even with a forged list of claimed permissions in the request body.
+    let mobile_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO users(phone,hashed_password,full_name,role)
+         VALUES($1,'unused','Plant Admin','admin') RETURNING id",
+    )
+    .bind(Uuid::new_v4().simple().to_string()[..18].to_string())
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    let mobile = generate_token(mobile_id, "admin", "", None, &state.config.jwt_secret, 1).unwrap();
+    assert_eq!(
+        request(
+            &router,
+            policy_path,
+            Some(&mobile),
+            Some(json!({"published":false,"globally_paused":true})),
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN,
+    );
+}
+
+#[sqlx::test]
+async fn native_automation_plant_settings_reject_cross_tenant_and_staff_writes(db: PgPool) {
+    let state = state(db.clone());
+    let router = trackmyrmc_backend::routes::build_app_router(state.clone());
+    let (owner_a, _, _) = identity(&db, "owner", false, vec![]).await;
+    let (owner_b, _, _) = identity(&db, "owner", false, vec![]).await;
+    let (staff, _, _) = identity(&db, "dispatcher", false, vec![]).await;
+    let plant_a: Uuid = sqlx::query_scalar(
+        "INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,
+            address_line,city,state,pincode,contact_phone)
+         VALUES($1,'Automation A',$2,19,73,'A','Panvel','Maharashtra','410206','0000000000')
+         RETURNING id",
+    )
+    .bind(owner_a)
+    .bind(Uuid::new_v4().simple().to_string()[..14].to_string())
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    let plant_b: Uuid = sqlx::query_scalar(
+        "INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,
+            address_line,city,state,pincode,contact_phone)
+         VALUES($1,'Automation B',$2,19,73,'B','Panvel','Maharashtra','410206','0000000000')
+         RETURNING id",
+    )
+    .bind(owner_b)
+    .bind(Uuid::new_v4().simple().to_string()[..14].to_string())
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    let owner_token =
+        generate_token(owner_a, "owner", "", None, &state.config.jwt_secret, 1).unwrap();
+    // Activate the operational assignment so the access check reaches
+    // the automation endpoint rather than failing at session validation.
+    sqlx::query(
+        "INSERT INTO plant_staff(plant_id,user_id,role)
+         VALUES($1,$2,'dispatcher')",
+    )
+    .bind(plant_a)
+    .bind(staff)
+    .execute(&db)
+    .await
+    .unwrap();
+    let staff_token =
+        generate_token(staff, "dispatcher", "", None, &state.config.jwt_secret, 1).unwrap();
+    let path_a = format!("/api/owner/plants/{plant_a}/automation/rules/ORDER_PENDING_REMINDER");
+    let path_b = format!("/api/owner/plants/{plant_b}/automation/rules/ORDER_PENDING_REMINDER");
+
+    async fn update(app: &Router, path: &str, token: &str, enabled: bool) -> StatusCode {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(path)
+                    .method("PUT")
+                    .header("Authorization", format!("Bearer {token}"))
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(
+                        json!({"enabled":enabled,"reminder_after_minutes":60}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        response.status()
+    }
+
+    // No published template is available to activate by default.
+    assert_eq!(
+        update(&router, &path_a, &owner_token, true).await,
+        StatusCode::CONFLICT,
+    );
+    sqlx::query(
+        "UPDATE native_automation_templates SET published=TRUE
+         WHERE template_key='ORDER_PENDING_REMINDER'",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+    // A centrally paused template must not be enabled by a direct API call.
+    assert_eq!(
+        update(&router, &path_a, &owner_token, true).await,
+        StatusCode::CONFLICT,
+    );
+    sqlx::query(
+        "UPDATE native_automation_templates SET globally_paused=FALSE
+         WHERE template_key='ORDER_PENDING_REMINDER'",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+    assert_eq!(
+        update(&router, &path_a, &owner_token, true).await,
+        StatusCode::OK,
+    );
+    assert_eq!(
+        update(&router, &path_b, &owner_token, true).await,
+        StatusCode::FORBIDDEN,
+    );
+    assert_eq!(
+        update(&router, &path_a, &staff_token, true).await,
+        StatusCode::FORBIDDEN,
+    );
+
+    // Owners must remain free to opt out even if Central Admin pauses.
+    sqlx::query(
+        "UPDATE native_automation_templates SET globally_paused=TRUE
+         WHERE template_key='ORDER_PENDING_REMINDER'",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+    assert_eq!(
+        update(&router, &path_a, &owner_token, false).await,
+        StatusCode::OK,
+    );
+    let enabled: bool = sqlx::query_scalar(
+        "SELECT enabled FROM native_automation_plant_rules
+         WHERE plant_id=$1 AND template_key='ORDER_PENDING_REMINDER'",
+    )
+    .bind(plant_a)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert!(!enabled);
+}
+
+#[sqlx::test]
+async fn native_domain_alert_acknowledgement_is_scoped_and_not_an_approval(db: PgPool) {
+    let state = state(db.clone());
+    let router = trackmyrmc_backend::routes::build_app_router(state.clone());
+    let (owner_a, _, _) = identity(&db, "owner", false, vec![]).await;
+    let (owner_b, _, _) = identity(&db, "owner", false, vec![]).await;
+    let plant: Uuid = sqlx::query_scalar(
+        "INSERT INTO rmc_plants
+         (owner_id,name,code,latitude,longitude,address_line,city,state,pincode,contact_phone)
+         VALUES($1,'Review Plant',$2,19,73,'Test','Panvel','Maharashtra','410206','0000000000')
+         RETURNING id",
+    )
+    .bind(owner_a)
+    .bind(Uuid::new_v4().simple().to_string()[..14].to_string())
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    let material: Uuid = sqlx::query_scalar(
+        "INSERT INTO plant_materials(plant_id,name,material_type,current_stock,minimum_stock)
+         VALUES($1,'Cement','cement',10,100) RETURNING id",
+    )
+    .bind(plant)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    let job: Uuid = sqlx::query_scalar(
+        "INSERT INTO native_automation_jobs
+         (event_key,plant_id,domain_entity_id,template_key,status)
+         VALUES($1,$2,$3,'INVENTORY_BELOW_MIN','COMPLETED') RETURNING id",
+    )
+    .bind(format!("test-stock:{}", Uuid::new_v4()))
+    .bind(plant)
+    .bind(material)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    let task: Uuid = sqlx::query_scalar(
+        "INSERT INTO native_automation_domain_tasks
+         (source_job_id,plant_id,domain_entity_id,template_key,assigned_to)
+         VALUES($1,$2,$3,'INVENTORY_BELOW_MIN',$4) RETURNING id",
+    )
+    .bind(job)
+    .bind(plant)
+    .bind(material)
+    .bind(owner_a)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    let owner_a_token =
+        generate_token(owner_a, "owner", "", None, &state.config.jwt_secret, 1).unwrap();
+    let owner_b_token =
+        generate_token(owner_b, "owner", "", None, &state.config.jwt_secret, 1).unwrap();
+    let inbox_path = format!("/api/owner/plants/{plant}/automation/tasks");
+    let (inbox_status, inbox) = request(&router, &inbox_path, Some(&owner_a_token), None).await;
+    assert_eq!(inbox_status, StatusCode::OK);
+    assert_eq!(inbox["tasks"][0]["source_label"], "Material: Cement");
+    assert_eq!(
+        request(&router, &inbox_path, Some(&owner_b_token), None)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    let path = format!("/api/owner/plants/{plant}/automation/domain-tasks/{task}/acknowledge");
+    assert_eq!(
+        request(&router, &path, Some(&owner_b_token), Some(json!({})))
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        request(&router, &path, Some(&owner_a_token), Some(json!({})))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let (status, replay) = request(&router, &path, Some(&owner_a_token), Some(json!({}))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(replay["idempotent_replay"], true);
+    let task_status: String =
+        sqlx::query_scalar("SELECT status FROM native_automation_domain_tasks WHERE id=$1")
+            .bind(task)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert_eq!(task_status, "ACKNOWLEDGED");
+    let stock: i64 =
+        sqlx::query_scalar("SELECT current_stock::bigint FROM plant_materials WHERE id=$1")
+            .bind(material)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert_eq!(stock, 10);
+    let audit_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM audit_logs
+         WHERE user_id=$1 AND action='automation.domain_task.acknowledged'",
+    )
+    .bind(owner_a)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(audit_count, 1);
+}
