@@ -244,7 +244,9 @@ fn approved_production_database_ca(url: &str) -> Result<&'static str, String> {
         || uri.password().is_none()
         || uri.fragment().is_some()
     {
-        return Err("Production PostgreSQL identity does not match the approved RDS instance".into());
+        return Err(
+            "Production PostgreSQL identity does not match the approved RDS instance".into(),
+        );
     }
     let mut mode = None;
     let mut roots = None;
@@ -258,7 +260,9 @@ fn approved_production_database_ca(url: &str) -> Result<&'static str, String> {
         }
     }
     if count != 2 || mode.as_deref() != Some("verify-full") || roots.as_deref() != Some(CERT) {
-        return Err("Production PostgreSQL requires pinned hostname and certificate verification".into());
+        return Err(
+            "Production PostgreSQL requires pinned hostname and certificate verification".into(),
+        );
     }
     Ok(CERT)
 }
@@ -292,7 +296,10 @@ mod production_database_tls_tests {
             url.replace("verify-full", "verify-ca"),
             url.replace("trackmyrmc-postgres.", "forged."),
             url.replace("sslrootcert=%2Fetc%2Ftrackmyrmc%2Frds-ca-bundle.pem", ""),
-            url.replace("sslrootcert=%2Fetc%2Ftrackmyrmc%2Frds-ca-bundle.pem", "sslrootcert=%2Ftmp%2Fother.pem"),
+            url.replace(
+                "sslrootcert=%2Fetc%2Ftrackmyrmc%2Frds-ca-bundle.pem",
+                "sslrootcert=%2Ftmp%2Fother.pem",
+            ),
             format!("{url}&sslmode=require"),
             format!("{url}&sslrootcert=%2Ftmp%2Fforged.pem"),
             format!("{url}#fragment"),
