@@ -253,7 +253,9 @@ pub async fn accept(
     }
     let mode: String = row.get("mode");
     if is_online(&mode) && !online_mode_allowed() {
-        return Err(AppError::Conflict("Prepaid RMC checkout is not yet activated for production".into()));
+        return Err(AppError::Conflict(
+            "Prepaid RMC checkout is not yet activated for production".into(),
+        ));
     }
     let offer_status: String = row.get("offer_status");
     let order_status: String = row.get("order_status");
