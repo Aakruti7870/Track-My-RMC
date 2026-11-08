@@ -69,16 +69,19 @@ jobs:
       - name: Build the selected PostgreSQL production dependency tree
         run: |
           set -euo pipefail
-          cargo tree --manifest-path backend/Cargo.toml --package trackmyrmc-backend \
+          cargo tree --locked --manifest-path backend/Cargo.toml --package trackmyrmc-backend \
             --edges normal,build --target x86_64-unknown-linux-gnu --prefix none \
             > "$RUNNER_TEMP/cargo-selected-production-tree.txt"
       - name: Audit full Rust lockfile and account for unselected optional advisories
         run: |
           set -euo pipefail
-          cargo audit --file backend/Cargo.lock --json > "$RUNNER_TEMP/cargo-audit.json" || true
+          cargo audit --file backend/Cargo.lock --json \
+            > "$RUNNER_TEMP/cargo-audit.json" \
+            2> "$RUNNER_TEMP/cargo-audit-stderr.txt" || true
           python3 ops/security/assess-cargo-audit.py \
             "$RUNNER_TEMP/cargo-audit.json" \
-            "$RUNNER_TEMP/cargo-selected-production-tree.txt"
+            "$RUNNER_TEMP/cargo-selected-production-tree.txt" \
+            "$RUNNER_TEMP/cargo-audit-stderr.txt"
       - name: Upload audit evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -87,5 +90,6 @@ jobs:
           path: |
             ${{ runner.temp }}/cargo-audit.json
             ${{ runner.temp }}/cargo-selected-production-tree.txt
+            ${{ runner.temp }}/cargo-audit-stderr.txt
           retention-days: 14
           if-no-files-found: ignore
