@@ -350,15 +350,25 @@ try {
       return cards.evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid').slice('role-module-'.length)));
     };
     if (user.role === 'plant_owner') {
+      phase = 'owner Home shortcut inventory';
+      await expect(page.locator('[data-testid^="owner-shortcut-"]')).toHaveCount(6);
       const homeKeys = await page.locator('[data-testid^="owner-shortcut-"]').filter({ visible: true })
         .evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid').slice('owner-shortcut-'.length)));
       assert.equal(homeKeys.length, 6, 'Owner Home must render six compact priority shortcuts');
+      phase = 'owner Operations navigation';
       await page.getByTestId('tab-operations').click();
+      phase = 'owner automation center';
       await expect(page.getByTestId('owner-native-automation-center')).toBeVisible();
+      phase = 'owner Operations module inventory';
+      await expect(page.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])')).toHaveCount(6);
       const operationsKeys = await visibleModuleCards();
+      phase = 'owner More navigation';
       await page.getByTestId('tab-more').click();
+      phase = 'owner More module inventory';
       await expect(page.getByTestId('role-module-directory')).toBeVisible();
+      await expect(page.getByTestId('role-module-directory').locator('[data-testid^="role-module-"]')).toHaveCount(20);
       const moreKeys = await visibleModuleCards();
+      phase = 'owner module catalog reconciliation';
       const rendered = [...homeKeys, ...operationsKeys, ...moreKeys];
       assert.equal(new Set(rendered).size, rendered.length, 'Owner module cards must not repeat across tabs');
       assert.deepEqual(new Set(rendered), new Set([...visibleKeys, 'owner-drivers']),
@@ -381,6 +391,8 @@ try {
       }[user.role] ?? [];
       const homeDirectory = page.getByTestId('role-module-directory').filter({ visible: true });
       await expect(homeDirectory).toBeVisible();
+      phase = 'staff Home permission resolution';
+      await expect.poll(async () => (await homeDirectory.innerText()).includes('Checking staff permissions…')).toBe(false);
       await expect.poll(() => homeDirectory.locator('[data-testid^="role-module-"]').count()).toBeGreaterThan(0);
       const homeKeys = await visibleModuleCards(homeDirectory);
       assert(homeKeys.length <= 6, 'Staff Home supports no more than six compact role tiles');
