@@ -18,6 +18,12 @@ const LIVE_HOST: &str = "https://api.sandbox.co.in";
 const REDIRECT_URL: &str = "https://trackmyrmc.com/kyc/return";
 const MAX_PROVIDER_BODY: usize = 262_144;
 
+// All provider operations must stay on the host chosen for this KYC session.
+// A Live token must never be sent to the Test environment (or vice versa).
+fn provider_url(host: &str, path: &str) -> String {
+    format!("{host}{path}")
+}
+
 // Evaluate the same enablement, approved live policy and credential checks
 // used by actual provider requests; never trust a client-supplied environment.
 pub(crate) fn approved_provider_environment() -> Result<&'static str, AppError> {
@@ -188,7 +194,7 @@ impl Provider {
     async fn post(&self, token: &str, path: &str, payload: Value) -> Result<Value, AppError> {
         let res = self
             .client
-            .post(format!("{}{path}", self.host))
+            .post(provider_url(self.host, path))
             .header("Authorization", token)
             .header("x-api-key", &self.api_key)
             .header(header::CONTENT_TYPE, "application/json")
@@ -201,7 +207,7 @@ impl Provider {
     async fn get(&self, token: &str, path: &str) -> Result<Value, AppError> {
         let res = self
             .client
-            .get(format!("{SANDBOX_HOST}{path}"))
+            .get(provider_url(self.host, path))
             .header("Authorization", token)
             .header("x-api-key", &self.api_key)
             .send()
@@ -585,6 +591,22 @@ pub async fn status(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn provider_status_document_and_profile_requests_use_the_selected_host() {
+        for path in [
+            "/kyc/digilocker/sessions/00000000-0000-0000-0000-000000000001/status",
+            "/kyc/digilocker/sessions/00000000-0000-0000-0000-000000000001/documents/aadhaar",
+            "/kyc/digilocker/sessions/00000000-0000-0000-0000-000000000001/user/profile",
+        ] {
+            assert_eq!(
+                provider_url(SANDBOX_HOST, path),
+                format!("{SANDBOX_HOST}{path}")
+            );
+            assert_eq!(provider_url(LIVE_HOST, path), format!("{LIVE_HOST}{path}"));
+            assert!(!provider_url(LIVE_HOST, path).starts_with(SANDBOX_HOST));
+        }
+    }
 
     #[sqlx::test]
     async fn duplicate_consent_cannot_downgrade_committed_live_approval(db: sqlx::PgPool) {

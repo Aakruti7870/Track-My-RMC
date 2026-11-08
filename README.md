@@ -78,6 +78,35 @@ npm run dev
 
 This development server is not a substitute for real web-MFA enrollment and scoped role acceptance.
 
+## Production hosting and release flow
+
+**One source repository:** [`Aakruti7870/Track-My-RMC`](https://github.com/Aakruti7870/Track-My-RMC). **One production target:** AWS. No Render runtime, database or Render Blueprint is part of the release.
+
+```mermaid
+flowchart TD
+    G["GitHub: Track-My-RMC / main"] --> CI["Backend CI • Frontend CI • Dependency Security Audit"]
+    CI --> A{"Independent production acceptance and exact SHA approval?"}
+    A -->|No| STOP["Do not deploy"]
+    A -->|Yes| W["GitHub Actions: Deploy TrackMyRMC AWS Production"]
+    W --> S3["AWS S3: immutable SHA-pinned build artifacts"]
+    S3 --> SSM["AWS Systems Manager: EC2 deployment"]
+    SSM --> N["AWS EC2 / Nginx: trackmyrmc.com"]
+    N --> F["Expo web frontend"]
+    N --> ADM["Central Admin / Authority web dashboard"]
+    N --> R["Rust Axum API"]
+    R --> DB["AWS RDS: PostgreSQL"]
+    R --> SEC["AWS Secrets Manager: server-only credentials"]
+    CF["Cloudflare DNS / HTTPS"] --> N
+```
+
+**Canonical website:** `https://trackmyrmc.com`. Its Nginx instance serves the Expo web frontend, the separate privileged web UI, and proxies `/api/` to the locally running Rust service. The backend uses AWS RDS PostgreSQL and Secrets Manager. Build the mobile Android app from the same repository but release it separately through the signed AAB and Play approval process.
+
+**Hostname routing:** Cloudflare has an enabled HTTP 301 redirect rule for `www.trackmyrmc.com` to `https://trackmyrmc.com` (preserving path and query), and the proxied `www` CNAME now targets `trackmyrmc.com`, not Render. The redirect and DNS records were verified through Cloudflare's API, and an external HTTPS smoke from AWS EC2 confirmed HTTP 301 with path and query preservation. An unrelated Cloudflare bot challenge may block automated requests to the apex; local backend health must be checked separately.
+
+**Render separation:** Historical Render static-site/backend deployments are *not* part of the approved AWS release. The two obsolete backend Blueprints (`render.yaml`, `backend/render.yaml`) have been removed from the source tree. An independently configured Render dashboard service may still auto-deploy on `main`; deleting YAML does not disconnect or delete such services. Retire their Git auto-deploy / dashboard resources separately after confirming domain traffic no longer reaches Render.
+
+**Live KYC:** authenticate and poll DigiLocker through the same Test/Live host selected by the server; use the browser return URL only for navigation. KYC stays disabled until Live-provider entitlement, controlled consent tests, and independent production release acceptance are confirmed. See [Live DigiLocker release contract](docs/release/digilocker-live-activation-20261105.md).
+
 ## CI and release
 
 - Backend CI: Rust format, check, strict Clippy, PostgreSQL 16/18 integration/security tests, operator bootstrap fixtures and browser/Expo journey regressions.
