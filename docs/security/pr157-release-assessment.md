@@ -33,6 +33,23 @@ not provisioned. No recovery endpoint has been activated. The overall decision
 remains **BLOCK**. Consult latest-commit CI before attributing pass status to
 this follow-up work.
 
+## Follow-up: historical sandbox KYC status isolation
+
+After the earlier provider-environment check on new approval endpoints,
+the customer KYC read path and order creation still trusted legacy
+`user_profiles.kyc_status='verified'` unconditionally. The branch now
+adds a shared, read-only `LIVE_APPROVAL_SQL` policy for live mode: a
+matching live-provider consent session and the **latest** independently
+audited Central Admin/Authority approval with `provider_environment=live`
+are required before reporting `VERIFIED`, blocking re-enrollment, or
+allowing a non-draft order. Legacy/sandbox-only approvals remain visible in
+existing audit history but cannot unlock live KYC. Re-enrollment can
+reopen a stale profile to `pending` for fresh approval. Disposable
+PostgreSQL regressions cover absent proof, sandbox proof, consent without
+approval, valid live approval, and subsequent revocation. This is source
+hardening, not production provider acceptance. Verify current-head CI and
+independent review before merging.
+
 ## Current remediation pass
 
 Reviewed against main `d9f9110e5ff5e01ed41c6fb19711088936ff239d`, starting from

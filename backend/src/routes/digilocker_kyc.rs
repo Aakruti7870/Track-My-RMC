@@ -24,6 +24,40 @@ pub(crate) fn approved_provider_environment() -> Result<&'static str, AppError> 
     Ok(Provider::enabled()?.environment)
 }
 
+/// Switching to live mode must not turn a historic sandbox KYC approval into
+/// a production-verified identity, even if the live provider is temporarily
+/// disabled or its credentials are missing.
+pub(crate) fn live_approval_required() -> bool {
+    env::var("TRACKMYRMC_KYC_ENV").as_deref() == Ok("live")
+}
+
+/// A live consent session is not sufficient by itself: an independent privileged
+/// reviewer must have approved THAT environment after the consent was verified.
+/// Only the latest customer KYC review counts, so reset/rejection invalidate the
+/// earlier approval even if the user profile was later restored incorrectly.
+/// Legacy review audit events without provider_environment are deliberately denied.
+pub(crate) const LIVE_APPROVAL_SQL: &str = r#"
+SELECT EXISTS (
+    SELECT 1
+    FROM audit_logs a
+    JOIN customer_digilocker_sessions d ON d.user_id=$1
+    WHERE a.id=(
+        SELECT last_review.id
+        FROM audit_logs last_review
+        WHERE last_review.resource_type='customer'
+          AND last_review.resource_id=$1::text
+          AND last_review.action IN ('authority.kyc.review','control_center.kyc.review')
+        ORDER BY last_review.id DESC LIMIT 1
+    )
+      AND a.metadata->>'provider_environment'='live'
+      AND (a.metadata->>'status'='verified'
+           OR a.metadata->>'kyc_status'='verified')
+      AND d.provider_environment='live'
+      AND d.status='PENDING'
+      AND d.verified_at IS NOT NULL
+      AND a.created_at>=d.verified_at
+)"#;
+
 struct Provider {
     client: Client,
     host: &'static str,
@@ -234,7 +268,16 @@ pub async fn start(State(state): State<AppState>, user: AuthUser) -> Result<Json
     if !account.get::<bool, _>("is_active") {
         return Err(AppError::Forbidden("Inactive customer".into()));
     }
-    if display_status(&account.get::<String, _>("kyc_status")) == "VERIFIED" {
+    let stored_verified = display_status(&account.get::<String, _>("kyc_status")) == "VERIFIED";
+    let approved_for_live = if stored_verified && live_approval_required() {
+        sqlx::query_scalar::<_, bool>(LIVE_APPROVAL_SQL)
+            .bind(user.user_id)
+            .fetch_one(&mut *tx)
+            .await?
+    } else {
+        true
+    };
+    if stored_verified && approved_for_live {
         return Err(AppError::Conflict(
             "Customer KYC is already verified".into(),
         ));
@@ -335,13 +378,27 @@ pub async fn status(
     .fetch_one(&state.db)
     .await?;
     let kyc: String = account.get("kyc_status");
-    // Keep stored KYC status functional while the provider feature is disabled.
-    // Never query a session table without an approved provider configuration.
+    let stored_status = display_status(&kyc);
+    let live_approved = if stored_status == "VERIFIED" && live_approval_required() {
+        sqlx::query_scalar::<_, bool>(LIVE_APPROVAL_SQL)
+            .bind(user.user_id)
+            .fetch_one(&state.db)
+            .await?
+    } else {
+        true
+    };
+    let effective_status = if stored_status == "VERIFIED" && !live_approved {
+        "REQUIRES_REVERIFICATION"
+    } else {
+        stored_status
+    };
+    // Legacy status is displayed while the provider is disabled unless the
+    // application is explicitly in live mode, which requires live approval.
     let provider = match Provider::enabled() {
         Ok(p) => p,
         Err(_) => {
             return Ok(Json(json!({
-                "status": display_status(&kyc),
+                "status": effective_status,
                 "kyc_status": kyc,
                 "provider": "unavailable",
                 "refresh_failed": false
@@ -349,7 +406,7 @@ pub async fn status(
         }
     };
     // Approved status always comes from the database, never callback query parameters.
-    if display_status(&kyc) == "VERIFIED" {
+    if effective_status == "VERIFIED" {
         return Ok(Json(json!({"status":"VERIFIED","provider":provider.label})));
     }
     let latest = sqlx::query(
@@ -363,14 +420,14 @@ pub async fn status(
     .await?;
     let Some(latest) = latest else {
         return Ok(Json(
-            json!({"status":display_status(&kyc),"provider":provider.label}),
+            json!({"status":effective_status,"provider":provider.label}),
         ));
     };
     let id: Uuid = latest.get("id");
     let previous: String = latest.get("status");
     if previous != "IN_PROGRESS" {
         // Authority rejection/reset takes precedence over a former consent session.
-        let profile_state = display_status(&kyc);
+        let profile_state = effective_status;
         let status = if profile_state != "NOT_STARTED" {
             profile_state
         } else if previous == "PENDING" {
@@ -432,7 +489,7 @@ pub async fn status(
             // DigiLocker consent and identity are evidence for Authority review, not approval.
             sqlx::query(
                 "UPDATE user_profiles SET kyc_status='pending',verified_name=$2,updated_at=NOW()
-                 WHERE user_id=$1 AND kyc_status <> 'verified'"
+                 WHERE user_id=$1"
             ).bind(user.user_id).bind(name).execute(&mut *tx).await?;
             sqlx::query(
                 "INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata)
@@ -454,6 +511,74 @@ pub async fn status(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[sqlx::test]
+    async fn live_kyc_requires_latest_environment_matched_audited_approval(db: sqlx::PgPool) {
+        let customer: Uuid = sqlx::query_scalar(
+            "INSERT INTO users(phone,hashed_password,full_name,role)
+             VALUES($1,'test-only','Synthetic KYC Customer','customer') RETURNING id",
+        )
+        .bind(format!("proof{}", Uuid::new_v4().simple()))
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        let approved = || sqlx::query_scalar::<_, bool>(LIVE_APPROVAL_SQL).bind(customer);
+        assert!(!approved().fetch_one(&db).await.unwrap());
+
+        sqlx::query(
+            "INSERT INTO customer_digilocker_sessions
+             (user_id,provider_environment,status,verified_at)
+             VALUES($1,'sandbox','PENDING',NOW()-INTERVAL '2 minutes')",
+        )
+        .bind(customer)
+        .execute(&db)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO audit_logs(action,resource_type,resource_id,metadata)
+             VALUES('authority.kyc.review','customer',$1,$2)",
+        )
+        .bind(customer.to_string())
+        .bind(json!({"kyc_status":"verified","provider_environment":"sandbox"}))
+        .execute(&db)
+        .await
+        .unwrap();
+        assert!(!approved().fetch_one(&db).await.unwrap());
+
+        sqlx::query(
+            "INSERT INTO customer_digilocker_sessions
+             (user_id,provider_environment,status,verified_at)
+             VALUES($1,'live','PENDING',NOW()-INTERVAL '1 minute')",
+        )
+        .bind(customer)
+        .execute(&db)
+        .await
+        .unwrap();
+        assert!(!approved().fetch_one(&db).await.unwrap());
+
+        sqlx::query(
+            "INSERT INTO audit_logs(action,resource_type,resource_id,metadata)
+             VALUES('control_center.kyc.review','customer',$1,$2)",
+        )
+        .bind(customer.to_string())
+        .bind(json!({"status":"verified","provider_environment":"live"}))
+        .execute(&db)
+        .await
+        .unwrap();
+        assert!(approved().fetch_one(&db).await.unwrap());
+
+        sqlx::query(
+            "INSERT INTO audit_logs(action,resource_type,resource_id,metadata)
+             VALUES('authority.kyc.review','customer',$1,$2)",
+        )
+        .bind(customer.to_string())
+        .bind(json!({"kyc_status":"unverified","provider_environment":null}))
+        .execute(&db)
+        .await
+        .unwrap();
+        assert!(!approved().fetch_one(&db).await.unwrap());
+    }
+
     #[test]
     fn contract_normalization_and_strict_identity_match() {
         assert_eq!(display_status("verified"), "VERIFIED");
