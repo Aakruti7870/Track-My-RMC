@@ -57,6 +57,9 @@ CI validates compiled and exercised paths; it does not imply a new Android Play 
 | A-10 | Low | Root .env.example implies unsupported database pool-size environment overrides and is labeled production with a local database URL | Converted to local example; removed misleading pool-size overrides, kept automation/recovery disabled |
 | A-11 | Process | Configuration and documentation can silently diverge from source after green CI | Added ops/tests/test_repository_audit_contract.py to verify samples, role allowlist, SQLx version, local doc links and exact-SHA release guard |
 
+| A-12 | Medium, independent reviewer P2 | Replacement release checklist omitted outstanding npm and Rust dependency-security approval requirements | Reintroduced an explicit BLOCKED dependency gate requiring a current locked-graph audit and remediation or independent documented residual-risk acceptance |
+| A-13 | Medium, independent reviewer P2 | Local admin dev instructions would otherwise connect to the production API, and backend CORS examples omitted the Vite origin | Added admin-web/.env.example and safe local Vite default, explicit README steps, and localhost:3000 development CORS entries |
+
 All corrections are on the **audit branch**, not a direct edit of main. No existing schema migration was modified or rewritten.
 
 ## Functional and security review by subsystem
@@ -104,3 +107,10 @@ npm ci && npm run build
 ~~~
 
 Use an isolated PostgreSQL database for Rust integration tests. GitHub Actions are authoritative for the repository's tested toolchain; no full local checkout/test execution was available in this audit environment.
+
+
+## Independent review follow-up
+
+Codex's first exact-head review of the audit PR identified two legitimate P2 issues: the missing dependency-security release gate and unsafe admin local development API defaults. Both were fixed without changing production authorization or API routing. The new regression test guards against recurrence. A fresh final-head CI and independent review are still required; the initial green frontend checks and earlier commits do not prove the later corrections.
+
+**Dependency-security status remains BLOCKED:** Previous locked-node audits documented residual high-severity transitive advisories, including braces and node-forge; the Rust advisory review is separate. Re-evaluate the final locked dependency graph and build/signing exposure, remediate or document independent explicit acceptance before any public release. See docs/DEPENDENCY_SECURITY_REVIEW.md and docs/RUST_DEPENDENCY_SECURITY_REVIEW.md.
