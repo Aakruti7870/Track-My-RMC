@@ -404,7 +404,10 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(summary.0, 2);
-        assert!(summary.1.is_some(), "the missed response deadline is retained");
+        assert!(
+            summary.1.is_some(),
+            "the missed response deadline is retained"
+        );
         assert!(summary.2.is_none(), "the two-reminder budget is exhausted");
         let events: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM native_support_followup_events WHERE case_id=$1",

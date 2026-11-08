@@ -316,10 +316,15 @@ async fn support_staff_requires_recorded_web_mfa_grants_and_fresh_status_step_up
     assert_eq!(feed["alerts"].as_array().unwrap().len(), 1);
     assert_eq!(feed["alerts"][0]["case_id"], case_id);
     assert_eq!(
-        request(&router, "/api/assistant/support/staff/alerts", Some(&customer_token), None)
-            .await
-            .0,
-        StatusCode::UNAUTHORIZED
+        request(
+            &router,
+            "/api/assistant/support/staff/alerts",
+            Some(&customer_token),
+            None
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
     );
     let alert_read_path = format!("/api/assistant/support/staff/alerts/{alert_id}/read");
     assert_eq!(
