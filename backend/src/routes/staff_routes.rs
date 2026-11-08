@@ -1008,7 +1008,12 @@ async fn update_reviewed_customer_kyc(
 ) -> Result<(), AppError> {
     let provider_environment = crate::routes::digilocker_kyc::approved_provider_environment().ok();
     update_reviewed_customer_kyc_with_env(
-        db, actor, customer_id, new_status, reason, provider_environment,
+        db,
+        actor,
+        customer_id,
+        new_status,
+        reason,
+        provider_environment,
     )
     .await
 }
@@ -1168,7 +1173,12 @@ mod authority_kyc_customer_scope_tests {
         reason: &str,
     ) -> Result<(), AppError> {
         update_reviewed_customer_kyc_with_env(
-            db, actor, customer_id, new_status, reason, Some("sandbox"),
+            db,
+            actor,
+            customer_id,
+            new_status,
+            reason,
+            Some("sandbox"),
         )
         .await
     }
