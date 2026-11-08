@@ -599,8 +599,14 @@ mod tests {
             "/kyc/digilocker/sessions/00000000-0000-0000-0000-000000000001/documents/aadhaar",
             "/kyc/digilocker/sessions/00000000-0000-0000-0000-000000000001/user/profile",
         ] {
-            assert_eq!(provider_url(SANDBOX_HOST, path), format!("{SANDBOX_HOST}{path}"));
-            assert_eq!(provider_url(LIVE_HOST, path), format!("{LIVE_HOST}{path}"));
+            assert_eq!(
+                provider_url(SANDBOX_HOST, path),
+                format!("{SANDBOX_HOST}{path}")
+            );
+            assert_eq!(
+                provider_url(LIVE_HOST, path),
+                format!("{LIVE_HOST}{path}")
+            );
             assert!(!provider_url(LIVE_HOST, path).starts_with(SANDBOX_HOST));
         }
     }
