@@ -383,6 +383,52 @@ pub async fn start(State(state): State<AppState>, user: AuthUser) -> Result<Json
     }
 }
 
+/// An asynchronously completed second consent must not undo a concurrently
+/// committed independent reviewer approval. Lock the profile before checking
+/// its CURRENT status and current live evidence, not the stale status read
+/// before the network provider request.
+async fn complete_consent_profile_transition(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    customer_id: Uuid,
+    name: &str,
+    live_mode: bool,
+) -> Result<bool, AppError> {
+    let stored: String = sqlx::query_scalar(
+        "SELECT kyc_status FROM user_profiles WHERE user_id=$1 FOR UPDATE",
+    )
+    .bind(customer_id)
+    .fetch_one(&mut **tx)
+    .await?;
+
+    let already_approved = if stored.eq_ignore_ascii_case("verified") {
+        if live_mode {
+            // Evidence cannot be inferred from a sandbox/legacy approval. The
+            // approval/revocation audit read occurs WHILE the profile lock is
+            // held, so an overlapping reviewer transaction is serialized.
+            sqlx::query_scalar::<_, bool>(LIVE_APPROVAL_SQL)
+                .bind(customer_id)
+                .fetch_one(&mut **tx)
+                .await?
+        } else {
+            true
+        }
+    } else {
+        false
+    };
+    if already_approved {
+        return Ok(false);
+    }
+    sqlx::query(
+        "UPDATE user_profiles SET kyc_status='pending',verified_name=$2,updated_at=NOW()
+         WHERE user_id=$1",
+    )
+    .bind(customer_id)
+    .bind(name)
+    .execute(&mut **tx)
+    .await?;
+    Ok(true)
+}
+
 pub async fn status(
     State(state): State<AppState>,
     user: AuthUser,
@@ -468,52 +514,6 @@ pub async fn status(
             json!({"status":"IN_PROGRESS","provider":provider.label,"refresh_failed":true}),
         ));
     };
-/// An asynchronously completed second consent must not undo a concurrently
-/// committed independent reviewer approval. Lock the profile before checking
-/// its CURRENT status and current live evidence, not the stale status read
-/// before the network provider request.
-async fn complete_consent_profile_transition(
-    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    customer_id: Uuid,
-    name: &str,
-    live_mode: bool,
-) -> Result<bool, AppError> {
-    let stored: String = sqlx::query_scalar(
-        "SELECT kyc_status FROM user_profiles WHERE user_id=$1 FOR UPDATE",
-    )
-    .bind(customer_id)
-    .fetch_one(&mut **tx)
-    .await?;
-
-    let already_approved = if stored.eq_ignore_ascii_case("verified") {
-        if live_mode {
-            // Evidence cannot be inferred from a sandbox/legacy approval. The
-            // approval/revocation audit read occurs WHILE the profile lock is
-            // held, so an overlapping reviewer transaction is serialized.
-            sqlx::query_scalar::<_, bool>(LIVE_APPROVAL_SQL)
-                .bind(customer_id)
-                .fetch_one(&mut **tx)
-                .await?
-        } else {
-            true
-        }
-    } else {
-        false
-    };
-    if already_approved {
-        return Ok(false);
-    }
-    sqlx::query(
-        "UPDATE user_profiles SET kyc_status='pending',verified_name=$2,updated_at=NOW()
-         WHERE user_id=$1",
-    )
-    .bind(customer_id)
-    .bind(name)
-    .execute(&mut **tx)
-    .await?;
-    Ok(true)
-}
-
     let refresh = async {
         let token = provider.access_token().await?;
         let body = provider.get(&token, &format!("/kyc/digilocker/sessions/{provider_id}/status")).await?;
