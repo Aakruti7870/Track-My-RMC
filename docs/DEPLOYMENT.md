@@ -2,7 +2,7 @@
 
 **Canonical production is `https://trackmyrmc.com`, served from AWS EC2/Nginx with AWS RDS PostgreSQL.** The existing AWS SHA-pinned GitHub workflow installs the Rust backend, Expo web frontend and separate admin web dashboard together. Render is not a production build, deployment, database, or API dependency. The obsolete Render backend Blueprints (`render.yaml` and `backend/render.yaml`) were removed.
 
-**Render separation state (2026-11-09):** The separately configured Render static site may still auto-build `main` until disabled in the Render dashboard. Cloudflare's enabled `www.trackmyrmc.com` → `https://trackmyrmc.com` HTTP 301 redirect and the proxied `www` CNAME pointing to `trackmyrmc.com` were verified through Cloudflare's API. DNS no longer targets Render. An independent public HTTPS redirect smoke test remains necessary; deleting YAML does not disable existing Render dashboard services.
+**Render separation state (2026-11-09):** The separately configured Render static site may still auto-build `main` until disabled in the Render dashboard. Cloudflare's enabled `www.trackmyrmc.com` → `https://trackmyrmc.com` HTTP 301 redirect and the proxied `www` CNAME pointing to `trackmyrmc.com` were verified through Cloudflare's API. DNS no longer targets Render. An HTTPS smoke from AWS EC2 confirmed HTTP 301 for both the homepage and a parameterized KYC return path. An automated apex health probe received a Cloudflare challenge (403); this is not a Rust backend health result. Deleting YAML does not disable existing Render dashboard services.
 
 ## Entry points and release provenance
 
