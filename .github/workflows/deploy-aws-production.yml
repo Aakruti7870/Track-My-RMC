@@ -1,12 +1,20 @@
 name: Deploy TrackMyRMC AWS Production
 
-# Automatic production deployment:
-# - Triggered by either CI completion, so late success or reruns can recheck the release
-# - Requires both workflows to pass for the exact same main commit
-# - Does not authorize database cutover
-# - Deploys only a SHA-pinned release
+# Fail-closed production release approval:
+# - Green CI never authorizes deployment alone.
+# - A separate operator must pin the exact approved main SHA in the repository
+#   variable TRACKMYRMC_APPROVED_RELEASE_SHA after acceptance is complete.
+# - Workflow-run or manual dispatch for any other SHA cannot assume AWS credentials.
+# - No approval SHA may be set while the release assessment is BLOCK.
+# - Recovery, provider activation and restoration have separate approvals.
 
 on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: 'Exact independently approved 40-character main commit SHA'
+        required: true
+        type: string
   workflow_run:
     # Both completions can re-open the gate (including CI reruns).
     # The production concurrency group prevents overlapping deployments.
@@ -33,15 +41,28 @@ env:
   ARTIFACT_BUCKET: trackmyrmc-prod-artifacts-260234292958-ap-south-1
   INSTANCE_ID: i-0598aad6e6d729c69
   APP_SECRET_NAME: trackmyrmc/app-runtime
-  RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+  RELEASE_SHA: ${{ github.event.workflow_run.head_sha || inputs.release_sha }}
 
 jobs:
   deploy:
     name: Verify, Build and Deploy to AWS
+    # A missing/nonmatching approval SHA skips the entire job, including all
+    # AWS secret reads, S3 uploads, SSM commands and database migrations.
     if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_repository.full_name == github.repository
+      vars.TRACKMYRMC_APPROVED_RELEASE_SHA != '' &&
+      vars.TRACKMYRMC_APPROVED_RELEASE_SHA == (github.event.workflow_run.head_sha || inputs.release_sha) &&
+      (
+        (
+          github.event_name == 'workflow_run' &&
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event == 'push' &&
+          github.event.workflow_run.head_repository.full_name == github.repository
+        ) ||
+        (
+          github.event_name == 'workflow_dispatch' &&
+          github.ref == 'refs/heads/main'
+        )
+      )
 
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -65,9 +86,16 @@ jobs:
       - name: Verify both CI workflows
         env:
           GH_TOKEN: ${{ github.token }}
+          TRACKMYRMC_APPROVED_RELEASE_SHA: ${{ vars.TRACKMYRMC_APPROVED_RELEASE_SHA }}
         run: |
           set -euo pipefail
 
+          # Reverify the exact operator-pinned SHA inside the job.
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          test "$TRACKMYRMC_APPROVED_RELEASE_SHA" = "$RELEASE_SHA" || {
+            echo "Exact SHA release approval missing or mismatched."
+            exit 1
+          }
           echo "Release commit: $RELEASE_SHA"
 
           MAIN_SHA="$(gh api \
@@ -139,7 +167,7 @@ jobs:
       - name: Checkout verified commit
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ env.RELEASE_SHA }}
           persist-credentials: false
 
       - name: Install Rust toolchain

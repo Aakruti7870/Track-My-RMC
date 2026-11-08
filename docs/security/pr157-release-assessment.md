@@ -5,6 +5,21 @@ This is evidence of remediation and isolated verification, not production author
 The existing feature branch includes main through `d9f9110e5ff5e01ed41c6fb19711088936ff239d`.
 Consult the final branch commit's GitHub checks; earlier green runs do not approve later commits.
 
+## Code-only merge safety gate (2026-11-08)
+
+The production GitHub workflow now requires an explicit exact-SHA approval:
+the repository variable `TRACKMYRMC_APPROVED_RELEASE_SHA` must equal the
+40-hex-character commit currently on main. It defaults to absent and prevents
+the entire AWS deployment job (including secret reads, SSM and production
+migrations) from starting. Manual dispatch requires the same approval and
+still checks both push CI workflows for that main SHA. This permits a code-only
+merge without implicitly approving deployment.
+
+**Keep the variable absent until this assessment is independently changed
+from BLOCK after live TLS, provider, migration, restore and scoped operator
+acceptance.** A matching SHA is only an operational release gate; it is
+not the missing PRAS independent recovery-approval infrastructure.
+
 ## Follow-up hardening on the existing PR branch (2026-11-08)
 
 Post-assessment work hardened all three production PostgreSQL client paths:
