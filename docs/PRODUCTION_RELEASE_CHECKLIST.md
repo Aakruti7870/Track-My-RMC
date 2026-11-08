@@ -1,32 +1,25 @@
-# Production release checklist
+# Production release acceptance checklist
 
-Overall: BLOCKED. Full feature parity: PARTIAL. No production release SHA is accepted. No production approval is requested while independent modules and acceptance gates remain incomplete.
+**Current state: independent acceptance required.** This is a living checklist; historical release records remain in docs/release/ and Git history. A successful code merge or green CI is never evidence that the new SHA is deployed.
 
-| Gate | Status | Evidence / remaining requirement |
-|---|---|---|
-|Integration history/current main|COMPLETE|PR36/37/38/39 retained; main6253bbb4 ancestor; controlled draft PR40|
-|SQLx migration numbering|COMPLETE|Unique chronological0019/0020/0021;29 files through 0032|
-|Migration acceptance|PARTIAL|PG16/18 chain/checksum/legacy-upgrade tests pass3d913265; production history/restore unverified|
-|Nonprivileged auth/browser core|PARTIAL|Ten approved synthetic roles pass actual Expo login/routing/dashboard/records/logout and server revocation; live delivery/device journeys unavailable|
-|Central Admin separation|PARTIAL|Explicit approved web provenance/grants/step-up/revocation and browser pass; enrollment/recovery and remaining privileged UI unavailable|
-|Authority|NOT IMPLEMENTED|Dedicated auth/workspaces and approved identity unavailable; no admin alias/elevation|
-|Customer commercial/site/planning/observation/support core|PARTIAL|Real RFQ/quote/order/site/pour/project/receiving/cube/support tests and customer project/support browser pass; full role/device/provider acceptance pending|
-|Owner/operational dashboards|PARTIAL|Actual customer/owner/staff contracts and weekly measured quantities pass; complete module mutations/device workflows pending|
-|Production/delivery/billing core|PARTIAL|Transactional stock, produced pool, dispatch, GPS/POD and invoice/payment tests pass; complete customer-origin device journey pending|
-|Payroll/workforce|PARTIAL|Recorded amounts/approval/payment/snapshots/reopen/version2 pass; salary from attendance and complete workforce acceptance pending|
-|Automation|PARTIAL|Missing secrets/stale leases/fake delivery denied; real adapter unavailable|
-|All source modules|PARTIAL|297 source entries classified;309 target pairs,201 matches/96 unmatched; path matches are not functional acceptance|
-|Strict backend/Admin/Expo browser|COMPLETE|3d913265 run 38791343034, PostgreSQL16/18; all 10 approved mobile identities and dedicated Admin fixture|
-|Frontend/Admin checks/export|COMPLETE|3d913265 run 38791343323|
-|Signed Android/device|PARTIAL|3d913265 run 38791343104 building; real-device acceptance BLOCKED|
-|Dependency security|BLOCKED|Compatible remediation yields0 critical but22 high entries from braces,node-forge,image-size; no suppression/downgrade approved|
-|Staging validation/security review|PARTIAL|cfn-lint/AWS validation/static/IAM checks pass;13 Guard failures individually documented and await explicit decision|
-|Cost controls/cleanup|PARTIAL|Verified free USD 100 monthly account budget with80% actual alert; cleanup procedure prepared, no rehearsal|
-|AWS staging provisioning|BLOCKED|User holds all billable resources pending review and renewed explicit approval|
-|Live OTP/KYC/payments|BLOCKED|No authorized real destinations/configured adapters|
-|Persistent privileged identities|BLOCKED|Dedicated grants/MFA/recovery not approved/verified|
-|Historical migration/restore/rollback|BLOCKED|Authorized backup and isolated restoration unavailable; seeds excluded|
-|Release manifest/final approval|BLOCKED|Exact accepted artifact, complete modules/security/device/restore gates required|
-|Production deployment/post-release verification|BLOCKED|No production-changing deployment performed|
+| Gate | Required proof | Status as of 2026-11-08 audit |
+| --- | --- | --- |
+| Source and reviews | Exact current main SHA, reviewed changes, no unresolved security findings | PR #159 merged as code; complete-repository audit branch under review |
+| Backend and database regression | Rust format, check, strict Clippy and tests on PostgreSQL 16 and 18 | PASS on main merge SHA 277d7ed (Backend CI #42493945966) |
+| Client and admin regressions | Expo typecheck/security/layout guards and admin web build | PASS on main merge SHA 277d7ed (Frontend CI #42493945959) |
+| Android/Google Play | Signed AAB and real device/reviewer/permission/Data safety acceptance | NOT established by the web CI |
+| Migration parity | Live readonly RDS ledger/checksums, pending migration and schema reconciliation | NOT verified live |
+| Client TLS | Positive and negative production RDS TLS/hostname checks | NOT verified live |
+| Infrastructure and operator | Scoped production IAM role, independent approval, least-privilege assessment | INCOMPLETE; connected audit identity is root |
+| Restore/rollback | Witnessed safe restoration and SHA-pinned application rollback evidence | NOT verified |
+| Privileged operator readiness | Approved Central Admin/Authority web credentials, TOTP and inbox acceptance | NOT verified live |
+| Support/automation | Exact live flags, notification QA, opt-in and audit; no external messages | Feature switches default OFF; live values unverified |
+| Cashfree and KYC | Provider/sandbox-to-live approval, legal/Play checks and specific enablement | GATED; not implied by merged code |
+| GitHub production approval | Exact approved release SHA, main push CI and authorized workflow run | NOT independently verified |
+| Deployed release | S3 artifacts, SSM success, EC2 running SHA marker, API/admin/Expo smoke | NOT established for SHA 277d7ed; release workflow skipped |
 
-Keep the manual production confirmation gate. Free budget configuration does not authorize EC2/RDS/S3/secret provisioning. The staging review covers an approximately USD 42.41/month baseline before usage/tax and all 13 outstanding managed-rule findings; it must receive separate explicit approval. Production release needs another final approval after every required gate passes.
+The main-branch backend/frontend jobs for 277d7ed passed. The two production workflow invocations on that SHA were **skipped**; there is no confirmation of a deployment for it.
+
+Production activation requires **all** relevant release gates to pass on the selected immutable commit. Do not replace this evidence with unscoped root commands, modified applied migration checksums, placeholder credentials or a bypassed approval variable.
+
+Primary references: [AWS deployment](DEPLOYMENT.md), [PR #157 security assessment](security/pr157-release-assessment.md), [PR #159 support assessment](security/pr159-release-acceptance.md), [RMC payment policy](payments/RMC_PREPAID_PLAY_COMPLIANCE_AND_ROLLOUT.md) and [this repository audit](audits/2026-11-08-repository-audit.md).
