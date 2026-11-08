@@ -366,13 +366,23 @@ try {
       await page.getByTestId('tab-more').click();
       phase = 'owner More module inventory';
       await expect(page.getByTestId('role-module-directory')).toBeVisible();
-      await expect(page.getByTestId('role-module-directory').locator('[data-testid^="role-module-"]')).toHaveCount(20);
-      const moreKeys = await visibleModuleCards();
+      const ownerMoreDirectory = page.getByTestId('role-module-directory');
+      await expect(ownerMoreDirectory.locator('[data-testid^="role-module-"]')).toHaveCount(20);
+      const moreKeys = await visibleModuleCards(ownerMoreDirectory);
       phase = 'owner module catalog reconciliation';
       const rendered = [...homeKeys, ...operationsKeys, ...moreKeys];
-      assert.equal(new Set(rendered).size, rendered.length, 'Owner module cards must not repeat across tabs');
-      assert.deepEqual(new Set(rendered), new Set([...visibleKeys, 'owner-drivers']),
-        'All approved Owner modules must be discoverable exactly once');
+      const expectedOwnerKeys = new Set([...visibleKeys, 'owner-drivers']);
+      const duplicateOwnerKeys = rendered.filter((key, index) => rendered.indexOf(key) !== index);
+      const missingOwnerKeys = [...expectedOwnerKeys].filter(key => !rendered.includes(key));
+      const unexpectedOwnerKeys = rendered.filter(key => !expectedOwnerKeys.has(key));
+      // These are public, hard-coded module identifiers—not user data or secrets.
+      if (duplicateOwnerKeys.length || missingOwnerKeys.length || unexpectedOwnerKeys.length) {
+        console.error('Owner catalog keys: duplicates=' + duplicateOwnerKeys.join(',') +
+          ' missing=' + missingOwnerKeys.join(',') + ' unexpected=' + unexpectedOwnerKeys.join(','));
+      }
+      assert.equal(duplicateOwnerKeys.length, 0, 'Owner module cards must not repeat across tabs');
+      assert.equal(missingOwnerKeys.length, 0, 'All approved Owner modules must be discoverable');
+      assert.equal(unexpectedOwnerKeys.length, 0, 'Owner UI must not expose unapproved modules');
     } else if (user.role === 'customer') {
       await expect(page.getByTestId('role-module-directory')).toBeVisible();
       for (const key of visibleKeys) await expect(page.getByTestId('role-module-' + key)).toBeVisible();
