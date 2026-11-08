@@ -32,6 +32,7 @@ class RepositoryAuditContractTests(unittest.TestCase):
                 env = variables(path)
                 self.assertNotEqual(env.get("APP_ENV"), "production")
                 self.assertNotEqual(env.get("CORS_ORIGIN"), "*")
+                self.assertIn("http://localhost:3000", env["CORS_ORIGIN"])
                 self.assertIn("localhost", env["DATABASE_URL"])
                 self.assertEqual(env["NATIVE_AUTOMATION_WORKER_ENABLED"], "false")
                 self.assertEqual(env["NATIVE_SUPPORT_AUTOMATION_ENABLED"], "false")
@@ -43,6 +44,12 @@ class RepositoryAuditContractTests(unittest.TestCase):
             self.assertEqual(example[key], "https://trackmyrmc.com")
         self.assertNotIn("onrender.com", read("frontend/.env.example"))
         self.assertFalse(any("TOKEN" in k or "SECRET" in k for k in example))
+
+    def test_admin_dev_api_defaults_to_localhost_not_production(self):
+        self.assertEqual(variables("admin-web/.env.example")["VITE_API_URL"], "http://localhost:8000")
+        source = read("admin-web/src/api.ts")
+        self.assertIn("import.meta.env.DEV ? 'http://localhost:8000'", source)
+        self.assertIn("cp .env.example .env.local", read("README.md"))
 
     def test_readme_sqlx_version_and_node_toolchain_are_current(self):
         cargo = read("backend/Cargo.toml")
@@ -92,6 +99,13 @@ class RepositoryAuditContractTests(unittest.TestCase):
         self.assertIn("TRACKMYRMC_APPROVED_RELEASE_SHA", guide)
         self.assertIn("AWS", guide)
         self.assertIn("not proof", guide.lower())
+
+    def test_dependency_security_gate_cannot_disappear(self):
+        checklist = read("docs/PRODUCTION_RELEASE_CHECKLIST.md")
+        self.assertIn("Dependency security", checklist)
+        self.assertIn("braces/node-forge", checklist)
+        self.assertIn("BLOCKED", checklist)
+        self.assertIn("public launch remains blocked", read("docs/DEPENDENCY_SECURITY_REVIEW.md"))
 
     def test_connection_failure_has_distinct_diagnostic(self):
         source = read("backend/src/db/pool.rs")
