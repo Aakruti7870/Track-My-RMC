@@ -371,8 +371,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Use the S3-hosted deploy script via deploy-cache so the instance doesn't need GitHub raw access.
-          REMOTE_COMMAND="set -euo pipefail; mkdir -p /opt/trackmyrmc/deploy-cache && aws s3 cp s3://${ARTIFACT_BUCKET}/ops/aws-deploy-ec2-${RELEASE_SHA}.sh /opt/trackmyrmc/deploy-cache/trackmyrmc-deploy-${RELEASE_SHA}.sh && bash -n /opt/trackmyrmc/deploy-cache/trackmyrmc-deploy-${RELEASE_SHA}.sh && RELEASE_SHA='${RELEASE_SHA}' bash /opt/trackmyrmc/deploy-cache/trackmyrmc-deploy-${RELEASE_SHA}.sh && rm -f /opt/trackmyrmc/deploy-cache/trackmyrmc-deploy-${RELEASE_SHA}.sh"
+          # SSM runs as root. Keep the executable download in a private temporary directory.
+          REMOTE_COMMAND="set -eu; stage=\$(mktemp -d /tmp/trackmyrmc-deploy.XXXXXX); trap 'rm -rf -- \"\$stage\"' EXIT; aws s3 cp s3://${ARTIFACT_BUCKET}/ops/aws-deploy-ec2-${RELEASE_SHA}.sh \"\$stage/deploy.sh\"; bash -n \"\$stage/deploy.sh\"; RELEASE_SHA='${RELEASE_SHA}' bash \"\$stage/deploy.sh\""
 
           PARAMS="$(jq -nc \
             --arg command "$REMOTE_COMMAND" \
