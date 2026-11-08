@@ -8,7 +8,9 @@ Consult the final branch commit's GitHub checks; earlier green runs do not appro
 ## Current remediation pass
 
 Reviewed against main `d9f9110e5ff5e01ed41c6fb19711088936ff239d`, starting from
-PR head `3005c605c486a55bef462c25cdcf2671bda6ada6`. No production systems were accessed.
+PR head `3005c605c486a55bef462c25cdcf2671bda6ada6`. Application/database tests used
+disposable local systems. A subsequent AWS audit read production resource metadata
+only, as detailed below; no production application/database sessions were opened.
 
 - **Login/revocation race fixed:** privileged login previously read the password,
   TOTP and approval before acquiring the identity lock in session issuance. A
@@ -46,6 +48,37 @@ attempt exhausted local disk during linking; the final successful runs used
 temporary RAM-backed artifacts with debug symbols/incremental compilation disabled.
 This changes build storage only, not source, test assertions or security controls.
 Remote CI must be checked on the pushed commit; local results are not CI results.
+Both CI workflows now include `docs/security/**` in their PR path filters so a
+security release-assessment update receives checks on its own commit SHA.
+
+## Read-only AWS metadata audit
+
+Observed 2026-11-08 through the TrackmyRMC AWS connection in `ap-south-1`.
+Successful STS, RDS Describe, EC2 Describe and IAM Get/List API results established
+the following configuration. These reads neither executed an SSM command nor
+retrieved a secret value. They do not establish application runtime health, SQL
+migration parity, restore success, effective organization-wide authorization or
+provider acceptance.
+
+| Area | Observed evidence | Release implication |
+| --- | --- | --- |
+| Audit connection | Correct account `260234292958`; caller ARN ends in `:root` | Replace the audit/operator connection with a scoped IAM identity before privileged production operations; no root provisioning was performed |
+| RDS | `trackmyrmc-postgres`, PostgreSQL 18.3, available, not publicly accessible, encrypted, deletion protection enabled | Basic configuration confirmed; actual database identities/ledger remain uninspected |
+| Network | RDS ingress is TCP 5432 from the production EC2 security group only; EC2 exposes 80/443 publicly and SSH to one /32 | No public database ingress rule was found in the inspected groups; routes, NACLs and effective reachability were not tested |
+| Transport settings | In-sync `default.postgres18` group reports `rds.force_ssl=1`, `ssl=1`, minimum TLS 1.2 | Server configuration requires encryption; this does not prove client peer authentication |
+| Client transport gap | Deployment URI uses `sslmode=require`; credential-recovery preflight also uses `PGSSLMODE=require` | **Unresolved hardening gate:** enforce certificate-chain and hostname verification with a reviewed RDS trust bundle and negative TLS tests before release. No live TLS setting was changed |
+| Backups | Retention 7 days; latest restorable time 2026-11-08 10:20:09 IST; latest available automated snapshot 2026-11-08 02:30:04 IST; available encrypted manual snapshot from 2026-10-16 | Backup metadata exists, but no fresh release snapshot, independently witnessed restore or measured RPO/RTO was established |
+| Availability | RDS `MultiAZ=false`; production is one running `t3.micro` EC2 instance | Single-instance availability/capacity needs explicit operational acceptance. No scaling or new billable service was enabled |
+| EC2 | Root EBS volume encrypted; IMDSv2 tokens required | Positive configuration evidence, without host inspection or application load evidence |
+| Deployment trust | GitHub OIDC audience `sts.amazonaws.com`; subjects restricted to this repository's main ref (name and numeric-identity forms); session duration 3600 seconds | Branch trust confirmed from live role metadata; GitHub environment approvals and effective organization/session restrictions remain unverified |
+| Deployment permissions | SSM RunShellScript targets the named production instance; S3 writes target its artifact bucket; runtime secret read/write is scoped to the app secret name; `secretsmanager:CreateSecret` has `Resource: "*"` | **Least-privilege review remains PARTIAL:** remove or tightly constrain unneeded secret creation through a separately approved IAM change. No IAM policy mutation or simulation was performed |
+| Runtime permissions | Inspected inline secret/KMS/artifact reads and both attached managed-policy default versions; SSM and CloudWatch agent managed policies remain attached | Review broad managed-policy parameter/log permissions and redundant secret statements. No `iam:PassRole` or IAM policy-edit action was present in the inspected deployment/runtime identity policy documents; this is not proof of all effective permissions |
+
+The complete inspected policy set comprised three deployment inline policies,
+five runtime inline policies and two attached runtime managed policies. No role
+permissions boundary appeared in the returned role metadata. Resource policies,
+KMS key policies, SCPs, session policies and artifact bucket configuration were
+not audited, so overall least privilege cannot be marked complete.
 
 ## Completed remediation
 
@@ -114,9 +147,10 @@ PTY output stays in process memory and is never printed or persisted by the test
 
 ## Provider and production acceptance requiring credentials
 
-- Confirm exact AWS account, region, EC2 instance, artifact bucket, current runtime database,
-  deployment SHA and migration ledger with an authorized scoped operator. No such live checks
-  were performed in this task; staging template evidence is not proof of production state.
+- Confirm current runtime database, deployed SHA and migration ledger with an
+  authorized scoped operator. Account, region and named EC2/RDS configuration
+  were checked through metadata APIs above; the live database/host were not inspected.
+  Staging template evidence is not proof of production state.
 - Review the GitHub OIDC trust subject/audience; restrict the deploy role to intended S3 artifacts
   and SSM targets and runtime access to required secret ARNs. Verify no root credentials, wildcard
   PassRole, policy-edit privilege escalation or cross-environment access. Check actual attached
