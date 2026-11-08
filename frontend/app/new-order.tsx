@@ -18,6 +18,19 @@ import { PlantData } from "@/src/components/PlantCard";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 
 const TIME_SLOTS = ["06:00", "08:00", "10:00", "12:00", "14:00", "16:00"];
+const PAYMENT_MODES = [
+  { value: "FULL_ADVANCE", label: "100% Advance", desc: "Pay in full after plant acceptance" },
+  { value: "PARTIAL_ADVANCE", label: "Partial Advance", desc: "Plant confirms the exact deposit and balance terms" },
+  { value: "ON_DELIVERY", label: "Pay on Delivery", desc: "Available only when the plant approves delivery payment" },
+  { value: "APPROVED_CREDIT", label: "Credit / Pay Later", desc: "Subject to the plant's credit approval" },
+] as const;
+
+// Production cannot offer advance modes until supplier settlement is approved.
+// The Cashfree route is sandbox-only; do not let customers accept unpayable terms.
+const SHOW_SANDBOX_PREPAID = process.env.EXPO_PUBLIC_RMC_PREPAID_SANDBOX_UI === "true";
+const SELECTABLE_PAYMENT_MODES = SHOW_SANDBOX_PREPAID
+  ? PAYMENT_MODES
+  : PAYMENT_MODES.filter((mode) => mode.value === "ON_DELIVERY" || mode.value === "APPROVED_CREDIT");
 
 function nextDays(n: number) {
   const out: { value: string; label: string; sub: string }[] = [];
@@ -45,6 +58,7 @@ export default function NewOrder() {
   const quotationLocked = Boolean(params.quotationId);
   const [plantId, setPlantId] = useState<string | null>(params.plantId || null);
   const [grade, setGrade] = useState<string | null>(params.grade || null);
+  const [paymentMode, setPaymentMode] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(params.quantity || "6");
   const [date, setDate] = useState(params.deliveryDate || days[1].value);
   const [time, setTime] = useState<string | null>(params.deliveryTime || "10:00");
@@ -100,6 +114,7 @@ export default function NewOrder() {
   const submit = async (draft: boolean) => {
     setError(null);
     if (!plantId) return setError("Choose a plant");
+    if (!draft && !paymentMode) return setError("Choose a preferred payment mode");
     if (!grade) return setError("Select a concrete grade");
     if (!quantity || Number(quantity) <= 0) return setError("Enter a valid quantity");
     if (!siteName.trim()) return setError("Enter the site name");
@@ -126,6 +141,7 @@ export default function NewOrder() {
         contact_mobile: mobile.trim() || null,
         notes: notes.trim() || null,
         save_draft: draft,
+        preferred_payment_mode: paymentMode,
       };
       const signature = JSON.stringify(order);
       if (orderRequest.current?.signature !== signature) {
@@ -138,7 +154,7 @@ export default function NewOrder() {
         return;
       }
       const res: any = await apiPost("/customer/orders", token!, request);
-      toast(draft ? "Draft saved" : "Order placed!", "success");
+      toast(draft ? "Draft saved" : "Order request submitted. No payment is required yet.", "success");
       router.replace(`/order/${res.id}` as any);
     } catch (e: any) {
       if (e.detail === "KYC_REQUIRED") {
@@ -266,8 +282,46 @@ export default function NewOrder() {
           </View>
         </Section>
 
+        <Section title="2. Preferred Payment Mode" subtitle="Choose how you would prefer to pay after plant acceptance">
+          <View style={{ gap: spacing.sm }}>
+            {SELECTABLE_PAYMENT_MODES.map((mode) => {
+              const selected = paymentMode === mode.value;
+              return (
+                <Pressable
+                  key={mode.value}
+                  testID={`neworder-payment-${mode.value}`}
+                  accessibilityRole="radio"
+                  accessibilityLabel={mode.label}
+                  accessibilityState={{ selected }}
+                  onPress={() => setPaymentMode(mode.value)}
+                  style={({ pressed }) => [
+                    styles.plantRow,
+                    { borderColor: selected ? colors.brand : colors.border,
+                      backgroundColor: selected ? colors.brandSoft : colors.surfaceSecondary,
+                      opacity: pressed ? 0.85 : 1 },
+                  ]}
+                >
+                  <Ionicons name={selected ? "radio-button-on" : "radio-button-off"} size={20} color={selected ? colors.brand : colors.onSurfaceTertiary} />
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <AppText style={{ fontFamily: fonts.semibold }}>{mode.label}</AppText>
+                    <AppText variant="caption">{mode.desc}</AppText>
+                  </View>
+                </Pressable>
+              );
+            })}
+            <View style={[styles.infoBanner, { backgroundColor: colors.brandSoft, borderColor: colors.brand + "55" }]}>
+              <Ionicons name="shield-checkmark-outline" size={20} color={colors.brand} />
+              <AppText variant="caption" style={{ flex: 1 }}>
+                No payment is required when submitting this order request. Your selection is a preference, subject to the plant's acceptance and final terms. Review and accept the confirmed amount before paying. {SHOW_SANDBOX_PREPAID
+                  ? "Sandbox prepaid testing is available only for approved test plants; no real payment is collected. Never pay using an unofficial link."
+                  : "Online advance payments are not yet activated. Use pay-on-delivery or plant-approved credit only. Never pay using an unofficial link."}
+              </AppText>
+            </View>
+          </View>
+        </Section>
+
         {selectedPlant ? (
-          <Section title="2. Concrete Grade" subtitle={quotationLocked ? "Locked by quotation" : "Choose the specified structural grade"}>
+          <Section title="3. Concrete Grade" subtitle={quotationLocked ? "Locked by quotation" : "Choose the specified structural grade"}>
             <View style={styles.chips}>
               {grades.map((g) => {
                 const sel = g === grade;
@@ -297,7 +351,7 @@ export default function NewOrder() {
           </Section>
         ) : null}
 
-        <Section title="3. Quantity" subtitle="Concrete volume in cubic metres (m³)">
+        <Section title="4. Quantity" subtitle="Concrete volume in cubic metres (m³)">
           <View style={styles.stepper}>
             <Stepper icon="remove" label="Decrease quantity" disabled={quotationLocked} onPress={() => setQuantity((q) => String(Math.max(1, Number(q) - 1)))} colors={colors} />
             <View style={{ flex: 1 }}>
@@ -314,7 +368,7 @@ export default function NewOrder() {
           </View>
         </Section>
 
-        <Section title="4. Delivery Schedule" subtitle="Choose the preferred date and arrival window">
+        <Section title="5. Delivery Schedule" subtitle="Choose the preferred date and arrival window">
           <View style={styles.scheduleBlock}>
             <AppText variant="label">Date</AppText>
             <View style={styles.chips}>
@@ -360,7 +414,7 @@ export default function NewOrder() {
           </View>
         </Section>
 
-        <Section title="5. Site & Contact" subtitle="Where the concrete should arrive and who will receive it">
+        <Section title="6. Site & Contact" subtitle="Where the concrete should arrive and who will receive it">
           <View style={{ gap: spacing.md }}>
             <Input testID="neworder-site" label="Site name" value={siteName} onChangeText={setSiteName} placeholder="e.g. Skyline Towers" autoCapitalize="words" />
             <View>
@@ -413,9 +467,9 @@ export default function NewOrder() {
         </View> : <View style={[styles.submitPanel, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
           <View style={{ gap: 3 }}>
             <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base }}>Ready to continue?</AppText>
-            <AppText variant="caption">Review the plant, mix, quantity, delivery window and site before placing the order.</AppText>
+            <AppText variant="caption">Submitting sends an order request for plant review. No payment will be collected now.</AppText>
           </View>
-          <Button testID="neworder-place" label={assistantMode ? "Prepare Order" : "Place Order"} onPress={() => submit(false)} loading={submitting === "order"} disabled={submitting === "draft"} icon={<Ionicons name="checkmark-circle-outline" size={18} color={colors.onBrand} />} />
+          <Button testID="neworder-place" label={assistantMode ? "Prepare Order" : "Submit Order Request"} onPress={() => submit(false)} loading={submitting === "order"} disabled={submitting === "draft"} icon={<Ionicons name="checkmark-circle-outline" size={18} color={colors.onBrand} />} />
           {!assistantMode ? <Button testID="neworder-draft" label="Save Draft" variant="outline" onPress={() => submit(true)} loading={submitting === "draft"} disabled={submitting === "order"} /> : null}
         </View>}
       </KeyboardAwareScrollView>

@@ -89,6 +89,20 @@ expectIncludes(pushBridge, "Enable notifications", "Notification disclosure need
 expectIncludes(pushBridge, "Not now", "Notification disclosure needs a decline path.");
 expectIncludes(notificationsScreen, "Enable device notifications", "Users must be able to opt into notifications later.");
 
+// RMC physical-supplier transactions must not reintroduce Owner subscription checkout.
+const ownerPlans = read("frontend/app/plans-promotions.tsx");
+const cashfreeSandbox = read("backend/src/routes/cashfree_sandbox.rs");
+const rmcPrepaid = read("backend/src/routes/cashfree_rmc_prepaid.rs");
+expectIncludes(ownerPlans, "Open Onboarding Form", "Owner commercial enquiries must use onboarding.");
+expectIncludes(ownerPlans, "support@trackmyrmc.com", "Owner support contact must be shown.");
+for (const prohibited of ["cashfreeCheckout", "Continue to Secure Payment", "/plant-plans/activate"]) {
+  expect(!ownerPlans.includes(prohibited), "Owner subscription payment checkout is prohibited in the Play UI: " + prohibited);
+}
+expectIncludes(cashfreeSandbox, 'input.kind.eq_ignore_ascii_case("PLAN")', "Legacy Cashfree Owner plan checkout must fail closed.");
+expectIncludes(rmcPrepaid, 'check_role(&user, &["customer"])', "RMC prepaid checkout must be customer-only.");
+expectIncludes(rmcPrepaid, "RMC_PREPAID_SANDBOX_ENABLED", "RMC prepaid must remain explicitly sandbox-gated.");
+expect(!rmcPrepaid.includes("api.cashfree.com"), "Live Cashfree host must not be callable by sandbox-only RMC module.");
+
 const reviewScreen = read("frontend/app/review-access.tsx");
 const apiClient = read("frontend/src/api/client.ts");
 const rustRoutes = read("backend/src/routes/mod.rs");

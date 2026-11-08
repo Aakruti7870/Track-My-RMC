@@ -45,7 +45,7 @@ pub async fn create_order(pool: &PgPool, input: NewOrder<'_>) -> Result<Order, A
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending', 'unpaid')
         RETURNING id, order_number, customer_id, plant_id, site_id, concrete_grade,
                   total_quantity_m3, delivery_date, delivery_time_slot, pump_required,
-                  special_instructions, total_amount, tax_amount, status, payment_status,
+                  special_instructions, total_amount, tax_amount, status, payment_status, preferred_payment_mode,
                   created_at, updated_at
         "#,
     )
@@ -72,7 +72,7 @@ pub async fn find_order_by_id(pool: &PgPool, order_id: Uuid) -> Result<Option<Or
         r#"
         SELECT id, order_number, customer_id, plant_id, site_id, concrete_grade,
                total_quantity_m3, delivery_date, delivery_time_slot, pump_required,
-               special_instructions, total_amount, tax_amount, status, payment_status,
+               special_instructions, total_amount, tax_amount, status, payment_status, preferred_payment_mode,
                created_at, updated_at
         FROM orders
         WHERE id = $1
@@ -93,7 +93,7 @@ pub async fn list_customer_orders(
         r#"
         SELECT id, order_number, customer_id, plant_id, site_id, concrete_grade,
                total_quantity_m3, delivery_date, delivery_time_slot, pump_required,
-               special_instructions, total_amount, tax_amount, status, payment_status,
+               special_instructions, total_amount, tax_amount, status, payment_status, preferred_payment_mode,
                created_at, updated_at
         FROM orders
         WHERE customer_id = $1
@@ -112,7 +112,7 @@ pub async fn list_plant_orders(pool: &PgPool, plant_id: Uuid) -> Result<Vec<Orde
         r#"
         SELECT id, order_number, customer_id, plant_id, site_id, concrete_grade,
                total_quantity_m3, delivery_date, delivery_time_slot, pump_required,
-               special_instructions, total_amount, tax_amount, status, payment_status,
+               special_instructions, total_amount, tax_amount, status, payment_status, preferred_payment_mode,
                created_at, updated_at
         FROM orders
         WHERE plant_id = $1

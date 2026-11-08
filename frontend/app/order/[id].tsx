@@ -1,11 +1,12 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Image, Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { apiPost } from "@/src/api/client";
+import { apiGet, apiPost } from "@/src/api/client";
+import { cashfreeCheckout } from "@/src/payments/cashfree";
 import { fileSource } from "@/src/api/upload";
 import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeProvider";
@@ -48,7 +49,16 @@ type DeliveryLoad = {
 };
 
 type Detail = {
-  order: OrderData & { customer_name?: string; customer_mobile?: string };
+  order: OrderData & { customer_name?: string; customer_mobile?: string; preferred_payment_mode?: string | null };
+  payment_offer?: {
+    status: "OFFERED" | "AWAITING_PAYMENT" | "READY_FOR_PRODUCTION" | "CANCELLED";
+    mode: string;
+    advance_amount: string;
+    total_amount: string;
+    balance_due_on?: string | null;
+    expires_at: string;
+    version: number;
+  } | null;
   contact_person?: string;
   contact_mobile?: string;
   notes?: string;
@@ -59,6 +69,8 @@ type Detail = {
 };
 
 const CANCELLABLE = ["DRAFT", "PENDING", "ACCEPTED", "SCHEDULED"];
+// Never expose the sandbox payment control in production builds.
+const PREPAID_SANDBOX_UI = process.env.EXPO_PUBLIC_RMC_PREPAID_SANDBOX_UI === "true";
 
 export default function OrderDetail() {
   const { colors, scheme } = useTheme();
@@ -75,6 +87,10 @@ export default function OrderDetail() {
   const [busy, setBusy] = useState(false);
   const [showReject, setShowReject] = useState(false);
   const [reason, setReason] = useState("");
+  const [advanceRupees, setAdvanceRupees] = useState("");
+  const [balanceDueOn, setBalanceDueOn] = useState("");
+  const [prepaidBusy, setPrepaidBusy] = useState(false);
+  const checkoutRef = useRef<{ version: number; key: string; gateway?: string } | null>(null);
 
   const act = async (path: string, body?: any, msg?: string) => {
     setBusy(true);
@@ -92,6 +108,92 @@ export default function OrderDetail() {
   };
 
   const o = data?.order;
+  const offer = data?.payment_offer;
+
+  const reconcilePrepaid = async () => {
+    try {
+      const result = await apiGet<{ status: string }>(`/customer/orders/${id}/prepaid/status`, token!);
+      if (result.status === "VERIFIED") {
+        toast("Payment independently verified. Order is confirmed.", "success");
+        reload();
+      } else if (result.status === "HOLD_REFUND_REVIEW") {
+        toast("Payment needs reconciliation. Do not pay again; contact support.", "error");
+        reload();
+      } else {
+        toast("Payment not yet verified. Do not make a second payment.", "info");
+      }
+    } catch (err: any) {
+      toast(err?.detail || "Unable to verify payment. Do not retry payment until checked.", "error");
+    }
+  };
+
+  useEffect(() => {
+    if (!PREPAID_SANDBOX_UI || !token || isOwner || !cashfreeCheckout.available) return;
+    cashfreeCheckout.setCallbacks({
+      onVerify: (gatewayOrderId) => {
+        if (checkoutRef.current?.gateway === gatewayOrderId) { void reconcilePrepaid(); }
+      },
+      onError: () => {
+        toast("Checkout interrupted. Check its payment status before retrying.", "info");
+      },
+    });
+    return () => cashfreeCheckout.removeCallbacks();
+  }, [id, token, isOwner, toast, reload]);
+
+  const startPrepaidCheckout = async () => {
+    if (!offer || !token || prepaidBusy || !cashfreeCheckout.available) return;
+    setPrepaidBusy(true);
+    try {
+      if (!checkoutRef.current || checkoutRef.current.version !== offer.version) {
+        checkoutRef.current = {
+          version: offer.version,
+          key: `rmc-prepaid-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        };
+      }
+      const result = await apiPost<{ payment_session_id: string; gateway_order_id: string; cashfree_environment: string }>(
+        `/customer/orders/${id}/prepaid/checkout`, token,
+        { offer_version: offer.version, idempotency_key: checkoutRef.current.key }
+      );
+      if (result.cashfree_environment !== "sandbox" || !result.payment_session_id) {
+        throw new Error("Payment environment not approved");
+      }
+      checkoutRef.current.gateway = result.gateway_order_id;
+      cashfreeCheckout.start(result.payment_session_id, result.gateway_order_id, false);
+    } catch (err: any) {
+      toast(err?.detail || err?.message || "Prepaid sandbox checkout is not enabled for this plant", "error");
+    } finally {
+      setPrepaidBusy(false);
+    }
+  };
+  const approvePreferredTerms = () => {
+    if (!o?.preferred_payment_mode) return;
+    let advance_paise: number | null = null;
+    if (o.preferred_payment_mode === "PARTIAL_ADVANCE") {
+      const amount = advanceRupees.trim();
+      if (!/^\d+(\.\d{1,2})?$/.test(amount)) {
+        toast("Enter an advance amount with at most two decimal places", "error");
+        return;
+      }
+      const [rupees, fraction = ""] = amount.split(".");
+      advance_paise = Number(rupees) * 100 + Number((fraction + "00").slice(0, 2));
+      if (!Number.isSafeInteger(advance_paise) || advance_paise <= 0) {
+        toast("Enter a valid advance", "error");
+        return;
+      }
+    }
+    const balance_due_on = balanceDueOn.trim();
+    if (balance_due_on && !/^\d{4}-\d{2}-\d{2}$/.test(balance_due_on)) {
+      toast("Enter the balance due date as YYYY-MM-DD", "error");
+      return;
+    }
+    if (o.preferred_payment_mode === "APPROVED_CREDIT" && !balance_due_on) {
+      toast("Specify the approved credit repayment date", "error");
+      return;
+    }
+    act(`/owner/orders/${id}/payment-offer`,
+      { advance_paise, ...(balance_due_on ? { balance_due_on } : {}) },
+      "Payment terms sent for customer approval");
+  };
   const proofs = data?.pods?.length ? data.pods : (data?.pod ? [data.pod] : []);
 
   return (
@@ -189,6 +291,51 @@ export default function OrderDetail() {
             </View>
           ) : null}
 
+          {offer ? (
+            <Card style={{ gap: spacing.sm }}>
+              <AppText variant="heading">Plant-approved payment terms</AppText>
+              <Row icon="wallet-outline" label="Payment mode" value={offer.mode.replace(/_/g, " ")} colors={colors} />
+              <Row icon="cash-outline" label="Final total (INR)" value={String(offer.total_amount)} colors={colors} />
+              <Row icon="card-outline" label="Advance (INR)" value={String(offer.advance_amount)} colors={colors} />
+              {offer.mode !== "FULL_ADVANCE" ? (
+                <>
+                  <Row icon="cash-outline" label="Outstanding balance (INR)" value={(Number(offer.total_amount) - Number(offer.advance_amount)).toFixed(2)} colors={colors} />
+                  <Row icon="calendar-outline" label="Balance due on" value={offer.balance_due_on || "Not specified"} colors={colors} />
+                </>
+              ) : null}
+              <AppText variant="caption">Status: {offer.status.replace(/_/g, " ")}. No payment is taken on this screen.</AppText>
+              {!isOwner && offer.status === "OFFERED" ? (
+                <Button testID="customer-accept-payment-terms" label="Accept Final Terms" loading={busy}
+                  onPress={() => act(`/customer/orders/${id}/accept-payment-terms`, { version: offer.version }, "Payment terms accepted")} />
+              ) : null}
+              {!isOwner && offer.status === "AWAITING_PAYMENT" ? (
+                <View style={{ gap: spacing.sm }}>
+                  <AppText variant="caption">Terms accepted. Your order remains on hold until Cashfree confirms payment. Never pay using an unofficial UPI ID or personal link.</AppText>
+                  {PREPAID_SANDBOX_UI && cashfreeCheckout.available ? (
+                    <View style={{ gap: spacing.sm }}>
+                      <AppText variant="caption">Sandbox test mode — no real payment will be collected.</AppText>
+                      <Button testID="rmc-prepaid-sandbox-checkout" label="Test Secure Prepaid Checkout" loading={prepaidBusy} onPress={startPrepaidCheckout} />
+                      <Button testID="rmc-prepaid-check-status" variant="outline" label="Check Payment Status" loading={prepaidBusy} onPress={() => { void reconcilePrepaid(); }} />
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
+            </Card>
+          ) : !isOwner && o.preferred_payment_mode && o.status === "PENDING" ? (
+            <Card><AppText variant="caption">Preferred payment: {o.preferred_payment_mode.replace(/_/g, " ")}. Awaiting plant acceptance. No payment is due now.</AppText></Card>
+          ) : null}
+
+          {isOwner && o.status === "PENDING" && ["PARTIAL_ADVANCE", "APPROVED_CREDIT"].includes(o.preferred_payment_mode || "") && !offer ? (
+            <Card style={{ gap: spacing.sm }}>
+              {o.preferred_payment_mode === "PARTIAL_ADVANCE" ? (
+                <Input testID="owner-advance-amount" label="Plant-approved advance amount (INR)" value={advanceRupees} onChangeText={setAdvanceRupees} keyboardType="decimal-pad" placeholder="e.g. 25000.00" />
+              ) : null}
+              <Input testID="owner-balance-due-date"
+                label={o.preferred_payment_mode === "APPROVED_CREDIT" ? "Approved credit repayment date (YYYY-MM-DD)" : "Balance due date (optional, defaults to delivery day)"}
+                value={balanceDueOn} onChangeText={setBalanceDueOn} placeholder="YYYY-MM-DD" />
+            </Card>
+          ) : null}
+
           {isOwner ? (
             o.status === "PENDING" ? (
               showReject ? (
@@ -203,7 +350,13 @@ export default function OrderDetail() {
               ) : (
                 <View style={{ flexDirection: "row", gap: spacing.sm }}>
                   <View style={{ flex: 1 }}><Button testID="owner-reject" label="Reject" variant="outline" onPress={() => setShowReject(true)} /></View>
-                  <View style={{ flex: 1 }}><Button testID="owner-approve" label="Approve" loading={busy} onPress={() => act(`/owner/orders/${id}/approve`, undefined, "Order approved")} icon={<Ionicons name="checkmark-circle-outline" size={18} color={colors.onBrand} />} /></View>
+                  <View style={{ flex: 1 }}>{offer ? (
+                    <AppText variant="caption">{offer.status === "OFFERED" ? "Payment offer sent. Awaiting customer acceptance." : offer.status === "AWAITING_PAYMENT" ? "Customer accepted. Waiting for verified online payment before production." : "Review the order's current commercial status before any further action."}</AppText>
+                  ) : (
+                    <Button testID="owner-approve" label={o.preferred_payment_mode ? "Accept & Send Terms" : "Approve"} loading={busy}
+                      onPress={() => o.preferred_payment_mode ? approvePreferredTerms() : act(`/owner/orders/${id}/approve`, undefined, "Order approved")}
+                      icon={<Ionicons name="checkmark-circle-outline" size={18} color={colors.onBrand} />} />
+                  )}</View>
                 </View>
               )
             ) : (

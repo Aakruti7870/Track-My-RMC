@@ -19,6 +19,7 @@ pub struct Order {
     pub tax_amount: bigdecimal::BigDecimal,
     pub status: String,
     pub payment_status: String,
+    pub preferred_payment_mode: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -68,6 +69,10 @@ pub struct CreateOrderRequest {
     #[serde(default)]
     pub save_draft: bool,
     pub delivery_mode: Option<String>,
+    /// Non-binding preference, not an authorization to charge.
+    /// Omitted when absent so legacy idempotency request snapshots remain stable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preferred_payment_mode: Option<String>,
     pub idempotency_key: Option<String>,
 }
 

@@ -7,7 +7,7 @@ import { Card } from "@/src/components/ui/Card";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { spacing } from "@/src/theme/tokens";
 
-const UPDATED = "28 August 2026";
+const UPDATED = "6 November 2026";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -38,7 +38,7 @@ export default function PrivacyPolicy() {
         </Card>
 
         <Section title="Who operates this service">
-          TrackMyRMC / Concrete King is operated by GOLD-e Tech. Privacy and account-deletion questions can be sent to support@goldetech.com.
+          TrackMyRMC / Concrete King is operated by GOLD-e Tech. Privacy and account-deletion questions can be sent to support@trackmyrmc.com or support@goldetech.com.
         </Section>
 
         <Section title="Account and operational information">
@@ -51,6 +51,10 @@ export default function PrivacyPolicy() {
 
         <Section title="Camera, photos and files">
           Camera access is requested only when a Driver chooses to capture a proof-of-delivery site photo or explicitly enables camera access in App permissions. On supported Android versions, existing photos are selected through the system photo picker without broad photo or storage access. KYC consent flows may use approved verification providers such as DigiLocker where enabled.
+        </Section>
+
+        <Section title="Customer RMC payment and purchase records">
+          When customer prepayment for physical concrete is enabled, TrackMyRMC processes the order reference, customer account, approved plant, payable amount, transaction status, provider reference, invoice and refund or reconciliation records. These records are used for order fulfilment, payment verification, accounting, fraud prevention and support, and may be shared only with the selected plant, authorized staff and the approved payment provider as necessary. Cashfree collects payment credentials directly in its secure checkout; TrackMyRMC does not ask for, store or display full card numbers, CVV or UPI PIN. Payment collection is not available before the plant confirms and the customer accepts the final commercial terms.
         </Section>
 
         <Section title="Notifications">
@@ -71,7 +75,7 @@ export default function PrivacyPolicy() {
 
         <Card style={{ gap: spacing.xs }}>
           <AppText variant="heading">Contact</AppText>
-          <AppText variant="bodyMuted">Privacy & support: support@goldetech.com</AppText>
+          <AppText variant="bodyMuted">Privacy & support: support@trackmyrmc.com (alternate: support@goldetech.com)</AppText>
           <AppText variant="caption">TrackMyRMC · Concrete King · Powered by GOLD-e Tech</AppText>
         </Card>
       </ScrollView>
