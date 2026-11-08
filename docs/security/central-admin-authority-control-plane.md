@@ -44,7 +44,7 @@ Required before merge/release:
 2. `admin-web` `npm run build` and browser tests at mobile/tablet/desktop widths.
 3. An approved Central Admin fixture tests grant, reject, revoke and expired-session behavior. An approved Authority fixture tests wrong-role denial, no mobile login/token refresh, KYC evidence gates, and cross-tenant/privacy restrictions.
 4. Validate production migrations, email OTP delivery and authenticator enrollment **without emitting secret keys or real customer data**; verify the expected production database.
-5. Verify password + TOTP enforcement including wrong-password, missing-password, stale challenge, role mismatch, session replacement and initial Authority enrollment. Account recovery requires controlled operator verification, never email-only self-service.
+5. Verify password + TOTP enforcement including wrong-password, missing-password, stale challenge, role mismatch, session replacement and initial Authority enrollment. Account recovery requires controlled operator verification, never email-only self-service. The independently approved privileged recovery lifecycle is not implemented; see `pr157-release-assessment.md`.
 6. Explicit release approval and independently verified production identity/bootstrap rehearsal. No live marketing broadcasts or payments are automatically enabled, and no AWS production write or deployment is performed by CI.
 
 
@@ -102,6 +102,16 @@ operators. There is no unverified email-only password recovery API or backdoor.
 
 ### Remaining integration work
 
-The repository contains many platform endpoints but **not every module has a complete Control Center lifecycle UI or production acceptance**. Broad marketing campaigns / opt-ins / opt-outs, operational support replies, delegated onboarding approvals, full finance actions, reviewable KYC evidence UX, and cross-module reporting require dedicated authenticated APIs, audit/consent tests and release-specific acceptance. Do not label links, cards or mocked provider responses as completed integrations.
+The repository contains many platform endpoints but **not every module has a complete Control Center lifecycle UI or production acceptance**. Broad marketing campaigns / opt-ins / opt-outs, delegated onboarding approvals, full finance actions, reviewable KYC evidence UX, and cross-module reporting require dedicated authenticated APIs, audit/consent tests and release-specific acceptance. Do not label links, cards or mocked provider responses as completed integrations.
 
 This PR deliberately strengthens the authority hierarchy first. Additional modules should extend these server-enforced entitlements and existing Rust services rather than introducing a parallel platform administrator identity or unrestricted external automation provider.
+
+
+## Remediation verification and release decision
+
+See [PR #157 release assessment](pr157-release-assessment.md) for findings, isolated test
+results, production-only gates and unresolved recovery/integration blockers. Privileged
+bearers now live only in dashboard memory; reload requires login. Enrollment, login,
+step-up and rotation reject a reused privileged TOTP step, so wait for a fresh authenticator
+code between proofs. Neither the bootstrap command nor generated backup codes constitute
+an implemented independently approved emergency recovery flow.

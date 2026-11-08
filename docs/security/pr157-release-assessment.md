@@ -1,0 +1,111 @@
+# PR #157 production release assessment
+
+Assessment date: 2026-11-08. Decision: **BLOCK** pending the acceptance gates below.
+This is evidence of remediation and isolated verification, not production authorization.
+The existing feature branch includes main through `d9f9110e5ff5e01ed41c6fb19711088936ff239d`.
+Consult the final branch commit's GitHub checks; earlier green runs do not approve later commits.
+
+## Completed remediation
+
+| Finding | Correction | Evidence |
+| --- | --- | --- |
+| Login and step-up tracked TOTP reuse separately; Central Admin step-up allowed reuse | Login, enrollment, bootstrap, step-up and password rotation share the credential replay counter; login consumes it atomically with session issuance | Both-role cross-surface replay tests; concurrent login accepts exactly one proof |
+| RFQ writes accepted a read-only grant; legacy routes admitted ordinary plant administrators | Both RFQ write routes require WebAdmin, `support.manage` and recent MFA; global RFQ reads require WebAdmin and `support.view` | Read-only, missing-step-up, customer and plant-admin negative tests; authorized writes and customer note privacy still tested |
+| Mobile menu advertised global RFQ administration | Removed global module; retained deep link displays a web-portal explanation without making API calls | Module-discovery and explicit absent-module/no-mobile-request guards |
+| Privileged bearer persisted in session storage shared by same-origin pages | Dashboard tokens stay in page memory; old stored tokens are removed; reload requires authentication | Real browser login and authorized requests work while storage remains empty |
+| Dashboard deployment lacked CSP and source throttling | Admin-only CSP, anti-framing, no-referrer, nosniff and HSTS; shared Nginx source limit for privileged auth routes; no-store auth responses | Real isolated TLS Nginx response and combined admin/Authority HTTP 429 test; `nginx -t` |
+| Production CORS accepted wildcard or malformed origins | Production configuration rejects wildcard, HTTP, credentials, paths, queries, fragments and empty allowlists | Production-origin policy unit test; local test origins remain supported |
+| Password hashing blocked asynchronous request workers | Login performs bounded Argon2 work in `spawn_blocking`; missing identities use dummy password work and cannot authenticate | Password and role negative tests; full Rust suite |
+| Bootstrap could run in CI with a pseudo-terminal | Explicit CI/GitHub Actions refusal; collision preflight before credential generation; transactional collision checks retained | Real executable PTY lifecycle test against an isolated loopback database |
+| Logout UI could imply revocation despite network failure | Separate confirmed server revocation from local sign-out | Browser confirms server rejection after successful logout |
+| Cargo lock did not resolve the branch's declared dependencies | Committed resolved lockfile, including terminal password input and JWT crypto dependencies | Format, all-target check, strict all-feature Clippy and tests |
+
+The existing role-bound web sessions, one-hour server expiry, no privileged mobile refresh,
+Argon2id plus authenticator, approved Authority enrollment, six-capability delegation allowlist,
+provider-evidence KYC guards, audit reasons and atomic Authority revocation remain enforced.
+No marketing broadcast, live payment mode or new AWS service was enabled.
+
+## Isolated verification
+
+| Check | Local evidence |
+| --- | --- |
+| `cargo fmt --all -- --check` | PASS |
+| `cargo check --all-targets` | PASS |
+| `cargo clippy --all-targets --all-features -- -D warnings` | PASS |
+| `cargo test --all`, PostgreSQL 16 | PASS: 237 tests, zero failures |
+| `cargo test --all`, PostgreSQL 18 | Pending final run; see current commit checks |
+| Admin TypeScript and production build | PASS: `npm run build --prefix admin-web` |
+| Expo TypeScript and production web export | PASS: `npm run typecheck`, `npm run build:preview` |
+| Privileged browser E2E against real Rust/PostgreSQL | PASS: Central Admin login, collections, Owner approval/suspension, logout; Authority login, scoped collections, cross-role denial and logout |
+| Bootstrap real executable | PASS: missing apply, CI with PTY, wrong database, password mismatch, invalid TOTP, no writes on failure, successful Argon2id/TOTP enrollment, hashed backup codes, consumed enrollment step, audited creation, no JWT, duplicate bootstrap and existing-user promotion denied |
+| Authority enrollment failures | PASS: expired, exhausted, consumed, revoked and wrong-purpose challenges leave password sentinel unchanged; valid enrollment is single-use |
+| Credential/session security | PASS: password rejection and rotation, cross-role denial, replay, concurrent proof use, throttle, replacement, database expiry and revocation |
+| Offline operational gates | PASS: 65 Python tests, deployment shell syntax |
+| Mobile navigation and security guards | PASS locally: routing, modules, vector assignment, font, permissions, policy, responsive layout and MFA routing |
+
+All credentials used for these tests were disposable synthetic fixtures. No real identity,
+provider consent, live payment, AWS write or production database access was used. Bootstrap
+PTY output stays in process memory and is never printed or persisted by the test harness.
+
+## Code and acceptance blockers
+
+1. **Privileged emergency recovery is incomplete.** Backup-code generation and ordinary
+   staff recovery are implemented, but privileged login accepts only six-digit TOTP.
+   Stored backup codes therefore do not provide a complete Central Admin/Authority lost-device
+   recovery flow. There is no implemented independently approved privileged password/device
+   reset lifecycle. Do not route these accounts through ordinary staff recovery or manually
+   relabel email OTP as independent approval. Define and implement the approved recovery trust
+   model, distinct requester/approver enforcement, single-use expiring requests, throttling,
+   transactional credential replacement, comprehensive session revocation and audited denial/
+   success paths; then test it independently. First-admin bootstrap intentionally cannot recover
+   or overwrite an existing identity. **This is a code/workflow blocker, not just missing credentials.**
+2. Provider-backed Authority first-enrollment browser acceptance needs a consented email delivery
+   environment. The real browser tests exercise pre-enrolled synthetic accounts; database/HTTP
+   tests exercise enrollment contracts. Neither proves real provider delivery.
+3. Complete finance operations and marketing consent/opt-out/broadcast lifecycles lack approved
+   control-plane API contracts and acceptance. Current support/RFQ monitoring and manual outreach
+   records must not be described as complete finance or campaign integration.
+4. Independent security review must cover the complete PR against current main, including
+   recovery design, shared-origin threat model, credential storage, concurrent policy revocation,
+   MFA throttles, audit access/retention, KYC evidence and legacy route inventory. This engineering
+   pass does not substitute for independent approval.
+
+## Provider and production acceptance requiring credentials
+
+- Confirm exact AWS account, region, EC2 instance, artifact bucket, current runtime database,
+  deployment SHA and migration ledger with an authorized scoped operator. No such live checks
+  were performed in this task; staging template evidence is not proof of production state.
+- Review the GitHub OIDC trust subject/audience; restrict the deploy role to intended S3 artifacts
+  and SSM targets and runtime access to required secret ARNs. Verify no root credentials, wildcard
+  PassRole, policy-edit privilege escalation or cross-environment access. Check actual attached
+  policies and permissions boundaries rather than inferring them from a workflow role name.
+- Confirm private/encrypted RDS, TLS database connections, application/migration role separation,
+  backup retention, recent restorable point, encrypted manual snapshot and independently witnessed
+  isolated restore with measured RPO/RTO. Run existing read-only recovery/parity gates using current
+  evidence. A successful offline gate test is not a production backup or restore.
+- Review the full migration ledger, including main's payment-offer and prepaid-gateway migrations.
+  The remediation adds no new database migration; tests cover fresh schema and existing backfill
+  cases. Confirm production checksums and data parity before startup applies pending migrations.
+  Do not rename the live database or edit SQLx checksums to force parity.
+- Independently approve first-admin identity and database, rehearse the terminal bootstrap,
+  configure separate Authority identities and least grants, and validate real email/TOTP and
+  consented DigiLocker evidence. Do not put production credentials in CI or terminal recordings.
+- Rehearse SHA-pinned application rollback on isolated restored data. An older build that restores
+  TOTP-only or mobile/global administrator access is not a safe rollback. Disable privileged traffic
+  and revoke affected sessions before an emergency rollback; prefer a reviewed forward fix. Database
+  restore is a separately approved action with reconciliation of post-backup orders/payments.
+- Review production Nginx compatibility, trusted proxy topology and source-limit behavior behind
+  the actual ingress, then verify CSP/CORS, secret-free logs, no-store responses and token expiry
+  on the exact approved release.
+
+## Explicit production change approvals
+
+**None.** This task authorized code fixes, isolated tests and pushes to PR #157's existing
+branch. No real privileged identity, credential rotation, migration against production,
+backup/restore resource, AWS service, payment, broadcast, merge or deployment was authorized
+or performed.
+
+The repository's existing AWS workflow automatically deploys qualifying successful **main**
+commits. Pushing this feature branch does not invoke that production path. A future merge
+must therefore include a separate release/deployment decision and verification of the actual
+production approval gate; green CI alone is not deployment authorization.

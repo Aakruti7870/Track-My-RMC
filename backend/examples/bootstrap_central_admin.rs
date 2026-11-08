@@ -37,7 +37,9 @@ fn hash_recovery_code(code: &str, secret: &str) -> String {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().skip(1).collect();
-    if !args.iter().any(|a| a == "--apply")
+    if env::var_os("CI").is_some()
+        || env::var_os("GITHUB_ACTIONS").is_some()
+        || !args.iter().any(|a| a == "--apply")
         || !io::stdin().is_terminal()
         || !io::stdout().is_terminal()
     {
@@ -80,6 +82,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
         return Err("Required migrations have not been applied".into());
     }
 
+    let unavailable: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM users WHERE role='central_admin' OR LOWER(email)=$1)",
+    )
+    .bind(&email)
+    .fetch_one(&pool)
+    .await?;
+    if unavailable {
+        return Err("Bootstrap requires no Central Admin and a fresh, separate email identity".into());
+    }
+    // The same constraints are rechecked under the transaction lock below.
     println!("Target database: {actual_database}. Email: {email}. No automatic role promotion.");
     let first = rpassword::prompt_password("New Central Admin password (16-128 bytes): ")?;
     let second = rpassword::prompt_password("Confirm Central Admin password: ")?;

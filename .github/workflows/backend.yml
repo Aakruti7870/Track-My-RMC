@@ -88,6 +88,25 @@ jobs:
           cd backend
           cargo test --all --verbose
 
+      - name: Verify first-admin bootstrap against a disposable database
+        if: success() && matrix.postgres == 18
+        env:
+          PGHOST: localhost
+          PGUSER: trackmyrmc_user
+          PGPASSWORD: securepassword
+          DATABASE_URL: postgres://trackmyrmc_user:securepassword@localhost:5432/trackmyrmc_bootstrap_test
+        run: |
+          set -euo pipefail
+          createdb trackmyrmc_bootstrap_test
+          trap 'dropdb --if-exists trackmyrmc_bootstrap_test' EXIT
+          for migration in backend/migrations/*.sql; do
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration" > /dev/null
+          done
+          cargo build --manifest-path backend/Cargo.toml --example bootstrap_central_admin
+          # The harness captures secrets only from synthetic private PTYs. It
+          # explicitly verifies that CI=true is rejected by the real command.
+          python3 backend/scripts/verify_bootstrap_lifecycle.py
+
       - name: Setup Node for actual admin browser regression
         if: success() && matrix.postgres == 18
         uses: actions/setup-node@v4

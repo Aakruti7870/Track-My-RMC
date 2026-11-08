@@ -85,6 +85,7 @@ try {
   const denied = await page.request.get('http://127.0.0.1:8000/api/admin/auth/me',{headers:{Authorization:'Bearer '+authorityToken}});
   assert.equal(denied.status(),403);
   await page.getByRole('button', {name:'Sign out and revoke session',exact:true}).click();
+  await page.getByRole('heading', {name:'Central Admin sign in',exact:true}).waitFor();
   assert.equal(await page.evaluate(()=>sessionStorage.getItem('trackmyrmc_admin_token')),null);
   const authorityRevoked = await page.request.get('http://127.0.0.1:8000/api/authority/auth/me',{headers:{Authorization:'Bearer '+authorityToken}});
   assert.equal(authorityRevoked.status(),401);
