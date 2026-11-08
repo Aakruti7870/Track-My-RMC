@@ -260,6 +260,54 @@ pub async fn list_staff_support_cases(
     ))
 }
 
+/// The native follow-up worker writes staff-only, generic in-app alerts.
+/// This web feed is required: privileged Central Admin/Authority cannot log
+/// into the customer mobile notifications UI. No customer message or document
+/// content is ever returned by these alerts.
+pub async fn list_staff_support_alerts(
+    State(state): State<AppState>,
+    admin: crate::auth::control_center::WebAdmin,
+) -> Result<impl IntoResponse, AppError> {
+    admin.require("support.view")?;
+    admin.require("support.reply")?;
+    let alerts: Vec<serde_json::Value> = sqlx::query_scalar(
+        "SELECT jsonb_build_object(
+             'id',n.id,'title',n.title,'body',n.body,
+             'case_id',n.reference_id,'is_read',n.is_read,
+             'created_at',n.created_at)
+         FROM notifications n
+         JOIN support_cases c ON c.id::text=n.reference_id
+         WHERE n.user_id=$1 AND n.notification_type='support_followup'
+         ORDER BY n.created_at DESC,n.id DESC LIMIT 50",
+    )
+    .bind(admin.user_id)
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(json!({"alerts":alerts})))
+}
+
+pub async fn mark_staff_support_alert_read(
+    State(state): State<AppState>,
+    admin: crate::auth::control_center::WebAdmin,
+    Path(alert_id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    admin.require("support.view")?;
+    admin.require("support.reply")?;
+    let updated: Option<Uuid> = sqlx::query_scalar(
+        "UPDATE notifications SET is_read=TRUE
+         WHERE id=$1 AND user_id=$2 AND notification_type='support_followup'
+         RETURNING id",
+    )
+    .bind(alert_id)
+    .bind(admin.user_id)
+    .fetch_optional(&state.db)
+    .await?;
+    if updated.is_none() {
+        return Err(AppError::NotFound("Support alert not found".into()));
+    }
+    Ok(Json(json!({"read":true})))
+}
+
 pub async fn get_staff_support_case(
     State(state): State<AppState>,
     admin: crate::auth::control_center::WebAdmin,

@@ -138,6 +138,7 @@ function CommandCenter() {
   const [centralKycReason,setCentralKycReason]=useState('');
   const [centralKycCode,setCentralKycCode]=useState('');
   const [supportCase,setSupportCase]=useState<Record<string,any>|null>(null);
+  const [supportAlerts,setSupportAlerts]=useState<Array<Record<string,any>>>([]);
   const [supportReply,setSupportReply]=useState('');
   const [supportInternal,setSupportInternal]=useState(false);
   const [supportStepUp,setSupportStepUp]=useState('');
@@ -305,11 +306,19 @@ function CommandCenter() {
   },[automationKey,automationTemplates]);
 
   async function loadWorkspace(kind:string,offset=0) {
-    setBusy(true);setError('');setWorkspace(kind);setSupportCase(null);
+    setBusy(true);setError('');setWorkspace(kind);setSupportCase(null);setSupportAlerts([]);
     try {
       const prefix=user?.role==='authority'?'/api/authority/collections/':'/api/control-center/collections/';
       const response=await apiClient.get(prefix+encodeURIComponent(kind),{params:{limit:25,offset}});
       setRecords(response.data.items || []);setWorkspaceOffset(offset);
+      if(kind==='support' && permissions.includes('support.reply')) {
+        try {
+          const alerts=await apiClient.get('/api/assistant/support/staff/alerts');
+          setSupportAlerts(alerts.data?.alerts||[]);
+        } catch (alertError) {
+          setError('Support alerts unavailable: '+errorMessage(alertError));
+        }
+      }
     } catch(error) {setRecords([]);setError(errorMessage(error));}
     finally {setBusy(false);}
   }
@@ -395,11 +404,15 @@ function CommandCenter() {
     } catch(err) { setError(errorMessage(err)); }
   }
 
-  async function openSupportCase(caseId:string) {
+  async function openSupportCase(caseId:string,alertId?:string) {
     setBusy(true);setError('');
     try {
       const response=await apiClient.get('/api/assistant/support/staff/cases/'+encodeURIComponent(caseId));
       setSupportCase(response.data?.case||null);
+      if(alertId) {
+        await apiClient.post('/api/assistant/support/staff/alerts/'+encodeURIComponent(alertId)+'/read');
+        setSupportAlerts(old=>old.map(item=>String(item.id)===alertId?{...item,is_read:true}:item));
+      }
     } catch(err) {setError(errorMessage(err));setSupportCase(null);}
     finally {setBusy(false);}
   }
@@ -1138,6 +1151,20 @@ function CommandCenter() {
                   <section aria-label="Support case management" style={{border:'1px solid #475569',borderRadius:12,padding:14,marginTop:14}}>
                     <h3 style={{fontSize:16}}>Customer Support Operations</h3>
                     <p style={{fontSize:12,color:'#cbd5e1'}}>Open a case to view its conversation. Replies and status changes use dedicated server-enforced permissions.</p>
+                    {permissions.includes('support.reply') && (
+                      <div aria-label="Internal support follow-up alerts" style={{padding:12,margin:'8px 0',border:'1px solid #475569',borderRadius:8}}>
+                        <strong>Support follow-up inbox</strong>
+                        <p style={{fontSize:12,color:'#cbd5e1'}}>Staff-only reminders. Opening an alert marks it read, but does not resolve the case or alter its SLA.</p>
+                        {supportAlerts.filter(alert=>!alert.is_read).map(alert=>(
+                          <button type="button" key={String(alert.id)} disabled={busy}
+                            onClick={()=>void openSupportCase(String(alert.case_id),String(alert.id))}
+                            style={{...buttonStyle,width:'auto',background:'#334155',marginRight:8,marginTop:5}}>
+                            Review due case · {String(alert.case_id).slice(0,8)}
+                          </button>
+                        ))}
+                        {!supportAlerts.some(alert=>!alert.is_read) && <p style={{fontSize:12}}>No unread follow-up reminders.</p>}
+                      </div>
+                    )}
                     <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                       {records.map(row=><button type="button" key={String(row.id)} disabled={busy}
                         style={{...buttonStyle,width:'auto',background:'#334155',marginTop:0}}

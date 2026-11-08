@@ -30,7 +30,11 @@ An explicitly enabled first-party worker checks at most ten due cases per tick,
 locks the case before the follow-up, and atomically records at most two internal
 reminders, a technical event and generic notifications. The notifications go
 only to currently active, separately approved Central Admin/Authority web
-accounts with BOTH `support.view` and `support.reply`. Case content, phone
+accounts with BOTH `support.view` and `support.reply`. The native
+`support_followup` notification rows are exposed by a dedicated, authorized
+`GET /api/assistant/support/staff/alerts` feed in the existing web
+Support workspace; staff can open a case and mark their own alert read.
+The inbox deliberately does not imply a staff response or case resolution. Case content, phone
 numbers, order data, OTPs and documents never enter the reminder payload.
 Without an eligible operator, the case stays open and retryable rather than
 impersonating or fabricating a delivery.

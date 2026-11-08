@@ -283,6 +283,15 @@ async fn support_staff_requires_recorded_web_mfa_grants_and_fresh_status_step_up
         .0,
         StatusCode::OK
     );
+    let (alerts_status, alerts_body) = request(
+        &router,
+        "/api/assistant/support/staff/alerts",
+        Some(token),
+        None,
+    )
+    .await;
+    assert_eq!(alerts_status, StatusCode::OK);
+    assert!(alerts_body["alerts"].as_array().unwrap().is_empty());
     let (_, staff) = request(&router, &staff_path, Some(token), None).await;
     assert_eq!(staff["case"]["messages"].as_array().unwrap().len(), 2);
     // Internal staff notes never consume a visible-response SLA.
