@@ -996,15 +996,30 @@ pub async fn record_invoice_payment(
     ))
 }
 
-// Only the Authority's independently approved review session may invoke this
-// helper. The public route contains a *customer user ID*, not user_profiles.id.
-// Keep the update and immutable audit record in one transaction.
+// Only a separately approved Authority session may invoke the route. The
+// customer ID is users.id. The provider environment comes from server-side
+// policy; a missing provider can never authorize a new verified KYC decision.
 async fn update_reviewed_customer_kyc(
     db: &sqlx::PgPool,
     actor: Uuid,
     customer_id: Uuid,
     new_status: &'static str,
     reason: &str,
+) -> Result<(), AppError> {
+    let provider_environment = crate::routes::digilocker_kyc::approved_provider_environment().ok();
+    update_reviewed_customer_kyc_with_env(
+        db, actor, customer_id, new_status, reason, provider_environment,
+    )
+    .await
+}
+
+async fn update_reviewed_customer_kyc_with_env(
+    db: &sqlx::PgPool,
+    actor: Uuid,
+    customer_id: Uuid,
+    new_status: &'static str,
+    reason: &str,
+    provider_environment: Option<&str>,
 ) -> Result<(), AppError> {
     let reason = reason.trim();
     if !(10..=500).contains(&reason.len()) {
@@ -1022,13 +1037,15 @@ async fn update_reviewed_customer_kyc(
                 AND p.verified_name IS NOT NULL
                 AND EXISTS(SELECT 1 FROM customer_digilocker_sessions d
                            WHERE d.user_id=p.user_id AND d.status='PENDING'
-                           AND d.verified_at IS NOT NULL))
+                           AND d.verified_at IS NOT NULL
+                           AND d.provider_environment=$3))
              OR ($2='rejected' AND p.kyc_status='pending')
              OR ($2='unverified' AND p.kyc_status IN ('verified','rejected')))
          RETURNING p.user_id",
     )
     .bind(customer_id)
     .bind(new_status)
+    .bind(provider_environment)
     .fetch_optional(&mut *tx)
     .await?;
     if updated != Some(customer_id) {
@@ -1042,7 +1059,8 @@ async fn update_reviewed_customer_kyc(
     )
     .bind(actor)
     .bind(customer_id.to_string())
-    .bind(json!({"kyc_status": new_status, "reason": reason}))
+    .bind(json!({"kyc_status": new_status, "reason": reason,
+                 "provider_environment": if new_status == "verified" {provider_environment} else {None}}))
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
@@ -1136,9 +1154,24 @@ async fn ensure_authority_review_session(
 
 #[cfg(test)]
 mod authority_kyc_customer_scope_tests {
-    use super::update_reviewed_customer_kyc;
+    use super::update_reviewed_customer_kyc_with_env;
     use crate::error::AppError;
     use uuid::Uuid;
+
+    // Isolated PostgreSQL tests select synthetic sandbox provenance explicitly;
+    // production HTTP code always derives it from the server's provider policy.
+    async fn update_reviewed_customer_kyc(
+        db: &sqlx::PgPool,
+        actor: Uuid,
+        customer_id: Uuid,
+        new_status: &'static str,
+        reason: &str,
+    ) -> Result<(), AppError> {
+        update_reviewed_customer_kyc_with_env(
+            db, actor, customer_id, new_status, reason, Some("sandbox"),
+        )
+        .await
+    }
 
     #[sqlx::test]
     async fn review_uses_customer_user_id_rejects_noncustomers_and_writes_audit(
@@ -1188,6 +1221,23 @@ mod authority_kyc_customer_scope_tests {
             .execute(&pool)
             .await
             .unwrap();
+
+        // Sandbox evidence must never approve live KYC, or any approval
+        // when the server has no configured/approved provider.
+        for environment in [Some("live"), None] {
+            assert!(matches!(
+                update_reviewed_customer_kyc_with_env(
+                    &pool,
+                    actor,
+                    customer,
+                    "verified",
+                    "Reject incompatible provider evidence",
+                    environment,
+                )
+                .await,
+                Err(AppError::Conflict(_))
+            ));
+        }
 
         // The route uses the customer's users.id, which differs from user_profiles.id.
         assert_ne!(profile, customer);

@@ -338,7 +338,7 @@ pub async fn collection(
         ),
         "kyc" => (
             "kyc.view",
-            "SELECT jsonb_build_object('customer_id',p.user_id,'customer',u.full_name,'verified_name',p.verified_name,'status',p.kyc_status,'updated_at',p.updated_at,'evidence_verified',EXISTS(SELECT 1 FROM customer_digilocker_sessions d WHERE d.user_id=p.user_id AND d.status='PENDING' AND d.verified_at IS NOT NULL)) FROM user_profiles p JOIN users u ON u.id=p.user_id WHERE u.role='customer' AND u.is_active AND p.kyc_status='pending' ORDER BY p.updated_at LIMIT $1 OFFSET $2",
+            "SELECT jsonb_build_object('customer_id',p.user_id,'customer',u.full_name,'verified_name',p.verified_name,'status',p.kyc_status,'updated_at',p.updated_at,'evidence_verified',EXISTS(SELECT 1 FROM customer_digilocker_sessions d WHERE d.user_id=p.user_id AND d.status='PENDING' AND d.verified_at IS NOT NULL AND d.provider_environment=$3)) FROM user_profiles p JOIN users u ON u.id=p.user_id WHERE u.role='customer' AND u.is_active AND p.kyc_status='pending' ORDER BY p.updated_at LIMIT $1 OFFSET $2",
         ),
         _ => return Err(AppError::NotFound("Authority workspace not found".into())),
     };
@@ -348,11 +348,20 @@ pub async fn collection(
     if !(0..=10000).contains(&offset) {
         return Err(AppError::BadRequest("Invalid page offset".into()));
     }
-    let rows: Vec<Value> = sqlx::query_scalar(query)
-        .bind(limit)
-        .bind(offset)
-        .fetch_all(&state.db)
-        .await?;
+    let rows: Vec<Value> = if kind == "kyc" {
+        sqlx::query_scalar(query)
+            .bind(limit)
+            .bind(offset)
+            .bind(crate::routes::digilocker_kyc::approved_provider_environment().ok())
+            .fetch_all(&state.db)
+            .await?
+    } else {
+        sqlx::query_scalar(query)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&state.db)
+            .await?
+    };
     Ok(Json(json!({"items":rows,"limit":limit,"offset":offset})))
 }
 

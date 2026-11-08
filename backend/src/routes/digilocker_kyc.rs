@@ -18,6 +18,12 @@ const LIVE_HOST: &str = "https://api.sandbox.co.in";
 const REDIRECT_URL: &str = "https://trackmyrmc.com/kyc/return";
 const MAX_PROVIDER_BODY: usize = 262_144;
 
+// Evaluate the same enablement, approved live policy and credential checks
+// used by actual provider requests; never trust a client-supplied environment.
+pub(crate) fn approved_provider_environment() -> Result<&'static str, AppError> {
+    Ok(Provider::enabled()?.environment)
+}
+
 struct Provider {
     client: Client,
     host: &'static str,
