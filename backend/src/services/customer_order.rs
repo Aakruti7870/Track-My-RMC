@@ -78,6 +78,15 @@ async fn validate(
     text(&req.site_address, 500, req.site_id.is_none())?;
     text(&req.contact_person, 150, false)?;
     text(&req.contact_mobile, 20, false)?;
+    if req
+        .preferred_payment_mode
+        .as_deref()
+        .is_some_and(|m| !crate::routes::order_payment::valid_mode(m))
+    {
+        return Err(AppError::BadRequest(
+            "Unsupported preferred payment mode".into(),
+        ));
+    }
     if req.lat.is_some() != req.lng.is_some()
         || req
             .lat
@@ -354,12 +363,12 @@ pub async fn place_with_preview(
             .bind(req.lat).bind(req.lng).bind(req.contact_person.as_deref().unwrap_or(&validated.name)).bind(req.contact_mobile.as_deref().unwrap_or(&validated.phone))
             .fetch_one(&mut *tx).await?
     };
-    let order=sqlx::query_as::<_,Order>("INSERT INTO orders(order_number,customer_id,plant_id,site_id,concrete_grade,total_quantity_m3,delivery_date,delivery_time_slot,pump_required,special_instructions,total_amount,tax_amount,status,idempotency_key,request_payload,quotation_id,pricing_snapshot,delivery_mode) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *")
+    let order=sqlx::query_as::<_,Order>("INSERT INTO orders(order_number,customer_id,plant_id,site_id,concrete_grade,total_quantity_m3,delivery_date,delivery_time_slot,pump_required,special_instructions,total_amount,tax_amount,status,idempotency_key,request_payload,quotation_id,pricing_snapshot,delivery_mode,preferred_payment_mode) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *")
         .bind(format!("RMC-{}",Uuid::new_v4().simple())).bind(customer).bind(req.plant_id).bind(site).bind(&req.concrete_grade)
         .bind(req.quantity_m3.to_string().parse::<BigDecimal>().map_err(|_|AppError::BadRequest("Invalid quantity".into()))?)
         .bind(req.delivery_date).bind(req.delivery_time_slot.as_deref().unwrap_or("")).bind(req.pump_required.unwrap_or(false)).bind(&req.special_instructions)
         .bind(validated.total).bind(validated.tax).bind(if req.save_draft {"draft"} else {"pending"}).bind(&req.idempotency_key).bind(&payload).bind(req.quotation_id).bind(&validated.pricing)
-        .bind(req.delivery_mode.as_deref().unwrap_or("DELIVERY")).fetch_one(&mut *tx).await?;
+        .bind(req.delivery_mode.as_deref().unwrap_or("DELIVERY")).bind(&req.preferred_payment_mode).fetch_one(&mut *tx).await?;
     if let Some(quote) = req.quotation_id {
         sqlx::query(
             "UPDATE plant_quotations SET status='ORDER_CREATED',updated_at=NOW() WHERE id=$1",
