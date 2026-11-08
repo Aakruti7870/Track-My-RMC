@@ -536,7 +536,7 @@ mod tests {
             "INSERT INTO users(phone,hashed_password,full_name,role)
              VALUES($1,'test-only','Synthetic KYC Customer','customer') RETURNING id",
         )
-        .bind(format!("proof{}", Uuid::new_v4().simple()))
+        .bind(format!("proof{}", &Uuid::new_v4().simple().to_string()[..12]))
         .fetch_one(&db)
         .await
         .unwrap();
