@@ -338,20 +338,64 @@ try {
       await expect(page.getByTestId('customer-module-grid')).toBeVisible();
       await page.getByText('More', { exact: true }).last().click();
     }
-    if (user.role === 'plant_owner') await page.getByRole('button', { name: 'View all plant modules', exact: true }).click();
-    await expect(page.getByTestId('role-module-directory')).toBeVisible();
-    // The typed catalog describes implemented routes. Effective per-user grants
-    // additionally hide restricted modules. In the seeded Dispatcher account,
-    // Plant Reports are deliberately unavailable (no plant_reports ceiling).
+    // Verify each unique module destination across the redesigned tab surfaces.
+    // The old single-page catalog assertion must not duplicate Home cards.
     const disabledKeys = user.role === 'dispatcher' ? ['business-reports'] : [];
     const visibleKeys = user.role === 'customer'
       ? ['account-deletion', 'customer-support', 'notifications', 'quotations', 'documents']
       : modulesForRole(user.role).map(module => module.key).filter(key => !disabledKeys.includes(key));
-    for (const key of visibleKeys) {
-      await expect(page.getByTestId('role-module-' + key)).toBeVisible();
-    }
-    for (const key of disabledKeys) {
-      await expect(page.getByTestId('role-module-' + key)).toHaveCount(0);
+    const visibleModuleCards = async (locator = page) => {
+      const cards = locator.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])')
+        .filter({ visible: true });
+      return cards.evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid').slice('role-module-'.length)));
+    };
+    if (user.role === 'plant_owner') {
+      const homeKeys = await page.locator('[data-testid^="owner-shortcut-"]').filter({ visible: true })
+        .evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid').slice('owner-shortcut-'.length)));
+      assert.equal(homeKeys.length, 6, 'Owner Home must render six compact priority shortcuts');
+      await page.getByTestId('tab-operations').click();
+      await expect(page.getByTestId('owner-native-automation-center')).toBeVisible();
+      const operationsKeys = await visibleModuleCards();
+      await page.getByTestId('tab-more').click();
+      await expect(page.getByTestId('role-module-directory')).toBeVisible();
+      const moreKeys = await visibleModuleCards();
+      const rendered = [...homeKeys, ...operationsKeys, ...moreKeys];
+      assert.equal(new Set(rendered).size, rendered.length, 'Owner module cards must not repeat across tabs');
+      assert.deepEqual(new Set(rendered), new Set([...visibleKeys, 'owner-drivers']),
+        'All approved Owner modules must be discoverable exactly once');
+    } else if (user.role === 'customer') {
+      await page.getByText('More', { exact: true }).last().click();
+      await expect(page.getByTestId('role-module-directory')).toBeVisible();
+      for (const key of visibleKeys) await expect(page.getByTestId('role-module-' + key)).toBeVisible();
+    } else if (user.role === 'driver') {
+      await expect(page.getByTestId('role-module-directory')).toBeVisible();
+      for (const key of visibleKeys) await expect(page.getByTestId('role-module-' + key)).toBeVisible();
+    } else {
+      const nativeTabKeys = {
+        dispatcher: ['dispatcher-queue', 'dispatcher-fleet'],
+        operator: ['operator-production'],
+        supervisor: ['supervisor-operations', 'supervisor-incidents'],
+        accountant: ['accountant-billing', 'accountant-ledger'],
+        quality_engineer: ['engineer-quality'],
+        fleet_manager: ['fleet-manager-fleet', 'fleet-manager-drivers'],
+        store_manager: ['store-manager-stock'],
+      }[user.role] ?? [];
+      const homeDirectory = page.getByTestId('role-module-directory').filter({ visible: true });
+      await expect(homeDirectory).toBeVisible();
+      await expect.poll(() => homeDirectory.locator('[data-testid^="role-module-"]').count()).toBeGreaterThan(0);
+      const homeKeys = await visibleModuleCards(homeDirectory);
+      assert(homeKeys.length <= 6, 'Staff Home supports no more than six compact role tiles');
+      await page.getByTestId('tab-more').click();
+      const moreDirectory = page.locator('[data-testid="role-module-directory"]:has([data-testid="staff-module-search"])')
+        .filter({ visible: true });
+      await expect(moreDirectory).toBeVisible();
+      await expect.poll(async () => (await moreDirectory.innerText()).includes('Checking staff permissions…')).toBe(false);
+      const moreKeys = await visibleModuleCards(moreDirectory);
+      const rendered = [...nativeTabKeys, ...homeKeys, ...moreKeys];
+      assert.equal(new Set(rendered).size, rendered.length, 'Staff module cards must not repeat');
+      assert.deepEqual(new Set(rendered), new Set(visibleKeys),
+        'Effective staff module catalog must be discoverable across native tabs, Home and More');
+      for (const key of disabledKeys) assert(!rendered.includes(key), 'Restricted module leaked: ' + key);
     }
     if (user.role === 'plant_owner') {
       phase = 'Owner staff slots and Manager delegation';
