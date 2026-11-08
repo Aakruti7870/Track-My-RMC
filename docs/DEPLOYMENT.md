@@ -2,7 +2,7 @@
 
 **Canonical production is `https://trackmyrmc.com`, served from AWS EC2/Nginx with AWS RDS PostgreSQL.** The existing AWS SHA-pinned GitHub workflow installs the Rust backend, Expo web frontend and separate admin web dashboard together. Render is not a production build, deployment, database, or API dependency. The obsolete Render backend Blueprints (`render.yaml` and `backend/render.yaml`) were removed.
 
-**Historical hosting caveat:** A separately configured Render static site may continue building `main` until disabled in the Render dashboard. The prior `www.trackmyrmc.com` Cloudflare CNAME targeted that static site; remove that routing dependency using an audited `www` → apex redirect and DNS update before claiming complete separation. Merely deleting YAML does not turn off Render's already-created services.
+**Render separation state (2026-11-09):** The separately configured Render static site may still auto-build `main` until disabled in the Render dashboard. Cloudflare's enabled `www.trackmyrmc.com` → `https://trackmyrmc.com` HTTP 301 redirect and the proxied `www` CNAME pointing to `trackmyrmc.com` were verified through Cloudflare's API. DNS no longer targets Render. An independent public HTTPS redirect smoke test remains necessary; deleting YAML does not disable existing Render dashboard services.
 
 ## Entry points and release provenance
 
