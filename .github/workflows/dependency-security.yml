@@ -1,0 +1,81 @@
+name: Dependency Security Audit
+
+# Dedicated audit: green compile/test results do not prove dependencies safe.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "frontend/**"
+      - "admin-web/**"
+      - "backend/Cargo.lock"
+      - "backend/Cargo.toml"
+      - "ops/security/**"
+      - ".github/workflows/dependency-security.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  npm-lock-and-advisories:
+    name: npm lock and advisory audit
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [frontend, admin-web]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Check patched dependency and lockfile policy
+        if: matrix.package == 'frontend'
+        run: node frontend/scripts/check-dependency-safety.cjs
+      - name: Audit all build-time and runtime dependencies
+        run: |
+          set -euo pipefail
+          cd "${{ matrix.package }}"
+          npm audit --audit-level=high --json > "$RUNNER_TEMP/npm-audit-${{ matrix.package }}-all.json" || true
+          node ../ops/security/assess-npm-audit.cjs "$RUNNER_TEMP/npm-audit-${{ matrix.package }}-all.json" all
+      - name: Audit production dependency subset
+        if: success() || failure()
+        run: |
+          set -euo pipefail
+          cd "${{ matrix.package }}"
+          npm audit --omit=dev --audit-level=high --json > "$RUNNER_TEMP/npm-audit-${{ matrix.package }}-production.json" || true
+          node ../ops/security/assess-npm-audit.cjs "$RUNNER_TEMP/npm-audit-${{ matrix.package }}-production.json" production
+      - name: Upload audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-${{ matrix.package }}
+          path: ${{ runner.temp }}/npm-audit-${{ matrix.package }}-*.json
+          retention-days: 14
+          if-no-files-found: ignore
+
+  rustsec-audit:
+    name: RustSec full Cargo.lock audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install RustSec cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: Audit full Rust lockfile (including optional crates)
+        run: |
+          set -euo pipefail
+          cargo audit --file backend/Cargo.lock --json > "$RUNNER_TEMP/cargo-audit.json" || true
+          python3 ops/security/assess-cargo-audit.py "$RUNNER_TEMP/cargo-audit.json"
+      - name: Upload audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustsec-audit
+          path: ${{ runner.temp }}/cargo-audit.json
+          retention-days: 14
+          if-no-files-found: ignore
