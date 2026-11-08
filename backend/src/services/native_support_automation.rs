@@ -339,6 +339,37 @@ mod tests {
         .await
         .unwrap();
 
+        // No approved staff means NO delivered event, but overdue must
+        // remain overdue. Only a separate retry timer may advance.
+        sqlx::query("UPDATE control_center_access SET approved=FALSE WHERE user_id=$1")
+            .bind(privileged)
+            .execute(&db)
+            .await
+            .unwrap();
+        assert_eq!(tick(&db).await.unwrap(), 0);
+        let no_operator: (bool, bool, i16) = sqlx::query_as(
+            "SELECT due_at<NOW(),next_attempt_at>NOW(),reminder_count
+             FROM native_support_followups WHERE case_id=$1",
+        )
+        .bind(case_id)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        assert_eq!(no_operator, (true, true, 0));
+        sqlx::query("UPDATE control_center_access SET approved=TRUE WHERE user_id=$1")
+            .bind(privileged)
+            .execute(&db)
+            .await
+            .unwrap();
+        sqlx::query(
+            "UPDATE native_support_followups
+             SET next_attempt_at=NOW()-INTERVAL '1 minute' WHERE case_id=$1",
+        )
+        .bind(case_id)
+        .execute(&db)
+        .await
+        .unwrap();
+
         let (first, second) = tokio::join!(tick(&db), tick(&db));
         assert_eq!(first.unwrap() + second.unwrap(), 1);
         let notifications: Vec<(Uuid, String)> = sqlx::query_as(

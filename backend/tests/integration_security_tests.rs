@@ -292,6 +292,49 @@ async fn support_staff_requires_recorded_web_mfa_grants_and_fresh_status_step_up
     .await;
     assert_eq!(alerts_status, StatusCode::OK);
     assert!(alerts_body["alerts"].as_array().unwrap().is_empty());
+    // A staff alert is visible only in its owner web session; marking it
+    // read never changes the support case or its independent SLA timer.
+    let alert_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO notifications
+         (user_id,title,body,notification_type,reference_id)
+         VALUES($1,'Support review due','Internal reminder','support_followup',$2)
+         RETURNING id",
+    )
+    .bind(admin)
+    .bind(case_id)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    let (feed_status, feed) = request(
+        &router,
+        "/api/assistant/support/staff/alerts",
+        Some(token),
+        None,
+    )
+    .await;
+    assert_eq!(feed_status, StatusCode::OK);
+    assert_eq!(feed["alerts"].as_array().unwrap().len(), 1);
+    assert_eq!(feed["alerts"][0]["case_id"], case_id);
+    assert_eq!(
+        request(&router, "/api/assistant/support/staff/alerts", Some(&customer_token), None)
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    let alert_read_path = format!("/api/assistant/support/staff/alerts/{alert_id}/read");
+    assert_eq!(
+        request(&router, &alert_read_path, Some(token), Some(json!({})))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert!(
+        sqlx::query_scalar::<_, bool>("SELECT is_read FROM notifications WHERE id=$1")
+            .bind(alert_id)
+            .fetch_one(&db)
+            .await
+            .unwrap()
+    );
     let (_, staff) = request(&router, &staff_path, Some(token), None).await;
     assert_eq!(staff["case"]["messages"].as_array().unwrap().len(), 2);
     // Internal staff notes never consume a visible-response SLA.
