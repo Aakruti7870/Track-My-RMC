@@ -750,7 +750,8 @@ async fn in_flight_reply_rechecks_revocation_after_case_lock_wait(db: PgPool) {
         .unwrap();
     revoke.commit().await.unwrap();
     lock.commit().await.unwrap();
-    assert_eq!(reply.await.unwrap().0, StatusCode::FORBIDDEN);
+    // The account-level revocation takes precedence over the policy denial.
+    assert_eq!(reply.await.unwrap().0, StatusCode::UNAUTHORIZED);
     assert_eq!(
         sqlx::query_scalar::<_, i64>(
             "SELECT count(*) FROM support_case_replies WHERE case_id=$1 AND is_staff"
@@ -761,4 +762,156 @@ async fn in_flight_reply_rechecks_revocation_after_case_lock_wait(db: PgPool) {
         .unwrap(),
         0
     );
+}
+
+async fn wait_on_case(db: &PgPool, pattern: &str) {
+    tokio::time::timeout(std::time::Duration::from_secs(10),async {
+        loop {
+            let waiting:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE $1)")
+                .bind(pattern).fetch_one(db).await.unwrap();
+            if waiting {break}
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    }).await.expect("request must acquire a transaction and wait on the actual case lock");
+}
+
+#[sqlx::test]
+async fn in_flight_support_revalidates_generic_logout_and_account_jti_replacement(db: PgPool) {
+    let state = state(db.clone());
+    let router = build_app_router(state.clone());
+    for role in ["authority", "central_admin"] {
+        for generic_logout in [true, false] {
+            let (_, _, case) = customer_case(&db, &router, &state).await;
+            let (id, _, _, token) =
+                web_operator(&db, &router, role, vec!["support.view", "support.reply"]).await;
+            let mut lock = db.begin().await.unwrap();
+            sqlx::query("SELECT id FROM support_cases WHERE id=$1 FOR UPDATE")
+                .bind(case)
+                .execute(&mut *lock)
+                .await
+                .unwrap();
+            let app = router.clone();
+            let old_token = token.clone();
+            let pending = tokio::spawn(async move {
+                request(
+                    &app,
+                    &format!("/api/assistant/support/staff/cases/{case}/replies"),
+                    Some(&old_token),
+                    Some(json!({"message":"Revoked account must not respond"})),
+                )
+                .await
+            });
+            wait_on_case(&db, "SELECT user_id,status,priority FROM support_cases%").await;
+            if generic_logout {
+                assert_eq!(
+                    request(&router, "/api/auth/logout", Some(&token), Some(json!({})))
+                        .await
+                        .0,
+                    StatusCode::OK
+                );
+            } else {
+                trackmyrmc_backend::auth::account_sessions::issue(&state, id, role, "", None, 1)
+                    .await
+                    .unwrap();
+            }
+            // Neither generic operation revokes the dedicated web-table row.
+            // This isolates the account revocation/JTI predicates being tested.
+            assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM control_center_sessions WHERE user_id=$1 AND revoked_at IS NULL AND expires_at>NOW()")
+                .bind(id).fetch_one(&db).await.unwrap(),1);
+            lock.commit().await.unwrap();
+            assert_eq!(pending.await.unwrap().0, StatusCode::UNAUTHORIZED);
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT count(*) FROM support_case_replies WHERE case_id=$1 AND is_staff"
+                )
+                .bind(case)
+                .fetch_one(&db)
+                .await
+                .unwrap(),
+                0
+            );
+        }
+    }
+}
+
+#[sqlx::test]
+async fn support_status_uses_one_connection_and_expires_step_up_after_lock_wait(db: PgPool) {
+    let limited = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .acquire_timeout(std::time::Duration::from_secs(3))
+        .connect_with((*db.connect_options()).clone())
+        .await
+        .unwrap();
+    let state = state(limited.clone());
+    let router = build_app_router(state.clone());
+    let (_, _, case) = customer_case(&db, &router, &state).await;
+    let (id, _, secret, token) = web_operator(
+        &db,
+        &router,
+        "central_admin",
+        vec!["support.view", "support.reply", "support.manage"],
+    )
+    .await;
+    let code =
+        TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp() + 30) as u64).unwrap();
+    assert_eq!(
+        request(
+            &router,
+            "/api/control-center/step-up",
+            Some(&token),
+            Some(json!({"code":code}))
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let path = format!("/api/assistant/support/staff/cases/{case}/status");
+    let (a,b)=tokio::time::timeout(std::time::Duration::from_secs(10),async {
+        tokio::join!(request(&router,&path,Some(&token),Some(json!({"status":"CLOSED"}))),request(&router,&path,Some(&token),Some(json!({"status":"CLOSED"}))))
+    }).await.expect("status handlers must never request another connection while holding the sole transaction connection");
+    assert_eq!(a.0, StatusCode::OK);
+    assert_eq!(b.0, StatusCode::OK);
+    assert_eq!(
+        request(&router, &path, Some(&token), Some(json!({"status":"OPEN"})))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let mut lock = db.begin().await.unwrap();
+    sqlx::query("SELECT id FROM support_cases WHERE id=$1 FOR UPDATE")
+        .bind(case)
+        .execute(&mut *lock)
+        .await
+        .unwrap();
+    let app = router.clone();
+    let jwt = token.clone();
+    let status_path = path.clone();
+    let pending = tokio::spawn(async move {
+        request(
+            &app,
+            &status_path,
+            Some(&jwt),
+            Some(json!({"status":"CLOSED"})),
+        )
+        .await
+    });
+    wait_on_case(&db, "SELECT status,priority FROM support_cases%").await;
+    // Set expiry between the transaction's start and its post-lock check.
+    // NOW() would still treat this grant as fresh; clock_timestamp() must deny it.
+    sqlx::query("UPDATE control_center_step_ups SET expires_at=clock_timestamp() WHERE user_id=$1")
+        .bind(id)
+        .execute(&db)
+        .await
+        .unwrap();
+    lock.commit().await.unwrap();
+    assert_eq!(pending.await.unwrap().0, StatusCode::FORBIDDEN);
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT status FROM support_cases WHERE id=$1")
+            .bind(case)
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+        "OPEN"
+    );
+    limited.close().await;
 }

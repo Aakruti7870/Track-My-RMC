@@ -147,13 +147,24 @@ pub(crate) async fn require_recent_step_up(
     user: &AuthUser,
     headers: &HeaderMap,
 ) -> Result<(), AppError> {
+    require_recent_step_up_using(&state.db, user, headers).await
+}
+
+pub(crate) async fn require_recent_step_up_using<
+    'e,
+    E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+>(
+    executor: E,
+    user: &AuthUser,
+    headers: &HeaderMap,
+) -> Result<(), AppError> {
     let token_hash = session_token_hash(headers)?;
     let verified: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM control_center_step_ups WHERE user_id = $1 AND token_hash = $2 AND expires_at > NOW())",
+        "SELECT EXISTS(SELECT 1 FROM control_center_step_ups WHERE user_id = $1 AND token_hash = $2 AND expires_at > clock_timestamp())",
     )
     .bind(user.user_id)
     .bind(token_hash)
-    .fetch_one(&state.db)
+    .fetch_one(executor)
     .await?;
     if !verified {
         return Err(AppError::Forbidden(

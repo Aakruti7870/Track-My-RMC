@@ -2,6 +2,7 @@
 use crate::{
     auth::{
         control_center::{token_hash, WebAdmin},
+        jwt::{verify_token, Claims},
         AuthUser,
     },
     error::AppError,
@@ -10,9 +11,9 @@ use crate::{
 use axum::{
     async_trait,
     extract::{FromRef, FromRequestParts},
-    http::request::Parts,
+    http::{header::AUTHORIZATION, request::Parts, HeaderMap},
 };
-use sqlx::{Postgres, Transaction};
+use sqlx::{Postgres, Row, Transaction};
 use std::ops::Deref;
 
 #[derive(Clone, Copy)]
@@ -25,6 +26,7 @@ pub enum SupportAction {
 pub struct WebSupport {
     user: AuthUser,
     token_hash: String,
+    claims: Claims,
 }
 
 impl Deref for WebSupport {
@@ -35,11 +37,29 @@ impl Deref for WebSupport {
 }
 
 impl WebSupport {
-    pub fn from_admin(admin: &WebAdmin) -> Self {
-        Self {
-            user: admin.user.clone(),
-            token_hash: admin.token_hash.clone(),
+    pub fn from_admin(
+        admin: &WebAdmin,
+        headers: &HeaderMap,
+        secret: &str,
+    ) -> Result<Self, AppError> {
+        Self::from_headers(admin.user.clone(), headers, secret)
+    }
+
+    fn from_headers(user: AuthUser, headers: &HeaderMap, secret: &str) -> Result<Self, AppError> {
+        let bearer = headers
+            .get(AUTHORIZATION)
+            .and_then(|h| h.to_str().ok())
+            .and_then(|h| h.strip_prefix("Bearer "))
+            .ok_or_else(|| AppError::Unauthorized("Support bearer required".into()))?;
+        let claims = verify_token(bearer, secret)?;
+        if claims.sub != user.user_id || claims.role != user.role {
+            return Err(AppError::SessionRevoked);
         }
+        Ok(Self {
+            user,
+            token_hash: token_hash(headers)?,
+            claims,
+        })
     }
 
     /// Case mutations lock the case BEFORE calling this method, matching the
@@ -51,14 +71,33 @@ impl WebSupport {
         tx: &mut Transaction<'_, Postgres>,
         action: SupportAction,
     ) -> Result<(), AppError> {
-        let active: Option<bool> =
-            sqlx::query_scalar("SELECT is_active FROM users WHERE id=$1 AND role=$2 FOR SHARE")
+        let account =
+            sqlx::query("SELECT is_active,auth_revoked_at,active_session_jti FROM users WHERE id=$1 AND role=$2 FOR SHARE")
                 .bind(self.user_id)
                 .bind(&self.role)
                 .fetch_optional(&mut **tx)
                 .await?;
-        if active != Some(true) || !matches!(self.role.as_str(), "central_admin" | "authority") {
+        let account = account.ok_or(AppError::SessionRevoked)?;
+        if !account.get::<bool, _>("is_active")
+            || !matches!(self.role.as_str(), "central_admin" | "authority")
+        {
             return Err(AppError::SessionRevoked);
+        }
+        // Generic account logout/replacement need not touch the dedicated web
+        // session table. Reapply AuthUser's account predicates under this lock.
+        let revoked_at: Option<chrono::DateTime<chrono::Utc>> = account.get("auth_revoked_at");
+        if revoked_at.is_some_and(|at| {
+            self.claims
+                .issued_at_us
+                .map_or(self.claims.iat as i64 <= at.timestamp(), |issued| {
+                    issued <= at.timestamp_micros()
+                })
+        }) {
+            return Err(AppError::SessionRevoked);
+        }
+        let current_jti: Option<uuid::Uuid> = account.get("active_session_jti");
+        if current_jti.is_some() && current_jti != self.claims.jti {
+            return Err(AppError::SessionReplaced);
         }
         let permissions: Option<Vec<String>> = sqlx::query_scalar(
             "SELECT a.permissions FROM control_center_access a
@@ -100,11 +139,8 @@ where
                 "Dedicated support web session required".into(),
             ));
         }
-        let support = Self {
-            user,
-            token_hash: token_hash(&parts.headers)?,
-        };
         let app = AppState::from_ref(state);
+        let support = Self::from_headers(user, &parts.headers, &app.config.jwt_secret)?;
         let mut tx = app.db.begin().await?;
         support
             .authorize_in_tx(&mut tx, SupportAction::View)

@@ -91,7 +91,8 @@ recent authenticator verification.
 
 Every support action verifies the current approved, unexpired, unrevoked web
 session and enabled authenticator. Case mutations recheck this proof after
-locking the case, holding a shared identity lock through commit; policy and
+locking the case, holding a shared identity lock through commit and rechecking the verified JWT
+JTI/issuance against account revocation; policy and
 session replacement/revocation serialize on that identity. Replies, notes,
 status changes, case views, alert listing and first read acknowledgements are
 audited without copying ticket text into audit metadata.
@@ -108,3 +109,8 @@ on them always requires a current approved web session.
 
 See `security/pr159-release-acceptance.md` for test evidence, the permission
 matrix, migration/rollback constraints and production-only acceptance gates.
+
+Post-lock support status MFA checks reuse the transaction connection and check
+actual wall-clock expiry, so case contention cannot consume the entire pool
+waiting for a second connection or extend an expired step-up grant. Composer
+and internal-note state is cleared at logout/case changes to isolate operators.

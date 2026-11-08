@@ -405,10 +405,10 @@ pub async fn update_case_status(
         .fetch_optional(&mut *tx)
         .await?
         .ok_or_else(|| AppError::NotFound("Support case not found".into()))?;
-    WebSupport::from_admin(&admin)
+    WebSupport::from_admin(&admin, &headers, &state.config.jwt_secret)?
         .authorize_in_tx(&mut tx, SupportAction::Manage)
         .await?;
-    super::control_center_routes::require_recent_step_up(&state, &admin, &headers).await?;
+    super::control_center_routes::require_recent_step_up_using(&mut *tx, &admin, &headers).await?;
     let previous: String = row.get("status");
     let priority: String = row.get("priority");
     if previous.to_uppercase() != status {

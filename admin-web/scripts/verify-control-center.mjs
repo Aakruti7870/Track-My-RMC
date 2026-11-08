@@ -26,12 +26,17 @@ async function verifySupport(page,role) {
   await inbox.getByRole('button',{name:/Review due case/}).waitFor();
   await inbox.getByRole('button',{name:/Review due case/}).click();
   await inbox.getByText('No unread follow-up reminders.',{exact:true}).waitFor();
+  assert.equal(await page.getByLabel('Reply or note',{exact:true}).inputValue(),'','another operator/case draft must never carry over');
+  assert.equal(await page.getByRole('checkbox',{name:'Internal note (not visible to customer)',exact:true}).isChecked(),false);
   const message='Synthetic '+role+' support response';
   await page.getByLabel('Reply or note',{exact:true}).fill(message);
   const response=page.waitForResponse(r=>r.url().includes('/staff/cases/') && r.url().endsWith('/replies') && r.request().method()==='POST');
   await page.getByRole('button',{name:'Send support reply',exact:true}).click();
   assert.equal((await response).status(),200);
   await page.getByText(message,{exact:true}).waitFor();
+  // Deliberately leave an unsent private draft before logout/role switching.
+  await page.getByLabel('Reply or note',{exact:true}).fill('Unsent private '+role+' note');
+  await page.getByRole('checkbox',{name:'Internal note (not visible to customer)',exact:true}).check();
   if(role==='authority') assert.equal(await page.getByRole('button',{name:'CLOSED',exact:true}).count(),0);
   console.log('PASS: '+role+' sees own support alert, opens and acknowledges it, and submits an authorized visible reply');
 }

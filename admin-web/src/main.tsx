@@ -407,7 +407,7 @@ function CommandCenter() {
   }
 
   async function openSupportCase(caseId:string,alertId?:string) {
-    setBusy(true);setError('');
+    setBusy(true);setError('');setSupportReply('');setSupportInternal(false);setSupportStepUp('');
     try {
       const response=await apiClient.get('/api/assistant/support/staff/cases/'+encodeURIComponent(caseId));
       setSupportCase(response.data?.case||null);
@@ -709,6 +709,8 @@ function CommandCenter() {
     } finally {
       setAccessToken(null);
       setUser(null);setPrivilegedPassword('');setPermissions([]);setRecords([]);setWorkspace('');setRfqOutreachCode('');setRfqOutreachNotes({});
+      setSupportCase(null);setSupportAlerts([]);setSupportAlertsLoaded(false);
+      setSupportReply('');setSupportInternal(false);setSupportStepUp('');
       setShowNativeAutomation(false);setAutomationTemplates([]);setAutomationHealth(null);
       setAutomationJobs([]);setAutomationCode('');setAutomationKey('');
       setHealth(null);

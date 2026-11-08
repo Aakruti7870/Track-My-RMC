@@ -48,6 +48,9 @@ No existing customer, owner or staff identity is promoted to Authority.
 | Authorization extraction could precede a concurrent revocation while the request waited for its case lock | Case mutation locks case first, then rechecks current identity/session/access in a fresh statement under an identity SHARE lock through commit. Real database lock-wait regression commits revocation first and proves no staff reply is inserted |
 | Approved invitations without usable credentials could consume reminders | Worker requires an Argon2id password and enabled TOTP as well as active/approved identity and both support grants. Disabled/unapproved/inactive operator tests preserve the overdue deadline and reminder budget |
 | Older unread alerts and cross-account cursors/read acknowledgements | Unread filtering occurs before limit; deterministic keyset pagination validates cursor ownership. Tests traverse 55 unread alerts behind read history without duplicates and deny another account's cursor/read operation |
+| Codex P2: generic logout/JTI replacement could race extraction without touching the dedicated web-session row | Preserve verified JWT JTI and issuance claims and reapply the account revocation/replacement predicates under the identity lock. Both-role regressions invoke real generic logout or the account issuance primitive while a reply waits; the old web-session row stays present but the reply is denied with no insert |
+| Codex P2: post-lock MFA recheck could request a second pool connection and starve itself | Share the step-up query through a SQLx executor and run the post-lock check on the held transaction connection, using current wall-clock expiry. Concurrent status updates pass with a one-connection pool; a grant expiring during a case-lock wait cannot close the case |
+| Unsent support drafts could survive operator/case changes | Clear case/composer/internal-note/MFA state on logout and when opening a case. Browser acceptance deliberately leaves a private draft before operator switching and verifies an empty composer and cleared note checkbox |
 | Important support operations needed auditable handling | Case/reply/status transactions retain audit records; case reads, alert listing and idempotent first read acknowledgements are audited without conversation content |
 
 Existing controls remain: two reminders per response cycle; unique
@@ -66,9 +69,9 @@ WhatsApp/email send or plant-tenant assignment was introduced.
 | `cargo fmt --all -- --check` | PASS |
 | `cargo check --all-targets` | PASS |
 | Strict Clippy on all targets/all features | PASS |
-| Full Rust/SQLx suite on PostgreSQL 16 | PASS: 251 tests, zero failures |
-| Full Rust/SQLx suite on PostgreSQL 18 | PASS: 251 tests, zero failures |
-| Targeted authorization/concurrency regressions | PASS: four real HTTP/SQLx tests, including worker-to-Authority-inbox-to-reply flow and revocation during a lock wait |
+| Full Rust/SQLx suite on PostgreSQL 16 | PASS: 253 tests, zero failures |
+| Full Rust/SQLx suite on PostgreSQL 18 | PASS: 253 tests, zero failures |
+| Targeted authorization/concurrency regressions | PASS: six real HTTP/SQLx tests, including worker-to-Authority-inbox-to-reply flow, generic logout/JTI revocation during a lock wait, and one-connection status/MFA expiry checks |
 | Migration suite on both PostgreSQL versions | PASS: nine tests, including existing-main upgrade and preserved ledger/checksums/history |
 | Admin TypeScript + production build | PASS |
 | Expo typecheck + production web export | PASS; customer application source unchanged |
@@ -175,7 +178,8 @@ retrieval, customer message, live payment or automation activation occurred.
 - Authorization: `backend/src/auth/staff_support.rs`, `backend/src/auth/mod.rs`,
   `backend/src/auth/authority.rs`, `backend/src/routes/authority_governance.rs`.
 - Support handlers/state: `backend/src/routes/assistant_routes.rs`,
-  `backend/src/routes/notifications.rs`, `backend/src/services/support_cases.rs`,
+  `backend/src/routes/notifications.rs`, `backend/src/routes/control_center_routes.rs`,
+  `backend/src/services/support_cases.rs`,
   `backend/src/services/native_support_automation.rs`.
 - Existing web UI/browser regression: `admin-web/src/main.tsx`,
   `admin-web/scripts/verify-control-center.mjs`.
@@ -187,3 +191,18 @@ retrieval, customer message, live payment or automation activation occurred.
 The original migration, worker flag wiring and production approval guard were
 reviewed but not rewritten by these corrections. No Expo customer source or new
 TypeScript file was introduced.
+
+## Independent review remediation record
+
+The fresh Codex review of `64c0cd1325de2e9c333a155946a1537d034389d6`
+raised two legitimate P2 findings, both addressed above:
+
+- Account-session revalidation: <https://github.com/Aakruti7870/Track-My-RMC/pull/159#discussion_r4506587439>.
+- Transaction-connection MFA check: <https://github.com/Aakruti7870/Track-My-RMC/pull/159#discussion_r4506587443>.
+
+The new regressions are `in_flight_support_revalidates_generic_logout_and_account_jti_replacement`
+and `support_status_uses_one_connection_and_expires_step_up_after_lock_wait`.
+Account revocation correctly returns 401 before any policy denial; no existing
+security assertion was weakened. A further final-head review and CI pass are
+required after these corrections. Earlier green CI on `64c0cd1` did not close
+these security findings or authorize release.
