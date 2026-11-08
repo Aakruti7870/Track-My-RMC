@@ -35,6 +35,15 @@ class DigiLockerLiveSafety(unittest.TestCase):
         self.assertIn('"provider":provider.label', s)
         self.assertIn("pending_authority_review", s)
 
+    def test_session_reads_and_writes_use_the_selected_environment_host(self):
+        # Catch a regression where Live auth/init uses the Live API but
+        # session polling, Aadhaar and profile GETs leak to the Test API.
+        source = self.read("backend/src/routes/digilocker_kyc.rs")
+        self.assertIn('.post(provider_url(self.host, path))', source)
+        self.assertIn('.get(provider_url(self.host, path))', source)
+        self.assertNotIn('.get(format!("{SANDBOX_HOST}{path}"))', source)
+        self.assertIn("provider_status_document_and_profile_requests_use_the_selected_host", source)
+
     def test_session_environment_is_explicit_and_backward_compatible(self):
         m = self.read("backend/migrations/0041_digilocker_provider_environment.sql")
         s = self.read("backend/src/routes/digilocker_kyc.rs")
