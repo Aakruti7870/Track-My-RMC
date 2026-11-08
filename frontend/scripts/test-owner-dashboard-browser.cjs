@@ -85,5 +85,80 @@ fs.mkdirSync(out, { recursive: true });
       await context.close();
       console.log(`PASS owner: ${scheme} ${width}px — layout, 31 destinations, Quick, search, filters, detail navigation, error state, live theme`);
     }
+
+    // Compact Native Automation regression: four tiles per row at mobile and tablet widths.
+    const automationKeys = [
+      'DISPATCH_UNASSIGNED_LOAD', 'INVENTORY_BELOW_MIN', 'ORDER_ACCEPTED_NOTICE',
+      'ORDER_PENDING_REMINDER', 'ORDER_REJECTED_NOTICE', 'ORDER_SUBMITTED_TASK',
+      'QUALITY_INSPECTION_FAILED', 'RFQ_PENDING_PLANT', 'WORKFORCE_LEAVE_PENDING',
+    ];
+    const plantId = '00000000-0000-0000-0000-000000000007';
+    for (const width of [320, 390, 768]) {
+      const context = await browser.newContext({ viewport: { width, height: 920 } });
+      await context.addInitScript(() => {
+        localStorage.setItem('tmrmc_token', JSON.stringify('isolated-owner-browser-test'));
+        localStorage.setItem('tmrmc_theme_mode', JSON.stringify('light'));
+      });
+      const page = await context.newPage();
+      const ruleState = automationKeys.map((key, index) => ({
+        key, label: key.replaceAll('_', ' '), published: index < 4,
+        globally_paused: false, enabled: index === 3,
+        reminder_after_minutes: 60, sla_minutes: 60,
+      }));
+      let saved = 0;
+      await page.route('**/api/**', async route => {
+        const url = new URL(route.request().url()), path = url.pathname;
+        if (path.endsWith('/me')) return route.fulfill({ json: {
+          id: 'isolated-owner', name: 'Owner', role: 'plant_owner', roles: ['plant_owner'],
+          status: 'active', kyc_status: 'pending', plant_id: plantId,
+        } });
+        if (path.endsWith('/notifications')) return route.fulfill({ json: { unread: 0, items: [] } });
+        if (path.endsWith('/owner/home')) return route.fulfill({ json: {
+          plant_count: 1, plants: [], cards: {}, pending_orders: [],
+        } });
+        if (path.endsWith('/master/my-plants')) return route.fulfill({ json: {
+          plants: [{ id: plantId, name: 'Isolated test plant' }],
+        } });
+        if (path.endsWith('/automation/rules')) return route.fulfill({ json: { rules: ruleState, worker_enabled: true } });
+        if (path.endsWith('/automation/tasks')) return route.fulfill({ json: { tasks: [] } });
+        if (path.endsWith('/automation/history')) return route.fulfill({ json: { jobs: [] } });
+        if (path.includes('/automation/rules/') && route.request().method() === 'PUT') {
+          const key = decodeURIComponent(path.split('/').at(-1));
+          const rule = ruleState.find(rule => rule.key === key);
+          if (!rule) return route.fulfill({ status: 404, json: { message: 'Unknown rule' } });
+          Object.assign(rule, route.request().postDataJSON());
+          saved += 1;
+          return route.fulfill({ json: { rule } });
+        }
+        return route.fulfill({ json: {} });
+      });
+      await page.goto('http://127.0.0.1:8765/owner/');
+      await page.getByTestId('tab-operations').click();
+      const grid = page.getByTestId('owner-automation-grid');
+      await page.getByTestId('owner-automation-toggle-ORDER_ACCEPTED_NOTICE').waitFor();
+      const boxes = await grid.locator(':scope > *').evaluateAll(elements => elements.map(element => {
+        const rect = element.getBoundingClientRect();
+        return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+      }));
+      assert.equal(boxes.length, 10, 'Nine backend rules plus one clearly reserved slot');
+      for (const [first, last] of [[0, 3], [4, 7], [8, 9]]) {
+        for (let i = first + 1; i <= last; i++) assert(Math.abs(boxes[i].y - boxes[first].y) < 2, 'Cards align on the same row');
+      }
+      assert(boxes[4].y > boxes[0].y && boxes[8].y > boxes[4].y, 'Grid wraps 4 + 4 + 2');
+      assert(boxes.every(box => box.height <= 117 && box.width > 0), 'Compact tiles must remain 116dp tall');
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'No horizontal overflow');
+      const publishedToggle = page.getByTestId('owner-automation-toggle-ORDER_ACCEPTED_NOTICE');
+      assert.match(await publishedToggle.innerText(), /OFF/, 'Published automation begins disabled');
+      await publishedToggle.click();
+      await page.waitForFunction(() => document.querySelector('[data-testid="owner-automation-toggle-ORDER_ACCEPTED_NOTICE"]')?.textContent?.includes('ON'));
+      assert.equal(saved, 1, 'Published automation switch persists through existing API');
+      assert.match(await page.getByTestId('owner-automation-toggle-RFQ_PENDING_PLANT').innerText(), /OFF/, 'Unpublished automation remains off');
+      await page.getByTestId('owner-automation-detail-ORDER_PENDING_REMINDER').click();
+      await page.getByText('Remind after (minutes)').waitFor();
+      await page.getByTestId('owner-reminder-120').click();
+      assert.equal(ruleState[3].reminder_after_minutes, 120, 'Reminder settings remain accessible from selected tile');
+      await context.close();
+      console.log('PASS owner automation: ' + width + 'px, grid 4/4/2, API toggle and reminder');
+    }
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
