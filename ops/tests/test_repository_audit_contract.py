@@ -103,7 +103,9 @@ class RepositoryAuditContractTests(unittest.TestCase):
     def test_dependency_security_gate_cannot_disappear(self):
         checklist = read("docs/PRODUCTION_RELEASE_CHECKLIST.md")
         self.assertIn("Dependency security", checklist)
-        self.assertIn("braces/node-forge", checklist)
+        self.assertIn("node-forge", checklist)
+        self.assertIn("braces advisory was withdrawn", checklist)
+        self.assertIn("withdrawn", read("docs/DEPENDENCY_SECURITY_REVIEW.md"))
         self.assertIn("BLOCKED", checklist)
         self.assertIn("public launch remains blocked", read("docs/DEPENDENCY_SECURITY_REVIEW.md"))
 
