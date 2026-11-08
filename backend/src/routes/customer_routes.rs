@@ -411,7 +411,7 @@ pub async fn get_customer_home(
             .bind(auth_user.user_id)
             .fetch_one(&state.db)
             .await?;
-    let Json(discovery) = list_plants(State(state.clone()), auth_user).await?;
+    let Json(discovery) = list_plants(State(state.clone()), auth_user.clone()).await?;
     let plants: Vec<serde_json::Value> = discovery["plants"]
         .as_array()
         .into_iter()
