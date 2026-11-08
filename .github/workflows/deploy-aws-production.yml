@@ -1,7 +1,7 @@
 name: Deploy TrackMyRMC AWS Production
 
 # Fail-closed production release approval:
-# - Green CI never authorizes deployment alone.
+# - Green CI never authorizes deployment alone; dependency audit is mandatory.
 # - A separate operator must pin the exact approved main SHA in the repository
 #   variable TRACKMYRMC_APPROVED_RELEASE_SHA after acceptance is complete.
 # - Workflow-run or manual dispatch for any other SHA cannot assume AWS credentials.
@@ -21,6 +21,7 @@ on:
     workflows:
       - "Backend CI"
       - "Frontend CI"
+      - "Dependency Security Audit"
     types:
       - completed
     branches:
@@ -83,7 +84,7 @@ jobs:
           --health-retries 5
 
     steps:
-      - name: Verify both CI workflows
+      - name: Verify all CI and dependency-security workflows
         env:
           GH_TOKEN: ${{ github.token }}
           TRACKMYRMC_APPROVED_RELEASE_SHA: ${{ vars.TRACKMYRMC_APPROVED_RELEASE_SHA }}
@@ -109,7 +110,7 @@ jobs:
 
           # Display names match workflow_run; resolve immutable IDs via the API.
           # A CI workflow MUST have an actual successful push run for this main SHA.
-          for wf_name in "Backend CI" "Frontend CI"; do
+          for wf_name in "Backend CI" "Frontend CI" "Dependency Security Audit"; do
             echo "Checking required workflow: $wf_name"
 
             workflow_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows?per_page=100" |
@@ -162,7 +163,7 @@ jobs:
 
           test "$MAIN_SHA" = "$RELEASE_SHA"
 
-          echo "Both required CI workflows passed."
+          echo "All required CI and dependency-security workflows passed."
 
       - name: Checkout verified commit
         uses: actions/checkout@v4

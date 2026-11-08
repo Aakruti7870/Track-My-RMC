@@ -36,3 +36,23 @@ The 21 October assessment above remains useful historical evidence, **not a curr
 In contrast, [GHSA-86w9-cpqp-85rv (node-forge)](https://github.com/advisories/GHSA-86w9-cpqp-85rv) remains a GitHub-reviewed **high-severity** advisory affecting versions through 1.4.0; the advisory currently lists **no patched version**. Review build/signing toolchain reachability and isolate trusted inputs, or obtain documented independent risk acceptance. Do not assume an unconditional production exploit path merely because the package appears in a development tool dependency.
 
 **The dependency-security release gate stays BLOCKED** until the final Node and Rust lockfiles are re-audited and all active exposures have either a verified fix or an independently approved, narrowly scoped risk disposition. Do not use a historical high count or a withdrawn advisory as a substitute for a new audit.
+
+
+## Corrected locked-graph evidence — 8 November 2026, PR #161
+
+**This section supersedes the stale statement above that no patched node-forge release existed.** The current committed frontend package-lock at baseline main 54863d5a resolves node-forge **1.4.3** with an npm SHA-512 integrity value. Its two dependents, `@expo/cli@54.0.27` and `@expo/code-signing-certificates@0.0.6`, request ^1.3.3 and therefore accept the fixed version. Expo remains SDK 54; react-native remains 0.81.5. No risky framework migration was performed.
+
+Independent GitHub-hosted npm audit on PR #161 (run 42501259713, audit produced by npm registry on 2026-11-08) observed:
+
+| Lockfile audit | Critical | High | Moderate | Low |
+| --- | ---: | ---: | ---: | ---: |
+| frontend full graph (runtime + build) | 0 | 0 | 22 | 1 |
+| frontend production subset | 0 | 0 | 15 | 1 |
+| admin-web full graph | 0 | 0 | 0 | 0 |
+| admin-web production subset | 0 | 0 | 0 | 0 |
+
+These are **affected dependency entries**, not unique exploit paths. Moderate/low findings remain to be triaged on the exact release SHA; do not call the entire dependency graph clean. This result explicitly resolves the old node-forge high advisory **at the currently installed version**; it does not assert that all cryptographic or signing behavior has been independently verified. The prior withdrawn braces report is not an active vulnerability.
+
+A new `Dependency Security Audit` workflow runs npm audits of **all installed and production subsets** for both packages, an exact lockfile version/integrity check, and a separate unsuppressed RustSec full Cargo.lock audit. Missing audit data or any new high/critical npm finding fails the security job. The AWS production release workflow is being changed to require this workflow to succeed on the **same approved main push SHA**, before AWS credentials are assumed.
+
+Rust's optional `rsa 0.9.10` in Cargo.lock remains subject to actual RustSec findings and documented reachability: a full-lockfile finding cannot be silently ignored simply because the PostgreSQL backend does not enable MySQL. Do not confuse a completed npm scan with independent acceptance of the Rust dependencies, live IAM security, production migrations/TLS or Play release.
