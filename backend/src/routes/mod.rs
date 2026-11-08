@@ -5,6 +5,7 @@ pub mod auth_routes;
 pub mod authority_governance;
 pub mod automation_routes;
 pub mod business_routes;
+pub mod cashfree_rmc_prepaid;
 pub mod cashfree_sandbox;
 pub mod control_center_routes;
 pub mod customer_routes;
@@ -22,6 +23,7 @@ pub mod maps_routes;
 pub mod master_data_routes;
 pub mod native_automation_routes;
 pub mod notifications;
+pub mod order_payment;
 pub mod owner_access;
 pub mod owner_routes;
 pub mod payroll_routes;
@@ -506,6 +508,18 @@ pub fn build_app_router(state: AppState) -> Router {
             post(customer_routes::cancel_order),
         )
         .route(
+            "/api/customer/orders/:id/accept-payment-terms",
+            post(order_payment::accept),
+        )
+        .route(
+            "/api/customer/orders/:id/prepaid/checkout",
+            post(cashfree_rmc_prepaid::checkout),
+        )
+        .route(
+            "/api/customer/orders/:id/prepaid/status",
+            get(cashfree_rmc_prepaid::status),
+        )
+        .route(
             "/api/customer/orders/:id/tracking",
             get(customer_routes::get_order_tracking),
         )
@@ -844,6 +858,10 @@ pub fn build_app_router(state: AppState) -> Router {
             post(owner_routes::approve_order),
         )
         .route(
+            "/api/owner/orders/:order_id/payment-offer",
+            post(order_payment::offer),
+        )
+        .route(
             "/api/owner/orders/:order_id/reject",
             post(owner_routes::reject_order),
         )
@@ -913,6 +931,10 @@ pub fn build_app_router(state: AppState) -> Router {
         .route(
             "/api/payments/cashfree/sandbox/webhook",
             post(cashfree_sandbox::webhook),
+        )
+        .route(
+            "/api/payments/cashfree/rmc-prepaid/webhook",
+            post(cashfree_rmc_prepaid::webhook),
         )
         .route(
             "/api/payments/cashfree/sandbox/orders/:id",

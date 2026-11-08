@@ -171,6 +171,14 @@ pub async fn checkout(
     user: AuthUser,
     Json(input): Json<CheckoutInput>,
 ) -> Result<Json<Value>, AppError> {
+    // Do not offer Owner subscription/digital-service payments through Cashfree,
+    // even in sandbox or if a legacy approved-plan price is configured.
+    // Physical concrete order checkout uses the isolated RMC-prepaid module.
+    if input.kind.eq_ignore_ascii_case("PLAN") {
+        return Err(AppError::Conflict(
+            "Owner subscription checkout is not supported in TrackMyRMC".into(),
+        ));
+    }
     let credentials = enabled()?;
     ensure_key(&input.idempotency_key)?;
     let kind = input.kind.to_uppercase();
