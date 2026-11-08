@@ -70,7 +70,7 @@ fs.mkdirSync(out, { recursive: true });
         await page.getByTestId('tab-more').click();
         await page.getByTestId('staff-module-search').waitFor();
         await page.waitForFunction(() => !document.body.innerText.includes('Checking staff permissions…'));
-        const moreCards = page.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])');
+        const moreCards = page.locator('[data-testid="role-module-directory"]:has([data-testid="staff-module-search"]) [data-testid^="role-module-"]');
         const moreKeys = await moreCards.evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid')));
         assert.equal(new Set(moreKeys).size, moreKeys.length, role + ' duplicated a More card');
         for (const key of moreKeys) assert(!homeKeys.includes(key), role + ' repeats ' + key + ' between Home and More');
