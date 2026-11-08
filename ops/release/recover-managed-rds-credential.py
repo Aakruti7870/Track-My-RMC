@@ -17,7 +17,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from urllib.parse import quote, unquote, urlsplit, urlunsplit
+from urllib.parse import parse_qs, quote, unquote, urlsplit, urlunsplit
 from urllib.request import urlopen
 
 ENV_FILE = Path('/etc/trackmyrmc/app.env')
@@ -26,6 +26,7 @@ HEALTH_URL = 'http://127.0.0.1:8000/health'
 RDS_HOST = 'trackmyrmc-postgres.cf8mmcwuuinx.ap-south-1.rds.amazonaws.com'
 RDS_SECRET = 'arn:aws:secretsmanager:ap-south-1:260234292958:secret:rds!db-725487fe-ba11-4b7a-acdd-6c60010aa20f-CdtJlW'
 SERVICE = 'trackmyrmc-backend.service'
+RDS_CA_FILE = Path('/etc/trackmyrmc/rds-ca-bundle.pem')
 
 
 def healthy():
@@ -50,7 +51,11 @@ def loaded_database_url(data):
     database = unquote(uri.path.lstrip('/'))
     if (uri.scheme not in ('postgres', 'postgresql') or uri.hostname != RDS_HOST
             or (uri.port or 5432) != 5432 or not uri.username
-            or not uri.password or not re.fullmatch(r'[A-Za-z0-9_]+', database)):
+            or not uri.password or not re.fullmatch(r'[A-Za-z0-9_]+', database)
+            or uri.fragment or parse_qs(uri.query, keep_blank_values=True) != {
+                'sslmode': ['verify-full'],
+                'sslrootcert': [str(RDS_CA_FILE)],
+            }):
         raise ValueError('unexpected production database identity')
     return uri, database
 
@@ -70,10 +75,14 @@ def active_rds_credential():
 
 
 def verify_new_credential(username, password, database):
+    # Missing roots must fail closed rather than implicitly trusting a system CA.
+    if not RDS_CA_FILE.is_file() or RDS_CA_FILE.is_symlink():
+        raise ValueError('RDS certificate roots unavailable')
     # Read-only preflight against the *unchanged* database; no migrations/writes.
     env = dict(os.environ)
     env.update(PGHOST=RDS_HOST, PGPORT='5432', PGDATABASE=database, PGUSER=username,
-               PGPASSWORD=password, PGSSLMODE='require', PGCONNECT_TIMEOUT='8',
+               PGPASSWORD=password, PGSSLMODE='verify-full',
+               PGSSLROOTCERT=str(RDS_CA_FILE), PGCONNECT_TIMEOUT='8',
                PGOPTIONS='-c default_transaction_read_only=on')
     result = subprocess.run(['psql', '--no-psqlrc', '-X', '-w', '-A', '-t', '-q',
                              '-v', 'ON_ERROR_STOP=1', '-c', 'SELECT 1'], env=env,

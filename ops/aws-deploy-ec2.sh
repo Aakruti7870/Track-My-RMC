@@ -15,7 +15,7 @@ APP_SECRET="trackmyrmc/app-runtime"
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq nginx curl ca-certificates jq unzip certbot >/dev/null
+apt-get install -y -qq nginx curl ca-certificates jq unzip certbot openssl >/dev/null
 
 if ! command -v aws >/dev/null 2>&1; then
   curl -fsSL https://awscli.amazonaws.com/v2/install.sh | bash -s -- --system
@@ -303,18 +303,43 @@ if [[ -n "$CURRENT_DB_NAME" && "$CURRENT_DB_NAME" != "$DB_NAME" ]]; then
   DB_NAME="$CURRENT_DB_NAME"
 fi
 
+# Install the official regional Amazon RDS trust anchors before constructing a
+# production database URI. System CA validation authenticates the HTTPS origin;
+# PostgreSQL must then authenticate BOTH the issuer and the RDS hostname.
+# A missing/invalid certificate is a hard deployment failure, not a downgrade.
+RDS_CA_FILE="/etc/trackmyrmc/rds-ca-bundle.pem"
+install -d -m 0755 /etc/trackmyrmc
+RDS_CA_TMP="$(mktemp /etc/trackmyrmc/.rds-ca-bundle.XXXXXX)"
+if ! curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --max-time 30 \
+  "https://truststore.pki.rds.amazonaws.com/ap-south-1/ap-south-1-bundle.pem" \
+  --output "$RDS_CA_TMP" \
+  || ! openssl x509 -in "$RDS_CA_TMP" -noout -checkend 0 >/dev/null 2>&1; then
+  rm -f "$RDS_CA_TMP"
+  echo "RDS trust bundle download/validation failed; refusing deployment" >&2
+  exit 1
+fi
+install -o root -g root -m 0644 "$RDS_CA_TMP" "$RDS_CA_FILE"
+rm -f "$RDS_CA_TMP"
+
 DB_JSON="$(aws secretsmanager get-secret-value --secret-id "$RDS_SECRET" --query SecretString --output text)"
-DATABASE_URL="$(printf '%s' "$DB_JSON" | TRACKMYRMC_DB_NAME="$DB_NAME" python3 -c 'import json,sys,urllib.parse as u,os; x=json.load(sys.stdin); db=os.environ["TRACKMYRMC_DB_NAME"]; print("postgres://%s:%s@trackmyrmc-postgres.cf8mmcwuuinx.ap-south-1.rds.amazonaws.com:5432/%s?sslmode=require"%(u.quote(x["username"],safe=""),u.quote(x["password"],safe=""),u.quote(db,safe="")))')"
+DATABASE_URL="$(printf '%s' "$DB_JSON" | TRACKMYRMC_DB_NAME="$DB_NAME" python3 -c 'import json,sys,urllib.parse as u,os; x=json.load(sys.stdin); db=os.environ["TRACKMYRMC_DB_NAME"]; print("postgres://%s:%s@trackmyrmc-postgres.cf8mmcwuuinx.ap-south-1.rds.amazonaws.com:5432/%s?sslmode=verify-full&sslrootcert=%2Fetc%2Ftrackmyrmc%2Frds-ca-bundle.pem"%(u.quote(x["username"],safe=""),u.quote(x["password"],safe=""),u.quote(db,safe="")))')"
 
 # Validate the generated connection string without exposing credentials.
 TRACKMYRMC_DATABASE_URL="$DATABASE_URL" TRACKMYRMC_EXPECTED_DB_NAME="$DB_NAME" python3 - <<'PY'
 import os
-from urllib.parse import urlsplit, unquote
+from urllib.parse import urlsplit, unquote, parse_qs
 url = os.environ["TRACKMYRMC_DATABASE_URL"]
 parsed = urlsplit(url)
 name = unquote(parsed.path.lstrip("/"))
 if (parsed.scheme not in ("postgres", "postgresql")
-        or not parsed.hostname or not parsed.username or not parsed.password
+        or parsed.hostname != "trackmyrmc-postgres.cf8mmcwuuinx.ap-south-1.rds.amazonaws.com"
+        or parsed.port != 5432 or not parsed.username or not parsed.password
+        or parsed.fragment
+        or parse_qs(parsed.query, keep_blank_values=True) != {
+            "sslmode": ["verify-full"],
+            "sslrootcert": ["/etc/trackmyrmc/rds-ca-bundle.pem"],
+        }
+        or not os.path.isfile("/etc/trackmyrmc/rds-ca-bundle.pem")
         or name != os.environ["TRACKMYRMC_EXPECTED_DB_NAME"]
         or any(ch in url for ch in ('"', "'", "\\n", "\\r"))):
     raise SystemExit("Invalid PostgreSQL connection configuration; deployment blocked")
