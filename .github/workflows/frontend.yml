@@ -61,6 +61,8 @@ jobs:
         run: npm run check:auth-routing
       - name: Validate all role module routes and menus
         run: npm run check:modules
+      - name: Validate unique owner/staff module placement and responsive card sizes
+        run: node scripts/test-owner-staff-module-layout.cjs
       - name: Validate every uploaded vector symbol and role assignment
         run: npm run check:vector-symbols
       - name: Enforce one font family across the Expo application
