@@ -40,7 +40,10 @@ impersonating or fabricating a delivery.
 High priority 30 minutes; normal 2 hours; low 8 hours. These are staff
 follow-up targets, NOT promises of resolution times or customer-facing SLAs.
 After one reminder, next reminder may occur an hour later. After two, no
-further automatic notification in the same pending-response cycle. Authorized
+further automatic notification in the same pending-response cycle. The
+original `due_at` remains the response deadline; a separate
+`next_attempt_at` tracks delivery backoff so missing operators never mask
+an overdue case. Authorized
 manual follow-up remains possible indefinitely.
 
 ## Activation and policy

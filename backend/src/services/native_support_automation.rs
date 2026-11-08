@@ -31,8 +31,10 @@ pub async fn case_created(
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO native_support_followups
-         (case_id,cycle,awaiting_staff_reply,due_at,last_customer_message_at)
-         VALUES($1,1,TRUE,NOW()+($2::integer * INTERVAL '1 minute'),NOW())
+         (case_id,cycle,awaiting_staff_reply,due_at,next_attempt_at,last_customer_message_at)
+         VALUES($1,1,TRUE,
+                NOW()+($2::integer * INTERVAL '1 minute'),
+                NOW()+($2::integer * INTERVAL '1 minute'),NOW())
          ON CONFLICT(case_id) DO NOTHING",
     )
     .bind(case_id)
@@ -52,8 +54,10 @@ pub async fn customer_replied(
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO native_support_followups
-         (case_id,cycle,awaiting_staff_reply,due_at,last_customer_message_at)
-         VALUES($1,1,TRUE,NOW()+($2::integer * INTERVAL '1 minute'),NOW())
+         (case_id,cycle,awaiting_staff_reply,due_at,next_attempt_at,last_customer_message_at)
+         VALUES($1,1,TRUE,
+                NOW()+($2::integer * INTERVAL '1 minute'),
+                NOW()+($2::integer * INTERVAL '1 minute'),NOW())
          ON CONFLICT(case_id) DO UPDATE SET
            cycle=CASE WHEN native_support_followups.awaiting_staff_reply
                       THEN native_support_followups.cycle
@@ -61,6 +65,9 @@ pub async fn customer_replied(
            awaiting_staff_reply=TRUE,
            due_at=CASE WHEN native_support_followups.awaiting_staff_reply
                        THEN native_support_followups.due_at ELSE EXCLUDED.due_at END,
+           next_attempt_at=CASE WHEN native_support_followups.awaiting_staff_reply
+                       THEN native_support_followups.next_attempt_at
+                       ELSE EXCLUDED.next_attempt_at END,
            reminder_count=CASE WHEN native_support_followups.awaiting_staff_reply
                                THEN native_support_followups.reminder_count ELSE 0 END,
            last_customer_message_at=NOW(),updated_at=NOW()",
@@ -79,7 +86,8 @@ pub async fn staff_responded(
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         "UPDATE native_support_followups
-         SET awaiting_staff_reply=FALSE,due_at=NULL,last_staff_response_at=NOW(),
+         SET awaiting_staff_reply=FALSE,due_at=NULL,next_attempt_at=NULL,
+             last_staff_response_at=NOW(),
              updated_at=NOW()
          WHERE case_id=$1",
     )
@@ -95,7 +103,7 @@ pub async fn case_closed(
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         "UPDATE native_support_followups SET awaiting_staff_reply=FALSE,
-         due_at=NULL,updated_at=NOW() WHERE case_id=$1",
+         due_at=NULL,next_attempt_at=NULL,updated_at=NOW() WHERE case_id=$1",
     )
     .bind(case_id)
     .execute(&mut **tx)
@@ -111,11 +119,14 @@ pub async fn case_reopened(
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO native_support_followups
-         (case_id,cycle,awaiting_staff_reply,due_at)
-         VALUES($1,1,TRUE,NOW()+($2::integer * INTERVAL '1 minute'))
+         (case_id,cycle,awaiting_staff_reply,due_at,next_attempt_at)
+         VALUES($1,1,TRUE,
+                NOW()+($2::integer * INTERVAL '1 minute'),
+                NOW()+($2::integer * INTERVAL '1 minute'))
          ON CONFLICT(case_id) DO UPDATE SET
            cycle=native_support_followups.cycle+1,
            awaiting_staff_reply=TRUE,due_at=EXCLUDED.due_at,
+           next_attempt_at=EXCLUDED.next_attempt_at,
            reminder_count=0,updated_at=NOW()",
     )
     .bind(case_id)
@@ -140,7 +151,8 @@ pub async fn tick(db: &PgPool) -> Result<usize, sqlx::Error> {
              WHERE upper(c.status) IN ('OPEN','IN_PROGRESS')
                AND f.awaiting_staff_reply AND f.reminder_count<2
                AND f.due_at IS NOT NULL AND f.due_at<=NOW()
-             ORDER BY f.due_at,c.id LIMIT 1 FOR UPDATE OF c SKIP LOCKED",
+               AND f.next_attempt_at IS NOT NULL AND f.next_attempt_at<=NOW()
+             ORDER BY f.next_attempt_at,c.id LIMIT 1 FOR UPDATE OF c SKIP LOCKED",
         )
         .fetch_optional(&mut *tx)
         .await?;
@@ -152,7 +164,7 @@ pub async fn tick(db: &PgPool) -> Result<usize, sqlx::Error> {
         // A customer/staff action may have committed just before we acquired
         // the case lock. Re-read the fresh follow-up state under its own lock.
         let row = sqlx::query(
-            "SELECT cycle,awaiting_staff_reply,due_at,reminder_count
+            "SELECT cycle,awaiting_staff_reply,due_at,next_attempt_at,reminder_count
              FROM native_support_followups WHERE case_id=$1 FOR UPDATE",
         )
         .bind(case_id)
@@ -161,8 +173,13 @@ pub async fn tick(db: &PgPool) -> Result<usize, sqlx::Error> {
         let cycle: i64 = row.get("cycle");
         let pending: bool = row.get("awaiting_staff_reply");
         let due: Option<chrono::DateTime<Utc>> = row.get("due_at");
+        let next_attempt: Option<chrono::DateTime<Utc>> = row.get("next_attempt_at");
         let reminders: i16 = row.get("reminder_count");
-        if !pending || reminders >= MAX_REMINDERS || due.is_none_or(|at| at > Utc::now()) {
+        if !pending
+            || reminders >= MAX_REMINDERS
+            || due.is_none_or(|at| at > Utc::now())
+            || next_attempt.is_none_or(|at| at > Utc::now())
+        {
             tx.commit().await?;
             continue;
         }
@@ -187,7 +204,7 @@ pub async fn tick(db: &PgPool) -> Result<usize, sqlx::Error> {
             // fabricate a delivered reminder or consume the bounded budget.
             sqlx::query(
                 "UPDATE native_support_followups
-                 SET due_at=NOW()+INTERVAL '15 minutes',updated_at=NOW()
+                 SET next_attempt_at=NOW()+INTERVAL '15 minutes',updated_at=NOW()
                  WHERE case_id=$1",
             )
             .bind(case_id)
@@ -201,10 +218,10 @@ pub async fn tick(db: &PgPool) -> Result<usize, sqlx::Error> {
         sqlx::query(
             "INSERT INTO notifications
              (user_id,title,body,notification_type,reference_id)
-             SELECT recipient,'Customer support follow-up due',
+             SELECT recipients.staff_id,'Customer support follow-up due',
                'A customer support case needs a staff reply. Review it in the secure web dashboard.',
                'support_followup',$2
-             FROM unnest($1::uuid[]) AS recipient",
+             FROM unnest($1::uuid[]) AS recipients(staff_id)",
         )
         .bind(&recipients)
         .bind(case_id.to_string())
@@ -222,8 +239,8 @@ pub async fn tick(db: &PgPool) -> Result<usize, sqlx::Error> {
         .await?;
         sqlx::query(
             "UPDATE native_support_followups SET reminder_count=$2,
-             due_at=CASE WHEN $2 < 2 THEN NOW()+INTERVAL '60 minutes'
-                          ELSE NULL END,
+             next_attempt_at=CASE WHEN $2 < 2 THEN NOW()+INTERVAL '60 minutes'
+                                  ELSE NULL END,
              last_reminder_at=NOW(),updated_at=NOW()
              WHERE case_id=$1 AND cycle=$3",
         )
@@ -312,7 +329,9 @@ mod tests {
         case_created(&mut tx, case_id, "high").await.unwrap();
         tx.commit().await.unwrap();
         sqlx::query(
-            "UPDATE native_support_followups SET due_at=NOW()-INTERVAL '1 minute'
+            "UPDATE native_support_followups
+             SET due_at=NOW()-INTERVAL '1 minute',
+                 next_attempt_at=NOW()-INTERVAL '1 minute'
              WHERE case_id=$1",
         )
         .bind(case_id)
@@ -334,7 +353,9 @@ mod tests {
         assert_eq!(tick(&db).await.unwrap(), 0);
 
         sqlx::query(
-            "UPDATE native_support_followups SET due_at=NOW()-INTERVAL '1 minute'
+            "UPDATE native_support_followups
+             SET due_at=NOW()-INTERVAL '1 minute',
+                 next_attempt_at=NOW()-INTERVAL '1 minute'
              WHERE case_id=$1",
         )
         .bind(case_id)
@@ -343,15 +364,17 @@ mod tests {
         .unwrap();
         assert_eq!(tick(&db).await.unwrap(), 1);
         assert_eq!(tick(&db).await.unwrap(), 0);
-        let summary: (i16, Option<chrono::DateTime<Utc>>) = sqlx::query_as(
-            "SELECT reminder_count,due_at FROM native_support_followups WHERE case_id=$1",
-        )
+        let summary: (i16, Option<chrono::DateTime<Utc>>, Option<chrono::DateTime<Utc>>) =
+            sqlx::query_as(
+                "SELECT reminder_count,due_at,next_attempt_at FROM native_support_followups WHERE case_id=$1",
+            )
         .bind(case_id)
         .fetch_one(&db)
         .await
         .unwrap();
         assert_eq!(summary.0, 2);
-        assert!(summary.1.is_none());
+        assert!(summary.1.is_some(), "the missed response deadline is retained");
+        assert!(summary.2.is_none(), "the two-reminder budget is exhausted");
         let events: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM native_support_followup_events WHERE case_id=$1",
         )

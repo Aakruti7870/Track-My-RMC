@@ -8,6 +8,7 @@ CREATE TABLE native_support_followups (
     cycle BIGINT NOT NULL DEFAULT 1 CHECK (cycle >= 1),
     awaiting_staff_reply BOOLEAN NOT NULL DEFAULT TRUE,
     due_at TIMESTAMPTZ,
+    next_attempt_at TIMESTAMPTZ,
     reminder_count SMALLINT NOT NULL DEFAULT 0 CHECK (reminder_count BETWEEN 0 AND 2),
     last_customer_message_at TIMESTAMPTZ,
     last_staff_response_at TIMESTAMPTZ,
@@ -15,11 +16,12 @@ CREATE TABLE native_support_followups (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT native_support_not_waiting_has_no_due
-      CHECK (awaiting_staff_reply OR due_at IS NULL)
+      CHECK (awaiting_staff_reply OR (due_at IS NULL AND next_attempt_at IS NULL))
 );
 CREATE INDEX native_support_followups_due_idx
-    ON native_support_followups (due_at,case_id)
-    WHERE awaiting_staff_reply AND reminder_count < 2 AND due_at IS NOT NULL;
+    ON native_support_followups (next_attempt_at,case_id)
+    WHERE awaiting_staff_reply AND reminder_count < 2
+      AND due_at IS NOT NULL AND next_attempt_at IS NOT NULL;
 
 -- Independent technical event history records delivery without storing customer
 -- messages, ticket content, identifiers of recipients, OTPs or private evidence.
