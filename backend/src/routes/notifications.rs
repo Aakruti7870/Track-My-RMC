@@ -60,7 +60,7 @@ pub async fn list_notifications(
 ) -> Result<impl IntoResponse, AppError> {
     let limit = query.limit.unwrap_or(50).clamp(1, 100);
     let unread: (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND is_read = FALSE")
+        sqlx::query_as("SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND is_read = FALSE AND notification_type <> 'support_followup'")
             .bind(auth_user.user_id)
             .fetch_one(&state.db)
             .await?;
@@ -69,7 +69,7 @@ pub async fn list_notifications(
         r#"
         SELECT id, notification_type AS event, title, body, is_read AS "read", created_at
         FROM notifications
-        WHERE user_id = $1
+        WHERE user_id = $1 AND notification_type <> 'support_followup'
         ORDER BY created_at DESC, id DESC
         LIMIT $2
         "#,
@@ -91,7 +91,7 @@ pub async fn mark_all_read(
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
     let result = sqlx::query(
-        "UPDATE notifications SET is_read = TRUE WHERE user_id = $1 AND is_read = FALSE",
+        "UPDATE notifications SET is_read = TRUE WHERE user_id = $1 AND is_read = FALSE AND notification_type <> 'support_followup'",
     )
     .bind(auth_user.user_id)
     .execute(&state.db)
@@ -109,7 +109,7 @@ pub async fn mark_one_read(
     Path(notification_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     let result =
-        sqlx::query("UPDATE notifications SET is_read = TRUE WHERE id = $1 AND user_id = $2")
+        sqlx::query("UPDATE notifications SET is_read = TRUE WHERE id = $1 AND user_id = $2 AND notification_type <> 'support_followup'")
             .bind(notification_id)
             .bind(auth_user.user_id)
             .execute(&state.db)

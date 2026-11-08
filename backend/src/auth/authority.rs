@@ -21,6 +21,7 @@ pub const DELEGABLE: &[&str] = &[
     "plant.view",
     "order.view",
     "support.view",
+    "support.reply",
     "kyc.view",
     "kyc.review",
 ];
@@ -45,7 +46,11 @@ impl Deref for WebAuthority {
 
 impl WebAuthority {
     pub fn require(&self, permission: &str) -> Result<(), AppError> {
-        if is_delegable(permission) && self.permissions.iter().any(|p| p == permission) {
+        if is_delegable(permission)
+            && self.permissions.iter().any(|p| p == permission)
+            && (permission != "support.reply"
+                || self.permissions.iter().any(|p| p == "support.view"))
+        {
             Ok(())
         } else {
             Err(AppError::Forbidden("Authority permission denied".into()))
@@ -81,7 +86,11 @@ where
         .fetch_optional(&app.db)
         .await?
         .ok_or_else(|| AppError::Forbidden("Approved Authority web session required".into()))?;
-        let permissions = raw.into_iter().filter(|p| is_delegable(p)).collect();
+        let support_view = raw.iter().any(|p| p == "support.view");
+        let permissions = raw
+            .into_iter()
+            .filter(|p| is_delegable(p) && (p != "support.reply" || support_view))
+            .collect();
         Ok(Self {
             user,
             permissions,

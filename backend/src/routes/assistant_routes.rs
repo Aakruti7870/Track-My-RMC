@@ -1,10 +1,14 @@
 use crate::{
-    auth::{middleware::check_role, AuthUser},
+    auth::{
+        middleware::check_role,
+        staff_support::{SupportAction, WebSupport},
+        AuthUser,
+    },
     error::AppError,
     state::AppState,
 };
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     response::IntoResponse,
     Json,
 };
@@ -252,11 +256,10 @@ pub async fn add_case_reply(
 
 pub async fn list_staff_support_cases(
     State(state): State<AppState>,
-    admin: crate::auth::control_center::WebAdmin,
+    staff: WebSupport,
 ) -> Result<impl IntoResponse, AppError> {
-    admin.require("support.view")?;
     Ok(Json(
-        json!({"cases":crate::services::support_cases::list(&state,None,None).await?}),
+        json!({"cases":crate::services::support_cases::staff_list(&state,&staff,None).await?}),
     ))
 }
 
@@ -264,13 +267,29 @@ pub async fn list_staff_support_cases(
 /// This web feed is required: privileged Central Admin/Authority cannot log
 /// into the customer mobile notifications UI. No customer message or document
 /// content is ever returned by these alerts.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SupportAlertPage {
+    pub limit: Option<i64>,
+    pub before: Option<Uuid>,
+}
+
 pub async fn list_staff_support_alerts(
     State(state): State<AppState>,
-    admin: crate::auth::control_center::WebAdmin,
+    staff: WebSupport,
+    Query(page): Query<SupportAlertPage>,
 ) -> Result<impl IntoResponse, AppError> {
-    admin.require("support.view")?;
-    admin.require("support.reply")?;
-    let alerts: Vec<serde_json::Value> = sqlx::query_scalar(
+    let mut tx = state.db.begin().await?;
+    staff.authorize_in_tx(&mut tx, SupportAction::Reply).await?;
+    let limit = page.limit.unwrap_or(50).clamp(1, 100);
+    if let Some(cursor) = page.before {
+        let owned: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM notifications WHERE id=$1 AND user_id=$2 AND notification_type='support_followup')")
+            .bind(cursor).bind(staff.user_id).fetch_one(&mut *tx).await?;
+        if !owned {
+            return Err(AppError::BadRequest("Invalid support alert cursor".into()));
+        }
+    }
+    let mut alerts: Vec<serde_json::Value> = sqlx::query_scalar(
         "SELECT jsonb_build_object(
              'id',n.id,'title',n.title,'body',n.body,
              'case_id',n.reference_id,'is_read',n.is_read,
@@ -279,43 +298,65 @@ pub async fn list_staff_support_alerts(
          JOIN support_cases c ON c.id::text=n.reference_id
          WHERE n.user_id=$1 AND n.notification_type='support_followup'
            AND NOT n.is_read
-         ORDER BY n.created_at DESC,n.id DESC LIMIT 50",
+           AND ($2::uuid IS NULL OR (n.created_at,n.id)<(
+             SELECT created_at,id FROM notifications WHERE id=$2 AND user_id=$1
+               AND notification_type='support_followup'))
+         ORDER BY n.created_at DESC,n.id DESC LIMIT $3",
     )
-    .bind(admin.user_id)
-    .fetch_all(&state.db)
+    .bind(staff.user_id)
+    .bind(page.before)
+    .bind(limit + 1)
+    .fetch_all(&mut *tx)
     .await?;
-    Ok(Json(json!({"alerts":alerts})))
+    let more = alerts.len() > limit as usize;
+    alerts.truncate(limit as usize);
+    let next_cursor = if more {
+        alerts.last().map(|a| a["id"].clone())
+    } else {
+        None
+    };
+    sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,metadata) VALUES($1,'support.alert.list','support_alert','{}')")
+        .bind(staff.user_id).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(Json(json!({"alerts":alerts,"next_cursor":next_cursor})))
 }
 
 pub async fn mark_staff_support_alert_read(
     State(state): State<AppState>,
-    admin: crate::auth::control_center::WebAdmin,
+    staff: WebSupport,
     Path(alert_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    admin.require("support.view")?;
-    admin.require("support.reply")?;
+    let mut tx = state.db.begin().await?;
+    staff.authorize_in_tx(&mut tx, SupportAction::Reply).await?;
     let updated: Option<Uuid> = sqlx::query_scalar(
         "UPDATE notifications SET is_read=TRUE
-         WHERE id=$1 AND user_id=$2 AND notification_type='support_followup'
+         WHERE id=$1 AND user_id=$2 AND notification_type='support_followup' AND NOT is_read
          RETURNING id",
     )
     .bind(alert_id)
-    .bind(admin.user_id)
-    .fetch_optional(&state.db)
+    .bind(staff.user_id)
+    .fetch_optional(&mut *tx)
     .await?;
     if updated.is_none() {
-        return Err(AppError::NotFound("Support alert not found".into()));
+        let owned:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM notifications WHERE id=$1 AND user_id=$2 AND notification_type='support_followup')")
+            .bind(alert_id).bind(staff.user_id).fetch_one(&mut *tx).await?;
+        if !owned {
+            return Err(AppError::NotFound("Support alert not found".into()));
+        }
+    } else {
+        sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'support.alert.read','support_alert',$2,'{}')")
+            .bind(staff.user_id).bind(alert_id.to_string()).execute(&mut *tx).await?;
     }
+    tx.commit().await?;
     Ok(Json(json!({"read":true})))
 }
 
 pub async fn get_staff_support_case(
     State(state): State<AppState>,
-    admin: crate::auth::control_center::WebAdmin,
+    staff: WebSupport,
     Path(case): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    admin.require("support.view")?;
-    let case = crate::services::support_cases::list(&state, None, Some(case))
+    let case = crate::services::support_cases::staff_list(&state, &staff, Some(case))
         .await?
         .pop()
         .ok_or_else(|| AppError::NotFound("Support case not found".into()))?;
@@ -324,15 +365,13 @@ pub async fn get_staff_support_case(
 
 pub async fn add_staff_case_reply(
     State(state): State<AppState>,
-    admin: crate::auth::control_center::WebAdmin,
+    staff: WebSupport,
     Path(case): Path<Uuid>,
     Json(payload): Json<AddReplyPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    admin.require("support.reply")?;
-    crate::services::support_cases::reply(
+    crate::services::support_cases::staff_reply(
         &state,
-        admin.user_id,
-        None,
+        &staff,
         case,
         &payload.message,
         payload.internal,
@@ -366,6 +405,10 @@ pub async fn update_case_status(
         .fetch_optional(&mut *tx)
         .await?
         .ok_or_else(|| AppError::NotFound("Support case not found".into()))?;
+    WebSupport::from_admin(&admin)
+        .authorize_in_tx(&mut tx, SupportAction::Manage)
+        .await?;
+    super::control_center_routes::require_recent_step_up(&state, &admin, &headers).await?;
     let previous: String = row.get("status");
     let priority: String = row.get("priority");
     if previous.to_uppercase() != status {

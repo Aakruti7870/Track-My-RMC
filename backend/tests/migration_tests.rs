@@ -501,3 +501,74 @@ async fn duplicate_driver_employment_aborts_reservation_upgrade_without_record_l
     );
     assert!(!sqlx::query_scalar::<_,bool>("SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='driver_employment_profiles' AND column_name='released_at')").fetch_one(&pool).await.unwrap(),"Failed migration rolls back all DDL");
 }
+
+#[sqlx::test(migrations = false)]
+async fn support_followup_upgrade_preserves_ledger_and_never_enrolls_historical_cases(
+    pool: sqlx::PgPool,
+) {
+    use std::borrow::Cow;
+    let all = sqlx::migrate!("./migrations");
+    let version = 20261108090000_i64;
+    let baseline = sqlx::migrate::Migrator {
+        migrations: Cow::Owned(
+            all.iter()
+                .filter(|m| m.version < version)
+                .cloned()
+                .collect(),
+        ),
+        ..sqlx::migrate!("./migrations")
+    };
+    baseline.run(&pool).await.unwrap();
+    let before: Vec<(i64, Vec<u8>)> =
+        sqlx::query_as("SELECT version,checksum FROM _sqlx_migrations ORDER BY version")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    let customer:uuid::Uuid=sqlx::query_scalar("INSERT INTO users(phone,hashed_password,full_name,role) VALUES('support-upgrade-ci','unused','Historical Customer','customer') RETURNING id").fetch_one(&pool).await.unwrap();
+    let case:uuid::Uuid=sqlx::query_scalar("INSERT INTO support_cases(user_id,subject,status) VALUES($1,'Historical case preserved','OPEN') RETURNING id").bind(customer).fetch_one(&pool).await.unwrap();
+    all.run(&pool).await.unwrap();
+    let after: Vec<(i64, Vec<u8>)> =
+        sqlx::query_as("SELECT version,checksum FROM _sqlx_migrations ORDER BY version")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(&after[..before.len()], before.as_slice());
+    assert_eq!(after.len(), before.len() + 1);
+    assert_eq!(after.last().unwrap().0, version);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM native_support_followups")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        0
+    );
+    // An older application's existing columns remain usable after the additive
+    // upgrade. Rollback retains these tables/ledger; no destructive DOWN runs.
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT subject FROM support_cases WHERE id=$1")
+            .bind(case)
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        "Historical case preserved"
+    );
+    assert!(sqlx::query(
+        "INSERT INTO native_support_followups(case_id,reminder_count) VALUES($1,3)"
+    )
+    .bind(case)
+    .execute(&pool)
+    .await
+    .is_err());
+    sqlx::query("INSERT INTO native_support_followup_events(case_id,cycle,reminder_number,recipient_count) VALUES($1,1,1,1)").bind(case).execute(&pool).await.unwrap();
+    assert!(sqlx::query("INSERT INTO native_support_followup_events(case_id,cycle,reminder_number,recipient_count) VALUES($1,1,1,1)").bind(case).execute(&pool).await.is_err());
+    all.run(&pool).await.unwrap();
+    assert_eq!(
+        sqlx::query_as::<_, (i64, Vec<u8>)>(
+            "SELECT version,checksum FROM _sqlx_migrations ORDER BY version"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap(),
+        after
+    );
+}

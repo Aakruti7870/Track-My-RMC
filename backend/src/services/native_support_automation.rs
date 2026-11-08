@@ -190,7 +190,9 @@ pub async fn tick(db: &PgPool) -> Result<usize, sqlx::Error> {
         let recipients: Vec<Uuid> = sqlx::query_scalar(
             "SELECT u.id FROM users u
              JOIN control_center_access a ON a.user_id=u.id
+             JOIN user_totp_credentials t ON t.user_id=u.id AND t.is_enabled
              WHERE u.is_active AND u.role IN ('central_admin','authority')
+               AND u.hashed_password LIKE '$argon2id$%'
                AND a.approved
                AND 'support.view'=ANY(a.permissions)
                AND 'support.reply'=ANY(a.permissions)
@@ -305,6 +307,19 @@ mod tests {
         .fetch_one(&db)
         .await
         .unwrap();
+        // Model a genuinely enrolled web operator; an approved invitation with
+        // no password/authenticator cannot act on a delivered reminder.
+        sqlx::query("UPDATE users SET hashed_password=$2 WHERE id=$1")
+            .bind(privileged)
+            .bind(
+                crate::auth::password::hash_password("Synthetic-Support-Worker-Only-Password!")
+                    .unwrap(),
+            )
+            .execute(&db)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO user_totp_credentials(user_id,secret_key,is_enabled) VALUES($1,'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ',TRUE)")
+            .bind(privileged).execute(&db).await.unwrap();
         sqlx::query(
             "INSERT INTO control_center_access(user_id,approved,permissions)
              VALUES ($1,TRUE,ARRAY['support.view','support.reply']),
@@ -341,6 +356,12 @@ mod tests {
 
         // No approved staff means NO delivered event, but overdue must
         // remain overdue. Only a separate retry timer may advance.
+        let deadline: chrono::DateTime<Utc> =
+            sqlx::query_scalar("SELECT due_at FROM native_support_followups WHERE case_id=$1")
+                .bind(case_id)
+                .fetch_one(&db)
+                .await
+                .unwrap();
         sqlx::query("UPDATE control_center_access SET approved=FALSE WHERE user_id=$1")
             .bind(privileged)
             .execute(&db)
@@ -385,8 +406,7 @@ mod tests {
 
         sqlx::query(
             "UPDATE native_support_followups
-             SET due_at=NOW()-INTERVAL '1 minute',
-                 next_attempt_at=NOW()-INTERVAL '1 minute'
+             SET next_attempt_at=NOW()-INTERVAL '1 minute'
              WHERE case_id=$1",
         )
         .bind(case_id)
@@ -404,6 +424,11 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(summary.0, 2);
+        assert_eq!(
+            summary.1,
+            Some(deadline),
+            "delivery retry must never rewrite the response target"
+        );
         assert!(
             summary.1.is_some(),
             "the missed response deadline is retained"
@@ -441,6 +466,13 @@ mod tests {
         case_created(&mut tx, case_id, "normal").await.unwrap();
         tx.commit().await.unwrap();
 
+        let deadline: chrono::DateTime<Utc> =
+            sqlx::query_scalar("SELECT due_at FROM native_support_followups WHERE case_id=$1")
+                .bind(case_id)
+                .fetch_one(&db)
+                .await
+                .unwrap();
+
         let mut tx = db.begin().await.unwrap();
         customer_replied(&mut tx, case_id, "normal").await.unwrap();
         tx.commit().await.unwrap();
@@ -451,6 +483,16 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(cycle, 1);
+        assert_eq!(
+            sqlx::query_scalar::<_, chrono::DateTime<Utc>>(
+                "SELECT due_at FROM native_support_followups WHERE case_id=$1"
+            )
+            .bind(case_id)
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+            deadline
+        );
 
         let mut tx = db.begin().await.unwrap();
         staff_responded(&mut tx, case_id).await.unwrap();

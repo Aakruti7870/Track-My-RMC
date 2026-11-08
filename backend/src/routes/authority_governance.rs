@@ -23,7 +23,9 @@ pub struct AuthorityGrant {
 }
 
 fn validate_grants(grants: &[String]) -> Result<(), AppError> {
-    if grants.len() > 6
+    if grants.len() > crate::auth::authority::DELEGABLE.len()
+        || (grants.iter().any(|p| p == "support.reply")
+            && !grants.iter().any(|p| p == "support.view"))
         || grants.iter().any(|p| !is_delegable(p))
         || grants
             .iter()
@@ -193,5 +195,7 @@ mod tests {
         assert!(validate_grants(&["support.view".into(), "kyc.review".into()]).is_ok());
         assert!(validate_grants(&["admin_access.manage".into()]).is_err());
         assert!(validate_grants(&["kyc.review".into(), "kyc.review".into()]).is_err());
+        assert!(validate_grants(&["support.reply".into()]).is_err());
+        assert!(validate_grants(&["support.view".into(), "support.reply".into()]).is_ok());
     }
 }

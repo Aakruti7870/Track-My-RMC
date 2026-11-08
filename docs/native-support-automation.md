@@ -78,3 +78,33 @@ process. No plant owner receives a platform-wide support ticket.
 - Frontend/admin builds and all existing Play-review role checks remain intact.
 
 Release mode: **feature OFF; PR only; no merge or production deploy on CI alone.**
+
+## PR #159 authorization remediation
+
+Platform case reads/replies and the unread alert feed use the narrowly scoped
+`WebSupport` guard, shared by Central Admin and approved delegated Authority.
+`support.reply` is now one of seven delegable capabilities and is effective only
+with `support.view`; governance rejects a write-only grant. Authority status
+management, policy changes and Central Admin capabilities remain nondelegable.
+Central Admin status changes still require `WebAdmin`, `support.manage` and
+recent authenticator verification.
+
+Every support action verifies the current approved, unexpired, unrevoked web
+session and enabled authenticator. Case mutations recheck this proof after
+locking the case, holding a shared identity lock through commit; policy and
+session replacement/revocation serialize on that identity. Replies, notes,
+status changes, case views, alert listing and first read acknowledgements are
+audited without copying ticket text into audit metadata.
+
+Both web dashboards render the same support workspace. Only the notification's
+owner can read/acknowledge an alert. The unread feed supports an ownership-checked
+keyset cursor, and acknowledging an alert refreshes the next unread batch.
+Generic mobile notification APIs exclude `support_followup`, including their
+mark-read operations, so they cannot bypass this web authorization boundary.
+Reminder recipients additionally need an enrolled Argon2id password and enabled
+TOTP; an approved but unfinished invitation cannot consume the reminder budget.
+Queued alerts do not require an operator to remain logged in; opening or acting
+on them always requires a current approved web session.
+
+See `security/pr159-release-acceptance.md` for test evidence, the permission
+matrix, migration/rollback constraints and production-only acceptance gates.

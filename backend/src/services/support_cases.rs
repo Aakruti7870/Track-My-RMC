@@ -1,3 +1,4 @@
+use crate::auth::staff_support::{SupportAction, WebSupport};
 use crate::{error::AppError, state::AppState};
 use serde_json::{json, Value};
 use sqlx::Row;
@@ -136,6 +137,28 @@ pub async fn list(
     owner: Option<Uuid>,
     case: Option<Uuid>,
 ) -> Result<Vec<Value>, AppError> {
+    list_using(&state.db, owner, case).await
+}
+
+pub async fn staff_list(
+    state: &AppState,
+    staff: &WebSupport,
+    case: Option<Uuid>,
+) -> Result<Vec<Value>, AppError> {
+    let mut tx = state.db.begin().await?;
+    staff.authorize_in_tx(&mut tx, SupportAction::View).await?;
+    let rows = list_using(&mut *tx, None, case).await?;
+    sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'support.case.view','support_case',$2,'{}')")
+        .bind(staff.user_id).bind(case.map(|id| id.to_string())).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(rows)
+}
+
+async fn list_using<'e, E: sqlx::Executor<'e, Database = sqlx::Postgres>>(
+    executor: E,
+    owner: Option<Uuid>,
+    case: Option<Uuid>,
+) -> Result<Vec<Value>, AppError> {
     let rows = sqlx::query_scalar(r#"
         SELECT jsonb_build_object('id',c.id,'case_number',c.case_number,'order_id',c.order_id,
             'subject',c.subject,'category',upper(c.category),'priority',c.priority,'status',upper(c.status),
@@ -158,7 +181,7 @@ pub async fn list(
         ) m
         WHERE ($1::uuid IS NULL OR c.user_id=$1) AND ($2::uuid IS NULL OR c.id=$2)
         ORDER BY c.updated_at DESC,c.id LIMIT 500
-    "#).bind(owner).bind(case).fetch_all(&state.db).await?;
+    "#).bind(owner).bind(case).fetch_all(executor).await?;
     Ok(rows)
 }
 
@@ -170,6 +193,42 @@ pub async fn reply(
     text: &str,
     internal: bool,
 ) -> Result<(), AppError> {
+    if owner != Some(actor) {
+        return Err(AppError::Forbidden(
+            "Customer ownership or approved support web proof required".into(),
+        ));
+    }
+    reply_using(state, actor, owner, case, text, internal, None).await
+}
+
+pub async fn staff_reply(
+    state: &AppState,
+    staff: &WebSupport,
+    case: Uuid,
+    text: &str,
+    internal: bool,
+) -> Result<(), AppError> {
+    reply_using(
+        state,
+        staff.user_id,
+        None,
+        case,
+        text,
+        internal,
+        Some(staff),
+    )
+    .await
+}
+
+async fn reply_using(
+    state: &AppState,
+    actor: Uuid,
+    owner: Option<Uuid>,
+    case: Uuid,
+    text: &str,
+    internal: bool,
+    staff: Option<&WebSupport>,
+) -> Result<(), AppError> {
     let text = message(text)?;
     if owner.is_some() && internal {
         return Err(AppError::Forbidden(
@@ -179,6 +238,9 @@ pub async fn reply(
     let mut tx = state.db.begin().await?;
     let row = sqlx::query("SELECT user_id,status,priority FROM support_cases WHERE id=$1 AND ($2::uuid IS NULL OR user_id=$2) FOR UPDATE")
         .bind(case).bind(owner).fetch_optional(&mut *tx).await?.ok_or_else(||AppError::NotFound("Support case not found".into()))?;
+    if let Some(staff) = staff {
+        staff.authorize_in_tx(&mut tx, SupportAction::Reply).await?;
+    }
     let status: String = row.get("status");
     if !["OPEN", "IN_PROGRESS"].contains(&status.to_uppercase().as_str()) {
         return Err(AppError::Conflict(
