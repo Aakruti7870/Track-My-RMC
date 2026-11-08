@@ -603,10 +603,7 @@ mod tests {
                 provider_url(SANDBOX_HOST, path),
                 format!("{SANDBOX_HOST}{path}")
             );
-            assert_eq!(
-                provider_url(LIVE_HOST, path),
-                format!("{LIVE_HOST}{path}")
-            );
+            assert_eq!(provider_url(LIVE_HOST, path), format!("{LIVE_HOST}{path}"));
             assert!(!provider_url(LIVE_HOST, path).starts_with(SANDBOX_HOST));
         }
     }
