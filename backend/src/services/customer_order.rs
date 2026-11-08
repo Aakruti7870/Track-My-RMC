@@ -87,6 +87,16 @@ async fn validate(
             "Unsupported preferred payment mode".into(),
         ));
     }
+    if req
+        .preferred_payment_mode
+        .as_deref()
+        .is_some_and(|mode| crate::routes::order_payment::is_online(mode)
+            && !crate::routes::order_payment::online_mode_allowed())
+    {
+        return Err(AppError::Conflict(
+            "Online advance is not available yet. Choose pay-on-delivery or plant-approved credit".into(),
+        ));
+    }
     if req.lat.is_some() != req.lng.is_some()
         || req
             .lat
