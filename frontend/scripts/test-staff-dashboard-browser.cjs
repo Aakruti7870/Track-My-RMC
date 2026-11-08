@@ -40,7 +40,7 @@ fs.mkdirSync(out, { recursive: true });
               { label: 'Available TMs', value: 2, icon: 'bus-outline' },
               { label: 'Staff Present Today', value: 3, icon: 'people-outline' },
               { label: 'Open Incidents', value: 0, icon: 'warning-outline' },
-            ], primary: { title: 'Today's workspace', kind: 'dispatch' },
+            ], primary: { title: "Today’s workspace", kind: 'dispatch' },
           };
           else if (path.endsWith('/staff/module-permissions')) json = {
             permissions: grants.map(key => ({ key, view: true })),
