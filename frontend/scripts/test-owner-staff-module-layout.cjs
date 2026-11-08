@@ -18,7 +18,10 @@ function loadTs(file, dependencies = {}) {
 }
 const catalog = loadTs("src/navigation/moduleCatalog.ts");
 const owner = loadTs("src/owner/modules.ts", { "@/src/navigation/moduleCatalog": catalog });
-const staff = loadTs("src/screens/StaffModuleDirectory.tsx", { "@/src/navigation/moduleCatalog": catalog });
+const staff = loadTs("src/screens/StaffModuleDirectory.tsx", {
+  "@/src/navigation/moduleCatalog": catalog,
+  "@/src/theme/tokens": { spacing: { sm: 8, md: 12, lg: 16 }, radius: { md: 12, pill: 99 }, fonts: {} },
+});
 
 const ownerHome = owner.HOME_KEYS;
 const ownerOperations = owner.ownerModules(owner.OPERATIONS_KEYS).map(module => module.key);
