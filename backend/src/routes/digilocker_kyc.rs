@@ -468,6 +468,52 @@ pub async fn status(
             json!({"status":"IN_PROGRESS","provider":provider.label,"refresh_failed":true}),
         ));
     };
+/// An asynchronously completed second consent must not undo a concurrently
+/// committed independent reviewer approval. Lock the profile before checking
+/// its CURRENT status and current live evidence, not the stale status read
+/// before the network provider request.
+async fn complete_consent_profile_transition(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    customer_id: Uuid,
+    name: &str,
+    live_mode: bool,
+) -> Result<bool, AppError> {
+    let stored: String = sqlx::query_scalar(
+        "SELECT kyc_status FROM user_profiles WHERE user_id=$1 FOR UPDATE",
+    )
+    .bind(customer_id)
+    .fetch_one(&mut **tx)
+    .await?;
+
+    let already_approved = if stored.eq_ignore_ascii_case("verified") {
+        if live_mode {
+            // Evidence cannot be inferred from a sandbox/legacy approval. The
+            // approval/revocation audit read occurs WHILE the profile lock is
+            // held, so an overlapping reviewer transaction is serialized.
+            sqlx::query_scalar::<_, bool>(LIVE_APPROVAL_SQL)
+                .bind(customer_id)
+                .fetch_one(&mut **tx)
+                .await?
+        } else {
+            true
+        }
+    } else {
+        false
+    };
+    if already_approved {
+        return Ok(false);
+    }
+    sqlx::query(
+        "UPDATE user_profiles SET kyc_status='pending',verified_name=$2,updated_at=NOW()
+         WHERE user_id=$1",
+    )
+    .bind(customer_id)
+    .bind(name)
+    .execute(&mut **tx)
+    .await?;
+    Ok(true)
+}
+
     let refresh = async {
         let token = provider.access_token().await?;
         let body = provider.get(&token, &format!("/kyc/digilocker/sessions/{provider_id}/status")).await?;
@@ -503,21 +549,32 @@ pub async fn status(
             "UPDATE customer_digilocker_sessions SET status='PENDING',verified_at=NOW(),updated_at=NOW()
              WHERE id=$1 AND user_id=$2 AND status='IN_PROGRESS'"
         ).bind(id).bind(user.user_id).execute(&mut *tx).await?.rows_affected();
+        let mut effective_result = "PENDING";
         if changed == 1 {
-            // DigiLocker consent and identity are evidence for Authority review, not approval.
-            sqlx::query(
-                "UPDATE user_profiles SET kyc_status='pending',verified_name=$2,updated_at=NOW()
-                 WHERE user_id=$1"
-            ).bind(user.user_id).bind(name).execute(&mut *tx).await?;
+            // Re-read and lock the CURRENT approval before any profile mutation.
+            // The first consent may have been independently approved while this
+            // handler was awaiting provider HTTP responses for a second consent.
+            let reopened = complete_consent_profile_transition(
+                &mut tx,
+                user.user_id,
+                name,
+                provider.environment == "live",
+            )
+            .await?;
+            if !reopened {
+                effective_result = "VERIFIED";
+            }
             sqlx::query(
                 "INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata)
                  VALUES($1,'kyc.digilocker.consent_verified','customer',$2,$3)"
             ).bind(user.user_id).bind(user.user_id.to_string())
-            .bind(json!({"provider":provider.label,"session_id":provider_id.to_string(),"result":"pending_authority_review"}))
+            .bind(json!({"provider":provider.label,
+                         "session_id":provider_id.to_string(),
+                         "result":if reopened {"pending_authority_review"} else {"already_approved"}}))
             .execute(&mut *tx).await?;
         }
         tx.commit().await?;
-        Ok("PENDING")
+        Ok(effective_result)
     }.await;
     match refresh {
         Ok(status) => Ok(Json(json!({"status":status,"provider":provider.label}))),
@@ -529,6 +586,90 @@ pub async fn status(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[sqlx::test]
+    async fn duplicate_consent_cannot_downgrade_committed_live_approval(db: sqlx::PgPool) {
+        let customer: Uuid = sqlx::query_scalar(
+            "INSERT INTO users(phone,hashed_password,full_name,role)
+             VALUES($1,'test-only','Approved Customer','customer') RETURNING id",
+        )
+        .bind(format!("kyc{}", &Uuid::new_v4().simple().to_string()[..12]))
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO user_profiles(user_id,kyc_status,verified_name)
+             VALUES($1,'verified','Approved Customer')",
+        )
+        .bind(customer)
+        .execute(&db)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO customer_digilocker_sessions
+             (user_id,provider_environment,status,verified_at)
+             VALUES($1,'live','PENDING',NOW()-INTERVAL '2 minutes')",
+        )
+        .bind(customer)
+        .execute(&db)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO audit_logs(action,resource_type,resource_id,metadata)
+             VALUES('control_center.kyc.review','customer',$1,$2)",
+        )
+        .bind(customer.to_string())
+        .bind(json!({"status":"verified","provider_environment":"live"}))
+        .execute(&db)
+        .await
+        .unwrap();
+
+        let mut tx = db.begin().await.unwrap();
+        let reopened = complete_consent_profile_transition(
+            &mut tx,
+            customer,
+            "New Consent Name",
+            true,
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        assert!(!reopened, "the live review committed before the profile lock wins");
+        let status: (String, Option<String>) = sqlx::query_as(
+            "SELECT kyc_status,verified_name FROM user_profiles WHERE user_id=$1",
+        )
+        .bind(customer)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        assert_eq!(status.0, "verified");
+        assert_eq!(status.1.as_deref(), Some("Approved Customer"));
+
+        // A subsequently revoked approval must allow new evidence to open
+        // a new pending independent-review cycle.
+        sqlx::query(
+            "INSERT INTO audit_logs(action,resource_type,resource_id,metadata)
+             VALUES('authority.kyc.review','customer',$1,$2)",
+        )
+        .bind(customer.to_string())
+        .bind(json!({"kyc_status":"unverified","provider_environment":null}))
+        .execute(&db)
+        .await
+        .unwrap();
+        let mut tx = db.begin().await.unwrap();
+        assert!(complete_consent_profile_transition(&mut tx, customer, "Fresh Consent", true)
+            .await
+            .unwrap());
+        tx.commit().await.unwrap();
+        let status: String = sqlx::query_scalar(
+            "SELECT kyc_status FROM user_profiles WHERE user_id=$1",
+        )
+        .bind(customer)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        assert_eq!(status, "pending");
+    }
 
     #[sqlx::test]
     async fn live_kyc_requires_latest_environment_matched_audited_approval(db: sqlx::PgPool) {
