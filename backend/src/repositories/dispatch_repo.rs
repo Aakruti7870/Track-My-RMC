@@ -59,6 +59,23 @@ pub async fn assign_order_load(
     .await?
     .ok_or_else(|| AppError::NotFound("Order not found".to_string()))?;
 
+    // New payment-preference orders may not have fleet assigned before customer
+    // acceptance and (for online modes) verified payment release.
+    let preference: Option<String> =
+        sqlx::query_scalar("SELECT preferred_payment_mode FROM orders WHERE id=$1")
+            .bind(order_id)
+            .fetch_one(&mut *tx)
+            .await?;
+    if preference.is_some()
+        && !matches!(
+            order.1.as_str(),
+            "confirmed" | "scheduled" | "in_production" | "produced" | "dispatched" | "in_transit"
+        )
+    {
+        return Err(AppError::Conflict(
+            "Order commercial terms/payment have not been confirmed".into(),
+        ));
+    }
     if matches!(order.1.as_str(), "cancelled" | "completed" | "delivered") {
         return Err(AppError::BadRequest(
             "Order cannot accept another load in its current state".to_string(),
