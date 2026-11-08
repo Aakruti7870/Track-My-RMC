@@ -1,36 +1,45 @@
-# TrackMyRMC — Production Deployment Guide
+# TrackMyRMC — Current AWS production release guide
 
-Deploying the Rust backend and PostgreSQL database to Render.
+**This repository's active production deployment is AWS EC2/SSM + RDS PostgreSQL + S3, not Render.** The retained backend/render.yaml describes a separate historical/optional hosting blueprint; it is not the current production release workflow.
 
----
+## Entry points and release provenance
 
-## 1. Render Infrastructure Blueprint (`render.yaml`)
+- CI: .github/workflows/backend.yml and .github/workflows/frontend.yml.
+- Release: .github/workflows/deploy-aws-production.yml.
+- Instance installation: ops/aws-deploy-ec2.sh.
+- Post-release smoke/asset identity: ops/verify-production-health.sh.
+- Production hostname: https://trackmyrmc.com.
+- API health: /health and /healthz; privileged admin web is served under /admin/.
 
-The repository includes a production-ready `render.yaml` defining:
-- Managed PostgreSQL database (`trackmyrmc-postgres`)
-- Multi-stage Docker web service (`trackmyrmc-backend`)
-- Auto-configured environment variables and health monitoring (`/health`).
+Only a specifically approved **main** commit can release. TRACKMYRMC_APPROVED_RELEASE_SHA must be a nonempty exact match for that SHA, and the production workflow verifies both Backend CI and Frontend CI passed on a main push of the same commit. Manual dispatch cannot bypass this check.
 
----
+**Do not set or change the approval variable to force a release.** Merge readiness is a different decision from production authorization. GitHub app visibility of the variable may be restricted; an authorized repository operator must verify the value.
 
-## 2. Environment Variables Checklist
+## Pre-release acceptance
 
-| Variable | Required | Description |
-|---|:---:|---|
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `PORT` | Yes | Injected automatically by Render (default `8000`) |
-| `JWT_SECRET` | Yes | High-entropy signing secret (32+ characters) |
-| `JWT_EXPIRATION_HOURS` | Yes | Default `72` |
-| `META_WHATSAPP_TOKEN` | Yes | Meta System User Access Token |
-| `META_PHONE_NUMBER_ID` | Yes | Meta Cloud API Phone Number ID |
-| `META_WABA_ID` | Yes | Meta WhatsApp Business Account ID |
-| `EMAIL_API_KEY` | Yes | Postmark or SendGrid API token |
-| `EMAIL_FROM_ADDRESS` | Yes | e.g., `noreply@trackmyrmc.com` |
+1. Confirm the exact commit, PR reviews, backend PostgreSQL 16/18 tests, frontend and admin builds and regression evidence.
+2. Use an **approved scoped IAM/operator role**, never AWS root, for production changes.
+3. Independently validate the live RDS TLS configuration (client certificate, hostname and trusted CA) and production database name, migration history/checksums and pending migration ordering. The backend runs pending migrations **at startup**.
+4. Confirm an approved backup and tested restoration/rollback strategy. Do not delete migration ledger entries, rewrite applied migrations, revert payment data or erase reviewer access.
+5. Obtain explicit provider/role-specific acceptance for live privileged operators, KYC, Cashfree and Play disclosures where applicable. Existing sandbox success is not production activation.
+6. Verify live automation flags with the authorized operator. Keep NATIVE_AUTOMATION_WORKER_ENABLED and NATIVE_SUPPORT_AUTOMATION_ENABLED OFF unless a separate, specifically approved activation exists; enabling the base worker may also process other governed workflows.
+7. Have the release authority independently approve the exact main SHA and record the acceptance evidence.
 
----
+## Controlled deployment
 
-WebAuthn RP variables are not required by the current backend because passkey endpoints are intentionally disabled until complete verification is implemented.
+Use the existing GitHub AWS production workflow. It packages the SHA-pinned Rust binary, Expo web bundle, admin-web bundle, source and deployment script, uploads the approved artifacts to the repository's production artifact bucket and deploys through SSM with a trusted origin verification.
 
-## 3. Health Monitoring
+A skipped workflow is **not** a deployment. Inspect the run's actual conclusion, deploy job, S3 artifacts, EC2 release marker, running binary SHA and health results. Green CI without released artifacts must be reported as code-only success.
 
-Render monitors the `/health` endpoint every 30 seconds. The endpoint queries `SELECT 1` against PostgreSQL to confirm operational health.
+When a release fails, preserve the live database and notify the scoped operator. Follow reviewed application rollback/forward-revert procedures; never improvise a destructive schema downgrade or unapproved RDS restore.
+
+## Evidence and constraints
+
+- [PR #157 security and release assessment](security/pr157-release-assessment.md)
+- [PR #159 support authorization and production acceptance](security/pr159-release-acceptance.md)
+- [Deployment verification](DEPLOYMENT_VERIFICATION.md)
+- [Production release checklist](PRODUCTION_RELEASE_CHECKLIST.md)
+- [Controlled plant access rollout](release/controlled-plant-access-rollout.md)
+- [Payment-specific restrictions](payments/RMC_PREPAID_PLAY_COMPLIANCE_AND_ROLLOUT.md)
+
+This guide documents the intended guarded deployment, **not proof that a release has occurred**.

@@ -12,7 +12,7 @@ pub async fn create_pool(database_url: &str) -> Result<PgPool, AppError> {
         .idle_timeout(Duration::from_secs(600))
         .connect(database_url)
         .await
-        .map_err(|e| AppError::InternalError(format!("Database migration failed: {e}")))?;
+        .map_err(|e| AppError::InternalError(format!("Database connection failed: {e}")))?;
 
     info!("PostgreSQL connection pool established successfully");
     Ok(pool)

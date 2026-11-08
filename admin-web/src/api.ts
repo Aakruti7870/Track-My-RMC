@@ -9,7 +9,8 @@ export function setAccessToken(token: string | null) { accessToken = token; }
 // Remove any token persisted by an older dashboard version.
 if (typeof window !== 'undefined') window.sessionStorage.removeItem('trackmyrmc_admin_token');
 
-export const API_URL = import.meta.env.VITE_API_URL || 'https://trackmyrmc.com';
+// Never send development credentials to the production host by default.
+export const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : 'https://trackmyrmc.com');
 
 export const apiClient = axios.create({
   baseURL: API_URL,

@@ -6,7 +6,7 @@ This document specifies the complete REST API contract for the TrackMyRMC Rust b
 
 ## 1. Global Conventions
 
-- **Base URL**: `http://localhost:8000` (Local) / `https://trackmyrmc-backend.onrender.com` (Production)
+- **Base URL**: `http://localhost:8000` (local development) / `https://trackmyrmc.com` (current production AWS origin). The old Render hostname is not the active production API.
 - **Content-Type**: `application/json`
 - **Authentication**: `Authorization: Bearer <JWT>`
 - **Error Response Standard**:

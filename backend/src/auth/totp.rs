@@ -81,7 +81,7 @@ impl TotpEngine {
     pub fn verified_step(secret: &str, submitted_code: &str) -> Result<Option<i64>, AppError> {
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .map_err(|_| AppError::InternalError("System clock unavailable".into()))?
             .as_secs();
 
         let submitted = submitted_code.trim();

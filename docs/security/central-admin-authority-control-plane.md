@@ -1,6 +1,6 @@
 # Central Admin and delegated Authority — control plane
 
-Status: **implementation in PR #157; not automatically approved for production**.
+Status: **implemented on main; production enrollment, deployment and feature activation still require independent release acceptance**. PR #157 established the control plane; PR #159 added explicitly delegated support replies and a staff-only support notification feed.
 
 ## Boundary and deployment
 
@@ -19,7 +19,7 @@ Status: **implementation in PR #157; not automatically approved for production**
 | Delegation | `/api/control-center/authority-access` with `admin_access.manage` and MFA step-up | No ability to grant permissions or manage other Authority identities |
 | Users / plants / orders | Permission-gated Control Center collections | Explicit `user.view`, `plant.view`, `order.view` grants; no global edit |
 | Owner approvals / suspensions | `plant_owners.manage` / step-up | Not delegable in this slice |
-| Operational support | Support, service enquiries and RFQ leads | Granted `support.view` read-only, scoped fields |
+| Operational support | Support, service enquiries and RFQ leads | Granted `support.view` for platform support cases; `support.reply` may additionally be delegated for staff replies, notes and own alert acknowledgements. Case status management remains Central Admin-only with fresh MFA |
 | Marketing | Existing RFQ onboarding and outreach monitoring | Lead-status **monitoring only**, not bulk messaging or sending |
 | KYC | Provider-evidence-gated approval/rejection with explicit `kyc.review`, reason and fresh MFA | `kyc.view` / `kyc.review`; fresh MFA and auditable decision |
 | Automation | Existing native Rust template/policy/worker-health controls | Not delegable; no template publication or dead-letter requeue |
@@ -28,7 +28,7 @@ Status: **implementation in PR #157; not automatically approved for production**
 
 ### Authority entitlement contract
 
-Only these **six** permissions may be assigned by Central Admin: `user.view`, `plant.view`, `order.view`, `support.view`, `kyc.view`, `kyc.review`.
+Only these **seven** permissions may be assigned by Central Admin: `user.view`, `plant.view`, `order.view`, `support.view`, `support.reply`, `kyc.view`, `kyc.review`. `support.reply` requires `support.view`; Authority cannot receive `support.manage` or global privileges.
 
 An existing Customer, Driver, Owner, Staff, Plant Admin or Central Admin account cannot be silently promoted to Authority. A dedicated Authority account must be created or changed using the Central Admin authenticated web session and an audit reason. Revocation or any permission change invalidates previous Authority sessions. The Authority web session requires an active approved account, an Argon2id password and a successfully enrolled authenticator. First-time Authority enrollment requires verified work-email OTP, followed by authenticator enrollment and a one-use server-bound login challenge plus fresh TOTP at `POST /api/authority/auth/set-initial-password`. This can only replace `!web-only-no-password!` on a dedicated Authority account. No staff/mobile authentication completion can issue an Authority session.
 
@@ -81,7 +81,7 @@ operators. There is no unverified email-only password recovery API or backdoor.
 
 ### Authority first-time login
 
-1. Central Admin grants exactly the required six-capability subset using fresh step-up
+1. Central Admin grants an approved subset of the seven explicitly delegable capabilities using fresh step-up
    and a written audit reason. Existing staff/customer/owner identities are never promoted.
 2. The approved Authority chooses **First sign-in** on the web portal, verifies the
    registered work email via OTP and enrolls the authenticator. Existing staff MFA
