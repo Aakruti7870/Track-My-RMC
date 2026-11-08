@@ -211,6 +211,19 @@ async fn support_staff_requires_recorded_web_mfa_grants_and_fresh_status_step_up
     let (status,case)=request(&router,"/api/assistant/support",Some(&customer_token),Some(json!({"category":"GENERAL","message":"The application needs attention","escalate":true}))).await;
     assert_eq!(status, StatusCode::OK);
     let case_id = case["case_id"].as_str().unwrap();
+    // Creation and the first customer reply must commit alongside the
+    // platform follow-up timer; no plant-scoped automation job is invented.
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM native_support_followups
+             WHERE case_id=$1::uuid AND awaiting_staff_reply AND reminder_count=0"
+        )
+        .bind(case_id)
+        .fetch_one(&db)
+        .await
+        .unwrap(),
+        1
+    );
     let staff_path = format!("/api/assistant/support/staff/cases/{case_id}");
     let (admin, email, secret) = identity(&db, "central_admin", true, vec!["support.view"]).await;
     let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
@@ -272,6 +285,8 @@ async fn support_staff_requires_recorded_web_mfa_grants_and_fresh_status_step_up
     );
     let (_, staff) = request(&router, &staff_path, Some(token), None).await;
     assert_eq!(staff["case"]["messages"].as_array().unwrap().len(), 2);
+    // Internal staff notes never consume a visible-response SLA.
+    assert_eq!(staff["case"]["staff_followup"]["awaiting_staff_reply"], true);
     let (_, public) = request(
         &router,
         &format!("/api/assistant/support/cases/{case_id}"),
@@ -324,6 +339,11 @@ async fn support_staff_requires_recorded_web_mfa_grants_and_fresh_status_step_up
         .0,
         StatusCode::CONFLICT
     );
+    let waiting: (bool, Option<chrono::DateTime<chrono::Utc>>) =
+        sqlx::query_as("SELECT awaiting_staff_reply,due_at FROM native_support_followups WHERE case_id=$1::uuid")
+            .bind(case_id).fetch_one(&db).await.unwrap();
+    assert!(!waiting.0);
+    assert!(waiting.1.is_none());
     assert_eq!(
         sqlx::query_scalar::<_, i64>(
             "SELECT COUNT(*) FROM audit_logs WHERE resource_id=$1 AND action='support.case.status'"

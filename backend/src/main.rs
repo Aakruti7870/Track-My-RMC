@@ -49,6 +49,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .as_deref()
         == Some("true")
     {
+        let support_followups_enabled = std::env::var("NATIVE_SUPPORT_AUTOMATION_ENABLED")
+            .ok()
+            .as_deref()
+            == Some("true");
         let automation_db = state.db.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
@@ -58,6 +62,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     trackmyrmc_backend::services::native_automation::tick(&automation_db).await
                 {
                     tracing::error!(error = ?err, "Native automation tick failed");
+                }
+                if support_followups_enabled {
+                    if let Err(err) =
+                        trackmyrmc_backend::services::native_support_automation::tick(
+                            &automation_db,
+                        )
+                        .await
+                    {
+                        tracing::error!(error = ?err, "Native support follow-up tick failed");
+                    }
                 }
             }
         });

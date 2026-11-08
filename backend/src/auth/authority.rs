@@ -326,7 +326,7 @@ pub async fn collection(
         ),
         "support" => (
             "support.view",
-            "SELECT jsonb_build_object('id',id,'subject',subject,'status',status,'created_at',created_at) FROM support_cases ORDER BY created_at DESC LIMIT $1 OFFSET $2",
+            "SELECT jsonb_build_object('id',c.id,'subject',c.subject,'status',c.status,'created_at',c.created_at,'followup_due_at',f.due_at,'awaiting_staff_reply',f.awaiting_staff_reply,'reminders_sent',f.reminder_count) FROM support_cases c LEFT JOIN native_support_followups f ON f.case_id=c.id ORDER BY c.created_at DESC,c.id LIMIT $1 OFFSET $2",
         ),
         "service_enquiries" => (
             "support.view",

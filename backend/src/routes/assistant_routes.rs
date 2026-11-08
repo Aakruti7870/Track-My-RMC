@@ -191,6 +191,7 @@ pub async fn create_support_case(
     let number = format!("SUP-{}", id.simple());
     sqlx::query("INSERT INTO support_cases(id,user_id,order_id,subject,category,priority,status,case_number,request_id,request_payload) VALUES($1,$2,$3,$4,$5,$6,'OPEN',$7,$8,$9)").bind(id).bind(auth_user.user_id).bind(payload.order_id).bind(subject).bind(&category).bind(priority).bind(&number).bind(payload.request_id).bind(provenance).execute(&mut *tx).await?;
     sqlx::query("INSERT INTO support_case_replies(case_id,sender_id,is_staff,message) VALUES($1,$2,FALSE,$3)").bind(id).bind(auth_user.user_id).bind(message).execute(&mut *tx).await?;
+    crate::services::native_support_automation::case_created(&mut tx, id, &priority).await?;
     sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'support.case.create','support_case',$2,$3)").bind(auth_user.user_id).bind(id.to_string()).bind(json!({"category":category})).execute(&mut *tx).await?;
     tx.commit().await?;
     response["case_id"] = json!(id);
@@ -311,18 +312,29 @@ pub async fn update_case_status(
         return Err(AppError::BadRequest("Unsupported support status".into()));
     }
     let mut tx = state.db.begin().await?;
-    let previous: String =
-        sqlx::query_scalar("SELECT status FROM support_cases WHERE id=$1 FOR UPDATE")
-            .bind(case)
-            .fetch_optional(&mut *tx)
-            .await?
-            .ok_or_else(|| AppError::NotFound("Support case not found".into()))?;
+    let row = sqlx::query("SELECT status,priority FROM support_cases WHERE id=$1 FOR UPDATE")
+        .bind(case)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Support case not found".into()))?;
+    let previous: String = row.get("status");
+    let priority: String = row.get("priority");
     if previous.to_uppercase() != status {
         sqlx::query("UPDATE support_cases SET status=$1,updated_at=NOW() WHERE id=$2")
             .bind(&status)
             .bind(case)
             .execute(&mut *tx)
             .await?;
+        if matches!(status.as_str(), "RESOLVED" | "CLOSED") {
+            crate::services::native_support_automation::case_closed(&mut tx, case).await?;
+        } else if matches!(previous.to_uppercase().as_str(), "RESOLVED" | "CLOSED") {
+            crate::services::native_support_automation::case_reopened(
+                &mut tx,
+                case,
+                &priority,
+            )
+            .await?;
+        }
         sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'support.case.status','support_case',$2,$3)").bind(admin.user_id).bind(case.to_string()).bind(json!({"previous":previous,"status":status})).execute(&mut *tx).await?;
     }
     tx.commit().await?;

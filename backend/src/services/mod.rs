@@ -8,6 +8,7 @@ pub mod native_automation;
 pub mod native_closed_loop;
 pub mod native_domain_automation;
 pub mod native_rule_conditions;
+pub mod native_support_automation;
 pub mod order_service;
 pub mod otp_delivery;
 pub mod payroll_service;
