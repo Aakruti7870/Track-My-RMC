@@ -8,7 +8,7 @@
 | Backend and database regression | Rust format, check, strict Clippy and tests on PostgreSQL 16 and 18 | PASS on main merge SHA 277d7ed (Backend CI #42493945966) |
 | Client and admin regressions | Expo typecheck/security/layout guards and admin web build | PASS on main merge SHA 277d7ed (Frontend CI #42493945959) |
 | Android/Google Play | Signed AAB and real device/reviewer/permission/Data safety acceptance | NOT established by the web CI |
-| Dependency security | Fresh audit of the final locked Node/Rust graph; remediate remaining advisories or obtain independent, documented exposure/risk acceptance, including build/signing tooling | **BLOCKED**; prior braces/node-forge/high-severity findings are not accepted merely because CI compiles |
+| Dependency security | Fresh audit of the final locked Node/Rust graph; remediate remaining advisories or obtain independent, documented exposure/risk acceptance, including build/signing tooling | **BLOCKED**; node-forge remains an active high-severity advisory, while the braces advisory was withdrawn 2026-10-23; refresh the exact locked-graph and Rust advisory assessment, and obtain remediation or independent exposure sign-off |
 | Migration parity | Live readonly RDS ledger/checksums, pending migration and schema reconciliation | NOT verified live |
 | Client TLS | Positive and negative production RDS TLS/hostname checks | NOT verified live |
 | Infrastructure and operator | Scoped production IAM role, independent approval, least-privilege assessment | INCOMPLETE; connected audit identity is root |
