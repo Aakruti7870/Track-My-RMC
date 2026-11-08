@@ -64,11 +64,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     tracing::error!(error = ?err, "Native automation tick failed");
                 }
                 if support_followups_enabled {
-                    if let Err(err) =
-                        trackmyrmc_backend::services::native_support_automation::tick(
-                            &automation_db,
-                        )
-                        .await
+                    if let Err(err) = trackmyrmc_backend::services::native_support_automation::tick(
+                        &automation_db,
+                    )
+                    .await
                     {
                         tracing::error!(error = ?err, "Native support follow-up tick failed");
                     }

@@ -387,13 +387,12 @@ mod tests {
         let mut tx = db.begin().await.unwrap();
         customer_replied(&mut tx, case_id, "normal").await.unwrap();
         tx.commit().await.unwrap();
-        let cycle: i64 = sqlx::query_scalar(
-            "SELECT cycle FROM native_support_followups WHERE case_id=$1",
-        )
-        .bind(case_id)
-        .fetch_one(&db)
-        .await
-        .unwrap();
+        let cycle: i64 =
+            sqlx::query_scalar("SELECT cycle FROM native_support_followups WHERE case_id=$1")
+                .bind(case_id)
+                .fetch_one(&db)
+                .await
+                .unwrap();
         assert_eq!(cycle, 1);
 
         let mut tx = db.begin().await.unwrap();
