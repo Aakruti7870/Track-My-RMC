@@ -70,8 +70,10 @@ Privileged admin web:
 ~~~bash
 cd admin-web
 npm ci
-npm run build
+cp .env.example .env.local
+# Verify .env.local contains VITE_API_URL=http://localhost:8000.
 npm run dev
+# npm run build also validates the admin bundle locally
 ~~~
 
 This development server is not a substitute for real web-MFA enrollment and scoped role acceptance.
