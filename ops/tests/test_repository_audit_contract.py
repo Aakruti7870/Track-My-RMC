@@ -75,6 +75,7 @@ class RepositoryAuditContractTests(unittest.TestCase):
         self.assertIn("support.view", grants)
         self.assertIn("support.reply", grants)
         self.assertNotIn("support.manage", grants)
+        self.assertNotIn("six-capability", policy)
         for grant in grants:
             with self.subTest(grant=grant):
                 self.assertIn(grant, policy)
