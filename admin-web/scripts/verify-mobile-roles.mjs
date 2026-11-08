@@ -364,7 +364,6 @@ try {
       assert.deepEqual(new Set(rendered), new Set([...visibleKeys, 'owner-drivers']),
         'All approved Owner modules must be discoverable exactly once');
     } else if (user.role === 'customer') {
-      await page.getByText('More', { exact: true }).last().click();
       await expect(page.getByTestId('role-module-directory')).toBeVisible();
       for (const key of visibleKeys) await expect(page.getByTestId('role-module-' + key)).toBeVisible();
     } else if (user.role === 'driver') {
