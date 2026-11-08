@@ -81,7 +81,7 @@ operators. There is no unverified email-only password recovery API or backdoor.
 
 ### Authority first-time login
 
-1. Central Admin grants exactly the required six-capability subset using fresh step-up
+1. Central Admin grants an approved subset of the seven explicitly delegable capabilities using fresh step-up
    and a written audit reason. Existing staff/customer/owner identities are never promoted.
 2. The approved Authority chooses **First sign-in** on the web portal, verifies the
    registered work email via OTP and enrolls the authenticator. Existing staff MFA
