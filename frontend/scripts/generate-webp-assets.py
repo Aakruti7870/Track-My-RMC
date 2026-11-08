@@ -18,7 +18,9 @@ ASSETS = {
     "Background Light Theme.png": 89,
     "Background Dark Theme.png": 89,
     "support-agent-mascot.png": 91,
+    "Plant _Owner_All_staff_top_card.png": 100,
 }
+LOSSLESS_ASSETS = {"Plant _Owner_All_staff_top_card.png"}
 ROOT = Path(__file__).resolve().parents[1] / "assets" / "images"
 
 
@@ -29,11 +31,11 @@ def main():
         target = source.with_suffix(".webp")
         if not source.is_file():
             raise FileNotFoundError(f"Missing PNG source: {source}")
+        # The new owner/staff hero must remain pixel-exact, not just visually similar.
+        options = (["-lossless", "-z", "9"] if name in LOSSLESS_ASSETS else
+                   ["-q", str(quality), "-m", "6", "-alpha_q", "100"])
         subprocess.run(
-            [
-                "cwebp", "-quiet", "-q", str(quality), "-m", "6",
-                "-alpha_q", "100", "-mt", str(source), "-o", str(target)
-            ],
+            ["cwebp", "-quiet", *options, "-mt", str(source), "-o", str(target)],
             check=True,
         )
         original = source.stat().st_size
