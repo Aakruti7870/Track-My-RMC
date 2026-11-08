@@ -393,12 +393,11 @@ async fn complete_consent_profile_transition(
     name: &str,
     live_mode: bool,
 ) -> Result<bool, AppError> {
-    let stored: String = sqlx::query_scalar(
-        "SELECT kyc_status FROM user_profiles WHERE user_id=$1 FOR UPDATE",
-    )
-    .bind(customer_id)
-    .fetch_one(&mut **tx)
-    .await?;
+    let stored: String =
+        sqlx::query_scalar("SELECT kyc_status FROM user_profiles WHERE user_id=$1 FOR UPDATE")
+            .bind(customer_id)
+            .fetch_one(&mut **tx)
+            .await?;
 
     let already_approved = if stored.eq_ignore_ascii_case("verified") {
         if live_mode {
@@ -625,23 +624,21 @@ mod tests {
         .unwrap();
 
         let mut tx = db.begin().await.unwrap();
-        let reopened = complete_consent_profile_transition(
-            &mut tx,
-            customer,
-            "New Consent Name",
-            true,
-        )
-        .await
-        .unwrap();
+        let reopened =
+            complete_consent_profile_transition(&mut tx, customer, "New Consent Name", true)
+                .await
+                .unwrap();
         tx.commit().await.unwrap();
-        assert!(!reopened, "the live review committed before the profile lock wins");
-        let status: (String, Option<String>) = sqlx::query_as(
-            "SELECT kyc_status,verified_name FROM user_profiles WHERE user_id=$1",
-        )
-        .bind(customer)
-        .fetch_one(&db)
-        .await
-        .unwrap();
+        assert!(
+            !reopened,
+            "the live review committed before the profile lock wins"
+        );
+        let status: (String, Option<String>) =
+            sqlx::query_as("SELECT kyc_status,verified_name FROM user_profiles WHERE user_id=$1")
+                .bind(customer)
+                .fetch_one(&db)
+                .await
+                .unwrap();
         assert_eq!(status.0, "verified");
         assert_eq!(status.1.as_deref(), Some("Approved Customer"));
 
@@ -657,17 +654,18 @@ mod tests {
         .await
         .unwrap();
         let mut tx = db.begin().await.unwrap();
-        assert!(complete_consent_profile_transition(&mut tx, customer, "Fresh Consent", true)
-            .await
-            .unwrap());
+        assert!(
+            complete_consent_profile_transition(&mut tx, customer, "Fresh Consent", true)
+                .await
+                .unwrap()
+        );
         tx.commit().await.unwrap();
-        let status: String = sqlx::query_scalar(
-            "SELECT kyc_status FROM user_profiles WHERE user_id=$1",
-        )
-        .bind(customer)
-        .fetch_one(&db)
-        .await
-        .unwrap();
+        let status: String =
+            sqlx::query_scalar("SELECT kyc_status FROM user_profiles WHERE user_id=$1")
+                .bind(customer)
+                .fetch_one(&db)
+                .await
+                .unwrap();
         assert_eq!(status, "pending");
     }
 
