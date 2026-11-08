@@ -278,6 +278,7 @@ pub async fn list_staff_support_alerts(
          FROM notifications n
          JOIN support_cases c ON c.id::text=n.reference_id
          WHERE n.user_id=$1 AND n.notification_type='support_followup'
+           AND NOT n.is_read
          ORDER BY n.created_at DESC,n.id DESC LIMIT 50",
     )
     .bind(admin.user_id)

@@ -305,6 +305,20 @@ async fn support_staff_requires_recorded_web_mfa_grants_and_fresh_status_step_up
     .fetch_one(&db)
     .await
     .unwrap();
+    // More than 50 already-read alerts must not hide an older unread
+    // follow-up. Filter unread server-side BEFORE the response limit.
+    sqlx::query(
+        "INSERT INTO notifications
+         (user_id,title,body,notification_type,reference_id,is_read)
+         SELECT $1,'Archived support reminder','Archived',
+                'support_followup',$2,TRUE
+         FROM generate_series(1,55)",
+    )
+    .bind(admin)
+    .bind(case_id)
+    .execute(&db)
+    .await
+    .unwrap();
     let (feed_status, feed) = request(
         &router,
         "/api/assistant/support/staff/alerts",
@@ -340,6 +354,15 @@ async fn support_staff_requires_recorded_web_mfa_grants_and_fresh_status_step_up
             .await
             .unwrap()
     );
+    let (status_after_read, after_read) = request(
+        &router,
+        "/api/assistant/support/staff/alerts",
+        Some(token),
+        None,
+    )
+    .await;
+    assert_eq!(status_after_read, StatusCode::OK);
+    assert!(after_read["alerts"].as_array().unwrap().is_empty());
     let (_, staff) = request(&router, &staff_path, Some(token), None).await;
     assert_eq!(staff["case"]["messages"].as_array().unwrap().len(), 2);
     // Internal staff notes never consume a visible-response SLA.
