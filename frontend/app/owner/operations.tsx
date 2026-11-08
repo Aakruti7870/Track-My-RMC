@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Pressable, View } from "react-native";
+import { Pressable, View, useWindowDimensions } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/src/auth/AuthContext";
 import { apiErrorDetail, apiPost, apiPut } from "@/src/api/client";
@@ -22,6 +23,31 @@ type OwnerTask = { id: string; order_number: string; task_kind: string; status: 
 type AutomationHistory = { id: string; template_key: string; status: string; attempts: number };
 const REMINDER_MINUTES = [30, 60, 120, 240] as const;
 const SLA_MINUTES = [30, 60, 120, 240] as const;
+const AUTOMATION_GRID_COLUMNS = 4;
+const AUTOMATION_GRID_GAP = 6;
+// Short display labels only; the full API label is used for accessibility and details.
+const COMPACT_AUTOMATION_LABELS: Record<string, string> = {
+  DISPATCH_UNASSIGNED_LOAD: "Unassigned loads",
+  INVENTORY_BELOW_MIN: "Low stock",
+  ORDER_ACCEPTED_NOTICE: "Order accepted",
+  ORDER_PENDING_REMINDER: "Pending orders",
+  ORDER_REJECTED_NOTICE: "Order rejected",
+  ORDER_SUBMITTED_TASK: "Order review",
+  QUALITY_INSPECTION_FAILED: "Quality inspection",
+  RFQ_PENDING_PLANT: "Pending RFQ",
+  WORKFORCE_LEAVE_PENDING: "Staff leave",
+};
+const AUTOMATION_ICONS: Record<string, React.ComponentProps<typeof Ionicons>["name"]> = {
+  DISPATCH_UNASSIGNED_LOAD: "car-outline",
+  INVENTORY_BELOW_MIN: "cube-outline",
+  ORDER_ACCEPTED_NOTICE: "checkmark-circle-outline",
+  ORDER_PENDING_REMINDER: "time-outline",
+  ORDER_REJECTED_NOTICE: "close-circle-outline",
+  ORDER_SUBMITTED_TASK: "clipboard-outline",
+  QUALITY_INSPECTION_FAILED: "shield-outline",
+  RFQ_PENDING_PLANT: "document-text-outline",
+  WORKFORCE_LEAVE_PENDING: "calendar-outline",
+};
 
 type AutomationWorkspace = "/owner/orders" | "/owner/quotation-requests" | "/business/inventory" | "/workforce";
 
@@ -40,6 +66,11 @@ function workspaceForTask(kind: string): AutomationWorkspace | null {
 
 export default function OwnerOperations() {
   const p = useOwnerPalette();
+  const { width: viewportWidth } = useWindowDimensions();
+  // OwnerFrame caps content at 820dp and OwnerList has 16dp padding per side.
+  const gridWidth = Math.min(viewportWidth, 820) - 32;
+  const tileWidth = (gridWidth - AUTOMATION_GRID_GAP * (AUTOMATION_GRID_COLUMNS - 1)) / AUTOMATION_GRID_COLUMNS;
+  const [selectedRuleKey, setSelectedRuleKey] = useState<string | null>(null);
   const router = useRouter();
   const { token } = useAuth();
   const [plantId, setPlantId] = useState("");
@@ -59,6 +90,7 @@ export default function OwnerOperations() {
     useGet<{ tasks: OwnerTask[] }>(base ? `${base}/tasks` : null);
   const { data: history, refetch: refreshHistory } =
     useGet<{ jobs: AutomationHistory[] }>(base ? `${base}/history` : null);
+  const selectedRule = (rules?.rules ?? []).find(rule => rule.key === selectedRuleKey);
 
   async function updateRule(rule: AutomationRule, enabled: boolean, reminderMinutes?: number, slaMinutes?: number) {
     if (!base || !token || busyRule || (enabled && (!rule.published || rule.globally_paused))) return;
@@ -120,59 +152,94 @@ export default function OwnerOperations() {
         {rules && !rules.worker_enabled ? <AppText accessibilityRole="alert" style={{ color: "#F59E0B", fontSize: 12 }}>
           Automation engine not activated. Preferences are saved, but the background worker is currently off.
         </AppText> : null}
-        {(rules?.rules ?? []).map(rule => {
-          const available = rule.published && !rule.globally_paused;
-          const isReminder = rule.key === "ORDER_PENDING_REMINDER";
-          const isDomain = !rule.key.startsWith("ORDER_");
-          return <OwnerGlass key={rule.key} style={{ padding: 13, gap: 8 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <View style={{ flex: 1 }}>
-                <AppText style={{ color: p.text, fontWeight: "700", fontSize: 13 }}>{rule.label}</AppText>
-                <AppText style={{ color: p.muted, fontSize: 11 }}>
-                  {!rule.published ? "Awaiting Central Admin publication" :
-                    rule.globally_paused ? "Paused by Central Admin" :
-                    rule.enabled ? "Enabled for this plant" : "Available — currently disabled"}
+        <View testID="owner-automation-grid" style={{ flexDirection: "row", flexWrap: "wrap", gap: AUTOMATION_GRID_GAP }}>
+          {(rules?.rules ?? []).map(rule => {
+            const available = rule.published && !rule.globally_paused;
+            const on = rule.enabled && available;
+            const disabled = (!available && !rule.enabled) || Boolean(busyRule);
+            const status = !rule.published ? "Pending" : rule.globally_paused ? "Paused" : on ? "Active" : "Ready";
+            return <OwnerGlass key={rule.key} style={{
+              width: tileWidth, height: 126, paddingHorizontal: 4, paddingVertical: 6,
+              borderRadius: 12, borderColor: selectedRuleKey === rule.key ? p.accent : p.border,
+              justifyContent: "space-between", alignItems: "center", gap: 2,
+            }}>
+              <Pressable testID={"owner-automation-detail-" + rule.key} accessibilityRole="button"
+                accessibilityLabel={"Show details and settings for " + rule.label}
+                accessibilityState={{ selected: selectedRuleKey === rule.key }}
+                onPress={() => setSelectedRuleKey(current => current === rule.key ? null : rule.key)}
+                style={{ flex: 1, alignItems: "center", alignSelf: "stretch", justifyContent: "center", gap: 2 }}>
+                <Ionicons name={AUTOMATION_ICONS[rule.key] ?? "flash-outline"} size={17} color={p.accent} />
+                <AppText numberOfLines={3} center style={{ fontSize: 10, lineHeight: 12, fontWeight: "700", color: p.text }}>
+                  {COMPACT_AUTOMATION_LABELS[rule.key] ?? rule.label}
                 </AppText>
-              </View>
-              <Pressable testID={`owner-automation-toggle-${rule.key}`} accessibilityRole="switch"
-                accessibilityState={{ checked: rule.enabled && available, disabled: (!available && !rule.enabled) || Boolean(busyRule) }}
-                disabled={(!available && !rule.enabled) || Boolean(busyRule)}
-                onPress={() => void updateRule(rule, !rule.enabled)}
-                style={{ minWidth: 72, padding: 10, borderRadius: 12,
-                  backgroundColor: rule.enabled && available ? p.accent : p.canvas }}>
-                <AppText center style={{ color: rule.enabled && available ? "#FFFFFF" : p.text, fontSize: 12 }}>
-                  {busyRule === rule.key ? "Saving" : rule.enabled && available ? "On" : "Off"}
+                <AppText numberOfLines={1} center style={{ fontSize: 9, lineHeight: 11, color: p.muted }}>{status}</AppText>
+              </Pressable>
+              <Pressable testID={"owner-automation-toggle-" + rule.key} accessibilityRole="switch"
+                accessibilityLabel={rule.label + ": " + (on ? "On" : "Off") + ". " + (
+                  !rule.published ? "Awaiting Central Admin publication" :
+                  rule.globally_paused ? "Paused by Central Admin" : "Plant automation preference")}
+                accessibilityState={{ checked: on, disabled }}
+                disabled={disabled} onPress={() => void updateRule(rule, !rule.enabled)}
+                style={{ minWidth: 44, alignSelf: "stretch", minHeight: 36, justifyContent: "center",
+                  borderRadius: 9, backgroundColor: on ? p.accent : p.canvas,
+                  opacity: disabled ? 0.65 : 1 }}>
+                <AppText center style={{ color: on ? "#FFFFFF" : p.text, fontSize: 11, fontWeight: "700" }}>
+                  {busyRule === rule.key ? "..." : on ? "ON" : "OFF"}
                 </AppText>
               </Pressable>
-            </View>
-            {isReminder && rule.enabled && available ? <View style={{ gap: 6 }}>
+            </OwnerGlass>;
+          })}
+          {/* The backend currently supplies nine rules. This is a non-functional reserved slot, not a fake automation. */}
+          {rules?.rules.length === 9 ? <OwnerGlass style={{
+            width: tileWidth, height: 126, padding: 5, borderRadius: 12,
+            justifyContent: "center", alignItems: "center", gap: 6, opacity: 0.7,
+          }}>
+            <Ionicons name="add-circle-outline" size={20} color={p.muted} />
+            <AppText center style={{ color: p.text, fontSize: 10, lineHeight: 12, fontWeight: "700" }}>Reserved slot</AppText>
+            <AppText center style={{ color: p.muted, fontSize: 9 }}>Coming soon</AppText>
+          </OwnerGlass> : null}
+        </View>
+        {selectedRule ? <OwnerGlass style={{ padding: 12, gap: 8 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+            <AppText style={{ flex: 1, color: p.text, fontWeight: "700", fontSize: 13 }}>{selectedRule.label}</AppText>
+            <Pressable testID="owner-automation-close-details" accessibilityRole="button"
+              accessibilityLabel="Close automation details" onPress={() => setSelectedRuleKey(null)}
+              style={{ paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8, backgroundColor: p.canvas }}>
+              <AppText style={{ color: p.text, fontSize: 11 }}>Close</AppText>
+            </Pressable>
+          </View>
+          <AppText style={{ color: p.muted, fontSize: 11 }}>
+            {!selectedRule.published ? "Awaiting Central Admin publication" :
+              selectedRule.globally_paused ? "Paused by Central Admin" :
+              selectedRule.enabled ? "Enabled for this plant" : "Available — currently disabled"}
+          </AppText>
+          {selectedRule.key === "ORDER_PENDING_REMINDER" && selectedRule.enabled && selectedRule.published && !selectedRule.globally_paused ?
+            <View style={{ gap: 6 }}>
               <AppText style={{ color: p.muted, fontSize: 11 }}>Remind after (minutes)</AppText>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-                {REMINDER_MINUTES.map(minutes => <Pressable key={minutes} testID={`owner-reminder-${minutes}`}
-                  accessibilityRole="button" accessibilityState={{ selected: rule.reminder_after_minutes === minutes }}
-                  disabled={Boolean(busyRule)}
-                  onPress={() => void updateRule(rule, true, minutes)}
+                {REMINDER_MINUTES.map(minutes => <Pressable key={minutes} testID={"owner-reminder-" + minutes}
+                  accessibilityRole="button" accessibilityState={{ selected: selectedRule.reminder_after_minutes === minutes }}
+                  disabled={Boolean(busyRule)} onPress={() => void updateRule(selectedRule, true, minutes)}
                   style={{ borderRadius: 9, paddingVertical: 7, paddingHorizontal: 9,
-                    backgroundColor: rule.reminder_after_minutes === minutes ? p.accent : p.canvas }}>
-                  <AppText style={{ fontSize: 11, color: rule.reminder_after_minutes === minutes ? "#FFFFFF" : p.text }}>{minutes}</AppText>
+                    backgroundColor: selectedRule.reminder_after_minutes === minutes ? p.accent : p.canvas }}>
+                  <AppText style={{ fontSize: 11, color: selectedRule.reminder_after_minutes === minutes ? "#FFFFFF" : p.text }}>{minutes}</AppText>
                 </Pressable>)}
               </View>
             </View> : null}
-            {isDomain && rule.enabled && available ? <View style={{ gap: 6 }}>
+          {!selectedRule.key.startsWith("ORDER_") && selectedRule.enabled && selectedRule.published && !selectedRule.globally_paused ?
+            <View style={{ gap: 6 }}>
               <AppText style={{ color: p.muted, fontSize: 11 }}>Escalate unresolved issues after (minutes)</AppText>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-                {SLA_MINUTES.map(minutes => <Pressable key={minutes} testID={`owner-sla-${rule.key}-${minutes}`}
-                  accessibilityRole="button" accessibilityState={{ selected: rule.sla_minutes === minutes }}
-                  disabled={Boolean(busyRule)}
-                  onPress={() => void updateRule(rule, true, undefined, minutes)}
+                {SLA_MINUTES.map(minutes => <Pressable key={minutes} testID={"owner-sla-" + selectedRule.key + "-" + minutes}
+                  accessibilityRole="button" accessibilityState={{ selected: selectedRule.sla_minutes === minutes }}
+                  disabled={Boolean(busyRule)} onPress={() => void updateRule(selectedRule, true, undefined, minutes)}
                   style={{ borderRadius: 9, paddingVertical: 7, paddingHorizontal: 9,
-                    backgroundColor: rule.sla_minutes === minutes ? p.accent : p.canvas }}>
-                  <AppText style={{ fontSize: 11, color: rule.sla_minutes === minutes ? "#FFFFFF" : p.text }}>{minutes}</AppText>
+                    backgroundColor: selectedRule.sla_minutes === minutes ? p.accent : p.canvas }}>
+                  <AppText style={{ fontSize: 11, color: selectedRule.sla_minutes === minutes ? "#FFFFFF" : p.text }}>{minutes}</AppText>
                 </Pressable>)}
               </View>
             </View> : null}
-          </OwnerGlass>;
-        })}
+        </OwnerGlass> : null}
         {plantId ? <OwnerGlass style={{ padding: 12, gap: 6 }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
             <AppText style={{ color: p.text, fontWeight: "700" }}>Review tasks</AppText>
