@@ -1,0 +1,45 @@
+name: Generate owner and staff lossless WebP (one-time)
+on:
+  push:
+    branches:
+      - feature/owner-staff-lossless-webp-banner-20261108
+    paths:
+      - .github/workflows/owner-staff-webp-once.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Install lossless WebP encoder
+        run: sudo apt-get update -qq && sudo apt-get install -y webp
+      - name: Generate pixel-preserving WebP from the existing uploaded PNG
+        shell: bash
+        run: |
+          set -euo pipefail
+          source="frontend/assets/images/Plant _Owner_All_staff_top_card.png"
+          dest="frontend/assets/images/Plant _Owner_All_staff_top_card.webp"
+          test -s "$source"
+          cwebp -quiet -lossless -z 9 -mt "$source" -o "$dest"
+          test -s "$dest"
+          test "$(head -c 4 "$dest")" = RIFF
+          test "$(dd if="$dest" bs=1 skip=8 count=4 2>/dev/null)" = WEBP
+          test "$(wc -c < "$dest")" -lt "$(wc -c < "$source")"
+          ls -lh "$source" "$dest"
+      - name: Commit only the generated WebP to feature branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "frontend/assets/images/Plant _Owner_All_staff_top_card.webp"
+          if ! git diff --cached --quiet; then
+            git commit -m "assets: convert plant hero PNG to lossless WebP"
+            git push origin "HEAD:feature/owner-staff-lossless-webp-banner-20261108"
+          fi
