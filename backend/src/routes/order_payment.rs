@@ -33,6 +33,15 @@ pub fn is_online(mode: &str) -> bool {
     matches!(mode, FULL_ADVANCE | PARTIAL_ADVANCE)
 }
 
+// Production prepaid checkout is intentionally unavailable until Cashfree
+// vendor settlement, refund and Play release signoff. Never offer unpayable
+// online terms in the deployed application.
+pub fn online_mode_allowed() -> bool {
+    !std::env::var("APP_ENV")
+        .ok()
+        .is_some_and(|env| env.eq_ignore_ascii_case("production"))
+}
+
 /// Advance is always calculated in exact INR decimal, never from user-provided total.
 pub fn approved_advance(
     mode: &str,
@@ -115,6 +124,9 @@ pub async fn offer(
         .ok_or_else(|| {
             AppError::Conflict("Legacy orders must use the existing approval flow".into())
         })?;
+    if is_online(&mode) && !online_mode_allowed() {
+        return Err(AppError::Conflict("Prepaid RMC checkout is not yet activated for production; choose approved deferred terms".into()));
+    }
     let total: BigDecimal = order.get("total_amount");
     let advance = approved_advance(&mode, &total, input.advance_paise)?;
     let delivery_date: NaiveDate = order.get("delivery_date");
@@ -240,6 +252,9 @@ pub async fn accept(
         ));
     }
     let mode: String = row.get("mode");
+    if is_online(&mode) && !online_mode_allowed() {
+        return Err(AppError::Conflict("Prepaid RMC checkout is not yet activated for production".into()));
+    }
     let offer_status: String = row.get("offer_status");
     let order_status: String = row.get("order_status");
     if (offer_status == "AWAITING_PAYMENT" && order_status == "pending")
