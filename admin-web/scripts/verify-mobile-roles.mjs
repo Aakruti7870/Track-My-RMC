@@ -503,8 +503,12 @@ try {
       await expect(page.getByTestId('tab-quality')).toHaveAttribute('aria-selected', 'true');
       await page.waitForURL(url => url.pathname === '/quality_engineer/quality');
       phase = 'quality inspection: locate quality register';
-      await expect(page.getByText('Quality Register', { exact: true })).toBeVisible();
-      const qualityRow = page.getByTestId(/^open-/).filter({visible:true}).first();
+      // Home can retain measurable preview rows behind the active tab. Scope
+      // both the click and the later persisted-status assertion to the register.
+      const qualityCollection = page.getByTestId('staff-collection-quality');
+      await expect(qualityCollection).toBeVisible();
+      await expect(qualityCollection.getByText('Quality Register', { exact: true })).toBeVisible();
+      const qualityRow = qualityCollection.getByTestId(/^open-/).first();
       await expect(qualityRow).toBeVisible();
       phase = 'quality inspection: open batch details';
       const inspectedRowId = await qualityRow.getAttribute('data-testid');
@@ -535,7 +539,7 @@ try {
       phase = 'quality persistence: return to collection';
       await page.getByTestId('qt-back').click();
       phase = 'quality persistence: collection status';
-      await expect(page.getByTestId(inspectedRowId).filter({visible:true}).getByText('Engineer FAIL', { exact: true })).toBeVisible();
+      await expect(qualityCollection.getByTestId(inspectedRowId).getByText('Engineer FAIL', { exact: true })).toBeVisible();
     }
     if (user.role === 'customer') {
       phase = 'shared browser refresh across tabs';

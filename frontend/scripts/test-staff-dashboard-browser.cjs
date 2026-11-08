@@ -40,14 +40,22 @@ fs.mkdirSync(out, { recursive: true });
               { label: 'Available TMs', value: 2, icon: 'bus-outline' },
               { label: 'Staff Present Today', value: 3, icon: 'people-outline' },
               { label: 'Open Incidents', value: 0, icon: 'warning-outline' },
-            ], primary: { title: "Today’s workspace", kind: 'dispatch' },
+            ], primary: { title: role === 'quality_engineer' ? 'Quality Register' : "Today’s workspace", kind: role === 'quality_engineer' ? 'quality' : 'dispatch' },
           };
           else if (path.endsWith('/staff/module-permissions')) json = {
             permissions: grants.map(key => ({ key, view: true })),
           };
           else if (path.endsWith('/staff/manager-access')) json = { enabled: false };
           else if (path.endsWith('/notifications')) json = { unread: 0, items: [] };
-          else if (path.includes('/staff/collections')) json = {
+          else if (role === 'quality_engineer' && path.endsWith('/staff/collection/quality')) json = {
+            title: 'Quality Register', empty: 'No items', items: [{
+              id: 'isolated-quality', primary: 'Synthetic quality record', nav: '/quality-test/isolated-quality',
+            }],
+          };
+          else if (path.endsWith('/staff/quality/isolated-quality')) json = {
+            order_number: 'ISOLATED-QA', grade: 'M25', quantity: 3, site_name: 'Fixture site', quality_tests: [],
+          };
+          else if (path.includes('/staff/collection/')) json = {
             title: 'Isolated queue', empty: 'No items', items: [],
           };
           await route.fulfill({ json });
@@ -78,6 +86,17 @@ fs.mkdirSync(out, { recursive: true });
           role + ' More horizontal overflow at ' + width);
         if (width === 390) await page.screenshot({ path: out + '/' + role + '-more-390.png', fullPage: true });
         assert.deepEqual(errors, [], role + ' produced runtime browser errors');
+        if (role === 'quality_engineer' && width === 390) {
+          // Home and Quality contain the same record. The full register must
+          // receive the click even while Home's preview remains mounted.
+          await page.getByTestId('tab-quality').click();
+          const register = page.getByTestId('staff-collection-quality');
+          await register.getByTestId('open-isolated-quality').click();
+          await page.getByTestId('qt-save').waitFor();
+          assert.equal(await page.getByTestId('qt-save').isDisabled(), true);
+          assert.deepEqual(errors, [], 'Quality navigation produced runtime browser errors');
+          console.log('PASS quality: More to full register to inspection form, with cached Home preview');
+        }
         await context.close();
         console.log('PASS staff: ' + role + ' ' + width + 'px — unique Home/More, responsive layout');
       }
