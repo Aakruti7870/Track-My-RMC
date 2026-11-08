@@ -190,12 +190,18 @@ async fn approved_lead_reuses_existing_quoting_and_notifies_owner_customer(db: P
 }
 
 #[sqlx::test]
-async fn admin_outreach_requires_admin_and_never_exposes_internal_notes(db: PgPool) {
+async fn global_outreach_requires_web_admin_manage_and_step_up_and_keeps_notes_private(db: PgPool) {
     let customer = identity(&db, "customer").await;
     let admin = identity(&db, "admin").await;
     let (state, router) = app(db.clone());
     let ctoken = token(&state, customer, "customer");
-    let atoken = token(&state, admin, "admin");
+    let mobile_token = token(&state, admin, "admin");
+    let web_admin = identity(&db, "central_admin").await;
+    let atoken = token(&state, web_admin, "central_admin");
+    use sha2::{Digest, Sha256};
+    let hash = format!("{:x}", Sha256::digest(atoken.as_bytes()));
+    sqlx::query("INSERT INTO control_center_access(user_id,approved,permissions) VALUES($1,TRUE,ARRAY['support.view'])").bind(web_admin).execute(&db).await.unwrap();
+    sqlx::query("INSERT INTO control_center_sessions(user_id,token_hash,expires_at) VALUES($1,$2,NOW()+INTERVAL '1 hour')").bind(web_admin).bind(&hash).execute(&db).await.unwrap();
     let lead_id: Uuid = sqlx::query_scalar(
         "INSERT INTO rmc_rfq_leads(customer_id,request_key,google_place_id,customer_name,grade,quantity_m3,
             site_address,delivery_date,site_contact_phone,sharing_consent_at,status)
@@ -210,6 +216,13 @@ async fn admin_outreach_requires_admin_and_never_exposes_internal_notes(db: PgPo
             .0,
         StatusCode::FORBIDDEN
     );
+    // A mobile plant administrator cannot read or mutate global customer leads.
+    assert_eq!(call(&router, "/api/admin/rmc-rfq-leads", "GET", None, &mobile_token).await.0, StatusCode::FORBIDDEN);
+    assert_eq!(call(&router, &path, "PATCH", Some(payload.clone()), &mobile_token).await.0, StatusCode::FORBIDDEN);
+    assert_eq!(call(&router, &path, "PATCH", Some(payload.clone()), &atoken).await.0, StatusCode::FORBIDDEN);
+    sqlx::query("UPDATE control_center_access SET permissions=ARRAY['support.view','support.manage'] WHERE user_id=$1").bind(web_admin).execute(&db).await.unwrap();
+    assert_eq!(call(&router, &path, "PATCH", Some(payload.clone()), &atoken).await.0, StatusCode::FORBIDDEN);
+    sqlx::query("INSERT INTO control_center_step_ups(user_id,token_hash,expires_at) VALUES($1,$2,NOW()+INTERVAL '5 minutes')").bind(web_admin).bind(&hash).execute(&db).await.unwrap();
     let (status, updated) = call(&router, &path, "PATCH", Some(payload), &atoken).await;
     assert_eq!(status, StatusCode::OK, "{updated}");
     assert_eq!(updated["outreach_status"], "CONTACTED");

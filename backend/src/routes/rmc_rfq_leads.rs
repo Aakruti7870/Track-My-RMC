@@ -399,12 +399,14 @@ pub struct AdminOutreachUpdate {
 /// Outreach is restricted to unresolved Google-listed plants, with an audit trail.
 pub async fn update_admin_outreach(
     State(state): State<AppState>,
-    auth: AuthUser,
+    admin: WebAdmin,
+    headers: HeaderMap,
     Path(lead_id): Path<Uuid>,
     Json(payload): Json<AdminOutreachUpdate>,
 ) -> Result<Json<Value>, AppError> {
-    check_role(&auth, &["admin"])?;
-    record_admin_outreach(&state, auth.user_id, lead_id, payload).await
+    admin.require("support.manage")?;
+    super::control_center_routes::require_recent_step_up(&state, &admin, &headers).await?;
+    record_admin_outreach(&state, admin.user_id, lead_id, payload).await
 }
 
 /// Central Authority: an MFA-authenticated web session plus recent authenticator
@@ -416,7 +418,7 @@ pub async fn update_control_center_outreach(
     Path(lead_id): Path<Uuid>,
     Json(payload): Json<AdminOutreachUpdate>,
 ) -> Result<Json<Value>, AppError> {
-    admin.require("support.view")?;
+    admin.require("support.manage")?;
     super::control_center_routes::require_recent_step_up(&state, &admin, &headers).await?;
     record_admin_outreach(&state, admin.user_id, lead_id, payload).await
 }
@@ -475,9 +477,9 @@ async fn record_admin_outreach(
 
 pub async fn list_admin(
     State(state): State<AppState>,
-    auth: AuthUser,
+    admin: WebAdmin,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(&auth, &["admin"])?;
+    admin.require("support.view")?;
     let rows: Vec<Value> = sqlx::query_scalar(
         "SELECT to_jsonb(l) FROM rmc_rfq_leads l ORDER BY created_at DESC LIMIT 200",
     )

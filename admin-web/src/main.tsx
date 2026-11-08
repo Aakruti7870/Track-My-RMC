@@ -367,7 +367,7 @@ function CommandCenter() {
 
   async function recordRfqOutreach(id:string, status:'INVITATION_SHARED'|'CONTACTED'|'DECLINED') {
     if (!rfqOutreachCode.trim()) {
-      setError('Enter a fresh authenticator or recovery code before recording supplier outreach.');
+      setError('Enter a fresh authenticator code before recording supplier outreach.');
       return;
     }
     setBusy(true); setError(''); setNotice('');
@@ -1207,12 +1207,12 @@ function CommandCenter() {
                     </div>
                   </article>)}
                 </div>}
-                {workspace === 'rmc_rfq_leads' && <div style={{marginTop:18,display:'grid',gap:12}}>
+                {workspace === 'rmc_rfq_leads' && permissions.includes('support.manage') && <div style={{marginTop:18,display:'grid',gap:12}}>
                   <p style={{color:'#cbd5e1',lineHeight:1.5}}>
                     Unregistered suppliers have not received these enquiries. Use approved, permission-based outreach.
                     Customer details remain private until plant approval and customer reconfirmation.
                   </p>
-                  <label htmlFor="rfq-step-up">Fresh authenticator or recovery code to record outreach</label>
+                  <label htmlFor="rfq-step-up">Fresh authenticator code to record outreach</label>
                   <input id="rfq-step-up" value={rfqOutreachCode} onChange={e=>setRfqOutreachCode(e.target.value)}
                     autoComplete="off" type="password" style={inputStyle} disabled={busy} />
                   <button type="button" disabled={busy} onClick={()=>void shareRmcOnboardingLink()}

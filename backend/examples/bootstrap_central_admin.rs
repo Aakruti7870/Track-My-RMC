@@ -101,9 +101,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     );
     println!("{}", TotpEngine::get_otpauth_uri(&secret, &email));
     let code = rpassword::prompt_password("Enter a current six-digit authenticator code: ")?;
-    if !TotpEngine::verify_code(&secret, &code)? {
+    let Some(enrollment_step) = TotpEngine::verified_step(&secret, &code)? else {
         return Err("Authenticator verification failed. No account created".into());
-    }
+    };
 
     let mut tx = pool.begin().await?;
     sqlx::query("SELECT pg_advisory_xact_lock(15720261108)")
@@ -138,12 +138,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     .execute(&mut *tx)
     .await?;
     sqlx::query(
-        "INSERT INTO user_totp_credentials(user_id,secret_key,is_enabled,backup_codes)
-         VALUES($1,$2,TRUE,$3)",
+        "INSERT INTO user_totp_credentials(user_id,secret_key,is_enabled,backup_codes,last_login_totp_step)
+         VALUES($1,$2,TRUE,$3,$4)",
     )
     .bind(user_id)
     .bind(&secret)
     .bind(&hashed_recovery)
+    .bind(enrollment_step)
     .execute(&mut *tx)
     .await?;
     // The bootstrap operator must review this fixed list before using --apply.

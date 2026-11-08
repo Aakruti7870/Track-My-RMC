@@ -112,6 +112,10 @@ HOOK
 chmod 0755 /etc/letsencrypt/renewal-hooks/deploy/reload-nginx
 
 cat > /etc/nginx/sites-available/trackmyrmc <<'NGINX'
+# Shared per-source limits cover privileged login, enrollment and step-up.
+# Nginx uses the socket peer address, never a client-supplied forwarding header.
+limit_req_zone $binary_remote_addr zone=privileged_auth:10m rate=10r/m;
+
 # HTTP remains available for ACME renewal; all application traffic uses HTTPS.
 server {
     listen 80 default_server;
@@ -162,10 +166,20 @@ server {
         root /opt/trackmyrmc/admin-web;
         try_files /index.html =404;
         add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://trackmyrmc.com; base-uri 'none'; form-action 'self'; frame-ancestors 'none'" always;
+
     }
 
     location ^~ /admin/assets/ {
         alias /opt/trackmyrmc/admin-web/assets/;
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://trackmyrmc.com; base-uri 'none'; form-action 'self'; frame-ancestors 'none'" always;
+
         expires 1y;
         add_header Cache-Control "public, max-age=31536000, immutable";
     }
@@ -173,6 +187,24 @@ server {
     location ^~ /admin/ {
         # The alias maps dashboard files directly; missing files naturally 404.
         alias /opt/trackmyrmc/admin-web/;
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://trackmyrmc.com; base-uri 'none'; form-action 'self'; frame-ancestors 'none'" always;
+        add_header Cache-Control "no-store" always;
+
+    }
+
+    location ~ ^/api/(admin/auth|authority/auth)(/|$) {
+        limit_req zone=privileged_auth burst=10 nodelay;
+        limit_req_status 429;
+        add_header Cache-Control "no-store" always;
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
 
     location /api/ {

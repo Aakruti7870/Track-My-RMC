@@ -176,7 +176,25 @@ pub async fn login_for_role(
         tx.commit().await?;
         return Err(AppError::Unauthorized("Authentication failed".into()));
     };
-    let (id, phone, email, full_name, _, _) = identity.expect("verified identity");
+    let (id, phone, email, full_name, secret, _) = identity.expect("verified identity");
+    // All privileged proof surfaces share the credential counter. Updating it in
+    // this transaction serializes concurrent login/step-up/enrollment proofs.
+    let accepted = sqlx::query(
+        "UPDATE user_totp_credentials SET last_login_totp_step=$2
+         WHERE user_id=$1 AND is_enabled AND secret_key=$3
+           AND (last_login_totp_step IS NULL OR last_login_totp_step<$2)",
+    )
+    .bind(id)
+    .bind(step)
+    .bind(&secret)
+    .execute(&mut *tx)
+    .await?;
+    if accepted.rows_affected() != 1 {
+        sqlx::query("INSERT INTO audit_logs (action,resource_type,metadata) VALUES ('admin.auth.failed','admin_session','{}')")
+            .execute(&mut *tx).await?;
+        tx.commit().await?;
+        return Err(AppError::Unauthorized("Authentication failed".into()));
+    }
     let token = account_sessions::issue_in_tx(
         &mut tx,
         id,
@@ -231,7 +249,8 @@ pub(crate) async fn rotate_password(
     body: PasswordRotation,
 ) -> Result<Json<Value>, AppError> {
     let reason = body.reason.trim();
-    if !(16..=128).contains(&body.new_password.len())
+    if !(12..=128).contains(&body.current_password.len())
+        || !(16..=128).contains(&body.new_password.len())
         || !(10..=500).contains(&reason.len())
         || body.new_password == body.current_password
         || body.code.len() != 6

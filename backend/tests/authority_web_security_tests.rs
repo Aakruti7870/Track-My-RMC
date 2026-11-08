@@ -273,6 +273,8 @@ async fn authority_password_bootstrap_requires_email_challenge_and_totp(db: PgPo
     .await;
     assert_eq!(reused, StatusCode::UNAUTHORIZED);
 
+    let code =
+        TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp() + 30) as u64).unwrap();
     let (logged_in, session) = call(
         &app,
         "/api/authority/auth/verify-totp",
@@ -322,6 +324,9 @@ async fn super_admin_revocation_invalidates_authority_web_session(db: PgPool) {
     .await;
     assert_eq!(login_status, StatusCode::OK);
     let admin_token = admin_login["token"].as_str().unwrap();
+    let admin_code =
+        TotpEngine::compute_code(&admin_secret, (chrono::Utc::now().timestamp() + 30) as u64)
+            .unwrap();
     assert_eq!(
         call(
             &app,
@@ -401,6 +406,8 @@ async fn privileged_password_rotation_revokes_session_and_cannot_cross_roles(db:
         .0,
         StatusCode::UNAUTHORIZED,
     );
+    let code =
+        TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp() + 30) as u64).unwrap();
     let (status, response) = call(
         &app,
         "/api/authority/auth/change-password",
@@ -489,4 +496,179 @@ async fn plant_admin_cannot_access_global_service_enquiry_control(db: PgPool) {
         .0,
         StatusCode::FORBIDDEN,
     );
+}
+
+#[sqlx::test]
+async fn privileged_proofs_share_replay_counter_across_login_and_step_up(db: PgPool) {
+    for role in ["central_admin", "authority"] {
+        let app = build_app_router(state(db.clone()));
+        let (_, email, secret) = identity(&db, role, &["kyc.review"]).await;
+        let prefix = if role == "authority" {
+            "/api/authority/auth"
+        } else {
+            "/api/admin/auth"
+        };
+        let now = chrono::Utc::now().timestamp() as u64;
+        let code = TotpEngine::compute_code(&secret, now).unwrap();
+        let login = json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":code});
+        let (status, session) = call(
+            &app,
+            &format!("{prefix}/verify-totp"),
+            None,
+            Some(login.clone()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let token = session["token"].as_str().unwrap();
+        assert_eq!(
+            call(
+                &app,
+                &format!("{prefix}/step-up"),
+                Some(token),
+                Some(json!({"code":code}))
+            )
+            .await
+            .0,
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            call(&app, &format!("{prefix}/verify-totp"), None, Some(login))
+                .await
+                .0,
+            StatusCode::UNAUTHORIZED
+        );
+        let fresh = TotpEngine::compute_code(&secret, now + 30).unwrap();
+        assert_eq!(
+            call(
+                &app,
+                &format!("{prefix}/step-up"),
+                Some(token),
+                Some(json!({"code":fresh}))
+            )
+            .await
+            .0,
+            StatusCode::OK
+        );
+        assert_eq!(
+            call(
+                &app,
+                &format!("{prefix}/step-up"),
+                Some(token),
+                Some(json!({"code":fresh}))
+            )
+            .await
+            .0,
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            call(
+                &app,
+                &format!("{prefix}/verify-totp"),
+                None,
+                Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":fresh}))
+            )
+            .await
+            .0,
+            StatusCode::UNAUTHORIZED
+        );
+    }
+}
+
+#[sqlx::test]
+async fn privileged_login_throttle_replacement_and_database_expiry(db: PgPool) {
+    let app = build_app_router(state(db.clone()));
+    let (id, email, secret) = identity(&db, "authority", &["support.view"]).await;
+    let now = chrono::Utc::now().timestamp() as u64;
+    let old = TotpEngine::compute_code(&secret, now - 30).unwrap();
+    let current = TotpEngine::compute_code(&secret, now).unwrap();
+    let (_, first) = call(
+        &app,
+        "/api/authority/auth/verify-totp",
+        None,
+        Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":old})),
+    )
+    .await;
+    let (status, second) = call(
+        &app,
+        "/api/authority/auth/verify-totp",
+        None,
+        Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":current})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        call(
+            &app,
+            "/api/authority/auth/me",
+            first["token"].as_str(),
+            None
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        call(
+            &app,
+            "/api/authority/auth/me",
+            second["token"].as_str(),
+            None
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    sqlx::query(
+        "UPDATE control_center_sessions SET expires_at=NOW()-INTERVAL '1 second' WHERE user_id=$1",
+    )
+    .bind(id)
+    .execute(&db)
+    .await
+    .unwrap();
+    assert_eq!(
+        call(
+            &app,
+            "/api/authority/auth/me",
+            second["token"].as_str(),
+            None
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    for _ in 0..5 {
+        assert_eq!(call(&app, "/api/authority/auth/verify-totp", None, Some(json!({"identifier":email,"password":"Incorrect isolated test password","code":current}))).await.0, StatusCode::UNAUTHORIZED);
+    }
+    let fresh = TotpEngine::compute_code(&secret, now + 30).unwrap();
+    assert_eq!(
+        call(
+            &app,
+            "/api/authority/auth/verify-totp",
+            None,
+            Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":fresh}))
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+}
+
+#[sqlx::test]
+async fn authority_initial_password_rejects_expired_exhausted_and_revoked_challenges(db: PgPool) {
+    let app = build_app_router(state(db.clone()));
+    for scenario in ["expired", "exhausted", "consumed", "revoked", "wrong-purpose"] {
+        let (id, _, secret) = identity(&db, "authority", &["support.view"]).await;
+        sqlx::query("UPDATE users SET hashed_password='!web-only-no-password!',work_email_verified_at=NOW() WHERE id=$1").bind(id).execute(&db).await.unwrap();
+        let token = format!("{}{}", Uuid::new_v4().simple(), "0123456789abcdef");
+        let hash = hex::encode(Sha256::digest(token.as_bytes()));
+        sqlx::query("INSERT INTO staff_mfa_challenges(user_id,token_hash,purpose,expires_at,attempts,consumed_at) VALUES($1,$2,$3,CASE WHEN $4 THEN NOW()-INTERVAL '1 second' ELSE NOW()+INTERVAL '5 minutes' END,$5,CASE WHEN $6 THEN NOW() ELSE NULL END)")
+            .bind(id).bind(&hash).bind(if scenario=="wrong-purpose" {"enrollment"} else {"login"}).bind(scenario=="expired").bind(if scenario=="exhausted" {5_i32} else {0}).bind(scenario=="consumed").execute(&db).await.unwrap();
+        if scenario=="revoked" {
+            sqlx::query("UPDATE control_center_access SET approved=FALSE WHERE user_id=$1").bind(id).execute(&db).await.unwrap();
+        }
+        let code=TotpEngine::compute_code(&secret,chrono::Utc::now().timestamp() as u64).unwrap();
+        assert_eq!(call(&app,"/api/authority/auth/set-initial-password",None,Some(json!({"challenge_token":token,"password":SYNTHETIC_PASSWORD,"code":code}))).await.0,StatusCode::UNAUTHORIZED,"{scenario}");
+        let hash: String=sqlx::query_scalar("SELECT hashed_password FROM users WHERE id=$1").bind(id).fetch_one(&db).await.unwrap();
+        assert_eq!(hash,"!web-only-no-password!","{scenario}");
+    }
 }

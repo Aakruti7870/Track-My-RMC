@@ -210,19 +210,24 @@ pub async fn verify_and_enable_totp(
     .await?
     .ok_or_else(|| AppError::NotFound("TOTP setup not initialized".to_string()))?;
 
-    let is_valid = TotpEngine::verify_code(&rec.secret_key, submitted_code)?;
-    if !is_valid {
-        return Err(AppError::Unauthorized(
-            "Invalid authenticator code. Check your device time sync.".to_string(),
-        ));
-    }
+    let step = TotpEngine::verified_step(&rec.secret_key, submitted_code)?
+        .ok_or_else(|| AppError::Unauthorized("Invalid authenticator code. Check your device time sync.".into()))?;
 
-    sqlx::query(
-        "UPDATE user_totp_credentials SET is_enabled = TRUE, updated_at = NOW() WHERE user_id = $1",
+    let updated = sqlx::query(
+        "UPDATE user_totp_credentials t SET is_enabled=TRUE, updated_at=NOW(),
+         last_login_totp_step=CASE WHEN EXISTS(
+           SELECT 1 FROM users u WHERE u.id=t.user_id AND u.role IN ('central_admin','authority'))
+           THEN $2 ELSE last_login_totp_step END
+         WHERE user_id=$1 AND secret_key=$3 AND is_enabled=FALSE",
     )
     .bind(user_id)
+    .bind(step)
+    .bind(&rec.secret_key)
     .execute(pool)
     .await?;
+    if updated.rows_affected() != 1 {
+        return Err(AppError::Conflict("Authenticator enrollment state changed".into()));
+    }
 
     Ok(())
 }
