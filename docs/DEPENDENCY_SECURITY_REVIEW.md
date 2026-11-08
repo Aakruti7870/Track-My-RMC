@@ -27,3 +27,12 @@ Pin the published `image-size` **2.0.4** release using an exact npm override; re
 The installed package contents and actual Metro caller were inspected locally. The `image-size` audit ranges cover versions through 2.0.2: [ICNS](https://github.com/advisories/GHSA-w3rx-r6r6-pgpr), [JXL/HEIF](https://github.com/advisories/GHSA-5p2g-fcmc-qvqq). The published 2.0.4 ICNS parser rejects entry lengths below eight bytes. Both advisories must remain part of regression review; the child-process test specifically exercises ICNS non-progress, while export/asset checks establish compatibility rather than proving every parser input safe.
 
 No forced Expo downgrade, vulnerability ignore, framework major upgrade, unreviewed fork, or claim of accepted residual risk is included. Rust dependency advisory scanning and release-artifact reachability analysis remain outstanding. Use `npm ci` and repeat the audit on the final accepted release lockfile.
+
+
+## Advisory status update — 8 November 2026
+
+The 21 October assessment above remains useful historical evidence, **not a current active-advisory count**. GitHub officially **withdrew** [GHSA-vfj7-8cjw-p6xm (braces)](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) on **23 October 2026**, stating that the reported issue is not practically exploitable. Do not label this withdrawn advisory as an outstanding confirmed high-severity vulnerability. A new locked-graph audit is still needed to determine the current number and exposure of any other advisories.
+
+In contrast, [GHSA-86w9-cpqp-85rv (node-forge)](https://github.com/advisories/GHSA-86w9-cpqp-85rv) remains a GitHub-reviewed **high-severity** advisory affecting versions through 1.4.0; the advisory currently lists **no patched version**. Review build/signing toolchain reachability and isolate trusted inputs, or obtain documented independent risk acceptance. Do not assume an unconditional production exploit path merely because the package appears in a development tool dependency.
+
+**The dependency-security release gate stays BLOCKED** until the final Node and Rust lockfiles are re-audited and all active exposures have either a verified fix or an independently approved, narrowly scoped risk disposition. Do not use a historical high count or a withdrawn advisory as a substitute for a new audit.
