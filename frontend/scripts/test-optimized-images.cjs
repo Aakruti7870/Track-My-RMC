@@ -40,6 +40,27 @@ test("ten optimised WebP images preserve PNG dimensions and reduce the bundle tr
   }
 });
 
+test("owner and plant staff reuse the pixel-preserving RMC plant WebP banner", () => {
+  const stem = "Plant _Owner_All_staff_top_card";
+  const original = path.join(root, "assets/images", stem + ".png");
+  const optimized = path.join(root, "assets/images", stem + ".webp");
+  assert.deepEqual(dimensions(optimized), dimensions(original), "plant hero dimensions must not change");
+  assert.ok(fs.statSync(optimized).size < fs.statSync(original).size, "lossless banner must be smaller");
+  const header = fs.readFileSync(optimized).subarray(0, 16);
+  assert.equal(header.subarray(0, 4).toString(), "RIFF");
+  assert.equal(header.subarray(8, 12).toString(), "WEBP");
+  // VP8L is WebP's lossless format. A lossy re-encode would violate the image requirement.
+  assert.equal(header.subarray(12, 16).toString(), "VP8L");
+  for (const component of ["app/owner/index.tsx", "src/screens/StaffHome.tsx"]) {
+    const contents = fs.readFileSync(path.join(root, component), "utf8");
+    assert.ok(contents.includes(stem + ".webp"), `missing lossless plant banner in ${component}`);
+  }
+  assert.ok(!fs.readFileSync(path.join(root, "app/owner/index.tsx"), "utf8").includes('require("../../assets/images/Mixer.png")'), "owner banner must no longer show a truck");
+  const staff = fs.readFileSync(path.join(root, "src/screens/StaffHome.tsx"), "utf8");
+  assert.ok(staff.includes("disabled={!primaryAllowed}"), "staff permission gate must remain unchanged");
+  assert.ok(staff.includes("onPress={() => router.push(workspace.href as any)}"), "staff navigation must remain unchanged");
+});
+
 test("native PNG splash and Android app icons are unchanged", () => {
   const config = JSON.parse(fs.readFileSync(path.join(root, "app.json"), "utf8"));
   assert.equal(config.expo.icon, "./assets/images/icon.png");
