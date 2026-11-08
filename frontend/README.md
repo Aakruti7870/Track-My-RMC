@@ -1,50 +1,47 @@
-# Welcome to your Expo app 👋
+# TrackMyRMC — Expo client
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+This is the established TrackMyRMC Expo SDK 54 / React Native client, not a disposable create-expo-app starter project. **Do not run reset-project on the production branch.**
 
-## Get started
+## Responsibilities
 
-1. Install dependencies
+The app implements Customer, Plant Owner, Driver and scoped staff workflows. The separate Central Admin and Authority identities are **web-only** and must not be introduced into this app's login role selector. Authentication/session policy is enforced by the Rust API, not merely by client navigation.
 
-   ```bash
-   npm install
-   ```
+Most screens are in app/; shared components, API client and authentication helpers are in src/. The native Android background-trip-location implementation is under modules/trip-location. Keep existing role navigation, consent gates, privacy/Play reviewer paths and backend API contracts intact when changing UI layout.
 
-2. Start the app
+## Local setup
 
-   ```bash
-   npx expo start
-   ```
+Use Node.js 20+ (the CI toolchain uses Node 20). Install locked packages:
 
-In the output, you'll find options to open the app in a
+~~~bash
+cd frontend
+npm ci
+~~~
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+Set EXPO_PUBLIC_BACKEND_URL (or EXPO_PUBLIC_API_URL) in a local environment file. The production API origin is https://trackmyrmc.com; local HTTP is accepted only for supported development hosts. **Never place API secrets, OTP peppers or provider secret tokens in EXPO_PUBLIC_ variables.**
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+Run:
 
-## Get a fresh project
+~~~bash
+npm run start
+npm run typecheck
+npm run check:auth-routing
+npm run check:modules
+npm run check:single-font
+npm run check:vector-symbols
+npm run check:android-layout
+npm run check:android-permissions
+npm run check:play-policy
+npm run test:maps
+npm run build:preview
+~~~
 
-When you're ready, run:
+The web preview is not a substitute for testing on a signed Android build. Native location services, background permissions, Google Maps Android SDK, notification delivery and Cashfree SDK require dedicated device/build checks. Signed AAB production workflows are defined under ../.github/workflows/.
 
-```bash
-npm run reset-project
-```
+## Release safeguards
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+- Follow the existing Play reviewer flow, privacy/deletion policies and scoped user sessions. Do not add Central Admin/Authority to Expo.
+- Keep customer-to-plant payment checkout disabled unless sandbox/provider acceptance and Play disclosures are complete. Never add owner plan/subscription payment flows inadvertently.
+- Validate iOS/Android permission consent and background-location behavior on real devices before Play submission.
+- Production web deployments require the exact release SHA and the repository's independent AWS approval workflow.
 
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+See the [root README](../README.md), [Customer API contracts](../docs/API_CONTRACT_PARITY.md), [Owner/staff role policy](../docs/ROLE_PERMISSION_MATRIX.md), [payments acceptance](../docs/payments/RMC_PREPAID_PLAY_COMPLIANCE_AND_ROLLOUT.md) and [production release checklist](../docs/PRODUCTION_RELEASE_CHECKLIST.md).
