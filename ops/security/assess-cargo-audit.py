@@ -13,11 +13,12 @@ import re
 import sys
 from pathlib import Path
 
-if len(sys.argv) != 3:
-    raise SystemExit("Usage: assess-cargo-audit.py <cargo-audit.json> <selected-cargo-tree.txt>")
+if len(sys.argv) != 4:
+    raise SystemExit("Usage: assess-cargo-audit.py <cargo-audit.json> <selected-cargo-tree.txt> <audit-stderr.txt>")
 try:
     raw = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
     tree = Path(sys.argv[2]).read_text(encoding="utf-8")
+    diagnostics = Path(sys.argv[3]).read_text(encoding="utf-8")
 except (OSError, ValueError) as exc:
     raise SystemExit(f"BLOCKED: missing/invalid RustSec or production dependency-tree data: {exc}")
 v = raw.get("vulnerabilities")
@@ -25,10 +26,16 @@ if not isinstance(v, dict) or not isinstance(v.get("list"), list):
     raise SystemExit("BLOCKED: RustSec audit returned incomplete vulnerability data")
 if "trackmyrmc-backend v" not in tree or "sqlx-postgres v" not in tree:
     raise SystemExit("BLOCKED: dependency tree does not establish the PostgreSQL application target")
-selected_rsa = bool(re.search(r"(?m)^rsa v0\.9\.10(?:\s|$)", tree))
+selected_rsa = bool(re.search(r"(?m)^rsa v", tree))
 selected_mysql = bool(re.search(r"(?m)^sqlx-mysql v", tree))
+if selected_rsa:
+    raise SystemExit("BLOCKED: any RSA version selected in production dependency graph")
 if selected_mysql:
     raise SystemExit("BLOCKED: SQLx MySQL feature unexpectedly selected in production dependency graph")
+# A partially failed crates.io yanked-index lookup can leave valid audit JSON.
+# Reject any RustSec diagnostic output; never treat missing yanked warnings as proof.
+if diagnostics.strip():
+    raise SystemExit("BLOCKED: RustSec emitted stderr diagnostics; investigate index/lookup completeness")
 findings = []
 unselected_optional = []
 for item in v["list"]:
