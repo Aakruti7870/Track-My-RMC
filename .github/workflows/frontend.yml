@@ -61,6 +61,8 @@ jobs:
         run: npm run check:auth-routing
       - name: Validate all role module routes and menus
         run: npm run check:modules
+      - name: Validate unique owner/staff module placement and responsive card sizes
+        run: node scripts/test-owner-staff-module-layout.cjs
       - name: Validate every uploaded vector symbol and role assignment
         run: npm run check:vector-symbols
       - name: Enforce one font family across the Expo application
@@ -97,6 +99,7 @@ jobs:
           node scripts/test-home-tracking-browser.cjs
           node scripts/test-customer-header-browser.cjs
           node scripts/test-owner-dashboard-browser.cjs
+          node scripts/test-staff-dashboard-browser.cjs
       - name: Upload tracking layout previews
         if: always()
         uses: actions/upload-artifact@v4
@@ -110,6 +113,12 @@ jobs:
           name: customer-header-theme-previews
           path: frontend/header-previews/
 
+      - name: Upload staff workspace preview screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staff-role-dashboard-previews
+          path: frontend/staff-previews/
       - name: Upload owner dashboard theme previews
         if: always()
         uses: actions/upload-artifact@v4

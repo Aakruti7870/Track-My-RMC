@@ -8,7 +8,7 @@ import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { AppText } from "@/src/components/ui/AppText";
 import { modulesForRole } from "@/src/navigation/moduleCatalog";
 import { OwnerFrame, OwnerList, OwnerModuleRow, OwnerGlass, ui, useOwnerPalette } from "@/src/owner/OwnerUI";
-import { ACCOUNT_KEYS, COMMERCIAL_KEYS, DRIVER_MODULE, OPERATIONS_KEYS, WORKFORCE_KEYS, ownerModules } from "@/src/owner/modules";
+import { ACCOUNT_KEYS, COMMERCIAL_KEYS, DRIVER_MODULE, WORKFORCE_KEYS, ownerModules } from "@/src/owner/modules";
 export default function OwnerMore() {
   const { user, signOut } = useAuth();
   const router = useRouter();
@@ -17,13 +17,12 @@ export default function OwnerMore() {
   const p = useOwnerPalette();
   const available = new Set(modulesForRole(user?.role).map(module => module.key));
   const groups = [
-    ...(directory === "1" ? [{ title: "Operations", entries: ownerModules(OPERATIONS_KEYS) }] : []),
     { title: "Workforce", entries: ownerModules(WORKFORCE_KEYS) },
     { title: "Account", entries: ownerModules(ACCOUNT_KEYS) },
     { title: "Commercial", entries: ownerModules(COMMERCIAL_KEYS) },
     { title: "Driver Management", entries: [DRIVER_MODULE] },
   ];
-  return <OwnerFrame title={directory === "1" ? "All Plant Modules" : "More"} subtitle="Account, workforce, payroll and other settings">
+  return <OwnerFrame title={directory === "1" ? "More Plant Modules" : "More"} subtitle="Account, workforce, payroll and other settings">
     <OwnerList><View testID="role-module-directory" style={{ gap: 6 }}>
       {groups.map(group => <React.Fragment key={group.title}><AppText style={[ui.section, { color: p.text }]}>{group.title}</AppText>{group.entries.filter(module => available.has(module.key) || module.key === DRIVER_MODULE.key).map(module => <OwnerModuleRow key={module.key} module={module} compact />)}</React.Fragment>)}
       <Pressable testID="owner-staff-module-access" accessibilityRole="button" accessibilityLabel="Manage Staff Module Access" onPress={() => router.push("/staff-module-access")} style={{ marginVertical: 8 }}>

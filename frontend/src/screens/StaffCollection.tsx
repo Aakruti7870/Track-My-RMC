@@ -283,7 +283,7 @@ export function StaffCollection({ kind, embedded = false, limit, onItemPress }: 
   if (embedded) return <>{body}{modalUI}</>;
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.surface }}>
+    <View testID={`staff-collection-${kind}`} style={{ flex: 1, backgroundColor: colors.surface }}>
       <View style={{ height: insets.top }} />
       {error && !data ? (
         <ErrorView message={error} onRetry={reload} />

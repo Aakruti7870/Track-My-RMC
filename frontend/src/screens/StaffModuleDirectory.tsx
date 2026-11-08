@@ -8,7 +8,7 @@ import { useTheme } from "@/src/theme/ThemeProvider";
 import { AppText } from "@/src/components/ui/AppText";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
-import { modulesForRole, type ModuleGroup } from "@/src/navigation/moduleCatalog";
+import { modulesForRole, type ModuleGroup, type RoleModule } from "@/src/navigation/moduleCatalog";
 
 /**
  * Staff-only navigation surface. The shared RoleModuleDirectory remains
@@ -50,14 +50,52 @@ export const STAFF_MODULE_PERMISSIONS: Readonly<Record<string, string>> = {
   "payroll-closure": "payroll",
 };
 
+// Native role tabs already expose these modules. Do not render a second shortcut.
+export const STAFF_TAB_KEYS: Readonly<Record<string, readonly string[]>> = {
+  admin: ["admin-orders", "admin-fleet"],
+  dispatcher: ["dispatcher-queue", "dispatcher-fleet"],
+  operator: ["operator-production"],
+  supervisor: ["supervisor-operations", "supervisor-incidents"],
+  accountant: ["accountant-billing", "accountant-ledger"],
+  quality_engineer: ["engineer-quality"],
+  fleet_manager: ["fleet-manager-fleet", "fleet-manager-drivers"],
+  store_manager: ["store-manager-stock"],
+};
+// Six useful role-specific cards stay on Home; the remaining allowed catalog
+// destinations are on More. Each route appears at most once per role directory.
+export const STAFF_HOME_KEYS: Readonly<Record<string, readonly string[]>> = {
+  admin: ["business-inventory", "business-staff", "business-reports", "business-fleet", "business-attendance", "business-mixes"],
+  dispatcher: ["business-inventory", "business-attendance", "business-reports", "public-plant-profile", "shift-roster", "workforce"],
+  operator: ["business-mixes", "business-inventory", "business-attendance", "business-reports", "shift-roster", "my-payslip"],
+  supervisor: ["business-mixes", "business-inventory", "business-attendance", "business-reports", "shift-roster", "workforce"],
+  accountant: ["business-rates", "business-quotations", "business-expenses", "business-payroll", "employee-master", "workforce-reports"],
+  quality_engineer: ["business-mixes", "business-inventory", "business-reports", "business-attendance", "public-plant-profile", "shift-roster"],
+  fleet_manager: ["business-diesel", "business-attendance", "business-reports", "shift-roster", "my-payslip", "workforce"],
+  store_manager: ["business-inventory", "business-suppliers", "business-purchases", "business-diesel", "business-reports", "business-attendance"],
+};
+export type StaffModuleScope = "home" | "more" | "all";
+export function staffModulesForScope(role: string | null | undefined, scope: StaffModuleScope): RoleModule[] {
+  const tabKeys = STAFF_TAB_KEYS[role || ""] || [];
+  const homeKeys = STAFF_HOME_KEYS[role || ""] || [];
+  const seen = new Set<string>();
+  return modulesForRole(role).filter(module => {
+    if (scope !== "all" && (tabKeys.includes(module.key) ||
+      (scope === "home" ? !homeKeys.includes(module.key) : homeKeys.includes(module.key)))) return false;
+    const routeKey = typeof module.route === "string" ? module.route : JSON.stringify(module.route);
+    if (seen.has(routeKey)) return false;
+    seen.add(routeKey);
+    return true;
+  });
+}
+
 // Only existing functional destinations are eligible: do not turn design ideas
 // into new routes without an accompanying API, permission and data contract.
 const GROUPS: ModuleGroup[] = ["Operations", "Commercial", "Workforce", "Tools", "Account"];
 type Grant = { key: string; view: boolean };
 
 export function StaffModuleDirectory({
-  role, title = "Your modules", searchable = false,
-}: { role?: string | null; title?: string; searchable?: boolean }) {
+  role, title = "Your modules", searchable = false, scope = "all",
+}: { role?: string | null; title?: string; searchable?: boolean; scope?: StaffModuleScope }) {
   const router = useRouter();
   const { colors } = useTheme();
   const { token } = useAuth();
@@ -90,24 +128,25 @@ export function StaffModuleDirectory({
     return () => { active = false; };
   }, [token, validRole, role]));
 
-  const modules = useMemo(() => modulesForRole(role).filter(item => {
+  const scopedModules = useMemo(() => staffModulesForScope(role, scope), [role, scope]);
+  const modules = useMemo(() => scopedModules.filter(item => {
     const key = STAFF_MODULE_PERMISSIONS[item.key];
     if (key && !(allowed || []).includes(key)) return false;
     if (group !== "All" && item.group !== group) return false;
     const needle = query.trim().toLowerCase();
     return !needle || (item.label + " " + item.description).toLowerCase().includes(needle);
-  }), [role, allowed, group, query]);
+  }), [scopedModules, allowed, group, query]);
 
-  const allVisible = useMemo(() => modulesForRole(role).filter(item => {
+  const allVisible = useMemo(() => scopedModules.filter(item => {
     const key = STAFF_MODULE_PERMISSIONS[item.key];
     return !key || (allowed || []).includes(key);
-  }), [role, allowed]);
+  }), [scopedModules, allowed]);
 
   // Tablet/desktop gets additional columns; on phones every card has enough
   // width for its label and maintains a 44pt+ touch target.
-  const cols = width >= 1050 ? 4 : width >= 690 ? 3 : 2;
-  const gutter = width >= 1050 ? 80 : 32;
-  const cardWidth = Math.max(140, (Math.min(width - gutter, 980) - (cols - 1) * 10) / cols);
+  const cols = width >= 950 ? 5 : width >= 680 ? 4 : width >= 470 ? 3 : 2;
+  const contentWidth = Math.max(0, Math.min(width, 980) - 2 * spacing.lg);
+  const cardWidth = Math.max(0, (contentWidth - (cols - 1) * 9) / cols);
 
   if (!validRole) return null;
   return (
@@ -192,8 +231,8 @@ export function StaffModuleDirectory({
                     },
                   ]}>
                   <View style={styles.iconWrap}>
-                    {module.symbol ? <VectorSymbol name={module.symbol} size={52} warmAccent /> :
-                      <Ionicons name={module.icon} size={37} color={colors.brand} />}
+                    {module.symbol ? <VectorSymbol name={module.symbol} size={38} warmAccent /> :
+                      <Ionicons name={module.icon} size={30} color={colors.brand} />}
                   </View>
                   <AppText numberOfLines={2} style={[styles.cardTitle, { color: colors.onSurface }]}>{module.label}</AppText>
                   <AppText numberOfLines={2} style={[styles.cardDescription, { color: colors.onSurfaceTertiary }]}>{module.description}</AppText>
@@ -214,17 +253,17 @@ export function StaffModuleDirectory({
 }
 
 const styles = StyleSheet.create({
-  wrapper: { gap: spacing.lg },
+  wrapper: { gap: spacing.md },
   heading: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   count: { minWidth: 38, minHeight: 38, alignItems: "center", justifyContent: "center", borderRadius: 14, paddingHorizontal: 8 },
   groupTitle: { flexDirection: "row", alignItems: "center", gap: 8 },
   groupMark: { height: 16, width: 3, borderRadius: 3 },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  card: { minHeight: 154, maxWidth: "100%", borderWidth: 1, borderRadius: 20, padding: 12, alignItems: "center", justifyContent: "center", gap: 6,
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 9 },
+  card: { minHeight: 132, maxWidth: "100%", borderWidth: 1, borderRadius: 16, padding: 8, alignItems: "center", justifyContent: "center", gap: 4,
     shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.09, shadowRadius: 12, elevation: 2 },
-  iconWrap: { height: 58, alignItems: "center", justifyContent: "center" },
-  cardTitle: { fontFamily: fonts.semibold, fontSize: 13, textAlign: "center", lineHeight: 17 },
-  cardDescription: { fontFamily: fonts.regular, fontSize: 11, textAlign: "center", lineHeight: 16 },
+  iconWrap: { height: 42, alignItems: "center", justifyContent: "center" },
+  cardTitle: { fontFamily: fonts.semibold, fontSize: 12, textAlign: "center", lineHeight: 16 },
+  cardDescription: { fontFamily: fonts.regular, fontSize: 10, textAlign: "center", lineHeight: 14 },
   search: { flexDirection: "row", alignItems: "center", gap: 9, borderWidth: 1, borderRadius: radius.md, paddingHorizontal: 12 },
   filters: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
   filter: { borderRadius: radius.pill, borderWidth: 1, minHeight: 38, paddingHorizontal: 13, paddingVertical: 10, justifyContent: "center" },

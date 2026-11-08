@@ -49,7 +49,7 @@ export function StaffMore() {
   return (
     <View style={{ flex: 1, backgroundColor: "transparent" }}>
       <View style={{ height: insets.top }} />
-      <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120, gap: spacing.lg }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120, gap: spacing.md, width: "100%", maxWidth: 980, alignSelf: "center" }} showsVerticalScrollIndicator={false}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><VectorSymbol name="settings" size={35} /><AppText variant="title">More</AppText></View>
 
         <Card variant="elevated" style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
@@ -97,7 +97,7 @@ export function StaffMore() {
         {managerResources.fleet ? <Pressable accessibilityRole="button" onPress={()=>router.push("/business/fleet")}><AppText>Manage delegated fleet</AppText></Pressable> : null}
         {managerResources.drivers ? <Pressable accessibilityRole="button" onPress={()=>router.push("/owner/drivers")}><AppText>Manage delegated Drivers</AppText></Pressable> : null}
         {managerResources.permissions ? <Pressable accessibilityRole="button" onPress={()=>router.push("/staff-module-access")}><AppText>Manage delegated module permissions</AppText></Pressable> : null}
-        <StaffModuleDirectory role={user?.role} title="Role workspace" searchable />
+        <StaffModuleDirectory role={user?.role} title="Other modules" scope="more" searchable />
 
         <Pressable testID="staff-permission-settings" accessibilityRole="button" accessibilityLabel="App permissions"
           onPress={() => router.push("/permission-settings")}

@@ -58,6 +58,7 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick" }: 
         style={({ pressed }) => [styles.item, { opacity: pressed ? 0.76 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] }]}
         accessibilityRole="tab"
         accessibilityState={{ selected: focused }}
+        aria-selected={focused}
         accessibilityLabel={`${tab.label} tab`}
         hitSlop={4}
         onPress={() => {

@@ -338,20 +338,85 @@ try {
       await expect(page.getByTestId('customer-module-grid')).toBeVisible();
       await page.getByText('More', { exact: true }).last().click();
     }
-    if (user.role === 'plant_owner') await page.getByRole('button', { name: 'View all plant modules', exact: true }).click();
-    await expect(page.getByTestId('role-module-directory')).toBeVisible();
-    // The typed catalog describes implemented routes. Effective per-user grants
-    // additionally hide restricted modules. In the seeded Dispatcher account,
-    // Plant Reports are deliberately unavailable (no plant_reports ceiling).
+    // Verify each unique module destination across the redesigned tab surfaces.
+    // The old single-page catalog assertion must not duplicate Home cards.
     const disabledKeys = user.role === 'dispatcher' ? ['business-reports'] : [];
     const visibleKeys = user.role === 'customer'
       ? ['account-deletion', 'customer-support', 'notifications', 'quotations', 'documents']
       : modulesForRole(user.role).map(module => module.key).filter(key => !disabledKeys.includes(key));
-    for (const key of visibleKeys) {
-      await expect(page.getByTestId('role-module-' + key)).toBeVisible();
-    }
-    for (const key of disabledKeys) {
-      await expect(page.getByTestId('role-module-' + key)).toHaveCount(0);
+    const visibleModuleCards = async (locator = page) => {
+      const cards = locator.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])')
+        .filter({ visible: true });
+      return cards.evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid').slice('role-module-'.length)));
+    };
+    if (user.role === 'plant_owner') {
+      phase = 'owner Home shortcut inventory';
+      await expect(page.locator('[data-testid^="owner-shortcut-"]')).toHaveCount(6);
+      const homeKeys = await page.locator('[data-testid^="owner-shortcut-"]').filter({ visible: true })
+        .evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid').slice('owner-shortcut-'.length)));
+      assert.equal(homeKeys.length, 6, 'Owner Home must render six compact priority shortcuts');
+      phase = 'owner Operations navigation';
+      await page.getByTestId('tab-operations').click();
+      phase = 'owner automation center';
+      await expect(page.getByTestId('owner-native-automation-center')).toBeVisible();
+      phase = 'owner Operations module inventory';
+      await expect(page.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])')).toHaveCount(6);
+      const operationsKeys = await visibleModuleCards();
+      phase = 'owner More navigation';
+      await page.getByTestId('tab-more').click();
+      phase = 'owner More module inventory';
+      await expect(page.getByTestId('role-module-directory')).toBeVisible();
+      const ownerMoreDirectory = page.getByTestId('role-module-directory');
+      await expect(ownerMoreDirectory.locator('[data-testid^="role-module-"]')).toHaveCount(20);
+      const moreKeys = await visibleModuleCards(ownerMoreDirectory);
+      phase = 'owner module catalog reconciliation';
+      const rendered = [...homeKeys, ...operationsKeys, ...moreKeys];
+      const expectedOwnerKeys = new Set([...visibleKeys, 'owner-drivers']);
+      const duplicateOwnerKeys = rendered.filter((key, index) => rendered.indexOf(key) !== index);
+      const missingOwnerKeys = [...expectedOwnerKeys].filter(key => !rendered.includes(key));
+      const unexpectedOwnerKeys = rendered.filter(key => !expectedOwnerKeys.has(key));
+      // These are public, hard-coded module identifiers—not user data or secrets.
+      if (duplicateOwnerKeys.length || missingOwnerKeys.length || unexpectedOwnerKeys.length) {
+        console.error('Owner catalog keys: duplicates=' + duplicateOwnerKeys.join(',') +
+          ' missing=' + missingOwnerKeys.join(',') + ' unexpected=' + unexpectedOwnerKeys.join(','));
+      }
+      assert.equal(duplicateOwnerKeys.length, 0, 'Owner module cards must not repeat across tabs');
+      assert.equal(missingOwnerKeys.length, 0, 'All approved Owner modules must be discoverable');
+      assert.equal(unexpectedOwnerKeys.length, 0, 'Owner UI must not expose unapproved modules');
+    } else if (user.role === 'customer') {
+      await expect(page.getByTestId('role-module-directory')).toBeVisible();
+      for (const key of visibleKeys) await expect(page.getByTestId('role-module-' + key)).toBeVisible();
+    } else if (user.role === 'driver') {
+      await expect(page.getByTestId('role-module-directory')).toBeVisible();
+      for (const key of visibleKeys) await expect(page.getByTestId('role-module-' + key)).toBeVisible();
+    } else {
+      const nativeTabKeys = {
+        dispatcher: ['dispatcher-queue', 'dispatcher-fleet'],
+        operator: ['operator-production'],
+        supervisor: ['supervisor-operations', 'supervisor-incidents'],
+        accountant: ['accountant-billing', 'accountant-ledger'],
+        quality_engineer: ['engineer-quality'],
+        fleet_manager: ['fleet-manager-fleet', 'fleet-manager-drivers'],
+        store_manager: ['store-manager-stock'],
+      }[user.role] ?? [];
+      const homeDirectory = page.getByTestId('role-module-directory').filter({ visible: true });
+      await expect(homeDirectory).toBeVisible();
+      phase = 'staff Home permission resolution';
+      await expect.poll(async () => (await homeDirectory.innerText()).includes('Checking staff permissions…')).toBe(false);
+      await expect.poll(() => homeDirectory.locator('[data-testid^="role-module-"]').count()).toBeGreaterThan(0);
+      const homeKeys = await visibleModuleCards(homeDirectory);
+      assert(homeKeys.length <= 6, 'Staff Home supports no more than six compact role tiles');
+      await page.getByTestId('tab-more').click();
+      const moreDirectory = page.locator('[data-testid="role-module-directory"]:has([data-testid="staff-module-search"])')
+        .filter({ visible: true });
+      await expect(moreDirectory).toBeVisible();
+      await expect.poll(async () => (await moreDirectory.innerText()).includes('Checking staff permissions…')).toBe(false);
+      const moreKeys = await visibleModuleCards(moreDirectory);
+      const rendered = [...nativeTabKeys, ...homeKeys, ...moreKeys];
+      assert.equal(new Set(rendered).size, rendered.length, 'Staff module cards must not repeat');
+      assert.deepEqual(new Set(rendered), new Set(visibleKeys),
+        'Effective staff module catalog must be discoverable across native tabs, Home and More');
+      for (const key of disabledKeys) assert(!rendered.includes(key), 'Restricted module leaked: ' + key);
     }
     if (user.role === 'plant_owner') {
       phase = 'Owner staff slots and Manager delegation';
@@ -430,11 +495,27 @@ try {
       await expect.poll(() => [...successfulPaths].some(path => path.startsWith('/api/staff/collection/'))).toBe(true);
     }
     if (user.role === 'quality_engineer') {
-      phase = 'quality inspection';
-      const qualityRow = page.getByTestId(/^open-/).filter({visible:true}).first();
+      // Module discovery finishes on More. Open the native Quality tab before
+      // looking for collection rows; the Home preview's earlier API request
+      // does not establish that the collection screen is currently visible.
+      phase = 'quality inspection: open Quality tab';
+      await page.getByTestId('tab-quality').click();
+      await expect(page.getByTestId('tab-quality')).toHaveAttribute('aria-selected', 'true');
+      await page.waitForURL(url => url.pathname === '/quality_engineer/quality');
+      phase = 'quality inspection: locate quality register';
+      // Home can retain measurable preview rows behind the active tab. Scope
+      // both the click and the later persisted-status assertion to the register.
+      const qualityCollection = page.getByTestId('staff-collection-quality');
+      await expect(qualityCollection).toBeVisible();
+      await expect(qualityCollection.getByText('Quality Register', { exact: true })).toBeVisible();
+      const qualityRow = qualityCollection.getByTestId(/^open-/).first();
+      await expect(qualityRow).toBeVisible();
+      phase = 'quality inspection: open batch details';
       const inspectedRowId = await qualityRow.getAttribute('data-testid');
       await qualityRow.click();
+      phase = 'quality inspection: read engineer form';
       await expect(page.getByTestId('qt-save')).toBeDisabled();
+      phase = 'quality inspection';
       await page.getByTestId('qt-slump').fill('125');
       await page.getByTestId('qt-cube7').fill('22.35');
       await page.getByTestId('qt-remarks').fill('Synthetic quality observation');
@@ -458,7 +539,7 @@ try {
       phase = 'quality persistence: return to collection';
       await page.getByTestId('qt-back').click();
       phase = 'quality persistence: collection status';
-      await expect(page.getByTestId(inspectedRowId).filter({visible:true}).getByText('Engineer FAIL', { exact: true })).toBeVisible();
+      await expect(qualityCollection.getByTestId(inspectedRowId).getByText('Engineer FAIL', { exact: true })).toBeVisible();
     }
     if (user.role === 'customer') {
       phase = 'shared browser refresh across tabs';

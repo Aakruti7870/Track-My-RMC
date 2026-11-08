@@ -1,5 +1,5 @@
 import React from "react";
-import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
+import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
 import { useRouter } from "expo-router";
@@ -56,6 +56,10 @@ export function StaffHome() {
   const { user } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width: viewportWidth } = useWindowDimensions();
+  const contentWidth = Math.max(0, Math.min(viewportWidth, 980) - 2 * spacing.lg);
+  const kpiColumns = contentWidth >= 680 ? 4 : contentWidth >= 460 ? 3 : 2;
+  const kpiWidth = (contentWidth - (kpiColumns - 1) * 10) / kpiColumns;
   const { data, loading, error, refetch, reload } = useGet<HomeData>("/staff/home");
   const { data: notif } = useGet<{ unread: number }>("/notifications");
   const { data: grants, loading: grantsLoading, error: grantsError, refetch: refreshGrants } =
@@ -83,10 +87,10 @@ export function StaffHome() {
       </View>
 
       {error && !data ? (
-        <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}><ErrorView message={error} onRetry={reload} /><StaffModuleDirectory role={user?.role} /></ScrollView>
+        <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}><ErrorView message={error} onRetry={reload} /><StaffModuleDirectory role={user?.role} scope="home" title="Role tools" /></ScrollView>
       ) : (
         <ScrollView
-          contentContainerStyle={{ padding: spacing.lg, paddingBottom: 130, gap: spacing.xl, width: "100%", maxWidth: 980, alignSelf: "center" }}
+          contentContainerStyle={{ padding: spacing.lg, paddingBottom: 130, gap: spacing.md, width: "100%", maxWidth: 980, alignSelf: "center" }}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={refresh} tintColor={colors.brand} />}
         >
@@ -116,22 +120,22 @@ export function StaffHome() {
                   </AppText> : null}
                 </View>
                 <View style={styles.heroArtwork}>
-                  <VectorSymbol name={workspace.symbol} size={65} warmAccent />
+                  <VectorSymbol name={workspace.symbol} size={38} warmAccent />
                   <Ionicons name={primaryAllowed ? "arrow-forward-circle-outline" : "lock-closed-outline"} size={20} color={colors.brand} />
                 </View>
               </Pressable>
               <View style={styles.grid}>
                 {data.kpis.map((c) => (
-                  <View key={c.label} style={[styles.kpi, {
+                  <View key={c.label} style={[styles.kpi, { width: kpiWidth,
                     backgroundColor: colors.isDark ? "rgba(29,35,43,0.88)" : "rgba(255,255,255,0.84)",
                     borderColor: colors.isDark ? "rgba(255,154,61,0.26)" : "rgba(255,255,255,0.97)",
                   }]}>
                     <View style={styles.kpiIcon}>
-                      {KPI_ARTWORK[c.label] ? <VectorSymbol name={KPI_ARTWORK[c.label]} size={36} warmAccent /> :
-                        <Ionicons name={c.icon} size={26} color={colors.brand} />}
+                      {KPI_ARTWORK[c.label] ? <VectorSymbol name={KPI_ARTWORK[c.label]} size={30} warmAccent /> :
+                        <Ionicons name={c.icon} size={24} color={colors.brand} />}
                       {c.label === "Low Stock" && c.value > 0 ? <Ionicons name="alert-circle" size={16} color={colors.warning} /> : null}
                     </View>
-                    <AppText style={{ fontFamily: fonts.displayBold, fontSize: fontSize["2xl"], color: colors.onSurface }} numberOfLines={1}>
+                    <AppText style={{ fontFamily: fonts.displayBold, fontSize: fontSize.xl, color: colors.onSurface }} numberOfLines={1}>
                       {formatValue(c)}
                       {c.unit && c.unit !== "₹" ? <AppText style={{ fontFamily: fonts.medium, fontSize: 12, color: colors.onSurfaceTertiary }}> {c.unit}</AppText> : null}
                     </AppText>
@@ -152,7 +156,7 @@ export function StaffHome() {
                   </View>
                 )}
               </View>
-              <StaffModuleDirectory role={user?.role} />
+              <StaffModuleDirectory role={user?.role} scope="home" title="Role tools" />
             </>
           ) : null}
         </ScrollView>
@@ -165,17 +169,17 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.md, paddingTop: spacing.sm },
   iconBtn: { width: 46, height: 46, borderRadius: 15, alignItems: "center", justifyContent: "center", borderWidth: 1 },
   badge: { position: "absolute", top: 8, right: 8, width: 9, height: 9, borderRadius: 5 },
-  summary: { minHeight: 155, flexDirection: "row", alignItems: "center", gap: 12, borderWidth: 1, borderRadius: 22,
-    padding: 18, overflow: "hidden", shadowColor: "#BC782C", shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.1,
+  summary: { minHeight: 150, flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderRadius: 18,
+    padding: 12, overflow: "hidden", shadowColor: "#BC782C", shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.1,
     shadowRadius: 15, elevation: 2 },
   summaryBackdrop: { ...StyleSheet.absoluteFillObject, width: "100%", height: "100%" },
   summaryTextPlate: { flex: 1, minWidth: 0, gap: 6, borderRadius: 14, padding: 10 },
   summaryTitle: { fontFamily: fonts.displayBold, fontSize: fontSize["2xl"], lineHeight: 28 },
-  heroArtwork: { width: 80, alignItems: "center", gap: 8 },
+  heroArtwork: { width: 46, alignItems: "center", gap: 5 },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  kpi: { width: "47%", flexGrow: 1, minHeight: 136, padding: 12, borderRadius: 18, borderWidth: 1, gap: 6,
+  kpi: { minHeight: 108, padding: 9, borderRadius: 16, borderWidth: 1, gap: 4,
     shadowColor: "#996847", shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1 },
-  kpiIcon: { minHeight: 38, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  kpiIcon: { minHeight: 30, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   restricted: { minHeight: 86, flexDirection: "row", alignItems: "center", gap: 12,
     borderRadius: radius.lg, borderWidth: 1, padding: 15 },
 });
