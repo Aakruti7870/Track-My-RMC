@@ -1,5 +1,5 @@
 import React from "react";
-import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
+import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
 import { useRouter } from "expo-router";
@@ -14,6 +14,8 @@ import { ErrorView } from "@/src/components/StateViews";
 import { StaffCollection } from "@/src/screens/StaffCollection";
 import { StaffModuleDirectory } from "@/src/screens/StaffModuleDirectory";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
+
+const PLANT_HERO_IMAGE = require("../../assets/images/Plant _Owner_All_staff_top_card.webp");
 
 type Kpi = { label: string; value: number; icon: keyof typeof Ionicons.glyphMap; unit?: string | null };
 type HomeData = {
@@ -104,7 +106,8 @@ export function StaffHome() {
                   borderColor: colors.isDark ? "rgba(255,154,61,0.40)" : "rgba(255,255,255,0.98)",
                   opacity: pressed ? 0.82 : 1,
                 }]}>
-                <View style={{ flex: 1, gap: 6 }}>
+                <Image testID="staff-home-hero-banner" source={PLANT_HERO_IMAGE} resizeMode="cover" accessibilityIgnoresInvertColors style={styles.summaryBackdrop} />
+                <View style={[styles.summaryTextPlate, { backgroundColor: colors.isDark ? "rgba(20,26,32,0.88)" : "rgba(255,255,255,0.90)" }]}>
                   <AppText variant="eyebrow">{workspace.tagline}</AppText>
                   <AppText style={[styles.summaryTitle, { color: colors.onSurface }]} numberOfLines={2}>{data.primary.title}</AppText>
                   <AppText style={{ color: colors.onSurfaceTertiary, fontSize: 12, lineHeight: 17 }} numberOfLines={2}>{workspace.help}</AppText>
@@ -163,8 +166,10 @@ const styles = StyleSheet.create({
   iconBtn: { width: 46, height: 46, borderRadius: 15, alignItems: "center", justifyContent: "center", borderWidth: 1 },
   badge: { position: "absolute", top: 8, right: 8, width: 9, height: 9, borderRadius: 5 },
   summary: { minHeight: 155, flexDirection: "row", alignItems: "center", gap: 12, borderWidth: 1, borderRadius: 22,
-    padding: 18, shadowColor: "#BC782C", shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.1,
+    padding: 18, overflow: "hidden", shadowColor: "#BC782C", shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.1,
     shadowRadius: 15, elevation: 2 },
+  summaryBackdrop: { ...StyleSheet.absoluteFillObject, width: "100%", height: "100%" },
+  summaryTextPlate: { flex: 1, minWidth: 0, gap: 6, borderRadius: 14, padding: 10 },
   summaryTitle: { fontFamily: fonts.displayBold, fontSize: fontSize["2xl"], lineHeight: 28 },
   heroArtwork: { width: 80, alignItems: "center", gap: 8 },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },

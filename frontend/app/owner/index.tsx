@@ -13,6 +13,8 @@ import { modulesForRole } from "@/src/navigation/moduleCatalog";
 import { ownerDestination } from "@/src/owner/modules";
 import { OwnerFrame, OwnerGlass, ui, useOwnerBottomSpace, useOwnerPalette } from "@/src/owner/OwnerUI";
 
+const PLANT_HERO_IMAGE = require("../../assets/images/Plant _Owner_All_staff_top_card.webp");
+
 type HomeData = { cards: Record<string, number>; plant_count: number };
 const HOME_KEYS = ["owner-orders", "owner-production-dispatch", "business-inventory", "business-staff", "owner-billing", "business-reports"];
 const SHORT_COPY = ["Approve & manage", "Batching & workflows", "Stock & reorders", "Staff, attendance", "Invoices & payments", "Reports & summary"];
@@ -36,7 +38,7 @@ export default function OwnerHome() {
   return <OwnerFrame>
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[ui.content, { paddingBottom: bottom, gap: 10 }]} refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={refetch} tintColor={p.accent} />}>
       <View testID="owner-home-summary" style={[styles.hero, { backgroundColor: p.dark ? "rgba(95,52,16,0.26)" : "rgba(255,237,209,0.62)" }]}>
-        <View style={styles.heroArt}><Image source={require("../../assets/images/Mixer.png")} resizeMode="cover" accessibilityIgnoresInvertColors style={styles.heroImage} /></View>
+        <View style={styles.heroArt}><Image testID="owner-home-hero-banner" source={PLANT_HERO_IMAGE} resizeMode="cover" accessibilityIgnoresInvertColors style={styles.heroImage} /></View>
         <View style={[styles.heroCopy, { backgroundColor: p.dark ? "rgba(14,17,22,0.84)" : "rgba(255,249,238,0.90)" }]}>
           <AppText style={{ fontSize: 18, color: p.text }}>Welcome Back,</AppText>
           <AppText numberOfLines={2} style={{ fontFamily: fonts.bold, fontSize: 25, lineHeight: 30, color: p.text }}>{name}</AppText>
@@ -74,10 +76,10 @@ export default function OwnerHome() {
   </OwnerFrame>;
 }
 const styles = StyleSheet.create({
-  hero: { minHeight: 150, borderRadius: 20, overflow: "hidden", justifyContent: "center" },
-  heroArt: { position: "absolute", right: 0, top: 0, bottom: 0, width: "58%", overflow: "hidden" },
-  heroImage: { position: "absolute", right: -5, bottom: -28, width: 460, height: 259 },
-  heroCopy: { width: "56%", padding: 13, borderRadius: 16, margin: 5 },
+  hero: { minHeight: 150, aspectRatio: 2107 / 746, borderRadius: 20, overflow: "hidden", justifyContent: "center" },
+  heroArt: { ...StyleSheet.absoluteFillObject, overflow: "hidden" },
+  heroImage: { width: "100%", height: "100%" },
+  heroCopy: { width: "50%", minWidth: 155, maxWidth: 360, padding: 13, borderRadius: 16, margin: 5 },
   metrics: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   metric: { minHeight: 78, padding: 8, flexDirection: "row", gap: 6, alignItems: "center" },
   sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: -6 },
