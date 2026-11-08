@@ -8,15 +8,6 @@ const ANDROID_BUILD_PROPERTIES = {
   'android.ndkVersion': '27.1.12297006',
 };
 
-const BLOCKED_MEDIA_PERMISSIONS = [
-  'android.permission.READ_MEDIA_IMAGES',
-  'android.permission.READ_MEDIA_VIDEO',
-  'android.permission.READ_EXTERNAL_STORAGE',
-  'android.permission.WRITE_EXTERNAL_STORAGE',
-];
-
-const BLOCKED_MEDIA_PERMISSION_SET = new Set(BLOCKED_MEDIA_PERMISSIONS);
-
 const OPTIONAL_HARDWARE_FEATURES = [
   'android.hardware.camera',
   'android.hardware.camera.autofocus',
@@ -36,6 +27,7 @@ function upsertGradleProperty(properties, key, value) {
 }
 
 module.exports = function withPlayStoreCompatibility(config) {
+  const blockedPermissions = new Set(config.android?.blockedPermissions ?? []);
   config = withGradleProperties(config, (modConfig) => {
     let properties = Array.isArray(modConfig.modResults) ? modConfig.modResults : [];
     for (const [key, value] of Object.entries(ANDROID_BUILD_PROPERTIES)) {
@@ -58,11 +50,11 @@ module.exports = function withPlayStoreCompatibility(config) {
     const cleanedPermissions = permissions.filter((entry) => {
       const attrs = (entry && entry.$) || {};
       const name = attrs['android:name'];
-      if (!BLOCKED_MEDIA_PERMISSION_SET.has(name)) return true;
+      if (!blockedPermissions.has(name)) return true;
       return attrs['tools:node'] === 'remove';
     });
 
-    for (const name of BLOCKED_MEDIA_PERMISSIONS) {
+    for (const name of blockedPermissions) {
       const hasRemovalMarker = cleanedPermissions.some((entry) => {
         const attrs = (entry && entry.$) || {};
         return attrs['android:name'] === name && attrs['tools:node'] === 'remove';

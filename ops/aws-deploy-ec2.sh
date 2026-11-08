@@ -2,6 +2,7 @@
 set -euo pipefail
 
 : "${RELEASE_SHA:?RELEASE_SHA is required}"
+[[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Invalid release SHA' >&2; exit 1; }
 # The recovery timer and deployments must never rewrite app.env concurrently.
 # Take the lock before changing certificates, binaries, or runtime credentials.
 install -d -m 0755 /run/lock
@@ -22,17 +23,24 @@ if ! command -v aws >/dev/null 2>&1; then
 fi
 
 id -u trackmyrmc >/dev/null 2>&1 || useradd --system --home /opt/trackmyrmc --shell /usr/sbin/nologin trackmyrmc
-DEPLOY_CACHE_DIR="/opt/trackmyrmc/deploy-cache"
-mkdir -p /opt/trackmyrmc/releases /opt/trackmyrmc/frontend "$DEPLOY_CACHE_DIR"
-chown -R trackmyrmc:trackmyrmc "$DEPLOY_CACHE_DIR" || true
-chmod 0700 "$DEPLOY_CACHE_DIR" || true
-
-cleanup_release_archives() {
-  rm -f "$DEPLOY_CACHE_DIR/frontend-$RELEASE_SHA.tgz" \
-        "$DEPLOY_CACHE_DIR/source-$RELEASE_SHA.tgz" \
-        "$DEPLOY_CACHE_DIR/admin-web-$RELEASE_SHA.tgz"
+secure_release_directory() {
+  local directory="$1"
+  if [[ -L "$directory" ]]; then
+    echo "Unexpected symlink at release directory: $directory" >&2
+    return 1
+  fi
+  mkdir -p -- "$directory"
+  chown -h root:root -- "$directory"
+  chmod 0755 -- "$directory"
 }
-trap cleanup_release_archives EXIT
+
+# Existing installations may still grant the service account write access.
+# Secure each parent before creating or inspecting files beneath it.
+secure_release_directory /opt/trackmyrmc
+secure_release_directory /opt/trackmyrmc/releases
+secure_release_directory /opt/trackmyrmc/release-tools
+RELEASE_STAGE="$(mktemp -d /opt/trackmyrmc/.release-stage.XXXXXX)"
+trap 'rm -rf -- "$RELEASE_STAGE"' EXIT
 
 # Obtain a certificate only when absent; routine deploys keep HTTPS online.
 if [ ! -s /etc/letsencrypt/live/trackmyrmc.com/fullchain.pem ] || [ ! -s /etc/letsencrypt/live/trackmyrmc.com/privkey.pem ]; then
@@ -425,40 +433,33 @@ if [[ "$TRACKMYRMC_KYC_ENABLED" == 'true' ]]; then
 fi
 
 
-aws s3 cp "s3://$BUCKET/backend-$RELEASE_SHA" "/opt/trackmyrmc/releases/backend-$RELEASE_SHA"
-aws s3 cp "s3://$BUCKET/frontend-$RELEASE_SHA.tgz" "$DEPLOY_CACHE_DIR/frontend-$RELEASE_SHA.tgz"
-aws s3 cp "s3://$BUCKET/source-$RELEASE_SHA.tgz" "$DEPLOY_CACHE_DIR/source-$RELEASE_SHA.tgz"
-aws s3 cp "s3://$BUCKET/admin-web-$RELEASE_SHA.tgz" "$DEPLOY_CACHE_DIR/admin-web-$RELEASE_SHA.tgz"
-chmod 0755 "/opt/trackmyrmc/releases/backend-$RELEASE_SHA"
+aws s3 cp "s3://$BUCKET/backend-$RELEASE_SHA" "$RELEASE_STAGE/backend"
+aws s3 cp "s3://$BUCKET/frontend-$RELEASE_SHA.tgz" "$RELEASE_STAGE/frontend.tgz"
+aws s3 cp "s3://$BUCKET/source-$RELEASE_SHA.tgz" "$RELEASE_STAGE/source.tgz"
+aws s3 cp "s3://$BUCKET/admin-web-$RELEASE_SHA.tgz" "$RELEASE_STAGE/admin-web.tgz"
+chmod 0755 "$RELEASE_STAGE/backend"
 
-rm -rf /opt/trackmyrmc/frontend.new
-mkdir /opt/trackmyrmc/frontend.new
-tar -xzf "$DEPLOY_CACHE_DIR/frontend-$RELEASE_SHA.tgz" -C /opt/trackmyrmc/frontend.new --strip-components=1
-rm -rf /opt/trackmyrmc/frontend.prev
-if [ -d /opt/trackmyrmc/frontend ]; then mv /opt/trackmyrmc/frontend /opt/trackmyrmc/frontend.prev; fi
-mv /opt/trackmyrmc/frontend.new /opt/trackmyrmc/frontend
-
-# Keep a complete, SHA-pinned source checkout and the separately built admin dashboard on EC2.
-rm -rf /opt/trackmyrmc/source.new
-install -d -o trackmyrmc -g trackmyrmc /opt/trackmyrmc/source.new
-tar -xzf "$DEPLOY_CACHE_DIR/source-$RELEASE_SHA.tgz" -C /opt/trackmyrmc/source.new
-test -f /opt/trackmyrmc/source.new/backend/Cargo.toml
-test -f /opt/trackmyrmc/source.new/frontend/package.json
-test -f /opt/trackmyrmc/source.new/admin-web/package.json
-if [ -d /opt/trackmyrmc/source ]; then
-  rm -rf /opt/trackmyrmc/source.prev
-  mv /opt/trackmyrmc/source /opt/trackmyrmc/source.prev
-fi
-mv /opt/trackmyrmc/source.new /opt/trackmyrmc/source
+install -d -m 0755 "$RELEASE_STAGE/frontend" "$RELEASE_STAGE/source" "$RELEASE_STAGE/admin-web"
+tar --no-same-owner -xzf "$RELEASE_STAGE/frontend.tgz" -C "$RELEASE_STAGE/frontend" --strip-components=1
+tar --no-same-owner -xzf "$RELEASE_STAGE/source.tgz" -C "$RELEASE_STAGE/source"
+tar --no-same-owner -xzf "$RELEASE_STAGE/admin-web.tgz" -C "$RELEASE_STAGE/admin-web"
+test -s "$RELEASE_STAGE/backend"
+test -s "$RELEASE_STAGE/frontend/index.html"
+test -s "$RELEASE_STAGE/admin-web/index.html"
+test -f "$RELEASE_STAGE/source/backend/Cargo.toml"
+test -f "$RELEASE_STAGE/source/frontend/package.json"
+test -f "$RELEASE_STAGE/source/admin-web/package.json"
 
 
 # Install the lightweight, local-only RDS rotation health watch. No new AWS
 # infrastructure is created. Secrets Manager is queried only if /health fails.
 test -x "$(command -v psql)"
-install -d -m 0755 /opt/trackmyrmc/release-tools
-install -m 0755 /opt/trackmyrmc/source/ops/release/recover-managed-rds-credential.py \
+install -m 0755 "$RELEASE_STAGE/source/ops/release/recover-managed-rds-credential.py" \
+    "$RELEASE_STAGE/recover-managed-rds-credential.py"
+python3 -m py_compile "$RELEASE_STAGE/recover-managed-rds-credential.py"
+mv -Tf -- "$RELEASE_STAGE/recover-managed-rds-credential.py" \
     /opt/trackmyrmc/release-tools/recover-managed-rds-credential.py
-python3 -m py_compile /opt/trackmyrmc/release-tools/recover-managed-rds-credential.py
+mv -Tf -- "$RELEASE_STAGE/backend" "/opt/trackmyrmc/releases/backend-$RELEASE_SHA"
 
 cat > /etc/systemd/system/trackmyrmc-rds-recovery.service <<'ROTATION_SERVICE'
 [Unit]
@@ -493,21 +494,14 @@ WantedBy=timers.target
 ROTATION_TIMER
 
 
-rm -rf /opt/trackmyrmc/admin-web.new
-install -d -o trackmyrmc -g trackmyrmc /opt/trackmyrmc/admin-web.new
-tar -xzf "$DEPLOY_CACHE_DIR/admin-web-$RELEASE_SHA.tgz" -C /opt/trackmyrmc/admin-web.new
-test -s /opt/trackmyrmc/admin-web.new/index.html
-if [ -d /opt/trackmyrmc/admin-web ]; then
-  rm -rf /opt/trackmyrmc/admin-web.prev
-  mv /opt/trackmyrmc/admin-web /opt/trackmyrmc/admin-web.prev
-fi
-mv /opt/trackmyrmc/admin-web.new /opt/trackmyrmc/admin-web
-
-# Safe cleanup of extracted release archives from deploy cache
-cleanup_release_archives
-find "$DEPLOY_CACHE_DIR" -maxdepth 1 -name '*.tgz' -type f -mtime +1 -delete 2>/dev/null || true
-
-printf '%s\n' "$RELEASE_SHA" > /opt/trackmyrmc/DEPLOYED_RELEASE_SHA
+for component in frontend source admin-web; do
+  current="/opt/trackmyrmc/$component"
+  if [[ -e "$current" || -L "$current" ]]; then
+    rm -rf -- "$current.prev"
+    mv -T -- "$current" "$current.prev"
+  fi
+  mv -T -- "$RELEASE_STAGE/$component" "$current"
+done
 
 install -d -m 0750 /etc/trackmyrmc
 cat > /etc/trackmyrmc/app.env <<EOF
@@ -570,8 +564,6 @@ WantedBy=multi-user.target
 UNIT
 sed -i "s/backend-PLACEHOLDER/backend-$RELEASE_SHA/" /etc/systemd/system/trackmyrmc-backend.service
 
-chown -R trackmyrmc:trackmyrmc /opt/trackmyrmc
-
 systemctl daemon-reload
 systemctl enable trackmyrmc-backend
 systemctl restart trackmyrmc-backend
@@ -587,7 +579,8 @@ fi
 # Allow the backend time to start, but fail clearly if it never becomes healthy.
 health_ok=0
 for attempt in $(seq 1 15); do
-    if curl --resolve trackmyrmc.com:443:127.0.0.1 --fail --silent --show-error https://trackmyrmc.com/health; then
+    if curl --resolve trackmyrmc.com:443:127.0.0.1 --fail --silent --show-error --max-time 10 https://trackmyrmc.com/health |
+        jq -e '.status == "ok" and .database == "connected"' >/dev/null; then
         health_ok=1
         break
     fi
@@ -611,5 +604,9 @@ ADMIN_HTML="$(curl --resolve trackmyrmc.com:443:127.0.0.1 --fail --silent --show
 ADMIN_JS="$(printf '%s' "$ADMIN_HTML" | grep -Eo 'src="/admin/assets/[^"]+\.js"' | head -n 1 | cut -d '"' -f 2)"
 test -n "$ADMIN_JS"
 curl --resolve trackmyrmc.com:443:127.0.0.1 --fail --silent --show-error "https://trackmyrmc.com$ADMIN_JS" >/dev/null
+
+# Advance release identity only after the origin proves the installed services work.
+printf '%s\n' "$RELEASE_SHA" > "$RELEASE_STAGE/DEPLOYED_RELEASE_SHA"
+mv -Tf -- "$RELEASE_STAGE/DEPLOYED_RELEASE_SHA" /opt/trackmyrmc/DEPLOYED_RELEASE_SHA
 
 echo "TrackMyRMC deployment successful: $RELEASE_SHA"

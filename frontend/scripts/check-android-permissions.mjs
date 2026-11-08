@@ -17,7 +17,10 @@ assert(app.version === "2.0.33", "Expected Android release version 2.0.33.");
 assert(android.versionCode === 93, "Expected Android versionCode 93.");
 assert(android.package === "com.trackmyrmc.concreteking", "Android application ID must remain stable.");
 
-for (const permission of ["READ_MEDIA_IMAGES", "READ_MEDIA_VIDEO", "READ_EXTERNAL_STORAGE", "WRITE_EXTERNAL_STORAGE"]) {
+for (const permission of [
+  "READ_MEDIA_IMAGES", "READ_MEDIA_VIDEO", "READ_EXTERNAL_STORAGE", "WRITE_EXTERNAL_STORAGE",
+  "RECORD_AUDIO", "SYSTEM_ALERT_WINDOW", "NFC",
+]) {
   assert(!permissions.has(permission) && !permissions.has("android.permission." + permission), permission + " must not be requested.");
   assert(blocked.has("android.permission." + permission), permission + " must remain blocked.");
 }
