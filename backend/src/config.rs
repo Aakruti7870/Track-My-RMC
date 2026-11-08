@@ -78,12 +78,13 @@ impl AppConfig {
             .unwrap_or(8000);
         let host = env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
 
-        let cors_allowed_origins = env::var("CORS_ORIGIN")
+        let cors_allowed_origins: Vec<String> = env::var("CORS_ORIGIN")
             .unwrap_or_else(|_| "https://trackmyrmc.com".to_string())
             .split(',')
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect();
+        validate_production_cors(&environment, &cors_allowed_origins)?;
 
         let meta_whatsapp_token = env::var("META_WHATSAPP_TOKEN").ok();
         let meta_whatsapp_phone_number_id = env::var("META_PHONE_NUMBER_ID").ok();
@@ -221,5 +222,54 @@ mod fingerprint_tests {
     fn rejects_invalid_fingerprint() {
         assert!(normalize_sha256_fingerprint("not-a-fingerprint").is_none());
         assert!(normalize_sha256_fingerprint(&"z".repeat(64)).is_none());
+    }
+}
+
+fn validate_production_cors(environment: &str, origins: &[String]) -> Result<(), String> {
+    if environment != "production" {
+        return Ok(());
+    }
+    if origins.is_empty()
+        || origins.iter().any(|origin| {
+            reqwest::Url::parse(origin).map_or(true, |url| {
+                url.scheme() != "https"
+                    || url.host_str().is_none()
+                    || !url.username().is_empty()
+                    || url.password().is_some()
+                    || url.path() != "/"
+                    || url.query().is_some()
+                    || url.fragment().is_some()
+                    || origin.ends_with('/')
+            })
+        })
+    {
+        return Err("Production CORS_ORIGIN requires explicit HTTPS origins without paths, credentials or wildcards".into());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod production_cors_tests {
+    use super::validate_production_cors;
+    #[test]
+    fn privileged_web_origin_policy_fails_closed_in_production() {
+        for origin in [
+            "*",
+            "null",
+            "http://trackmyrmc.com",
+            "https://user:pass@example.com",
+            "https://example.com/path",
+            "https://example.com?query=1",
+            "https://example.com#fragment",
+            "https://example.com/",
+        ] {
+            assert!(
+                validate_production_cors("production", &[origin.into()]).is_err(),
+                "{origin}"
+            );
+        }
+        assert!(validate_production_cors("production", &[]).is_err());
+        assert!(validate_production_cors("production", &["https://trackmyrmc.com".into()]).is_ok());
+        assert!(validate_production_cors("test", &["http://127.0.0.1:4173".into()]).is_ok());
     }
 }

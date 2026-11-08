@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import apiClient from './api';
+import apiClient, { getAccessToken, setAccessToken } from './api';
 
 type Stage = 'central-login' | 'authority-login' | 'authority-password' | 'email' | 'otp' | 'mfa-enroll' | 'mfa-login' | 'authenticated';
 
@@ -146,7 +146,7 @@ function CommandCenter() {
 
 
   useEffect(() => {
-    const token = window.sessionStorage.getItem('trackmyrmc_admin_token');
+    const token = getAccessToken();
     if (!token) return;
 
     let active = true;
@@ -166,7 +166,7 @@ function CommandCenter() {
         setStage('authenticated');
       })
       .catch(() => {
-        window.sessionStorage.removeItem('trackmyrmc_admin_token');
+        setAccessToken(null);
       });
 
     return () => { active = false; };
@@ -521,12 +521,12 @@ function CommandCenter() {
         identifier: email.trim(), password: privilegedPassword, code: mfaCode.trim(),
       });
       if (!response.data?.token || response.data?.user?.role !== expectedRole) throw new Error('Privileged web session was not established.');
-      window.sessionStorage.setItem('trackmyrmc_admin_token', response.data.token);
+      setAccessToken(response.data.token);
       const session=await apiClient.get(prefix+'/me');
       setPermissions(session.data?.permissions || []);
       setUser(response.data.user); setMfaCode(''); setPrivilegedPassword(''); setStage('authenticated');
     } catch (error) {
-      window.sessionStorage.removeItem('trackmyrmc_admin_token');
+      setAccessToken(null);
       setPrivilegedPassword('');
       setError(errorMessage(error));
     } finally { setBusy(false); }
@@ -648,7 +648,7 @@ function CommandCenter() {
       if (!allowedRoles.includes(signedInUser.role)) {
         throw new Error('This account is not authorized for staff portal access.');
       }
-      window.sessionStorage.setItem('trackmyrmc_admin_token', auth.token);
+      setAccessToken(auth.token);
       setUser(signedInUser);
       setMfaCode('');
       setChallengeToken('');
@@ -684,12 +684,14 @@ function CommandCenter() {
 
   async function logout() {
     setBusy(true);
+    let revokedOnServer = false;
     try {
       await apiClient.post(user?.role === 'central_admin' ? '/api/admin/auth/logout' : user?.role === 'authority' ? '/api/authority/auth/logout' : '/api/auth/logout');
+      revokedOnServer = true;
     } catch {
       // Always clear this browser session, even if the server is temporarily unreachable.
     } finally {
-      window.sessionStorage.removeItem('trackmyrmc_admin_token');
+      setAccessToken(null);
       setUser(null);setPrivilegedPassword('');setPermissions([]);setRecords([]);setWorkspace('');setRfqOutreachCode('');setRfqOutreachNotes({});
       setShowNativeAutomation(false);setAutomationTemplates([]);setAutomationHealth(null);
       setAutomationJobs([]);setAutomationCode('');setAutomationKey('');
@@ -705,7 +707,7 @@ function CommandCenter() {
       setCentralKycReason('');setCentralKycCode('');
       setShowAuthorityAccounts(false);
       setStage('central-login');
-      setNotice('Signed out of this browser session.');
+      setNotice(revokedOnServer ? 'Signed out and server session revoked.' : 'Signed out locally. Server revocation could not be confirmed; the session expires automatically.');
       setError('');
       setBusy(false);
     }
@@ -748,7 +750,7 @@ function CommandCenter() {
         <p style={{ color: '#cbd5e1', lineHeight: 1.6, marginTop: 0 }}>
           {stage === 'authenticated'
             ? 'Your access is restricted to the permissions assigned to your account.'
-            : stage === 'central-login' ? 'Approved Central Admin accounts require an account password and enrolled authenticator. Staff and Authority sessions cannot manage platform governance.' : stage === 'authority-login' ? 'Authority uses a password, authenticator and separate one-hour browser session with scoped permissions.' : 'Approved staff and first-time Authority accounts use email verification followed by authenticator MFA.'}
+            : stage === 'central-login' ? 'Approved Central Admin accounts require an account password and enrolled authenticator. Staff and Authority sessions cannot manage platform governance.' : stage === 'authority-login' ? 'Authority uses a password, authenticator and separate one-hour browser session with scoped permissions. Reloading this page requires signing in again.' : 'Approved staff and first-time Authority accounts use email verification followed by authenticator MFA.'}
         </p>
 
         {error && <div role="alert" style={{ padding: 12, borderRadius: 8, background: '#451a1a', border: '1px solid #b91c1c', color: '#fecaca', margin: '16px 0' }}>{error}</div>}

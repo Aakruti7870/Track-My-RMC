@@ -156,10 +156,18 @@ pub async fn login_for_role(
     .await?;
     // Independently prove knowledge of the Argon2id password and possession of
     // the enrolled authenticator. Placeholder and legacy hashes fail closed.
-    let valid_password = identity.as_ref().is_some_and(|i| {
-        i.5.starts_with("$argon2id$")
-            && crate::auth::password::verify_password(&body.password, &i.5).unwrap_or(false)
-    });
+    // Keep expensive Argon2 work off Tokio's request workers. Unknown/disabled
+    // identities perform the same password work without ever becoming valid.
+    let stored_hash = identity.as_ref().map(|i| i.5.clone());
+    let password = body.password;
+    let valid_password = tokio::task::spawn_blocking(move || {
+        const DUMMY_HASH: &str = "$argon2id$v=19$m=19456,t=2,p=1$SvWTeNFS61/Ui+SOXVyNJw$JGIBa6UrWI3fvkiDP+jDI+a6plEeoYVpTM72VyGddR8";
+        let usable_hash = stored_hash.as_deref().filter(|hash| hash.starts_with("$argon2id$"));
+        let verified = crate::auth::password::verify_password(&password, usable_hash.unwrap_or(DUMMY_HASH)).unwrap_or(false);
+        usable_hash.is_some() && verified
+    })
+    .await
+    .map_err(|_| AppError::InternalError("Password verification unavailable".into()))?;
     let verified_step = identity.as_ref().filter(|_| valid_password).and_then(|i| {
         [-1_i64, 0, 1]
             .into_iter()

@@ -217,11 +217,43 @@ async fn global_outreach_requires_web_admin_manage_and_step_up_and_keeps_notes_p
         StatusCode::FORBIDDEN
     );
     // A mobile plant administrator cannot read or mutate global customer leads.
-    assert_eq!(call(&router, "/api/admin/rmc-rfq-leads", "GET", None, &mobile_token).await.0, StatusCode::FORBIDDEN);
-    assert_eq!(call(&router, &path, "PATCH", Some(payload.clone()), &mobile_token).await.0, StatusCode::FORBIDDEN);
-    assert_eq!(call(&router, &path, "PATCH", Some(payload.clone()), &atoken).await.0, StatusCode::FORBIDDEN);
+    assert_eq!(
+        call(
+            &router,
+            "/api/admin/rmc-rfq-leads",
+            "GET",
+            None,
+            &mobile_token
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        call(
+            &router,
+            &path,
+            "PATCH",
+            Some(payload.clone()),
+            &mobile_token
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        call(&router, &path, "PATCH", Some(payload.clone()), &atoken)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
     sqlx::query("UPDATE control_center_access SET permissions=ARRAY['support.view','support.manage'] WHERE user_id=$1").bind(web_admin).execute(&db).await.unwrap();
-    assert_eq!(call(&router, &path, "PATCH", Some(payload.clone()), &atoken).await.0, StatusCode::FORBIDDEN);
+    assert_eq!(
+        call(&router, &path, "PATCH", Some(payload.clone()), &atoken)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
     sqlx::query("INSERT INTO control_center_step_ups(user_id,token_hash,expires_at) VALUES($1,$2,NOW()+INTERVAL '5 minutes')").bind(web_admin).bind(&hash).execute(&db).await.unwrap();
     let (status, updated) = call(&router, &path, "PATCH", Some(payload), &atoken).await;
     assert_eq!(status, StatusCode::OK, "{updated}");

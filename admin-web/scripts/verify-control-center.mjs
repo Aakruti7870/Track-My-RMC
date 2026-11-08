@@ -27,7 +27,9 @@ try {
   await page.getByLabel('Approved administrator email').fill('ci-admin@example.invalid');
   await page.getByLabel('Account password', { exact: true }).fill(process.env.CI_CONTROL_CENTER_TEST_PASSWORD || '');
   await page.getByLabel('Authenticator code', { exact: true }).fill(await freshCode());
+  const adminLogin = page.waitForResponse(response=>response.url().endsWith('/api/admin/auth/verify-totp'));
   await page.getByRole('button', { name: 'Sign in with password + authenticator', exact: true }).click();
+  const token = (await (await adminLogin).json()).token;
   await page.getByRole('heading', { name: 'Command Center', exact: true }).waitFor();
   await page.getByRole('button', { name: 'users', exact: true }).click();
   await page.locator('tbody').getByText('CI Central Admin', { exact: true }).waitFor();
@@ -59,7 +61,7 @@ try {
   await page.getByRole('button',{name:'Suspend / revoke Owner access',exact:true}).click();
   assert.equal((await suspended).status(),200);
   console.log('PASS: real Control Center Owner approval and revocation require authenticated step-up');
-  const token=await page.evaluate(()=>sessionStorage.getItem('trackmyrmc_admin_token'));
+  assert.equal(await page.evaluate(()=>sessionStorage.getItem('trackmyrmc_admin_token')),null,'bearer must not persist in browser storage');
   await page.getByRole('button', { name: 'Sign out and revoke session', exact: true }).click();
   await page.getByRole('heading', { name: 'Central Admin sign in', exact: true }).waitFor();
   assert.equal(await page.evaluate(() => sessionStorage.getItem('trackmyrmc_admin_token')), null);
@@ -71,9 +73,11 @@ try {
   await page.getByLabel('Approved Authority email').fill('ci-authority@example.invalid');
   await page.getByLabel('Account password', {exact:true}).fill(process.env.CI_CONTROL_CENTER_TEST_PASSWORD || '');
   await page.getByLabel('Authenticator code', {exact:true}).fill(currentCode());
+  const authorityLogin = page.waitForResponse(response=>response.url().endsWith('/api/authority/auth/verify-totp'));
   await page.getByRole('button', {name:'Sign in with password + authenticator',exact:true}).click();
+  const authorityToken = (await (await authorityLogin).json()).token;
   await page.getByRole('heading', {name:'Command Center',exact:true}).waitFor();
-  const authorityToken = await page.evaluate(()=>sessionStorage.getItem('trackmyrmc_admin_token'));
+  assert.equal(await page.evaluate(()=>sessionStorage.getItem('trackmyrmc_admin_token')),null);
   for (const kind of ['users','plants','orders','support']) {
     const response = await page.request.get('http://127.0.0.1:8000/api/authority/collections/'+kind,{headers:{Authorization:'Bearer '+authorityToken}});
     assert.equal(response.status(),200);

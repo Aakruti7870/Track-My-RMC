@@ -656,19 +656,74 @@ async fn privileged_login_throttle_replacement_and_database_expiry(db: PgPool) {
 #[sqlx::test]
 async fn authority_initial_password_rejects_expired_exhausted_and_revoked_challenges(db: PgPool) {
     let app = build_app_router(state(db.clone()));
-    for scenario in ["expired", "exhausted", "consumed", "revoked", "wrong-purpose"] {
+    for scenario in [
+        "expired",
+        "exhausted",
+        "consumed",
+        "revoked",
+        "wrong-purpose",
+    ] {
         let (id, _, secret) = identity(&db, "authority", &["support.view"]).await;
         sqlx::query("UPDATE users SET hashed_password='!web-only-no-password!',work_email_verified_at=NOW() WHERE id=$1").bind(id).execute(&db).await.unwrap();
         let token = format!("{}{}", Uuid::new_v4().simple(), "0123456789abcdef");
         let hash = hex::encode(Sha256::digest(token.as_bytes()));
         sqlx::query("INSERT INTO staff_mfa_challenges(user_id,token_hash,purpose,expires_at,attempts,consumed_at) VALUES($1,$2,$3,CASE WHEN $4 THEN NOW()-INTERVAL '1 second' ELSE NOW()+INTERVAL '5 minutes' END,$5,CASE WHEN $6 THEN NOW() ELSE NULL END)")
             .bind(id).bind(&hash).bind(if scenario=="wrong-purpose" {"enrollment"} else {"login"}).bind(scenario=="expired").bind(if scenario=="exhausted" {5_i32} else {0}).bind(scenario=="consumed").execute(&db).await.unwrap();
-        if scenario=="revoked" {
-            sqlx::query("UPDATE control_center_access SET approved=FALSE WHERE user_id=$1").bind(id).execute(&db).await.unwrap();
+        if scenario == "revoked" {
+            sqlx::query("UPDATE control_center_access SET approved=FALSE WHERE user_id=$1")
+                .bind(id)
+                .execute(&db)
+                .await
+                .unwrap();
         }
-        let code=TotpEngine::compute_code(&secret,chrono::Utc::now().timestamp() as u64).unwrap();
-        assert_eq!(call(&app,"/api/authority/auth/set-initial-password",None,Some(json!({"challenge_token":token,"password":SYNTHETIC_PASSWORD,"code":code}))).await.0,StatusCode::UNAUTHORIZED,"{scenario}");
-        let hash: String=sqlx::query_scalar("SELECT hashed_password FROM users WHERE id=$1").bind(id).fetch_one(&db).await.unwrap();
-        assert_eq!(hash,"!web-only-no-password!","{scenario}");
+        let code =
+            TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
+        assert_eq!(
+            call(
+                &app,
+                "/api/authority/auth/set-initial-password",
+                None,
+                Some(json!({"challenge_token":token,"password":SYNTHETIC_PASSWORD,"code":code}))
+            )
+            .await
+            .0,
+            StatusCode::UNAUTHORIZED,
+            "{scenario}"
+        );
+        let hash: String = sqlx::query_scalar("SELECT hashed_password FROM users WHERE id=$1")
+            .bind(id)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert_eq!(hash, "!web-only-no-password!", "{scenario}");
     }
+}
+
+#[sqlx::test]
+async fn concurrent_privileged_login_accepts_only_one_possession_proof(db: PgPool) {
+    let app = build_app_router(state(db.clone()));
+    let (id, email, secret) = identity(&db, "central_admin", &["system.view"]).await;
+    let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
+    let payload = json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":code});
+    let (first, second) = tokio::join!(
+        call(
+            &app,
+            "/api/admin/auth/verify-totp",
+            None,
+            Some(payload.clone())
+        ),
+        call(&app, "/api/admin/auth/verify-totp", None, Some(payload)),
+    );
+    assert!(
+        (first.0 == StatusCode::OK && second.0 == StatusCode::UNAUTHORIZED)
+            || (second.0 == StatusCode::OK && first.0 == StatusCode::UNAUTHORIZED)
+    );
+    let sessions: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM control_center_sessions WHERE user_id=$1 AND revoked_at IS NULL",
+    )
+    .bind(id)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(sessions, 1);
 }
