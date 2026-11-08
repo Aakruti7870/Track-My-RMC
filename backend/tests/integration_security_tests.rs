@@ -702,11 +702,15 @@ async fn stale_role_claims_are_rejected_and_otp_replay_does_not_mint_session(db:
     let state = state(db.clone());
     let router = app(state.clone());
     let (id, email, secret) = identity(&db, "central_admin", true, vec![]).await;
+    // Replay must submit the exact same code. Recomputing across a 30-second
+    // TOTP rollover would accidentally test a distinct, valid code instead.
+    let used_code =
+        TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp() - 30) as u64).unwrap();
     let (_, login) = request(
         &router,
         "/login",
         None,
-        Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp()-30) as u64).unwrap()})),
+        Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":used_code})),
     )
     .await;
     let token = login["token"].as_str().unwrap();
@@ -715,7 +719,7 @@ async fn stale_role_claims_are_rejected_and_otp_replay_does_not_mint_session(db:
             &router,
             "/login",
             None,
-            Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp()-30) as u64).unwrap()}))
+            Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":used_code}))
         )
         .await
         .0,
