@@ -495,6 +495,11 @@ try {
       await expect.poll(() => [...successfulPaths].some(path => path.startsWith('/api/staff/collection/'))).toBe(true);
     }
     if (user.role === 'quality_engineer') {
+      // Module discovery finishes on More. Open the native Quality tab before
+      // looking for collection rows; the Home preview's earlier API request
+      // does not establish that the collection screen is currently visible.
+      phase = 'quality inspection: open Quality tab';
+      await page.getByTestId('tab-quality').click();
       phase = 'quality inspection';
       const qualityRow = page.getByTestId(/^open-/).filter({visible:true}).first();
       const inspectedRowId = await qualityRow.getAttribute('data-testid');
