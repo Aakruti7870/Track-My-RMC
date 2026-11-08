@@ -25,6 +25,13 @@ const PAYMENT_MODES = [
   { value: "APPROVED_CREDIT", label: "Credit / Pay Later", desc: "Subject to the plant's credit approval" },
 ] as const;
 
+// Production cannot offer advance modes until supplier settlement is approved.
+// The Cashfree route is sandbox-only; do not let customers accept unpayable terms.
+const SHOW_SANDBOX_PREPAID = process.env.EXPO_PUBLIC_RMC_PREPAID_SANDBOX_UI === "true";
+const SELECTABLE_PAYMENT_MODES = SHOW_SANDBOX_PREPAID
+  ? PAYMENT_MODES
+  : PAYMENT_MODES.filter((mode) => mode.value === "ON_DELIVERY" || mode.value === "APPROVED_CREDIT");
+
 function nextDays(n: number) {
   const out: { value: string; label: string; sub: string }[] = [];
   for (let i = 0; i < n; i++) {
@@ -277,7 +284,7 @@ export default function NewOrder() {
 
         <Section title="2. Preferred Payment Mode" subtitle="Choose how you would prefer to pay after plant acceptance">
           <View style={{ gap: spacing.sm }}>
-            {PAYMENT_MODES.map((mode) => {
+            {SELECTABLE_PAYMENT_MODES.map((mode) => {
               const selected = paymentMode === mode.value;
               return (
                 <Pressable
@@ -305,7 +312,9 @@ export default function NewOrder() {
             <View style={[styles.infoBanner, { backgroundColor: colors.brandSoft, borderColor: colors.brand + "55" }]}>
               <Ionicons name="shield-checkmark-outline" size={20} color={colors.brand} />
               <AppText variant="caption" style={{ flex: 1 }}>
-                No payment is required when submitting this order request. Your selection is a preference, subject to the plant's acceptance and final terms. Review and accept the confirmed amount before paying. A secure payment link will be provided separately for eligible online payments after confirmation. Do not pay anyone in advance before receiving verified payment instructions.
+                No payment is required when submitting this order request. Your selection is a preference, subject to the plant's acceptance and final terms. Review and accept the confirmed amount before paying. {SHOW_SANDBOX_PREPAID
+                  ? "Sandbox prepaid testing is available only for approved test plants; no real payment is collected. Never pay using an unofficial link."
+                  : "Online advance payments are not yet activated. Use pay-on-delivery or plant-approved credit only. Never pay using an unofficial link."}
               </AppText>
             </View>
           </View>
