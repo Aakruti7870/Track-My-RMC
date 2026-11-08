@@ -180,7 +180,7 @@ export default function OwnerOperations() {
                   rule.globally_paused ? "Paused by Central Admin" : "Plant automation preference")}
                 accessibilityState={{ checked: on, disabled }}
                 disabled={disabled} onPress={() => void updateRule(rule, !rule.enabled)}
-                style={{ minWidth: 44, alignSelf: "stretch", minHeight: 38, justifyContent: "center",
+                style={{ minWidth: 44, alignSelf: "stretch", minHeight: 44, justifyContent: "center",
                   borderRadius: 9, backgroundColor: on ? p.accent : p.canvas,
                   opacity: disabled ? 0.65 : 1 }}>
                 <AppText center style={{ color: on ? "#FFFFFF" : p.text, fontSize: 11, fontWeight: "700" }}>
