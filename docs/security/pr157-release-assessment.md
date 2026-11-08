@@ -5,6 +5,30 @@ This is evidence of remediation and isolated verification, not production author
 The existing feature branch includes main through `d9f9110e5ff5e01ed41c6fb19711088936ff239d`.
 Consult the final branch commit's GitHub checks; earlier green runs do not approve later commits.
 
+## Follow-up hardening on the existing PR branch (2026-11-08)
+
+Post-assessment work hardened all three production PostgreSQL client paths:
+`ops/aws-deploy-ec2.sh` installs the AWS Mumbai RDS CA bundle and creates a
+`sslmode=verify-full` plus `sslrootcert` runtime URI;
+`ops/release/recover-managed-rds-credential.py` rejects TLS downgrades and
+requires the pinned CA bundle for preflight; `ops/release/database_audit.py`
+refuses weaker modes, missing/duplicate trust settings, and unpinned production
+trust paths. Offline denial-path tests were added. These commits are **code
+hardening only**; the live production PostgreSQL TLS handshake has not been
+verified, and production deployment is still prohibited without approval.
+
+The previous Codex login/revocation race review thread was answered with the
+row-lock implementation and PG16/PG18 concurrency regression evidence and
+marked resolved. Independent security approval remains outstanding.
+
+The external recovery trust and approval contract is documented in
+[privileged-recovery-approval-contract.md](privileged-recovery-approval-contract.md).
+It is **not implemented**. Identity Center currently has insufficient distinct
+enrolled approvers, and the dedicated KMS signing and durable audit system is
+not provisioned. No recovery endpoint has been activated. The overall decision
+remains **BLOCK**. Consult latest-commit CI before attributing pass status to
+this follow-up work.
+
 ## Current remediation pass
 
 Reviewed against main `d9f9110e5ff5e01ed41c6fb19711088936ff239d`, starting from
