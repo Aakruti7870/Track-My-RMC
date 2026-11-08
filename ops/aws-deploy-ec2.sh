@@ -15,7 +15,7 @@ APP_SECRET="trackmyrmc/app-runtime"
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq nginx curl ca-certificates jq unzip certbot openssl >/dev/null
+apt-get install -y -qq nginx curl ca-certificates jq unzip certbot openssl postgresql-client >/dev/null
 
 if ! command -v aws >/dev/null 2>&1; then
   curl -fsSL https://awscli.amazonaws.com/v2/install.sh | bash -s -- --system
