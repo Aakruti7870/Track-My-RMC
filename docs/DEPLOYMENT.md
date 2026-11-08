@@ -1,6 +1,6 @@
 # TrackMyRMC — Current AWS production release guide
 
-**This repository's active production deployment is AWS EC2/SSM + RDS PostgreSQL + S3, not Render.** The retained backend/render.yaml describes a separate historical/optional hosting blueprint; it is not the current production release workflow.
+**Canonical production (`https://trackmyrmc.com`) is hosted on AWS EC2/Nginx with AWS RDS PostgreSQL and S3 release artifacts.** The AWS release pipeline deploys the Rust backend, Expo web bundle, and separate admin-web bundle together under the approved commit SHA. The same repository also has an independently auto-deployed `trackmyrmc-frontend` Render static-site preview (`https://trackmyrmc-frontend.onrender.com`). Its successful `main` deployment is **not** evidence that the AWS-hosted canonical website was updated. Do not route production API traffic to a Render backend: the production backend is AWS EC2. The retained `backend/render.yaml` is a historical/optional backend hosting blueprint, not the AWS production release workflow.
 
 ## Entry points and release provenance
 
