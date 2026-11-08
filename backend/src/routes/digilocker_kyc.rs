@@ -31,6 +31,24 @@ pub(crate) fn live_approval_required() -> bool {
     env::var("TRACKMYRMC_KYC_ENV").as_deref() == Ok("live")
 }
 
+/// Normalize customer-facing identity state at response time rather than
+/// modifying historical sandbox approvals during deployment. This prevents
+/// mobile UI from presenting a stale verified shield while live mode is active.
+pub(crate) async fn effective_customer_kyc_status(
+    db: &sqlx::PgPool,
+    customer_id: Uuid,
+    stored: &str,
+) -> Result<String, AppError> {
+    if !stored.eq_ignore_ascii_case("verified") || !live_approval_required() {
+        return Ok(stored.to_owned());
+    }
+    let approved: bool = sqlx::query_scalar(LIVE_APPROVAL_SQL)
+        .bind(customer_id)
+        .fetch_one(db)
+        .await?;
+    Ok(if approved { "verified" } else { "unverified" }.to_owned())
+}
+
 /// A live consent session is not sufficient by itself: an independent privileged
 /// reviewer must have approved THAT environment after the consent was verified.
 /// Only the latest customer KYC review counts, so reset/rejection invalidate the
@@ -399,7 +417,7 @@ pub async fn status(
         Err(_) => {
             return Ok(Json(json!({
                 "status": effective_status,
-                "kyc_status": kyc,
+                "kyc_status": if live_approved {kyc.clone()} else {"unverified".to_string()},
                 "provider": "unavailable",
                 "refresh_failed": false
             })))

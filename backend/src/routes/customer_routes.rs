@@ -420,10 +420,16 @@ pub async fn get_customer_home(
         .take(6)
         .cloned()
         .collect();
-    let kyc = if profile.1.eq_ignore_ascii_case("unverified") {
+    let current_kyc = crate::routes::digilocker_kyc::effective_customer_kyc_status(
+        &state.db,
+        auth_user.user_id,
+        &profile.1,
+    )
+    .await?;
+    let kyc = if current_kyc.eq_ignore_ascii_case("unverified") {
         "NOT_STARTED".to_string()
     } else {
-        profile.1.to_uppercase()
+        current_kyc.to_uppercase()
     };
     Ok(Json(
         json!({"name":profile.0,"kyc_status":kyc,"active_order":active,"recent_orders":recent,"nearby_plants":plants,"unread_notifications":unread}),

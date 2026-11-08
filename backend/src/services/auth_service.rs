@@ -252,10 +252,20 @@ pub async fn verify_whatsapp_otp(
     }
 
     let profile = user_repo::get_user_profile(&state.db, user.id).await?;
-    let kyc_status = profile
+    let stored_kyc_status = profile
         .as_ref()
         .map(|p| p.kyc_status.clone())
         .unwrap_or_else(|| "unverified".to_string());
+    let kyc_status = if user.role == "customer" {
+        crate::routes::digilocker_kyc::effective_customer_kyc_status(
+            &state.db,
+            user.id,
+            &stored_kyc_status,
+        )
+        .await?
+    } else {
+        stored_kyc_status
+    };
     let verified_name = profile.and_then(|p| p.verified_name);
 
     let session = crate::auth::refresh::issue_after_auth(
@@ -660,10 +670,20 @@ pub async fn verify_staff_mfa(
         ));
     }
     let profile = user_repo::get_user_profile(&state.db, user.id).await?;
-    let kyc_status = profile
+    let stored_kyc_status = profile
         .as_ref()
         .map(|p| p.kyc_status.clone())
         .unwrap_or_else(|| "unverified".to_string());
+    let kyc_status = if user.role == "customer" {
+        crate::routes::digilocker_kyc::effective_customer_kyc_status(
+            &state.db,
+            user.id,
+            &stored_kyc_status,
+        )
+        .await?
+    } else {
+        stored_kyc_status
+    };
     let verified_name = profile.and_then(|p| p.verified_name);
     let session = crate::auth::refresh::issue_after_auth(
         state,
@@ -715,11 +735,28 @@ pub async fn get_current_user_profile(
         .await?
         .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
 
-    let profile = user_repo::get_user_profile(&state.db, user.id).await?;
-    let kyc_status = profile
+    let mut profile = user_repo::get_user_profile(&state.db, user.id).await?;
+    let stored_kyc_status = profile
         .as_ref()
         .map(|p| p.kyc_status.clone())
         .unwrap_or_else(|| "unverified".to_string());
+    let kyc_status = if user.role == "customer" {
+        crate::routes::digilocker_kyc::effective_customer_kyc_status(
+            &state.db,
+            user.id,
+            &stored_kyc_status,
+        )
+        .await?
+    } else {
+        stored_kyc_status
+    };
+    // The /api/me response contains both "user" and "profile" surfaces.
+    // Keep them consistent; never leak old sandbox status as live VERIFIED.
+    if let Some(profile) = profile.as_mut() {
+        if user.role == "customer" {
+            profile.kyc_status = kyc_status.clone();
+        }
+    }
     let verified_name = profile.as_ref().and_then(|p| p.verified_name.clone());
 
     Ok((
