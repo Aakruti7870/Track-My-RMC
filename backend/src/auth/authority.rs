@@ -21,6 +21,7 @@ pub const DELEGABLE: &[&str] = &[
     "plant.view",
     "order.view",
     "support.view",
+    "support.reply",
     "kyc.view",
     "kyc.review",
 ];
@@ -45,7 +46,11 @@ impl Deref for WebAuthority {
 
 impl WebAuthority {
     pub fn require(&self, permission: &str) -> Result<(), AppError> {
-        if is_delegable(permission) && self.permissions.iter().any(|p| p == permission) {
+        if is_delegable(permission)
+            && self.permissions.iter().any(|p| p == permission)
+            && (permission != "support.reply"
+                || self.permissions.iter().any(|p| p == "support.view"))
+        {
             Ok(())
         } else {
             Err(AppError::Forbidden("Authority permission denied".into()))
@@ -81,7 +86,11 @@ where
         .fetch_optional(&app.db)
         .await?
         .ok_or_else(|| AppError::Forbidden("Approved Authority web session required".into()))?;
-        let permissions = raw.into_iter().filter(|p| is_delegable(p)).collect();
+        let support_view = raw.iter().any(|p| p == "support.view");
+        let permissions = raw
+            .into_iter()
+            .filter(|p| is_delegable(p) && (p != "support.reply" || support_view))
+            .collect();
         Ok(Self {
             user,
             permissions,
@@ -326,7 +335,7 @@ pub async fn collection(
         ),
         "support" => (
             "support.view",
-            "SELECT jsonb_build_object('id',id,'subject',subject,'status',status,'created_at',created_at) FROM support_cases ORDER BY created_at DESC LIMIT $1 OFFSET $2",
+            "SELECT jsonb_build_object('id',c.id,'subject',c.subject,'status',c.status,'created_at',c.created_at,'followup_due_at',f.due_at,'awaiting_staff_reply',f.awaiting_staff_reply,'reminders_sent',f.reminder_count) FROM support_cases c LEFT JOIN native_support_followups f ON f.case_id=c.id ORDER BY c.created_at DESC,c.id LIMIT $1 OFFSET $2",
         ),
         "service_enquiries" => (
             "support.view",

@@ -1,10 +1,14 @@
 use crate::{
-    auth::{middleware::check_role, AuthUser},
+    auth::{
+        middleware::check_role,
+        staff_support::{SupportAction, WebSupport},
+        AuthUser,
+    },
     error::AppError,
     state::AppState,
 };
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     response::IntoResponse,
     Json,
 };
@@ -189,8 +193,9 @@ pub async fn create_support_case(
     }
     let id = Uuid::new_v4();
     let number = format!("SUP-{}", id.simple());
-    sqlx::query("INSERT INTO support_cases(id,user_id,order_id,subject,category,priority,status,case_number,request_id,request_payload) VALUES($1,$2,$3,$4,$5,$6,'OPEN',$7,$8,$9)").bind(id).bind(auth_user.user_id).bind(payload.order_id).bind(subject).bind(&category).bind(priority).bind(&number).bind(payload.request_id).bind(provenance).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO support_cases(id,user_id,order_id,subject,category,priority,status,case_number,request_id,request_payload) VALUES($1,$2,$3,$4,$5,$6,'OPEN',$7,$8,$9)").bind(id).bind(auth_user.user_id).bind(payload.order_id).bind(subject).bind(&category).bind(&priority).bind(&number).bind(payload.request_id).bind(provenance).execute(&mut *tx).await?;
     sqlx::query("INSERT INTO support_case_replies(case_id,sender_id,is_staff,message) VALUES($1,$2,FALSE,$3)").bind(id).bind(auth_user.user_id).bind(message).execute(&mut *tx).await?;
+    crate::services::native_support_automation::case_created(&mut tx, id, &priority).await?;
     sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'support.case.create','support_case',$2,$3)").bind(auth_user.user_id).bind(id.to_string()).bind(json!({"category":category})).execute(&mut *tx).await?;
     tx.commit().await?;
     response["case_id"] = json!(id);
@@ -251,21 +256,107 @@ pub async fn add_case_reply(
 
 pub async fn list_staff_support_cases(
     State(state): State<AppState>,
-    admin: crate::auth::control_center::WebAdmin,
+    staff: WebSupport,
 ) -> Result<impl IntoResponse, AppError> {
-    admin.require("support.view")?;
     Ok(Json(
-        json!({"cases":crate::services::support_cases::list(&state,None,None).await?}),
+        json!({"cases":crate::services::support_cases::staff_list(&state,&staff,None).await?}),
     ))
+}
+
+/// The native follow-up worker writes staff-only, generic in-app alerts.
+/// This web feed is required: privileged Central Admin/Authority cannot log
+/// into the customer mobile notifications UI. No customer message or document
+/// content is ever returned by these alerts.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SupportAlertPage {
+    pub limit: Option<i64>,
+    pub before: Option<Uuid>,
+}
+
+pub async fn list_staff_support_alerts(
+    State(state): State<AppState>,
+    staff: WebSupport,
+    Query(page): Query<SupportAlertPage>,
+) -> Result<impl IntoResponse, AppError> {
+    let mut tx = state.db.begin().await?;
+    staff.authorize_in_tx(&mut tx, SupportAction::Reply).await?;
+    let limit = page.limit.unwrap_or(50).clamp(1, 100);
+    if let Some(cursor) = page.before {
+        let owned: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM notifications WHERE id=$1 AND user_id=$2 AND notification_type='support_followup')")
+            .bind(cursor).bind(staff.user_id).fetch_one(&mut *tx).await?;
+        if !owned {
+            return Err(AppError::BadRequest("Invalid support alert cursor".into()));
+        }
+    }
+    let mut alerts: Vec<serde_json::Value> = sqlx::query_scalar(
+        "SELECT jsonb_build_object(
+             'id',n.id,'title',n.title,'body',n.body,
+             'case_id',n.reference_id,'is_read',n.is_read,
+             'created_at',n.created_at)
+         FROM notifications n
+         JOIN support_cases c ON c.id::text=n.reference_id
+         WHERE n.user_id=$1 AND n.notification_type='support_followup'
+           AND NOT n.is_read
+           AND ($2::uuid IS NULL OR (n.created_at,n.id)<(
+             SELECT created_at,id FROM notifications WHERE id=$2 AND user_id=$1
+               AND notification_type='support_followup'))
+         ORDER BY n.created_at DESC,n.id DESC LIMIT $3",
+    )
+    .bind(staff.user_id)
+    .bind(page.before)
+    .bind(limit + 1)
+    .fetch_all(&mut *tx)
+    .await?;
+    let more = alerts.len() > limit as usize;
+    alerts.truncate(limit as usize);
+    let next_cursor = if more {
+        alerts.last().map(|a| a["id"].clone())
+    } else {
+        None
+    };
+    sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,metadata) VALUES($1,'support.alert.list','support_alert','{}')")
+        .bind(staff.user_id).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(Json(json!({"alerts":alerts,"next_cursor":next_cursor})))
+}
+
+pub async fn mark_staff_support_alert_read(
+    State(state): State<AppState>,
+    staff: WebSupport,
+    Path(alert_id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    let mut tx = state.db.begin().await?;
+    staff.authorize_in_tx(&mut tx, SupportAction::Reply).await?;
+    let updated: Option<Uuid> = sqlx::query_scalar(
+        "UPDATE notifications SET is_read=TRUE
+         WHERE id=$1 AND user_id=$2 AND notification_type='support_followup' AND NOT is_read
+         RETURNING id",
+    )
+    .bind(alert_id)
+    .bind(staff.user_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if updated.is_none() {
+        let owned:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM notifications WHERE id=$1 AND user_id=$2 AND notification_type='support_followup')")
+            .bind(alert_id).bind(staff.user_id).fetch_one(&mut *tx).await?;
+        if !owned {
+            return Err(AppError::NotFound("Support alert not found".into()));
+        }
+    } else {
+        sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'support.alert.read','support_alert',$2,'{}')")
+            .bind(staff.user_id).bind(alert_id.to_string()).execute(&mut *tx).await?;
+    }
+    tx.commit().await?;
+    Ok(Json(json!({"read":true})))
 }
 
 pub async fn get_staff_support_case(
     State(state): State<AppState>,
-    admin: crate::auth::control_center::WebAdmin,
+    staff: WebSupport,
     Path(case): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    admin.require("support.view")?;
-    let case = crate::services::support_cases::list(&state, None, Some(case))
+    let case = crate::services::support_cases::staff_list(&state, &staff, Some(case))
         .await?
         .pop()
         .ok_or_else(|| AppError::NotFound("Support case not found".into()))?;
@@ -274,15 +365,13 @@ pub async fn get_staff_support_case(
 
 pub async fn add_staff_case_reply(
     State(state): State<AppState>,
-    admin: crate::auth::control_center::WebAdmin,
+    staff: WebSupport,
     Path(case): Path<Uuid>,
     Json(payload): Json<AddReplyPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    admin.require("support.reply")?;
-    crate::services::support_cases::reply(
+    crate::services::support_cases::staff_reply(
         &state,
-        admin.user_id,
-        None,
+        &staff,
         case,
         &payload.message,
         payload.internal,
@@ -311,18 +400,29 @@ pub async fn update_case_status(
         return Err(AppError::BadRequest("Unsupported support status".into()));
     }
     let mut tx = state.db.begin().await?;
-    let previous: String =
-        sqlx::query_scalar("SELECT status FROM support_cases WHERE id=$1 FOR UPDATE")
-            .bind(case)
-            .fetch_optional(&mut *tx)
-            .await?
-            .ok_or_else(|| AppError::NotFound("Support case not found".into()))?;
+    let row = sqlx::query("SELECT status,priority FROM support_cases WHERE id=$1 FOR UPDATE")
+        .bind(case)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Support case not found".into()))?;
+    WebSupport::from_admin(&admin, &headers, &state.config.jwt_secret)?
+        .authorize_in_tx(&mut tx, SupportAction::Manage)
+        .await?;
+    super::control_center_routes::require_recent_step_up_using(&mut *tx, &admin, &headers).await?;
+    let previous: String = row.get("status");
+    let priority: String = row.get("priority");
     if previous.to_uppercase() != status {
         sqlx::query("UPDATE support_cases SET status=$1,updated_at=NOW() WHERE id=$2")
             .bind(&status)
             .bind(case)
             .execute(&mut *tx)
             .await?;
+        if matches!(status.as_str(), "RESOLVED" | "CLOSED") {
+            crate::services::native_support_automation::case_closed(&mut tx, case).await?;
+        } else if matches!(previous.to_uppercase().as_str(), "RESOLVED" | "CLOSED") {
+            crate::services::native_support_automation::case_reopened(&mut tx, case, &priority)
+                .await?;
+        }
         sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'support.case.status','support_case',$2,$3)").bind(admin.user_id).bind(case.to_string()).bind(json!({"previous":previous,"status":status})).execute(&mut *tx).await?;
     }
     tx.commit().await?;

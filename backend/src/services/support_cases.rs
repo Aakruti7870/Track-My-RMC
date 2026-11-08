@@ -1,3 +1,4 @@
+use crate::auth::staff_support::{SupportAction, WebSupport};
 use crate::{error::AppError, state::AppState};
 use serde_json::{json, Value};
 use sqlx::Row;
@@ -136,11 +137,42 @@ pub async fn list(
     owner: Option<Uuid>,
     case: Option<Uuid>,
 ) -> Result<Vec<Value>, AppError> {
+    list_using(&state.db, owner, case).await
+}
+
+pub async fn staff_list(
+    state: &AppState,
+    staff: &WebSupport,
+    case: Option<Uuid>,
+) -> Result<Vec<Value>, AppError> {
+    let mut tx = state.db.begin().await?;
+    staff.authorize_in_tx(&mut tx, SupportAction::View).await?;
+    let rows = list_using(&mut *tx, None, case).await?;
+    sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'support.case.view','support_case',$2,'{}')")
+        .bind(staff.user_id).bind(case.map(|id| id.to_string())).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(rows)
+}
+
+async fn list_using<'e, E: sqlx::Executor<'e, Database = sqlx::Postgres>>(
+    executor: E,
+    owner: Option<Uuid>,
+    case: Option<Uuid>,
+) -> Result<Vec<Value>, AppError> {
     let rows = sqlx::query_scalar(r#"
         SELECT jsonb_build_object('id',c.id,'case_number',c.case_number,'order_id',c.order_id,
             'subject',c.subject,'category',upper(c.category),'priority',c.priority,'status',upper(c.status),
-            'created_at',c.created_at,'updated_at',c.updated_at,'messages',m.messages,'latest_note',m.latest_note)
-        FROM support_cases c CROSS JOIN LATERAL (
+            'created_at',c.created_at,'updated_at',c.updated_at,'messages',m.messages,
+            'latest_note',m.latest_note,
+            'staff_followup',CASE WHEN $1::uuid IS NULL AND f.case_id IS NOT NULL
+               THEN jsonb_build_object('awaiting_staff_reply',f.awaiting_staff_reply,
+                    'due_at',f.due_at,'reminders_sent',f.reminder_count,
+                    'overdue',f.awaiting_staff_reply AND
+                      (f.reminder_count>=2 OR f.due_at<=NOW()))
+               ELSE NULL END)
+        FROM support_cases c
+        LEFT JOIN native_support_followups f ON f.case_id=c.id
+        CROSS JOIN LATERAL (
             SELECT coalesce(jsonb_agg(jsonb_build_object('id',r.id,'message',r.message,
                 'author',CASE WHEN r.is_staff THEN 'SUPPORT' ELSE 'CUSTOMER' END,
                 'internal',r.internal,'created_at',r.created_at) ORDER BY r.created_at,r.id),'[]'::jsonb) messages,
@@ -149,7 +181,7 @@ pub async fn list(
         ) m
         WHERE ($1::uuid IS NULL OR c.user_id=$1) AND ($2::uuid IS NULL OR c.id=$2)
         ORDER BY c.updated_at DESC,c.id LIMIT 500
-    "#).bind(owner).bind(case).fetch_all(&state.db).await?;
+    "#).bind(owner).bind(case).fetch_all(executor).await?;
     Ok(rows)
 }
 
@@ -161,6 +193,42 @@ pub async fn reply(
     text: &str,
     internal: bool,
 ) -> Result<(), AppError> {
+    if owner != Some(actor) {
+        return Err(AppError::Forbidden(
+            "Customer ownership or approved support web proof required".into(),
+        ));
+    }
+    reply_using(state, actor, owner, case, text, internal, None).await
+}
+
+pub async fn staff_reply(
+    state: &AppState,
+    staff: &WebSupport,
+    case: Uuid,
+    text: &str,
+    internal: bool,
+) -> Result<(), AppError> {
+    reply_using(
+        state,
+        staff.user_id,
+        None,
+        case,
+        text,
+        internal,
+        Some(staff),
+    )
+    .await
+}
+
+async fn reply_using(
+    state: &AppState,
+    actor: Uuid,
+    owner: Option<Uuid>,
+    case: Uuid,
+    text: &str,
+    internal: bool,
+    staff: Option<&WebSupport>,
+) -> Result<(), AppError> {
     let text = message(text)?;
     if owner.is_some() && internal {
         return Err(AppError::Forbidden(
@@ -168,8 +236,11 @@ pub async fn reply(
         ));
     }
     let mut tx = state.db.begin().await?;
-    let row = sqlx::query("SELECT user_id,status FROM support_cases WHERE id=$1 AND ($2::uuid IS NULL OR user_id=$2) FOR UPDATE")
+    let row = sqlx::query("SELECT user_id,status,priority FROM support_cases WHERE id=$1 AND ($2::uuid IS NULL OR user_id=$2) FOR UPDATE")
         .bind(case).bind(owner).fetch_optional(&mut *tx).await?.ok_or_else(||AppError::NotFound("Support case not found".into()))?;
+    if let Some(staff) = staff {
+        staff.authorize_in_tx(&mut tx, SupportAction::Reply).await?;
+    }
     let status: String = row.get("status");
     if !["OPEN", "IN_PROGRESS"].contains(&status.to_uppercase().as_str()) {
         return Err(AppError::Conflict(
@@ -181,6 +252,17 @@ pub async fn reply(
         .bind(case)
         .execute(&mut *tx)
         .await?;
+    if owner.is_some() {
+        crate::services::native_support_automation::customer_replied(
+            &mut tx,
+            case,
+            row.get::<&str, _>("priority"),
+        )
+        .await?;
+    } else if !internal {
+        // An internal note is NOT a reply visible to the customer.
+        crate::services::native_support_automation::staff_responded(&mut tx, case).await?;
+    }
     sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'support.case.reply','support_case',$2,$3)").bind(actor).bind(case.to_string()).bind(json!({"internal":internal,"staff":owner.is_none()})).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(())

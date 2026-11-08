@@ -20,6 +20,26 @@ async function freshCode() {
   lastStep = Math.floor(Date.now()/30000);
   return currentCode();
 }
+async function verifySupport(page,role) {
+  await page.getByRole('button',{name:role==='authority'?'Customer Support':'support',exact:true}).click();
+  const inbox=page.getByLabel('Internal support follow-up alerts');
+  await inbox.getByRole('button',{name:/Review due case/}).waitFor();
+  await inbox.getByRole('button',{name:/Review due case/}).click();
+  await inbox.getByText('No unread follow-up reminders.',{exact:true}).waitFor();
+  assert.equal(await page.getByLabel('Reply or note',{exact:true}).inputValue(),'','another operator/case draft must never carry over');
+  assert.equal(await page.getByRole('checkbox',{name:'Internal note (not visible to customer)',exact:true}).isChecked(),false);
+  const message='Synthetic '+role+' support response';
+  await page.getByLabel('Reply or note',{exact:true}).fill(message);
+  const response=page.waitForResponse(r=>r.url().includes('/staff/cases/') && r.url().endsWith('/replies') && r.request().method()==='POST');
+  await page.getByRole('button',{name:'Send support reply',exact:true}).click();
+  assert.equal((await response).status(),200);
+  await page.getByText(message,{exact:true}).waitFor();
+  // Deliberately leave an unsent private draft before logout/role switching.
+  await page.getByLabel('Reply or note',{exact:true}).fill('Unsent private '+role+' note');
+  await page.getByRole('checkbox',{name:'Internal note (not visible to customer)',exact:true}).check();
+  if(role==='authority') assert.equal(await page.getByRole('button',{name:'CLOSED',exact:true}).count(),0);
+  console.log('PASS: '+role+' sees own support alert, opens and acknowledges it, and submits an authorized visible reply');
+}
 const browser = await chromium.launch(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? {executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE} : {});
 try {
   const page = await browser.newPage();
@@ -43,6 +63,7 @@ try {
     await page.getByRole('heading', { name: kind, exact: true }).waitFor();
   }
   assert.equal(await page.getByRole('alert').count(), 0);
+  await verifySupport(page,'central_admin');
   await page.getByRole('button',{name:'Plant Owner approvals and access',exact:true}).click();
   const application=page.locator('article').filter({has:page.getByRole('heading',{name:/CI Approval Plant/})});
   await application.getByLabel('city',{exact:true}).fill('Test City');
@@ -82,6 +103,9 @@ try {
     const response = await page.request.get('http://127.0.0.1:8000/api/authority/collections/'+kind,{headers:{Authorization:'Bearer '+authorityToken}});
     assert.equal(response.status(),200);
   }
+  await verifySupport(page,'authority');
+  const closeDenied=await page.request.post('http://127.0.0.1:8000/api/assistant/support/staff/cases/00000000-0000-4000-8000-000000000044/status',{headers:{Authorization:'Bearer '+authorityToken},data:{status:'CLOSED'}});
+  assert.equal(closeDenied.status(),403);
   const denied = await page.request.get('http://127.0.0.1:8000/api/admin/auth/me',{headers:{Authorization:'Bearer '+authorityToken}});
   assert.equal(denied.status(),403);
   await page.getByRole('button', {name:'Sign out and revoke session',exact:true}).click();

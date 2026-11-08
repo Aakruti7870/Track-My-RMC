@@ -211,6 +211,19 @@ async fn support_staff_requires_recorded_web_mfa_grants_and_fresh_status_step_up
     let (status,case)=request(&router,"/api/assistant/support",Some(&customer_token),Some(json!({"category":"GENERAL","message":"The application needs attention","escalate":true}))).await;
     assert_eq!(status, StatusCode::OK);
     let case_id = case["case_id"].as_str().unwrap();
+    // Creation and the first customer reply must commit alongside the
+    // platform follow-up timer; no plant-scoped automation job is invented.
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM native_support_followups
+             WHERE case_id=$1::uuid AND awaiting_staff_reply AND reminder_count=0"
+        )
+        .bind(case_id)
+        .fetch_one(&db)
+        .await
+        .unwrap(),
+        1
+    );
     let staff_path = format!("/api/assistant/support/staff/cases/{case_id}");
     let (admin, email, secret) = identity(&db, "central_admin", true, vec!["support.view"]).await;
     let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
@@ -270,8 +283,93 @@ async fn support_staff_requires_recorded_web_mfa_grants_and_fresh_status_step_up
         .0,
         StatusCode::OK
     );
+    let (alerts_status, alerts_body) = request(
+        &router,
+        "/api/assistant/support/staff/alerts",
+        Some(token),
+        None,
+    )
+    .await;
+    assert_eq!(alerts_status, StatusCode::OK);
+    assert!(alerts_body["alerts"].as_array().unwrap().is_empty());
+    // A staff alert is visible only in its owner web session; marking it
+    // read never changes the support case or its independent SLA timer.
+    let alert_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO notifications
+         (user_id,title,body,notification_type,reference_id)
+         VALUES($1,'Support review due','Internal reminder','support_followup',$2)
+         RETURNING id",
+    )
+    .bind(admin)
+    .bind(case_id)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    // More than 50 already-read alerts must not hide an older unread
+    // follow-up. Filter unread server-side BEFORE the response limit.
+    sqlx::query(
+        "INSERT INTO notifications
+         (user_id,title,body,notification_type,reference_id,is_read)
+         SELECT $1,'Archived support reminder','Archived',
+                'support_followup',$2,TRUE
+         FROM generate_series(1,55)",
+    )
+    .bind(admin)
+    .bind(case_id)
+    .execute(&db)
+    .await
+    .unwrap();
+    let (feed_status, feed) = request(
+        &router,
+        "/api/assistant/support/staff/alerts",
+        Some(token),
+        None,
+    )
+    .await;
+    assert_eq!(feed_status, StatusCode::OK);
+    assert_eq!(feed["alerts"].as_array().unwrap().len(), 1);
+    assert_eq!(feed["alerts"][0]["case_id"], case_id);
+    assert_eq!(
+        request(
+            &router,
+            "/api/assistant/support/staff/alerts",
+            Some(&customer_token),
+            None
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    let alert_read_path = format!("/api/assistant/support/staff/alerts/{alert_id}/read");
+    assert_eq!(
+        request(&router, &alert_read_path, Some(token), Some(json!({})))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert!(
+        sqlx::query_scalar::<_, bool>("SELECT is_read FROM notifications WHERE id=$1")
+            .bind(alert_id)
+            .fetch_one(&db)
+            .await
+            .unwrap()
+    );
+    let (status_after_read, after_read) = request(
+        &router,
+        "/api/assistant/support/staff/alerts",
+        Some(token),
+        None,
+    )
+    .await;
+    assert_eq!(status_after_read, StatusCode::OK);
+    assert!(after_read["alerts"].as_array().unwrap().is_empty());
     let (_, staff) = request(&router, &staff_path, Some(token), None).await;
     assert_eq!(staff["case"]["messages"].as_array().unwrap().len(), 2);
+    // Internal staff notes never consume a visible-response SLA.
+    assert_eq!(
+        staff["case"]["staff_followup"]["awaiting_staff_reply"],
+        true
+    );
     let (_, public) = request(
         &router,
         &format!("/api/assistant/support/cases/{case_id}"),
@@ -324,6 +422,15 @@ async fn support_staff_requires_recorded_web_mfa_grants_and_fresh_status_step_up
         .0,
         StatusCode::CONFLICT
     );
+    let waiting: (bool, Option<chrono::DateTime<chrono::Utc>>) = sqlx::query_as(
+        "SELECT awaiting_staff_reply,due_at FROM native_support_followups WHERE case_id=$1::uuid",
+    )
+    .bind(case_id)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert!(!waiting.0);
+    assert!(waiting.1.is_none());
     assert_eq!(
         sqlx::query_scalar::<_, i64>(
             "SELECT COUNT(*) FROM audit_logs WHERE resource_id=$1 AND action='support.case.status'"

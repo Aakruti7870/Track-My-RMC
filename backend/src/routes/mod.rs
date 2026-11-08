@@ -998,6 +998,14 @@ pub fn build_app_router(state: AppState) -> Router {
             patch(assistant_routes::update_case_status).post(assistant_routes::update_case_status),
         )
         .route(
+            "/api/assistant/support/staff/alerts",
+            get(assistant_routes::list_staff_support_alerts),
+        )
+        .route(
+            "/api/assistant/support/staff/alerts/:alert_id/read",
+            post(assistant_routes::mark_staff_support_alert_read),
+        )
+        .route(
             "/api/assistant/support/staff/cases",
             get(assistant_routes::list_staff_support_cases),
         )

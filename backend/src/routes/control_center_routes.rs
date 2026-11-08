@@ -31,7 +31,7 @@ pub async fn collection(
         "users"=>("user.view","SELECT jsonb_build_object('id',id,'name',full_name,'email',email,'role',role,'active',is_active) FROM users ORDER BY id LIMIT $1 OFFSET $2"),
         "plants"=>("plant.view","SELECT jsonb_build_object('id',id,'name',name,'city',city,'owner_id',owner_id,'active',is_active) FROM rmc_plants ORDER BY id LIMIT $1 OFFSET $2"),
         "orders"=>("order.view","SELECT jsonb_build_object('id',id,'number',order_number,'plant_id',plant_id,'quantity',total_quantity_m3::DOUBLE PRECISION,'status',status) FROM orders ORDER BY id LIMIT $1 OFFSET $2"),
-        "support"=>("support.view","SELECT jsonb_build_object('id',id,'subject',subject,'status',status,'created_at',created_at) FROM support_cases ORDER BY id LIMIT $1 OFFSET $2"),
+        "support"=>("support.view","SELECT jsonb_build_object('id',c.id,'subject',c.subject,'status',c.status,'created_at',c.created_at,'followup_due_at',f.due_at,'awaiting_staff_reply',f.awaiting_staff_reply,'reminders_sent',f.reminder_count) FROM support_cases c LEFT JOIN native_support_followups f ON f.case_id=c.id ORDER BY c.created_at DESC,c.id LIMIT $1 OFFSET $2"),
         "service_enquiries"=>("support.view","SELECT jsonb_build_object('id',id,'service_type',service_type,'contact_name',contact_name,'contact_phone',contact_phone,'location',location,'required_date',required_date,'details',details,'status',status,'created_at',created_at) FROM customer_service_enquiries ORDER BY created_at DESC LIMIT $1 OFFSET $2"),
         "rmc_rfq_leads"=>("support.view","SELECT jsonb_build_object('id',id,'customer_name',customer_name,'customer_email',customer_email,'customer_gstin',customer_gstin,'site_contact_phone',site_contact_phone,'grade',grade,'quantity_m3',quantity_m3::DOUBLE PRECISION,'site_address',site_address,'delivery_date',delivery_date,'pump_required',pump_required,'google_place_id',google_place_id,'status',status,'outreach_status',outreach_status,'outreach_notes',outreach_notes,'created_at',created_at) FROM rmc_rfq_leads ORDER BY created_at DESC LIMIT $1 OFFSET $2"),
         "kyc"=>("kyc.view","SELECT jsonb_build_object('customer_id',p.user_id,'customer',u.full_name,'verified_name',p.verified_name,'status',p.kyc_status,'evidence_verified',EXISTS(SELECT 1 FROM customer_digilocker_sessions d WHERE d.user_id=p.user_id AND d.status='PENDING' AND d.verified_at IS NOT NULL AND d.provider_environment=$3)) FROM user_profiles p JOIN users u ON u.id=p.user_id WHERE u.role='customer' AND u.is_active AND p.kyc_status='pending' ORDER BY p.updated_at LIMIT $1 OFFSET $2"),
@@ -147,13 +147,24 @@ pub(crate) async fn require_recent_step_up(
     user: &AuthUser,
     headers: &HeaderMap,
 ) -> Result<(), AppError> {
+    require_recent_step_up_using(&state.db, user, headers).await
+}
+
+pub(crate) async fn require_recent_step_up_using<
+    'e,
+    E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+>(
+    executor: E,
+    user: &AuthUser,
+    headers: &HeaderMap,
+) -> Result<(), AppError> {
     let token_hash = session_token_hash(headers)?;
     let verified: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM control_center_step_ups WHERE user_id = $1 AND token_hash = $2 AND expires_at > NOW())",
+        "SELECT EXISTS(SELECT 1 FROM control_center_step_ups WHERE user_id = $1 AND token_hash = $2 AND expires_at > clock_timestamp())",
     )
     .bind(user.user_id)
     .bind(token_hash)
-    .fetch_one(&state.db)
+    .fetch_one(executor)
     .await?;
     if !verified {
         return Err(AppError::Forbidden(
