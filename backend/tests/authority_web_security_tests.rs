@@ -121,6 +121,83 @@ async fn identity(db: &PgPool, role: &str, permissions: &[&str]) -> (Uuid, Strin
 }
 
 #[sqlx::test]
+async fn pending_login_cannot_outlive_credential_or_approval_revocation(db: PgPool) {
+    let app = build_app_router(state(db.clone()));
+    for role in ["central_admin", "authority"] {
+        for revoke_password in [true, false] {
+            let (id, email, secret) = identity(&db, role, &["support.view"]).await;
+            let mut revocation = db.begin().await.unwrap();
+            sqlx::query("SELECT id FROM users WHERE id=$1 FOR UPDATE")
+                .bind(id)
+                .execute(&mut *revocation)
+                .await
+                .unwrap();
+            if revoke_password {
+                sqlx::query("UPDATE users SET hashed_password='!revoked!' WHERE id=$1")
+                    .bind(id)
+                    .execute(&mut *revocation)
+                    .await
+                    .unwrap();
+            } else {
+                sqlx::query("UPDATE control_center_access SET approved=FALSE WHERE user_id=$1")
+                    .bind(id)
+                    .execute(&mut *revocation)
+                    .await
+                    .unwrap();
+            }
+            let code =
+                TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
+            let path = if role == "central_admin" {
+                "/api/admin/auth/verify-totp"
+            } else {
+                "/api/authority/auth/verify-totp"
+            };
+            let router = app.clone();
+            let login = tokio::spawn(async move {
+                call(
+                    &router,
+                    path,
+                    None,
+                    Some(json!({
+                        "identifier":email,"password":SYNTHETIC_PASSWORD,"code":code
+                    })),
+                )
+                .await
+            });
+            // Observe the actual database lock wait, rather than relying on a
+            // sleep to assume that the request reached its critical section.
+            tokio::time::timeout(std::time::Duration::from_secs(10), async {
+                loop {
+                    let waiting: bool = sqlx::query_scalar(
+                        "SELECT EXISTS(SELECT 1 FROM pg_stat_activity
+                         WHERE datname=current_database() AND wait_event_type='Lock'
+                         AND query LIKE '%FROM users%FOR UPDATE%')",
+                    )
+                    .fetch_one(&db)
+                    .await
+                    .unwrap();
+                    if waiting {
+                        break;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                }
+            })
+            .await
+            .expect("login must wait for the identity mutation");
+            revocation.commit().await.unwrap();
+            assert_eq!(login.await.unwrap().0, StatusCode::UNAUTHORIZED);
+            let sessions: i64 =
+                sqlx::query_scalar("SELECT count(*) FROM control_center_sessions WHERE user_id=$1")
+                    .bind(id)
+                    .fetch_one(&db)
+                    .await
+                    .unwrap();
+            assert_eq!(sessions, 0, "revoked proof must never issue a new session");
+        }
+    }
+}
+
+#[sqlx::test]
 async fn authority_web_login_cannot_cross_into_super_admin_or_mobile(db: PgPool) {
     let app = build_app_router(state(db.clone()));
     let (id, email, secret) = identity(&db, "authority", &["kyc.view", "support.view"]).await;
@@ -256,6 +333,11 @@ async fn authority_password_bootstrap_requires_email_challenge_and_totp(db: PgPo
     )
     .await;
     assert_eq!(wrong, StatusCode::BAD_REQUEST);
+    sqlx::query("UPDATE staff_mfa_challenges SET attempts=max_attempts-1 WHERE user_id=$1")
+        .bind(user_id)
+        .execute(&db)
+        .await
+        .unwrap();
     let (enrolled, _) = call(
         &app,
         "/api/authority/auth/set-initial-password",
@@ -290,6 +372,53 @@ async fn authority_password_bootstrap_requires_email_challenge_and_totp(db: PgPo
             .0,
         StatusCode::FORBIDDEN,
     );
+}
+
+#[sqlx::test]
+async fn parallel_authority_enrollment_guesses_have_a_fixed_attempt_budget(db: PgPool) {
+    let app = build_app_router(state(db.clone()));
+    let (id, _, _) = identity(&db, "authority", &["support.view"]).await;
+    sqlx::query("UPDATE users SET hashed_password='!web-only-no-password!',work_email_verified_at=NOW() WHERE id=$1")
+        .bind(id).execute(&db).await.unwrap();
+    // An invalid stored Base32 key guarantees no six-digit guess can verify;
+    // this test exercises admission to proof verification, not clock timing.
+    sqlx::query("UPDATE user_totp_credentials SET secret_key='!' WHERE user_id=$1")
+        .bind(id)
+        .execute(&db)
+        .await
+        .unwrap();
+    let challenge = "ab".repeat(24);
+    sqlx::query("INSERT INTO staff_mfa_challenges(user_id,token_hash,purpose,expires_at) VALUES($1,$2,'login',NOW()+INTERVAL '5 minutes')")
+        .bind(id).bind(hex::encode(Sha256::digest(challenge.as_bytes())))
+        .execute(&db).await.unwrap();
+    let mut requests = Vec::new();
+    for _ in 0..12 {
+        let router = app.clone();
+        let challenge = challenge.clone();
+        requests.push(tokio::spawn(async move {
+            call(&router, "/api/authority/auth/set-initial-password", None,
+                 Some(json!({"challenge_token":challenge,"password":SYNTHETIC_PASSWORD,"code":"000000"}))).await.0
+        }));
+    }
+    for request in requests {
+        assert_ne!(request.await.unwrap(), StatusCode::OK);
+    }
+    let attempts: i32 =
+        sqlx::query_scalar("SELECT attempts FROM staff_mfa_challenges WHERE user_id=$1")
+            .bind(id)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert_eq!(
+        attempts, 5,
+        "parallel guesses cannot overrun the admission budget"
+    );
+    let password: String = sqlx::query_scalar("SELECT hashed_password FROM users WHERE id=$1")
+        .bind(id)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(password, "!web-only-no-password!");
 }
 
 #[sqlx::test]

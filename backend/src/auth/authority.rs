@@ -123,14 +123,14 @@ pub async fn set_initial_password(
     }
     let hash = hex::encode(sha2::Sha256::digest(body.challenge_token.as_bytes()));
     let user: Option<uuid::Uuid> = sqlx::query_scalar(
-        "SELECT c.user_id FROM staff_mfa_challenges c
-         JOIN users u ON u.id=c.user_id
-         JOIN control_center_access a ON a.user_id=u.id
-         JOIN user_totp_credentials t ON t.user_id=u.id AND t.is_enabled=TRUE
-         WHERE c.token_hash=$1 AND c.purpose='login' AND c.consumed_at IS NULL
+        "UPDATE staff_mfa_challenges c SET attempts=c.attempts+1
+         FROM users u, control_center_access a, user_totp_credentials t
+         WHERE u.id=c.user_id AND a.user_id=u.id AND t.user_id=u.id AND t.is_enabled=TRUE
+           AND c.token_hash=$1 AND c.purpose='login' AND c.consumed_at IS NULL
            AND c.expires_at>NOW() AND c.attempts<c.max_attempts
            AND u.role='authority' AND u.is_active AND u.work_email_verified_at IS NOT NULL
-           AND u.hashed_password='!web-only-no-password!' AND a.approved=TRUE",
+           AND u.hashed_password='!web-only-no-password!' AND a.approved=TRUE
+         RETURNING c.user_id",
     )
     .bind(&hash)
     .fetch_optional(&state.db)
@@ -138,24 +138,15 @@ pub async fn set_initial_password(
     let user = user.ok_or_else(|| {
         AppError::Unauthorized("Authority enrollment challenge is invalid or expired".into())
     })?;
-    if let Err(error) =
-        crate::auth::totp::verify_staff_totp_login(&state.db, user, &body.code).await
-    {
-        sqlx::query(
-            "UPDATE staff_mfa_challenges SET attempts=attempts+1
-             WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>NOW()",
-        )
-        .bind(&hash)
-        .execute(&state.db)
-        .await?;
-        return Err(error);
-    }
+    // Reserve the attempt before checking the proof. Incrementing only after a
+    // failure lets parallel requests all pass the same pre-flight attempt count.
+    crate::auth::totp::verify_staff_totp_login(&state.db, user, &body.code).await?;
     let password_hash = crate::auth::password::hash_password(&body.password)?;
     let mut tx = state.db.begin().await?;
     let consumed: Option<uuid::Uuid> = sqlx::query_scalar(
         "UPDATE staff_mfa_challenges SET consumed_at=clock_timestamp()
          WHERE token_hash=$1 AND user_id=$2 AND purpose='login'
-           AND consumed_at IS NULL AND expires_at>NOW() AND attempts<max_attempts
+           AND consumed_at IS NULL AND expires_at>NOW() AND attempts<=max_attempts
          RETURNING user_id",
     )
     .bind(&hash)

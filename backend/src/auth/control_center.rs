@@ -144,6 +144,17 @@ pub async fn login_for_role(
     }
     sqlx::query("UPDATE control_center_login_limits SET attempts=$2, window_started_at=CASE WHEN $2=1 THEN NOW() ELSE window_started_at END WHERE identifier_hash=$1")
         .bind(&key).bind(attempts+1).execute(&mut *tx).await?;
+    // Serialize the entire proof and issuance with password rotation and access
+    // governance. Taking this lock only inside issue_in_tx permits a password
+    // or approval read before revocation to create a fresh session afterwards.
+    // Read joined credentials/access in a NEW statement after acquiring the
+    // lock: READ COMMITTED must see any policy change committed while we waited.
+    let _: Option<Uuid> =
+        sqlx::query_scalar("SELECT id FROM users WHERE LOWER(email)=$1 AND role=$2 FOR UPDATE")
+            .bind(&identifier)
+            .bind(role)
+            .fetch_optional(&mut *tx)
+            .await?;
     let identity: Option<PrivilegedWebIdentity> = sqlx::query_as(
         "SELECT u.id, u.phone, u.email, u.full_name, t.secret_key, u.hashed_password FROM users u
          JOIN control_center_access a ON a.user_id=u.id

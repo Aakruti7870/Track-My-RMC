@@ -5,6 +5,48 @@ This is evidence of remediation and isolated verification, not production author
 The existing feature branch includes main through `d9f9110e5ff5e01ed41c6fb19711088936ff239d`.
 Consult the final branch commit's GitHub checks; earlier green runs do not approve later commits.
 
+## Current remediation pass
+
+Reviewed against main `d9f9110e5ff5e01ed41c6fb19711088936ff239d`, starting from
+PR head `3005c605c486a55bef462c25cdcf2671bda6ada6`. No production systems were accessed.
+
+- **Login/revocation race fixed:** privileged login previously read the password,
+  TOTP and approval before acquiring the identity lock in session issuance. A
+  concurrent password replacement or approval revocation could commit between
+  those operations, allowing a stale proof to issue a fresh session. Login now
+  locks the identity before reading credentials, then reads approval and TOTP in
+  a separate READ COMMITTED statement after the lock is acquired. This serializes
+  it with existing password/access mutation transactions without using stale
+  joined rows from a pre-lock statement snapshot.
+- **Concurrent enrollment throttle fixed:** Authority initial-password enrollment
+  previously checked the challenge budget before verification and incremented it
+  only after failure. Parallel requests could all enter proof verification with
+  the same budget. A conditional atomic UPDATE now reserves each attempt before
+  verification. The last permitted attempt can still succeed; exhausted,
+  expired, consumed, wrong-purpose and revoked challenges remain rejected.
+- **Formatting blocker fixed:** formatted the bootstrap example that caused both
+  backend matrix jobs at the starting PR head to fail and skip later gates.
+- Added regression tests that observe a real PostgreSQL row-lock wait before
+  committing credential/access revocation, for both privileged roles. Added a
+  twelve-request concurrent enrollment budget test and last-allowed-attempt
+  success coverage. Both PostgreSQL versions pass these tests.
+
+The user selected the **existing external security approval process** for
+emergency recovery. Its identity verification, independent approver verification,
+approval artifact validation, audit fields, expiry and replay contract have not
+been supplied. No self-approved recovery route, unsigned-ticket override, manual
+role promotion or replacement trust model was introduced. Completing and testing
+this workflow remains a code/integration blocker, not production-only acceptance.
+
+The current local source passes format, check, strict Clippy, **239 Rust tests on
+PostgreSQL 16 and 239 on PostgreSQL 18**, both frontend typechecks/production builds,
+the real bootstrap PTY harness, and admin/Authority browser E2E. Bootstrap output
+was suppressed by the harness, including failure paths. The earlier full test
+attempt exhausted local disk during linking; the final successful runs used
+temporary RAM-backed artifacts with debug symbols/incremental compilation disabled.
+This changes build storage only, not source, test assertions or security controls.
+Remote CI must be checked on the pushed commit; local results are not CI results.
+
 ## Completed remediation
 
 | Finding | Correction | Evidence |
@@ -32,8 +74,8 @@ No marketing broadcast, live payment mode or new AWS service was enabled.
 | `cargo fmt --all -- --check` | PASS |
 | `cargo check --all-targets` | PASS |
 | `cargo clippy --all-targets --all-features -- -D warnings` | PASS |
-| `cargo test --all`, PostgreSQL 16 | PASS: 237 tests, zero failures |
-| `cargo test --all`, PostgreSQL 18 | Pending final run; see current commit checks |
+| `cargo test --all`, PostgreSQL 16 | PASS: 239 tests, zero failures, current remediation pass |
+| `cargo test --all`, PostgreSQL 18 | PASS: 239 tests, zero failures, current remediation pass |
 | Admin TypeScript and production build | PASS: `npm run build --prefix admin-web` |
 | Expo TypeScript and production web export | PASS: `npm run typecheck`, `npm run build:preview` |
 | Privileged browser E2E against real Rust/PostgreSQL | PASS: Central Admin login, collections, Owner approval/suspension, logout; Authority login, scoped collections, cross-role denial and logout |

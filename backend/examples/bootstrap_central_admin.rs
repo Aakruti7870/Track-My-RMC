@@ -89,7 +89,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     .fetch_one(&pool)
     .await?;
     if unavailable {
-        return Err("Bootstrap requires no Central Admin and a fresh, separate email identity".into());
+        return Err(
+            "Bootstrap requires no Central Admin and a fresh, separate email identity".into(),
+        );
     }
     // The same constraints are rechecked under the transaction lock below.
     println!("Target database: {actual_database}. Email: {email}. No automatic role promotion.");
