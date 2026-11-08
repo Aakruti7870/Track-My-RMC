@@ -30,8 +30,8 @@ class ProductionReleaseApprovalTests(unittest.TestCase):
     def test_gate_is_before_aws_credentials_and_ssm(self):
         content = WORKFLOW.read_text()
         self.assertLess(content.index("vars.TRACKMYRMC_APPROVED_RELEASE_SHA != ''"),
-                        content.index("name: Verify both CI workflows"))
-        self.assertLess(content.index("name: Verify both CI workflows"),
+                        content.index("name: Verify all CI and dependency-security workflows"))
+        self.assertLess(content.index("name: Verify all CI and dependency-security workflows"),
                         content.index("name: Configure AWS credentials"))
         self.assertLess(content.index("name: Configure AWS credentials"),
                         content.index("name: Deploy EC2 through AWS SSM"))
