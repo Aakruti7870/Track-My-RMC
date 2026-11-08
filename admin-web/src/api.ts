@@ -1,5 +1,14 @@
 import axios from 'axios';
 
+// Privileged bearer tokens live only in this page's memory. Reloading requires
+// authentication again; neither browser storage nor another tab receives them.
+let accessToken: string | null = null;
+export const getAccessToken = () => accessToken;
+export function setAccessToken(token: string | null) { accessToken = token; }
+
+// Remove any token persisted by an older dashboard version.
+if (typeof window !== 'undefined') window.sessionStorage.removeItem('trackmyrmc_admin_token');
+
 export const API_URL = import.meta.env.VITE_API_URL || 'https://trackmyrmc.com';
 
 export const apiClient = axios.create({
@@ -12,7 +21,7 @@ export const apiClient = axios.create({
 });
 
 apiClient.interceptors.request.use((config) => {
-  const token = typeof window === 'undefined' ? null : window.sessionStorage.getItem('trackmyrmc_admin_token');
+  const token = getAccessToken();
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;
   }

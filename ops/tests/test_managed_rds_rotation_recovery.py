@@ -12,7 +12,7 @@ spec.loader.exec_module(watch)
 
 OLD = ('postgres://trackmyrmc_admin:old-pass@'
        'trackmyrmc-postgres.cf8mmcwuuinx.ap-south-1.rds.amazonaws.com:5432/'
-       'postgres?sslmode=require')
+       'postgres?sslmode=verify-full&sslrootcert=%2Fetc%2Ftrackmyrmc%2Frds-ca-bundle.pem')
 RAW = 'APP_ENV=production\nDATABASE_URL=' + OLD + '\nOTP_MAX_ATTEMPTS=5\n'
 
 
@@ -22,7 +22,7 @@ class RotationWatchTests(unittest.TestCase):
         self.assertEqual(db, 'postgres')
         new = watch.rotated_url(uri, 'trackmyrmc_admin', 'new#pass@word%')
         self.assertIn('new%23pass%40word%25@', new)
-        self.assertIn('/postgres?sslmode=require', new)
+        self.assertIn('/postgres?sslmode=verify-full&sslrootcert=', new)
         replaced = watch.replacement_env(RAW, new)
         self.assertEqual(replaced.splitlines()[0], 'APP_ENV=production')
         self.assertEqual(replaced.splitlines()[-1], 'OTP_MAX_ATTEMPTS=5')
@@ -40,6 +40,40 @@ class RotationWatchTests(unittest.TestCase):
             with self.subTest(bad=bad[:55]):
                 with self.assertRaises(ValueError):
                     watch.loaded_database_url(bad)
+
+
+    def test_tls_downgrades_wrong_roots_and_duplicate_options_are_denied(self):
+        tls_query = 'sslmode=verify-full&sslrootcert=%2Fetc%2Ftrackmyrmc%2Frds-ca-bundle.pem'
+        for bad_query in [
+            'sslmode=require&sslrootcert=%2Fetc%2Ftrackmyrmc%2Frds-ca-bundle.pem',
+            'sslmode=verify-ca&sslrootcert=%2Fetc%2Ftrackmyrmc%2Frds-ca-bundle.pem',
+            'sslmode=disable&sslrootcert=%2Fetc%2Ftrackmyrmc%2Frds-ca-bundle.pem',
+            'sslmode=verify-full',
+            'sslmode=verify-full&sslrootcert=%2Ftmp%2Fother.pem',
+            tls_query + '&sslmode=require',
+            tls_query + '&sslrootcert=%2Ftmp%2Fother.pem',
+        ]:
+            with self.subTest(query=bad_query):
+                with self.assertRaises(ValueError):
+                    watch.loaded_database_url(RAW.replace(tls_query, bad_query))
+        with self.assertRaises(ValueError):
+            watch.loaded_database_url(RAW.replace(tls_query, tls_query + '#forged'))
+
+    def test_missing_or_symlinked_rds_bundle_denies_preflight(self):
+        with tempfile.TemporaryDirectory() as d:
+            missing = Path(d) / 'missing.pem'
+            with patch.object(watch, 'RDS_CA_FILE', missing), \
+                    patch.object(watch.subprocess, 'run') as run:
+                with self.assertRaisesRegex(ValueError, 'roots unavailable'):
+                    watch.verify_new_credential('trackmyrmc_admin', 'password', 'postgres')
+                run.assert_not_called()
+            (Path(d) / 'real.pem').write_text('not a trusted root')
+            missing.symlink_to(Path(d) / 'real.pem')
+            with patch.object(watch, 'RDS_CA_FILE', missing), \
+                    patch.object(watch.subprocess, 'run') as run:
+                with self.assertRaisesRegex(ValueError, 'roots unavailable'):
+                    watch.verify_new_credential('trackmyrmc_admin', 'password', 'postgres')
+                run.assert_not_called()
 
     def test_healthy_does_not_access_secrets_or_restart_backend(self):
         with patch.object(watch, 'healthy', return_value=True), \
@@ -125,12 +159,19 @@ class RotationWatchTests(unittest.TestCase):
 
     def test_preflight_select_one_is_read_only_and_never_logs_postgres_stderr(self):
         dummy = type('Result', (), {'returncode': 0, 'stdout': '1\n'})()
-        with patch.object(watch.subprocess, 'run', return_value=dummy) as run:
-            self.assertTrue(watch.verify_new_credential('trackmyrmc_admin', 'secret-pass', 'postgres'))
-            args, kwargs = run.call_args
-            self.assertIn('SELECT 1', args[0]); self.assertEqual(kwargs['env']['PGPASSWORD'], 'secret-pass')
-            self.assertIn('default_transaction_read_only=on', kwargs['env']['PGOPTIONS'])
-            self.assertTrue(kwargs['capture_output'])
+        with tempfile.TemporaryDirectory() as d:
+            roots = Path(d) / 'ca.pem'
+            roots.write_text('synthetic fixture (psql is mocked)')
+            with patch.object(watch, 'RDS_CA_FILE', roots), \
+                    patch.object(watch.subprocess, 'run', return_value=dummy) as run:
+                self.assertTrue(watch.verify_new_credential('trackmyrmc_admin', 'secret-pass', 'postgres'))
+                args, kwargs = run.call_args
+                self.assertIn('SELECT 1', args[0])
+                self.assertEqual(kwargs['env']['PGPASSWORD'], 'secret-pass')
+                self.assertEqual(kwargs['env']['PGSSLMODE'], 'verify-full')
+                self.assertEqual(kwargs['env']['PGSSLROOTCERT'], str(roots))
+                self.assertIn('default_transaction_read_only=on', kwargs['env']['PGOPTIONS'])
+                self.assertTrue(kwargs['capture_output'])
 
 
 class InstallationContractTests(unittest.TestCase):
@@ -141,6 +182,15 @@ class InstallationContractTests(unittest.TestCase):
         self.assertIn('trackmyrmc-rds-recovery.timer', content)
         self.assertIn('recover-managed-rds-credential.py', content)
         self.assertIn('systemctl is-active --quiet trackmyrmc-rds-recovery.timer', content)
+        self.assertIn('sslmode=verify-full&sslrootcert=', content)
+        self.assertIn('ap-south-1-bundle.pem', content)
+        self.assertIn('openssl x509 -in', content)
+        self.assertNotIn('sslmode=require', content)
+        self.assertIn('PGSSLROOTCERT="/etc/trackmyrmc/rds-ca-bundle.pem"', content)
+        self.assertIn('PGSSLMODE="verify-full"', content)
+        self.assertIn('"SELECT 1"', content)
+        self.assertIn('default_transaction_read_only=on', content)
+        self.assertIn('PRIVILEGED_RECOVERY_ENABLED=false', content)
 
 
 if __name__ == '__main__':

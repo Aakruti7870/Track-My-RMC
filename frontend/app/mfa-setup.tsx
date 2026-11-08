@@ -25,11 +25,14 @@ export default function MfaSetup() {
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const centralAdminSetup = user?.role === "central_admin";
 
   useEffect(() => {
     if (!token || !user) {
       router.replace("/login" as any);
+      return;
+    }
+    if (user.role === "central_admin" || user.role === "authority") {
+      void signOut().finally(() => router.replace("/login" as any));
       return;
     }
     // A review fixture (and already-enrolled staff) never has a pending
@@ -100,11 +103,6 @@ export default function MfaSetup() {
   };
 
   const finish = async () => {
-    if (centralAdminSetup) {
-      await signOut();
-      router.replace("/login" as any);
-      return;
-    }
     await refreshMe();
     router.replace(user ? (roleRouteFor(user.role) as any) : ("/login" as any));
   };
@@ -127,8 +125,8 @@ export default function MfaSetup() {
           </View>
 
           <Button label="Share / Save Recovery Codes" onPress={shareRecoveryCodes} icon={<Ionicons name="share-outline" size={18} color={colors.onBrand} />} />
-          <Button label={centralAdminSetup ? "I Saved Them — Sign Out" : "I Saved Them — Continue"} onPress={finish} icon={<Ionicons name={centralAdminSetup ? "log-out-outline" : "checkmark-circle-outline"} size={18} color={colors.onBrand} />} />
-          <AppText variant="caption" center>{centralAdminSetup ? "Central Admin setup is complete. Future privileged sign-in is web-only at control.trackmyrmc.com." : "Keep recovery codes outside the phone when possible. Each code is invalidated after one use."}</AppText>
+          <Button label="I Saved Them — Continue" onPress={finish} icon={<Ionicons name="checkmark-circle-outline" size={18} color={colors.onBrand} />} />
+          <AppText variant="caption" center>Keep recovery codes outside the phone when possible. Each code is invalidated after one use.</AppText>
         </ScrollView>
       </View>
     );

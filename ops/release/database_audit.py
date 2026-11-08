@@ -48,12 +48,22 @@ def query(uri, sql):
     env = os.environ.copy()
     # PGDATABASE from the environment is not expanded as a libpq URI. Split
     # into libpq environment fields instead; credentials never enter argv.
-    sslmode = parse_qs(parsed.query).get("sslmode", ["require"])[0]
-    if sslmode not in ("require", "verify-ca", "verify-full"):
-        raise AuditError("Database audit requires an encrypted PostgreSQL connection")
+    tls_options = parse_qs(parsed.query, keep_blank_values=True)
+    if (set(tls_options) != {"sslmode", "sslrootcert"}
+            or tls_options["sslmode"] != ["verify-full"]
+            or len(tls_options["sslrootcert"]) != 1
+            or parsed.fragment):
+        raise AuditError("Database audit requires hostname-verified RDS TLS")
+    root = Path(tls_options["sslrootcert"][0])
+    if not root.is_absolute() or not root.is_file() or root.is_symlink():
+        raise AuditError("Approved RDS certificate roots unavailable")
+    if (parsed.hostname == "trackmyrmc-postgres.cf8mmcwuuinx.ap-south-1.rds.amazonaws.com"
+            and root != Path("/etc/trackmyrmc/rds-ca-bundle.pem")):
+        raise AuditError("Production RDS trust path is not pinned")
     env.update(PGDATABASE=unquote(parsed.path.lstrip("/")), PGHOST=parsed.hostname,
                PGPORT=str(parsed.port or 5432), PGUSER=unquote(parsed.username or ""),
-               PGPASSWORD=unquote(parsed.password or ""), PGSSLMODE=sslmode, PGCONNECT_TIMEOUT="5",
+               PGPASSWORD=unquote(parsed.password or ""), PGSSLMODE="verify-full",
+               PGSSLROOTCERT=str(root), PGCONNECT_TIMEOUT="5",
                PGOPTIONS="-c default_transaction_read_only=on -c statement_timeout=15000 -c lock_timeout=2000")
     try:
         proc = subprocess.run(

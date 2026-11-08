@@ -2,6 +2,7 @@ pub mod account_deletion;
 pub mod admin_routes;
 pub mod assistant_routes;
 pub mod auth_routes;
+pub mod authority_governance;
 pub mod automation_routes;
 pub mod business_routes;
 pub mod cashfree_rmc_prepaid;
@@ -67,6 +68,36 @@ pub fn build_app_router(state: AppState) -> Router {
             post(crate::auth::control_center::login),
         )
         .route("/api/admin/auth/me", get(crate::auth::control_center::me))
+        .route(
+            "/api/admin/auth/change-password",
+            post(crate::auth::control_center::change_admin_password),
+        )
+        // Authority has its own web-only authentication surface and scoped sessions.
+        .route(
+            "/api/authority/auth/verify-totp",
+            post(crate::auth::authority::login),
+        )
+        .route(
+            "/api/authority/auth/set-initial-password",
+            post(crate::auth::authority::set_initial_password),
+        )
+        .route("/api/authority/auth/me", get(crate::auth::authority::me))
+        .route(
+            "/api/authority/auth/change-password",
+            post(crate::auth::authority::change_password),
+        )
+        .route(
+            "/api/authority/auth/logout",
+            post(crate::auth::authority::logout),
+        )
+        .route(
+            "/api/authority/auth/step-up",
+            post(crate::auth::authority::step_up),
+        )
+        .route(
+            "/api/authority/collections/:kind",
+            get(crate::auth::authority::collection),
+        )
         .route(
             "/api/admin/auth/step-up",
             post(control_center_routes::admin_step_up),
@@ -1200,6 +1231,14 @@ pub fn build_app_router(state: AppState) -> Router {
             "/api/control-center/admin-access",
             get(control_center_routes::list_admin_access)
                 .post(control_center_routes::update_admin_access),
+        )
+        .route(
+            "/api/control-center/authority-access",
+            get(authority_governance::list).post(authority_governance::upsert),
+        )
+        .route(
+            "/api/control-center/customers/:customer_id/kyc/:decision",
+            post(control_center_routes::central_kyc_decision),
         )
         .route(
             "/api/control-center/unowned-plants",

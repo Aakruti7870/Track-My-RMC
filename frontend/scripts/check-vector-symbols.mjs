@@ -47,7 +47,9 @@ const compiled = ts.transpileModule(catalog, {
   compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 },
 }).outputText;
 const { MODULE_CATALOG } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`);
-assert.equal(MODULE_CATALOG.length, 63, "Plant Profile adds one authorized module");
+assert.equal(MODULE_CATALOG.length, 62, "Global RFQ administration is web-only; legitimate plant modules remain");
+assert.ok(!MODULE_CATALOG.some(m => m.key === "admin-rmc-rfq-leads" || m.route === "/admin/rmc-rfq-leads"), "Global customer leads must not be advertised to plant admins");
+assert.doesNotMatch(read("app/admin/rmc-rfq-leads.tsx"), /useGet|apiPatch|apiPost/, "Legacy global RFQ deep link must not send mobile credentials");
 let mapped = 0;
 for (const m of MODULE_CATALOG) {
   if (m.symbol) {
@@ -58,7 +60,7 @@ for (const m of MODULE_CATALOG) {
     assert.equal(m.icon, "trash-outline");
   }
 }
-assert.equal(mapped, 62, "Plant Profile uses the existing registered SVG");
+assert.equal(mapped, 61, "All non-destructive mobile modules retain a registered SVG");
 const tabs = read("src/navigation/vectorSymbolAssignments.ts");
 for (const [, key] of tabs.matchAll(/(?:"[^"]+":\s*|return\s+)"([a-z0-9-]+)"/g)) {
   assert.ok(embedded.has(key), `Tab references an unregistered SVG: ${key}`);

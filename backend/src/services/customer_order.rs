@@ -122,6 +122,19 @@ async fn validate(
         if !kyc.is_some_and(|s| s.eq_ignore_ascii_case("verified")) {
             return Err(AppError::Forbidden("KYC_REQUIRED".into()));
         }
+        // A historical sandbox/legacy approval must never authorize ordering
+        // after live DigiLocker mode is selected. Require the latest independently
+        // audited live approval AND matching provider consent evidence.
+        if crate::routes::digilocker_kyc::live_approval_required() {
+            let live_approved: bool =
+                sqlx::query_scalar(crate::routes::digilocker_kyc::LIVE_APPROVAL_SQL)
+                    .bind(customer)
+                    .fetch_one(&mut *conn)
+                    .await?;
+            if !live_approved {
+                return Err(AppError::Forbidden("KYC_REQUIRED".into()));
+            }
+        }
         let verified: Option<String> = user.get("verified_name");
         let normalized = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
         if verified.as_deref().is_none_or(|s| {

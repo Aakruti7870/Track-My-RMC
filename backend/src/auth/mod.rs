@@ -9,4 +9,5 @@ pub mod totp;
 
 pub use middleware::AuthUser;
 
+pub mod authority;
 pub mod control_center;

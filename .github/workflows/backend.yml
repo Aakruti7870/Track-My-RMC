@@ -12,6 +12,7 @@ on:
       - 'frontend/**'
       - 'admin-web/**'
       - 'ops/**'
+      - 'docs/security/**'
       - '.github/workflows/backend.yml'
       - '.github/workflows/android-build.yml'
       - '.github/workflows/deploy-aws-production.yml'
@@ -88,6 +89,25 @@ jobs:
           cd backend
           cargo test --all --verbose
 
+      - name: Verify first-admin bootstrap against a disposable database
+        if: success() && matrix.postgres == 18
+        env:
+          PGHOST: localhost
+          PGUSER: trackmyrmc_user
+          PGPASSWORD: securepassword
+          DATABASE_URL: postgres://trackmyrmc_user:securepassword@localhost:5432/trackmyrmc_bootstrap_test
+        run: |
+          set -euo pipefail
+          createdb trackmyrmc_bootstrap_test
+          trap 'dropdb --if-exists trackmyrmc_bootstrap_test' EXIT
+          for migration in backend/migrations/*.sql; do
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration" > /dev/null
+          done
+          cargo build --manifest-path backend/Cargo.toml --example bootstrap_central_admin
+          # The harness captures secrets only from synthetic private PTYs. It
+          # explicitly verifies that CI=true is rejected by the real command.
+          python3 backend/scripts/verify_bootstrap_lifecycle.py
+
       - name: Setup Node for actual admin browser regression
         if: success() && matrix.postgres == 18
         uses: actions/setup-node@v4
@@ -99,6 +119,8 @@ jobs:
       - name: Verify admin browser against Rust and PostgreSQL
         if: success() && matrix.postgres == 18
         env:
+          # Public disposable fixture credential, never a real account password.
+          CI_CONTROL_CENTER_TEST_PASSWORD: Synthetic-CI-Only-Password-2026!
           DATABASE_URL: postgres://trackmyrmc_user:securepassword@localhost:5432/trackmyrmc_test
           JWT_SECRET: isolated_ci_only_secret_that_exceeds_sixty_four_bytes_12345678901234567890
           OTP_PEPPER: isolated_ci_only_otp_pepper_12345678901234567890

@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import apiClient from './api';
+import apiClient, { getAccessToken, setAccessToken } from './api';
 
-type Stage = 'central-login' | 'email' | 'otp' | 'mfa-enroll' | 'mfa-login' | 'authenticated';
+type Stage = 'central-login' | 'authority-login' | 'authority-password' | 'email' | 'otp' | 'mfa-enroll' | 'mfa-login' | 'authenticated';
 
 type StaffUser = {
   id?: string;
@@ -20,6 +20,18 @@ type Health = {
 };
 
 type PortalKpi = { label: string; value: string | number };
+type AuthorityAccount = {
+  id: string; email: string; full_name: string; enabled: boolean;
+  mfa_enrolled: boolean; permissions: string[];
+};
+const AUTHORITY_GRANTS = [
+  { key:'user.view', label:'Customer and role directory' },
+  { key:'plant.view', label:'Plant directory' },
+  { key:'order.view', label:'Order status' },
+  { key:'support.view', label:'Service, RFQ and marketing lead monitoring' },
+  { key:'kyc.view', label:'Customer KYC review queue' },
+  { key:'kyc.review', label:'Approve/reject customer KYC with recent MFA' },
+];
 
 type NativeAutomationTemplate = {
   key: string;
@@ -69,6 +81,15 @@ function CommandCenter() {
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
   const [mfaCode, setMfaCode] = useState('');
+  const [privilegedPassword, setPrivilegedPassword] = useState('');
+  const [newAuthorityPassword, setNewAuthorityPassword] = useState('');
+  const [confirmAuthorityPassword, setConfirmAuthorityPassword] = useState('');
+  const [authorityEnrollment, setAuthorityEnrollment] = useState(false);
+  const [oldWebPassword, setOldWebPassword] = useState('');
+  const [newWebPassword, setNewWebPassword] = useState('');
+  const [newWebPasswordConfirm, setNewWebPasswordConfirm] = useState('');
+  const [rotationCode, setRotationCode] = useState('');
+  const [rotationReason, setRotationReason] = useState('');
   const [challengeToken, setChallengeToken] = useState('');
   const [enrollment, setEnrollment] = useState<Enrollment | null>(null);
   const [recoveryCodesSaved, setRecoveryCodesSaved] = useState(false);
@@ -104,10 +125,28 @@ function CommandCenter() {
   const [plantProfileQueue,setPlantProfileQueue]=useState<Array<Record<string,any>>>([]);
   const [plantProfileCode,setPlantProfileCode]=useState('');
   const [plantProfileReason,setPlantProfileReason]=useState('');
+  const [authorityAccounts,setAuthorityAccounts]=useState<AuthorityAccount[]>([]);
+  const [showAuthorityAccounts,setShowAuthorityAccounts]=useState(false);
+  const [authorityEmail,setAuthorityEmail]=useState('');
+  const [authorityName,setAuthorityName]=useState('');
+  const [authorityEnabled,setAuthorityEnabled]=useState(true);
+  const [authorityGrants,setAuthorityGrants]=useState<string[]>(['support.view','kyc.view']);
+  const [authorityReason,setAuthorityReason]=useState('');
+  const [authorityAdminCode,setAuthorityAdminCode]=useState('');
+  const [authorityReviewCode,setAuthorityReviewCode]=useState('');
+  const [authorityReviewReason,setAuthorityReviewReason]=useState('');
+  const [centralKycReason,setCentralKycReason]=useState('');
+  const [centralKycCode,setCentralKycCode]=useState('');
+  const [supportCase,setSupportCase]=useState<Record<string,any>|null>(null);
+  const [supportReply,setSupportReply]=useState('');
+  const [supportInternal,setSupportInternal]=useState(false);
+  const [supportStepUp,setSupportStepUp]=useState('');
+  const [serviceReason,setServiceReason]=useState('');
+  const [serviceStepUp,setServiceStepUp]=useState('');
 
 
   useEffect(() => {
-    const token = window.sessionStorage.getItem('trackmyrmc_admin_token');
+    const token = getAccessToken();
     if (!token) return;
 
     let active = true;
@@ -115,15 +154,19 @@ function CommandCenter() {
       .then(async (response) => {
         const currentUser = response.data?.user as StaffUser | undefined;
         if (!active || !currentUser?.role) return;
-        if (currentUser.role === 'central_admin') {
-          const session=await apiClient.get('/api/admin/auth/me');
+        if (currentUser.role === 'central_admin' || currentUser.role === 'authority') {
+          const endpoint = currentUser.role === 'authority' ? '/api/authority/auth/me' : '/api/admin/auth/me';
+          const session = await apiClient.get(endpoint);
           setPermissions(session.data?.permissions || []);
+        } else if (!['plant_owner','owner','dispatcher','operator','supervisor',
+          'quality_engineer','store_manager','accountant','fleet_manager','admin'].includes(currentUser.role)) {
+          throw new Error('Not a supported web account');
         }
         setUser(currentUser);
         setStage('authenticated');
       })
       .catch(() => {
-        window.sessionStorage.removeItem('trackmyrmc_admin_token');
+        setAccessToken(null);
       });
 
     return () => { active = false; };
@@ -262,9 +305,10 @@ function CommandCenter() {
   },[automationKey,automationTemplates]);
 
   async function loadWorkspace(kind:string,offset=0) {
-    setBusy(true);setError('');setWorkspace(kind);
+    setBusy(true);setError('');setWorkspace(kind);setSupportCase(null);
     try {
-      const response=await apiClient.get('/api/control-center/collections/'+kind,{params:{limit:25,offset}});
+      const prefix=user?.role==='authority'?'/api/authority/collections/':'/api/control-center/collections/';
+      const response=await apiClient.get(prefix+encodeURIComponent(kind),{params:{limit:25,offset}});
       setRecords(response.data.items || []);setWorkspaceOffset(offset);
     } catch(error) {setRecords([]);setError(errorMessage(error));}
     finally {setBusy(false);}
@@ -323,7 +367,7 @@ function CommandCenter() {
 
   async function recordRfqOutreach(id:string, status:'INVITATION_SHARED'|'CONTACTED'|'DECLINED') {
     if (!rfqOutreachCode.trim()) {
-      setError('Enter a fresh authenticator or recovery code before recording supplier outreach.');
+      setError('Enter a fresh authenticator code before recording supplier outreach.');
       return;
     }
     setBusy(true); setError(''); setNotice('');
@@ -351,17 +395,141 @@ function CommandCenter() {
     } catch(err) { setError(errorMessage(err)); }
   }
 
+  async function openSupportCase(caseId:string) {
+    setBusy(true);setError('');
+    try {
+      const response=await apiClient.get('/api/assistant/support/staff/cases/'+encodeURIComponent(caseId));
+      setSupportCase(response.data?.case||null);
+    } catch(err) {setError(errorMessage(err));setSupportCase(null);}
+    finally {setBusy(false);}
+  }
+
+  async function sendSupportReply() {
+    if(!supportCase?.id||!supportReply.trim()||!permissions.includes('support.reply'))return;
+    setBusy(true);setError('');
+    try {
+      await apiClient.post('/api/assistant/support/staff/cases/'+encodeURIComponent(String(supportCase.id))+'/replies',{
+        message:supportReply.trim(),internal:supportInternal,
+      });
+      setSupportReply('');setNotice('Support response recorded.');
+      const response=await apiClient.get('/api/assistant/support/staff/cases/'+encodeURIComponent(String(supportCase.id)));
+      setSupportCase(response.data?.case||null);
+    } catch(err){setError(errorMessage(err));}
+    finally {setBusy(false);}
+  }
+
+  async function updateSupportStatus(status:string) {
+    if(!supportCase?.id||!permissions.includes('support.manage'))return;
+    setBusy(true);setError('');
+    try {
+      if(!/^[0-9]{6}$/.test(supportStepUp.trim()))throw new Error('Enter a current authenticator code.');
+      await apiClient.post('/api/control-center/step-up',{code:supportStepUp.trim()});
+      await apiClient.post('/api/assistant/support/staff/cases/'+encodeURIComponent(String(supportCase.id))+'/status',{status});
+      setSupportStepUp('');setNotice('Support case status updated and audited.');
+      const response=await apiClient.get('/api/assistant/support/staff/cases/'+encodeURIComponent(String(supportCase.id)));
+      setSupportCase(response.data?.case||null);
+    } catch(err){setError(errorMessage(err));setSupportStepUp('');}
+    finally {setBusy(false);}
+  }
+
+  async function updateServiceEnquiry(id:string,status:string) {
+    if(!permissions.includes('support.manage'))return;
+    setBusy(true);setError('');
+    try {
+      if(serviceReason.trim().length<10||!/^[0-9]{6}$/.test(serviceStepUp.trim()))
+        throw new Error('Enter an audit reason (10+ characters) and a fresh authenticator code.');
+      await apiClient.post('/api/control-center/step-up',{code:serviceStepUp.trim()});
+      await apiClient.patch('/api/admin/service-enquiries/'+encodeURIComponent(id)+'/status',{
+        status,reason:serviceReason.trim(),
+      });
+      setServiceStepUp('');setServiceReason('');setNotice('Service enquiry status updated.');
+      const response=await apiClient.get('/api/control-center/collections/service_enquiries',{params:{limit:25,offset:workspaceOffset}});
+      setRecords(response.data?.items||[]);
+    }catch(err){setError(errorMessage(err));setServiceStepUp('');}
+    finally{setBusy(false);}
+  }
+
+  async function loadAuthorityAccounts() {
+    setBusy(true); setError(''); setShowAuthorityAccounts(true);
+    try {
+      const response=await apiClient.get('/api/control-center/authority-access');
+      setAuthorityAccounts(response.data?.accounts||[]);
+    } catch(err) { setError(errorMessage(err)); }
+    finally { setBusy(false); }
+  }
+
+  async function saveAuthorityAccount(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();setBusy(true);setError('');
+    try {
+      if (!authorityEmail.trim() || !authorityName.trim() || authorityReason.trim().length<10
+        || !/^[0-9]{6}$/.test(authorityAdminCode.trim())) {
+        throw new Error('Provide approved email, full name, an audit reason (10+ characters), and a current six-digit authenticator code.');
+      }
+      await apiClient.post('/api/control-center/step-up',{code:authorityAdminCode.trim()});
+      await apiClient.post('/api/control-center/authority-access',{
+        email:authorityEmail.trim().toLowerCase(), full_name:authorityName.trim(),
+        enabled:authorityEnabled,permissions:authorityGrants,reason:authorityReason.trim(),
+      });
+      setAuthorityAdminCode('');setAuthorityReason('');
+      setNotice('Authority access saved. Previous sessions were revoked.');
+      const response=await apiClient.get('/api/control-center/authority-access');
+      setAuthorityAccounts(response.data?.accounts||[]);
+    } catch(err) {setError(errorMessage(err));setAuthorityAdminCode('');}
+    finally {setBusy(false);}
+  }
+
+  async function reviewCentralKyc(customerId:string, decision:'approve'|'reject'|'reset') {
+    setBusy(true);setError('');
+    try {
+      if (!/^[0-9]{6}$/.test(centralKycCode.trim()) || centralKycReason.trim().length<10) {
+        throw new Error('A current six-digit authenticator code and specific reason (10+ characters) are required.');
+      }
+      await apiClient.post('/api/control-center/step-up',{code:centralKycCode.trim()});
+      await apiClient.post('/api/control-center/customers/'+encodeURIComponent(customerId)+'/kyc/'+decision,
+        {reason:centralKycReason.trim()});
+      setCentralKycCode('');setCentralKycReason('');
+      setNotice('Central Admin KYC decision recorded in the audit log.');
+      const response=await apiClient.get('/api/control-center/collections/kyc',{params:{limit:25,offset:0}});
+      setRecords(response.data?.items||[]);setWorkspaceOffset(0);
+    } catch(err) {setError(errorMessage(err));setCentralKycCode('');}
+    finally {setBusy(false);}
+  }
+
+  async function reviewAuthorityKyc(customerId:string, approve:boolean) {
+    setBusy(true);setError('');
+    try {
+      if (!/^[0-9]{6}$/.test(authorityReviewCode.trim()) || authorityReviewReason.trim().length<10 || authorityReviewReason.trim().length>500)
+        throw new Error('Enter a fresh six-digit authenticator code and a specific reason (10-500 characters).');
+      await apiClient.post('/api/authority/auth/step-up',{code:authorityReviewCode.trim()});
+      await apiClient.post('/api/staff/customers/'+encodeURIComponent(customerId)+'/kyc/'+(approve?'approve':'reject'),
+        {reason:authorityReviewReason.trim()});
+      setAuthorityReviewCode('');setAuthorityReviewReason('');
+      setNotice('KYC decision recorded in the audit log.');
+      const response=await apiClient.get('/api/authority/collections/kyc',{params:{limit:25,offset:0}});
+      setRecords(response.data?.items||[]);setWorkspaceOffset(0);
+    } catch(err) {setError(errorMessage(err));setAuthorityReviewCode('');}
+    finally {setBusy(false);}
+  }
+
   async function centralLogin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError('');
     try {
-      const response = await apiClient.post('/api/admin/auth/verify-totp', { identifier: email.trim(), code: mfaCode.trim() });
-      if (!response.data?.token || response.data?.user?.role !== 'central_admin') throw new Error('Administrator session was not established.');
-      window.sessionStorage.setItem('trackmyrmc_admin_token', response.data.token);
-      const session=await apiClient.get('/api/admin/auth/me');
+      const authority = stage === 'authority-login';
+      const expectedRole = authority ? 'authority' : 'central_admin';
+      const prefix = authority ? '/api/authority/auth' : '/api/admin/auth';
+      const response = await apiClient.post(prefix+'/verify-totp', {
+        identifier: email.trim(), password: privilegedPassword, code: mfaCode.trim(),
+      });
+      if (!response.data?.token || response.data?.user?.role !== expectedRole) throw new Error('Privileged web session was not established.');
+      setAccessToken(response.data.token);
+      const session=await apiClient.get(prefix+'/me');
       setPermissions(session.data?.permissions || []);
-      setUser(response.data.user); setMfaCode(''); setStage('authenticated');
-    } catch (error) { setError(errorMessage(error)); }
-    finally { setBusy(false); }
+      setUser(response.data.user); setMfaCode(''); setPrivilegedPassword(''); setStage('authenticated');
+    } catch (error) {
+      setAccessToken(null);
+      setPrivilegedPassword('');
+      setError(errorMessage(error));
+    } finally { setBusy(false); }
   }
 
   async function sendEmailOtp(event: React.FormEvent<HTMLFormElement>) {
@@ -403,8 +571,10 @@ function CommandCenter() {
         setStage('mfa-enroll');
         setNotice('First-time setup required. Add this account to your authenticator and store the recovery codes before continuing.');
       } else {
-        setStage('mfa-login');
-        setNotice('Email verified. Enter the current authenticator code or an unused recovery code.');
+        setStage(authorityEnrollment ? 'authority-password' : 'mfa-login');
+        setNotice(authorityEnrollment
+          ? 'Email verified. Set your Authority password using your authenticator code.'
+          : 'Email verified. Enter the current authenticator code or an unused recovery code.');
       }
     } catch (requestError) {
       setError(errorMessage(requestError));
@@ -431,13 +601,32 @@ function CommandCenter() {
       setChallengeToken(response.data.challenge_token);
       setEnrollment(null);
       setMfaCode('');
-      setStage('mfa-login');
-      setNotice('Authenticator enabled. Enter a fresh authenticator code to finish signing in.');
+      setStage(authorityEnrollment ? 'authority-password' : 'mfa-login');
+      setNotice(authorityEnrollment
+        ? 'Authenticator enabled. Set a distinct Authority password to finish enrollment.'
+        : 'Authenticator enabled. Complete staff sign-in with MFA.');
     } catch (requestError) {
       setError(errorMessage(requestError));
     } finally {
       setBusy(false);
     }
+  }
+
+  async function completeAuthorityEnrollment(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();setBusy(true);setError('');setNotice('');
+    try {
+      if (newAuthorityPassword.length < 16 || newAuthorityPassword.length > 128 ||
+        newAuthorityPassword !== confirmAuthorityPassword || !/^[0-9]{6}$/.test(mfaCode.trim()))
+        throw new Error('Use a distinct 16-128 character password, matching confirmation, and a six-digit authenticator code.');
+      await apiClient.post('/api/authority/auth/set-initial-password',{
+        challenge_token:challengeToken,password:newAuthorityPassword,code:mfaCode.trim(),
+      });
+      setNewAuthorityPassword('');setConfirmAuthorityPassword('');
+      setMfaCode('');setChallengeToken('');setAuthorityEnrollment(false);
+      setStage('authority-login');
+      setNotice('Authority credentials enrolled. Sign in with your password and authenticator.');
+    } catch(requestError) {setError(errorMessage(requestError));}
+    finally{setBusy(false);}
   }
 
   async function verifyMfa(event: React.FormEvent<HTMLFormElement>) {
@@ -459,7 +648,7 @@ function CommandCenter() {
       if (!allowedRoles.includes(signedInUser.role)) {
         throw new Error('This account is not authorized for staff portal access.');
       }
-      window.sessionStorage.setItem('trackmyrmc_admin_token', auth.token);
+      setAccessToken(auth.token);
       setUser(signedInUser);
       setMfaCode('');
       setChallengeToken('');
@@ -471,15 +660,39 @@ function CommandCenter() {
     }
   }
 
+  async function rotateWebPassword(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();setBusy(true);setError('');setNotice('');
+    try {
+      if(!user || !['central_admin','authority'].includes(user.role)
+        || newWebPassword.length<16 || newWebPassword.length>128
+        || newWebPassword!==newWebPasswordConfirm || newWebPassword===oldWebPassword
+        || !/^[0-9]{6}$/.test(rotationCode.trim()) || rotationReason.trim().length<10) {
+        throw new Error('Current password, distinct 16-128 character new password, matching confirmation, current authenticator code and audit reason are required.');
+      }
+      const prefix=user.role==='authority'?'/api/authority/auth':'/api/admin/auth';
+      await apiClient.post(prefix+'/change-password',{
+        current_password:oldWebPassword,new_password:newWebPassword,
+        code:rotationCode.trim(),reason:rotationReason.trim(),
+      });
+      setOldWebPassword('');setNewWebPassword('');setNewWebPasswordConfirm('');
+      setRotationCode('');setRotationReason('');
+      await logout();
+      setNotice('Password rotated. All existing privileged sessions were revoked; sign in again.');
+    }catch(err){setError(errorMessage(err));}
+    finally{setBusy(false);}
+  }
+
   async function logout() {
     setBusy(true);
+    let revokedOnServer = false;
     try {
-      await apiClient.post(user?.role === 'central_admin' ? '/api/admin/auth/logout' : '/api/auth/logout');
+      await apiClient.post(user?.role === 'central_admin' ? '/api/admin/auth/logout' : user?.role === 'authority' ? '/api/authority/auth/logout' : '/api/auth/logout');
+      revokedOnServer = true;
     } catch {
       // Always clear this browser session, even if the server is temporarily unreachable.
     } finally {
-      window.sessionStorage.removeItem('trackmyrmc_admin_token');
-      setUser(null);setPermissions([]);setRecords([]);setWorkspace('');setRfqOutreachCode('');setRfqOutreachNotes({});
+      setAccessToken(null);
+      setUser(null);setPrivilegedPassword('');setPermissions([]);setRecords([]);setWorkspace('');setRfqOutreachCode('');setRfqOutreachNotes({});
       setShowNativeAutomation(false);setAutomationTemplates([]);setAutomationHealth(null);
       setAutomationJobs([]);setAutomationCode('');setAutomationKey('');
       setHealth(null);
@@ -489,21 +702,28 @@ function CommandCenter() {
       setChallengeToken('');
       setOtp('');
       setMfaCode('');
+      setAuthorityAdminCode('');
+      setAuthorityReviewCode('');
+      setCentralKycReason('');setCentralKycCode('');
+      setShowAuthorityAccounts(false);
       setStage('central-login');
-      setNotice('Signed out of this browser session.');
+      setNotice(revokedOnServer ? 'Signed out and server session revoked.' : 'Signed out locally. Server revocation could not be confirmed; the session expires automatically.');
       setError('');
       setBusy(false);
     }
   }
 
   const pageStyle: React.CSSProperties = {
-    minHeight: '100vh', padding: '32px 18px', boxSizing: 'border-box',
+    minHeight: '100vh', padding: stage === 'authenticated' ? '20px clamp(10px, 3vw, 38px)' : '32px 18px',
+    boxSizing: 'border-box',
     fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     background: 'radial-gradient(ellipse at top, #1e3a5f 0%, #0f172a 52%, #020617 100%)',
-    color: '#f8fafc', display: 'flex', justifyContent: 'center', alignItems: 'center',
+    color: '#f8fafc', display: 'flex', justifyContent: 'center',
+    alignItems: stage === 'authenticated' ? 'flex-start' : 'center',
   };
   const panelStyle: React.CSSProperties = {
-    width: '100%', maxWidth: 560, boxSizing: 'border-box', padding: 28,
+    width: '100%', maxWidth: stage === 'authenticated' ? 1280 : 560,
+    boxSizing: 'border-box', padding: stage === 'authenticated' ? 'clamp(14px, 3vw, 30px)' : 28,
     borderRadius: 18, border: '1px solid #334155', background: 'rgba(15, 23, 42, 0.94)',
     boxShadow: '0 24px 80px rgba(0,0,0,0.3)',
   };
@@ -525,12 +745,12 @@ function CommandCenter() {
           TrackMyRMC · Secure Access
         </div>
         <h1 id="portal-title" style={{ margin: '10px 0 6px', fontSize: 30, lineHeight: 1.2 }}>
-          {stage === 'authenticated' ? 'Command Center' : stage === 'central-login' ? 'Central Admin sign in' : 'Plant staff sign in'}
+          {stage === 'authenticated' ? 'Command Center' : stage === 'central-login' ? 'Central Admin sign in' : stage === 'authority-login' ? 'Delegated Authority sign in' : 'Verified email sign in'}
         </h1>
         <p style={{ color: '#cbd5e1', lineHeight: 1.6, marginTop: 0 }}>
           {stage === 'authenticated'
             ? 'Your access is restricted to the permissions assigned to your account.'
-            : stage === 'central-login' ? 'Approved Central Admin accounts use the enrolled authenticator. Staff sessions do not grant Control Center access.' : 'Plant staff use email verification followed by authenticator MFA.'}
+            : stage === 'central-login' ? 'Approved Central Admin accounts require an account password and enrolled authenticator. Staff and Authority sessions cannot manage platform governance.' : stage === 'authority-login' ? 'Authority uses a password, authenticator and separate one-hour browser session with scoped permissions. Reloading this page requires signing in again.' : 'Approved staff and first-time Authority accounts use email verification followed by authenticator MFA.'}
         </p>
 
         {error && <div role="alert" style={{ padding: 12, borderRadius: 8, background: '#451a1a', border: '1px solid #b91c1c', color: '#fecaca', margin: '16px 0' }}>{error}</div>}
@@ -540,10 +760,29 @@ function CommandCenter() {
           <form onSubmit={centralLogin}>
             <label htmlFor="central-email">Approved administrator email</label>
             <input id="central-email" type="email" autoComplete="username" required value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} disabled={busy} />
+            <label htmlFor="central-password" style={{display:'block',marginTop:18}}>Account password</label>
+            <input id="central-password" type="password" autoComplete="current-password" required minLength={12} maxLength={128}
+              value={privilegedPassword} onChange={e=>setPrivilegedPassword(e.target.value)} style={inputStyle} disabled={busy}/>
             <label htmlFor="central-code" style={{display:'block',marginTop:18}}>Authenticator code</label>
             <input id="central-code" inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" maxLength={6} value={mfaCode} onChange={e => setMfaCode(e.target.value)} style={inputStyle} disabled={busy} />
-            <button type="submit" disabled={busy} style={buttonStyle}>{busy ? 'Verifying…' : 'Sign in with authenticator'}</button>
-            <button type="button" onClick={() => {setStage('email');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Plant staff sign in</button>
+            <button type="submit" disabled={busy} style={buttonStyle}>{busy ? 'Verifying…' : 'Sign in with password + authenticator'}</button>
+            <button type="button" onClick={() => {setStage('authority-login');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Delegated Authority sign in</button>
+            <button type="button" onClick={() => {setAuthorityEnrollment(false);setStage('email');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Plant staff / approved MFA setup</button>
+          </form>
+        )}
+
+        {stage === 'authority-login' && (
+          <form onSubmit={centralLogin}>
+            <label htmlFor="authority-login-email">Approved Authority email</label>
+            <input id="authority-login-email" type="email" autoComplete="username" required value={email} onChange={e=>setEmail(e.target.value)} style={inputStyle} disabled={busy}/>
+            <label htmlFor="authority-login-password" style={{display:'block',marginTop:18}}>Account password</label>
+            <input id="authority-login-password" type="password" autoComplete="current-password" required minLength={12} maxLength={128}
+              value={privilegedPassword} onChange={e=>setPrivilegedPassword(e.target.value)} style={inputStyle} disabled={busy}/>
+            <label htmlFor="authority-login-code" style={{display:'block',marginTop:18}}>Authenticator code</label>
+            <input id="authority-login-code" inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" maxLength={6} value={mfaCode} onChange={e=>setMfaCode(e.target.value)} style={inputStyle} disabled={busy}/>
+            <button type="submit" disabled={busy} style={buttonStyle}>Sign in with password + authenticator</button>
+            <button type="button" onClick={()=>{setAuthorityEnrollment(true);setStage('email');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>First sign-in: verify email and enroll authenticator</button>
+            <button type="button" onClick={()=>{setStage('central-login');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Central Admin sign in</button>
           </form>
         )}
 
@@ -599,22 +838,70 @@ function CommandCenter() {
           </form>
         )}
 
+        {stage === 'authority-password' && (
+          <form onSubmit={completeAuthorityEnrollment}>
+            <h2 style={{fontSize:19}}>Set your private Authority password</h2>
+            <p style={{color:'#cbd5e1'}}>This one-time step requires your approved work-email challenge and enrolled authenticator. It never signs you into Expo.</p>
+            <label htmlFor="authority-initial-password">New password (16-128 characters)</label>
+            <input id="authority-initial-password" type="password" autoComplete="new-password" required minLength={16}
+              maxLength={128} value={newAuthorityPassword} onChange={e=>setNewAuthorityPassword(e.target.value)}
+              style={inputStyle} disabled={busy}/>
+            <label htmlFor="authority-confirm-password" style={{display:'block',marginTop:14}}>Confirm password</label>
+            <input id="authority-confirm-password" type="password" autoComplete="new-password" required minLength={16}
+              maxLength={128} value={confirmAuthorityPassword} onChange={e=>setConfirmAuthorityPassword(e.target.value)}
+              style={inputStyle} disabled={busy}/>
+            <label htmlFor="authority-enrollment-code" style={{display:'block',marginTop:14}}>Current authenticator code</label>
+            <input id="authority-enrollment-code" inputMode="numeric" autoComplete="one-time-code" required
+              pattern="[0-9]{6}" maxLength={6} value={mfaCode} onChange={e=>setMfaCode(e.target.value)}
+              style={inputStyle} disabled={busy}/>
+            <button type="submit" disabled={busy} style={buttonStyle}>Finish Authority enrollment</button>
+          </form>
+        )}
+
         {stage === 'mfa-login' && (
           <form onSubmit={verifyMfa}>
             <label htmlFor="mfa-code" style={{ display: 'block', marginTop: 18, fontWeight: 650 }}>Authenticator or recovery code</label>
             <input id="mfa-code" type="text" autoComplete="one-time-code" required maxLength={16}
               value={mfaCode} onChange={(event) => setMfaCode(event.target.value)} style={inputStyle} disabled={busy} />
             <button type="submit" disabled={busy} style={buttonStyle}>{busy ? 'Verifying…' : 'Verify MFA and sign in'}</button>
+            <button type="button" onClick={()=>{setStage('authority-login');setMfaCode('');setChallengeToken('');setError('');}}
+              style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Authority enrolled? Continue to dedicated Authority sign in</button>
           </form>
         )}
 
         {stage === 'authenticated' && user && (
           <div>
-            <div style={{ marginTop: 20, padding: 16, border: '1px solid #334155', borderRadius: 10, background: '#111827' }}>
+            <div style={{ marginTop: 20, padding: 16, border: '1px solid #334155', borderRadius: 10, background: '#111827',
+              display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:8 }}>
               <p style={{ margin: '0 0 8px' }}><strong>Signed in as</strong> {user.full_name || user.email || user.phone || 'Staff user'}</p>
               <p style={{ margin: '0 0 8px' }}><strong>Role</strong> {user.role}</p>
-              <p style={{ margin: 0 }}><strong>Session</strong> {user.role === 'central_admin' ? 'Dedicated web authenticator session' : 'Email OTP + MFA verified'}</p>
+              <p style={{ margin: 0 }}><strong>Session</strong> {user.role === 'central_admin' || user.role === 'authority' ? 'Dedicated one-hour web authenticator session' : 'Email OTP + MFA verified'}</p>
             </div>
+            {['central_admin','authority'].includes(user.role) && (
+              <details style={{marginTop:14,padding:14,border:'1px solid #334155',borderRadius:10}}>
+                <summary style={{cursor:'pointer',fontWeight:700}}>Account security · Change password</summary>
+                <p style={{fontSize:12,color:'#cbd5e1'}}>Requires your current password, authenticator and audit reason. Every session will be revoked.</p>
+                <form onSubmit={rotateWebPassword}>
+                  <label htmlFor="rotate-current">Current password</label>
+                  <input id="rotate-current" type="password" autoComplete="current-password" required
+                    value={oldWebPassword} onChange={e=>setOldWebPassword(e.target.value)} style={inputStyle} disabled={busy}/>
+                  <label htmlFor="rotate-new" style={{display:'block',marginTop:12}}>New password (16-128 characters)</label>
+                  <input id="rotate-new" type="password" autoComplete="new-password" required minLength={16} maxLength={128}
+                    value={newWebPassword} onChange={e=>setNewWebPassword(e.target.value)} style={inputStyle} disabled={busy}/>
+                  <label htmlFor="rotate-confirm" style={{display:'block',marginTop:12}}>Confirm new password</label>
+                  <input id="rotate-confirm" type="password" autoComplete="new-password" required minLength={16} maxLength={128}
+                    value={newWebPasswordConfirm} onChange={e=>setNewWebPasswordConfirm(e.target.value)} style={inputStyle} disabled={busy}/>
+                  <label htmlFor="rotate-code" style={{display:'block',marginTop:12}}>Current authenticator code</label>
+                  <input id="rotate-code" type="password" inputMode="numeric" autoComplete="one-time-code" required
+                    maxLength={6} pattern="[0-9]{6}" value={rotationCode} onChange={e=>setRotationCode(e.target.value)}
+                    style={inputStyle} disabled={busy}/>
+                  <label htmlFor="rotate-reason" style={{display:'block',marginTop:12}}>Reason (10-500 characters)</label>
+                  <textarea id="rotate-reason" required minLength={10} maxLength={500} rows={2}
+                    value={rotationReason} onChange={e=>setRotationReason(e.target.value)} style={inputStyle} disabled={busy}/>
+                  <button type="submit" style={buttonStyle} disabled={busy}>Rotate password and sign out everywhere</button>
+                </form>
+              </details>
+            )}
             <div style={{ marginTop: 14, padding: 16, border: '1px solid #334155', borderRadius: 10 }}>
               <h2 style={{ marginTop: 0, fontSize: 18 }}>Service health</h2>
               <p><strong>API:</strong> {health?.status || 'Unavailable'}</p>
@@ -623,7 +910,19 @@ function CommandCenter() {
               <p style={{ color: '#94a3b8', fontSize: 12 }}>This portal is being connected incrementally to secured Rust APIs. Privileged actions require recent authenticator verification.</p>
             </div>
             {user.role === 'central_admin' && (
-              <section aria-label="Platform overview" style={{ marginTop: 14, padding: 16, border: '1px solid #334155', borderRadius: 10 }}>
+              <nav aria-label="Control Center sections" style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:14}}>
+                {([
+                  ['#platform-overview','Platform KPIs'],
+                  ['#automation-governance','Automation'],
+                  ['#authority-governance','Authority'],
+                  ['#operations-workspaces','Operations & Marketing'],
+                ] as const).map(([href,label])=><a key={href} href={href}
+                  style={{padding:'9px 13px',borderRadius:8,color:'#f8fafc',background:'#25364e',
+                    border:'1px solid #475569',textDecoration:'none',fontSize:13,fontWeight:650}}>{label}</a>)}
+              </nav>
+            )}
+            {user.role === 'central_admin' && (
+              <section id="platform-overview" aria-label="Platform overview" style={{ marginTop: 14, padding: 16, border: '1px solid #334155', borderRadius: 10 }}>
                 <h2 style={{ marginTop: 0, fontSize: 18 }}>Live platform overview</h2>
                 {adminOverviewError && <p role="alert" style={{ color: '#fecaca' }}>Unable to load overview: {adminOverviewError}</p>}
                 {!adminOverviewError && adminKpis.length === 0 && <p style={{ color: '#94a3b8' }}>No overview data available.</p>}
@@ -639,7 +938,7 @@ function CommandCenter() {
               </section>
             )}
             {user.role === 'central_admin' && permissions.includes('system.view') && (
-              <section aria-label="Native automation governance" style={{marginTop:18,padding:14,border:'1px solid #334155',borderRadius:10}}>
+              <section id="automation-governance" aria-label="Native automation governance" style={{marginTop:18,padding:14,border:'1px solid #334155',borderRadius:10}}>
                 <h2 style={{marginTop:0,fontSize:19}}>Native Automation Center</h2>
                 <p style={{fontSize:12,color:'#cbd5e1'}}>TrackMyRMC-owned Rust workflows. Central policy is separate from each Plant Owner's activation.</p>
                 <button type="button" disabled={busy} onClick={()=>void loadNativeAutomation()} style={buttonStyle}>
@@ -710,7 +1009,63 @@ function CommandCenter() {
               </section>
             )}
 
-            {user.role === 'central_admin' && <section aria-label="Authorized workspaces" style={{marginTop:18}}>
+            {user.role === 'central_admin' && permissions.includes('admin_access.manage') && (
+              <section id="authority-governance" aria-label="Authority governance" style={{marginTop:18,padding:16,border:'1px solid #334155',borderRadius:12}}>
+                <h2 style={{margin:'0 0 6px',fontSize:19}}>Authority Access Governance</h2>
+                <p style={{fontSize:13,color:'#cbd5e1',lineHeight:1.5}}>
+                  Issue or revoke separate web-only Authority identities. Delegation never grants Central Admin,
+                  payments, reviewer settings, platform automation policy or session administration.
+                </p>
+                <button type="button" disabled={busy} onClick={()=>void loadAuthorityAccounts()} style={buttonStyle}>
+                  {showAuthorityAccounts?'Refresh Authority accounts':'Manage Authority accounts'}
+                </button>
+                {showAuthorityAccounts && <>
+                  <div style={{display:'grid',gap:9,margin:'12px 0'}}>
+                    {authorityAccounts.map(account=><article key={account.id} style={{border:'1px solid #475569',borderRadius:10,padding:12,background:'#111827'}}>
+                      <strong>{account.full_name}</strong><div style={{fontSize:13,color:'#cbd5e1'}}>{account.email}</div>
+                      <div style={{fontSize:12,marginTop:5}}>{account.enabled?'Approved':'Disabled'} · MFA {account.mfa_enrolled?'enrolled':'not enrolled'} · {account.permissions.join(', ')||'No grants'}</div>
+                      <button type="button" disabled={busy} onClick={()=>{
+                        setAuthorityEmail(account.email||'');setAuthorityName(account.full_name||'');
+                        setAuthorityEnabled(account.enabled);setAuthorityGrants(account.permissions);
+                        setAuthorityReason('');setAuthorityAdminCode('');
+                      }} style={{...buttonStyle,width:'auto',background:'#334155'}}>Edit delegation</button>
+                    </article>)}
+                    {!authorityAccounts.length && <p>No Authority accounts provisioned. Create an approved identity below.</p>}
+                  </div>
+                  <form onSubmit={saveAuthorityAccount} style={{display:'grid',gap:10}}>
+                    <h3 style={{fontSize:16,margin:'6px 0'}}>Issue / update Authority access</h3>
+                    <label>Work email<input required type="email" autoComplete="off" value={authorityEmail}
+                      onChange={e=>setAuthorityEmail(e.target.value)} style={inputStyle} disabled={busy}/></label>
+                    <label>Full name<input required minLength={2} maxLength={100} value={authorityName}
+                      onChange={e=>setAuthorityName(e.target.value)} style={inputStyle} disabled={busy}/></label>
+                    <label style={{display:'flex',gap:9,alignItems:'center'}}>
+                      <input type="checkbox" checked={authorityEnabled} onChange={e=>setAuthorityEnabled(e.target.checked)} disabled={busy}/>
+                      Approved / active
+                    </label>
+                    <fieldset style={{border:'1px solid #475569',borderRadius:8,display:'grid',gap:7}}>
+                      <legend>Explicit delegation</legend>
+                      {AUTHORITY_GRANTS.map(grant=><label key={grant.key} style={{display:'flex',gap:9,alignItems:'center',fontSize:13}}>
+                        <input type="checkbox" checked={authorityGrants.includes(grant.key)} disabled={busy}
+                          onChange={e=>setAuthorityGrants(old=>e.target.checked?[...old,grant.key]:old.filter(p=>p!==grant.key))}/>
+                        {grant.label}
+                      </label>)}
+                    </fieldset>
+                    <label>Reason for access change<input required minLength={10} maxLength={500} value={authorityReason}
+                      onChange={e=>setAuthorityReason(e.target.value)} style={inputStyle} disabled={busy}/></label>
+                    <label>Fresh Central Admin authenticator code<input required inputMode="numeric" pattern="[0-9]{6}"
+                      maxLength={6} type="password" value={authorityAdminCode} onChange={e=>setAuthorityAdminCode(e.target.value)}
+                      style={inputStyle} autoComplete="off" disabled={busy}/></label>
+                    <button type="submit" disabled={busy} style={buttonStyle}>Save grants and revoke previous sessions</button>
+                  </form>
+                  <p style={{fontSize:12,color:'#94a3b8'}}>
+                    First-time Authority login: use the approved email to enroll an authenticator on this web portal,
+                    then sign in via Delegated Authority. Never share authenticator recovery codes.
+                  </p>
+                </>}
+              </section>
+            )}
+
+            {user.role === 'central_admin' && <section id="operations-workspaces" aria-label="Authorized workspaces" style={{marginTop:18}}>
 
               {permissions.includes('plant_owners.manage') && permissions.includes('plant.view') && <>
                 <button onClick={()=>void loadPlantProfileQueue()} disabled={busy} style={buttonStyle}>Plant Profile · Verification Queue</button>
@@ -770,7 +1125,7 @@ function CommandCenter() {
                 </section>}
               </>}
               <nav style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                {['users','plants','orders','support','service_enquiries','rmc_rfq_leads','audit','sessions'].filter(kind=>permissions.includes(({users:'user.view',plants:'plant.view',orders:'order.view',support:'support.view',service_enquiries:'support.view',rmc_rfq_leads:'support.view',audit:'audit.view',sessions:'session.view'} as Record<string,string>)[kind])).map(kind=>
+                {['users','plants','orders','support','service_enquiries','rmc_rfq_leads','kyc','audit','sessions'].filter(kind=>permissions.includes(({users:'user.view',plants:'plant.view',orders:'order.view',support:'support.view',service_enquiries:'support.view',rmc_rfq_leads:'support.view',kyc:'kyc.view',audit:'audit.view',sessions:'session.view'} as Record<string,string>)[kind])).map(kind=>
                   <button key={kind} disabled={busy} onClick={()=>void loadWorkspace(kind)} style={{...buttonStyle,width:'auto',textTransform:'capitalize'}}>{kind}</button>)}
               </nav>
               {workspace && <><h2 style={{textTransform:'capitalize'}}>{workspace}</h2>
@@ -779,12 +1134,87 @@ function CommandCenter() {
                   <thead><tr>{Object.keys(records[0]||{}).map(key=><th key={key} style={{textAlign:'left',padding:8}}>{key.replace(/_/g,' ')}</th>)}</tr></thead>
                   <tbody>{records.map((row,index)=><tr key={String(row.id||index)}>{Object.entries(row).map(([key,value])=><td key={key} style={{padding:8,borderTop:'1px solid #334155'}}>{value===null?'—':typeof value==='object'?JSON.stringify(value):String(value)}</td>)}</tr>)}</tbody>
                 </table></div>
-                {workspace === 'rmc_rfq_leads' && <div style={{marginTop:18,display:'grid',gap:12}}>
+                {workspace === 'support' && permissions.includes('support.view') && (
+                  <section aria-label="Support case management" style={{border:'1px solid #475569',borderRadius:12,padding:14,marginTop:14}}>
+                    <h3 style={{fontSize:16}}>Customer Support Operations</h3>
+                    <p style={{fontSize:12,color:'#cbd5e1'}}>Open a case to view its conversation. Replies and status changes use dedicated server-enforced permissions.</p>
+                    <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                      {records.map(row=><button type="button" key={String(row.id)} disabled={busy}
+                        style={{...buttonStyle,width:'auto',background:'#334155',marginTop:0}}
+                        onClick={()=>void openSupportCase(String(row.id))}>Open {String(row.subject||row.id)}</button>)}
+                    </div>
+                    {supportCase && <div style={{borderTop:'1px solid #334155',paddingTop:12,marginTop:12,display:'grid',gap:8}}>
+                      <strong>{String(supportCase.case_number||'Support case')} · {String(supportCase.status||'')}</strong>
+                      <p>{String(supportCase.subject||'')}</p>
+                      <div style={{maxHeight:360,overflowY:'auto',display:'grid',gap:7}}>
+                        {((supportCase.messages||[]) as Array<Record<string,unknown>>).map((entry,i)=>
+                          <div key={String(entry.id||i)} style={{background:'#172334',borderRadius:8,padding:10,fontSize:13}}>
+                            <strong>{entry.internal?'Internal note':'Conversation'}</strong><div>{String(entry.message||'')}</div>
+                          </div>)}
+                      </div>
+                      {permissions.includes('support.reply') && <>
+                        <label>Reply or note<textarea rows={3} maxLength={1000} value={supportReply} onChange={e=>setSupportReply(e.target.value)}
+                          style={inputStyle} disabled={busy}/></label>
+                        <label style={{display:'flex',alignItems:'center',gap:8}}><input type="checkbox" checked={supportInternal}
+                          onChange={e=>setSupportInternal(e.target.checked)} disabled={busy}/>Internal note (not visible to customer)</label>
+                        <button type="button" disabled={busy||!supportReply.trim()} onClick={()=>void sendSupportReply()} style={{...buttonStyle,width:'auto'}}>
+                          {supportInternal?'Save internal note':'Send support reply'}</button>
+                      </>}
+                      {permissions.includes('support.manage') && <>
+                        <label>Fresh authenticator code for status change<input type="password" inputMode="numeric" maxLength={6}
+                          value={supportStepUp} onChange={e=>setSupportStepUp(e.target.value)} style={inputStyle} disabled={busy}/></label>
+                        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                          {['OPEN','IN_PROGRESS','RESOLVED','CLOSED'].filter(x=>x!==supportCase.status).map(status=>
+                            <button type="button" key={status} disabled={busy||supportStepUp.length!==6}
+                              style={{...buttonStyle,width:'auto',background:'#334155'}} onClick={()=>void updateSupportStatus(status)}>{status.replace('_',' ')}</button>)}
+                        </div>
+                      </>}
+                    </div>}
+                  </section>
+                )}
+                {workspace === 'service_enquiries' && permissions.includes('support.manage') && (
+                  <section aria-label="Service enquiry approvals" style={{border:'1px solid #475569',borderRadius:12,padding:14,marginTop:14,display:'grid',gap:10}}>
+                    <h3 style={{fontSize:16}}>Service Enquiry Follow-up</h3>
+                    <label>Required audit reason<input maxLength={500} minLength={10} value={serviceReason} onChange={e=>setServiceReason(e.target.value)} style={inputStyle} disabled={busy}/></label>
+                    <label>Fresh authenticator code<input type="password" maxLength={6} value={serviceStepUp} onChange={e=>setServiceStepUp(e.target.value)} style={inputStyle} disabled={busy}/></label>
+                    {records.map(row=><div key={String(row.id)} style={{padding:10,border:'1px solid #334155',borderRadius:8}}>
+                      <strong>{String(row.service_type||'Service')} · {String(row.status||'NEW')}</strong>
+                      <div style={{display:'flex',gap:7,flexWrap:'wrap'}}>
+                        {['CONTACTED','QUOTED','CLOSED'].filter(x=>x!==row.status).map(status=>
+                          <button key={status} type="button" disabled={busy||serviceReason.trim().length<10||serviceStepUp.length!==6}
+                            onClick={()=>void updateServiceEnquiry(String(row.id),status)}
+                            style={{...buttonStyle,width:'auto',background:'#334155'}}>{status}</button>)}
+                      </div>
+                    </div>)}
+                  </section>
+                )}
+                {workspace === 'kyc' && permissions.includes('kyc.review') && <div style={{marginTop:18,display:'grid',gap:12,border:'1px solid #475569',borderRadius:10,padding:14}}>
+                  <h3 style={{fontSize:16,margin:0}}>Customer Identity Review</h3>
+                  <p style={{fontSize:12,color:'#cbd5e1'}}>Approve only where the backend confirms provider consent and a verified name. Rejection and reset require an audit reason.</p>
+                  <label>Reason for review<input required minLength={10} maxLength={500} value={centralKycReason}
+                    onChange={e=>setCentralKycReason(e.target.value)} style={inputStyle} disabled={busy}/></label>
+                  <label>Fresh Super Admin authenticator code<input type="password" autoComplete="off" inputMode="numeric"
+                    pattern="[0-9]{6}" maxLength={6} value={centralKycCode} onChange={e=>setCentralKycCode(e.target.value)}
+                    style={inputStyle} disabled={busy}/></label>
+                  {records.map(row=><article key={String(row.customer_id)} style={{borderTop:'1px solid #475569',padding:12}}>
+                    <strong>{String(row.customer||'Customer')}</strong>
+                    <p style={{fontSize:12,color:'#cbd5e1'}}>Provider-verified name: {String(row.verified_name||'Not confirmed')} · Consent evidence: {row.evidence_verified?'Recorded':'Missing'}</p>
+                    <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+                      <button type="button" disabled={busy||!row.evidence_verified||!row.verified_name||centralKycReason.length<10||centralKycCode.length!==6}
+                        onClick={()=>void reviewCentralKyc(String(row.customer_id),'approve')}
+                        style={{...buttonStyle,width:'auto',background:'#166534'}}>Approve verified identity</button>
+                      <button type="button" disabled={busy||centralKycReason.length<10||centralKycCode.length!==6}
+                        onClick={()=>void reviewCentralKyc(String(row.customer_id),'reject')}
+                        style={{...buttonStyle,width:'auto',background:'#7f1d1d'}}>Reject</button>
+                    </div>
+                  </article>)}
+                </div>}
+                {workspace === 'rmc_rfq_leads' && permissions.includes('support.manage') && <div style={{marginTop:18,display:'grid',gap:12}}>
                   <p style={{color:'#cbd5e1',lineHeight:1.5}}>
                     Unregistered suppliers have not received these enquiries. Use approved, permission-based outreach.
                     Customer details remain private until plant approval and customer reconfirmation.
                   </p>
-                  <label htmlFor="rfq-step-up">Fresh authenticator or recovery code to record outreach</label>
+                  <label htmlFor="rfq-step-up">Fresh authenticator code to record outreach</label>
                   <input id="rfq-step-up" value={rfqOutreachCode} onChange={e=>setRfqOutreachCode(e.target.value)}
                     autoComplete="off" type="password" style={inputStyle} disabled={busy} />
                   <button type="button" disabled={busy} onClick={()=>void shareRmcOnboardingLink()}
@@ -815,6 +1245,73 @@ function CommandCenter() {
                 <button disabled={busy||records.length<25} onClick={()=>void loadWorkspace(workspace,workspaceOffset+25)}>Next</button>
               </>}
             </section>}
+            {user.role === 'authority' && (
+              <section aria-label="Delegated Authority Operations" style={{marginTop:18,padding:16,border:'1px solid #334155',borderRadius:12}}>
+                <h2 style={{margin:'0 0 8px',fontSize:20}}>Authority Operations</h2>
+                <p style={{fontSize:13,color:'#cbd5e1',lineHeight:1.55}}>
+                  Centrally delegated service operations only. Platform policy, financial mutations,
+                  staff role elevation, automation settings and Central Admin access remain restricted.
+                </p>
+                <h3 style={{fontSize:15}}>Authorized service workspaces</h3>
+                <nav aria-label="Authority workspaces" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:8}}>
+                  {([
+                    ['users','user.view','User Directory'],
+                    ['plants','plant.view','Approved Plants'],
+                    ['orders','order.view','Order Monitoring'],
+                    ['support','support.view','Customer Support'],
+                    ['service_enquiries','support.view','Service Enquiries'],
+                    ['rmc_rfq_leads','support.view','RFQ / Marketing Leads'],
+                    ['kyc','kyc.view','KYC Review Queue'],
+                  ] as const).filter(([,permission])=>permissions.includes(permission)).map(([kind,,label])=>
+                    <button key={kind} type="button" disabled={busy} onClick={()=>void loadWorkspace(kind)}
+                      style={{...buttonStyle,marginTop:0,background:workspace===kind?'#166534':'#334155'}}>{label}</button>)}
+                </nav>
+                {workspace && <>
+                  <h3 style={{margin:'18px 0 6px',fontSize:16,textTransform:'capitalize'}}>{workspace.replace(/_/g,' ')}</h3>
+                  <p style={{fontSize:12,color:'#94a3b8'}}>Current permission-scoped records. This view cannot broadcast to customers or suppliers.</p>
+                  <div style={{overflowX:'auto',border:'1px solid #334155',borderRadius:8}}>
+                    <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                      <thead><tr>{Object.keys(records[0]||{}).map(key=>
+                        <th key={key} scope="col" style={{textAlign:'left',padding:9,borderBottom:'1px solid #475569'}}>{key.replace(/_/g,' ')}</th>)}</tr></thead>
+                      <tbody>{records.map((row,index)=><tr key={String(row.id||row.customer_id||index)}>
+                        {Object.entries(row).map(([key,value])=>
+                          <td key={key} style={{padding:9,borderTop:'1px solid #334155'}}>{value===null?'—':typeof value==='object'?JSON.stringify(value):String(value)}</td>)}
+                      </tr>)}</tbody>
+                    </table>
+                  </div>
+                  {!busy && !records.length && <p>No records in this workspace.</p>}
+                  {workspace==='kyc' && permissions.includes('kyc.review') && records.length>0 && (
+                    <div style={{marginTop:12,padding:12,border:'1px solid #475569',borderRadius:10}}>
+                      <h3 style={{fontSize:15}}>Customer verification decisions</h3>
+                      <p style={{fontSize:12,color:'#cbd5e1'}}>Review trusted evidence under the approved KYC process before making a decision. Each change requires recent authenticator verification.</p>
+                      <label>Fresh Authority authenticator code<input type="password" autoComplete="off"
+                        inputMode="numeric" maxLength={6} pattern="[0-9]{6}" value={authorityReviewCode}
+                        onChange={e=>setAuthorityReviewCode(e.target.value)} style={inputStyle} disabled={busy}/></label>
+                      <label>Decision reason for the audit log (10-500 characters)
+                        <textarea maxLength={500} rows={2} value={authorityReviewReason}
+                          onChange={e=>setAuthorityReviewReason(e.target.value)} style={inputStyle} disabled={busy}/>
+                      </label>
+                      {records.map(row=><div key={String(row.customer_id)} style={{borderTop:'1px solid #334155',padding:'10px 0'}}>
+                        <strong>{String(row.customer||'Customer')}</strong>
+                        <p style={{fontSize:12}}>Verified name: {String(row.verified_name||'Missing')} · Provider evidence: {row.evidence_verified?'Confirmed':'Not confirmed'}</p>
+                        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                          <button type="button" disabled={busy||authorityReviewCode.length!==6||authorityReviewReason.trim().length<10||!row.evidence_verified||!row.verified_name}
+                            onClick={()=>void reviewAuthorityKyc(String(row.customer_id),true)}
+                            style={{...buttonStyle,width:'auto',background:'#166534'}}>Approve KYC</button>
+                          <button type="button" disabled={busy||authorityReviewCode.length!==6||authorityReviewReason.trim().length<10}
+                            onClick={()=>void reviewAuthorityKyc(String(row.customer_id),false)}
+                            style={{...buttonStyle,width:'auto',background:'#7f1d1d'}}>Reject KYC</button>
+                        </div>
+                      </div>)}
+                    </div>
+                  )}
+                  <div style={{display:'flex',gap:10}}>
+                    <button type="button" disabled={busy||workspaceOffset===0} onClick={()=>void loadWorkspace(workspace,Math.max(0,workspaceOffset-25))}>Previous</button>
+                    <button type="button" disabled={busy||records.length<25} onClick={()=>void loadWorkspace(workspace,workspaceOffset+25)}>Next</button>
+                  </div>
+                </>}
+              </section>
+            )}
             <button type="button" onClick={logout} disabled={busy} style={buttonStyle}>{busy ? 'Signing out…' : 'Sign out and revoke session'}</button>
           </div>
         )}

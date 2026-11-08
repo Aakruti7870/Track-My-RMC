@@ -85,24 +85,40 @@ where
     }
 }
 
+type PrivilegedWebIdentity = (Uuid, Option<String>, Option<String>, String, String, String);
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AdminLogin {
     pub identifier: String,
+    pub password: String,
     pub code: String,
 }
 
 pub async fn method() -> Json<Value> {
-    Json(json!({"status":"AUTHENTICATOR_REQUIRED", "method":"totp"}))
+    Json(json!({"status":"PASSWORD_AND_AUTHENTICATOR_REQUIRED", "method":"password_totp"}))
 }
 
 pub async fn login(
     State(state): State<AppState>,
     Json(body): Json<AdminLogin>,
 ) -> Result<Json<Value>, AppError> {
+    login_for_role(state, body, "central_admin").await
+}
+
+/// The role is server-selected by the route; no request can choose its own role.
+pub async fn login_for_role(
+    state: AppState,
+    body: AdminLogin,
+    role: &'static str,
+) -> Result<Json<Value>, AppError> {
+    if !matches!(role, "central_admin" | "authority") {
+        return Err(AppError::Forbidden("Unknown privileged web role".into()));
+    }
     let identifier = body.identifier.trim().to_lowercase();
     if identifier.len() < 3
         || identifier.len() > 254
+        || !(12..=128).contains(&body.password.len())
         || body.code.len() != 6
         || !body.code.bytes().all(|b| b.is_ascii_digit())
     {
@@ -128,13 +144,42 @@ pub async fn login(
     }
     sqlx::query("UPDATE control_center_login_limits SET attempts=$2, window_started_at=CASE WHEN $2=1 THEN NOW() ELSE window_started_at END WHERE identifier_hash=$1")
         .bind(&key).bind(attempts+1).execute(&mut *tx).await?;
-    let identity: Option<(Uuid, String, Option<String>, String, String)> = sqlx::query_as(
-        "SELECT u.id, u.phone, u.email, u.full_name, t.secret_key FROM users u
+    // Serialize the entire proof and issuance with password rotation and access
+    // governance. Taking this lock only inside issue_in_tx permits a password
+    // or approval read before revocation to create a fresh session afterwards.
+    // Read joined credentials/access in a NEW statement after acquiring the
+    // lock: READ COMMITTED must see any policy change committed while we waited.
+    let _: Option<Uuid> =
+        sqlx::query_scalar("SELECT id FROM users WHERE LOWER(email)=$1 AND role=$2 FOR UPDATE")
+            .bind(&identifier)
+            .bind(role)
+            .fetch_optional(&mut *tx)
+            .await?;
+    let identity: Option<PrivilegedWebIdentity> = sqlx::query_as(
+        "SELECT u.id, u.phone, u.email, u.full_name, t.secret_key, u.hashed_password FROM users u
          JOIN control_center_access a ON a.user_id=u.id
          JOIN user_totp_credentials t ON t.user_id=u.id AND t.is_enabled=TRUE
-         WHERE LOWER(u.email)=$1 AND u.role='central_admin' AND u.is_active=TRUE AND a.approved=TRUE",
-    ).bind(&identifier).fetch_optional(&mut *tx).await?;
-    let verified_step = identity.as_ref().and_then(|i| {
+         WHERE LOWER(u.email)=$1 AND u.role=$2 AND u.is_active=TRUE AND a.approved=TRUE",
+    )
+    .bind(&identifier)
+    .bind(role)
+    .fetch_optional(&mut *tx)
+    .await?;
+    // Independently prove knowledge of the Argon2id password and possession of
+    // the enrolled authenticator. Placeholder and legacy hashes fail closed.
+    // Keep expensive Argon2 work off Tokio's request workers. Unknown/disabled
+    // identities perform the same password work without ever becoming valid.
+    let stored_hash = identity.as_ref().map(|i| i.5.clone());
+    let password = body.password;
+    let valid_password = tokio::task::spawn_blocking(move || {
+        const DUMMY_HASH: &str = "$argon2id$v=19$m=19456,t=2,p=1$SvWTeNFS61/Ui+SOXVyNJw$JGIBa6UrWI3fvkiDP+jDI+a6plEeoYVpTM72VyGddR8";
+        let usable_hash = stored_hash.as_deref().filter(|hash| hash.starts_with("$argon2id$"));
+        let verified = crate::auth::password::verify_password(&password, usable_hash.unwrap_or(DUMMY_HASH)).unwrap_or(false);
+        usable_hash.is_some() && verified
+    })
+    .await
+    .map_err(|_| AppError::InternalError("Password verification unavailable".into()))?;
+    let verified_step = identity.as_ref().filter(|_| valid_password).and_then(|i| {
         [-1_i64, 0, 1]
             .into_iter()
             .map(|offset| now.timestamp() / 30 + offset)
@@ -150,12 +195,30 @@ pub async fn login(
         tx.commit().await?;
         return Err(AppError::Unauthorized("Authentication failed".into()));
     };
-    let (id, phone, email, full_name, _) = identity.expect("verified identity");
+    let (id, phone, email, full_name, secret, _) = identity.expect("verified identity");
+    // All privileged proof surfaces share the credential counter. Updating it in
+    // this transaction serializes concurrent login/step-up/enrollment proofs.
+    let accepted = sqlx::query(
+        "UPDATE user_totp_credentials SET last_login_totp_step=$2
+         WHERE user_id=$1 AND is_enabled AND secret_key=$3
+           AND (last_login_totp_step IS NULL OR last_login_totp_step<$2)",
+    )
+    .bind(id)
+    .bind(step)
+    .bind(&secret)
+    .execute(&mut *tx)
+    .await?;
+    if accepted.rows_affected() != 1 {
+        sqlx::query("INSERT INTO audit_logs (action,resource_type,metadata) VALUES ('admin.auth.failed','admin_session','{}')")
+            .execute(&mut *tx).await?;
+        tx.commit().await?;
+        return Err(AppError::Unauthorized("Authentication failed".into()));
+    }
     let token = account_sessions::issue_in_tx(
         &mut tx,
         id,
-        "central_admin",
-        &phone,
+        role,
+        phone.as_deref().unwrap_or(""),
         email.as_deref(),
         &state.config.jwt_secret,
         1,
@@ -178,13 +241,132 @@ pub async fn login(
         .bind(hash).bind(id).execute(&mut *tx).await?;
     sqlx::query("UPDATE control_center_login_limits SET attempts=0,last_totp_step=$2 WHERE identifier_hash=$1")
         .bind(key).bind(step).execute(&mut *tx).await?;
-    sqlx::query("INSERT INTO audit_logs (user_id,action,resource_type,metadata) VALUES ($1,'admin.auth.succeeded','admin_session','{\"auth_surface\":\"control_center_web\"}')")
+    sqlx::query("INSERT INTO audit_logs (user_id,action,resource_type,metadata) VALUES ($1,'admin.auth.succeeded','admin_session','{\"auth_surface\":\"control_center_web\",\"factors\":[\"argon2id_password\",\"totp\"]}')")
         .bind(id).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(Json(
-        json!({"success":true,"token":token,"access_token":token,"role":"central_admin",
-        "user":{"id":id,"email":email,"full_name":full_name,"role":"central_admin"}}),
+        json!({"success":true,"token":token,"access_token":token,"role":role,
+        "user":{"id":id,"email":email,"full_name":full_name,"role":role}}),
     ))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PasswordRotation {
+    pub current_password: String,
+    pub new_password: String,
+    pub code: String,
+    pub reason: String,
+}
+
+/// Self-service rotation never re-enrolls an authenticator or creates a JWT.
+/// The caller must already hold a valid, dedicated, role-bound web session.
+pub(crate) async fn rotate_password(
+    state: &AppState,
+    user_id: Uuid,
+    session_hash: &str,
+    body: PasswordRotation,
+) -> Result<Json<Value>, AppError> {
+    let reason = body.reason.trim();
+    if !(12..=128).contains(&body.current_password.len())
+        || !(16..=128).contains(&body.new_password.len())
+        || !(10..=500).contains(&reason.len())
+        || body.new_password == body.current_password
+        || body.code.len() != 6
+        || !body.code.bytes().all(|b| b.is_ascii_digit())
+    {
+        return Err(AppError::BadRequest(
+            "Use a distinct password (16-128 bytes), current authenticator and audit reason".into(),
+        ));
+    }
+    // Commit the throttle even when a proof fails: rolled-back counters invite guessing.
+    let attempts: i32 = sqlx::query_scalar(
+        "UPDATE control_center_sessions SET
+         step_up_attempts=CASE WHEN step_up_window_started_at<NOW()-INTERVAL '5 minutes'
+         THEN 1 ELSE step_up_attempts+1 END,
+         step_up_window_started_at=CASE WHEN step_up_window_started_at<NOW()-INTERVAL '5 minutes'
+         THEN NOW() ELSE step_up_window_started_at END
+         WHERE user_id=$1 AND token_hash=$2 AND revoked_at IS NULL AND expires_at>NOW()
+         RETURNING step_up_attempts",
+    )
+    .bind(user_id)
+    .bind(session_hash)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| AppError::Unauthorized("Privileged session expired".into()))?;
+    if attempts > 5 {
+        return Err(AppError::Forbidden(
+            "Credential rotation temporarily locked".into(),
+        ));
+    }
+    let original: String = sqlx::query_scalar(
+        "SELECT hashed_password FROM users WHERE id=$1 AND is_active
+         AND role IN ('central_admin','authority')",
+    )
+    .bind(user_id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| AppError::Unauthorized("Privileged account is unavailable".into()))?;
+    if !original.starts_with("$argon2id$")
+        || !crate::auth::password::verify_password(&body.current_password, &original)
+            .unwrap_or(false)
+    {
+        return Err(AppError::Unauthorized(
+            "Current credentials are invalid".into(),
+        ));
+    }
+    crate::auth::totp::verify_staff_totp_login(&state.db, user_id, &body.code).await?;
+    let replacement = crate::auth::password::hash_password(&body.new_password)?;
+    let mut tx = state.db.begin().await?;
+    let updated = sqlx::query(
+        "UPDATE users SET hashed_password=$2,active_session_jti=NULL,
+         auth_revoked_at=clock_timestamp(),updated_at=NOW()
+         WHERE id=$1 AND hashed_password=$3 AND is_active",
+    )
+    .bind(user_id)
+    .bind(replacement)
+    .bind(&original)
+    .execute(&mut *tx)
+    .await?;
+    if updated.rows_affected() != 1 {
+        return Err(AppError::Conflict(
+            "Credential state changed; restart rotation".into(),
+        ));
+    }
+    sqlx::query(
+        "UPDATE control_center_sessions SET revoked_at=clock_timestamp()
+         WHERE user_id=$1 AND revoked_at IS NULL",
+    )
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query("DELETE FROM control_center_step_ups WHERE user_id=$1")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM account_refresh_tokens WHERE user_id=$1")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query(
+        "INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata)
+         VALUES($1,'control_center.password.rotated','privileged_user',$2,$3)",
+    )
+    .bind(user_id)
+    .bind(user_id.to_string())
+    .bind(json!({"reason":reason}))
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(json!({"success":true,"session_revoked":true})))
+}
+
+pub async fn change_admin_password(
+    State(state): State<AppState>,
+    admin: WebAdmin,
+    Json(body): Json<PasswordRotation>,
+) -> Result<Json<Value>, AppError> {
+    rotate_password(&state, admin.user_id, &admin.token_hash, body).await
 }
 
 pub async fn me(admin: WebAdmin) -> Json<Value> {

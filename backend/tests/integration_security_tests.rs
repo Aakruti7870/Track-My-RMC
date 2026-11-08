@@ -16,6 +16,9 @@ use trackmyrmc_backend::{
 };
 use uuid::Uuid;
 
+const SYNTHETIC_PASSWORD: &str = "Synthetic-CI-Only-Password-2026!";
+const SYNTHETIC_PASSWORD_HASH: &str = "$argon2id$v=19$m=19456,t=2,p=1$SvWTeNFS61/Ui+SOXVyNJw$JGIBa6UrWI3fvkiDP+jDI+a6plEeoYVpTM72VyGddR8";
+
 fn state(db: PgPool) -> AppState {
     AppState::new(
         db,
@@ -91,7 +94,7 @@ async fn only_step_up_control_center_can_issue_and_revoke_plant_owner_access(db:
         &router,
         "/api/admin/auth/verify-totp",
         None,
-        Some(json!({"identifier":email,"code":code})),
+        Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp()-30) as u64).unwrap()})),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -215,7 +218,7 @@ async fn support_staff_requires_recorded_web_mfa_grants_and_fresh_status_step_up
         &router,
         "/api/admin/auth/verify-totp",
         None,
-        Some(json!({"identifier":email,"code":code})),
+        Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp()-30) as u64).unwrap()})),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -379,8 +382,8 @@ async fn identity(
     permissions: Vec<&str>,
 ) -> (Uuid, String, String) {
     let email = format!("{}@example.invalid", Uuid::new_v4());
-    let id: Uuid = sqlx::query_scalar("INSERT INTO users (phone,email,hashed_password,full_name,role) VALUES ($1,$2,'unused','Test',$3) RETURNING id")
-        .bind(Uuid::new_v4().simple().to_string()[..18].to_string()).bind(&email).bind(role).fetch_one(db).await.unwrap();
+    let id: Uuid = sqlx::query_scalar("INSERT INTO users (phone,email,hashed_password,full_name,role) VALUES ($1,$2,$3,'Test',$4) RETURNING id")
+        .bind(Uuid::new_v4().simple().to_string()[..18].to_string()).bind(&email).bind(SYNTHETIC_PASSWORD_HASH).bind(role).fetch_one(db).await.unwrap();
     let secret = TotpEngine::generate_secret();
     sqlx::query(
         "INSERT INTO user_totp_credentials (user_id,secret_key,is_enabled) VALUES ($1,$2,TRUE)",
@@ -408,14 +411,12 @@ async fn central_admin_requires_approval_web_provenance_and_explicit_permission(
     let router = app(state.clone());
     for role in ["admin", "authority", "customer", "owner"] {
         let (id, email, secret) = identity(&db, role, true, vec!["system.view"]).await;
-        let code =
-            TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
         assert_eq!(
             request(
                 &router,
                 "/login",
                 None,
-                Some(json!({"identifier":email,"code":code}))
+                Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp()-30) as u64).unwrap()}))
             )
             .await
             .0,
@@ -431,13 +432,12 @@ async fn central_admin_requires_approval_web_provenance_and_explicit_permission(
         );
     }
     let (id, email, secret) = identity(&db, "central_admin", false, vec![]).await;
-    let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
     assert_eq!(
         request(
             &router,
             "/login",
             None,
-            Some(json!({"identifier":email,"code":code}))
+            Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp()-30) as u64).unwrap()}))
         )
         .await
         .0,
@@ -465,7 +465,7 @@ async fn central_admin_requires_approval_web_provenance_and_explicit_permission(
         &router,
         "/login",
         None,
-        Some(json!({"identifier":email,"code":code})),
+        Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp()-30) as u64).unwrap()})),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -509,7 +509,7 @@ async fn step_up_is_session_bound_expiring_and_logout_revokes_sessions(db: PgPoo
         &router,
         "/login",
         None,
-        Some(json!({"identifier":email,"code":code})),
+        Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp()-30) as u64).unwrap()})),
     )
     .await;
     let token = login["token"].as_str().unwrap();
@@ -563,7 +563,14 @@ async fn step_up_is_session_bound_expiring_and_logout_revokes_sessions(db: PgPoo
             .0,
         StatusCode::FORBIDDEN
     );
-    request(&router, "/step-up", Some(token), Some(json!({"code":code}))).await;
+    let code =
+        TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp() + 30) as u64).unwrap();
+    assert_eq!(
+        request(&router, "/step-up", Some(token), Some(json!({"code":code})))
+            .await
+            .0,
+        StatusCode::OK
+    );
     assert_eq!(
         request(&router, "/logout-all", Some(token), Some(json!({})))
             .await
@@ -588,12 +595,11 @@ async fn stale_role_claims_are_rejected_and_otp_replay_does_not_mint_session(db:
     let state = state(db.clone());
     let router = app(state.clone());
     let (id, email, secret) = identity(&db, "central_admin", true, vec![]).await;
-    let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
     let (_, login) = request(
         &router,
         "/login",
         None,
-        Some(json!({"identifier":email,"code":code})),
+        Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp()-30) as u64).unwrap()})),
     )
     .await;
     let token = login["token"].as_str().unwrap();
@@ -602,7 +608,7 @@ async fn stale_role_claims_are_rejected_and_otp_replay_does_not_mint_session(db:
             &router,
             "/login",
             None,
-            Some(json!({"identifier":email,"code":code}))
+            Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp()-30) as u64).unwrap()}))
         )
         .await
         .0,
@@ -637,12 +643,11 @@ async fn read_workspaces_execute_and_enforce_individual_permissions(db: PgPool) 
         ],
     )
     .await;
-    let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
     let (status, result) = request(
         &router,
         "/login",
         None,
-        Some(json!({"identifier":email,"code":code})),
+        Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp()-30) as u64).unwrap()})),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -683,12 +688,11 @@ async fn central_admin_rejects_unbound_jwt_and_logout_revokes_active_session(db:
     let state = state(db.clone());
     let router = app(state.clone());
     let (id, email, secret) = identity(&db, "central_admin", true, vec![]).await;
-    let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
     let (_, result) = request(
         &router,
         "/login",
         None,
-        Some(json!({"identifier":email,"code":code})),
+        Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp()-30) as u64).unwrap()})),
     )
     .await;
     let first = result["token"].as_str().unwrap();
@@ -775,7 +779,7 @@ async fn reviewer_disable_revokes_current_replaced_and_legacy_access(db: PgPool)
         &console,
         "/login",
         None,
-        Some(json!({"identifier":email,"code":code})),
+        Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp()-30) as u64).unwrap()})),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -884,7 +888,7 @@ async fn native_automation_global_policy_requires_explicit_grant_and_recent_mfa(
         &router,
         "/api/admin/auth/verify-totp",
         None,
-        Some(json!({"identifier":email,"code":code})),
+        Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp()-30) as u64).unwrap()})),
     )
     .await;
     assert_eq!(status, StatusCode::OK);

@@ -90,7 +90,7 @@ test("legacy support operations remain available to privileged roles until the w
   for (const status of ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"]) assert.ok(staff.includes(`"${status}"`));
   for (const text of ["Send Public Reply", "Add Internal Note", "Change status", "Loading support cases", "Unable to update case status"]) assert.ok(staff.includes(text));
   assert.ok(!more.includes('testID="staff-support-cases"'));
-  assert.ok(staff.includes('user?.role === "authority" || user?.role === "central_admin"'));
+  assert.ok(staff.includes('const authorized = false;'), "privileged support must not be exposed in Expo");
 });
 
 test("login help widget stays compact and public issue choices expand before navigation", () => {

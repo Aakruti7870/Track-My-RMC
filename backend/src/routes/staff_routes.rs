@@ -996,30 +996,66 @@ pub async fn record_invoice_payment(
     ))
 }
 
-// Only the Authority's independently approved review session may invoke this
-// helper. The public route contains a *customer user ID*, not user_profiles.id.
-// Keep the update and immutable audit record in one transaction.
+// Only a separately approved Authority session may invoke the route. The
+// customer ID is users.id. The provider environment comes from server-side
+// policy; a missing provider can never authorize a new verified KYC decision.
 async fn update_reviewed_customer_kyc(
     db: &sqlx::PgPool,
     actor: Uuid,
     customer_id: Uuid,
     new_status: &'static str,
+    reason: &str,
 ) -> Result<(), AppError> {
+    let provider_environment = crate::routes::digilocker_kyc::approved_provider_environment().ok();
+    update_reviewed_customer_kyc_with_env(
+        db,
+        actor,
+        customer_id,
+        new_status,
+        reason,
+        provider_environment,
+    )
+    .await
+}
+
+async fn update_reviewed_customer_kyc_with_env(
+    db: &sqlx::PgPool,
+    actor: Uuid,
+    customer_id: Uuid,
+    new_status: &'static str,
+    reason: &str,
+    provider_environment: Option<&str>,
+) -> Result<(), AppError> {
+    let reason = reason.trim();
+    if !(10..=500).contains(&reason.len()) {
+        return Err(AppError::BadRequest(
+            "Authority KYC review requires a specific audit reason (10-500 characters)".into(),
+        ));
+    }
     let mut tx = db.begin().await?;
     let updated: Option<Uuid> = sqlx::query_scalar(
         "UPDATE user_profiles AS p SET kyc_status=$2, updated_at=NOW()
          FROM users AS u
          WHERE p.user_id=$1 AND u.id=p.user_id
            AND u.role='customer' AND u.is_active=TRUE
+           AND (($2='verified' AND p.kyc_status='pending'
+                AND p.verified_name IS NOT NULL
+                AND EXISTS(SELECT 1 FROM customer_digilocker_sessions d
+                           WHERE d.user_id=p.user_id AND d.status='PENDING'
+                           AND d.verified_at IS NOT NULL
+                           AND d.provider_environment=$3))
+             OR ($2='rejected' AND p.kyc_status='pending')
+             OR ($2='unverified' AND p.kyc_status IN ('verified','rejected')))
          RETURNING p.user_id",
     )
     .bind(customer_id)
     .bind(new_status)
+    .bind(provider_environment)
     .fetch_optional(&mut *tx)
     .await?;
     if updated != Some(customer_id) {
-        return Err(AppError::NotFound(
-            "Active customer KYC profile not found".into(),
+        return Err(AppError::Conflict(
+            "KYC transition denied: a pending review or verified identity is required".into(),
         ));
     }
     sqlx::query(
@@ -1028,11 +1064,18 @@ async fn update_reviewed_customer_kyc(
     )
     .bind(actor)
     .bind(customer_id.to_string())
-    .bind(json!({"kyc_status": new_status}))
+    .bind(json!({"kyc_status": new_status, "reason": reason,
+                 "provider_environment": if new_status == "verified" {provider_environment} else {None}}))
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
     Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AuthorityKycDecision {
+    pub reason: String,
 }
 
 pub async fn approve_customer_kyc(
@@ -1040,9 +1083,17 @@ pub async fn approve_customer_kyc(
     auth_user: AuthUser,
     headers: axum::http::HeaderMap,
     Path(customer_id): Path<Uuid>,
+    Json(body): Json<AuthorityKycDecision>,
 ) -> Result<impl IntoResponse, AppError> {
     ensure_authority_review_session(&state, &auth_user, &headers).await?;
-    update_reviewed_customer_kyc(&state.db, auth_user.user_id, customer_id, "verified").await?;
+    update_reviewed_customer_kyc(
+        &state.db,
+        auth_user.user_id,
+        customer_id,
+        "verified",
+        &body.reason,
+    )
+    .await?;
     Ok(Json(
         json!({ "success": true, "message": "KYC profile approved" }),
     ))
@@ -1053,9 +1104,17 @@ pub async fn reject_customer_kyc(
     auth_user: AuthUser,
     headers: axum::http::HeaderMap,
     Path(customer_id): Path<Uuid>,
+    Json(body): Json<AuthorityKycDecision>,
 ) -> Result<impl IntoResponse, AppError> {
     ensure_authority_review_session(&state, &auth_user, &headers).await?;
-    update_reviewed_customer_kyc(&state.db, auth_user.user_id, customer_id, "rejected").await?;
+    update_reviewed_customer_kyc(
+        &state.db,
+        auth_user.user_id,
+        customer_id,
+        "rejected",
+        &body.reason,
+    )
+    .await?;
     Ok(Json(
         json!({ "success": true, "message": "KYC profile rejected" }),
     ))
@@ -1066,9 +1125,17 @@ pub async fn reset_customer_kyc(
     auth_user: AuthUser,
     headers: axum::http::HeaderMap,
     Path(customer_id): Path<Uuid>,
+    Json(body): Json<AuthorityKycDecision>,
 ) -> Result<impl IntoResponse, AppError> {
     ensure_authority_review_session(&state, &auth_user, &headers).await?;
-    update_reviewed_customer_kyc(&state.db, auth_user.user_id, customer_id, "unverified").await?;
+    update_reviewed_customer_kyc(
+        &state.db,
+        auth_user.user_id,
+        customer_id,
+        "unverified",
+        &body.reason,
+    )
+    .await?;
     Ok(Json(
         json!({ "success": true, "message": "KYC profile reset for re-verification" }),
     ))
@@ -1081,7 +1148,7 @@ async fn ensure_authority_review_session(
 ) -> Result<(), AppError> {
     check_role(user, &["authority"])?;
     let hash = crate::auth::control_center::token_hash(headers)?;
-    let approved:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM control_center_sessions s JOIN control_center_access a ON a.user_id=s.user_id WHERE s.token_hash=$1 AND s.user_id=$2 AND s.revoked_at IS NULL AND s.expires_at>NOW() AND a.approved=TRUE AND 'kyc.review'=ANY(a.permissions))").bind(hash).bind(user.user_id).fetch_one(&state.db).await?;
+    let approved:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM control_center_sessions s JOIN control_center_access a ON a.user_id=s.user_id JOIN control_center_step_ups step ON step.user_id=s.user_id AND step.token_hash=s.token_hash AND step.expires_at>NOW() WHERE s.token_hash=$1 AND s.user_id=$2 AND s.revoked_at IS NULL AND s.expires_at>NOW() AND a.approved=TRUE AND 'kyc.review'=ANY(a.permissions))").bind(hash).bind(user.user_id).fetch_one(&state.db).await?;
     if !approved {
         return Err(AppError::Forbidden(
             "Approved Authority review session is required".into(),
@@ -1092,9 +1159,29 @@ async fn ensure_authority_review_session(
 
 #[cfg(test)]
 mod authority_kyc_customer_scope_tests {
-    use super::update_reviewed_customer_kyc;
+    use super::update_reviewed_customer_kyc_with_env;
     use crate::error::AppError;
     use uuid::Uuid;
+
+    // Isolated PostgreSQL tests select synthetic sandbox provenance explicitly;
+    // production HTTP code always derives it from the server's provider policy.
+    async fn update_reviewed_customer_kyc(
+        db: &sqlx::PgPool,
+        actor: Uuid,
+        customer_id: Uuid,
+        new_status: &'static str,
+        reason: &str,
+    ) -> Result<(), AppError> {
+        update_reviewed_customer_kyc_with_env(
+            db,
+            actor,
+            customer_id,
+            new_status,
+            reason,
+            Some("sandbox"),
+        )
+        .await
+    }
 
     #[sqlx::test]
     async fn review_uses_customer_user_id_rejects_noncustomers_and_writes_audit(
@@ -1133,11 +1220,46 @@ mod authority_kyc_customer_scope_tests {
             .await
             .unwrap();
 
-        // The route uses the customer's users.id, which differs from user_profiles.id.
-        assert_ne!(profile, customer);
-        update_reviewed_customer_kyc(&pool, actor, customer, "verified")
+        // The test records the same verified consent milestone as the provider.
+        sqlx::query("UPDATE user_profiles SET kyc_status='pending', verified_name='Verified Customer' WHERE user_id=$1")
+            .bind(customer)
+            .execute(&pool)
             .await
             .unwrap();
+        sqlx::query("INSERT INTO customer_digilocker_sessions(user_id,status,verified_at) VALUES($1,'PENDING',NOW())")
+            .bind(customer)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        // Sandbox evidence must never approve live KYC, or any approval
+        // when the server has no configured/approved provider.
+        for environment in [Some("live"), None] {
+            assert!(matches!(
+                update_reviewed_customer_kyc_with_env(
+                    &pool,
+                    actor,
+                    customer,
+                    "verified",
+                    "Reject incompatible provider evidence",
+                    environment,
+                )
+                .await,
+                Err(AppError::Conflict(_))
+            ));
+        }
+
+        // The route uses the customer's users.id, which differs from user_profiles.id.
+        assert_ne!(profile, customer);
+        update_reviewed_customer_kyc(
+            &pool,
+            actor,
+            customer,
+            "verified",
+            "Verified provider evidence reviewed",
+        )
+        .await
+        .unwrap();
         let status: String =
             sqlx::query_scalar("SELECT kyc_status FROM user_profiles WHERE user_id=$1")
                 .bind(customer)
@@ -1159,8 +1281,15 @@ mod authority_kyc_customer_scope_tests {
         // Passing a profile primary key or a different role cannot approve KYC.
         for id in [profile, owner, Uuid::new_v4()] {
             assert!(matches!(
-                update_reviewed_customer_kyc(&pool, actor, id, "verified").await,
-                Err(AppError::NotFound(_))
+                update_reviewed_customer_kyc(
+                    &pool,
+                    actor,
+                    id,
+                    "verified",
+                    "Invalid user ID scoped review"
+                )
+                .await,
+                Err(AppError::Conflict(_))
             ));
         }
         let owner_status: String =
@@ -1170,12 +1299,54 @@ mod authority_kyc_customer_scope_tests {
                 .await
                 .unwrap();
         assert_eq!(owner_status, "unverified");
-        update_reviewed_customer_kyc(&pool, actor, customer, "rejected")
+        // Authority may not reject a completed verification as though it were pending.
+        assert!(matches!(
+            update_reviewed_customer_kyc(
+                &pool,
+                actor,
+                customer,
+                "rejected",
+                "Incorrect transition attempt"
+            )
+            .await,
+            Err(AppError::Conflict(_))
+        ));
+        update_reviewed_customer_kyc(
+            &pool,
+            actor,
+            customer,
+            "unverified",
+            "Return verified identity to review",
+        )
+        .await
+        .unwrap();
+        sqlx::query("UPDATE user_profiles SET kyc_status='pending' WHERE user_id=$1")
+            .bind(customer)
+            .execute(&pool)
             .await
             .unwrap();
-        update_reviewed_customer_kyc(&pool, actor, customer, "unverified")
-            .await
-            .unwrap();
+        update_reviewed_customer_kyc(
+            &pool,
+            actor,
+            customer,
+            "rejected",
+            "Pending KYC record has inconsistent evidence",
+        )
+        .await
+        .unwrap();
+        update_reviewed_customer_kyc(
+            &pool,
+            actor,
+            customer,
+            "unverified",
+            "Reopen rejected review after correction",
+        )
+        .await
+        .unwrap();
+        assert!(matches!(
+            update_reviewed_customer_kyc(&pool, actor, customer, "verified", "short").await,
+            Err(AppError::BadRequest(_))
+        ));
         let audit_count: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM audit_logs
              WHERE user_id=$1 AND resource_id=$2 AND action='authority.kyc.review'",
@@ -1185,6 +1356,6 @@ mod authority_kyc_customer_scope_tests {
         .fetch_one(&pool)
         .await
         .unwrap();
-        assert_eq!(audit_count, 3);
+        assert_eq!(audit_count, 4);
     }
 }

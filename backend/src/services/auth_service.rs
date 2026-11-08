@@ -67,7 +67,18 @@ fn is_staff_role(role: &str) -> bool {
 }
 
 fn is_email_login_role(role: &str) -> bool {
-    is_staff_role(role) && !matches!(role, "central_admin" | "authority")
+    is_staff_role(role) && role != "central_admin"
+}
+
+async fn approved_authority(state: &AppState, user_id: Uuid) -> Result<bool, AppError> {
+    let approved: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM users u JOIN control_center_access a ON a.user_id=u.id
+         WHERE u.id=$1 AND u.role='authority' AND u.is_active AND a.approved)",
+    )
+    .bind(user_id)
+    .fetch_one(&state.db)
+    .await?;
+    Ok(approved)
 }
 
 pub async fn login(_state: &AppState, _req: LoginRequest) -> Result<AuthResponse, AppError> {
@@ -241,10 +252,20 @@ pub async fn verify_whatsapp_otp(
     }
 
     let profile = user_repo::get_user_profile(&state.db, user.id).await?;
-    let kyc_status = profile
+    let stored_kyc_status = profile
         .as_ref()
         .map(|p| p.kyc_status.clone())
         .unwrap_or_else(|| "unverified".to_string());
+    let kyc_status = if user.role == "customer" {
+        crate::routes::digilocker_kyc::effective_customer_kyc_status(
+            &state.db,
+            user.id,
+            &stored_kyc_status,
+        )
+        .await?
+    } else {
+        stored_kyc_status
+    };
     let verified_name = profile.and_then(|p| p.verified_name);
 
     let session = crate::auth::refresh::issue_after_auth(
@@ -315,6 +336,7 @@ pub async fn send_email_otp(state: &AppState, req: SendEmailOtpRequest) -> Resul
         "owner",
         "plant_owner",
         "admin",
+        "authority",
     ];
     if !STAFF_ROLES.contains(&user.role.as_str()) {
         return Err(AppError::Forbidden(
@@ -322,6 +344,11 @@ pub async fn send_email_otp(state: &AppState, req: SendEmailOtpRequest) -> Resul
         ));
     }
 
+    if user.role == "authority" && !approved_authority(state, user.id).await? {
+        return Err(AppError::Forbidden(
+            "Authority requires Central Admin approval".into(),
+        ));
+    }
     crate::routes::staff_lifecycle::require_login_eligible(state, user.id, &user.role).await?;
 
     let _ = req.plant_code.as_deref();
@@ -446,6 +473,7 @@ pub async fn verify_email_otp(
         "owner",
         "plant_owner",
         "admin",
+        "authority",
     ];
     if !STAFF_ROLES.contains(&user.role.as_str()) {
         return Err(AppError::Forbidden(
@@ -453,6 +481,11 @@ pub async fn verify_email_otp(
         ));
     }
     OtpEngine::verify_otp(state, &destination, "email", "staff_login", &req.otp).await?;
+    if user.role == "authority" && !approved_authority(state, user.id).await? {
+        return Err(AppError::Forbidden(
+            "Authority requires Central Admin approval".into(),
+        ));
+    }
     crate::routes::staff_lifecycle::require_login_eligible(state, user.id, &user.role).await?;
     sqlx::query("UPDATE users SET work_email_verified_at=clock_timestamp() WHERE id=$1")
         .bind(user.id)
@@ -523,7 +556,10 @@ pub async fn start_staff_mfa_enrollment(
     let user = user_repo::find_by_id(&state.db, user_id)
         .await?
         .ok_or_else(|| AppError::Unauthorized("Account not found".to_string()))?;
-    if !user.is_active || !is_email_login_role(&user.role) {
+    if !user.is_active
+        || !is_email_login_role(&user.role)
+        || (user.role == "authority" && !approved_authority(state, user.id).await?)
+    {
         return Err(AppError::Forbidden(
             "Account is not authorized for staff enrollment.".to_string(),
         ));
@@ -563,7 +599,10 @@ pub async fn confirm_staff_mfa_enrollment(
     let user = user_repo::find_by_id(&state.db, user_id)
         .await?
         .ok_or_else(|| AppError::Unauthorized("Account not found".into()))?;
-    if !user.is_active || !is_email_login_role(&user.role) {
+    if !user.is_active
+        || !is_email_login_role(&user.role)
+        || (user.role == "authority" && !approved_authority(state, user.id).await?)
+    {
         return Err(AppError::Forbidden(
             "Account is not authorized for staff enrollment.".into(),
         ));
@@ -620,16 +659,31 @@ pub async fn verify_staff_mfa(
     let user = user_repo::find_by_id(&state.db, user_id)
         .await?
         .ok_or_else(|| AppError::Unauthorized("Account not found".to_string()))?;
+    if user.role == "authority" {
+        return Err(AppError::Forbidden(
+            "Authority must sign in using the dedicated web-only Authority portal".into(),
+        ));
+    }
     if !user.is_active || !is_email_login_role(&user.role) {
         return Err(AppError::Forbidden(
             "Account is not authorized for staff login.".to_string(),
         ));
     }
     let profile = user_repo::get_user_profile(&state.db, user.id).await?;
-    let kyc_status = profile
+    let stored_kyc_status = profile
         .as_ref()
         .map(|p| p.kyc_status.clone())
         .unwrap_or_else(|| "unverified".to_string());
+    let kyc_status = if user.role == "customer" {
+        crate::routes::digilocker_kyc::effective_customer_kyc_status(
+            &state.db,
+            user.id,
+            &stored_kyc_status,
+        )
+        .await?
+    } else {
+        stored_kyc_status
+    };
     let verified_name = profile.and_then(|p| p.verified_name);
     let session = crate::auth::refresh::issue_after_auth(
         state,
@@ -681,11 +735,28 @@ pub async fn get_current_user_profile(
         .await?
         .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
 
-    let profile = user_repo::get_user_profile(&state.db, user.id).await?;
-    let kyc_status = profile
+    let mut profile = user_repo::get_user_profile(&state.db, user.id).await?;
+    let stored_kyc_status = profile
         .as_ref()
         .map(|p| p.kyc_status.clone())
         .unwrap_or_else(|| "unverified".to_string());
+    let kyc_status = if user.role == "customer" {
+        crate::routes::digilocker_kyc::effective_customer_kyc_status(
+            &state.db,
+            user.id,
+            &stored_kyc_status,
+        )
+        .await?
+    } else {
+        stored_kyc_status
+    };
+    // The /api/me response contains both "user" and "profile" surfaces.
+    // Keep them consistent; never leak old sandbox status as live VERIFIED.
+    if let Some(profile) = profile.as_mut() {
+        if user.role == "customer" {
+            profile.kyc_status = kyc_status.clone();
+        }
+    }
     let verified_name = profile.as_ref().and_then(|p| p.verified_name.clone());
 
     Ok((

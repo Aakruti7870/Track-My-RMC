@@ -15,7 +15,7 @@ APP_SECRET="trackmyrmc/app-runtime"
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq nginx curl ca-certificates jq unzip certbot >/dev/null
+apt-get install -y -qq nginx curl ca-certificates jq unzip certbot openssl postgresql-client >/dev/null
 
 if ! command -v aws >/dev/null 2>&1; then
   curl -fsSL https://awscli.amazonaws.com/v2/install.sh | bash -s -- --system
@@ -112,6 +112,10 @@ HOOK
 chmod 0755 /etc/letsencrypt/renewal-hooks/deploy/reload-nginx
 
 cat > /etc/nginx/sites-available/trackmyrmc <<'NGINX'
+# Shared per-source limits cover privileged login, enrollment and step-up.
+# Nginx uses the socket peer address, never a client-supplied forwarding header.
+limit_req_zone $binary_remote_addr zone=privileged_auth:10m rate=10r/m;
+
 # HTTP remains available for ACME renewal; all application traffic uses HTTPS.
 server {
     listen 80 default_server;
@@ -162,10 +166,20 @@ server {
         root /opt/trackmyrmc/admin-web;
         try_files /index.html =404;
         add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://trackmyrmc.com; base-uri 'none'; form-action 'self'; frame-ancestors 'none'" always;
+
     }
 
     location ^~ /admin/assets/ {
         alias /opt/trackmyrmc/admin-web/assets/;
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://trackmyrmc.com; base-uri 'none'; form-action 'self'; frame-ancestors 'none'" always;
+
         expires 1y;
         add_header Cache-Control "public, max-age=31536000, immutable";
     }
@@ -173,6 +187,24 @@ server {
     location ^~ /admin/ {
         # The alias maps dashboard files directly; missing files naturally 404.
         alias /opt/trackmyrmc/admin-web/;
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://trackmyrmc.com; base-uri 'none'; form-action 'self'; frame-ancestors 'none'" always;
+        add_header Cache-Control "no-store" always;
+
+    }
+
+    location ~ ^/api/(admin/auth|authority/auth)(/|$) {
+        limit_req zone=privileged_auth burst=10 nodelay;
+        limit_req_status 429;
+        add_header Cache-Control "no-store" always;
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
 
     location /api/ {
@@ -271,21 +303,66 @@ if [[ -n "$CURRENT_DB_NAME" && "$CURRENT_DB_NAME" != "$DB_NAME" ]]; then
   DB_NAME="$CURRENT_DB_NAME"
 fi
 
+# Install the official regional Amazon RDS trust anchors before constructing a
+# production database URI. System CA validation authenticates the HTTPS origin;
+# PostgreSQL must then authenticate BOTH the issuer and the RDS hostname.
+# A missing/invalid certificate is a hard deployment failure, not a downgrade.
+RDS_CA_FILE="/etc/trackmyrmc/rds-ca-bundle.pem"
+install -d -m 0755 /etc/trackmyrmc
+RDS_CA_TMP="$(mktemp /etc/trackmyrmc/.rds-ca-bundle.XXXXXX)"
+if ! curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --max-time 30 \
+  "https://truststore.pki.rds.amazonaws.com/ap-south-1/ap-south-1-bundle.pem" \
+  --output "$RDS_CA_TMP" \
+  || ! openssl x509 -in "$RDS_CA_TMP" -noout -checkend 0 >/dev/null 2>&1; then
+  rm -f "$RDS_CA_TMP"
+  echo "RDS trust bundle download/validation failed; refusing deployment" >&2
+  exit 1
+fi
+install -o root -g root -m 0644 "$RDS_CA_TMP" "$RDS_CA_FILE"
+rm -f "$RDS_CA_TMP"
+
 DB_JSON="$(aws secretsmanager get-secret-value --secret-id "$RDS_SECRET" --query SecretString --output text)"
-DATABASE_URL="$(printf '%s' "$DB_JSON" | TRACKMYRMC_DB_NAME="$DB_NAME" python3 -c 'import json,sys,urllib.parse as u,os; x=json.load(sys.stdin); db=os.environ["TRACKMYRMC_DB_NAME"]; print("postgres://%s:%s@trackmyrmc-postgres.cf8mmcwuuinx.ap-south-1.rds.amazonaws.com:5432/%s?sslmode=require"%(u.quote(x["username"],safe=""),u.quote(x["password"],safe=""),u.quote(db,safe="")))')"
+DATABASE_URL="$(printf '%s' "$DB_JSON" | TRACKMYRMC_DB_NAME="$DB_NAME" python3 -c 'import json,sys,urllib.parse as u,os; x=json.load(sys.stdin); db=os.environ["TRACKMYRMC_DB_NAME"]; print("postgres://%s:%s@trackmyrmc-postgres.cf8mmcwuuinx.ap-south-1.rds.amazonaws.com:5432/%s?sslmode=verify-full&sslrootcert=%2Fetc%2Ftrackmyrmc%2Frds-ca-bundle.pem"%(u.quote(x["username"],safe=""),u.quote(x["password"],safe=""),u.quote(db,safe="")))')"
 
 # Validate the generated connection string without exposing credentials.
 TRACKMYRMC_DATABASE_URL="$DATABASE_URL" TRACKMYRMC_EXPECTED_DB_NAME="$DB_NAME" python3 - <<'PY'
 import os
-from urllib.parse import urlsplit, unquote
+from urllib.parse import urlsplit, unquote, parse_qs
 url = os.environ["TRACKMYRMC_DATABASE_URL"]
 parsed = urlsplit(url)
 name = unquote(parsed.path.lstrip("/"))
 if (parsed.scheme not in ("postgres", "postgresql")
-        or not parsed.hostname or not parsed.username or not parsed.password
+        or parsed.hostname != "trackmyrmc-postgres.cf8mmcwuuinx.ap-south-1.rds.amazonaws.com"
+        or parsed.port != 5432 or not parsed.username or not parsed.password
+        or parsed.fragment
+        or parse_qs(parsed.query, keep_blank_values=True) != {
+            "sslmode": ["verify-full"],
+            "sslrootcert": ["/etc/trackmyrmc/rds-ca-bundle.pem"],
+        }
+        or not os.path.isfile("/etc/trackmyrmc/rds-ca-bundle.pem")
         or name != os.environ["TRACKMYRMC_EXPECTED_DB_NAME"]
         or any(ch in url for ch in ('"', "'", "\\n", "\\r"))):
     raise SystemExit("Invalid PostgreSQL connection configuration; deployment blocked")
+# Verify the live server's certificate chain, hostname, and current managed
+# database secret BEFORE replacing application binaries or writing app.env.
+# Never pass a connection URL or password on a process command line.
+import subprocess
+environment = dict(os.environ)
+environment.update(PGHOST=parsed.hostname, PGHOSTADDR="", PGPORT="5432",
+                   PGDATABASE=name, PGUSER=unquote(parsed.username),
+                   PGPASSWORD=unquote(parsed.password), PGSSLMODE="verify-full",
+                   PGSSLROOTCERT="/etc/trackmyrmc/rds-ca-bundle.pem",
+                   PGSERVICE="", PGCONNECT_TIMEOUT="8",
+                   PGOPTIONS="-c default_transaction_read_only=on -c statement_timeout=5000")
+try:
+    probe = subprocess.run(
+        ["psql", "--no-psqlrc", "-X", "-w", "-A", "-t", "-q",
+         "-v", "ON_ERROR_STOP=1", "-c", "SELECT 1"],
+        env=environment, capture_output=True, text=True, timeout=15, check=False)
+except (OSError, subprocess.SubprocessError):
+    raise SystemExit("RDS verified TLS preflight unavailable; deployment blocked") from None
+if probe.returncode != 0 or probe.stdout.strip() != "1":
+    raise SystemExit("RDS verified TLS preflight failed; deployment blocked")
 PY
 
 JWT_SECRET="$(printf '%s' "$APP_JSON" | jq -r '.JWT_SECRET')"
@@ -429,6 +506,7 @@ printf '%s\n' "$RELEASE_SHA" > /opt/trackmyrmc/DEPLOYED_RELEASE_SHA
 install -d -m 0750 /etc/trackmyrmc
 cat > /etc/trackmyrmc/app.env <<EOF
 APP_ENV=production
+PRIVILEGED_RECOVERY_ENABLED=false
 DATABASE_URL=$DATABASE_URL
 JWT_SECRET=$JWT_SECRET
 OTP_PEPPER=$OTP_PEPPER
