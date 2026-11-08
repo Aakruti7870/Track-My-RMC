@@ -19,7 +19,7 @@ const entries = Object.entries(lock.packages);
 function installed(name) {
   return entries.filter(([location]) => location === "node_modules/" + name || location.endsWith("/node_modules/" + name));
 }
-function >=(version, floor) {
+function atLeast(version, floor) {
   const parsed = version.match(/^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/);
   assert(parsed, "Unsupported installed semver " + version);
   const a = parsed.slice(1, 4).map(Number);
@@ -33,7 +33,7 @@ function >=(version, floor) {
 const forged = installed("node-forge");
 assert(forged.length > 0, "node-forge package missing; re-evaluate certificate tooling instead of silently skipping");
 for (const [location, pkg] of forged) {
-  assert(>=(pkg.version, "1.4.3"), location + " contains vulnerable/unverified node-forge " + pkg.version);
+  assert(atLeast(pkg.version, "1.4.3"), location + " contains vulnerable/unverified node-forge " + pkg.version);
   assert(pkg.integrity && pkg.integrity.startsWith("sha512-"), "Require npm integrity for " + location);
 }
 const size = installed("image-size");
