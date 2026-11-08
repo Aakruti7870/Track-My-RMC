@@ -113,4 +113,12 @@ Use an isolated PostgreSQL database for Rust integration tests. GitHub Actions a
 
 Codex's first exact-head review of the audit PR identified two legitimate P2 issues: the missing dependency-security release gate and unsafe admin local development API defaults. Both were fixed without changing production authorization or API routing. The new regression test guards against recurrence. A fresh final-head CI and independent review are still required; the initial green frontend checks and earlier commits do not prove the later corrections.
 
-**Dependency-security status remains BLOCKED:** Previous locked-node audits documented residual high-severity transitive advisories, including braces and node-forge; the Rust advisory review is separate. Re-evaluate the final locked dependency graph and build/signing exposure, remediate or document independent explicit acceptance before any public release. See docs/DEPENDENCY_SECURITY_REVIEW.md and docs/RUST_DEPENDENCY_SECURITY_REVIEW.md.
+**Dependency-security status remains BLOCKED:** The 21 October audit recorded transitive npm advisories. The braces GHSA-vfj7-8cjw-p6xm finding was **withdrawn by GitHub on 23 October 2026** as not practically exploitable; it must not be counted as an active confirmed high finding. The node-forge GHSA-86w9-cpqp-85rv remains an active high-severity advisory with no listed patched version. Rust advisory review is separate. Re-evaluate the final locked dependency graph and build/signing exposure, remediate or document independent explicit acceptance before any public release. See docs/DEPENDENCY_SECURITY_REVIEW.md and docs/RUST_DEPENDENCY_SECURITY_REVIEW.md.
+
+
+### Current primary advisory sources (verified 8 November 2026)
+
+- [GitHub GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm): braces advisory **withdrawn 23 October 2026** (not practically exploitable).
+- [GitHub GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv): node-forge **active high severity**; no patched version listed.
+
+The current count of active advisories has not been recalculated using the final lockfiles during this audit. No vulnerability is represented as resolved solely because an earlier report is stale; the independent dependency-security release gate remains active.
