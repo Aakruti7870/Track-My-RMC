@@ -33,7 +33,7 @@ const COMPACT_AUTOMATION_LABELS: Record<string, string> = {
   ORDER_PENDING_REMINDER: "Pending orders",
   ORDER_REJECTED_NOTICE: "Order rejected",
   ORDER_SUBMITTED_TASK: "Order review",
-  QUALITY_INSPECTION_FAILED: "Quality inspection",
+  QUALITY_INSPECTION_FAILED: "Failed quality",
   RFQ_PENDING_PLANT: "Pending RFQ",
   WORKFORCE_LEAVE_PENDING: "Staff leave",
 };
@@ -159,7 +159,7 @@ export default function OwnerOperations() {
             const disabled = (!available && !rule.enabled) || Boolean(busyRule);
             const status = !rule.published ? "Pending" : rule.globally_paused ? "Paused" : on ? "Active" : "Ready";
             return <OwnerGlass key={rule.key} style={{
-              width: tileWidth, height: 126, paddingHorizontal: 4, paddingVertical: 6,
+              width: tileWidth, height: 116, paddingHorizontal: 4, paddingVertical: 6,
               borderRadius: 12, borderColor: selectedRuleKey === rule.key ? p.accent : p.border,
               justifyContent: "space-between", alignItems: "center", gap: 2,
             }}>
@@ -169,7 +169,7 @@ export default function OwnerOperations() {
                 onPress={() => setSelectedRuleKey(current => current === rule.key ? null : rule.key)}
                 style={{ flex: 1, alignItems: "center", alignSelf: "stretch", justifyContent: "center", gap: 2 }}>
                 <Ionicons name={AUTOMATION_ICONS[rule.key] ?? "flash-outline"} size={17} color={p.accent} />
-                <AppText numberOfLines={3} center style={{ fontSize: 10, lineHeight: 12, fontWeight: "700", color: p.text }}>
+                <AppText numberOfLines={2} center style={{ fontSize: 10, lineHeight: 12, fontWeight: "700", color: p.text }}>
                   {COMPACT_AUTOMATION_LABELS[rule.key] ?? rule.label}
                 </AppText>
                 <AppText numberOfLines={1} center style={{ fontSize: 9, lineHeight: 11, color: p.muted }}>{status}</AppText>
@@ -180,7 +180,7 @@ export default function OwnerOperations() {
                   rule.globally_paused ? "Paused by Central Admin" : "Plant automation preference")}
                 accessibilityState={{ checked: on, disabled }}
                 disabled={disabled} onPress={() => void updateRule(rule, !rule.enabled)}
-                style={{ minWidth: 44, alignSelf: "stretch", minHeight: 36, justifyContent: "center",
+                style={{ minWidth: 44, alignSelf: "stretch", minHeight: 38, justifyContent: "center",
                   borderRadius: 9, backgroundColor: on ? p.accent : p.canvas,
                   opacity: disabled ? 0.65 : 1 }}>
                 <AppText center style={{ color: on ? "#FFFFFF" : p.text, fontSize: 11, fontWeight: "700" }}>
@@ -191,7 +191,7 @@ export default function OwnerOperations() {
           })}
           {/* The backend currently supplies nine rules. This is a non-functional reserved slot, not a fake automation. */}
           {rules?.rules.length === 9 ? <OwnerGlass style={{
-            width: tileWidth, height: 126, padding: 5, borderRadius: 12,
+            width: tileWidth, height: 116, padding: 5, borderRadius: 12,
             justifyContent: "center", alignItems: "center", gap: 6, opacity: 0.7,
           }}>
             <Ionicons name="add-circle-outline" size={20} color={p.muted} />
