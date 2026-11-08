@@ -89,6 +89,11 @@ jobs:
           cd backend
           cargo test --all --verbose
 
+      - name: Compile locked Rust release without AWS access
+        if: success() && matrix.postgres == 16
+        working-directory: backend
+        run: cargo build --locked --release --bin trackmyrmc-backend
+
       - name: Verify first-admin bootstrap against a disposable database
         if: success() && matrix.postgres == 18
         env:

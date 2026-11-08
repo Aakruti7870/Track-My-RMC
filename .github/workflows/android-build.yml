@@ -258,6 +258,36 @@ jobs:
           ./gradlew :app:bundleRelease --no-daemon
           test -s app/build/outputs/bundle/release/app-release.aab
 
+      - name: Verify merged release manifest permissions
+        working-directory: frontend/android
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          manifests = list(Path("app/build/intermediates/merged_manifests/release").rglob("AndroidManifest.xml"))
+          if len(manifests) != 1:
+              raise SystemExit("Expected exactly one merged Android release manifest")
+          manifest = ET.parse(manifests[0]).getroot()
+          android = "{http://schemas.android.com/apk/res/android}"
+          if manifest.get("package") != os.environ["PACKAGE_NAME"]:
+              raise SystemExit("Merged manifest application ID mismatch")
+          if (manifest.get(android + "versionCode") != os.environ["VERSION_CODE"]
+              or manifest.get(android + "versionName") != os.environ["VERSION_NAME"]):
+              raise SystemExit("Merged manifest Android version mismatch")
+          permissions = {element.get(android + "name") for element in manifest
+                         if element.tag in ("uses-permission", "uses-permission-sdk-23")}
+          config = json.loads(Path("../app.json").read_text())["expo"]["android"]
+          unexpected = permissions.intersection(config["blockedPermissions"])
+          missing = {f"android.permission.{name}" for name in config["permissions"]} - permissions
+          if unexpected or missing:
+              raise SystemExit(f"Release manifest permissions: unexpected={sorted(unexpected)} missing={sorted(missing)}")
+          print("Merged release manifest identity and permissions verified")
+          PY
+
       - name: Sign AAB with verified upload key
         working-directory: frontend/android
         env:
