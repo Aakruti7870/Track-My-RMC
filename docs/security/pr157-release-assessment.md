@@ -13,9 +13,13 @@ Post-assessment work hardened all three production PostgreSQL client paths:
 `ops/release/recover-managed-rds-credential.py` rejects TLS downgrades and
 requires the pinned CA bundle for preflight; `ops/release/database_audit.py`
 refuses weaker modes, missing/duplicate trust settings, and unpinned production
-trust paths. Offline denial-path tests were added. These commits are **code
-hardening only**; the live production PostgreSQL TLS handshake has not been
-verified, and production deployment is still prohibited without approval.
+trust paths. Offline denial-path tests were added. Deployment now also performs an actual
+read-only `psql` `verify-full` preflight before swapping binaries or writing the
+runtime environment; the opt-in `ops/release/verify-rds-tls.py` gate can later
+witness a positive authenticated connection plus rejected wrong-hostname and
+untrusted-CA handshakes. **No live acceptance probe was executed.** These
+commits are code hardening only; production deployment is still prohibited
+without approval.
 
 The previous Codex login/revocation race review thread was answered with the
 row-lock implementation and PG16/PG18 concurrency regression evidence and

@@ -343,6 +343,26 @@ if (parsed.scheme not in ("postgres", "postgresql")
         or name != os.environ["TRACKMYRMC_EXPECTED_DB_NAME"]
         or any(ch in url for ch in ('"', "'", "\\n", "\\r"))):
     raise SystemExit("Invalid PostgreSQL connection configuration; deployment blocked")
+# Verify the live server's certificate chain, hostname, and current managed
+# database secret BEFORE replacing application binaries or writing app.env.
+# Never pass a connection URL or password on a process command line.
+import subprocess
+environment = dict(os.environ)
+environment.update(PGHOST=parsed.hostname, PGHOSTADDR="", PGPORT="5432",
+                   PGDATABASE=name, PGUSER=unquote(parsed.username),
+                   PGPASSWORD=unquote(parsed.password), PGSSLMODE="verify-full",
+                   PGSSLROOTCERT="/etc/trackmyrmc/rds-ca-bundle.pem",
+                   PGSERVICE="", PGCONNECT_TIMEOUT="8",
+                   PGOPTIONS="-c default_transaction_read_only=on -c statement_timeout=5000")
+try:
+    probe = subprocess.run(
+        ["psql", "--no-psqlrc", "-X", "-w", "-A", "-t", "-q",
+         "-v", "ON_ERROR_STOP=1", "-c", "SELECT 1"],
+        env=environment, capture_output=True, text=True, timeout=15, check=False)
+except (OSError, subprocess.SubprocessError):
+    raise SystemExit("RDS verified TLS preflight unavailable; deployment blocked") from None
+if probe.returncode != 0 or probe.stdout.strip() != "1":
+    raise SystemExit("RDS verified TLS preflight failed; deployment blocked")
 PY
 
 JWT_SECRET="$(printf '%s' "$APP_JSON" | jq -r '.JWT_SECRET')"

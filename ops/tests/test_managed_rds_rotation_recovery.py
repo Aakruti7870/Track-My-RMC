@@ -186,6 +186,10 @@ class InstallationContractTests(unittest.TestCase):
         self.assertIn('ap-south-1-bundle.pem', content)
         self.assertIn('openssl x509 -in', content)
         self.assertNotIn('sslmode=require', content)
+        self.assertIn('PGSSLROOTCERT="/etc/trackmyrmc/rds-ca-bundle.pem"', content)
+        self.assertIn('PGSSLMODE="verify-full"', content)
+        self.assertIn('"SELECT 1"', content)
+        self.assertIn('default_transaction_read_only=on', content)
 
 
 if __name__ == '__main__':
