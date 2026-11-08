@@ -37,6 +37,9 @@ impl AppConfig {
         let database_url = env::var("DATABASE_URL")
             .map_err(|_| "DATABASE_URL environment variable is required".to_string())?;
         let environment = env::var("APP_ENV").unwrap_or_else(|_| "production".to_string());
+        // The independent recovery authority and KMS verifier are not yet
+        // provisioned. A stray feature flag must never activate a bypass.
+        validate_privileged_recovery_disabled(env::var("PRIVILEGED_RECOVERY_ENABLED").ok())?;
 
         let jwt_secret = match env::var("JWT_SECRET") {
             Ok(secret) if secret.len() >= 64 => secret,
@@ -222,6 +225,28 @@ mod fingerprint_tests {
     fn rejects_invalid_fingerprint() {
         assert!(normalize_sha256_fingerprint("not-a-fingerprint").is_none());
         assert!(normalize_sha256_fingerprint(&"z".repeat(64)).is_none());
+    }
+}
+
+fn validate_privileged_recovery_disabled(raw: Option<String>) -> Result<(), String> {
+    if raw.as_deref().is_none_or(|value| value == "false") {
+        Ok(())
+    } else {
+        Err("Privileged recovery requires a separately verified approval service; feature is disabled".into())
+    }
+}
+
+#[cfg(test)]
+mod privileged_recovery_feature_gate_tests {
+    use super::validate_privileged_recovery_disabled;
+
+    #[test]
+    fn unprovisioned_external_recovery_must_fail_closed() {
+        assert!(validate_privileged_recovery_disabled(None).is_ok());
+        assert!(validate_privileged_recovery_disabled(Some("false".into())).is_ok());
+        for flag in ["true", "TRUE", "1", "yes", "", "on", "False"] {
+            assert!(validate_privileged_recovery_disabled(Some(flag.into())).is_err());
+        }
     }
 }
 

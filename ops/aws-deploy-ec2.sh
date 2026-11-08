@@ -506,6 +506,7 @@ printf '%s\n' "$RELEASE_SHA" > /opt/trackmyrmc/DEPLOYED_RELEASE_SHA
 install -d -m 0750 /etc/trackmyrmc
 cat > /etc/trackmyrmc/app.env <<EOF
 APP_ENV=production
+PRIVILEGED_RECOVERY_ENABLED=false
 DATABASE_URL=$DATABASE_URL
 JWT_SECRET=$JWT_SECRET
 OTP_PEPPER=$OTP_PEPPER

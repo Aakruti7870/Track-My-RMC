@@ -190,6 +190,7 @@ class InstallationContractTests(unittest.TestCase):
         self.assertIn('PGSSLMODE="verify-full"', content)
         self.assertIn('"SELECT 1"', content)
         self.assertIn('default_transaction_read_only=on', content)
+        self.assertIn('PRIVILEGED_RECOVERY_ENABLED=false', content)
 
 
 if __name__ == '__main__':
