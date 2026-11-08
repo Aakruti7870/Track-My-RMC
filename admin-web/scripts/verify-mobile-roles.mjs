@@ -500,11 +500,18 @@ try {
       // does not establish that the collection screen is currently visible.
       phase = 'quality inspection: open Quality tab';
       await page.getByTestId('tab-quality').click();
-      phase = 'quality inspection';
+      await expect(page.getByTestId('tab-quality')).toHaveAttribute('aria-selected', 'true');
+      await page.waitForURL(url => url.pathname === '/quality_engineer/quality');
+      phase = 'quality inspection: locate quality register';
+      await expect(page.getByText('Quality Register', { exact: true })).toBeVisible();
       const qualityRow = page.getByTestId(/^open-/).filter({visible:true}).first();
+      await expect(qualityRow).toBeVisible();
+      phase = 'quality inspection: open batch details';
       const inspectedRowId = await qualityRow.getAttribute('data-testid');
       await qualityRow.click();
+      phase = 'quality inspection: read engineer form';
       await expect(page.getByTestId('qt-save')).toBeDisabled();
+      phase = 'quality inspection';
       await page.getByTestId('qt-slump').fill('125');
       await page.getByTestId('qt-cube7').fill('22.35');
       await page.getByTestId('qt-remarks').fill('Synthetic quality observation');
