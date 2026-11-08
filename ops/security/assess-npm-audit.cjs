@@ -24,7 +24,11 @@ const active = Object.entries(data.vulnerabilities)
   .filter(([,v]) => v.severity === "high" || v.severity === "critical")
   .map(([name,v])=>({name,severity:v.severity,range:v.range,fixAvailable:v.fixAvailable}))
   .sort((a,b)=>a.name.localeCompare(b.name));
-const summary = {scope,status:active.length?"BLOCKED":"PASS",counts,highOrCriticalAffectedPackages:active};
+const other = Object.entries(data.vulnerabilities)
+  .filter(([,v]) => v.severity === "moderate" || v.severity === "low")
+  .map(([name,v])=>({name,severity:v.severity,range:v.range,fixAvailable:v.fixAvailable}))
+  .sort((a,b)=>a.name.localeCompare(b.name));
+const summary = {scope,status:active.length?"BLOCKED":"PASS",counts,highOrCriticalAffectedPackages:active,otherAffectedPackages:other};
 console.log(JSON.stringify(summary,null,2));
 if (process.env.GITHUB_STEP_SUMMARY) {
   let output = "## npm audit (" + scope + ")\n\nResult: **" + summary.status + "**. High: " +
