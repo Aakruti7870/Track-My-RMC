@@ -62,6 +62,7 @@ fs.mkdirSync(out, { recursive: true });
         });
         await page.goto('http://127.0.0.1:8765/' + role + '/');
         await page.getByTestId('staff-home-summary').waitFor({ timeout: 25000 });
+        await page.waitForFunction(() => document.querySelector('[data-testid="tab-home"]')?.getAttribute('aria-selected') === 'true');
         await page.waitForFunction(() => !document.body.innerText.includes('Checking staff permissions…'));
         const homeCards = page.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])');
         const homeKeys = await homeCards.evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid')));
@@ -76,6 +77,7 @@ fs.mkdirSync(out, { recursive: true });
           role + ' Home horizontal overflow at ' + width);
         if (width === 390) await page.screenshot({ path: out + '/' + role + '-home-390.png', fullPage: true });
         await page.getByTestId('tab-more').click();
+        await page.waitForFunction(() => document.querySelector('[data-testid="tab-more"]')?.getAttribute('aria-selected') === 'true');
         await page.getByTestId('staff-module-search').waitFor();
         await page.waitForFunction(() => !document.body.innerText.includes('Checking staff permissions…'));
         const moreCards = page.locator('[data-testid="role-module-directory"]:has([data-testid="staff-module-search"]) [data-testid^="role-module-"]');
@@ -90,6 +92,7 @@ fs.mkdirSync(out, { recursive: true });
           // Home and Quality contain the same record. The full register must
           // receive the click even while Home's preview remains mounted.
           await page.getByTestId('tab-quality').click();
+          await page.waitForFunction(() => document.querySelector('[data-testid="tab-quality"]')?.getAttribute('aria-selected') === 'true');
           const register = page.getByTestId('staff-collection-quality');
           await register.getByTestId('open-isolated-quality').click();
           await page.getByTestId('qt-save').waitFor();
