@@ -40,6 +40,7 @@ impl AppConfig {
         // The independent recovery authority and KMS verifier are not yet
         // provisioned. A stray feature flag must never activate a bypass.
         validate_privileged_recovery_disabled(env::var("PRIVILEGED_RECOVERY_ENABLED").ok())?;
+        validate_production_database_tls(&environment, &database_url)?;
 
         let jwt_secret = match env::var("JWT_SECRET") {
             Ok(secret) if secret.len() >= 64 => secret,
@@ -225,6 +226,79 @@ mod fingerprint_tests {
     fn rejects_invalid_fingerprint() {
         assert!(normalize_sha256_fingerprint("not-a-fingerprint").is_none());
         assert!(normalize_sha256_fingerprint(&"z".repeat(64)).is_none());
+    }
+}
+
+// Production database identity and peer authentication are policy, not
+// optional client hints. This is enforced again on every Rust service start,
+// independent of whether deploy scripts or credential-rotation tools ran.
+fn approved_production_database_ca(url: &str) -> Result<&'static str, String> {
+    const HOST: &str = "trackmyrmc-postgres.cf8mmcwuuinx.ap-south-1.rds.amazonaws.com";
+    const CERT: &str = "/etc/trackmyrmc/rds-ca-bundle.pem";
+    let uri = reqwest::Url::parse(url)
+        .map_err(|_| "Invalid production PostgreSQL connection identity".to_string())?;
+    if !matches!(uri.scheme(), "postgres" | "postgresql")
+        || uri.host_str() != Some(HOST)
+        || uri.port_or_known_default() != Some(5432)
+        || uri.username().is_empty()
+        || uri.password().is_none()
+        || uri.fragment().is_some()
+    {
+        return Err("Production PostgreSQL identity does not match the approved RDS instance".into());
+    }
+    let mut mode = None;
+    let mut roots = None;
+    let mut count = 0;
+    for (key, value) in uri.query_pairs() {
+        count += 1;
+        match key.as_ref() {
+            "sslmode" if mode.is_none() => mode = Some(value.into_owned()),
+            "sslrootcert" if roots.is_none() => roots = Some(value.into_owned()),
+            _ => return Err("Production PostgreSQL TLS options are not approved".into()),
+        }
+    }
+    if count != 2 || mode.as_deref() != Some("verify-full") || roots.as_deref() != Some(CERT) {
+        return Err("Production PostgreSQL requires pinned hostname and certificate verification".into());
+    }
+    Ok(CERT)
+}
+
+fn validate_production_database_tls(environment: &str, url: &str) -> Result<(), String> {
+    if environment != "production" {
+        return Ok(());
+    }
+    let roots = approved_production_database_ca(url)?;
+    let path = std::path::Path::new(roots);
+    if !path.is_file() || path.is_symlink() {
+        return Err("Approved RDS trust bundle is missing or is a symlink".into());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod production_database_tls_tests {
+    use super::{approved_production_database_ca, validate_production_database_tls};
+
+    #[test]
+    fn rejects_downgrades_wrong_host_and_ambiguous_roots() {
+        let url = "postgres://synthetic:test@trackmyrmc-postgres.cf8mmcwuuinx.ap-south-1.rds.amazonaws.com:5432/trackmyrmc?sslmode=verify-full&sslrootcert=%2Fetc%2Ftrackmyrmc%2Frds-ca-bundle.pem";
+        assert_eq!(
+            approved_production_database_ca(url).unwrap(),
+            "/etc/trackmyrmc/rds-ca-bundle.pem"
+        );
+        assert!(validate_production_database_tls("test", "postgres://localhost/test").is_ok());
+        for bad in [
+            url.replace("verify-full", "require"),
+            url.replace("verify-full", "verify-ca"),
+            url.replace("trackmyrmc-postgres.", "forged."),
+            url.replace("sslrootcert=%2Fetc%2Ftrackmyrmc%2Frds-ca-bundle.pem", ""),
+            url.replace("sslrootcert=%2Fetc%2Ftrackmyrmc%2Frds-ca-bundle.pem", "sslrootcert=%2Ftmp%2Fother.pem"),
+            format!("{url}&sslmode=require"),
+            format!("{url}&sslrootcert=%2Ftmp%2Fforged.pem"),
+            format!("{url}#fragment"),
+        ] {
+            assert!(approved_production_database_ca(&bad).is_err());
+        }
     }
 }
 
