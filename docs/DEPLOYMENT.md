@@ -1,6 +1,8 @@
-# TrackMyRMC — Current AWS production release guide
+# TrackMyRMC — AWS-only production release guide
 
-**Canonical production (`https://trackmyrmc.com`) is hosted on AWS EC2/Nginx with AWS RDS PostgreSQL and S3 release artifacts.** The AWS release pipeline deploys the Rust backend, Expo web bundle, and separate admin-web bundle together under the approved commit SHA. The same repository also has an independently auto-deployed `trackmyrmc-frontend` Render static-site preview (`https://trackmyrmc-frontend.onrender.com`). Its successful `main` deployment is **not** evidence that the AWS-hosted canonical website was updated. Do not route production API traffic to a Render backend: the production backend is AWS EC2. The retained `backend/render.yaml` is a historical/optional backend hosting blueprint, not the AWS production release workflow.
+**Canonical production is `https://trackmyrmc.com`, served from AWS EC2/Nginx with AWS RDS PostgreSQL.** The existing AWS SHA-pinned GitHub workflow installs the Rust backend, Expo web frontend and separate admin web dashboard together. Render is not a production build, deployment, database, or API dependency. The obsolete Render backend Blueprints (`render.yaml` and `backend/render.yaml`) were removed.
+
+**Historical hosting caveat:** A separately configured Render static site may continue building `main` until disabled in the Render dashboard. The prior `www.trackmyrmc.com` Cloudflare CNAME targeted that static site; remove that routing dependency using an audited `www` → apex redirect and DNS update before claiming complete separation. Merely deleting YAML does not turn off Render's already-created services.
 
 ## Entry points and release provenance
 
