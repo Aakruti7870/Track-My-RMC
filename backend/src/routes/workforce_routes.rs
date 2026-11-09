@@ -254,15 +254,17 @@ pub async fn punch_in(
 ) -> Result<impl IntoResponse, AppError> {
     let plant_id = get_staff_plant_id(&state, &auth_user).await?;
 
-    sqlx::query(
+    let inserted = sqlx::query(
         r#"
         INSERT INTO workforce_attendance (plant_id, user_id, attendance_date, check_in_time, check_in_lat, check_in_lng, status)
         VALUES ($1, $2, CURRENT_DATE, NOW(), $3, $4, 'present')
         ON CONFLICT (plant_id, user_id, attendance_date) DO UPDATE SET
-            check_in_time = COALESCE(workforce_attendance.check_in_time, NOW()),
-            check_in_lat = COALESCE(workforce_attendance.check_in_lat, EXCLUDED.check_in_lat),
-            check_in_lng = COALESCE(workforce_attendance.check_in_lng, EXCLUDED.check_in_lng),
+            check_in_time = EXCLUDED.check_in_time,
+            check_in_lat = EXCLUDED.check_in_lat,
+            check_in_lng = EXCLUDED.check_in_lng,
             status = 'present'
+        WHERE workforce_attendance.check_in_time IS NULL
+          AND workforce_attendance.check_out_time IS NULL
         "#,
     )
     .bind(plant_id)
@@ -271,6 +273,11 @@ pub async fn punch_in(
     .bind(payload.lng)
     .execute(&state.db)
     .await?;
+    if inserted.rows_affected() != 1 {
+        return Err(AppError::Conflict(
+            "Attendance is already recorded for this workday".to_string(),
+        ));
+    }
 
     Ok(Json(
         json!({ "success": true, "message": "Punched in successfully" }),
@@ -284,17 +291,23 @@ pub async fn punch_out(
 ) -> Result<impl IntoResponse, AppError> {
     let plant_id = get_staff_plant_id(&state, &auth_user).await?;
 
-    sqlx::query(
+    let updated = sqlx::query(
         r#"
         UPDATE workforce_attendance
         SET check_out_time = NOW()
         WHERE plant_id = $1 AND user_id = $2 AND attendance_date = CURRENT_DATE
+          AND check_in_time IS NOT NULL AND check_out_time IS NULL
         "#,
     )
     .bind(plant_id)
     .bind(auth_user.user_id)
     .execute(&state.db)
     .await?;
+    if updated.rows_affected() != 1 {
+        return Err(AppError::Conflict(
+            "Check in before checking out, or this workday is already completed".to_string(),
+        ));
+    }
 
     Ok(Json(
         json!({ "success": true, "message": "Punched out successfully" }),
