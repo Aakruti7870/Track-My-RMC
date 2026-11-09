@@ -1,4 +1,4 @@
-"""Offline execution tests for the exact PostgreSQL URI builder embedded in EC2 deployment."""
+"""Offline tests for the PostgreSQL URI and preflight used by EC2 deployment."""
 import json
 import os
 from pathlib import Path
@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 import unittest
+from unittest.mock import patch
 from urllib.parse import parse_qs, unquote, urlsplit
 
 DEPLOY = Path(__file__).resolve().parents[1] / "aws-deploy-ec2.sh"
@@ -24,6 +25,14 @@ class PostgresUriBuilderTests(unittest.TestCase):
         if match is None:
             raise AssertionError("Deployment PostgreSQL URI builder was not found")
         cls.builder = match.group(1)
+        preflight = re.search(
+            r"""TRACKMYRMC_EXPECTED_DB_NAME="\$DB_NAME" python3 - <<'PY'\n(.*?)\nPY""",
+            content,
+            flags=re.DOTALL,
+        )
+        if preflight is None:
+            raise AssertionError("Deployment PostgreSQL preflight was not found")
+        cls.preflight = compile(preflight.group(1), str(DEPLOY), "exec")
 
     def make_uri(self, db_name="postgres", username="trackmyrmc_admin", password="synthetic"):
         result = subprocess.run(
@@ -62,6 +71,41 @@ class PostgresUriBuilderTests(unittest.TestCase):
         self.assertNotIn("pass%word", parsed.geturl())
         self.assertEqual(parsed.path, "/postgres")
         self.assertFalse(parsed.fragment)
+
+    def test_preflight_uses_verified_tls_without_inheriting_libpq_settings(self):
+        uri = self.make_uri(password="test%pass:@/")
+        environment = {
+            "PATH": "/usr/bin",
+            "PGSERVICE": "untrusted-service",
+            "PGSERVICEFILE": "/tmp/untrusted-service.conf",
+            "PGHOSTADDR": "127.0.0.1",
+            "PGSSLMODE": "disable",
+            "TRACKMYRMC_DATABASE_URL": uri.geturl(),
+            "TRACKMYRMC_EXPECTED_DB_NAME": "postgres",
+        }
+        probe = subprocess.CompletedProcess([], 0, stdout="1\n", stderr="")
+        with (
+            patch.dict(os.environ, environment, clear=True),
+            patch("os.path.isfile", return_value=True),
+            patch("subprocess.run", return_value=probe) as run,
+        ):
+            exec(self.preflight, {})
+
+        command = run.call_args.args[0]
+        self.assertEqual(command[-2:], ["-c", "SELECT 1"])
+        self.assertNotIn(uri.geturl(), command)
+        self.assertEqual(run.call_args.kwargs["env"], {
+            "PATH": "/usr/bin",
+            "PGHOST": uri.hostname,
+            "PGPORT": "5432",
+            "PGDATABASE": "postgres",
+            "PGUSER": "trackmyrmc_admin",
+            "PGPASSWORD": "test%pass:@/",
+            "PGSSLMODE": "verify-full",
+            "PGSSLROOTCERT": "/etc/trackmyrmc/rds-ca-bundle.pem",
+            "PGCONNECT_TIMEOUT": "8",
+            "PGOPTIONS": "-c default_transaction_read_only=on -c statement_timeout=5000",
+        })
 
 
 if __name__ == "__main__":
