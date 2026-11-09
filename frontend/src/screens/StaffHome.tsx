@@ -1,11 +1,15 @@
-import React from "react";
+import React, { useState } from "react";
 import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { OperationalHomeTopBar } from "@/src/components/OperationalHomeTopBar";
 
 import { useAuth } from "@/src/auth/AuthContext";
+import { apiPost } from "@/src/api/client";
+import { workforceLocationEvidence } from "@/src/location/workforceEvidence";
+import { useToast } from "@/src/components/ui/Toast";
+import { Button } from "@/src/components/ui/Button";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { useGet } from "@/src/hooks/useApi";
 import { AppText } from "@/src/components/ui/AppText";
@@ -53,18 +57,41 @@ function formatValue(k: Kpi): string {
 
 export function StaffHome() {
   const { colors } = useTheme();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
+  const toast = useToast();
   const router = useRouter();
   const { width: viewportWidth } = useWindowDimensions();
   const contentWidth = Math.max(0, Math.min(viewportWidth, 980) - 2 * spacing.lg);
   const kpiColumns = contentWidth >= 680 ? 4 : contentWidth >= 460 ? 3 : 2;
   const kpiWidth = (contentWidth - (kpiColumns - 1) * 10) / kpiColumns;
   const { data, loading, error, refetch, reload } = useGet<HomeData>("/staff/home");
+  const { data: workday, error: workdayError, refetch: refreshWorkday } =
+    useGet<{ attendance: { check_in: string | null; check_out: string | null } | null }>("/workforce/me");
+  const [attendanceBusy, setAttendanceBusy] = useState(false);
+  const attendance = workday?.attendance;
+  const checkedIn = !!attendance?.check_in && !attendance?.check_out;
+  const shiftComplete = !!attendance?.check_out;
+  const attendanceAction = async (path: "punch-in" | "punch-out") => {
+    if (!token || attendanceBusy) return;
+    setAttendanceBusy(true);
+    try {
+      const evidence = await workforceLocationEvidence("attendance");
+      await apiPost(`/workforce/attendance/${path}`, token, evidence);
+      toast(path === "punch-in" ? "Checked in for today" : "Checked out for today", "success");
+      refreshWorkday();
+      refetch();
+    } catch (e: any) {
+      toast(e?.detail || "Attendance update failed. Retry from My Workday.", "error");
+    } finally {
+      setAttendanceBusy(false);
+    }
+  };
+  useFocusEffect(React.useCallback(() => { refreshWorkday(); }, [refreshWorkday]));
   const { data: grants, loading: grantsLoading, error: grantsError, refetch: refreshGrants } =
     useGet<{ permissions: Array<{ key: string; view: boolean }> }>("/staff/module-permissions");
   const workspace = ROLE_WORKSPACE[user?.role || ""] || ROLE_WORKSPACE.admin;
   const primaryAllowed = grants?.permissions.some(g => g.key === workspace.key && g.view) === true;
-  const refresh = () => { refetch(); refreshGrants(); };
+  const refresh = () => { refetch(); refreshGrants(); refreshWorkday(); };
 
   return (
     <View style={{ flex: 1, backgroundColor: "transparent" }}>
@@ -140,6 +167,21 @@ export function StaffHome() {
                   </View>
                 )}
               </View>
+              <View testID="staff-workday-card" style={[styles.workday, {
+                backgroundColor: colors.surfaceSecondary, borderColor: colors.border,
+              }]}>
+                <View style={{ flex: 1, gap: 4 }}>
+                  <AppText variant="heading">My Workday</AppText>
+                  <AppText variant="caption">{shiftComplete ? "Shift complete" : checkedIn ? "On duty · checked in" : "Check in daily after signing in. Permission approval alone does not record attendance."}</AppText>
+                  {workdayError ? <AppText variant="caption" color={colors.error}>Attendance status unavailable. Retry from Workforce.</AppText> : null}
+                </View>
+                {!workdayError && workday && !checkedIn && !shiftComplete ?
+                  <Button testID="staff-home-check-in" label="Check In" size="sm"
+                    loading={attendanceBusy} onPress={() => { void attendanceAction("punch-in"); }} /> : null}
+                {!workdayError && workday && checkedIn ?
+                  <Button testID="staff-home-check-out" label="Check Out" size="sm" variant="outline"
+                    loading={attendanceBusy} onPress={() => { void attendanceAction("punch-out"); }} /> : null}
+              </View>
               <StaffModuleDirectory role={user?.role} scope="home" title="Role tools" />
             </>
           ) : null}
@@ -164,6 +206,7 @@ const styles = StyleSheet.create({
   kpi: { minHeight: 108, padding: 9, borderRadius: 16, borderWidth: 1, gap: 4,
     shadowColor: "#996847", shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1 },
   kpiIcon: { minHeight: 30, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  workday: { minHeight: 75, borderRadius: 16, borderWidth: 1, padding: 12, flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 10 },
   restricted: { minHeight: 86, flexDirection: "row", alignItems: "center", gap: 12,
     borderRadius: radius.lg, borderWidth: 1, padding: 15 },
 });
