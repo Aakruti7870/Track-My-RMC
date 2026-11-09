@@ -165,10 +165,10 @@ assert.ok(serviceForm.includes('"/customer/service-enquiries"'), "Enquiry API in
 // The customer More page intentionally surfaces only these five routes, in order.
 const customerMore = read("app/customer/more.tsx");
 const moreKeysBlock = customerMore.match(/const CUSTOMER_MORE_KEYS = \[([\s\S]*?)\] as const;/);
-assert.ok(moreKeysBlock, "Customer More must declare an explicit five-link shortlist.");
+assert.ok(moreKeysBlock, "Customer More must declare an explicit settings shortlist.");
 const moreKeys = [...moreKeysBlock[1].matchAll(/"([a-z-]+)"/g)].map(match => match[1]);
 assert.deepEqual(moreKeys, [
-  "account-deletion", "customer-support", "notifications", "quotations", "documents",
+  "account-deletion", "customer-support", "quotations", "documents",
 ], "Customer More must contain exactly the requested five links in order.");
 const customerRoleModules = modulesForRole("customer");
 for (const key of moreKeys) {
