@@ -48,6 +48,35 @@ Required before merge/release:
 6. Explicit release approval and independently verified production identity/bootstrap rehearsal. The bootstrap rehearsal uses a disposable database. Live marketing broadcasts and payments require separate activation.
 
 
+## Live email delivery prerequisite
+
+Super Admin login does **not** accept a password: the existing approved
+authentication is **email OTP followed by authenticator TOTP**. The primary
+identity is deliberately reserved with `is_active=false` until first
+enrollment completes. The generic staff OTP endpoint must not be used.
+
+Transactional OTP email is sent using the **Postmark server API** by
+`backend/src/services/email_service.rs`. Its `EMAIL_API_KEY` must contain
+a **valid Postmark server token** (not a SendGrid key or Postmark account
+token). The `EMAIL_FROM_ADDRESS` must be authorized by Postmark.
+A provider response of **HTTP 401** indicates the configured email credential
+was rejected; rewriting the Super Admin account or setting `is_active=true`
+will not resolve it.
+
+The authorized AWS operator must rotate or correct the **`EMAIL_API_KEY`**
+field in the `trackmyrmc/app-runtime` Secrets Manager secret without
+exposing the value in GitHub, terminal logs, or chat. The running EC2 process
+reads `/etc/trackmyrmc/app.env`, so a Secrets Manager change alone does **not**
+refresh its environment. Use the established approved release configuration
+and deployment process to apply the corrected value, then perform an actual
+consented email-delivery test. Do not reset the OTP pepper, create a password
+backdoor, or mark the reserved identity active by direct SQL.
+
+A safe diagnosis checks (1) the Central Admin route selection, (2) mailbox
+reservation and TOTP-enrollment state, (3) provider HTTP acceptance,
+(4) OTP delivery to the owner, and then (5) TOTP enrollment in a private
+browser session. Provider acceptance does not guarantee inbox delivery.
+
 ## Primary Central Admin enrollment and recovery
 
 The AWS release reserves `support@trackmyrmc.com` after backend and web health checks.
