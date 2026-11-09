@@ -24,15 +24,15 @@ const ROLES: { role: PlayReviewRole; label: string; description: string; icon: k
 const REVIEW_GUIDANCE: Record<PlayReviewRole, { title: string; text: string }> = {
   customer: {
     title: "Nearby Plants review path",
-    text: "After login, open Nearby Plants. TrackMyRMC shows an in-app location explanation before Android asks for location. The seeded TrackMyRMC Play Review Plant remains visible even if you change location settings.",
+    text: "After reviewer OTP, the same optional Android permission cards appear as for regular users. Choose Allow location or Not now. Nearby Plants remains accessible either way, with a separate location explanation when you request it later. The seeded TrackMyRMC Play Review Plant stays visible.",
   },
   plant_owner: {
     title: "Plant Owner review path",
-    text: "After login, the isolated review plant, vehicle and review-only operational data are available from the Plant Owner dashboard.",
+    text: "After reviewer OTP, review the same optional Android permission cards used by plant owners. The isolated review plant, vehicle and review-only operational data remain available even when optional permissions are declined.",
   },
   driver: {
     title: "Background location review path",
-    text: "After login, open Current Trip PLAY-REVIEW-001. Before Android asks for location, TrackMyRMC shows the prominent delivery-location disclosure. Continue to see the foreground and background location flow in the isolated review trip.",
+    text: "After reviewer OTP, review the foreground-only and optional notification/camera cards. No background location is requested during sign-in. Open Current Trip PLAY-REVIEW-001 for the separate prominent background delivery-tracking disclosure before Android requests background access.",
   },
 };
 

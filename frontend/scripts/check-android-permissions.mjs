@@ -48,7 +48,12 @@ const pushClient = read("frontend/src/notifications/pushClient.ts");
 const privacy = read("frontend/app/privacy.tsx");
 const terms = read("frontend/app/terms.tsx");
 
-assert(!permissionProvider.includes("<Modal") && !permissionProvider.includes("permission-continue"), "Blocking combined permission modal must not return.");
+assert(permissionProvider.includes('testID="post-login-permission-gate"') && permissionProvider.includes('testID="post-login-permission-card"'), "Unified native post-login card flow must be present.");
+assert(permissionProvider.includes("INTRO_KEY_PREFIX") && permissionProvider.includes("INTRO_VERSION") && permissionProvider.includes("user.role !== \"central_admin\"") && permissionProvider.includes("user.role !== \"authority\""), "Completion must be versioned per mobile role and exclude web-only identities.");
+assert(permissionProvider.includes('role === "driver"') && permissionProvider.includes('"camera", "notifications"') && permissionProvider.includes('stepsForRole(user.role)'), "Drivers must receive the relevant camera/location steps, other native roles receive appropriate cards.");
+assert(permissionProvider.includes('Platform.OS === "android"') && permissionProvider.includes('testID="post-login-permission-allow"') && permissionProvider.includes('testID="post-login-permission-not-now"'), "Runtime permission requests must follow explicit Allow or Not now actions on Android.");
+assert(permissionProvider.includes("Location.requestForegroundPermissionsAsync()") && !permissionProvider.includes("Location.requestBackgroundPermissionsAsync()"), "The first-login card must request foreground location only; background remains active-trip specific.");
+assert(permissionProvider.includes("ImagePicker.requestCameraPermissionsAsync()") && permissionProvider.includes("Notifications.requestPermissionsAsync()"), "The central gate must use actual Android camera and notification prompts.");
 assert(permissionProvider.includes("locationPreference && runtimeGranted"), "Customer discovery must require explicit preference AND a native OS location grant.");
 assert(permissionSettings.includes("Location.requestForegroundPermissionsAsync()") && permissionSettings.includes("requestNearbyPlantsLocationConsent()"), "Location must use a purpose-specific disclosure followed by the native Android prompt.");
 assert(permissionSettings.indexOf("requestNearbyPlantsLocationConsent()") < permissionSettings.indexOf("Location.requestForegroundPermissionsAsync()"), "Location disclosure must precede the OS permission prompt.");
@@ -57,7 +62,13 @@ assert(permissionSettings.includes("registerPushDevice(token, true)"), "Notifica
 assert(permissionSettings.includes('isDriver ? (') && permissionSettings.includes("Background location — active trips only"), "Only driver settings may discuss background trip tracking.");
 assert(permissionSettings.includes("reconfirmGranted={!locationEnabled}"), "Existing Android location grants must still require TrackMyRMC opt-in.");
 assert([ownerMore, driverMore, customerMore, staffMore].every(source => source.includes("permission-settings") || source.includes("review")), "Customer, owner, driver, and operational staff settings must link to optional permission management.");
-assert(!browserReview.includes("getByTestId('permission-continue')"), "Browser E2E must not depend on removed permission gate.");
+assert(!browserReview.includes("getByTestId('permission-continue')"), "Browser E2E must not depend on deprecated permission-continue control.");
+assert(!push.includes("<Modal") && !push.includes("consentVisible") && push.includes("registerPushDevice(token, false)"), "No duplicate notification consent modal; only already-granted OS tokens are registered.");
+assert(push.includes("hasNotificationConsent") && push.includes("subscribeToPushTokenChanges(token, canRegister)") && permissionProvider.includes("unregisterPushDevice(token)"), "Post-login notification opt-out must prevent future token registration and revoke an existing granted token.");
+assert(permissionSettings.includes("saveNotificationConsent") && read("frontend/app/notifications.tsx").includes("saveNotificationConsent"), "Later notification opt-ins must persist the shared account preference.");
+assert(permissionSettings.includes("reconfirmGranted={!notificationOptedIn}"), "An existing OS grant must still allow app notification opt-in.");
+assert(permissionProvider.includes("introActionInFlight"), "Rapid repeated taps must not advance multiple consent cards.");
+assert(read("frontend/app/review-access.tsx").includes("verifyPlayReview") && permissionProvider.includes("user.id"), "Google Play reviewers must pass through the same account-scoped post-login permission cards.");
 assert(consent.includes("This location is collected in the background — even when the app is closed or not in use"), "Background location disclosure must state background use.");
 assert(trip.includes("This app collects location data to enable live mixer delivery tracking even when the app is closed or not in use."), "Driver trip screen must disclose background location use.");
 assert(trip.includes("Agree & Continue") && trip.includes("Not now"), "Driver disclosure must require affirmative consent and offer a decline path.");
@@ -68,7 +79,7 @@ assert(workforce.includes("requestFieldVisitLocationConsent") && workforce.inclu
 assert(onboarding.includes("requestPlantOnboardingLocationConsent") && onboarding.indexOf("requestPlantOnboardingLocationConsent()") < onboarding.indexOf("Location.requestForegroundPermissionsAsync()"), "Plant onboarding disclosure must precede foreground location permission.");
 assert(pod.includes("Camera access for proof of delivery") && pod.indexOf("Camera access for proof of delivery") < pod.indexOf("ImagePicker.requestCameraPermissionsAsync()"), "Camera disclosure must precede the camera permission request.");
 assert(pod.includes("Choose a proof-of-delivery photo"), "Photo picker must explain what selected data is attached.");
-assert(push.includes("Enable notifications") && push.includes("Not now"), "Notifications must be opt-in with a decline path.");
+assert(permissionProvider.includes("Allow notifications") && permissionProvider.includes('label="Not now"'), "Unified permission cards must offer explicit notification opt-in and decline.");
 assert(pushClient.includes("requestPermission = false") && pushClient.includes("permission.status !== \"granted\" && requestPermission"), "Push registration must not request permission without explicit opt-in.");
 assert(privacy.includes("Location and live delivery tracking") && privacy.includes("Camera, photos and files") && privacy.includes("Notifications") && privacy.includes("Retention and account deletion"), "Privacy policy must cover location, camera/photos, notifications, and deletion.");
 assert(terms.includes("Terms & Conditions") && terms.includes("support@goldetech.com"), "Terms must be available with a support contact.");

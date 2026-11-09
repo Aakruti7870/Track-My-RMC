@@ -41,3 +41,8 @@ hex = "0.4"
 
 [dev-dependencies]
 reqwest = { version = "0.12", features = ["json"] }
+
+# SQLx 0.8.6 pins optional SQLite to vulnerable libsqlite3-sys 0.30.x.
+# Keep PostgreSQL APIs unchanged while resolving the patched SQLite library.
+[patch.crates-io]
+sqlx-sqlite = { path = "vendor/sqlx-sqlite-0.8.6" }
