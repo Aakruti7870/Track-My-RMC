@@ -30,7 +30,7 @@ fs.mkdirSync(out, { recursive: true });
         }
         await route.fulfill({ json });
       });
-      const go = async path => { await page.goto('http://127.0.0.1:8765/owner/'); await page.getByTestId('owner-theme-toggle').waitFor(); if (path.includes('directory=1')) await page.getByRole('button', { name: 'Browse other plant modules', exact: true }).click(); else { const tab = path.split('/')[2]; if (tab) await page.getByTestId(`tab-${tab}`).click(); } await page.waitForTimeout(250); };
+      const go = async path => { await page.goto('http://127.0.0.1:8765/owner/'); await page.getByTestId('operational-theme').waitFor(); if (path.includes('directory=1')) await page.getByRole('button', { name: 'Browse other plant modules', exact: true }).click(); else { const tab = path.split('/')[2]; if (tab) await page.getByTestId(`tab-${tab}`).click(); } await page.waitForTimeout(250); };
       const visibleModuleKeys = new Set();
       for (const name of ['home', 'orders', 'operations', 'more']) {
         await go('/owner' + (name === 'home' ? '' : '/' + name));
@@ -84,7 +84,7 @@ fs.mkdirSync(out, { recursive: true });
       assert(row && bar && row.y + row.height <= bar.y + 2, 'Last operation hidden by tab bar');
       await page.screenshot({ path: `${out}/${scheme}-${width}-operations-bottom.png` });
       await go('/owner');
-      await page.getByTestId('owner-theme-toggle').click();
+      await page.getByTestId('operational-theme').click();
       assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('tmrmc_theme_mode'))), scheme === 'light' ? 'dark' : 'light');
       assert.equal(page.url(), homeUrl);
       populated = true;
