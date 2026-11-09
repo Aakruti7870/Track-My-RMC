@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/src/auth/AuthContext";
@@ -9,37 +9,54 @@ import { ErrorView } from "@/src/components/StateViews";
 import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
 import { fonts } from "@/src/theme/tokens";
 import { modulesForRole } from "@/src/navigation/moduleCatalog";
-import { HOME_KEYS, ownerDestination } from "@/src/owner/modules";
-import { OwnerFrame, OwnerGlass, ui, useOwnerBottomSpace, useOwnerPalette } from "@/src/owner/OwnerUI";
+import { HOME_KEYS, DRIVER_MODULE, ownerDestination } from "@/src/owner/modules";
+import { OwnerCommercial } from "@/src/owner/OwnerCommercial";
+import { OwnerInsights } from "@/src/owner/OwnerInsights";
+import { OwnerFrame, OwnerGlass, OwnerModuleRow, ui, useOwnerBottomSpace, useOwnerPalette } from "@/src/owner/OwnerUI";
 
 const PLANT_HERO_IMAGE = require("../../assets/images/Plant _Owner_All_staff_top_card.webp");
-
 type HomeData = { cards: Record<string, number>; plant_count: number };
-const SHORT_COPY = ["Approve & manage", "Batching & workflows", "Stock & reorders", "Staff, attendance", "Invoices & payments", "Reports & summary"];
-const METRICS: { key: string; label: string; basis: string; symbol: VectorSymbolName; route: string }[] = [
-  { key: "todays_orders", label: "Total Orders", basis: "Due today", symbol: "plant-orders", route: "today" },
-  { key: "dispatched_loads", label: "Dispatches", basis: "Loads sent today", symbol: "production-dispatch", route: "processing" },
-  { key: "pending_approvals", label: "Pending Approvals", basis: "Awaiting review", symbol: "quotation-requests", route: "pending" },
-  { key: "active_staff", label: "Plant Staff", basis: "Active linked staff", symbol: "plant-staff", route: "staff" },
+const SHORT_COPY = ["Approve & manage", "Batching & workflows", "Stock & reorders", "Staff, attendance"];
+const METRICS: { key: string; label: string; basis: string; symbol: VectorSymbolName; destination: string }[] = [
+  { key: "todays_orders", label: "Total Orders", basis: "Due today", symbol: "plant-orders", destination: "today" },
+  { key: "dispatched_loads", label: "Dispatches", basis: "Loads sent today", symbol: "production-dispatch", destination: "processing" },
+  { key: "pending_approvals", label: "Pending Approvals", basis: "Awaiting review", symbol: "quotation-requests", destination: "pending" },
+  { key: "active_staff", label: "Plant Staff", basis: "Active linked staff", symbol: "plant-staff", destination: "/business/staff" },
+  { key: "plant_attendance_today", label: "Plant Attendance", basis: "Checked in today", symbol: "attendance", destination: "/business/attendance" },
+  { key: "plant_expenses_today", label: "Expenses", basis: "Records today", symbol: "expenses", destination: "/business/expenses" },
+  { key: "active_mixers", label: "Active Mixers", basis: "On active deliveries", symbol: "transit-mixer-fleet", destination: "/business/fleet" },
+  { key: "ordered_qty", label: "Ordered Volume", basis: "m³ due today", symbol: "plant-orders", destination: "today" },
 ];
+
 export default function OwnerHome() {
   const p = useOwnerPalette();
   const bottom = useOwnerBottomSpace();
   const { width: viewportWidth } = useWindowDimensions();
   const contentWidth = Math.max(0, Math.min(viewportWidth, 820) - 32);
-  const columns = contentWidth >= 680 ? 4 : contentWidth >= 450 ? 3 : 2;
-  const tileWidth = (contentWidth - (columns - 1) * 9) / columns;
-  const metricColumns = contentWidth >= 680 ? 4 : 2;
-  const metricWidth = (contentWidth - (metricColumns - 1) * 10) / metricColumns;
+  const columns = contentWidth >= 700 ? 5 : contentWidth >= 450 ? 3 : 2;
+  const tileWidth = (contentWidth - (columns - 1) * 8) / columns;
+  const metricColumns = contentWidth >= 700 ? 4 : 2;
+  const metricWidth = (contentWidth - (metricColumns - 1) * 9) / metricColumns;
   const { user } = useAuth();
   const router = useRouter();
+  const [insightsExpanded, setInsightsExpanded] = useState(false);
   const { data, loading, error, reload, refetch } = useGet<HomeData>("/owner/home");
   const catalog = modulesForRole(user?.role);
   const modules = HOME_KEYS.flatMap(key => catalog.filter(module => module.key === key));
-  // The display name may be a reviewer fixture; never expose review labels as branding.
   const name = user?.name && !/play\s*review|reviewer/i.test(user.name) ? user.name : "Plant Owner";
+
+  const openMetric = (destination: string) => {
+    if (destination.startsWith("/")) {
+      router.push(destination as any);
+    } else {
+      router.push({ pathname: "/owner/orders", params: destination === "today"
+        ? { today: "1", status: "all" } : { status: destination, today: "" } });
+    }
+  };
+
   return <OwnerFrame>
-    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[ui.content, { paddingBottom: bottom, gap: 10 }]} refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={refetch} tintColor={p.accent} />}>
+    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[ui.content, { paddingBottom: bottom, gap: 10 }]}
+      refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={refetch} tintColor={p.accent} />}>
       <View testID="owner-home-summary" style={[styles.hero, { backgroundColor: p.dark ? "rgba(95,52,16,0.26)" : "rgba(255,237,209,0.62)" }]}>
         <View style={styles.heroArt}><Image testID="owner-home-hero-banner" source={PLANT_HERO_IMAGE} resizeMode="cover" accessibilityIgnoresInvertColors style={styles.heroImage} /></View>
         <View style={[styles.heroCopy, { backgroundColor: p.dark ? "rgba(14,17,22,0.84)" : "rgba(255,249,238,0.90)" }]}>
@@ -48,12 +65,15 @@ export default function OwnerHome() {
           <AppText style={{ fontSize: 11, lineHeight: 17, color: p.muted, marginTop: 5 }}>Manage your plant operations efficiently</AppText>
         </View>
       </View>
+
       <AppText style={[ui.section, { color: p.text }]}>Today at a Glance</AppText>
       {error ? <ErrorView message={error} onRetry={reload} /> : null}
       <View style={styles.metrics}>
-        {METRICS.map(metric => <Pressable key={metric.key} accessibilityRole="button" accessibilityLabel={`${metric.label}, ${data?.cards[metric.key] ?? "unavailable"}, ${metric.basis}`} onPress={() => metric.route === "staff" ? router.push("/business/staff") : router.push({ pathname: "/owner/orders", params: metric.route === "today" ? { today: "1", status: "all" } : { status: metric.route, today: "" } })} style={{ width: metricWidth }}>
+        {METRICS.map(metric => <Pressable key={metric.key} testID={`owner-metric-${metric.key}`}
+          accessibilityRole="button" accessibilityLabel={`${metric.label}, ${data?.cards[metric.key] ?? "unavailable"}, ${metric.basis}`}
+          onPress={() => openMetric(metric.destination)} style={{ width: metricWidth }}>
           <OwnerGlass style={styles.metric}>
-            <VectorSymbol name={metric.symbol} size={32} warmAccent />
+            <VectorSymbol name={metric.symbol} size={30} warmAccent />
             <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
               <AppText style={{ fontSize: 10, color: p.text }}>{metric.label}</AppText>
               {loading && !data ? <Skeleton height={22} /> : <AppText style={{ fontFamily: fonts.bold, fontSize: 22, color: p.text }}>{data?.cards[metric.key] ?? "—"}</AppText>}
@@ -62,16 +82,34 @@ export default function OwnerHome() {
           </OwnerGlass>
         </Pressable>)}
       </View>
-      <View style={styles.sectionHeader}><AppText style={{ fontFamily: fonts.bold, fontSize: 15, color: p.text }}>Quick Access</AppText><Pressable accessibilityRole="button" accessibilityLabel="Browse other plant modules" onPress={() => router.push("/owner/more")} style={{ paddingVertical: 10 }}><AppText style={{ color: p.dark ? "#FFAD70" : "#AC4700", fontSize: 12 }}>More modules</AppText></Pressable></View>
+
+      <AppText style={[ui.section, { color: p.text }]}>Quick Access</AppText>
       <View style={styles.modules}>
-        {modules.map((module, i) => <Pressable testID={`owner-shortcut-${module.key}`} key={module.key} accessibilityRole="button" accessibilityLabel={module.key === "business-staff" ? "Workforce" : module.label} onPress={() => router.push(ownerDestination(module))} style={{ width: tileWidth }}>
+        {modules.map((module, i) => <Pressable testID={`owner-shortcut-${module.key}`} key={module.key}
+          accessibilityRole="button" accessibilityLabel={module.key === "business-staff" ? "Workforce" : module.label}
+          onPress={() => router.push(ownerDestination(module))} style={{ width: tileWidth }}>
           <OwnerGlass style={styles.shortcut}>
-            {module.symbol ? <VectorSymbol name={module.symbol} size={42} warmAccent /> : null}
-            <AppText center style={{ fontFamily: fonts.semibold, fontSize: 12, lineHeight: 16, color: p.text }}>{module.key === "business-staff" ? "Workforce" : module.label}</AppText>
-            <AppText center style={{ fontSize: 9, lineHeight: 14, color: p.muted }}>{SHORT_COPY[i]}</AppText>
+            {module.symbol ? <VectorSymbol name={module.symbol} size={35} warmAccent /> : null}
+            <AppText center numberOfLines={2} style={[styles.shortcutLabel, { color: p.text }]}>{module.key === "business-staff" ? "Workforce" : module.label}</AppText>
+            <AppText center numberOfLines={2} style={[styles.shortcutCopy, { color: p.muted }]}>{SHORT_COPY[i]}</AppText>
           </OwnerGlass>
         </Pressable>)}
+        <Pressable testID="owner-shortcut-insights" accessibilityRole="button" accessibilityState={{ expanded: insightsExpanded }}
+          accessibilityLabel="Plant Overview & Weekly Insights" onPress={() => setInsightsExpanded(v => !v)}
+          style={{ width: tileWidth }}>
+          <OwnerGlass style={[styles.shortcut, insightsExpanded && { borderColor: p.accent }]}>
+            <VectorSymbol name="production-report" size={35} warmAccent />
+            <AppText center numberOfLines={3} style={[styles.shortcutLabel, { color: p.text }]}>Plant Overview & Weekly Insights</AppText>
+          </OwnerGlass>
+        </Pressable>
       </View>
+      <OwnerInsights expanded={insightsExpanded} />
+
+      <AppText style={[ui.section, { color: p.text }]}>Commercial</AppText>
+      <OwnerCommercial />
+
+      <AppText style={[ui.section, { color: p.text }]}>Driver Management</AppText>
+      <OwnerModuleRow module={DRIVER_MODULE} compact />
     </ScrollView>
   </OwnerFrame>;
 }
@@ -80,9 +118,10 @@ const styles = StyleSheet.create({
   heroArt: { ...StyleSheet.absoluteFillObject, overflow: "hidden" },
   heroImage: { width: "100%", height: "100%" },
   heroCopy: { width: "50%", minWidth: 155, maxWidth: 360, padding: 13, borderRadius: 16, margin: 5 },
-  metrics: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  metric: { minHeight: 76, padding: 8, flexDirection: "row", gap: 6, alignItems: "center" },
-  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: -6 },
-  modules: { flexDirection: "row", flexWrap: "wrap", gap: 9 },
-  shortcut: { minHeight: 108, height: "100%", padding: 7, alignItems: "center", justifyContent: "center", gap: 4 },
+  metrics: { flexDirection: "row", flexWrap: "wrap", gap: 9 },
+  metric: { minHeight: 75, padding: 8, flexDirection: "row", gap: 6, alignItems: "center" },
+  modules: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  shortcut: { minHeight: 88, height: "100%", paddingHorizontal: 5, paddingVertical: 7, alignItems: "center", justifyContent: "center", gap: 3 },
+  shortcutLabel: { fontFamily: fonts.semibold, fontSize: 11, lineHeight: 14 },
+  shortcutCopy: { fontSize: 9, lineHeight: 12 },
 });
