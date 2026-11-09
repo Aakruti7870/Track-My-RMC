@@ -37,19 +37,15 @@ function PermissionCard({
   const { colors } = useTheme();
   const blocked = state.status === "denied" && !state.canAskAgain;
   return (
-    <Card style={styles.card}>
-      <View style={styles.titleRow}>
-        <View style={[styles.icon, { backgroundColor: colors.brandSoft }]}>
-          <Ionicons name={icon} size={26} color={colors.onBrandSoft} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <AppText variant="heading">{title}</AppText>
-          <AppText variant="caption">Android permission: {labelFor(state.status)}</AppText>
-        </View>
+    <Card variant="elevated" style={styles.permissionCard}>
+      <View style={[styles.icon, { backgroundColor: colors.brandSoft, borderColor: colors.brand + "55" }]}>
+        <Ionicons name={icon} size={36} color={colors.brand} />
       </View>
-      <AppText variant="bodyMuted">{description}</AppText>
+      <AppText variant="heading" center>{title}</AppText>
+      <AppText variant="bodyMuted" center>{description}</AppText>
+      <AppText variant="caption" center>Android permission: {labelFor(state.status)}</AppText>
       {state.status === "granted" && !reconfirmGranted ? (
-        <AppText variant="caption">Permission is enabled. You can change it in Android Settings.</AppText>
+        <AppText variant="caption" center>Permission is enabled. You can change it in Android Settings.</AppText>
       ) : blocked ? (
         <Button label="Open Android settings" variant="outline" disabled={busy} onPress={onSettings} />
       ) : (
@@ -196,6 +192,21 @@ const styles = StyleSheet.create({
   back: { minWidth: 44, minHeight: 44, justifyContent: "center" },
   content: { padding: spacing.lg, paddingBottom: 96, gap: spacing.lg, maxWidth: 760, alignSelf: "center", width: "100%" },
   card: { gap: spacing.md },
-  titleRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  icon: { width: 52, height: 52, borderRadius: radius.lg, alignItems: "center", justifyContent: "center" },
+  permissionCard: {
+    gap: spacing.md,
+    alignItems: "center",
+    paddingVertical: spacing.xl,
+    borderRadius: radius.xl,
+    maxWidth: 460,
+    width: "100%",
+    alignSelf: "center",
+  },
+  icon: {
+    width: 72,
+    height: 72,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });
