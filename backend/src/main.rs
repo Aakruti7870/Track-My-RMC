@@ -3,6 +3,7 @@ use axum::http::{
     HeaderValue, Method,
 };
 use config::AppConfig;
+use sqlx::postgres::PgPoolOptions;
 use state::AppState;
 use std::net::SocketAddr;
 use tokio::signal;
@@ -11,10 +12,25 @@ use tower_http::{
     trace::TraceLayer,
 };
 use tracing::info;
-use trackmyrmc_backend::{config, db, routes, state};
+use trackmyrmc_backend::{central_admin_bootstrap, config, db, routes, state};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut args = std::env::args().skip(1);
+    if args.next().as_deref() == Some("--prepare-primary-central-admin") {
+        let database = args.next().ok_or("Expected database name is required")?;
+        if args.next().is_some() {
+            return Err("Unexpected primary Central Admin preparation arguments".into());
+        }
+        let pool = PgPoolOptions::new()
+            .max_connections(1)
+            .connect(&std::env::var("DATABASE_URL")?)
+            .await?;
+        central_admin_bootstrap::prepare_primary(&pool, &database).await?;
+        println!("Primary Central Admin identity is reserved or already enrolled");
+        return Ok(());
+    }
+
     dotenvy::dotenv().ok();
 
     tracing_subscriber::fmt()

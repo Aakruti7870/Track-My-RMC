@@ -22,7 +22,9 @@ from urllib.parse import unquote, urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 BINARY = ROOT / "target/debug/examples/bootstrap_central_admin"
+BACKEND = ROOT / "target/debug/trackmyrmc-backend"
 DATABASE = "trackmyrmc_bootstrap_test"
+PRIMARY_EMAIL = "support@trackmyrmc.com"
 URL = urlparse(os.environ["DATABASE_URL"])
 if URL.hostname not in ("127.0.0.1", "localhost", "::1") or URL.path != "/" + DATABASE:
     raise SystemExit("Requires the isolated loopback bootstrap test database")
@@ -46,7 +48,13 @@ def code_for(secret):
     return str((struct.unpack(">I", digest[offset:offset+4])[0] & 0x7fffffff) % 1000000).zfill(6)
 
 
-def run(*, expected=DATABASE, apply=True, wrong_password=False, wrong_totp=False, ci=False):
+def prepare(expected=DATABASE):
+    return subprocess.run([str(BACKEND), "--prepare-primary-central-admin", expected],
+                          capture_output=True, timeout=15).returncode
+
+
+def run(*, expected=DATABASE, email=PRIMARY_EMAIL, apply=True, wrong_password=False,
+        wrong_totp=False, ci=False):
     master, slave = pty.openpty()
 
     def terminal():
@@ -59,7 +67,7 @@ def run(*, expected=DATABASE, apply=True, wrong_password=False, wrong_totp=False
     if ci:
         env["CI"] = "true"
     args = [str(BINARY), "--expected-database", expected,
-            "--email", "bootstrap-fixture@example.invalid", "--name", "Synthetic Bootstrap"]
+            "--email", email, "--name", "Synthetic Bootstrap"]
     if apply:
         args.append("--apply")
     proc = subprocess.Popen(args, stdin=slave, stdout=slave, stderr=slave,
@@ -105,25 +113,44 @@ def run(*, expected=DATABASE, apply=True, wrong_password=False, wrong_totp=False
 # Historical migrations contain disabled customer/owner/driver reviewer fixtures.
 # They must remain untouched; no privileged fixture or target email may exist.
 baseline_users = sql("SELECT count(*) FROM users")
-if sql("SELECT count(*) FROM users WHERE role IN ('central_admin','authority') OR email='bootstrap-fixture@example.invalid'") != "0":
+if sql(f"SELECT count(*) FROM users WHERE role IN ('central_admin','authority') OR email='{PRIMARY_EMAIL}'") != "0":
     raise SystemExit("Bootstrap fixture database already has privileged identities or the test email")
+assert run() != 0, "Enrollment must require the prepared identity"
+assert prepare("wrong_test_database") != 0, "Preparation must verify the database"
+assert sql("SELECT count(*) FROM users") == baseline_users
+sql(f"INSERT INTO users(phone,email,hashed_password,full_name,role) VALUES(NULL,'{PRIMARY_EMAIL}','unused','Synthetic Customer','customer')")
+assert prepare() != 0, "Preparation must not promote an existing user"
+assert sql(f"SELECT role FROM users WHERE email='{PRIMARY_EMAIL}'") == "customer"
+sql(f"DELETE FROM users WHERE email='{PRIMARY_EMAIL}'")
+sql("INSERT INTO users(phone,email,hashed_password,full_name,role) VALUES(NULL,'other@example.invalid','unused','Synthetic Admin','central_admin')")
+assert prepare() != 0, "Preparation must preserve an existing Central Admin"
+assert sql("SELECT count(*) FROM users WHERE role='central_admin' AND email='other@example.invalid'") == "1"
+sql("DELETE FROM users WHERE email='other@example.invalid'")
+
+assert prepare() == 0, "Deployment preparation must succeed without a terminal"
+assert prepare() == 0, "Preparation must be idempotent"
+primary_id = sql(f"SELECT id FROM users WHERE role='central_admin' AND email='{PRIMARY_EMAIL}' AND NOT is_active AND NOT is_verified")
+assert primary_id, "Preparation must reserve the inactive primary identity"
+assert sql("SELECT count(*) FROM audit_logs WHERE action='control_center.bootstrap.prepare_primary'") == "1"
+assert sql("SELECT count(*) FROM control_center_access") == "0"
+assert sql("SELECT count(*) FROM user_totp_credentials") == "0"
+
 assert run(apply=False) != 0, "Missing explicit apply must fail"
 assert run(ci=True) != 0, "CI must fail even with a PTY"
 assert run(expected="wrong_test_database") != 0, "Wrong database must fail"
+assert run(email="other@example.invalid") != 0, "Only the reserved email can enroll"
 assert run(wrong_password=True) != 0, "Password mismatch must fail"
 assert run(wrong_totp=True) != 0, "Missing possession proof must fail"
-assert sql("SELECT count(*) FROM users") == baseline_users, "Failures must not create identities"
-# Collision checks happen before provisioning, and cannot promote an ordinary identity.
-sql("INSERT INTO users(phone,email,hashed_password,full_name,role) VALUES(NULL,'bootstrap-fixture@example.invalid','unused','Synthetic Customer','customer')")
-assert run() != 0, "Existing customer identity must never be promoted"
-assert sql("SELECT role FROM users WHERE email='bootstrap-fixture@example.invalid'") == "customer"
-sql("DELETE FROM users WHERE email='bootstrap-fixture@example.invalid'")
+assert sql("SELECT count(*) FROM control_center_access") == "0", "Failures must not grant access"
+assert sql("SELECT count(*) FROM user_totp_credentials") == "0", "Failures must not install credentials"
 assert run() == 0, "Approved synthetic first bootstrap must succeed"
-assert sql("SELECT count(*) FROM users WHERE role='central_admin' AND hashed_password LIKE '$argon2id$%'") == "1"
+assert sql("SELECT id FROM users WHERE role='central_admin' AND is_active AND is_verified AND hashed_password LIKE '$argon2id$%'") == primary_id
+assert sql("SELECT count(*) FROM control_center_access WHERE approved AND 'admin_access.manage'=ANY(permissions)") == "1"
 assert sql("SELECT count(*) FROM user_totp_credentials WHERE is_enabled AND cardinality(backup_codes)=8 AND last_login_totp_step IS NOT NULL") == "1"
 assert sql("SELECT count(*) FROM user_totp_credentials t WHERE NOT EXISTS(SELECT 1 FROM unnest(t.backup_codes) c WHERE c !~ '^[0-9a-f]{64}$')") == "1", "Recovery codes must be hashes"
 assert sql("SELECT count(*) FROM audit_logs WHERE action='control_center.bootstrap.first_admin'") == "1"
 assert sql("SELECT count(*) FROM control_center_sessions") == "0", "Bootstrap must not issue a session"
 assert run() != 0, "A second bootstrap must never overwrite the first identity"
+assert prepare() == 0, "Redeploying must preserve the enrolled account"
 assert sql("SELECT count(*) FROM users WHERE role='central_admin'") == "1"
-print("PASS: bootstrap requires explicit apply, non-CI terminal, exact database, matching password and TOTP; failures roll back; duplicate bootstrap and promotion denied; audit and hashed recovery records verified")
+print("PASS: preparation reserves one inactive primary account; private enrollment requires password and TOTP; conflicts, retries, audit, and credential storage verified")

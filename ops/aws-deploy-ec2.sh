@@ -638,6 +638,11 @@ ADMIN_JS="$(printf '%s' "$ADMIN_HTML" | grep -Eo 'src="/admin/assets/[^"]+\.js"'
 test -n "$ADMIN_JS"
 curl --resolve trackmyrmc.com:443:127.0.0.1 --fail --silent --show-error "https://trackmyrmc.com$ADMIN_JS" >/dev/null
 
+# Reserve the primary email only after the migrated backend and web apps pass
+# the origin checks. The preparation command installs no login credentials.
+DATABASE_URL="$DATABASE_URL" "/opt/trackmyrmc/releases/backend-$RELEASE_SHA" \
+    --prepare-primary-central-admin "$DB_NAME"
+
 # Advance release identity only after the origin proves the installed services work.
 printf '%s\n' "$RELEASE_SHA" > "$RELEASE_STAGE/DEPLOYED_RELEASE_SHA"
 mv -Tf -- "$RELEASE_STAGE/DEPLOYED_RELEASE_SHA" /opt/trackmyrmc/DEPLOYED_RELEASE_SHA

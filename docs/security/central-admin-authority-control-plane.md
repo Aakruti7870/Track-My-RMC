@@ -8,7 +8,7 @@ Status: **implemented on main; production enrollment, deployment and feature act
 - `central_admin` and `authority` are **web-only privileged roles**. No Expo application login, bottom tab, reviewer fixture or mobile refresh token is created for either.
 - The endpoint accepts bearer tokens from HTTP clients, not "browser fingerprint" validation. **Web-only** means supported product login surface, not a claim that a mobile HTTP client is technically unable to send requests. Role, session provenance, permission, expiry and MFA are enforced on the Rust server.
 - A permanent identity is retained in `users` until explicitly disabled; an authenticated session lasts **one hour** and cannot be silently refreshed.
-- No migration automatically promotes an existing user. Any first Central Admin identity remains a separate, audited production bootstrap/approval procedure.
+- The approved AWS release reserves `support@trackmyrmc.com` as an inactive Central Admin identity. An audited, private bootstrap is required to activate it.
 
 ## Role control and implementation
 
@@ -45,13 +45,15 @@ Required before merge/release:
 3. An approved Central Admin fixture tests grant, reject, revoke and expired-session behavior. An approved Authority fixture tests wrong-role denial, no mobile login/token refresh, KYC evidence gates, and cross-tenant/privacy restrictions.
 4. Validate production migrations, email OTP delivery and authenticator enrollment **without emitting secret keys or real customer data**; verify the expected production database.
 5. Verify password + TOTP enforcement including wrong-password, missing-password, stale challenge, role mismatch, session replacement and initial Authority enrollment. Account recovery requires controlled operator verification, never email-only self-service. The independently approved privileged recovery lifecycle is not implemented; see `pr157-release-assessment.md`.
-6. Explicit release approval and independently verified production identity/bootstrap rehearsal. No live marketing broadcasts or payments are automatically enabled, and no AWS production write or deployment is performed by CI.
+6. Explicit release approval and independently verified production identity/bootstrap rehearsal. The bootstrap rehearsal uses a disposable database. Live marketing broadcasts and payments require separate activation.
 
 
 ## Production bootstrap runbook (operator-controlled)
 
-There is no seeded root account, default password, email allowlist bypass, or public registration
-route for Central Admin. The bootstrap example exists only as an explicit operator command.
+The AWS deployment prepares the single designated Central Admin identity after the backend and
+web health checks. The pending record is inactive, with no portal access, password hash or
+authenticator. Preparation is idempotent and refuses collisions with existing accounts.
+The bootstrap example activates the reserved identity only as an explicit operator command.
 **Never use CI, production startup, an automated deployment hook, or a remote logged terminal
 to provision privileged credentials.**
 
@@ -60,12 +62,12 @@ to provision privileged credentials.**
    current backups separately. Do not infer the database name from the RDS instance name.
 2. From a trusted interactive terminal with secure secret-handling controls, run the
    SHA-pinned source's `backend/examples/bootstrap_central_admin.rs` using:
-   `cargo run --release --example bootstrap_central_admin -- --apply --expected-database <VERIFIED_DATABASE> --email <APPROVED_EMAIL> --name <APPROVED_NAME>`
+   `cargo run --release --example bootstrap_central_admin -- --apply --expected-database <VERIFIED_DATABASE> --email support@trackmyrmc.com --name "TrackMyRMC Support"`
    with `DATABASE_URL` supplied securely outside shell history.
-3. The tool requires a private terminal, validates the current database, refuses any
-   existing Central Admin identity or email collision, accepts a hidden password,
-   generates a new authenticator, checks a live code **before** a single transactional
-   account creation, hashes backup codes and writes an audit event.
+3. The tool requires a private terminal and verifies the database and pending identity.
+   It accepts a hidden password, generates a new authenticator, and verifies a live code
+   before activating the account and granting Central Admin access in one transaction.
+   It hashes backup codes and writes an audit event.
 4. Store the printed authenticator provisioning URI and single-use recovery codes securely,
    separate from the password. Do not allow shell/SSM/CI session output capture, helpdesk
    screenshots or centralized transcript logging of these secrets.
