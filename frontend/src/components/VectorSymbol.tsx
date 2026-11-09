@@ -9,6 +9,7 @@ import { set5 } from "./vector-symbols/set5";
 import { set6 } from "./vector-symbols/set6";
 import { set7 } from "./vector-symbols/set7";
 import { set8 } from "./vector-symbols/set8";
+import { set9 } from "./vector-symbols/set9";
 
 /**
  * The library of 91 checked-in SVG vector symbols (88 original + 3 Other Services).
@@ -26,6 +27,7 @@ const symbols = {
   ...set6,
   ...set7,
   ...set8,
+  ...set9,
 } as const;
 
 export type VectorSymbolName = keyof typeof symbols;
