@@ -67,6 +67,15 @@ try {
     return route.fulfill({json:{status:'EMAIL_OTP_SENT'}});
   });
   assert.equal(await page.getByLabel('Account password', { exact: true }).count(), 0);
+  // Even when the primary identity is entered in the Staff form, the browser
+  // must take the dedicated Central Admin OTP route, never the inactive staff path.
+  await page.getByRole('button', {name:'Plant staff / approved MFA setup',exact:true}).click();
+  await page.getByLabel('Registered work email', {exact:true}).fill(adminEmail);
+  await page.getByRole('button', {name:'Send email verification code',exact:true}).click();
+  await page.getByRole('heading', {name:'Central Admin sign in',exact:true}).waitFor();
+  await page.getByLabel('Email verification code', {exact:true}).waitFor();
+  await page.getByRole('button', {name:'Start over or request a new code',exact:true}).click();
+  // The direct Central Admin entry point must continue to work unchanged.
   await page.getByLabel('Approved administrator email').fill(adminEmail);
   await page.getByRole('button', {name:'Send email verification code',exact:true}).click();
   await page.getByLabel('Email verification code', {exact:true}).fill('123456');
