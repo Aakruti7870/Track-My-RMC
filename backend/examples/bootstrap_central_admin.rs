@@ -7,8 +7,10 @@ use std::{
     error::Error,
     io::{self, IsTerminal},
 };
-use trackmyrmc_backend::auth::{password, totp::TotpEngine};
-use uuid::Uuid;
+use trackmyrmc_backend::{
+    auth::{password, totp::TotpEngine},
+    central_admin_bootstrap::{self, PRIMARY_EMAIL},
+};
 
 fn value_of(args: &[String], flag: &str) -> Result<String, Box<dyn Error>> {
     let index = args
@@ -48,12 +50,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let expected_database = value_of(&args, "--expected-database")?;
     let email = value_of(&args, "--email")?.trim().to_ascii_lowercase();
     let name = value_of(&args, "--name")?.trim().to_string();
-    if !email.contains('@')
-        || email.contains(char::is_whitespace)
-        || email.len() > 254
-        || !(2..=100).contains(&name.len())
-        || expected_database.is_empty()
-    {
+    if email != PRIMARY_EMAIL || !(2..=100).contains(&name.len()) || expected_database.is_empty() {
         return Err("Invalid identity or expected database".into());
     }
 
@@ -62,39 +59,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .max_connections(2)
         .connect(&url)
         .await?;
-    let actual_database: String = sqlx::query_scalar("SELECT current_database()")
-        .fetch_one(&pool)
-        .await?;
-    if actual_database != expected_database {
-        return Err(format!(
-            "Database mismatch: expected {expected_database}, connected to {actual_database}"
-        )
-        .into());
+    let actual_database =
+        central_admin_bootstrap::verify_target_database(&pool, &expected_database).await?;
+    let mut connection = pool.acquire().await?;
+    if central_admin_bootstrap::pending_primary_id(&mut connection)
+        .await?
+        .is_none()
+    {
+        return Err("No pending primary Central Admin identity is available for enrollment".into());
     }
-    // Prevent an accidental bootstrap before migrations or against a different schema.
-    let migrations_ready: bool = sqlx::query_scalar(
-        "SELECT to_regclass('public.control_center_access') IS NOT NULL
-           AND to_regclass('public.user_totp_credentials') IS NOT NULL",
-    )
-    .fetch_one(&pool)
-    .await?;
-    if !migrations_ready {
-        return Err("Required migrations have not been applied".into());
-    }
-
-    let unavailable: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM users WHERE role='central_admin' OR LOWER(email)=$1)",
-    )
-    .bind(&email)
-    .fetch_one(&pool)
-    .await?;
-    if unavailable {
-        return Err(
-            "Bootstrap requires no Central Admin and a fresh, separate email identity".into(),
-        );
-    }
-    // The same constraints are rechecked under the transaction lock below.
-    println!("Target database: {actual_database}. Email: {email}. No automatic role promotion.");
+    drop(connection);
+    println!("Enroll the pending Central Admin {email} in database {actual_database}.");
     let first = rpassword::prompt_password("New Central Admin password (16-128 bytes): ")?;
     let second = rpassword::prompt_password("Confirm Central Admin password: ")?;
     if first != second || !(16..=128).contains(&first.len()) {
@@ -120,33 +95,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
 
     let mut tx = pool.begin().await?;
-    sqlx::query("SELECT pg_advisory_xact_lock(15720261108)")
-        .execute(&mut *tx)
-        .await?;
-    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE role='central_admin'")
-        .fetch_one(&mut *tx)
-        .await?;
-    if count != 0 {
-        return Err(
-            "Central Admin already exists; bootstrap cannot overwrite or recover it".into(),
-        );
-    }
-    let exists: bool =
-        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM users WHERE LOWER(email)=$1)")
-            .bind(&email)
-            .fetch_one(&mut *tx)
-            .await?;
-    if exists {
-        return Err("Existing user email cannot be promoted to Central Admin".into());
-    }
-
-    let user_id = Uuid::new_v4();
+    central_admin_bootstrap::lock_primary(&mut tx).await?;
+    let user_id = central_admin_bootstrap::pending_primary_id(&mut tx)
+        .await?
+        .ok_or("The pending Central Admin changed before enrollment could finish")?;
     sqlx::query(
-        "INSERT INTO users(id,phone,email,hashed_password,full_name,role,is_active,is_verified)
-         VALUES($1,NULL,$2,$3,$4,'central_admin',TRUE,TRUE)",
+        "UPDATE users SET hashed_password=$2,full_name=$3,is_active=TRUE,
+         is_verified=TRUE,updated_at=NOW() WHERE id=$1",
     )
     .bind(user_id)
-    .bind(&email)
     .bind(password_hash)
     .bind(&name)
     .execute(&mut *tx)
@@ -203,7 +160,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     .await?;
     tx.commit().await?;
 
-    println!("\nCentral Admin created; secure the following single-use recovery codes OFFLINE:");
+    println!("\nCentral Admin activated; secure the following single-use recovery codes OFFLINE:");
     for code in recovery_codes {
         println!("{code}");
     }

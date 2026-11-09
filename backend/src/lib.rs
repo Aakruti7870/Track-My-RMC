@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod central_admin_bootstrap;
 pub mod config;
 pub mod db;
 pub mod error;
