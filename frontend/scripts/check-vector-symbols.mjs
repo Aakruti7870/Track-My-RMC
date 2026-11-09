@@ -87,6 +87,7 @@ const uiFiles = [
   "src/components/PlantCard.tsx",
   "src/components/KycBanner.tsx",
   "app/owner/operations.tsx",
+  "app/owner/more.tsx",
   "src/owner/modules.ts",
   "src/owner/OwnerInsights.tsx",
   "src/owner/OwnerTabBar.tsx",
