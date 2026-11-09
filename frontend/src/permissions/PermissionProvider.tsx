@@ -12,7 +12,7 @@ import { ThemedScreen } from "@/src/components/ThemedScreen";
 import { AppText } from "@/src/components/ui/AppText";
 import { Button } from "@/src/components/ui/Button";
 import { Card } from "@/src/components/ui/Card";
-import { registerPushDevice } from "@/src/notifications/pushClient";
+import { registerPushDevice, unregisterPushDevice } from "@/src/notifications/pushClient";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { radius, spacing } from "@/src/theme/tokens";
 import { storage } from "@/src/utils/storage";
@@ -89,6 +89,7 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
   const [introBusy, setIntroBusy] = useState(false);
   const [introError, setIntroError] = useState<string | null>(null);
   const introChoices = useRef<Partial<Record<PermissionKind, IntroDecision>>>({});
+  const introActionInFlight = useRef(false);
   const steps = user ? stepsForRole(user.role) : [];
   const introVisible = Boolean(introIdentity && introFor === introIdentity);
   const currentKind = introVisible ? steps[introStep] : undefined;
@@ -105,6 +106,7 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
     setIntroStep(0);
     setIntroError(null);
     introChoices.current = {};
+    introActionInFlight.current = false;
     if (!introIdentity) return () => { active = false; };
     void (async () => {
       const raw = await storage.getItem(`${INTRO_KEY_PREFIX}${introIdentity}`, "");
@@ -178,6 +180,10 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
     const nextChoices = { ...introChoices.current, [kind]: result };
     introChoices.current = nextChoices;
     setIntroError(null);
+    if (kind === "notifications" && result !== "granted" && token) {
+      // "Not now" overrides previously registered device tokens as well.
+      await unregisterPushDevice(token).catch(() => undefined);
+    }
     if (introStep < steps.length - 1) {
       setIntroStep(step => step + 1);
       return;
@@ -193,10 +199,25 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
     if (introIdentityRef.current === identity) setIntroFor(null);
   };
 
+  const declineCurrent = async () => {
+    const kind = currentKind;
+    const identity = introIdentity;
+    if (!kind || !identity || introActionInFlight.current) return;
+    introActionInFlight.current = true;
+    setIntroBusy(true);
+    try {
+      await advance(kind, "skipped", identity);
+    } finally {
+      introActionInFlight.current = false;
+      setIntroBusy(false);
+    }
+  };
+
   const allowCurrent = async () => {
     const kind = currentKind;
     const identity = introIdentity;
-    if (!kind || !identity || introBusy) return;
+    if (!kind || !identity || introActionInFlight.current) return;
+    introActionInFlight.current = true;
     setIntroBusy(true);
     setIntroError(null);
     try {
@@ -227,6 +248,7 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
     } catch {
       setIntroError("Permission could not be updated. Try again or choose Not now.");
     } finally {
+      introActionInFlight.current = false;
       setIntroBusy(false);
     }
   };
@@ -265,9 +287,7 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
           visible={introVisible}
           animationType="fade"
           presentationStyle="fullScreen"
-          onRequestClose={() => {
-            if (currentKind && !introBusy) void advance(currentKind, "skipped", introIdentity);
-          }}
+          onRequestClose={() => { void declineCurrent(); }}
         >
           <ThemedScreen>
             <View testID="post-login-permission-gate" style={[styles.shell, {
@@ -319,7 +339,7 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
                       label="Not now"
                       variant="ghost"
                       disabled={introBusy}
-                      onPress={() => { if (currentKind) void advance(currentKind, "skipped", introIdentity); }}
+                      onPress={() => { void declineCurrent(); }}
                     />
                   </View>
                 </Card>
