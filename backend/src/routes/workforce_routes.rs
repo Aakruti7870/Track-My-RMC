@@ -590,70 +590,100 @@ pub async fn get_owner_control(
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
-    let plant_id = get_staff_plant_id(&state, &auth_user).await?;
+    // The Owner is the recipient for every linked employee at EACH plant they
+    // own, not merely the first plant. Delegated admins remain plant-scoped.
+    let plant_ids: Vec<Uuid> = if matches!(auth_user.role.as_str(), "owner" | "plant_owner") {
+        sqlx::query_scalar(
+            "SELECT id FROM rmc_plants WHERE owner_id=$1 AND is_active=TRUE ORDER BY id",
+        )
+        .bind(auth_user.user_id)
+        .fetch_all(&state.db)
+        .await?
+    } else {
+        sqlx::query_scalar(
+            "SELECT DISTINCT plant_id FROM plant_staff WHERE user_id=$1 AND is_active=TRUE ORDER BY plant_id",
+        )
+        .bind(auth_user.user_id)
+        .fetch_all(&state.db)
+        .await?
+    };
 
-    let leaves = sqlx::query(
-        r#"
-        SELECT l.id, l.user_id, l.leave_type, l.start_date, l.end_date, l.reason, l.status,
-               u.full_name as employee_name
-        FROM workforce_leave_requests l
-        INNER JOIN users u ON u.id = l.user_id
-        WHERE l.plant_id = $1 AND l.status = 'PENDING'
-        ORDER BY l.created_at DESC
-        "#,
+    // Drivers and staff write to the SAME workforce_attendance table.
+    // Return real check-in/out timestamps, including the owning plant's name;
+    // login and permission acceptance alone never mark attendance.
+    let attendance: Vec<Value> = sqlx::query_scalar(
+        r#"SELECT jsonb_build_object(
+            'id',a.id,'plant_id',a.plant_id,'plant_name',p.name,
+            'date',a.attendance_date,'user_name',u.full_name,
+            'role',COALESCE(
+                (SELECT ps.role FROM plant_staff ps
+                 WHERE ps.user_id=a.user_id AND ps.plant_id=a.plant_id
+                 ORDER BY ps.is_active DESC LIMIT 1),u.role),
+            'check_in',a.check_in_time,'check_out',a.check_out_time
+          )
+          FROM workforce_attendance a
+          JOIN users u ON u.id=a.user_id
+          JOIN rmc_plants p ON p.id=a.plant_id
+          WHERE a.plant_id=ANY($1) AND a.attendance_date=CURRENT_DATE
+          ORDER BY a.check_in_time DESC NULLS LAST,a.id
+          LIMIT 500"#,
     )
-    .bind(plant_id)
+    .bind(&plant_ids)
     .fetch_all(&state.db)
     .await?;
 
-    let claims = sqlx::query(
-        r#"
-        SELECT c.id, c.user_id, c.category, c.amount, c.description, c.accountant_note,
-               u.full_name as employee_name
-        FROM workforce_expense_claims c
-        INNER JOIN users u ON u.id = c.user_id
-        WHERE c.plant_id = $1 AND c.status = 'PENDING_APPROVAL'
-        ORDER BY c.created_at DESC
-        "#,
+    let leave_requests: Vec<Value> = sqlx::query_scalar(
+        r#"SELECT jsonb_build_object(
+            'id',l.id,'plant_id',l.plant_id,'user_name',u.full_name,
+            'leave_type',l.leave_type,'start_date',l.start_date,
+            'end_date',l.end_date,'reason',l.reason,'status',l.status
+          )
+          FROM workforce_leave_requests l JOIN users u ON u.id=l.user_id
+          WHERE l.plant_id=ANY($1) AND l.status='PENDING'
+          ORDER BY l.created_at DESC LIMIT 200"#,
     )
-    .bind(plant_id)
+    .bind(&plant_ids)
+    .fetch_all(&state.db)
+    .await?;
+
+    let client_visits: Vec<Value> = sqlx::query_scalar(
+        r#"SELECT jsonb_build_object(
+            'id',v.id,'plant_id',v.plant_id,'user_name',u.full_name,
+            'client_name',v.client_name,'purpose',v.purpose,
+            'scheduled_for',v.scheduled_for,'site_address',v.site_address,
+            'status',v.status
+          )
+          FROM workforce_client_visits v JOIN users u ON u.id=v.user_id
+          WHERE v.plant_id=ANY($1) AND v.status IN ('SCHEDULED','IN_PROGRESS')
+          ORDER BY v.scheduled_for DESC LIMIT 200"#,
+    )
+    .bind(&plant_ids)
+    .fetch_all(&state.db)
+    .await?;
+
+    let expense_claims: Vec<Value> = sqlx::query_scalar(
+        r#"SELECT jsonb_build_object(
+            'id',c.id,'plant_id',c.plant_id,'user_name',u.full_name,
+            'category',c.category,'amount',c.amount::DOUBLE PRECISION,
+            'expense_date',c.expense_date,'description',c.description,
+            'receipt_reference',c.receipt_reference,'status',c.status
+          )
+          FROM workforce_expense_claims c JOIN users u ON u.id=c.user_id
+          WHERE c.plant_id=ANY($1) AND c.status='PENDING_APPROVAL'
+          ORDER BY c.created_at DESC LIMIT 200"#,
+    )
+    .bind(&plant_ids)
     .fetch_all(&state.db)
     .await?;
 
     Ok(Json(json!({
         "success": true,
-        "pending_leaves": leaves.into_iter().map(|l| {
-            let id: Uuid = l.get("id");
-            let employee_name: String = l.get("employee_name");
-            let leave_type: String = l.get("leave_type");
-            let start_date: chrono::NaiveDate = l.get("start_date");
-            let end_date: chrono::NaiveDate = l.get("end_date");
-            let reason: String = l.get("reason");
-            json!({
-                "id": id,
-                "employee_name": employee_name,
-                "leave_type": leave_type,
-                "start_date": start_date,
-                "end_date": end_date,
-                "reason": reason
-            })
-        }).collect::<Vec<_>>(),
-        "pending_expenses": claims.into_iter().map(|c| {
-            let id: Uuid = c.get("id");
-            let employee_name: String = c.get("employee_name");
-            let category: String = c.get("category");
-            let amount: bigdecimal::BigDecimal = c.get("amount");
-            let description: String = c.get("description");
-            let accountant_note: Option<String> = c.get("accountant_note");
-            json!({
-                "id": id,
-                "employee_name": employee_name,
-                "category": category,
-                "amount": amount,
-                "description": description,
-                "accountant_note": accountant_note
-            })
-        }).collect::<Vec<_>>()
+        "mode": "owner_control",
+        "plant_ids": plant_ids,
+        "attendance": attendance,
+        "leave_requests": leave_requests,
+        "client_visits": client_visits,
+        "expense_claims": expense_claims
     })))
 }
 
