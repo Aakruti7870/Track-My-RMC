@@ -65,7 +65,7 @@ class TlsAcceptanceTests(unittest.TestCase):
     def test_deploy_rds_uri_builder_preserves_percent_encoded_tls_ca(self):
         # Run the actual inline URI builder with synthetic credentials, not
         # a reimplementation. This caught the production SSM %2F formatting crash.
-        script = (MODULE.parents[1] / "ops" / "aws-deploy-ec2.sh").read_text()
+        script = (MODULE.parents[1] / "aws-deploy-ec2.sh").read_text()
         commands = [line for line in script.splitlines() if "python3 -c '" in line and "TRACKMYRMC_DB_NAME=" in line]
         self.assertEqual(len(commands), 1)
         python_code = commands[0].split("python3 -c '", 1)[1].rsplit("'", 1)[0]
