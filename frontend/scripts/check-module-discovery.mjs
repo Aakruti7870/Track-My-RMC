@@ -185,13 +185,17 @@ assert.ok(!customerMore.includes("<RoleModuleDirectory") && !customerMore.includ
 const connected = [
   "app/customer/index.tsx", "app/customer/more.tsx",
   "app/owner/index.tsx", "app/owner/more.tsx",
-  "app/driver/index.tsx", "app/driver/more.tsx",
+  "app/driver/more.tsx",
 ];
 for (const file of connected) {
   const source = read(file);
   assert.ok(source.includes("moduleCatalog") || source.includes("<RoleModuleDirectory"),
     `Shared module catalog not connected: ${file}`);
 }
+assert.ok(read("app/driver/index.tsx").includes("<OperationalHomeTopBar") &&
+  !read("app/driver/index.tsx").includes("<RoleModuleDirectory") &&
+  read("app/driver/more.tsx").includes('<RoleModuleDirectory role={user?.role}'),
+  "Driver Home removes duplicate module tiles; More retains the role-aware directory.");
 for (const file of ["src/screens/StaffHome.tsx", "src/screens/StaffMore.tsx"]) {
   assert.ok(read(file).includes("<StaffModuleDirectory"),
     `Staff module catalog not connected through staff-only directory: ${file}`);
