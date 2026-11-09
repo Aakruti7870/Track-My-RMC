@@ -182,7 +182,10 @@ class InstallationContractTests(unittest.TestCase):
         self.assertIn('trackmyrmc-rds-recovery.timer', content)
         self.assertIn('recover-managed-rds-credential.py', content)
         self.assertIn('systemctl is-active --quiet trackmyrmc-rds-recovery.timer', content)
-        self.assertIn('sslmode=verify-full&sslrootcert=', content)
+        # TLS parameters are URL-encoded at runtime, not interpolated into a literal.
+        # test_aws_deploy_uri exercises the actual embedded URI builder.
+        self.assertIn('"sslmode": "verify-full"', content)
+        self.assertIn('"sslrootcert": "/etc/trackmyrmc/rds-ca-bundle.pem"', content)
         self.assertIn('ap-south-1-bundle.pem', content)
         self.assertIn('openssl x509 -in', content)
         self.assertNotIn('sslmode=require', content)
