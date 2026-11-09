@@ -30,7 +30,7 @@ for (const [, name, serialized] of newEntries) {
   assert.ok(!embedded.has(name), `Duplicate SVG symbol: ${name}`);
   embedded.set(name, JSON.parse(serialized));
 }
-const driverEntries = [...read("src/components/vector-symbols/set9.ts").matchAll(/^\\s+"([^"]+)": ("(?:[^"\\\\]|\\\\.)*"),?$/gm)];
+const driverEntries = [...read("src/components/vector-symbols/set9.ts").matchAll(/^\s+"([^"]+)": ("(?:[^"\\]|\\.)*"),?$/gm)];
 assert.equal(driverEntries.length, 1, "Exactly one new driver symbol");
 assert.equal(driverEntries[0][1], "drop-offs");
 embedded.set(driverEntries[0][1], JSON.parse(driverEntries[0][2]));
