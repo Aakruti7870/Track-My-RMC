@@ -68,8 +68,7 @@ pub async fn overview(
     .bind(auth_user.user_id)
     .bind(period)
     .fetch_optional(&state.db)
-    .await?
-    .flatten();
+    .await?;
     let maintenance: Vec<Value> = sqlx::query_scalar(
         "SELECT jsonb_build_object('id', id, 'type', maintenance_type,
            'notes', notes, 'recorded_at', recorded_at, 'mixer_id', mixer_id)
