@@ -329,8 +329,11 @@ fi
 install -o root -g root -m 0644 "$RDS_CA_TMP" "$RDS_CA_FILE"
 rm -f "$RDS_CA_TMP"
 
+# Construct the URI from the managed RDS secret. The TLS root certificate path
+# contains literal percent-encoded slashes (%2F); do NOT interpolate this URL
+# with Python's percent-format operator, which misreads %2F as a format specifier.
 DB_JSON="$(aws secretsmanager get-secret-value --secret-id "$RDS_SECRET" --query SecretString --output text)"
-DATABASE_URL="$(printf '%s' "$DB_JSON" | TRACKMYRMC_DB_NAME="$DB_NAME" python3 -c 'import json,sys,urllib.parse as u,os; x=json.load(sys.stdin); db=os.environ["TRACKMYRMC_DB_NAME"]; print("postgres://%s:%s@trackmyrmc-postgres.cf8mmcwuuinx.ap-south-1.rds.amazonaws.com:5432/%s?sslmode=verify-full&sslrootcert=%2Fetc%2Ftrackmyrmc%2Frds-ca-bundle.pem"%(u.quote(x["username"],safe=""),u.quote(x["password"],safe=""),u.quote(db,safe="")))')"
+DATABASE_URL="$(printf '%s' "$DB_JSON" | TRACKMYRMC_DB_NAME="$DB_NAME" python3 -c 'import json,sys,urllib.parse as u,os; x=json.load(sys.stdin); db=os.environ["TRACKMYRMC_DB_NAME"]; print("postgres://{}:{}@trackmyrmc-postgres.cf8mmcwuuinx.ap-south-1.rds.amazonaws.com:5432/{}?sslmode=verify-full&sslrootcert=%2Fetc%2Ftrackmyrmc%2Frds-ca-bundle.pem".format(u.quote(x["username"],safe=""),u.quote(x["password"],safe=""),u.quote(db,safe="")))')"
 
 # Validate the generated connection string without exposing credentials.
 TRACKMYRMC_DATABASE_URL="$DATABASE_URL" TRACKMYRMC_EXPECTED_DB_NAME="$DB_NAME" python3 - <<'PY'
