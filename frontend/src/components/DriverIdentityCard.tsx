@@ -39,8 +39,6 @@ export function DriverIdentityCard() {
   const wide = width >= 720;
   const fields = data ? [
     ["Plant Name", show(data.plant_name)],
-    ["TM Number", show(data.tm_number)],
-    ["Driver Name", show(data.driver_name)],
     ["Blood Group", show(data.blood_group)],
     ["Emergency Contact 1", contactText(data.emergency_contact_1)],
     ["Emergency Contact 2", contactText(data.emergency_contact_2)],
@@ -56,6 +54,11 @@ export function DriverIdentityCard() {
       backgroundColor: colors.surfaceSecondary,
       borderColor: colors.isDark ? "rgba(255,154,61,0.48)" : colors.borderStrong,
     }]}>
+      <View style={[styles.licenceBand, { backgroundColor: colors.brandSoft, borderColor: colors.border }]}>
+        <Ionicons name="shield-checkmark-outline" size={20} color={colors.brand} />
+        <AppText style={{ fontFamily: fonts.bold, fontSize: 11, letterSpacing: 0.7, color: colors.onSurface, flex: 1 }}>TRACKMYRMC · DIGITAL DRIVER CARD</AppText>
+        <Ionicons name="bus-outline" size={23} color={colors.brand} />
+      </View>
       <View style={styles.header}>
         <Ionicons name="id-card-outline" size={28} color={colors.brand} />
         <View style={{ flex: 1 }}>
@@ -63,6 +66,16 @@ export function DriverIdentityCard() {
           <AppText variant="caption">Verified plant records · Read only</AppText>
         </View>
       </View>
+      {data ? <View style={[styles.identityPlate, { borderColor: colors.border }]}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <AppText variant="caption">DRIVER NAME</AppText>
+          <AppText style={[styles.driverName, { color: colors.onSurface }]} numberOfLines={2}>{show(data.driver_name)}</AppText>
+        </View>
+        <View style={{ minWidth: 90, alignItems: "flex-end" }}>
+          <AppText variant="caption">ASSIGNED TM</AppText>
+          <AppText style={[styles.tmNumber, { color: colors.brand }]} numberOfLines={2}>{show(data.tm_number)}</AppText>
+        </View>
+      </View> : null}
       {loading && !data ? <AppText variant="bodyMuted">Loading driver information…</AppText> : null}
       {error ? (
         <View style={styles.error}>
@@ -100,9 +113,13 @@ export function DriverIdentityCard() {
   );
 }
 const styles = StyleSheet.create({
-  card: { gap: spacing.md, padding: 14, borderRadius: radius.lg },
+  card: { gap: spacing.md, padding: 13, borderRadius: radius.lg, borderWidth: 1.5 },
   header: { flexDirection: "row", alignItems: "center", gap: 10 },
   title: { fontFamily: fonts.bold, fontSize: 18 },
+  licenceBand: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 36, paddingHorizontal: 10, borderWidth: 1, borderRadius: 10 },
+  identityPlate: { flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, paddingBottom: 10 },
+  driverName: { fontFamily: fonts.bold, fontSize: 19, lineHeight: 25 },
+  tmNumber: { fontFamily: fonts.bold, fontSize: 14, textAlign: "right" },
   grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: 8 },
   field: { minHeight: 65, borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 5, gap: 3 },
   value: { fontFamily: fonts.semibold, fontSize: 13, lineHeight: 19, flexShrink: 1 },
