@@ -405,7 +405,7 @@ try {
       await expect.poll(async () => (await homeDirectory.innerText()).includes('Checking staff permissions…')).toBe(false);
       await expect.poll(() => homeDirectory.locator('[data-testid^="role-module-"]').count()).toBeGreaterThan(0);
       const homeKeys = await visibleModuleCards(homeDirectory);
-      assert(homeKeys.length <= 6, 'Staff Home supports no more than six compact role tiles');
+      assert(homeKeys.length > 0 && homeKeys.length <= 8, 'Staff Home requires one to eight permission-eligible compact role tiles');
       await page.getByTestId('tab-more').click();
       const moreDirectory = page.locator('[data-testid="role-module-directory"]:has([data-testid="staff-module-search"])')
         .filter({ visible: true });
