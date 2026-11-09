@@ -88,6 +88,8 @@ const uiFiles = [
   "src/components/KycBanner.tsx",
   "app/owner/operations.tsx",
   "app/owner/more.tsx",
+  "app/owner/index.tsx",
+  "src/owner/OwnerCommercial.tsx",
   "src/owner/modules.ts",
   "src/owner/OwnerInsights.tsx",
   "src/owner/OwnerTabBar.tsx",
