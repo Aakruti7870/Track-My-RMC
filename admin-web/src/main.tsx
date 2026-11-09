@@ -77,7 +77,7 @@ function errorMessage(error: unknown): string {
   return 'The request could not be completed. Please try again.';
 }
 
-function CommandCenter() {
+function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; onSignedOut: (message: string) => void }) {
   const [stage, setStage] = useState<Stage>('central-login');
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
@@ -103,9 +103,11 @@ function CommandCenter() {
   const [workspace,setWorkspace]=useState('');
   const [records,setRecords]=useState<Array<Record<string,unknown>>>([]);
   const [workspaceOffset,setWorkspaceOffset]=useState(0);
+  const [workspaceLoading,setWorkspaceLoading]=useState(false);
+  const [workspaceError,setWorkspaceError]=useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
+  const [notice, setNotice] = useState(initialNotice);
   const [rfqOutreachCode, setRfqOutreachCode] = useState('');
   const [rfqOutreachNotes, setRfqOutreachNotes] = useState<Record<string,string>>({});
   const [ownerRequests,setOwnerRequests]=useState<Array<Record<string,any>>>([]);
@@ -309,7 +311,10 @@ function CommandCenter() {
   },[automationKey,automationTemplates]);
 
   async function loadWorkspace(kind:string,offset=0) {
-    setBusy(true);setError('');setWorkspace(kind);setSupportCase(null);setSupportAlerts([]);setSupportAlertsLoaded(false);
+    setBusy(true);setError('');setWorkspace(kind);setRecords([]);setWorkspaceOffset(offset);
+    setWorkspaceLoading(true);setWorkspaceError('');
+    setSupportCase(null);setSupportAlerts([]);setSupportAlertsLoaded(false);
+    setSupportReply('');setSupportInternal(false);setSupportStepUp('');
     try {
       const prefix=user?.role==='authority'?'/api/authority/collections/':'/api/control-center/collections/';
       const response=await apiClient.get(prefix+encodeURIComponent(kind),{params:{limit:25,offset}});
@@ -322,8 +327,8 @@ function CommandCenter() {
           setError('Support alerts unavailable: '+errorMessage(alertError));
         }
       }
-    } catch(error) {setRecords([]);setError(errorMessage(error));}
-    finally {setBusy(false);}
+    } catch(error) {setRecords([]);setWorkspaceError(errorMessage(error));}
+    finally {setBusy(false);setWorkspaceLoading(false);}
   }
 
 
@@ -772,13 +777,12 @@ function CommandCenter() {
       });
       setOldWebPassword('');setNewWebPassword('');setNewWebPasswordConfirm('');
       setRotationCode('');setRotationReason('');
-      await logout();
-      setNotice('Password rotated. All existing privileged sessions were revoked; sign in again.');
+      await logout('Password rotated. All existing privileged sessions were revoked; sign in again.');
     }catch(err){setError(errorMessage(err));}
     finally{setBusy(false);}
   }
 
-  async function logout() {
+  async function logout(message?: string) {
     setBusy(true);
     let revokedOnServer = false;
     try {
@@ -788,26 +792,11 @@ function CommandCenter() {
       // Always clear this browser session, even if the server is temporarily unreachable.
     } finally {
       setAccessToken(null);
-      setUser(null);setPrivilegedPassword('');setPermissions([]);setRecords([]);setWorkspace('');setRfqOutreachCode('');setRfqOutreachNotes({});
-      setSupportCase(null);setSupportAlerts([]);setSupportAlertsLoaded(false);
-      setSupportReply('');setSupportInternal(false);setSupportStepUp('');
-      setShowNativeAutomation(false);setAutomationTemplates([]);setAutomationHealth(null);
-      setAutomationJobs([]);setAutomationCode('');setAutomationKey('');
-      setHealth(null);
-      setAdminKpis([]);
-      setAdminOverviewError('');
-      setEnrollment(null); setCentralRecoveryCodes([]); setRecoveryCodesSaved(false);
-      setChallengeToken('');
-      setOtp('');
-      setMfaCode('');
-      setAuthorityAdminCode('');
-      setAuthorityReviewCode('');
-      setCentralKycReason('');setCentralKycCode('');
-      setShowAuthorityAccounts(false);
-      setStage('central-login');
-      setNotice(revokedOnServer ? 'Signed out and server session revoked.' : 'Signed out locally. Server revocation could not be confirmed; the session expires automatically.');
-      setError('');
-      setBusy(false);
+      // Remount the entire workspace: every record, password, MFA code and
+      // unsent draft belongs to one authenticated account only.
+      onSignedOut(message || (revokedOnServer
+        ? 'Signed out and server session revoked.'
+        : 'Signed out locally. Server revocation could not be confirmed; the session expires automatically.'));
     }
   }
 
@@ -835,6 +824,13 @@ function CommandCenter() {
     background: busy ? '#475569' : '#7c3aed', color: '#fff', fontWeight: 700,
     fontSize: 15, cursor: busy ? 'wait' : 'pointer',
   };
+
+  const workspaceFeedback = workspaceLoading
+    ? <p role="status">Loading records…</p>
+    : workspaceError
+      ? <div role="alert"><p>{workspaceError}</p><button type="button" disabled={busy}
+          onClick={()=>void loadWorkspace(workspace,workspaceOffset)}>Retry loading records</button></div>
+      : records.length === 0 ? <p>No records on this page.</p> : null;
 
   const supportWorkspace = workspace === 'support' && permissions.includes('support.view') && (
                   <section aria-label="Support case management" style={{border:'1px solid #475569',borderRadius:12,padding:14,marginTop:14}}>
@@ -1325,7 +1321,7 @@ function CommandCenter() {
                   <button key={kind} disabled={busy} onClick={()=>void loadWorkspace(kind)} style={{...buttonStyle,width:'auto',textTransform:'capitalize'}}>{kind}</button>)}
               </nav>
               {workspace && <><h2 style={{textTransform:'capitalize'}}>{workspace}</h2>
-                {!busy && records.length===0 && <p>No records on this page.</p>}
+                {workspaceFeedback}
                 <div style={{overflowX:'auto'}}><table style={{width:'100%',fontSize:13,borderCollapse:'collapse'}}>
                   <thead><tr>{Object.keys(records[0]||{}).map(key=><th key={key} style={{textAlign:'left',padding:8}}>{key.replace(/_/g,' ')}</th>)}</tr></thead>
                   <tbody>{records.map((row,index)=><tr key={String(row.id||index)}>{Object.entries(row).map(([key,value])=><td key={key} style={{padding:8,borderTop:'1px solid #334155'}}>{value===null?'—':typeof value==='object'?JSON.stringify(value):String(value)}</td>)}</tr>)}</tbody>
@@ -1352,7 +1348,7 @@ function CommandCenter() {
                   <p style={{fontSize:12,color:'#cbd5e1'}}>Approve only where the backend confirms provider consent and a verified name. Rejection and reset require an audit reason.</p>
                   <label>Reason for review<input required minLength={10} maxLength={500} value={centralKycReason}
                     onChange={e=>setCentralKycReason(e.target.value)} style={inputStyle} disabled={busy}/></label>
-                  <label>Fresh Super Admin authenticator code<input type="password" autoComplete="off" inputMode="numeric"
+                  <label>Fresh Central Admin authenticator code<input type="password" autoComplete="off" inputMode="numeric"
                     pattern="[0-9]{6}" maxLength={6} value={centralKycCode} onChange={e=>setCentralKycCode(e.target.value)}
                     style={inputStyle} disabled={busy}/></label>
                   {records.map(row=><article key={String(row.customer_id)} style={{borderTop:'1px solid #475569',padding:12}}>
@@ -1438,7 +1434,7 @@ function CommandCenter() {
                       </tr>)}</tbody>
                     </table>
                   </div>
-                  {!busy && !records.length && <p>No records in this workspace.</p>}
+                  {workspaceFeedback}
                   {supportWorkspace}
                   {workspace==='kyc' && permissions.includes('kyc.review') && records.length>0 && (
                     <div style={{marginTop:12,padding:12,border:'1px solid #475569',borderRadius:10}}>
@@ -1472,7 +1468,7 @@ function CommandCenter() {
                 </>}
               </section>
             )}
-            <button type="button" onClick={logout} disabled={busy} style={buttonStyle}>{busy ? 'Signing out…' : 'Sign out and revoke session'}</button>
+            <button type="button" onClick={()=>void logout()} disabled={busy} style={buttonStyle}>{busy ? 'Signing out…' : 'Sign out and revoke session'}</button>
           </div>
         )}
 
@@ -1484,8 +1480,17 @@ function CommandCenter() {
   );
 }
 
+function App() {
+  const [sessionKey, setSessionKey] = useState(0);
+  const [signOutNotice, setSignOutNotice] = useState('');
+  return <CommandCenter key={sessionKey} initialNotice={signOutNotice} onSignedOut={message => {
+    setSignOutNotice(message);
+    setSessionKey(value => value + 1);
+  }} />;
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <CommandCenter />
+    <App />
   </React.StrictMode>
 );

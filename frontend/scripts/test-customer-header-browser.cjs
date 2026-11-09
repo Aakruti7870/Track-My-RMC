@@ -56,7 +56,7 @@ const out=process.env.HEADER_PREVIEW_DIR||'header-previews';fs.mkdirSync(out,{re
    await page.getByText('Location is unavailable or timed out. Please retry or select a city.',{exact:true}).waitFor();
    await page.getByTestId('header-manual-location').fill('Panvel');locationFailure=true;
    await page.getByRole('button',{name:'Use selected location',exact:true}).click();
-   await page.getByText('Server down',{exact:true}).waitFor();locationFailure=false;
+   await page.getByText('The service is temporarily unavailable. Please try again.',{exact:true}).waitFor();locationFailure=false;
    await page.getByRole('button',{name:'Use selected location',exact:true}).click();
    await page.getByTestId('header-location').getByText('Panvel',{exact:true}).waitFor();
    await header.screenshot({path:`${out}/header-${scheme}-selected-location.png`});

@@ -37,15 +37,20 @@ function apiBase(): string {
   }
 
   const localHost = ["localhost", "127.0.0.1", "10.0.2.2"].includes(parsed.hostname);
-  if (parsed.protocol !== "https:" && !(process.env.NODE_ENV !== "production" && localHost)) {
+  if (parsed.protocol !== "https:" && !(parsed.protocol === "http:" && process.env.NODE_ENV !== "production" && localHost)) {
     throw {
       status: 0,
       detail: "TrackMyRMC backend must use HTTPS in production",
     } as ApiError;
   }
 
+  if (parsed.username || parsed.password || parsed.search || parsed.hash) {
+    throw { status: 0, detail: "TrackMyRMC backend URL must not include credentials, a query or a fragment" } as ApiError;
+  }
+
+  // Build from the parsed URL so queries/fragments cannot swallow API paths.
   // Accept either a backend origin or an API base, without /api/api 404s.
-  const base = RAW_BACKEND.replace(/\/+$/, "");
+  const base = `${parsed.origin}${parsed.pathname}`.replace(/\/+$/, "");
   return base.endsWith("/api") ? base : `${base}/api`;
 }
 
@@ -152,7 +157,7 @@ function normalizeErrorDetail(body: unknown, status: number): string {
   // Never expose raw proxy/server HTML or infrastructure details to users.
   // A 5xx response is an availability failure and must be presented as a
   // controlled login/application message rather than a coding paragraph.
-  if (status >= 500 && status <= 599) return "Server down";
+  if (status >= 500 && status <= 599) return "The service is temporarily unavailable. Please try again.";
 
   if (body && typeof body === "object") {
     if ("detail" in body) {
@@ -164,7 +169,7 @@ function normalizeErrorDetail(body: unknown, status: number): string {
       return body.message;
     }
   }
-  if (typeof body === "string" && body.trim()) return body;
+  // Proxy error pages and plain-text infrastructure diagnostics are not UI copy.
   return `Request failed (${status})`;
 }
 
@@ -194,6 +199,7 @@ async function request<T>(
     method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
     token?: string;
     body?: unknown;
+    formData?: FormData;
     signal?: AbortSignal;
   } = {},
 ): Promise<T> {
@@ -215,7 +221,7 @@ async function request<T>(
   const headers: Record<string, string> = { Accept: "application/json" };
 
   if (options.token) headers.Authorization = `Bearer ${options.token}`;
-  if (options.body !== undefined) headers["Content-Type"] = "application/json";
+  if (options.body !== undefined && !options.formData) headers["Content-Type"] = "application/json";
 
   try {
     const res = await fetch(`${apiBase()}${safePath}`, {
@@ -230,7 +236,7 @@ async function request<T>(
         ? "omit"
         : "include",
       headers,
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      body: options.formData ?? (options.body === undefined ? undefined : JSON.stringify(options.body)),
       signal: controller.signal,
     });
     return await handle<T>(res);
@@ -371,10 +377,7 @@ export async function apiUploadCertificate(token: string, file: File | { uri: st
     body.append("file", file as unknown as Blob, file.name);
   }
   body.append("purpose", "plant_cert");
-  const response = await fetch(`${apiBase()}/upload`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    body,
-  });
-  return handle<{ path: string }>(response);
+  // Use the same timeout, cookie policy, normalized errors and session-loss
+  // handling as all other authenticated requests. The runtime sets the boundary.
+  return request<{ path: string }>("/upload", { method: "POST", token, formData: body });
 }

@@ -10,7 +10,7 @@ Most screens are in app/; shared components, API client and authentication helpe
 
 ## Local setup
 
-Use Node.js 20+ (the CI toolchain uses Node 20). Install locked packages:
+Use Node.js 20.19.4+ in the 20.x line, or a supported newer line at 22.12+ (the CI toolchain uses Node 20). Install locked packages:
 
 ~~~bash
 cd frontend
