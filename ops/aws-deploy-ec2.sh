@@ -330,7 +330,24 @@ install -o root -g root -m 0644 "$RDS_CA_TMP" "$RDS_CA_FILE"
 rm -f "$RDS_CA_TMP"
 
 DB_JSON="$(aws secretsmanager get-secret-value --secret-id "$RDS_SECRET" --query SecretString --output text)"
-DATABASE_URL="$(printf '%s' "$DB_JSON" | TRACKMYRMC_DB_NAME="$DB_NAME" python3 -c 'import json,sys,urllib.parse as u,os; x=json.load(sys.stdin); db=os.environ["TRACKMYRMC_DB_NAME"]; print("postgres://%s:%s@trackmyrmc-postgres.cf8mmcwuuinx.ap-south-1.rds.amazonaws.com:5432/%s?sslmode=verify-full&sslrootcert=%2Fetc%2Ftrackmyrmc%2Frds-ca-bundle.pem"%(u.quote(x["username"],safe=""),u.quote(x["password"],safe=""),u.quote(db,safe="")))')"
+DATABASE_URL="$(printf '%s' "$DB_JSON" | TRACKMYRMC_DB_NAME="$DB_NAME" python3 -c '
+import json
+import os
+import sys
+from urllib.parse import quote, urlencode
+
+credentials = json.load(sys.stdin)
+username = quote(credentials["username"], safe="")
+password = quote(credentials["password"], safe="")
+database = quote(os.environ["TRACKMYRMC_DB_NAME"], safe="")
+query = urlencode({
+    "sslmode": "verify-full",
+    "sslrootcert": "/etc/trackmyrmc/rds-ca-bundle.pem",
+})
+print("postgres://{}:{}@trackmyrmc-postgres.cf8mmcwuuinx.ap-south-1.rds.amazonaws.com:5432/{}?{}".format(
+    username, password, database, query
+))
+')"
 
 # Validate the generated connection string without exposing credentials.
 TRACKMYRMC_DATABASE_URL="$DATABASE_URL" TRACKMYRMC_EXPECTED_DB_NAME="$DB_NAME" python3 - <<'PY'
