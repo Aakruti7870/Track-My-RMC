@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
+import { AuthenticatorQr } from './AuthenticatorQr';
 import apiClient, { getAccessToken, setAccessToken } from './api';
 
 type Stage = 'central-login' | 'central-otp' | 'central-mfa' | 'central-recover' | 'central-recovery-codes' | 'authority-login' | 'authority-password' | 'email' | 'otp' | 'mfa-enroll' | 'mfa-login' | 'authenticated';
@@ -996,10 +997,13 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
         {(stage === 'mfa-enroll' || stage === 'central-mfa') && enrollment && (
           <form onSubmit={stage === 'central-mfa' ? verifyCentralMfa : confirmEnrollment}>
             <h2 style={{ fontSize: 19 }}>Set up your authenticator</h2>
-            <p style={{ color: '#cbd5e1', lineHeight: 1.6 }}>Add <strong>{enrollment.account}</strong> to your authenticator app using the setup key below.</p>
+            <p style={{ color: '#cbd5e1', lineHeight: 1.6 }}>Open Google Authenticator or another compatible app, choose <strong>Add account → Scan a QR code</strong>, and scan the code below. The issuer <strong>TrackMyRMC</strong> and account <strong>{enrollment.account}</strong> are included automatically.</p>
+            <AuthenticatorQr uri={enrollment.otpauth_uri} />
+            <p style={{ color: '#cbd5e1', fontSize: 13, lineHeight: 1.6 }}>If setup and the authenticator are on the same device, select <strong>Enter a setup key</strong> instead. Name the entry <strong>TrackMyRMC ({enrollment.account})</strong>, use <strong>Time-based</strong> and the key below. A standalone manual key cannot auto-fill the account name.</p>
             <label htmlFor="manual-key" style={{ display: 'block', fontWeight: 650 }}>Authenticator setup key</label>
             <textarea id="manual-key" readOnly value={enrollment.manual_key} rows={2}
               style={{ ...inputStyle, resize: 'vertical', fontFamily: 'monospace' }} />
+            <p style={{color:'#fde68a',fontSize:13,lineHeight:1.6}}>Use only the QR code or key from this current email-verified setup. Restarting or requesting another email challenge invalidates an unfinished earlier key. Turn on automatic date and time on the authenticator device, then submit a fresh six-digit code before the challenge expires. Codes used for an earlier successful action cannot be reused.</p>
             <details style={{ marginTop: 12 }}>
               <summary style={{ cursor: 'pointer', color: '#c4b5fd' }}>Show otpauth URI</summary>
               <textarea readOnly value={enrollment.otpauth_uri} rows={3} style={{ ...inputStyle, resize: 'vertical', fontFamily: 'monospace' }} />
