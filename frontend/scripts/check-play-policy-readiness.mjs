@@ -52,11 +52,12 @@ expectIncludes(driverHome, "PLAY-REVIEW-001", "Driver review path must identify 
 
 const currentLocation = read("frontend/src/location/currentLocation.ts");
 const workforce = read("frontend/app/workforce.tsx");
+const workforceEvidence = read("frontend/src/location/workforceEvidence.ts");
 const plantOnboarding = read("frontend/app/plant-onboarding.tsx");
 const podScreen = read("frontend/app/pod/[id].tsx");
 expectIncludes(currentLocation, "requestAttendanceLocationConsent", "Attendance location access must have an app-owned disclosure.");
 expectIncludes(currentLocation, "requestSosLocationConsent", "SOS location access must have an app-owned disclosure.");
-expectIncludes(workforce, "requestFieldVisitLocationConsent", "Field-visit location access must have an app-owned disclosure.");
+expectIncludes(workforceEvidence, "requestFieldVisitLocationConsent", "Field-visit location access must have an app-owned disclosure.");
 expectIncludes(plantOnboarding, "requestPlantOnboardingLocationConsent", "Plant onboarding location access must have an app-owned disclosure.");
 expectIncludes(podScreen, "Camera access for proof of delivery", "Camera access must have an app-owned disclosure before the OS prompt.");
 expectIncludes(podScreen, "Choose a proof-of-delivery photo", "Photo selection must explain what data is attached.");
