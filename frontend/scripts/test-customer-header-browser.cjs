@@ -38,7 +38,7 @@ const out=process.env.HEADER_PREVIEW_DIR||'header-previews';fs.mkdirSync(out,{re
 
   assert.equal(await page.evaluate(()=>window.headerGeoCalls),0,'manual consent triggered GPS');
   let previousRight=0;
-  for(const id of ['header-location-chevron','header-location','notifications-bell','header-help']){
+  for(const id of ['header-location-chevron','header-location','notifications-bell','header-theme','header-help']){
    const b=await page.getByTestId(id).boundingBox();assert(b&&b.x>=previousRight-1&&b.x+b.width<=width+1&&b.height>=44,`${id} overlap, clipping or small target at ${width}`);previousRight=b.x+b.width;
   }
   assert.equal(await page.getByTestId('header-location-refresh').count(),0, 'No standalone refresh icon in the header');
