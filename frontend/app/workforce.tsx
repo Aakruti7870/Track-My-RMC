@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import * as Location from "expo-location";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -15,10 +14,7 @@ import { Input } from "@/src/components/ui/Input";
 import { useToast } from "@/src/components/ui/Toast";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
-import {
-  requestAttendanceLocationConsent,
-  requestFieldVisitLocationConsent,
-} from "@/src/location/BackgroundLocationConsent";
+import { workforceLocationEvidence as locationEvidence } from "@/src/location/workforceEvidence";
 
 type Attendance = {
   id: string;
@@ -98,26 +94,6 @@ function tomorrowLocalInput() {
   const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
   const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
   return local.toISOString().slice(0, 16);
-}
-
-async function locationEvidence(purpose: "attendance" | "field-visit") {
-  const consented = purpose === "attendance"
-    ? await requestAttendanceLocationConsent()
-    : await requestFieldVisitLocationConsent();
-  if (!consented) {
-    throw { detail: "Location sharing was not approved. You can continue without attaching coordinates." };
-  }
-  let permission = await Location.getForegroundPermissionsAsync();
-  if (permission.status !== "granted") permission = await Location.requestForegroundPermissionsAsync();
-  if (permission.status !== "granted") {
-    throw { detail: "Location permission is required for this action" };
-  }
-  const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-  return {
-    lat: pos.coords.latitude,
-    lng: pos.coords.longitude,
-    accuracy_m: pos.coords.accuracy ?? undefined,
-  };
 }
 
 function StatusBadge({ status }: { status: string }) {
