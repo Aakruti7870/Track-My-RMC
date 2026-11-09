@@ -9,7 +9,7 @@ import { getThemedSceneStyle } from "@/src/theme/sceneBackground";
 const TABS: TabDef[] = [
   { name: "index", label: "Home", icon: "home-outline", active: "home" },
   { name: "trips", label: "Trips", icon: "navigate-outline", active: "navigate" },
-  { name: "attendance", label: "Attendance", icon: "time-outline", active: "time" },
+  { name: "attendance", label: "Drop-offs", icon: "cube-outline", active: "cube" },
   { name: "more", label: "More", icon: "grid-outline", active: "grid" },
 ];
 
@@ -25,6 +25,7 @@ export default function DriverLayout() {
       {TABS.map((t) => (
         <Tabs.Screen key={t.name} name={t.name} />
       ))}
+      <Tabs.Screen name="shift-attendance" options={{ href: null }} />
     </Tabs>
   );
 }

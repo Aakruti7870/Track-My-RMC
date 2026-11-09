@@ -3,7 +3,7 @@ import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDime
 import { Ionicons } from "@expo/vector-icons";
 import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
 import { useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { OperationalHomeTopBar } from "@/src/components/OperationalHomeTopBar";
 
 import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeProvider";
@@ -52,16 +52,14 @@ function formatValue(k: Kpi): string {
 }
 
 export function StaffHome() {
-  const { colors, toggle, scheme } = useTheme();
+  const { colors } = useTheme();
   const { user } = useAuth();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const { width: viewportWidth } = useWindowDimensions();
   const contentWidth = Math.max(0, Math.min(viewportWidth, 980) - 2 * spacing.lg);
   const kpiColumns = contentWidth >= 680 ? 4 : contentWidth >= 460 ? 3 : 2;
   const kpiWidth = (contentWidth - (kpiColumns - 1) * 10) / kpiColumns;
   const { data, loading, error, refetch, reload } = useGet<HomeData>("/staff/home");
-  const { data: notif } = useGet<{ unread: number }>("/notifications");
   const { data: grants, loading: grantsLoading, error: grantsError, refetch: refreshGrants } =
     useGet<{ permissions: Array<{ key: string; view: boolean }> }>("/staff/module-permissions");
   const workspace = ROLE_WORKSPACE[user?.role || ""] || ROLE_WORKSPACE.admin;
@@ -70,21 +68,7 @@ export function StaffHome() {
 
   return (
     <View style={{ flex: 1, backgroundColor: "transparent" }}>
-      <View style={{ height: insets.top }} />
-      <View style={styles.header}>
-        <View style={{ flex: 1 }}>
-          <AppText variant="eyebrow">{data?.role_label || user?.role_label}</AppText>
-          <AppText variant="title" numberOfLines={1}>{data?.name || user?.name}</AppText>
-          {data?.plant_name ? <AppText variant="caption" numberOfLines={1}>{data.plant_name}</AppText> : null}
-        </View>
-        <Pressable testID="staff-notif" accessibilityRole="button" accessibilityLabel="Open notifications" onPress={() => router.push("/notifications")} style={[styles.iconBtn, { borderColor: colors.border, backgroundColor: colors.surfaceSecondary }]}>
-          <Ionicons name="notifications-outline" size={20} color={colors.onSurface} />
-          {notif && notif.unread > 0 ? <View style={[styles.badge, { backgroundColor: colors.brand }]} /> : null}
-        </Pressable>
-        <Pressable testID="staff-theme-toggle" accessibilityRole="button" accessibilityLabel="Switch light or dark theme" onPress={toggle} style={[styles.iconBtn, { borderColor: colors.border, backgroundColor: colors.surfaceSecondary }]}>
-          <Ionicons name={scheme === "dark" ? "sunny-outline" : "moon-outline"} size={20} color={colors.onSurface} />
-        </Pressable>
-      </View>
+      <OperationalHomeTopBar />
 
       {error && !data ? (
         <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}><ErrorView message={error} onRetry={reload} /><StaffModuleDirectory role={user?.role} scope="home" title="Role tools" /></ScrollView>

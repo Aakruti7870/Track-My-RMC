@@ -1,10 +1,10 @@
 import React from "react";
 import { Image, Pressable, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/src/theme/ThemeProvider";
-import { useGet } from "@/src/hooks/useApi";
+import { OperationalHomeTopBar } from "@/src/components/OperationalHomeTopBar";
 import { AppText } from "@/src/components/ui/AppText";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { fonts } from "@/src/theme/tokens";
@@ -21,22 +21,7 @@ export function OwnerGlass({ children, style }: { children: React.ReactNode; sty
   const p = useOwnerPalette();
   return <View style={[ui.glass, { backgroundColor: p.glass, borderColor: p.border }, style]}>{children}</View>;
 }
-export function OwnerHeader() {
-  const { toggle, scheme } = useTheme();
-  const p = useOwnerPalette();
-  const router = useRouter();
-  const { data, refetch } = useGet<{ unread: number }>("/notifications");
-  // Refresh unread data when returning from notification details without polling.
-  const focusedOnce = React.useRef(false);
-  useFocusEffect(React.useCallback(() => { if (focusedOnce.current) void refetch(); focusedOnce.current = true; }, [refetch]));
-  return <View style={ui.header}>
-    <VectorSymbol name="plant-dashboard" size={42} />
-    <View style={{ flex: 1, minWidth: 0 }}><AppText style={{ fontSize: 10, color: p.text }}>Plant Owner</AppText><AppText numberOfLines={1} style={{ fontFamily: fonts.bold, fontSize: 17, color: p.text }}>TrackMyRMC</AppText></View>
-    <Pressable testID="owner-theme-toggle" accessibilityRole="button" accessibilityLabel={`Switch to ${scheme === "dark" ? "light" : "dark"} theme`} onPress={toggle} style={[ui.headerButton, { backgroundColor: p.glass }]}><Ionicons name={scheme === "dark" ? "moon-outline" : "sunny-outline"} size={21} color={scheme === "dark" ? p.text : p.accent} /></Pressable>
-    <Pressable accessibilityRole="button" accessibilityLabel={`Notifications${data ? `, ${data.unread} unread` : ""}`} onPress={() => router.push("/notifications")} style={[ui.headerButton, { backgroundColor: p.glass }]}><Ionicons name="notifications-outline" size={23} color={p.text} />{data && data.unread > 0 ? <View style={ui.badge}><AppText style={{ color: "white", fontSize: 9 }}>{data.unread > 99 ? "99+" : data.unread}</AppText></View> : null}</Pressable>
-    <Pressable accessibilityRole="button" accessibilityLabel="Help and support" onPress={() => router.push("/support")} style={[ui.headerButton, { backgroundColor: p.glass }]}><Ionicons name="help-circle-outline" size={25} color={p.text} /></Pressable>
-  </View>;
-}
+export function OwnerHeader() { return <OperationalHomeTopBar />; }
 export function OwnerFrame({ children, title, subtitle }: { children: React.ReactNode; title?: string; subtitle?: string }) {
   const p = useOwnerPalette();
   const insets = useSafeAreaInsets();

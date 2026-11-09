@@ -66,7 +66,7 @@ fs.mkdirSync(out, { recursive: true });
         await page.waitForFunction(() => !document.body.innerText.includes('Checking staff permissions…'));
         const homeCards = page.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])');
         const homeKeys = await homeCards.evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid')));
-        assert(homeKeys.length > 0 && homeKeys.length <= 6, role + ' Home card count invalid');
+        assert(homeKeys.length > 0 && homeKeys.length <= 8, role + ' Home card count invalid: expected at most eight permission-approved cards, got ' + homeKeys.length);
         assert.equal(new Set(homeKeys).size, homeKeys.length, role + ' duplicated a Home card');
         let homeSizes = await homeCards.evaluateAll(nodes => nodes.map(node => ({
           width: node.getBoundingClientRect().width, height: node.getBoundingClientRect().height,

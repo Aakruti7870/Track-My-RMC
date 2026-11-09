@@ -20,7 +20,7 @@ describe('driver home completed-shift guard', () => {
 
   it('keeps the completed-shift action useful by opening attendance', () => {
     assert.match(driverHome, /accessibilityLabel=\{data\.active_trip \? "Open active trip" : "Open attendance"\}/);
-    assert.match(driverHome, /router\.push\("\/driver\/attendance"\)/);
+    assert.match(driverHome, /router\.push\("\/driver\/shift-attendance"\)/);
   });
 
   it('preserves the Google Play review location guidance added on main', () => {

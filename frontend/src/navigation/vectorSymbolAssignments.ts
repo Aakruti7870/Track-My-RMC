@@ -11,6 +11,7 @@ const TAB_SYMBOLS: Readonly<Record<string, VectorSymbolName>> = {
   "More": "more",
   "Trips": "assigned-trips",
   "Attendance": "driver-attendance",
+  "Drop-offs": "drop-offs",
   "Operations": "production-dispatch",
   "Dispatch": "dispatch-queue",
   "Fleet": "transit-mixer-fleet",

@@ -13,6 +13,7 @@ pub mod customer_services;
 pub mod digilocker_kyc;
 pub mod discovery;
 pub mod dispatcher_routes;
+pub mod driver_dropoffs;
 pub mod driver_profile_routes;
 pub mod driver_routes;
 pub mod finance_ops_routes;
@@ -587,6 +588,8 @@ pub fn build_app_router(state: AppState) -> Router {
         .route("/api/customer/kyc/start", post(digilocker_kyc::start))
         // --- Driver Domain ---
         .route("/api/driver/home", get(driver_routes::get_driver_home))
+        .route("/api/driver/drop-offs", get(driver_dropoffs::overview))
+        .route("/api/driver/vehicle-logs", post(driver_dropoffs::record))
         .route(
             "/api/driver/identity",
             get(driver_profile_routes::get_driver_identity),

@@ -2,7 +2,7 @@ import React from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { OperationalHomeTopBar } from "@/src/components/OperationalHomeTopBar";
 
 import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeProvider";
@@ -12,7 +12,6 @@ import { Card } from "@/src/components/ui/Card";
 import { Badge } from "@/src/components/ui/Badge";
 import { Skeleton } from "@/src/components/ui/Skeleton";
 import { ErrorView } from "@/src/components/StateViews";
-import { RoleModuleDirectory } from "@/src/components/RoleModuleDirectory";
 import { DriverIdentityCard } from "@/src/components/DriverIdentityCard";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 
@@ -24,10 +23,9 @@ const PLAY_REVIEW_DRIVER_NAME = "Google Play Review Driver";
 const PLAY_REVIEW_ORDER_NUMBER = "PLAY-REVIEW-001";
 
 export default function DriverHome() {
-  const { colors, toggle, scheme } = useTheme();
+  const { colors } = useTheme();
   const { user } = useAuth();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const { data, loading, error, refetch, reload } = useGet<Home>("/driver/home");
   const { data: attendance, loading: attendanceLoading, refetch: refetchAttendance } = useGet<Attendance>("/driver/attendance");
   const isPlayReviewDriver = user?.name === PLAY_REVIEW_DRIVER_NAME;
@@ -49,22 +47,9 @@ export default function DriverHome() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
-      <View style={{ height: insets.top }} />
-      <View style={styles.header}>
-        <View style={{ flex: 1 }}>
-          <AppText variant="caption">Driver</AppText>
-          <AppText variant="title" numberOfLines={1}>{user?.name}</AppText>
-        </View>
-        <Pressable testID="driver-sos" onPress={() => router.push("/sos")} style={[styles.iconBtn, { borderColor: colors.error, backgroundColor: colors.error + "1A" }]}>
-          <Ionicons name="warning-outline" size={20} color={colors.error} />
-        </Pressable>
-        <Pressable testID="driver-theme-toggle" onPress={toggle} style={[styles.iconBtn, { borderColor: colors.border }]}>
-          <Ionicons name={scheme === "dark" ? "sunny-outline" : "moon-outline"} size={20} color={colors.onSurface} />
-        </Pressable>
-      </View>
-
+      <OperationalHomeTopBar />
       {error && !data ? (
-        <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}><ErrorView message={error} onRetry={reload} /><RoleModuleDirectory role={user?.role} /></ScrollView>
+        <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}><ErrorView message={error} onRetry={reload} /></ScrollView>
       ) : (
         <ScrollView
           contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120, gap: spacing.lg }}
@@ -79,6 +64,7 @@ export default function DriverHome() {
           ) : data ? (
             <>
               <DriverIdentityCard />
+              <AppText variant="heading">Smart Features</AppText>
               <Card variant="brand" style={styles.summary} testID="driver-home-summary">
                 <View style={{ flex: 1, gap: spacing.xs }}>
                   <AppText variant="caption">TODAY&apos;S SHIFT</AppText>
@@ -95,14 +81,14 @@ export default function DriverHome() {
                 </View>
                 <Pressable
                   accessibilityLabel={data.active_trip ? "Open active trip" : "Open attendance"}
-                  onPress={() => data.active_trip ? router.push(`/trip/${data.active_trip.id}` as any) : router.push("/driver/attendance")}
+                  onPress={() => data.active_trip ? router.push(`/trip/${data.active_trip.id}` as any) : router.push("/driver/shift-attendance")}
                   style={[styles.summaryAction, { backgroundColor: colors.brand }]}
                 >
                   <Ionicons name={data.active_trip ? "navigate" : shiftComplete ? "checkmark-done" : "finger-print"} size={20} color={colors.onBrand} />
                 </Pressable>
               </Card>
               <View style={{ flexDirection: "row", gap: spacing.sm }}>
-                <Pressable onPress={() => router.push("/driver/attendance")} style={[styles.stat, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+                <Pressable onPress={() => router.push("/driver/shift-attendance")} style={[styles.stat, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
                   <Ionicons name={attendanceIcon} size={20} color={attendanceColor} />
                   <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.sm, color: colors.onSurface }}>{attendanceLabel}</AppText>
                 </Pressable>
@@ -128,7 +114,6 @@ export default function DriverHome() {
                 </Card>
               ) : null}
 
-              <RoleModuleDirectory role={user?.role} />
 
               <AppText variant="heading">Current Trip</AppText>
               {data.active_trip ? (
