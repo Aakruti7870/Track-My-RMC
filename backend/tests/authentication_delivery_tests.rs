@@ -594,6 +594,31 @@ async fn staff_challenges_cannot_be_reused_after_role_becomes_privileged(db: PgP
         .0,
         StatusCode::FORBIDDEN
     );
+
+    // The reserved first administrator starts inactive by design. The staff
+    // endpoint must still tell the caller to use dedicated web enrollment,
+    // without creating a staff OTP or activating this privileged identity.
+    sqlx::query("UPDATE users SET is_active=FALSE,is_verified=FALSE WHERE id=$1")
+        .bind(id)
+        .execute(&db)
+        .await
+        .unwrap();
+    let (status, detail) = call(
+        &app,
+        "/api/auth/otp/email/send",
+        Some(json!({"email":email})),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert!(detail.to_string().contains("dedicated web sign-in"));
+    let remains_inactive: bool =
+        sqlx::query_scalar("SELECT NOT is_active FROM users WHERE id=$1")
+            .bind(id)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert!(remains_inactive);
 }
 
 #[sqlx::test]
