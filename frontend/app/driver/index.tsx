@@ -81,14 +81,14 @@ export default function DriverHome() {
                 </View>
                 <Pressable
                   accessibilityLabel={data.active_trip ? "Open active trip" : "Open attendance"}
-                  onPress={() => data.active_trip ? router.push(`/trip/${data.active_trip.id}` as any) : router.push("/driver/attendance")}
+                  onPress={() => data.active_trip ? router.push(`/trip/${data.active_trip.id}` as any) : router.push("/driver/shift-attendance")}
                   style={[styles.summaryAction, { backgroundColor: colors.brand }]}
                 >
                   <Ionicons name={data.active_trip ? "navigate" : shiftComplete ? "checkmark-done" : "finger-print"} size={20} color={colors.onBrand} />
                 </Pressable>
               </Card>
               <View style={{ flexDirection: "row", gap: spacing.sm }}>
-                <Pressable onPress={() => router.push("/driver/attendance")} style={[styles.stat, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+                <Pressable onPress={() => router.push("/driver/shift-attendance")} style={[styles.stat, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
                   <Ionicons name={attendanceIcon} size={20} color={attendanceColor} />
                   <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.sm, color: colors.onSurface }}>{attendanceLabel}</AppText>
                 </Pressable>
