@@ -19,7 +19,7 @@ TrackMyRMC is an RMC (ready-mix concrete) operations platform with a Rust/Postgr
 ## Roles and security boundary
 
 - Customers and drivers use their intended application sign-in flows; plant owners and scoped staff have separate entitlements and session controls. Do not create additional application roles to grant platform access.
-- **Central Admin** is a web-only privileged identity with approved session provenance, password and authenticator MFA. Global controls and sensitive status mutations need explicit permissions and, where required, fresh MFA.
+- **Central Admin** is a web-only privileged identity with approved session provenance, email OTP and authenticator MFA. Global controls and sensitive status mutations need explicit permissions and, where required, fresh MFA.
 - **Authority** is a separate web-only identity. Central Admin may grant only allowlisted capabilities. Platform support access uses explicit support.view; replies and private notes additionally need support.reply. Authority cannot grant privileges, manage global automation or close/reopen support cases.
 - Platform support follow-ups are separate from plant-scoped native automation. Only approved, credential-ready web operators can receive internal reminders. Generic mobile notification endpoints do not grant access to those reminders.
 - No authentication, KYC, payment or worker feature should be enabled simply because a pull request passed CI.

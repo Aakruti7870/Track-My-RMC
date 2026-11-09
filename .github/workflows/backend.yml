@@ -108,9 +108,7 @@ jobs:
           for migration in backend/migrations/*.sql; do
             psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration" > /dev/null
           done
-          cargo build --manifest-path backend/Cargo.toml --example bootstrap_central_admin
-          # The harness captures secrets only from synthetic private PTYs. It
-          # explicitly verifies that CI=true is rejected by the real command.
+          cargo build --manifest-path backend/Cargo.toml --bin trackmyrmc-backend
           python3 backend/scripts/verify_bootstrap_lifecycle.py
 
       - name: Setup Node for actual admin browser regression

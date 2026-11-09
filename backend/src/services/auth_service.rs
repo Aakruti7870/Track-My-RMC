@@ -298,7 +298,6 @@ pub async fn verify_whatsapp_otp(
 /// Dispatches Email OTP for Plant Staff, Owners, and Administrators
 pub async fn send_email_otp(state: &AppState, req: SendEmailOtpRequest) -> Result<(), AppError> {
     let destination = req.email.trim().to_lowercase();
-    let purpose = "staff_login".to_string();
 
     let user = user_repo::find_by_phone_or_email(&state.db, &destination)
         .await?
@@ -352,17 +351,33 @@ pub async fn send_email_otp(state: &AppState, req: SendEmailOtpRequest) -> Resul
     crate::routes::staff_lifecycle::require_login_eligible(state, user.id, &user.role).await?;
 
     let _ = req.plant_code.as_deref();
+    deliver_email_otp(state, &destination, "staff_login", "Staff/Admin Portal").await
+}
+
+pub(crate) async fn deliver_email_otp(
+    state: &AppState,
+    destination: &str,
+    purpose: &str,
+    portal: &str,
+) -> Result<(), AppError> {
     state.otp_delivery.validate("email")?;
-    OtpEngine::check_rate_limit(&state.db, &destination, state.config.otp_cooldown_seconds).await?;
+    // Serialize the cooldown check and pending reservation for each mailbox.
+    // Release the lock before sending through the external provider.
+    let mut tx = state.db.begin().await?;
+    sqlx::query("SELECT pg_advisory_xact_lock(92741,hashtext($1))")
+        .bind(destination)
+        .execute(&mut *tx)
+        .await?;
+    OtpEngine::check_rate_limit_on(&mut tx, destination, state.config.otp_cooldown_seconds).await?;
 
     let (plain_otp, salt, hashed_otp) = OtpEngine::generate_secure_otp(&state.config.otp_pepper);
 
     let session_id = OtpEngine::create_pending_session(
-        &state.db,
+        &mut *tx,
         crate::auth::otp::OtpSessionInput {
-            destination: &destination,
+            destination,
             channel: "email",
-            purpose: &purpose,
+            purpose,
             salt: &salt,
             hashed_otp: &hashed_otp,
             expiration_minutes: state.config.otp_expiration_minutes,
@@ -371,16 +386,18 @@ pub async fn send_email_otp(state: &AppState, req: SendEmailOtpRequest) -> Resul
     )
     .await?;
 
+    tx.commit().await?;
+
     if let Err(error) = state
         .otp_delivery
-        .send("email", &destination, &plain_otp, "Staff/Admin Portal")
+        .send("email", destination, &plain_otp, portal)
         .await
     {
         let _ = OtpEngine::discard_pending_session(&state.db, session_id).await;
         return Err(error);
     }
     if let Err(error) =
-        OtpEngine::activate_pending_session(&state.db, session_id, &destination, "email", &purpose)
+        OtpEngine::activate_pending_session(&state.db, session_id, destination, "email", purpose)
             .await
     {
         let _ = OtpEngine::discard_pending_session(&state.db, session_id).await;
@@ -406,12 +423,12 @@ pub struct VerifyStaffMfaRequest {
     pub code: String,
 }
 
-fn challenge_digest(token: &str) -> String {
+pub(crate) fn challenge_digest(token: &str) -> String {
     hex::encode(Sha256::digest(token.as_bytes()))
 }
 
-async fn create_staff_challenge(
-    state: &AppState,
+pub(crate) async fn create_staff_challenge<'e>(
+    executor: impl sqlx::PgExecutor<'e>,
     user_id: Uuid,
     purpose: &str,
 ) -> Result<(String, i64), AppError> {
@@ -428,7 +445,7 @@ async fn create_staff_challenge(
     .bind(challenge_digest(&token))
     .bind(purpose)
     .bind(Utc::now() + Duration::seconds(expires_in))
-    .execute(&state.db)
+    .execute(executor)
     .await?;
     Ok((token, expires_in))
 }
@@ -502,7 +519,7 @@ pub async fn verify_email_otp(
     } else {
         "login"
     };
-    let (challenge_token, expires_in) = create_staff_challenge(state, user.id, purpose).await?;
+    let (challenge_token, expires_in) = create_staff_challenge(&state.db, user.id, purpose).await?;
     Ok(StaffMfaChallengeResponse {
         status: if mfa_setup_required {
             "MFA_ENROLLMENT_REQUIRED"
@@ -617,7 +634,7 @@ pub async fn confirm_staff_mfa_enrollment(
             "MFA enrollment challenge was already used or expired".to_string(),
         ));
     }
-    let (challenge_token, _) = create_staff_challenge(state, user_id, "login").await?;
+    let (challenge_token, _) = create_staff_challenge(&state.db, user_id, "login").await?;
     Ok(StaffMfaEnrollmentConfirmResponse {
         status: "MFA_ENABLED",
         recovery_codes: Vec::new(),

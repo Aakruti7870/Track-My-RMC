@@ -62,10 +62,18 @@ impl OtpEngine {
         destination: &str,
         cooldown_seconds: i64,
     ) -> Result<(), AppError> {
+        Self::check_rate_limit_on(&mut *pool.acquire().await?, destination, cooldown_seconds).await
+    }
+
+    pub(crate) async fn check_rate_limit_on(
+        connection: &mut sqlx::PgConnection,
+        destination: &str,
+        cooldown_seconds: i64,
+    ) -> Result<(), AppError> {
         let cooldown_threshold = Utc::now() - Duration::seconds(cooldown_seconds);
         let recent_request: Option<(DateTime<Utc>,)> = sqlx::query_as(
             "SELECT created_at FROM otp_verifications WHERE destination=$1 AND created_at>$2 ORDER BY created_at DESC LIMIT 1"
-        ).bind(destination).bind(cooldown_threshold).fetch_optional(pool).await?;
+        ).bind(destination).bind(cooldown_threshold).fetch_optional(&mut *connection).await?;
 
         if let Some((created_at,)) = recent_request {
             let elapsed = (Utc::now() - created_at).num_seconds();
@@ -81,7 +89,7 @@ impl OtpEngine {
         )
         .bind(destination)
         .bind(hour_threshold)
-        .fetch_one(pool)
+        .fetch_one(connection)
         .await?;
 
         if count.0 >= 5 {
@@ -120,8 +128,8 @@ impl OtpEngine {
         Ok(rec.0)
     }
 
-    pub async fn create_pending_session(
-        pool: &PgPool,
+    pub async fn create_pending_session<'e>(
+        executor: impl sqlx::PgExecutor<'e>,
         input: OtpSessionInput<'_>,
     ) -> Result<Uuid, AppError> {
         let OtpSessionInput {
@@ -147,7 +155,7 @@ impl OtpEngine {
         .bind(salt)
         .bind(max_attempts)
         .bind(expires_at)
-        .fetch_one(pool)
+        .fetch_one(executor)
         .await?;
 
         Ok(rec.0)

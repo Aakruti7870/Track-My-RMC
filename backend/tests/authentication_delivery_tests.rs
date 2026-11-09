@@ -2420,3 +2420,257 @@ async fn financial_creation_requires_create_even_when_edit_is_granted(db: PgPool
         assert_eq!(count, 0, "{endpoint} must not insert a record");
     }
 }
+
+#[sqlx::test]
+async fn primary_central_admin_email_enrollment_login_and_recovery_are_role_bound(db: PgPool) {
+    use trackmyrmc_backend::central_admin_bootstrap::{prepare_primary, PRIMARY_EMAIL};
+
+    let database: String = sqlx::query_scalar("SELECT current_database()")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    prepare_primary(&db, &database).await.unwrap();
+    let mut state = state(db.clone());
+    let delivery = Arc::new(MemoryDelivery::default());
+    state.otp_delivery = delivery.clone();
+    Arc::make_mut(&mut state.config).otp_cooldown_seconds = 60;
+    let app = build_app_router(state);
+    let send = "/api/admin/auth/otp/send";
+    let verify = "/api/admin/auth/login";
+    let mfa = "/api/admin/auth/verify-totp";
+    let recover = "/api/admin/auth/recover";
+    let me = "/api/admin/auth/me";
+
+    for role in [
+        "owner",
+        "dispatcher",
+        "customer",
+        "authority",
+        "central_admin",
+    ] {
+        let email = format!("{role}@example.invalid");
+        let id = identity(&db, role, Some(&email), None).await;
+        sqlx::query("UPDATE users SET is_active=FALSE,hashed_password='!primary-central-admin-pending!' WHERE id=$1")
+            .bind(id).execute(&db).await.unwrap();
+        assert_eq!(
+            call(&app, send, Some(json!({"email":email})), None).await.0,
+            StatusCode::UNAUTHORIZED
+        );
+        // Remove the synthetic duplicate: real primary reservation fails closed on collisions.
+        sqlx::query("DELETE FROM users WHERE id=$1")
+            .bind(id)
+            .execute(&db)
+            .await
+            .unwrap();
+    }
+
+    let send_otp = || async {
+        assert_eq!(
+            call(&app, send, Some(json!({"email":PRIMARY_EMAIL})), None)
+                .await
+                .0,
+            StatusCode::OK
+        );
+        delivery.take_code(PRIMARY_EMAIL)
+    };
+    let clear_cooldown = || async {
+        sqlx::query(
+            "UPDATE otp_verifications SET created_at=NOW()-INTERVAL '2 hours' WHERE destination=$1",
+        )
+        .bind(PRIMARY_EMAIL)
+        .execute(&db)
+        .await
+        .unwrap();
+    };
+    let new_challenge = || async {
+        clear_cooldown().await;
+        let otp = send_otp().await;
+        let (status, result) = call(
+            &app,
+            verify,
+            Some(json!({"email":PRIMARY_EMAIL,"otp":otp})),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(result.get("token").is_none());
+        result
+    };
+    let proof = |challenge: &Value, code: &str| json!({"challenge_token":challenge["challenge_token"],"code":code});
+    let pending_flags = || async {
+        sqlx::query_as::<_, (bool, bool, bool, bool, bool)>(
+            "SELECT u.is_active,u.is_verified,u.work_email_verified_at IS NOT NULL,
+             EXISTS(SELECT 1 FROM control_center_access a WHERE a.user_id=u.id AND a.approved),
+             EXISTS(SELECT 1 FROM user_totp_credentials t WHERE t.user_id=u.id AND t.is_enabled)
+             FROM users u WHERE u.email=$1",
+        )
+        .bind(PRIMARY_EMAIL)
+        .fetch_one(&db)
+        .await
+        .unwrap()
+    };
+
+    let (first_send, second_send) = tokio::join!(
+        call(&app, send, Some(json!({"email":PRIMARY_EMAIL})), None),
+        call(&app, send, Some(json!({"email":PRIMARY_EMAIL})), None),
+    );
+    assert!(matches!(
+        (first_send.0, second_send.0),
+        (StatusCode::OK, StatusCode::BAD_REQUEST) | (StatusCode::BAD_REQUEST, StatusCode::OK)
+    ));
+    let expired = delivery.take_code(PRIMARY_EMAIL);
+    sqlx::query(
+        "UPDATE otp_verifications SET expires_at=NOW()-INTERVAL '1 second' WHERE destination=$1",
+    )
+    .bind(PRIMARY_EMAIL)
+    .execute(&db)
+    .await
+    .unwrap();
+    assert_eq!(
+        call(
+            &app,
+            verify,
+            Some(json!({"email":PRIMARY_EMAIL,"otp":expired})),
+            None
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
+    clear_cooldown().await;
+    let otp = send_otp().await;
+    let payload = json!({"email":PRIMARY_EMAIL,"otp":otp});
+    assert!(!call(
+        &app,
+        "/api/auth/otp/email/verify",
+        Some(payload.clone()),
+        None
+    )
+    .await
+    .0
+    .is_success());
+    let (status, enrollment) = call(&app, verify, Some(payload.clone()), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        call(&app, verify, Some(payload), None).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(pending_flags().await, (false, false, false, false, false));
+    assert_eq!(
+        call(&app, mfa, Some(proof(&enrollment, "invalid")), None)
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(pending_flags().await, (false, false, false, false, false));
+
+    let now = chrono::Utc::now().timestamp() as u64;
+    let secret = enrollment["enrollment"]["manual_key"].as_str().unwrap();
+    let initial_code = TotpEngine::compute_code(secret, now - 30).unwrap();
+    assert!(!call(
+        &app,
+        "/api/auth/staff/mfa/verify-totp",
+        Some(proof(&enrollment, &initial_code)),
+        None
+    )
+    .await
+    .0
+    .is_success());
+    let (status, first) = call(&app, mfa, Some(proof(&enrollment, &initial_code)), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(pending_flags().await, (true, true, true, true, true));
+    assert_eq!(
+        call(&app, mfa, Some(proof(&enrollment, &initial_code)), None)
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    let first_token = first["token"].as_str().unwrap();
+    let backup = first["recovery_codes"][0].as_str().unwrap();
+    let (status, access) = call(&app, me, None, Some(first_token)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(access["permissions"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("admin_access.manage")));
+    assert!(
+        !call(&app, "/api/authority/auth/me", None, Some(first_token))
+            .await
+            .0
+            .is_success()
+    );
+
+    let login = new_challenge().await;
+    assert!(login["enrollment"].is_null());
+    assert_eq!(
+        call(&app, mfa, Some(proof(&login, &initial_code)), None)
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    let fresh_code = TotpEngine::compute_code(secret, now).unwrap();
+    let (status, second) = call(&app, mfa, Some(proof(&login, &fresh_code)), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        call(&app, me, None, Some(first_token)).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    let second_token = second["token"].as_str().unwrap();
+    assert_eq!(
+        call(&app, me, None, Some(second_token)).await.0,
+        StatusCode::OK
+    );
+
+    let login = new_challenge().await;
+    assert_eq!(
+        call(&app, mfa, Some(proof(&login, backup)), None).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    let (status, replacement) = call(&app, recover, Some(proof(&login, backup)), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(replacement.get("token").is_none());
+    assert_eq!(
+        call(&app, recover, Some(proof(&login, backup)), None)
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    let replacement_secret = replacement["enrollment"]["manual_key"].as_str().unwrap();
+    let replacement_code =
+        TotpEngine::compute_code(replacement_secret, chrono::Utc::now().timestamp() as u64)
+            .unwrap();
+    let (status, third) = call(
+        &app,
+        mfa,
+        Some(proof(&replacement, &replacement_code)),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        call(&app, me, None, Some(second_token)).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        call(&app, me, None, third["token"].as_str()).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        call(
+            &app,
+            recover,
+            Some(proof(&new_challenge().await, backup)),
+            None
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
+    let session_lengths: Vec<i64> = sqlx::query_scalar(
+        "SELECT EXTRACT(epoch FROM expires_at-created_at)::bigint FROM control_center_sessions",
+    )
+    .fetch_all(&db)
+    .await
+    .unwrap();
+    assert_eq!(session_lengths, vec![3600; 3]);
+}

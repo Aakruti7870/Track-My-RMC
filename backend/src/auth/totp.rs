@@ -30,6 +30,15 @@ impl TotpEngine {
         Self::base32_encode(&bytes)
     }
 
+    /// Derive an enrollment key bound to an opaque, expiring web challenge.
+    /// No provisional authenticator is persisted before possession is proven.
+    pub(crate) fn admin_enrollment_secret(pepper: &str, challenge: &str) -> String {
+        let mut mac = Hmac::<Sha256>::new_from_slice(pepper.as_bytes()).expect("valid HMAC key");
+        mac.update(b"trackmyrmc:central-admin-enrollment:v1:");
+        mac.update(challenge.as_bytes());
+        Self::base32_encode(&mac.finalize().into_bytes()[..20])
+    }
+
     /// Generates standard otpauth URI for QR code generators
     pub fn get_otpauth_uri(secret: &str, user_label: &str) -> String {
         format!(
@@ -322,7 +331,7 @@ async fn verify_login(
     ))
 }
 
-fn hash_backup_code(code: &str, secret: &str) -> String {
+pub(crate) fn hash_backup_code(code: &str, secret: &str) -> String {
     let normalized = code
         .chars()
         .filter(|c| c.is_ascii_alphanumeric())

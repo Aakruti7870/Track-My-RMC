@@ -1,3 +1,7 @@
+#[path = "support/admin_challenge.rs"]
+mod admin_challenge;
+use admin_challenge::admin_challenge;
+
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
@@ -118,7 +122,11 @@ async fn web_operator(
         router,
         &format!("/api/{prefix}/auth/verify-totp"),
         None,
-        Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":code})),
+        Some(if role == "authority" {
+            json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":code})
+        } else {
+            json!({"challenge_token":admin_challenge(db, &email).await,"code":code})
+        }),
     )
     .await;
     assert_eq!(status, StatusCode::OK);

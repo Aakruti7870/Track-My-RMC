@@ -8,13 +8,13 @@ Status: **implemented on main; production enrollment, deployment and feature act
 - `central_admin` and `authority` are **web-only privileged roles**. No Expo application login, bottom tab, reviewer fixture or mobile refresh token is created for either.
 - The endpoint accepts bearer tokens from HTTP clients, not "browser fingerprint" validation. **Web-only** means supported product login surface, not a claim that a mobile HTTP client is technically unable to send requests. Role, session provenance, permission, expiry and MFA are enforced on the Rust server.
 - A permanent identity is retained in `users` until explicitly disabled; an authenticated session lasts **one hour** and cannot be silently refreshed.
-- The approved AWS release reserves `support@trackmyrmc.com` as an inactive Central Admin identity. An audited, private bootstrap is required to activate it.
+- The approved AWS release reserves `support@trackmyrmc.com` as an inactive Central Admin identity. The account owner activates the reserved identity in the admin browser after verifying email and confirming authenticator setup.
 
 ## Role control and implementation
 
 | Responsibility | Central Admin | Delegated Authority |
 | --- | --- | --- |
-| Account authentication | Email + independently hashed Argon2id password + TOTP at `POST /api/admin/auth/verify-totp` | Email + Argon2id password + TOTP at `POST /api/authority/auth/verify-totp` |
+| Account authentication | Registered email OTP at `POST /api/admin/auth/login`, then challenge-bound TOTP at `POST /api/admin/auth/verify-totp` | Email + Argon2id password + TOTP at `POST /api/authority/auth/verify-totp` |
 | Session / identity | `/api/admin/auth/me`, logout | `/api/authority/auth/me`, logout |
 | Delegation | `/api/control-center/authority-access` with `admin_access.manage` and MFA step-up | No ability to grant permissions or manage other Authority identities |
 | Users / plants / orders | Permission-gated Control Center collections | Explicit `user.view`, `plant.view`, `order.view` grants; no global edit |
@@ -44,42 +44,36 @@ Required before merge/release:
 2. `admin-web` `npm run build` and browser tests at mobile/tablet/desktop widths.
 3. An approved Central Admin fixture tests grant, reject, revoke and expired-session behavior. An approved Authority fixture tests wrong-role denial, no mobile login/token refresh, KYC evidence gates, and cross-tenant/privacy restrictions.
 4. Validate production migrations, email OTP delivery and authenticator enrollment **without emitting secret keys or real customer data**; verify the expected production database.
-5. Verify password + TOTP enforcement including wrong-password, missing-password, stale challenge, role mismatch, session replacement and initial Authority enrollment. Account recovery requires controlled operator verification, never email-only self-service. The independently approved privileged recovery lifecycle is not implemented; see `pr157-release-assessment.md`.
+5. Verify Central Admin email OTP and authenticator enforcement, OTP and TOTP replay rejection, challenge expiry, role mismatch, session replacement and recovery with a saved single-use code. Verify password and authenticator enforcement and initial enrollment for Authority separately.
 6. Explicit release approval and independently verified production identity/bootstrap rehearsal. The bootstrap rehearsal uses a disposable database. Live marketing broadcasts and payments require separate activation.
 
 
-## Production bootstrap runbook (operator-controlled)
+## Primary Central Admin enrollment and recovery
 
-The AWS deployment prepares the single designated Central Admin identity after the backend and
-web health checks. The pending record is inactive, with no portal access, password hash or
-authenticator. Preparation is idempotent and refuses collisions with existing accounts.
-The bootstrap example activates the reserved identity only as an explicit operator command.
-**Never use CI, production startup, an automated deployment hook, or a remote logged terminal
-to provision privileged credentials.**
+The AWS release reserves `support@trackmyrmc.com` after backend and web health checks.
+Reservation is idempotent and refuses conflicting identities. Verify the running
+service database and migration state independently. The RDS initial database name
+does not identify the service's active database.
 
-1. Obtain two-person approval of the named Central Admin identity and exact production
-   database. Verify current DB name, account, network path, migration checksums and
-   current backups separately. Do not infer the database name from the RDS instance name.
-2. From a trusted interactive terminal with secure secret-handling controls, run the
-   SHA-pinned source's `backend/examples/bootstrap_central_admin.rs` using:
-   `cargo run --release --example bootstrap_central_admin -- --apply --expected-database <VERIFIED_DATABASE> --email support@trackmyrmc.com --name "TrackMyRMC Support"`
-   with `DATABASE_URL` supplied securely outside shell history.
-3. The tool requires a private terminal and verifies the database and pending identity.
-   It accepts a hidden password, generates a new authenticator, and verifies a live code
-   before activating the account and granting Central Admin access in one transaction.
-   It hashes backup codes and writes an audit event.
-4. Store the printed authenticator provisioning URI and single-use recovery codes securely,
-   separate from the password. Do not allow shell/SSM/CI session output capture, helpdesk
-   screenshots or centralized transcript logging of these secrets.
-5. Validate a separate browser login using password + authenticator; verify account
-   permissions, wrong-role denial and logout/session replacement before enabling operational
-   modules. Use only consented real accounts for live acceptance.
+1. The owner opens `https://trackmyrmc.com/admin/` privately, enters the reserved
+   email and verifies the received OTP. The result is a five-minute Central Admin
+   challenge. First enrollment relies on the preapproved mailbox remaining under
+   the owner's control.
+2. The owner adds the setup key to an authenticator app and submits its current
+   code. The server confirms possession, enables the credential, activates the
+   reserved account, grants the fixed Central Admin permissions and creates the
+   one-hour web session in one transaction.
+3. The owner stores the one-time recovery codes privately and opens the Control
+   Center. After signing out, the owner verifies a new email OTP and uses a fresh
+   authenticator code to confirm a subsequent login. Keep live setup keys, OTPs,
+   recovery codes and tokens out of CI, remote session logs and screenshots.
 
-**Existing root account:** This first-account command intentionally refuses to overwrite
-existing Central Admin identities. An old TOTP-only root record has no usable password
-and must not be silently upgraded. Recovery requires an independently approved
-out-of-band identity verification and audited database credential rotation by authorized
-operators. There is no unverified email-only password recovery API or backdoor.
+If the authenticator is lost, verify a new email OTP and choose **Recover with a
+saved code**. A valid single-use code opens a replacement-authenticator challenge.
+Confirm the replacement authenticator to rotate all recovery codes and revoke
+previous sessions. Store the new recovery codes securely. If both authenticator
+and codes are lost, recovery requires independently approved operator verification
+and audited credential recovery. A suspended identity is ineligible for recovery.
 
 ### Authority first-time login
 
@@ -115,5 +109,4 @@ See [PR #157 release assessment](pr157-release-assessment.md) for findings, isol
 results, production-only gates and unresolved recovery/integration blockers. Privileged
 bearers now live only in dashboard memory; reload requires login. Enrollment, login,
 step-up and rotation reject a reused privileged TOTP step, so wait for a fresh authenticator
-code between proofs. Neither the bootstrap command nor generated backup codes constitute
-an implemented independently approved emergency recovery flow.
+code between proofs. A Central Admin with neither an authenticator nor a saved recovery code requires the independently approved emergency process.

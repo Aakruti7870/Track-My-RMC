@@ -2,11 +2,26 @@ import { chromium } from '@playwright/test';
 import { createHmac } from 'node:crypto';
 import assert from 'node:assert/strict';
 
+assert.equal(process.env.APP_ENV, 'test');
+const testAuthorityKey = Buffer.from('12345678901234567890');
+let authenticatorKey = testAuthorityKey;
+
+function decodeBase32(key) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = '';
+  for (const character of key) {
+    const value = alphabet.indexOf(character);
+    if (value < 0) throw new Error('Invalid synthetic authenticator setup key');
+    bits += value.toString(2).padStart(5, '0');
+  }
+  return Buffer.from((bits.match(/.{8}/g) || []).map(byte => parseInt(byte, 2)));
+}
+
 // RFC 6238 public test credential, seeded only in the disposable CI database.
 function currentCode(){
 const counter = Buffer.alloc(8);
 counter.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30000)));
-const mac = createHmac('sha1', '12345678901234567890').update(counter).digest();
+const mac = createHmac('sha1', authenticatorKey).update(counter).digest();
 const offset = mac[19] & 15;
 return String((mac.readUInt32BE(offset) & 0x7fffffff) % 1000000).padStart(6, '0');
 }
@@ -44,12 +59,28 @@ const browser = await chromium.launch(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE
 try {
   const page = await browser.newPage();
   await page.goto('http://127.0.0.1:4173');
-  await page.getByLabel('Approved administrator email').fill('ci-admin@example.invalid');
-  await page.getByLabel('Account password', { exact: true }).fill(process.env.CI_CONTROL_CENTER_TEST_PASSWORD || '');
-  await page.getByLabel('Authenticator code', { exact: true }).fill(await freshCode());
+  const adminEmail = 'support@trackmyrmc.com';
+  // OTP delivery is tested through the real Rust route with an in-memory
+  // transport. This browser uses a disposable SQL OTP fixture and no provider.
+  await page.route('http://127.0.0.1:8000/api/admin/auth/otp/send', route => {
+    assert.deepEqual(route.request().postDataJSON(), { email: adminEmail });
+    return route.fulfill({json:{status:'EMAIL_OTP_SENT'}});
+  });
+  assert.equal(await page.getByLabel('Account password', { exact: true }).count(), 0);
+  await page.getByLabel('Approved administrator email').fill(adminEmail);
+  await page.getByRole('button', {name:'Send email verification code',exact:true}).click();
+  await page.getByLabel('Email verification code', {exact:true}).fill('123456');
+  await page.getByRole('button', {name:'Verify email code',exact:true}).click();
+  authenticatorKey = decodeBase32(await page.getByLabel('Authenticator setup key').inputValue());
+  await page.getByLabel('6-digit authenticator code', {exact:true}).fill(await freshCode());
   const adminLogin = page.waitForResponse(response=>response.url().endsWith('/api/admin/auth/verify-totp'));
-  await page.getByRole('button', { name: 'Sign in with password + authenticator', exact: true }).click();
-  const token = (await (await adminLogin).json()).token;
+  await page.getByRole('button', {name:'Confirm authenticator setup',exact:true}).click();
+  const adminResponse = await adminLogin;
+  assert.equal(adminResponse.status(), 200);
+  const token = (await adminResponse.json()).token;
+  await page.getByRole('heading', {name:'Save your recovery codes',exact:true}).waitFor();
+  await page.getByLabel('I have saved the recovery codes', {exact:true}).check();
+  await page.getByRole('button', {name:'Continue to Control Center',exact:true}).click();
   await page.getByRole('heading', { name: 'Command Center', exact: true }).waitFor();
   await page.getByRole('button', { name: 'users', exact: true }).click();
   await page.locator('tbody').getByText('CI Central Admin', { exact: true }).waitFor();
@@ -90,6 +121,7 @@ try {
   // A successfully revoked access token is unauthenticated, not merely forbidden.
   assert.equal(revoked.status(), 401, 'signed-out admin session must be unauthorized');
   console.log('PASS: real Central Admin MFA, authorized workspaces and browser logout');
+  authenticatorKey = testAuthorityKey;
   await page.getByRole('button', {name:'Delegated Authority sign in',exact:true}).click();
   await page.getByLabel('Approved Authority email').fill('ci-authority@example.invalid');
   await page.getByLabel('Account password', {exact:true}).fill(process.env.CI_CONTROL_CENTER_TEST_PASSWORD || '');
