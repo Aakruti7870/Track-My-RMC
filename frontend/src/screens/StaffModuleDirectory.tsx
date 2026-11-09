@@ -128,7 +128,29 @@ export function StaffModuleDirectory({
     return () => { active = false; };
   }, [token, validRole, role]));
 
-  const scopedModules = useMemo(() => staffModulesForScope(role, scope), [role, scope]);
+  // The Owner's audited grant matrix controls access, never the card layout.
+  // Promote permitted work modules into the same compact Home grid (up to eight);
+  // any overflow stays on More. No module appears on both home and more.
+  const scopedModules = useMemo(() => {
+    if (scope === "all") return staffModulesForScope(role, "all");
+    const enabled = (item: RoleModule) => {
+      const permission = STAFF_MODULE_PERMISSIONS[item.key];
+      return !permission || (allowed || []).includes(permission);
+    };
+    const home = staffModulesForScope(role, "home").filter(enabled);
+    const extras = staffModulesForScope(role, "more").filter(item =>
+      !!STAFF_MODULE_PERMISSIONS[item.key] && enabled(item));
+    const routes = new Set(home.map(item => String(item.route)));
+    for (const module of extras) {
+      if (home.length >= 8) break;
+      if (!routes.has(String(module.route))) {
+        home.push(module);
+        routes.add(String(module.route));
+      }
+    }
+    return scope === "home" ? home :
+      staffModulesForScope(role, "more").filter(item => !routes.has(String(item.route)));
+  }, [role, scope, allowed]);
   const modules = useMemo(() => scopedModules.filter(item => {
     const key = STAFF_MODULE_PERMISSIONS[item.key];
     if (key && !(allowed || []).includes(key)) return false;
