@@ -9,7 +9,7 @@ const read = relative => readFileSync(path.join(root, relative), "utf8");
 const assets = "assets/images/SVG Vector Symbol";
 const masters = readdirSync(path.join(root, assets)).filter(name => name.endsWith(".svg")).sort();
 const serviceNames = ["building-material", "cement", "labour-contractor"];
-assert.equal(masters.length, 91, "Expected 88 original and 3 new SVG masters");
+assert.equal(masters.length, 92, "Expected 88 original, 3 service and 1 driver SVG masters");
 
 const embedded = new Map();
 for (let i = 0; i < 8; i++) {
@@ -30,6 +30,10 @@ for (const [, name, serialized] of newEntries) {
   assert.ok(!embedded.has(name), `Duplicate SVG symbol: ${name}`);
   embedded.set(name, JSON.parse(serialized));
 }
+const driverEntries = [...read("src/components/vector-symbols/set9.ts").matchAll(/^\\s+"([^"]+)": ("(?:[^"\\\\]|\\\\.)*"),?$/gm)];
+assert.equal(driverEntries.length, 1, "Exactly one new driver symbol");
+assert.equal(driverEntries[0][1], "drop-offs");
+embedded.set(driverEntries[0][1], JSON.parse(driverEntries[0][2]));
 assert.equal(embedded.size, masters.length, "Every SVG master must be embedded");
 for (const filename of masters) {
   const name = filename.slice(0, -4);
