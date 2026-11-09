@@ -69,8 +69,12 @@ pub fn build_app_router(state: AppState) -> Router {
         )
         .route("/api/admin/auth/me", get(crate::auth::control_center::me))
         .route(
-            "/api/admin/auth/change-password",
-            post(crate::auth::control_center::change_admin_password),
+            "/api/admin/auth/otp/send",
+            post(crate::auth::control_center::send_email_otp),
+        )
+        .route(
+            "/api/admin/auth/recover",
+            post(crate::auth::control_center::recover),
         )
         // Authority has its own web-only authentication surface and scoped sessions.
         .route(
@@ -1213,7 +1217,10 @@ pub fn build_app_router(state: AppState) -> Router {
             get(payroll_routes::get_my_payslip),
         )
         // --- Control Center & Admin ---
-        .route("/api/admin/auth/login", post(admin_routes::admin_login))
+        .route(
+            "/api/admin/auth/login",
+            post(crate::auth::control_center::verify_email_otp),
+        )
         .route(
             "/api/admin/portal/overview",
             get(admin_routes::portal_overview),

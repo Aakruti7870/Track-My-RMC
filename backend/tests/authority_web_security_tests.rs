@@ -1,3 +1,7 @@
+#[path = "support/admin_challenge.rs"]
+mod admin_challenge;
+use admin_challenge::admin_challenge;
+
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
@@ -126,6 +130,7 @@ async fn pending_login_cannot_outlive_credential_or_approval_revocation(db: PgPo
     for role in ["central_admin", "authority"] {
         for revoke_password in [true, false] {
             let (id, email, secret) = identity(&db, role, &["support.view"]).await;
+            let challenge = admin_challenge(&db, &email).await;
             let mut revocation = db.begin().await.unwrap();
             sqlx::query("SELECT id FROM users WHERE id=$1 FOR UPDATE")
                 .bind(id)
@@ -133,11 +138,15 @@ async fn pending_login_cannot_outlive_credential_or_approval_revocation(db: PgPo
                 .await
                 .unwrap();
             if revoke_password {
-                sqlx::query("UPDATE users SET hashed_password='!revoked!' WHERE id=$1")
-                    .bind(id)
-                    .execute(&mut *revocation)
-                    .await
-                    .unwrap();
+                sqlx::query(if role == "central_admin" {
+                    "UPDATE user_totp_credentials SET is_enabled=FALSE WHERE user_id=$1"
+                } else {
+                    "UPDATE users SET hashed_password='!revoked!' WHERE id=$1"
+                })
+                .bind(id)
+                .execute(&mut *revocation)
+                .await
+                .unwrap();
             } else {
                 sqlx::query("UPDATE control_center_access SET approved=FALSE WHERE user_id=$1")
                     .bind(id)
@@ -158,9 +167,11 @@ async fn pending_login_cannot_outlive_credential_or_approval_revocation(db: PgPo
                     &router,
                     path,
                     None,
-                    Some(json!({
-                        "identifier":email,"password":SYNTHETIC_PASSWORD,"code":code
-                    })),
+                    Some(if role == "central_admin" {
+                        json!({"challenge_token":challenge,"code":code})
+                    } else {
+                        json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":code})
+                    }),
                 )
                 .await
             });
@@ -229,7 +240,7 @@ async fn authority_web_login_cannot_cross_into_super_admin_or_mobile(db: PgPool)
             &app,
             "/api/admin/auth/verify-totp",
             None,
-            Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":code})),
+            Some(json!({"challenge_token":admin_challenge(&db, &email).await,"code":code})),
         )
         .await
         .0,
@@ -448,7 +459,7 @@ async fn super_admin_revocation_invalidates_authority_web_session(db: PgPool) {
         &app,
         "/api/admin/auth/verify-totp",
         None,
-        Some(json!({"identifier":admin_email,"password":SYNTHETIC_PASSWORD,"code":admin_code})),
+        Some(json!({"challenge_token":admin_challenge(&db, &admin_email).await,"code":admin_code})),
     )
     .await;
     assert_eq!(login_status, StatusCode::OK);
@@ -517,7 +528,7 @@ async fn privileged_password_rotation_revokes_session_and_cannot_cross_roles(db:
         )
         .await
         .0,
-        StatusCode::FORBIDDEN,
+        StatusCode::NOT_FOUND,
     );
     assert_eq!(
         call(
@@ -602,7 +613,7 @@ async fn plant_admin_cannot_access_global_service_enquiry_control(db: PgPool) {
         &app,
         "/api/admin/auth/verify-totp",
         None,
-        Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":code})),
+        Some(json!({"challenge_token":admin_challenge(&db, &email).await,"code":code})),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -639,7 +650,11 @@ async fn privileged_proofs_share_replay_counter_across_login_and_step_up(db: PgP
         };
         let now = chrono::Utc::now().timestamp() as u64;
         let code = TotpEngine::compute_code(&secret, now).unwrap();
-        let login = json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":code});
+        let login = if role == "central_admin" {
+            json!({"challenge_token":admin_challenge(&db, &email).await,"code":code})
+        } else {
+            json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":code})
+        };
         let (status, session) = call(
             &app,
             &format!("{prefix}/verify-totp"),
@@ -694,7 +709,11 @@ async fn privileged_proofs_share_replay_counter_across_login_and_step_up(db: PgP
                 &app,
                 &format!("{prefix}/verify-totp"),
                 None,
-                Some(json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":fresh}))
+                Some(if role == "central_admin" {
+                    json!({"challenge_token":admin_challenge(&db, &email).await,"code":fresh})
+                } else {
+                    json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":fresh})
+                })
             )
             .await
             .0,
@@ -833,7 +852,7 @@ async fn concurrent_privileged_login_accepts_only_one_possession_proof(db: PgPoo
     let app = build_app_router(state(db.clone()));
     let (id, email, secret) = identity(&db, "central_admin", &["system.view"]).await;
     let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
-    let payload = json!({"identifier":email,"password":SYNTHETIC_PASSWORD,"code":code});
+    let payload = json!({"challenge_token":admin_challenge(&db, &email).await,"code":code});
     let (first, second) = tokio::join!(
         call(
             &app,

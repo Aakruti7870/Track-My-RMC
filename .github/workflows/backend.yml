@@ -108,9 +108,7 @@ jobs:
           for migration in backend/migrations/*.sql; do
             psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration" > /dev/null
           done
-          cargo build --manifest-path backend/Cargo.toml --example bootstrap_central_admin
-          # The harness captures secrets only from synthetic private PTYs. It
-          # explicitly verifies that CI=true is rejected by the real command.
+          cargo build --manifest-path backend/Cargo.toml --bin trackmyrmc-backend
           python3 backend/scripts/verify_bootstrap_lifecycle.py
 
       - name: Setup Node for actual admin browser regression
@@ -135,7 +133,7 @@ jobs:
           CORS_ORIGIN: http://127.0.0.1:4173
           VITE_API_URL: http://127.0.0.1:8000
         run: |
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/tests/fixtures/control_center_browser.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -v test_otp_pepper="$OTP_PEPPER" -f backend/tests/fixtures/control_center_browser.sql
           npm ci --prefix admin-web
           cd admin-web
           npx playwright install --with-deps chromium

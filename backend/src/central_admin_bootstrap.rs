@@ -3,6 +3,26 @@ use std::error::Error;
 use uuid::Uuid;
 
 pub const PRIMARY_EMAIL: &str = "support@trackmyrmc.com";
+pub(crate) const PRIMARY_PERMISSIONS: &[&str] = &[
+    "admin_access.manage",
+    "system.view",
+    "user.view",
+    "plant.view",
+    "order.view",
+    "support.view",
+    "support.reply",
+    "support.manage",
+    "kyc.view",
+    "kyc.review",
+    "audit.view",
+    "session.view",
+    "reviewer_access.manage",
+    "plant_owners.manage",
+    "owner.assign",
+    "automation.manage",
+    "payment.view",
+    "ai.diagnose",
+];
 const PENDING_PASSWORD: &str = "!primary-central-admin-pending!";
 
 pub async fn verify_target_database(

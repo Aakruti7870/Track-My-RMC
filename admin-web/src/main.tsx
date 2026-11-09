@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import apiClient, { getAccessToken, setAccessToken } from './api';
 
-type Stage = 'central-login' | 'authority-login' | 'authority-password' | 'email' | 'otp' | 'mfa-enroll' | 'mfa-login' | 'authenticated';
+type Stage = 'central-login' | 'central-otp' | 'central-mfa' | 'central-recover' | 'central-recovery-codes' | 'authority-login' | 'authority-password' | 'email' | 'otp' | 'mfa-enroll' | 'mfa-login' | 'authenticated';
 
 type StaffUser = {
   id?: string;
@@ -94,6 +94,7 @@ function CommandCenter() {
   const [challengeToken, setChallengeToken] = useState('');
   const [enrollment, setEnrollment] = useState<Enrollment | null>(null);
   const [recoveryCodesSaved, setRecoveryCodesSaved] = useState(false);
+  const [centralRecoveryCodes, setCentralRecoveryCodes] = useState<string[]>([]);
   const [user, setUser] = useState<StaffUser | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
   const [adminKpis, setAdminKpis] = useState<PortalKpi[]>([]);
@@ -527,16 +528,89 @@ function CommandCenter() {
     finally {setBusy(false);}
   }
 
-  async function centralLogin(event: React.FormEvent<HTMLFormElement>) {
+  function restartCentralLogin() {
+    setOtp(''); setMfaCode(''); setChallengeToken(''); setEnrollment(null);
+    setError(''); setNotice(''); setStage('central-login');
+  }
+
+  async function sendCentralOtp(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setError(''); setNotice('');
+    try {
+      await apiClient.post('/api/admin/auth/otp/send', { email: email.trim() });
+      setStage('central-otp');
+      setNotice('Enter the verification code sent to your registered email.');
+    } catch (error) {
+      setError(errorMessage(error));
+    } finally { setBusy(false); }
+  }
+
+  async function verifyCentralOtp(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setError(''); setNotice('');
+    try {
+      const {data} = await apiClient.post('/api/admin/auth/login', {
+        email: email.trim(), otp: otp.trim(),
+      });
+      if (!data?.challenge_token) throw new Error('The server did not return a valid MFA challenge.');
+      setChallengeToken(data.challenge_token);
+      setEnrollment(data.enrollment || null);
+      setOtp(''); setStage('central-mfa');
+    } catch (error) {
+      setError(errorMessage(error));
+    } finally { setBusy(false); }
+  }
+
+  async function verifyCentralMfa(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setError(''); setNotice('');
+    try {
+      if (stage === 'central-recover') {
+        const {data} = await apiClient.post('/api/admin/auth/recover', {
+          challenge_token: challengeToken, code: mfaCode.trim(),
+        });
+        if (!data?.challenge_token || !data.enrollment) throw new Error('The server did not return authenticator setup.');
+        setChallengeToken(data.challenge_token); setEnrollment(data.enrollment);
+        setMfaCode(''); setStage('central-mfa');
+        return;
+      }
+
+      const {data} = await apiClient.post('/api/admin/auth/verify-totp', {
+        challenge_token: challengeToken, code: mfaCode.trim(),
+      });
+      if (!data?.token || data?.user?.role !== 'central_admin') throw new Error('Central Admin session was not established.');
+      setAccessToken(data.token);
+      setChallengeToken(''); setMfaCode(''); setEnrollment(null);
+      if (data.recovery_codes?.length) {
+        setUser(data.user); setCentralRecoveryCodes(data.recovery_codes);
+        setRecoveryCodesSaved(false); setStage('central-recovery-codes');
+      } else {
+        const session = await apiClient.get('/api/admin/auth/me');
+        setPermissions(session.data?.permissions || []);
+        setUser(data.user); setStage('authenticated');
+      }
+    } catch (error) {
+      setAccessToken(null);
+      setError(errorMessage(error));
+    } finally { setBusy(false); }
+  }
+
+  async function finishCentralEnrollment(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError('');
     try {
-      const authority = stage === 'authority-login';
-      const expectedRole = authority ? 'authority' : 'central_admin';
-      const prefix = authority ? '/api/authority/auth' : '/api/admin/auth';
+      const session = await apiClient.get('/api/admin/auth/me');
+      setPermissions(session.data?.permissions || []);
+      setCentralRecoveryCodes([]); setRecoveryCodesSaved(false); setStage('authenticated');
+    } catch (error) {
+      setError(errorMessage(error));
+    } finally { setBusy(false); }
+  }
+
+  async function authorityLogin(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setError('');
+    try {
+      const prefix = '/api/authority/auth';
       const response = await apiClient.post(prefix+'/verify-totp', {
         identifier: email.trim(), password: privilegedPassword, code: mfaCode.trim(),
       });
-      if (!response.data?.token || response.data?.user?.role !== expectedRole) throw new Error('Privileged web session was not established.');
+      if (!response.data?.token || response.data?.user?.role !== 'authority') throw new Error('Privileged web session was not established.');
       setAccessToken(response.data.token);
       const session=await apiClient.get(prefix+'/me');
       setPermissions(session.data?.permissions || []);
@@ -679,14 +753,13 @@ function CommandCenter() {
   async function rotateWebPassword(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();setBusy(true);setError('');setNotice('');
     try {
-      if(!user || !['central_admin','authority'].includes(user.role)
+      if(user?.role !== 'authority'
         || newWebPassword.length<16 || newWebPassword.length>128
         || newWebPassword!==newWebPasswordConfirm || newWebPassword===oldWebPassword
         || !/^[0-9]{6}$/.test(rotationCode.trim()) || rotationReason.trim().length<10) {
         throw new Error('Current password, distinct 16-128 character new password, matching confirmation, current authenticator code and audit reason are required.');
       }
-      const prefix=user.role==='authority'?'/api/authority/auth':'/api/admin/auth';
-      await apiClient.post(prefix+'/change-password',{
+      await apiClient.post('/api/authority/auth/change-password',{
         current_password:oldWebPassword,new_password:newWebPassword,
         code:rotationCode.trim(),reason:rotationReason.trim(),
       });
@@ -716,7 +789,7 @@ function CommandCenter() {
       setHealth(null);
       setAdminKpis([]);
       setAdminOverviewError('');
-      setEnrollment(null);
+      setEnrollment(null); setCentralRecoveryCodes([]); setRecoveryCodesSaved(false);
       setChallengeToken('');
       setOtp('');
       setMfaCode('');
@@ -816,34 +889,73 @@ function CommandCenter() {
           TrackMyRMC · Secure Access
         </div>
         <h1 id="portal-title" style={{ margin: '10px 0 6px', fontSize: 30, lineHeight: 1.2 }}>
-          {stage === 'authenticated' ? 'Command Center' : stage === 'central-login' ? 'Central Admin sign in' : stage === 'authority-login' ? 'Delegated Authority sign in' : 'Verified email sign in'}
+          {stage === 'authenticated' ? 'Command Center' : stage.startsWith('central-') ? 'Central Admin sign in' : stage === 'authority-login' ? 'Delegated Authority sign in' : 'Verified email sign in'}
         </h1>
         <p style={{ color: '#cbd5e1', lineHeight: 1.6, marginTop: 0 }}>
           {stage === 'authenticated'
             ? 'Your access is restricted to the permissions assigned to your account.'
-            : stage === 'central-login' ? 'Approved Central Admin accounts require an account password and enrolled authenticator. Staff and Authority sessions cannot manage platform governance.' : stage === 'authority-login' ? 'Authority uses a password, authenticator and separate one-hour browser session with scoped permissions. Reloading this page requires signing in again.' : 'Approved staff and first-time Authority accounts use email verification followed by authenticator MFA.'}
+            : stage.startsWith('central-') ? 'Verify your registered email and authenticator to access the Control Center.' : stage === 'authority-login' ? 'Authority uses a password, authenticator and separate one-hour browser session with scoped permissions. Reloading this page requires signing in again.' : 'Approved staff and first-time Authority accounts use email verification followed by authenticator MFA.'}
         </p>
 
         {error && <div role="alert" style={{ padding: 12, borderRadius: 8, background: '#451a1a', border: '1px solid #b91c1c', color: '#fecaca', margin: '16px 0' }}>{error}</div>}
         {notice && <div role="status" style={{ padding: 12, borderRadius: 8, background: '#172554', border: '1px solid #3730a3', color: '#dbeafe', margin: '16px 0' }}>{notice}</div>}
 
         {stage === 'central-login' && (
-          <form onSubmit={centralLogin}>
+          <form onSubmit={sendCentralOtp}>
             <label htmlFor="central-email">Approved administrator email</label>
             <input id="central-email" type="email" autoComplete="username" required value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} disabled={busy} />
-            <label htmlFor="central-password" style={{display:'block',marginTop:18}}>Account password</label>
-            <input id="central-password" type="password" autoComplete="current-password" required minLength={12} maxLength={128}
-              value={privilegedPassword} onChange={e=>setPrivilegedPassword(e.target.value)} style={inputStyle} disabled={busy}/>
-            <label htmlFor="central-code" style={{display:'block',marginTop:18}}>Authenticator code</label>
-            <input id="central-code" inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" maxLength={6} value={mfaCode} onChange={e => setMfaCode(e.target.value)} style={inputStyle} disabled={busy} />
-            <button type="submit" disabled={busy} style={buttonStyle}>{busy ? 'Verifying…' : 'Sign in with password + authenticator'}</button>
+            <button type="submit" disabled={busy} style={buttonStyle}>Send email verification code</button>
             <button type="button" onClick={() => {setStage('authority-login');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Delegated Authority sign in</button>
             <button type="button" onClick={() => {setAuthorityEnrollment(false);setStage('email');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Plant staff / approved MFA setup</button>
           </form>
         )}
 
+        {stage === 'central-otp' && (
+          <form onSubmit={verifyCentralOtp}>
+            <label htmlFor="central-otp">Email verification code</label>
+            <input id="central-otp" inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" maxLength={6}
+              value={otp} onChange={e=>setOtp(e.target.value)} style={inputStyle} disabled={busy} />
+            <button type="submit" disabled={busy} style={buttonStyle}>Verify email code</button>
+            <button type="button" disabled={busy} onClick={restartCentralLogin}
+              style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Start over or request a new code</button>
+          </form>
+        )}
+
+        {((stage === 'central-mfa' && !enrollment) || stage === 'central-recover') && (
+          <form onSubmit={verifyCentralMfa}>
+            <label htmlFor="central-code">{stage === 'central-recover' ? 'Unused recovery code' : 'Authenticator code'}</label>
+            <input id="central-code" autoComplete="one-time-code" required
+              inputMode={stage === 'central-recover' ? 'text' : 'numeric'} maxLength={stage === 'central-recover' ? 9 : 6}
+              pattern={stage === 'central-recover' ? '[A-Za-z0-9]{4}-?[A-Za-z0-9]{4}' : '[0-9]{6}'}
+              value={mfaCode} onChange={e=>setMfaCode(e.target.value)} style={inputStyle} disabled={busy} />
+            <button type="submit" disabled={busy} style={buttonStyle}>
+              {stage === 'central-recover' ? 'Verify recovery code' : 'Verify authenticator and sign in'}
+            </button>
+            {stage === 'central-mfa' && (
+              <button type="button" disabled={busy} onClick={()=>{setMfaCode('');setError('');setStage('central-recover');}}
+                style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Recover with a saved code</button>
+            )}
+            <button type="button" disabled={busy} onClick={restartCentralLogin}
+              style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Start over</button>
+          </form>
+        )}
+
+        {stage === 'central-recovery-codes' && (
+          <form onSubmit={finishCentralEnrollment}>
+            <h2 style={{fontSize:19}}>Save your recovery codes</h2>
+            <p style={{color:'#cbd5e1'}}>Store these codes securely. Each code can be used once with a verified email to enroll a replacement authenticator.</p>
+            <ul style={{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:8}}>
+              {centralRecoveryCodes.map(code=><li key={code}><code>{code}</code></li>)}
+            </ul>
+            <label><input type="checkbox" checked={recoveryCodesSaved} onChange={e=>setRecoveryCodesSaved(e.target.checked)} />
+              I have saved the recovery codes
+            </label>
+            <button type="submit" disabled={busy || !recoveryCodesSaved} style={buttonStyle}>Continue to Control Center</button>
+          </form>
+        )}
+
         {stage === 'authority-login' && (
-          <form onSubmit={centralLogin}>
+          <form onSubmit={authorityLogin}>
             <label htmlFor="authority-login-email">Approved Authority email</label>
             <input id="authority-login-email" type="email" autoComplete="username" required value={email} onChange={e=>setEmail(e.target.value)} style={inputStyle} disabled={busy}/>
             <label htmlFor="authority-login-password" style={{display:'block',marginTop:18}}>Account password</label>
@@ -878,8 +990,8 @@ function CommandCenter() {
           </form>
         )}
 
-        {stage === 'mfa-enroll' && enrollment && (
-          <form onSubmit={confirmEnrollment}>
+        {(stage === 'mfa-enroll' || stage === 'central-mfa') && enrollment && (
+          <form onSubmit={stage === 'central-mfa' ? verifyCentralMfa : confirmEnrollment}>
             <h2 style={{ fontSize: 19 }}>Set up your authenticator</h2>
             <p style={{ color: '#cbd5e1', lineHeight: 1.6 }}>Add <strong>{enrollment.account}</strong> to your authenticator app using the setup key below.</p>
             <label htmlFor="manual-key" style={{ display: 'block', fontWeight: 650 }}>Authenticator setup key</label>
@@ -889,6 +1001,7 @@ function CommandCenter() {
               <summary style={{ cursor: 'pointer', color: '#c4b5fd' }}>Show otpauth URI</summary>
               <textarea readOnly value={enrollment.otpauth_uri} rows={3} style={{ ...inputStyle, resize: 'vertical', fontFamily: 'monospace' }} />
             </details>
+            {stage === 'mfa-enroll' && (
             <div style={{ marginTop: 16, padding: 14, borderRadius: 10, border: '1px solid #92400e', background: '#451a03' }}>
               <strong style={{ color: '#fde68a' }}>Save these recovery codes now</strong>
               <p style={{ margin: '6px 0 10px', color: '#fde68a', fontSize: 13 }}>Each code is single-use. This screen will not show them again after setup.</p>
@@ -902,10 +1015,15 @@ function CommandCenter() {
                 I have saved these recovery codes in a secure place.
               </label>
             </div>
+            )}
             <label htmlFor="enroll-code" style={{ display: 'block', marginTop: 18, fontWeight: 650 }}>6-digit authenticator code</label>
-            <input id="enroll-code" type="text" inputMode="numeric" autoComplete="one-time-code" required maxLength={8}
+            <input id="enroll-code" type="text" inputMode="numeric" autoComplete="one-time-code" required maxLength={6} pattern="[0-9]{6}"
               value={mfaCode} onChange={(event) => setMfaCode(event.target.value)} style={inputStyle} disabled={busy} />
-            <button type="submit" disabled={busy || !recoveryCodesSaved} style={buttonStyle}>{busy ? 'Enabling…' : 'Confirm authenticator setup'}</button>
+            <button type="submit" disabled={busy || (stage === 'mfa-enroll' && !recoveryCodesSaved)} style={buttonStyle}>{busy ? 'Enabling…' : 'Confirm authenticator setup'}</button>
+            {stage === 'central-mfa' && (
+              <button type="button" disabled={busy} onClick={restartCentralLogin}
+                style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Start over</button>
+            )}
           </form>
         )}
 
@@ -948,7 +1066,7 @@ function CommandCenter() {
               <p style={{ margin: '0 0 8px' }}><strong>Role</strong> {user.role}</p>
               <p style={{ margin: 0 }}><strong>Session</strong> {user.role === 'central_admin' || user.role === 'authority' ? 'Dedicated one-hour web authenticator session' : 'Email OTP + MFA verified'}</p>
             </div>
-            {['central_admin','authority'].includes(user.role) && (
+            {user.role === 'authority' && (
               <details style={{marginTop:14,padding:14,border:'1px solid #334155',borderRadius:10}}>
                 <summary style={{cursor:'pointer',fontWeight:700}}>Account security · Change password</summary>
                 <p style={{fontSize:12,color:'#cbd5e1'}}>Requires your current password, authenticator and audit reason. Every session will be revoked.</p>

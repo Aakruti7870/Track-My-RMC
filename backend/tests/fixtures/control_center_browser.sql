@@ -1,18 +1,17 @@
 -- Synthetic disposable CI identity. Never run against production.
-INSERT INTO users (id,phone,email,hashed_password,full_name,role,is_active)
-VALUES ('00000000-0000-4000-8000-000000000040','ci-admin','ci-admin@example.invalid','$argon2id$v=19$m=19456,t=2,p=1$SvWTeNFS61/Ui+SOXVyNJw$JGIBa6UrWI3fvkiDP+jDI+a6plEeoYVpTM72VyGddR8','CI Central Admin','central_admin',TRUE);
-INSERT INTO user_totp_credentials (user_id,secret_key,is_enabled)
-VALUES ('00000000-0000-4000-8000-000000000040','GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ',TRUE);
-INSERT INTO control_center_access (user_id,approved,permissions)
-VALUES ('00000000-0000-4000-8000-000000000040',TRUE,
-    ARRAY['system.view','user.view','plant.view','order.view','support.view','support.reply','audit.view','session.view','plant_owners.manage']);
+INSERT INTO users (id,phone,email,hashed_password,full_name,role,is_active,is_verified)
+VALUES ('00000000-0000-4000-8000-000000000040',NULL,'support@trackmyrmc.com',
+    '!primary-central-admin-pending!','CI Central Admin','central_admin',FALSE,FALSE);
+INSERT INTO otp_verifications (destination,channel,purpose,salt,hashed_otp,max_attempts,expires_at)
+VALUES ('support@trackmyrmc.com','email','central_admin_login','synthetic-browser',
+    encode(hmac('synthetic-browser:123456', :'test_otp_pepper','sha256'),'hex'),3,NOW()+INTERVAL '10 minutes');
 INSERT INTO plant_listing_requests(name,address,lat,lng,applicant_owner_name,applicant_email,applicant_mobile)
 VALUES('CI Approval Plant','Synthetic CI approval address',0,0,'CI Approved Owner','ci-owner-approval@example.invalid','12025550877');
 
 -- Separate public synthetic Authority, never a promotion of the administrator.
 INSERT INTO users (id,phone,email,hashed_password,full_name,role,is_active)
-SELECT '00000000-0000-4000-8000-000000000041',NULL,'ci-authority@example.invalid',hashed_password,'CI Authority','authority',TRUE
-FROM users WHERE id='00000000-0000-4000-8000-000000000040';
+VALUES ('00000000-0000-4000-8000-000000000041',NULL,'ci-authority@example.invalid',
+    '$argon2id$v=19$m=19456,t=2,p=1$SvWTeNFS61/Ui+SOXVyNJw$JGIBa6UrWI3fvkiDP+jDI+a6plEeoYVpTM72VyGddR8','CI Authority','authority',TRUE);
 INSERT INTO user_totp_credentials (user_id,secret_key,is_enabled)
 VALUES ('00000000-0000-4000-8000-000000000041','GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ',TRUE);
 INSERT INTO control_center_access (user_id,approved,permissions)
