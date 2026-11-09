@@ -50,7 +50,7 @@ async function deviceCoordinates(): Promise<{ lat: number; lng: number }> {
 
 export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Promise<void> }) {
   const { token } = useAuth();
-  const { colors } = useTheme();
+  const { colors, scheme, toggle } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -181,6 +181,10 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
         <Pressable testID="notifications-bell" accessibilityRole="button" accessibilityLabel={unread ? `${feed!.unread} unread notifications` : "Notifications"} onPress={() => router.push("/notifications")} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(44, size.headerTarget) }]}>
           <Ionicons name="notifications-outline" size={size.headerBell} color={colors.onSurface} />
           {unread ? <View testID="header-unread-dot" style={[styles.dot, { backgroundColor: colors.verified, borderColor: glassSurface }]} /> : null}
+        </Pressable>
+        <Pressable testID="header-theme" accessibilityRole="button" accessibilityLabel="Switch light or dark mode"
+          onPress={toggle} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(44, size.headerTarget) }]}>
+          <Ionicons name={scheme === "dark" ? "sunny-outline" : "moon-outline"} size={size.headerBell} color={colors.onSurface} />
         </Pressable>
         <Pressable testID="header-help" accessibilityRole="button" accessibilityLabel="Customer help" onPress={() => setSheet("help")} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(44, size.headerTarget) }]}>
           <Ionicons name="help-circle-outline" size={size.headerHelp} color={colors.onSurface} />
