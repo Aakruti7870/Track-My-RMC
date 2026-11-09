@@ -207,8 +207,7 @@ mod tests {
         let error = service
             .send_otp_to(&endpoint, "recipient@example.invalid", "123456", "Staff")
             .await
-            .err()
-            .expect("provider rejection must fail");
+            .expect_err("provider rejection must fail");
         task.abort();
         assert_eq!(received.lock().unwrap().len(), 1);
         let message = format!("{error:?}");
