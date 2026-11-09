@@ -83,7 +83,7 @@ try {
   // Use a disposable account and generated key; never capture real enrollment QR images.
   const qr = page.getByTestId('admin-authenticator-qr');
   await qr.waitFor();
-  assert.match((await qr.getAttribute('viewBox')) || '', /^0 0 \\d+ \\d+$/, 'QR viewbox must describe a square module grid');
+  assert.match((await qr.getAttribute('viewBox')) || '', /^0 0 \d+ \d+$/, 'QR viewbox must describe a square module grid');
   assert.ok(((await qr.locator('path').getAttribute('d')) || '').length > 500, 'offline enrollment QR needs encoded dark modules');
   await page.getByText(/issuer TrackMyRMC/).waitFor();
   authenticatorKey = decodeBase32(await page.getByLabel('Authenticator setup key').inputValue());
