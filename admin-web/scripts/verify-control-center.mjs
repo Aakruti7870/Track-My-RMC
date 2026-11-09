@@ -80,6 +80,12 @@ try {
   await page.getByRole('button', {name:'Send email verification code',exact:true}).click();
   await page.getByLabel('Email verification code', {exact:true}).fill('123456');
   await page.getByRole('button', {name:'Verify email code',exact:true}).click();
+  // Use a disposable account and generated key; never capture real enrollment QR images.
+  const qr = page.getByTestId('admin-authenticator-qr');
+  await qr.waitFor();
+  assert.match((await qr.getAttribute('viewBox')) || '', /^0 0 \\d+ \\d+$/, 'QR viewbox must describe a square module grid');
+  assert.ok(((await qr.locator('path').getAttribute('d')) || '').length > 500, 'offline enrollment QR needs encoded dark modules');
+  await page.getByText(/issuer TrackMyRMC/).waitFor();
   authenticatorKey = decodeBase32(await page.getByLabel('Authenticator setup key').inputValue());
   await page.getByLabel('6-digit authenticator code', {exact:true}).fill(await freshCode());
   const adminLogin = page.waitForResponse(response=>response.url().endsWith('/api/admin/auth/verify-totp'));
