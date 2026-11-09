@@ -14,7 +14,7 @@ assert.match(vendorSource, /Copyright \(c\) Project Nayuki/);
 assert.match(vendorSource, /MIT License/);
 assert.match(componentSource, /qrcodegen\.QrCode\.encodeText\(uri/);
 assert.match(componentSource, /QR code is unavailable\. Use the setup key/);
-assert.doesNotMatch(componentSource, /fetch\(|axios\.|https:\/\/|http:\/\//,
+assert.doesNotMatch(componentSource, /fetch\(|axios\.|XMLHttpRequest|window\.open\(|image\.src\s*=/,
   'Enrollment QR must never be sent to an external renderer or analytics service');
 assert.match(adminSource, /<AuthenticatorQr uri=\{enrollment\.otpauth_uri\} \/>/);
 
