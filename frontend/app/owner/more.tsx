@@ -1,7 +1,6 @@
 import React from "react";
 import { Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
 import { useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/src/auth/AuthContext";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { AppText } from "@/src/components/ui/AppText";
@@ -49,7 +48,7 @@ export default function OwnerMore() {
         <Pressable testID="owner-logout" accessibilityRole="button" accessibilityLabel="Sign out"
           onPress={async () => { await signOut(); router.replace("/login"); }}
           style={({ pressed }) => [styles.signOut, { backgroundColor: p.dark ? "#96352D" : "#B42318", opacity: pressed ? 0.88 : 1 }]}>
-          <Ionicons name="log-out-outline" size={22} color="#FFFFFF" />
+          <VectorSymbol name="logout" size={24} />
           <AppText style={styles.signOutText}>Sign out</AppText>
         </Pressable>
       </View>
