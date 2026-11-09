@@ -85,8 +85,11 @@ const pushBridge = read("frontend/src/notifications/PushNotificationBridge.tsx")
 const notificationsScreen = read("frontend/app/notifications.tsx");
 expectIncludes(pushClient, "requestPermission = false", "Push registration must not request notification permission by default.");
 expectIncludes(pushClient, 'if (permission.status !== "granted" && requestPermission)', "Notification prompt must require explicit caller consent.");
-expectIncludes(pushBridge, "Enable notifications", "Notification disclosure needs an affirmative action.");
-expectIncludes(pushBridge, "Not now", "Notification disclosure needs a decline path.");
+const unifiedPermissions = read("frontend/src/permissions/PermissionProvider.tsx");
+expectIncludes(unifiedPermissions, "Allow notifications", "Single post-login card must offer affirmative notification consent.");
+expectIncludes(unifiedPermissions, 'label="Not now"', "Single post-login card must allow declining notifications.");
+expect(!pushBridge.includes("<Modal"), "The old login-time notification modal must remain removed.");
+expectIncludes(pushBridge, "registerPushDevice(token, false)", "Push bridge must only register an already-permitted Android device.");
 expectIncludes(notificationsScreen, "Enable device notifications", "Users must be able to opt into notifications later.");
 
 // RMC physical-supplier transactions must not reintroduce Owner subscription checkout.
