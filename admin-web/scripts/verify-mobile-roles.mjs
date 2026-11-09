@@ -387,8 +387,21 @@ try {
       await expect(page.getByTestId('role-module-directory')).toBeVisible();
       for (const key of visibleKeys) await expect(page.getByTestId('role-module-' + key)).toBeVisible();
     } else if (user.role === 'driver') {
-      await expect(page.getByTestId('role-module-directory')).toBeVisible();
-      for (const key of visibleKeys) await expect(page.getByTestId('role-module-' + key)).toBeVisible();
+      // Driver Home intentionally has no module directory: it was removed to
+      // prevent duplicate work cards. The complete authorized catalog lives
+      // exclusively on More; validate the visible UI before reconciling keys.
+      phase = 'driver Home module deduplication';
+      await expect(page.getByTestId('role-module-directory')).toHaveCount(0);
+      phase = 'driver More navigation';
+      await page.getByTestId('tab-more').click();
+      await expect(page.getByTestId('tab-more')).toHaveAttribute('aria-selected', 'true');
+      phase = 'driver More module discovery';
+      const driverDirectory = page.getByTestId('role-module-directory').filter({ visible: true });
+      await expect(driverDirectory).toBeVisible();
+      const driverKeys = await visibleModuleCards(driverDirectory);
+      assert.equal(new Set(driverKeys).size, driverKeys.length, 'Driver More must not duplicate module cards');
+      assert.deepEqual(new Set(driverKeys), new Set(visibleKeys),
+        'All authorized driver modules must be discoverable exactly once on More');
     } else {
       const nativeTabKeys = {
         dispatcher: ['dispatcher-queue', 'dispatcher-fleet'],
