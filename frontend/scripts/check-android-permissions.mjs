@@ -64,7 +64,9 @@ assert(permissionSettings.includes("reconfirmGranted={!locationEnabled}"), "Exis
 assert([ownerMore, driverMore, customerMore, staffMore].every(source => source.includes("permission-settings") || source.includes("review")), "Customer, owner, driver, and operational staff settings must link to optional permission management.");
 assert(!browserReview.includes("getByTestId('permission-continue')"), "Browser E2E must not depend on deprecated permission-continue control.");
 assert(!push.includes("<Modal") && !push.includes("consentVisible") && push.includes("registerPushDevice(token, false)"), "No duplicate notification consent modal; only already-granted OS tokens are registered.");
-assert(push.includes('preference.choices?.notifications === "granted"') && permissionProvider.includes("unregisterPushDevice(token)"), "Post-login notification opt-out must prevent future token registration and revoke an existing granted token.");
+assert(push.includes("hasNotificationConsent") && push.includes("subscribeToPushTokenChanges(token, canRegister)") && permissionProvider.includes("unregisterPushDevice(token)"), "Post-login notification opt-out must prevent future token registration and revoke an existing granted token.");
+assert(permissionSettings.includes("saveNotificationConsent") && read("frontend/app/notifications.tsx").includes("saveNotificationConsent"), "Later notification opt-ins must persist the shared account preference.");
+assert(permissionSettings.includes("reconfirmGranted={!notificationOptedIn}"), "An existing OS grant must still allow app notification opt-in.");
 assert(permissionProvider.includes("introActionInFlight"), "Rapid repeated taps must not advance multiple consent cards.");
 assert(read("frontend/app/review-access.tsx").includes("verifyPlayReview") && permissionProvider.includes("user.id"), "Google Play reviewers must pass through the same account-scoped post-login permission cards.");
 assert(consent.includes("This location is collected in the background — even when the app is closed or not in use"), "Background location disclosure must state background use.");

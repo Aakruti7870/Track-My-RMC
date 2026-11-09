@@ -3,7 +3,7 @@ import { Platform } from "react-native";
 import { useRouter } from "expo-router";
 
 import { useAuth } from "@/src/auth/AuthContext";
-import { storage } from "@/src/utils/storage";
+import { hasNotificationConsent } from "@/src/notifications/notificationConsent";
 import {
   configureForegroundNotifications,
   getLastNotificationRoute,
@@ -29,28 +29,17 @@ export function PushNotificationBridge() {
 
     void (async () => {
       await configureForegroundNotifications();
-      const permission = await getNotificationPermissionStatus();
-      const raw = await storage.getItem(
-        `tmrmc_post_login_permission_cards_v2:${user.id}:${user.role}`,
-        "",
-      );
-      let optedIn = false;
-      if (typeof raw === "string" && raw) {
-        try {
-          const preference = JSON.parse(raw) as {
-            version?: number;
-            completed?: boolean;
-            choices?: { notifications?: string };
-          };
-          optedIn = preference.version === 2 && preference.completed === true &&
-            preference.choices?.notifications === "granted";
-        } catch { /* No reliable consent on this device. */ }
-      }
-      if (permission === "granted" && optedIn && !disposed) {
+      const canRegister = async () => {
+        if (disposed) return false;
+        const permission = await getNotificationPermissionStatus();
+        const optedIn = await hasNotificationConsent(`${user.id}:${user.role}`);
+        return !disposed && optedIn && permission === "granted";
+      };
+      if (await canRegister()) {
         await registerPushDevice(token, false);
       }
 
-      const remove = await subscribeToPushTokenChanges(token);
+      const remove = await subscribeToPushTokenChanges(token, canRegister);
       if (disposed) remove();
       else removeTokenListener = remove;
     })().catch(() => undefined);
@@ -59,7 +48,7 @@ export function PushNotificationBridge() {
       disposed = true;
       removeTokenListener();
     };
-  }, [token, user?.id]);
+  }, [token, user?.id, user?.role]);
 
   useEffect(() => {
     if (Platform.OS !== "android" || !token) return;

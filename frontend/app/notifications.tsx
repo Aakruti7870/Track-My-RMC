@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
+import { Linking, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -17,6 +17,7 @@ import {
   getNotificationPermissionStatus,
   registerPushDevice,
 } from "@/src/notifications/pushClient";
+import { hasNotificationConsent, saveNotificationConsent } from "@/src/notifications/notificationConsent";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 
 type Feed = { unread: number; items: { id: string; event: string; title: string; body: string; read: boolean; created_at: string | null }[] };
@@ -29,18 +30,22 @@ const ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
 
 export default function Notifications() {
   const { colors, scheme } = useTheme();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { data, loading, refetch } = useGet<Feed>("/notifications");
   const [permission, setPermission] = useState<string | null>(null);
+  const [optedIn, setOptedIn] = useState(false);
+  const [permissionError, setPermissionError] = useState<string | null>(null);
   const [permissionBusy, setPermissionBusy] = useState(false);
 
   useEffect(() => {
     void getNotificationPermissionStatus()
       .then(setPermission)
       .catch(() => setPermission(null));
-  }, []);
+    setOptedIn(false);
+    if (user) void hasNotificationConsent(`${user.id}:${user.role}`).then(setOptedIn).catch(() => setOptedIn(false));
+  }, [user?.id, user?.role]);
 
   const markAll = async () => {
     await apiPost("/notifications/read-all", token!);
@@ -52,13 +57,19 @@ export default function Notifications() {
   };
 
   const enableDeviceNotifications = async () => {
-    if (!token) return;
+    if (!token || !user) return;
     setPermissionBusy(true);
+    setPermissionError(null);
     try {
-      await registerPushDevice(token, true);
+      if (await registerPushDevice(token, true)) {
+        await saveNotificationConsent(`${user.id}:${user.role}`, "granted");
+        setOptedIn(true);
+      }
       const next = await getNotificationPermissionStatus();
       setPermission(next);
       if (next !== "granted") await Linking.openSettings();
+    } catch {
+      setPermissionError("Notifications could not be enabled. Try again from App permissions.");
     } finally {
       setPermissionBusy(false);
     }
@@ -82,7 +93,7 @@ export default function Notifications() {
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }} showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={colors.brand} />}>
-        {permission && permission !== "granted" ? (
+        {Platform.OS === "android" && permission && (permission !== "granted" || !optedIn) ? (
           <Card style={{ gap: spacing.sm }}>
             <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center" }}>
               <Ionicons name="notifications-outline" size={22} color={colors.brand} />
@@ -98,6 +109,8 @@ export default function Notifications() {
             />
           </Card>
         ) : null}
+
+        {permissionError ? <AppText color={colors.error}>{permissionError}</AppText> : null}
 
         {loading && !data ? (
           <><Skeleton height={70} style={{ borderRadius: radius.lg }} /><Skeleton height={70} style={{ borderRadius: radius.lg }} /></>

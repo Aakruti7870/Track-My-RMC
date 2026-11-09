@@ -13,6 +13,7 @@ import { AppText } from "@/src/components/ui/AppText";
 import { Button } from "@/src/components/ui/Button";
 import { Card } from "@/src/components/ui/Card";
 import { registerPushDevice, unregisterPushDevice } from "@/src/notifications/pushClient";
+import { saveNotificationConsent } from "@/src/notifications/notificationConsent";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { radius, spacing } from "@/src/theme/tokens";
 import { storage } from "@/src/utils/storage";
@@ -146,7 +147,9 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
       const denied = local?.location_choice === "denied" || decision?.location_choice === "denied";
       const approved = newlyApprovedAccount.current === account ||
         decision?.location_choice === "granted" || local?.location_choice === "granted";
-      setLocationPreference(newlyDeclinedAccount.current !== account && !denied && approved);
+      // A choice made while hydration was pending wins over its stale snapshot.
+      setLocationPreference(newlyDeclinedAccount.current !== account &&
+        (newlyApprovedAccount.current === account || (!denied && approved)));
       setNotificationChoice(local?.notification_choice ?? decision?.notification_choice ?? "manual");
       await refreshLocation();
     })().catch(() => undefined);
@@ -203,6 +206,11 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
       await storage.setItem(`permission-user-${account}`, JSON.stringify(decision));
       await apiPut("/me/permission-consent", token, decision).catch(() => undefined);
     }
+    if (kind === "notifications") {
+      // Persist opt-out before awaiting network revocation so token rotations
+      // cannot restore a registration while that request is in flight.
+      await saveNotificationConsent(identity, result);
+    }
     if (kind === "notifications" && account && token) {
       const decision: Decision = {
         version: VERSION,
@@ -240,6 +248,8 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
     setIntroBusy(true);
     try {
       await advance(kind, "skipped", identity);
+    } catch {
+      setIntroError("Your choice could not be saved. Please try again.");
     } finally {
       introActionInFlight.current = false;
       setIntroBusy(false);
@@ -260,6 +270,7 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
         const permission = current.granted || !current.canAskAgain
           ? current : await Location.requestForegroundPermissionsAsync();
         granted = permission.granted;
+        if (introIdentityRef.current !== identity) return;
         if (granted && user?.role === "customer") await enableDiscoveryLocation();
       } else if (kind === "camera") {
         const current = await ImagePicker.getCameraPermissionsAsync();
@@ -272,6 +283,7 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
         const permission = current.granted || !current.canAskAgain
           ? current : await Notifications.requestPermissionsAsync();
         granted = permission.granted;
+        if (introIdentityRef.current !== identity) return;
         if (granted && token) {
           // A device-token upload failure must not reinterpret OS consent.
           await registerPushDevice(token, false).catch(() => null);

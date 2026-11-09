@@ -90,11 +90,16 @@ export async function unregisterPushDevice(authToken: string): Promise<void> {
 
 export async function subscribeToPushTokenChanges(
   authToken: string,
+  canRegister: () => Promise<boolean>,
 ): Promise<() => void> {
   if (Platform.OS !== "android") return () => undefined;
   const Notifications = await notificationsModule();
   const subscription = Notifications.addPushTokenListener((nativeToken) => {
-    void registerTokenValue(authToken, nativeToken.data).catch(() => undefined);
+    void (async () => {
+      // Re-read consent and OS permission on every rotation, including choices
+      // made after this listener was installed. Cleanup also invalidates it.
+      if (await canRegister()) await registerTokenValue(authToken, nativeToken.data);
+    })().catch(() => undefined);
   });
   return () => subscription.remove();
 }

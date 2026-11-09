@@ -79,3 +79,10 @@ The web app does not display Android-specific OS consent cards. Central Admin
 and Authority remain web-only. Run `npm run check:android-permissions`,
 `npm run check:play-policy`, `npm run typecheck`, and the
 Android real-device reviewer/driver trip tests before a final signed AAB.
+
+Notification choices made later in App permissions or Notifications update the
+same account/role preference as the welcome cards. Both initial push registration
+and every token rotation require the current preference and Android grant.
+The permission regression suite (`node --test scripts/test-permission-consent.cjs`)
+checks relogin persistence, rotation after opt-out, listener cleanup, and delayed
+customer-location hydration; Frontend CI runs it before the build.

@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/src/auth/AuthContext";
 import { usePermissions } from "@/src/permissions/PermissionProvider";
 import { requestNearbyPlantsLocationConsent } from "@/src/location/BackgroundLocationConsent";
+import { hasNotificationConsent, saveNotificationConsent } from "@/src/notifications/notificationConsent";
 import { registerPushDevice } from "@/src/notifications/pushClient";
 import { ThemedScreen } from "@/src/components/ThemedScreen";
 import { Card } from "@/src/components/ui/Card";
@@ -64,6 +65,7 @@ export default function PermissionSettings() {
   const [location, setLocation] = useState<PermissionState>(UNKNOWN);
   const [camera, setCamera] = useState<PermissionState>(UNKNOWN);
   const [notification, setNotification] = useState<PermissionState>(UNKNOWN);
+  const [notificationOptedIn, setNotificationOptedIn] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isDriver = user?.role === "driver";
@@ -84,10 +86,11 @@ export default function PermissionSettings() {
       setLocation({ status: loc.status, canAskAgain: loc.canAskAgain });
       setCamera({ status: cam.status, canAskAgain: cam.canAskAgain });
       setNotification({ status: notif.status, canAskAgain: notif.canAskAgain });
+      setNotificationOptedIn(user ? await hasNotificationConsent(`${user.id}:${user.role}`) : false);
     } catch {
       setError("Permission status could not be read. Check your device settings.");
     }
-  }, []);
+  }, [user?.id, user?.role]);
 
   useEffect(() => {
     void refresh();
@@ -120,7 +123,9 @@ export default function PermissionSettings() {
   });
 
   const askNotifications = () => void run(async () => {
-    if (token) await registerPushDevice(token, true);
+    if (token && user && await registerPushDevice(token, true)) {
+      await saveNotificationConsent(`${user.id}:${user.role}`, "granted");
+    }
   });
 
   const openSettings = () => {
@@ -172,7 +177,7 @@ export default function PermissionSettings() {
 
           <PermissionCard icon="notifications-outline" title="Notifications"
             description="Optional Android alerts for order approvals, dispatch, assigned trips and safety events. Your in-app notification feed remains available if you decline."
-            state={notification} buttonLabel="Allow notifications" onRequest={askNotifications} busy={busy} onSettings={openSettings} />
+            state={notification} reconfirmGranted={!notificationOptedIn} buttonLabel="Allow notifications" onRequest={askNotifications} busy={busy} onSettings={openSettings} />
 
           {isDriver ? <Card style={styles.card}>
             <AppText variant="heading">Background location — active trips only</AppText>
