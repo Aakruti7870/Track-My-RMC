@@ -2,9 +2,10 @@
 INSERT INTO users (id,phone,email,hashed_password,full_name,role,is_active,is_verified)
 VALUES ('00000000-0000-4000-8000-000000000040',NULL,'support@trackmyrmc.com',
     '!primary-central-admin-pending!','CI Central Admin','central_admin',FALSE,FALSE);
+-- HMAC of synthetic-browser:123456 under the browser job's disposable OTP pepper.
 INSERT INTO otp_verifications (destination,channel,purpose,salt,hashed_otp,max_attempts,expires_at)
 VALUES ('support@trackmyrmc.com','email','central_admin_login','synthetic-browser',
-    encode(hmac('synthetic-browser:123456', :'test_otp_pepper','sha256'),'hex'),3,NOW()+INTERVAL '10 minutes');
+    '12abbf755f47595b2165371c8c5de8da5077e871865ba1071f987f3682223996',3,NOW()+INTERVAL '10 minutes');
 INSERT INTO plant_listing_requests(name,address,lat,lng,applicant_owner_name,applicant_email,applicant_mobile)
 VALUES('CI Approval Plant','Synthetic CI approval address',0,0,'CI Approved Owner','ci-owner-approval@example.invalid','12025550877');
 

@@ -533,8 +533,12 @@ async fn support_followup_upgrade_preserves_ledger_and_never_enrolls_historical_
             .await
             .unwrap();
     assert_eq!(&after[..before.len()], before.as_slice());
-    assert_eq!(after.len(), before.len() + 1);
-    assert_eq!(after.last().unwrap().0, version);
+    let expected_new: Vec<_> = all
+        .iter()
+        .filter(|migration| migration.version >= version)
+        .map(|migration| (migration.version, migration.checksum.to_vec()))
+        .collect();
+    assert_eq!(&after[before.len()..], expected_new.as_slice());
     assert_eq!(
         sqlx::query_scalar::<_, i64>("SELECT count(*) FROM native_support_followups")
             .fetch_one(&pool)
