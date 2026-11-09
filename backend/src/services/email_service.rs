@@ -103,10 +103,7 @@ impl EmailService {
         let receipt: serde_json::Value = response.json().await.map_err(|_| {
             AppError::InternalError("Email provider returned an invalid delivery receipt".into())
         })?;
-        if receipt["id"]
-            .as_str()
-            .is_none_or(|id| id.trim().is_empty())
-        {
+        if receipt["id"].as_str().is_none_or(|id| id.trim().is_empty()) {
             return Err(AppError::InternalError(
                 "Email provider did not accept the verification code".into(),
             ));
@@ -137,21 +134,21 @@ mod tests {
         let captured = received.clone();
         let app = Router::new().route(
             "/emails",
-            post(move |headers: HeaderMap, Json(payload): Json<serde_json::Value>| {
-                let captured = captured.clone();
-                async move {
-                    captured.lock().unwrap().push((headers, payload));
-                    (
-                        status,
-                        [(header::CONTENT_TYPE, "application/json")],
-                        response_body,
-                    )
-                }
-            }),
+            post(
+                move |headers: HeaderMap, Json(payload): Json<serde_json::Value>| {
+                    let captured = captured.clone();
+                    async move {
+                        captured.lock().unwrap().push((headers, payload));
+                        (
+                            status,
+                            [(header::CONTENT_TYPE, "application/json")],
+                            response_body,
+                        )
+                    }
+                },
+            ),
         );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let endpoint = format!("http://{}/emails", listener.local_addr().unwrap());
         let task = tokio::spawn(async move {
             axum::serve(listener, app).await.unwrap();
@@ -247,12 +244,10 @@ mod tests {
             Some("postmark-example-credential".into()),
             "noreply@trackmyrmc.com".into(),
         );
-        assert!(
-            service
-                .send_otp_to(&endpoint, "recipient@example.invalid", "123456", "Staff")
-                .await
-                .is_err()
-        );
+        assert!(service
+            .send_otp_to(&endpoint, "recipient@example.invalid", "123456", "Staff")
+            .await
+            .is_err());
         assert_eq!(captured.lock().unwrap().len(), 0);
         task.abort();
     }
