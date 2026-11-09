@@ -1,9 +1,13 @@
 """Offline tests for opt-in production TLS acceptance, never contact an RDS host."""
 import importlib.util
+import json
+import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
+from urllib.parse import parse_qs, unquote, urlsplit
 from unittest.mock import patch
 
 MODULE = Path(__file__).resolve().parents[1] / 'release' / 'verify-rds-tls.py'
@@ -57,6 +61,33 @@ class TlsAcceptanceTests(unittest.TestCase):
             [],1,'','server certificate for "db" does not match host name "wrong.invalid"')))
         self.assertFalse(gate.rejected_for_certificate(subprocess.CompletedProcess(
             [],0,'1\n','server certificate does not match')))
+
+    def test_deploy_rds_uri_builder_preserves_percent_encoded_tls_ca(self):
+        # Run the actual inline URI builder with synthetic credentials, not
+        # a reimplementation. This caught the production SSM %2F formatting crash.
+        script = (MODULE.parents[1] / "ops" / "aws-deploy-ec2.sh").read_text()
+        commands = [line for line in script.splitlines() if "python3 -c '" in line and "TRACKMYRMC_DB_NAME=" in line]
+        self.assertEqual(len(commands), 1)
+        python_code = commands[0].split("python3 -c '", 1)[1].rsplit("'", 1)[0]
+        username = "synthetic_user"
+        password = "fake%2F@:x/#?+"
+        env = dict(os.environ, TRACKMYRMC_DB_NAME="trackmyrmc")
+        result = subprocess.run(
+            [sys.executable, "-c", python_code],
+            input=json.dumps({"username": username, "password": password}),
+            text=True, capture_output=True, check=True, env=env,
+        )
+        uri = urlsplit(result.stdout.strip())
+        self.assertEqual(uri.hostname, "trackmyrmc-postgres.cf8mmcwuuinx.ap-south-1.rds.amazonaws.com")
+        self.assertEqual(uri.port, 5432)
+        self.assertEqual(unquote(uri.username), username)
+        self.assertEqual(unquote(uri.password), password)
+        self.assertEqual(uri.path, "/trackmyrmc")
+        self.assertEqual(
+            parse_qs(uri.query),
+            {"sslmode": ["verify-full"], "sslrootcert": ["/etc/trackmyrmc/rds-ca-bundle.pem"]},
+        )
+        self.assertNotIn(password, result.stdout)
 
     def test_operator_executes_only_after_opt_in(self):
         with patch.object(gate, 'run_gate',return_value={'status':'PASS'}) as remote:
