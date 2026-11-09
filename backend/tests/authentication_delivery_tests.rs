@@ -2433,7 +2433,7 @@ async fn primary_central_admin_email_enrollment_login_and_recovery_are_role_boun
     let mut state = state(db.clone());
     let delivery = Arc::new(MemoryDelivery::default());
     state.otp_delivery = delivery.clone();
-    state.config.otp_cooldown_seconds = 60;
+    Arc::make_mut(&mut state.config).otp_cooldown_seconds = 60;
     let app = build_app_router(state);
     let send = "/api/admin/auth/otp/send";
     let verify = "/api/admin/auth/login";
