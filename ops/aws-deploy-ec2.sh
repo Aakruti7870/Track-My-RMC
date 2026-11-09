@@ -40,7 +40,14 @@ secure_release_directory /opt/trackmyrmc
 secure_release_directory /opt/trackmyrmc/releases
 secure_release_directory /opt/trackmyrmc/release-tools
 RELEASE_STAGE="$(mktemp -d /opt/trackmyrmc/.release-stage.XXXXXX)"
-trap 'rm -rf -- "$RELEASE_STAGE"' EXIT
+APP_ENV_TMP=""
+cleanup_release_stage() {
+  rm -rf -- "$RELEASE_STAGE"
+  if [[ -n "$APP_ENV_TMP" ]]; then
+    rm -f -- "$APP_ENV_TMP"
+  fi
+}
+trap cleanup_release_stage EXIT
 
 # Obtain a certificate only when absent; routine deploys keep HTTPS online.
 if [ ! -s /etc/letsencrypt/live/trackmyrmc.com/fullchain.pem ] || [ ! -s /etc/letsencrypt/live/trackmyrmc.com/privkey.pem ]; then
@@ -316,7 +323,8 @@ fi
 # PostgreSQL must then authenticate BOTH the issuer and the RDS hostname.
 # A missing/invalid certificate is a hard deployment failure, not a downgrade.
 RDS_CA_FILE="/etc/trackmyrmc/rds-ca-bundle.pem"
-install -d -m 0755 /etc/trackmyrmc
+# The backend service must be able to traverse this directory to read the CA.
+install -d -o root -g trackmyrmc -m 0750 /etc/trackmyrmc
 RDS_CA_TMP="$(mktemp /etc/trackmyrmc/.rds-ca-bundle.XXXXXX)"
 if ! curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --max-time 30 \
   "https://truststore.pki.rds.amazonaws.com/ap-south-1/ap-south-1-bundle.pem" \
@@ -328,6 +336,10 @@ if ! curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --m
 fi
 install -o root -g root -m 0644 "$RDS_CA_TMP" "$RDS_CA_FILE"
 rm -f "$RDS_CA_TMP"
+if ! runuser -u trackmyrmc -- test -r "$RDS_CA_FILE"; then
+  echo "Backend service cannot read the RDS trust bundle; refusing deployment" >&2
+  exit 1
+fi
 
 DB_JSON="$(aws secretsmanager get-secret-value --secret-id "$RDS_SECRET" --query SecretString --output text)"
 DATABASE_URL="$(printf '%s' "$DB_JSON" | TRACKMYRMC_DB_NAME="$DB_NAME" python3 -c '
@@ -372,12 +384,14 @@ if (parsed.scheme not in ("postgres", "postgresql")
 # database secret BEFORE replacing application binaries or writing app.env.
 # Never pass a connection URL or password on a process command line.
 import subprocess
-environment = dict(os.environ)
-environment.update(PGHOST=parsed.hostname, PGHOSTADDR="", PGPORT="5432",
+# Isolate the probe from inherited libpq settings. An empty PGSERVICE still
+# requests a service lookup and causes libpq to abort before connecting.
+environment = {key: value for key, value in os.environ.items() if not key.startswith(("PG", "TRACKMYRMC_"))}
+environment.update(PGHOST=parsed.hostname, PGPORT="5432",
                    PGDATABASE=name, PGUSER=unquote(parsed.username),
                    PGPASSWORD=unquote(parsed.password), PGSSLMODE="verify-full",
                    PGSSLROOTCERT="/etc/trackmyrmc/rds-ca-bundle.pem",
-                   PGSERVICE="", PGCONNECT_TIMEOUT="8",
+                   PGCONNECT_TIMEOUT="8",
                    PGOPTIONS="-c default_transaction_read_only=on -c statement_timeout=5000")
 try:
     probe = subprocess.run(
@@ -520,8 +534,9 @@ for component in frontend source admin-web; do
   mv -T -- "$RELEASE_STAGE/$component" "$current"
 done
 
-install -d -m 0750 /etc/trackmyrmc
-cat > /etc/trackmyrmc/app.env <<EOF
+# mktemp creates the root-only environment file in the destination directory.
+APP_ENV_TMP="$(mktemp /etc/trackmyrmc/.app.env.XXXXXX)"
+cat > "$APP_ENV_TMP" <<EOF
 APP_ENV=production
 PRIVILEGED_RECOVERY_ENABLED=false
 DATABASE_URL=$DATABASE_URL
@@ -554,7 +569,8 @@ LIVE_KYC_API_SECRET=$LIVE_KYC_API_SECRET
 EMAIL_API_KEY=$EMAIL_KEY
 EMAIL_FROM_ADDRESS=$EMAIL_FROM
 EOF
-chmod 0600 /etc/trackmyrmc/app.env
+mv -Tf -- "$APP_ENV_TMP" /etc/trackmyrmc/app.env
+APP_ENV_TMP=""
 
 cat > /etc/systemd/system/trackmyrmc-backend.service <<'UNIT'
 [Unit]
