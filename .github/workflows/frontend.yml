@@ -147,6 +147,8 @@ jobs:
         env:
           VITE_API_URL: https://trackmyrmc.com
         run: npm run build
+      - name: Verify offline authenticator QR and prevent key exfiltration
+        run: npm run test:qr
       - name: Install Chromium for admin workspace regressions
         run: npx playwright install --with-deps chromium
       - name: Verify admin loading, failure and sign-out isolation
