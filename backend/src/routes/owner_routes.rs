@@ -129,6 +129,8 @@ pub async fn get_owner_home(
         'delivered_qty',(SELECT coalesce(sum(d.delivered_quantity),0)::double precision FROM proof_of_deliveries d JOIN order_loads l ON l.id=d.load_id JOIN orders o ON o.id=l.order_id WHERE o.plant_id=ANY($1) AND d.delivered_at::date=CURRENT_DATE),
         'dispatched_loads',(SELECT count(*) FROM order_loads l JOIN orders o ON o.id=l.order_id WHERE o.plant_id=ANY($1) AND l.dispatched_at::date=CURRENT_DATE),
         'active_staff',(SELECT count(DISTINCT user_id) FROM plant_staff WHERE plant_id=ANY($1) AND is_active=TRUE),
+        'plant_attendance_today',(SELECT count(*) FROM workforce_attendance wa WHERE wa.plant_id=ANY($1) AND wa.attendance_date=CURRENT_DATE AND wa.check_in_time IS NOT NULL),
+        'plant_expenses_today',(SELECT count(*) FROM plant_expenses e WHERE e.plant_id=ANY($1) AND e.expense_date=CURRENT_DATE),
         'active_mixers',(SELECT count(*) FROM transit_mixers WHERE plant_id=ANY($1) AND status IN('dispatched','in_transit','pouring'))
     )"#).bind(&ids).fetch_one(&state.db).await?;
     let query=format!("{} WHERE o.plant_id=ANY($1) AND lower(o.status)='pending' ORDER BY o.created_at,o.id LIMIT 50",crate::services::order_service::MOBILE_ORDER_SELECT);
