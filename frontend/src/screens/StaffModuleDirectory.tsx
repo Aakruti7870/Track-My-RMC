@@ -79,6 +79,7 @@ export function staffModulesForScope(role: string | null | undefined, scope: Sta
   const homeKeys = STAFF_HOME_KEYS[role || ""] || [];
   const seen = new Set<string>();
   return modulesForRole(role).filter(module => {
+    if (module.key === "notifications") return false; // Bell is in the shared top bar.
     if (scope !== "all" && (tabKeys.includes(module.key) ||
       (scope === "home" ? !homeKeys.includes(module.key) : homeKeys.includes(module.key)))) return false;
     const routeKey = typeof module.route === "string" ? module.route : JSON.stringify(module.route);
