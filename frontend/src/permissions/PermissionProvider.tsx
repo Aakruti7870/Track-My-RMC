@@ -75,6 +75,7 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
   const [runtimeGranted, setRuntimeGranted] = useState(false);
   const [notificationChoice, setNotificationChoice] = useState<Choice>("manual");
   const newlyApprovedAccount = useRef<string | null>(null);
+  const newlyDeclinedAccount = useRef<string | null>(null);
 
   // Reviewer accounts use this exact gate after their dedicated OTP flow.
   // Central Admin / Authority remain web-only and never enter a mobile role.
@@ -129,19 +130,24 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
     setRuntimeGranted(false);
     setNotificationChoice("manual");
     if (newlyApprovedAccount.current !== account) newlyApprovedAccount.current = null;
+    if (newlyDeclinedAccount.current !== account) newlyDeclinedAccount.current = null;
     if (!account || !token) return;
     let cancelled = false;
     void (async () => {
       let decision: Decision | null = null;
+      const saved = await storage.getItem(`permission-user-${account}`, "");
+      let local: Decision | null = null;
+      try { local = saved ? JSON.parse(saved) as Decision : null; }
+      catch { /* No saved choice. */ }
       try {
         decision = (await apiGet<{ consent: Decision | null }>("/me/permission-consent", token)).consent;
-      } catch {
-        const saved = await storage.getItem(`permission-user-${account}`, "");
-        try { decision = saved ? JSON.parse(saved) as Decision : null; } catch { /* No saved choice. */ }
-      }
+      } catch { /* Offline: use last local choice. */ }
       if (cancelled) return;
-      setLocationPreference(newlyApprovedAccount.current === account || decision?.location_choice === "granted");
-      setNotificationChoice(decision?.notification_choice ?? "manual");
+      const denied = local?.location_choice === "denied" || decision?.location_choice === "denied";
+      const approved = newlyApprovedAccount.current === account ||
+        decision?.location_choice === "granted" || local?.location_choice === "granted";
+      setLocationPreference(newlyDeclinedAccount.current !== account && !denied && approved);
+      setNotificationChoice(local?.notification_choice ?? decision?.notification_choice ?? "manual");
       await refreshLocation();
     })().catch(() => undefined);
     return () => { cancelled = true; };
@@ -159,7 +165,10 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
     const granted = await isForegroundLocationGranted();
     setRuntimeGranted(granted);
     if (!granted) return;
-    if (account) newlyApprovedAccount.current = account;
+    if (account) {
+      newlyApprovedAccount.current = account;
+      newlyDeclinedAccount.current = null;
+    }
     setLocationPreference(true);
     if (!account || !token || locationPreference) return;
     const decision: Decision = {
@@ -180,6 +189,30 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
     const nextChoices = { ...introChoices.current, [kind]: result };
     introChoices.current = nextChoices;
     setIntroError(null);
+    if (kind === "location" && account && token && result !== "granted") {
+      // A newer Not now decision must cancel an older Nearby Plants opt-in,
+      // even when Android still holds a previously granted location permission.
+      newlyApprovedAccount.current = null;
+      newlyDeclinedAccount.current = account;
+      setLocationPreference(false);
+      const decision: Decision = {
+        version: VERSION,
+        location_choice: "denied",
+        notification_choice: notificationChoice,
+      };
+      await storage.setItem(`permission-user-${account}`, JSON.stringify(decision));
+      await apiPut("/me/permission-consent", token, decision).catch(() => undefined);
+    }
+    if (kind === "notifications" && account && token) {
+      const decision: Decision = {
+        version: VERSION,
+        location_choice: nextChoices.location === "granted" ? "granted" : "denied",
+        notification_choice: result === "granted" ? "granted" : "denied",
+      };
+      setNotificationChoice(decision.notification_choice);
+      await storage.setItem(`permission-user-${account}`, JSON.stringify(decision));
+      await apiPut("/me/permission-consent", token, decision).catch(() => undefined);
+    }
     if (kind === "notifications" && result !== "granted" && token) {
       // "Not now" overrides previously registered device tokens as well.
       await unregisterPushDevice(token).catch(() => undefined);
