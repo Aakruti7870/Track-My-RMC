@@ -3,6 +3,7 @@ import { Platform } from "react-native";
 import { useRouter } from "expo-router";
 
 import { useAuth } from "@/src/auth/AuthContext";
+import { storage } from "@/src/utils/storage";
 import {
   configureForegroundNotifications,
   getLastNotificationRoute,
@@ -15,7 +16,7 @@ import {
 // The former second login-time notification-consent modal is removed.
 // PermissionProvider owns the single app-wide post-login card flow, including
 // Google Play reviewer accounts. This bridge never requests an OS permission;
-// it only registers a token when Android has already granted notifications.
+// it only registers a token after explicit stored opt-in AND an Android grant.
 export function PushNotificationBridge() {
   const { token, user } = useAuth();
   const router = useRouter();
@@ -29,7 +30,23 @@ export function PushNotificationBridge() {
     void (async () => {
       await configureForegroundNotifications();
       const permission = await getNotificationPermissionStatus();
-      if (permission === "granted") {
+      const raw = await storage.getItem(
+        `tmrmc_post_login_permission_cards_v2:${user.id}:${user.role}`,
+        "",
+      );
+      let optedIn = false;
+      if (typeof raw === "string" && raw) {
+        try {
+          const preference = JSON.parse(raw) as {
+            version?: number;
+            completed?: boolean;
+            choices?: { notifications?: string };
+          };
+          optedIn = preference.version === 2 && preference.completed === true &&
+            preference.choices?.notifications === "granted";
+        } catch { /* No reliable consent on this device. */ }
+      }
+      if (permission === "granted" && optedIn && !disposed) {
         await registerPushDevice(token, false);
       }
 
