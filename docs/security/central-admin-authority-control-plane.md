@@ -55,22 +55,27 @@ authentication is **email OTP followed by authenticator TOTP**. The primary
 identity is deliberately reserved with `is_active=false` until first
 enrollment completes. The generic staff OTP endpoint must not be used.
 
-Transactional OTP email is sent using the **Postmark server API** by
-`backend/src/services/email_service.rs`. Its `EMAIL_API_KEY` must contain
-a **valid Postmark server token** (not a SendGrid key or Postmark account
-token). The `EMAIL_FROM_ADDRESS` must be authorized by Postmark.
-A provider response of **HTTP 401** indicates the configured email credential
-was rejected; rewriting the Super Admin account or setting `is_active=true`
-will not resolve it.
+Transactional OTP email uses **Resend**, through
+`backend/src/services/email_service.rs`: `POST https://api.resend.com/emails`,
+`Authorization: Bearer`, lowercase `from` / `to` / `subject` / `text`
+fields, and a nonempty `id` in the accepted response. An earlier Postmark
+implementation sent the **existing Resend-format `re_` credential** to
+Postmark and received HTTP 401. That provider mismatch prevented OTP delivery;
+it was not evidence that Super Admin enrollment should require a password.
 
-The authorized AWS operator must rotate or correct the **`EMAIL_API_KEY`**
-field in the `trackmyrmc/app-runtime` Secrets Manager secret without
-exposing the value in GitHub, terminal logs, or chat. The running EC2 process
-reads `/etc/trackmyrmc/app.env`, so a Secrets Manager change alone does **not**
-refresh its environment. Use the established approved release configuration
-and deployment process to apply the corrected value, then perform an actual
-consented email-delivery test. Do not reset the OTP pepper, create a password
-backdoor, or mark the reserved identity active by direct SQL.
+The `EMAIL_API_KEY` field in AWS Secrets Manager `trackmyrmc/app-runtime`
+retains the existing **Resend API key**, and `EMAIL_FROM_ADDRESS` must use a
+sender/domain verified with Resend. Do not copy the key to GitHub, CI logs or
+chat. An authorized deployment must update the running EC2 backend; the
+application reads `/etc/trackmyrmc/app.env` at service start. A code merge
+alone does not deploy the adapter. Do not reset the OTP pepper, introduce a
+password backdoor, or manually set `is_active=true` in PostgreSQL.
+
+The isolated Rust provider-contract tests use a loopback mock server and fake
+`re_` credentials; they verify successful Resend acceptance, rejection,
+malformed receipts, and fail-closed wrong-provider keys without sending OTP
+emails. Production acceptance still requires authorized domain verification,
+a consented real delivery test, and private email OTP + TOTP enrollment.
 
 A safe diagnosis checks (1) the Central Admin route selection, (2) mailbox
 reservation and TOTP-enrollment state, (3) provider HTTP acceptance,
