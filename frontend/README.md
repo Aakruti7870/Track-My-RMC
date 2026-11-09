@@ -45,3 +45,37 @@ The web preview is not a substitute for testing on a signed Android build. Nativ
 - Production web deployments require the exact release SHA and the repository's independent AWS approval workflow.
 
 See the [root README](../README.md), [Customer API contracts](../docs/API_CONTRACT_PARITY.md), [Owner/staff role policy](../docs/ROLE_PERMISSION_MATRIX.md), [payments acceptance](../docs/payments/RMC_PREPAID_PLAY_COMPLIANCE_AND_ROLLOUT.md) and [production release checklist](../docs/PRODUCTION_RELEASE_CHECKLIST.md).
+
+
+## Android post-login permission cards
+
+After successful account authentication (customer WhatsApp OTP, plant-owner/staff
+email OTP plus MFA, or the dedicated Google Play reviewer code), the native
+Android app displays the same orange-and-graphite TrackMyRMC permission-card
+flow. It is implemented centrally in `src/permissions/PermissionProvider.tsx` and
+uses existing AppText, Button, Card, theme, and spacing tokens. There is no
+second notification modal or reviewer-only consent bypass.
+
+- Every mobile role reviews foreground location and optional notifications.
+  Drivers additionally review camera access for proof of delivery. Background
+  location is **never requested at login**: the active Driver trip retains its
+  mandatory, separate Google Play prominent disclosure and consent.
+- The cards offer **Allow** and **Not now**, then hand off only an affirmative
+  action to Android's native permission dialog. A denial does not prevent
+  signing in. Staff attendance, SOS, plant onboarding, and POD retain their
+  purpose-specific disclosures when the feature is used.
+- No call, broad storage/media-library or unrelated Android permission is
+  requested or advertised. Photo selection uses Android's system picker.
+- Completion and actual choices are saved per account and role under a
+  versioned **local** key; they are not mistaken for Android permission
+  grants. Customer discovery requires its separate server-side opt-in and
+  an actual foreground location grant.
+- Notifications register a device only after the new per-account opt-in and
+  actual Android grant. A Not now choice revokes an existing registered device
+  token where Android allows token retrieval. Permission settings remain
+  available later from each role's More/settings screen.
+
+The web app does not display Android-specific OS consent cards. Central Admin
+and Authority remain web-only. Run `npm run check:android-permissions`,
+`npm run check:play-policy`, `npm run typecheck`, and the
+Android real-device reviewer/driver trip tests before a final signed AAB.
