@@ -303,6 +303,15 @@ pub async fn send_email_otp(state: &AppState, req: SendEmailOtpRequest) -> Resul
         .await?
         .ok_or_else(|| AppError::NotFound("Staff/Admin account not found".to_string()))?;
 
+    // Central Admin enrollment intentionally starts inactive. Never route it
+    // through the Plant Staff OTP handler: the dedicated web flow validates
+    // the reserved identity and activates only after email OTP + TOTP.
+    if user.role == "central_admin" {
+        return Err(AppError::Forbidden(
+            "Central Admin must use the dedicated web sign-in at /admin/.".to_string(),
+        ));
+    }
+
     if !user.is_active {
         return Err(AppError::Forbidden(
             "Account is inactive. Contact support.".to_string(),
