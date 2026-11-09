@@ -624,6 +624,13 @@ function CommandCenter() {
 
   async function sendEmailOtp(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    // The reserved Central Admin identity must never use Plant Staff OTP:
+    // its initial inactive state is expected until email OTP + TOTP enrollment.
+    // Reuse the existing dedicated web challenge instead of adding credentials.
+    if (email.trim().toLowerCase() === 'support@trackmyrmc.com') {
+      await sendCentralOtp(event);
+      return;
+    }
     setBusy(true);
     setError('');
     setNotice('');
