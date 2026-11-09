@@ -51,17 +51,23 @@ export function loadGoogleMaps(key: string): Promise<MapsApi> {
   pending = new Promise<MapsApi>((resolve, reject) => {
     const script = document.createElement("script");
     const timer = window.setTimeout(() => fail(), 20000);
+    let settled = false;
     function fail() {
+      if (settled) return;
+      settled = true;
       window.clearTimeout(timer);
       delete window.__trackMyRmcMapsReady;
       script.remove();
       reject(new Error("MAPS_LOAD_FAILED"));
     }
     window.__trackMyRmcMapsReady = () => {
+      if (settled) return;
       window.clearTimeout(timer);
       delete window.__trackMyRmcMapsReady;
-      if (window.google?.maps?.Map && !authenticationFailed) resolve(window.google.maps);
-      else fail();
+      if (window.google?.maps?.Map && !authenticationFailed) {
+        settled = true;
+        resolve(window.google.maps);
+      } else fail();
     };
     const params = new URLSearchParams({
       key, v: "quarterly", loading: "async",
@@ -73,6 +79,10 @@ export function loadGoogleMaps(key: string): Promise<MapsApi> {
     script.referrerPolicy = "strict-origin-when-cross-origin";
     script.onerror = fail;
     document.head.appendChild(script);
+  }).catch(error => {
+    // A transient network failure must not poison every later mount/retry.
+    pending = null;
+    throw error;
   });
   return pending;
 }

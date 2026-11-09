@@ -23,6 +23,7 @@ export function PlantMap({ plants, userLocation, selectedPlantId, onSelectPlant,
   const markers = useRef<MapsMarker[]>([]);
   const callbacks = useRef({ plants, onSelectPlant, onRegionChange });
   callbacks.current = { plants, onSelectPlant, onRegionChange };
+  const [attempt, setAttempt] = useState(0);
   const [api, setApi] = useState<MapsApi | null>(null);
   const [error, setError] = useState<string | null>(null);
   const mapped = useMemo(
@@ -33,8 +34,10 @@ export function PlantMap({ plants, userLocation, selectedPlantId, onSelectPlant,
   useEffect(() => {
     let disposed = false;
     const element = host.current;
+    setError(null);
+    setApi(null);
     const stop = onMapsAuthFailure(() => {
-      if (!disposed) setError("Google Maps could not authenticate. Plant listings remain available. Check the browser console for the Google error code.");
+      if (!disposed) setError("The map is unavailable. You can still browse and select plants from the list.");
     });
     void loadGoogleMaps(KEY).then(maps => {
       if (disposed || !element) return;
@@ -54,8 +57,8 @@ export function PlantMap({ plants, userLocation, selectedPlantId, onSelectPlant,
       setApi(maps);
     }).catch(() => {
       if (!disposed) setError(KEY
-        ? "The map could not load. Check your connection and Google Maps configuration. Plant listings remain available."
-        : "The map is unavailable because the web Maps key was missing when this application was built.");
+        ? "The map could not load. Check your connection and try again, or choose a plant from the list."
+        : "The map is unavailable. You can still browse and select plants from the list.");
     });
     return () => {
       disposed = true;
@@ -69,7 +72,7 @@ export function PlantMap({ plants, userLocation, selectedPlantId, onSelectPlant,
       map.current = null;
       element?.replaceChildren();
     };
-  }, []);
+  }, [attempt]);
 
   useEffect(() => {
     if (!api || !map.current || error) return;
@@ -110,8 +113,8 @@ export function PlantMap({ plants, userLocation, selectedPlantId, onSelectPlant,
     {!api || error ? <View accessibilityRole={error ? "alert" : undefined}
       style={{ position: "absolute", inset: 0, padding: 16, backgroundColor: colors.isDark ? "#1A1F26" : "#F6F8FA", justifyContent: "center", gap: 12 }}>
       <AppText>{error || "Loading Google Maps…"}</AppText>
-      {error ? <Pressable accessibilityRole="button" onPress={() => window.location.reload()}>
-        <AppText style={{ color: colors.brand }}>Reload map</AppText>
+      {error ? <Pressable accessibilityRole="button" onPress={() => setAttempt(value => value + 1)}>
+        <AppText style={{ color: colors.brand }}>Try map again</AppText>
       </Pressable> : null}
     </View> : null}
   </View>;

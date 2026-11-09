@@ -1,0 +1,91 @@
+{
+  "assessment_date": "2026-11-09",
+  "baseline_sha": "1c2f9a53be51895687aadcb921e1c5c3d268e90b",
+  "node": "v24.22.1",
+  "npm": "11.9.0",
+  "lockfile_sha256": {
+    "frontend/package-lock.json": "792bc2b5ab105e0031153c29668cdcd830451db2ba3acef14c36d96fb64ca85d",
+    "admin-web/package-lock.json": "4e24a6b2762d12508d48e80d6bd533cbfa0530ace5f8e28a3e2a9be41c0f28df",
+    "backend/Cargo.lock": "521247071762c5cf44dd16b98427bd77b249257ccfa66c6c80bed195f5f40f72"
+  },
+  "reports": {
+    "frontend_all": {
+      "vulnerabilities": {
+        "info": 0,
+        "low": 1,
+        "moderate": 41,
+        "high": 0,
+        "critical": 0,
+        "total": 42
+      },
+      "unique_advisories": [
+        {
+          "package": "deepmerge",
+          "severity": "low",
+          "title": "deepmerge mergeObject() allows prototype poisoning of returned objects",
+          "url": "https://github.com/advisories/GHSA-gcqx-w48m-w2h4",
+          "range": ">=4.2.0 <=4.3.1"
+        },
+        {
+          "package": "glob",
+          "severity": "moderate",
+          "title": "Glob: AbortSignal cancellation bypass allows post-timeout filesystem traversal",
+          "url": "https://github.com/advisories/GHSA-3g3m-2fjr-6pw4",
+          "range": ">=9.0.0 <=14.0.1"
+        },
+        {
+          "package": "minimatch",
+          "severity": "moderate",
+          "title": "minimatch has potential denial of service via globparts amplification",
+          "url": "https://github.com/advisories/GHSA-g3hv-75wg-m249",
+          "range": ">=7.0.0 <11.0.1"
+        }
+      ]
+    },
+    "frontend_production": {
+      "vulnerabilities": {
+        "info": 0,
+        "low": 1,
+        "moderate": 34,
+        "high": 0,
+        "critical": 0,
+        "total": 35
+      },
+      "unique_advisories": [
+        {
+          "package": "deepmerge",
+          "severity": "low",
+          "title": "deepmerge mergeObject() allows prototype poisoning of returned objects",
+          "url": "https://github.com/advisories/GHSA-gcqx-w48m-w2h4",
+          "range": ">=4.2.0 <=4.3.1"
+        },
+        {
+          "package": "glob",
+          "severity": "moderate",
+          "title": "Glob: AbortSignal cancellation bypass allows post-timeout filesystem traversal",
+          "url": "https://github.com/advisories/GHSA-3g3m-2fjr-6pw4",
+          "range": ">=9.0.0 <=14.0.1"
+        },
+        {
+          "package": "minimatch",
+          "severity": "moderate",
+          "title": "minimatch has potential denial of service via globparts amplification",
+          "url": "https://github.com/advisories/GHSA-g3hv-75wg-m249",
+          "range": ">=7.0.0 <11.0.1"
+        }
+      ]
+    },
+    "admin_all": {
+      "vulnerabilities": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0,
+        "total": 0
+      },
+      "unique_advisories": []
+    }
+  },
+  "limits": "npm registry affected-entry counts, not distinct vulnerabilities or proof of production exploitability. RustSec was not rerun locally; use exact-head Dependency Security Audit CI."
+}

@@ -76,3 +76,26 @@ test("script/network error and timeout reject without leaving timers", async () 
     assert.equal(h.timers.size, 0);
   }
 });
+
+test("transient failures allow one shared retry; late events cannot disrupt it", async () => {
+  for (const mode of ["network", "timeout"]) {
+    const h = harness();
+    const failed = h.exports.loadGoogleMaps("browser-only-key");
+    const staleError = h.scripts[0].onerror;
+    const staleReady = h.window.__trackMyRmcMapsReady;
+    if (mode === "network") staleError();
+    else [...h.timers.values()][0]();
+    await assert.rejects(failed, /MAPS_LOAD_FAILED/);
+    const retry = h.exports.loadGoogleMaps("browser-only-key");
+    assert.equal(h.exports.loadGoogleMaps("browser-only-key"), retry);
+    assert.equal(h.scripts.length, 2);
+    staleError();
+    staleReady();
+    assert.equal(h.timers.size, 1, 'late events must not clear the new timer');
+    const maps = { Map: function Map() {} };
+    h.window.google = { maps };
+    h.window.__trackMyRmcMapsReady();
+    assert.equal(await retry, maps);
+    assert.equal(h.timers.size, 0);
+  }
+});

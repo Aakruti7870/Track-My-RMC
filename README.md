@@ -4,6 +4,10 @@ TrackMyRMC is an RMC (ready-mix concrete) operations platform with a Rust/Postgr
 
 **Implementation is not the same as production activation.** Some providers, payments, privileged account enrollment and automation workflows remain gated by independent release acceptance. Consult the release assessments before treating a feature as live.
 
+## Project overview and audit
+
+The [product and delivery brief](docs/PROJECT_BRIEF.md) provides a cohesive description of user journeys, experience standards, data boundaries and release acceptance. The [9 November quality audit](docs/audits/2026-11-09-project-quality-audit.md) contains the error log, gap analysis, implemented fixes, verification evidence and remaining acceptance work. Historical reports retain their original dates and scope.
+
 ## Repository layout
 
 | Directory | Purpose |
@@ -30,7 +34,7 @@ See [Central Admin / Authority contract](docs/security/central-admin-authority-c
 
 Use an **isolated local PostgreSQL database**; do not point local development or migration tests at production.
 
-**Requirements:** supported stable Rust toolchain, PostgreSQL 16 or 18, Node.js 20+ and npm. The tracked lockfiles govern package resolution. Node 20 is used by current frontend CI.
+**Requirements:** supported stable Rust toolchain, PostgreSQL 16 or 18, Node.js 20+ and npm. Use Node 20.19.4+ in the 20.x line or a supported newer line at 22.12+; earlier 20.x versions do not satisfy the locked Metro/React Native requirements. The tracked lockfiles govern package resolution. Node 20 is used by current frontend CI.
 
 Backend (run from repository root):
 
@@ -73,7 +77,10 @@ npm ci
 cp .env.example .env.local
 # Verify .env.local contains VITE_API_URL=http://localhost:8000.
 npm run dev
-# npm run build also validates the admin bundle locally
+# In a separate terminal, validate the build and isolated browser regressions:
+# npm run build
+# npx playwright install chromium
+# npm run test:browser
 ~~~
 
 This development server is not a substitute for real web-MFA enrollment and scoped role acceptance.
@@ -119,6 +126,8 @@ flowchart TD
 For detailed procedures consult [Deployment guide](docs/DEPLOYMENT.md), [Production release assessment](docs/security/pr157-release-assessment.md), [Native support follow-ups](docs/native-support-automation.md), [Closed-loop automation](docs/native-automation-closed-loop.md) and [RMC payments safeguards](docs/payments/RMC_PREPAID_PLAY_COMPLIANCE_AND_ROLLOUT.md).
 
 ## Current acceptance and limitations
+
+The baseline main SHA `1c2f9a53be51895687aadcb921e1c5c3d268e90b` has successful Backend CI, Frontend CI, Dependency Security Audit and an [AWS release workflow](https://github.com/Aakruti7870/Track-My-RMC/actions/runs/42662931432). This records workflow evidence for that baseline; it does not deploy later audit changes or replace independent live/device/provider acceptance.
 
 Customer-to-plant Cashfree prepaid checkout is provider-gated; do not enable live payments or owner subscriptions based on sandbox code. DigiLocker/KYC provider readiness, permanent privileged identities, Google Play declarations, real-device workflows and production automation require their own acceptance evidence. Historical reports in docs may describe earlier PR states; rely on current GitHub CI and an explicitly dated release assessment for the selected SHA.
 

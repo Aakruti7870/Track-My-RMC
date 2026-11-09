@@ -1,4 +1,8 @@
-# Dependency security review — 21 October 2026
+# Dependency security review — evidence history
+
+**Latest locked-graph snapshot: 9 November 2026.** See [the current evidence](audits/2026-11-09-dependency-evidence.json) and [release checklist](PRODUCTION_RELEASE_CHECKLIST.md). Local npm audit reports frontend full: 41 moderate + 1 low affected entries; production subset: 34 moderate + 1 low; admin full: 0. All report 0 high/critical. The lockfile already resolves node-forge 1.4.3. Residual moderate/low review and exact-head RustSec evidence remain required. Counts depend on the audit database and graph; they are not distinct vulnerability counts.
+
+## Historical assessment — 21 October 2026
 
 Status: **PARTIAL; public launch remains blocked pending remediation or explicit risk acceptance.** No audit findings are suppressed.
 

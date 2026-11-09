@@ -147,3 +147,7 @@ jobs:
         env:
           VITE_API_URL: https://trackmyrmc.com
         run: npm run build
+      - name: Install Chromium for admin workspace regressions
+        run: npx playwright install --with-deps chromium
+      - name: Verify admin loading, failure and sign-out isolation
+        run: npm run test:browser

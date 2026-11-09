@@ -95,7 +95,7 @@ fs.mkdirSync(out, { recursive: true });
       await page.waitForURL('**/order/00000000-0000-0000-0000-000000000001');
       failing = true; populated = false;
       await go('/owner/orders');
-      await page.getByText('Server down', { exact: true }).waitFor();
+      await page.getByText('The service is temporarily unavailable. Please try again.', { exact: true }).waitFor();
       assert.deepEqual(errors, []);
       await context.close();
       console.log(`PASS owner: ${scheme} ${width}px — layout, 32 uniquely placed destinations, Quick, search, filters, detail navigation, error state, live theme`);

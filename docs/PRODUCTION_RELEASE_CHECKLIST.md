@@ -1,26 +1,28 @@
 # Production release acceptance checklist
 
-**Current state: independent acceptance required.** This is a living checklist; historical release records remain in docs/release/ and Git history. A successful code merge or green CI is never evidence that the new SHA is deployed.
+**Assessment: 9 November 2026. Baseline: `1c2f9a53be51895687aadcb921e1c5c3d268e90b`.** A status belongs to its recorded commit and evidence source. Repeat the applicable gates for each candidate; a baseline PASS does not certify a later branch.
 
-| Gate | Required proof | Status as of 2026-11-08 audit |
+**Candidate disposition: BLOCKED pending final-head checks, review and independent release acceptance.** This audit does not authorize a new deployment or provider/worker activation.
+
+| Gate | Required proof | Evidence available for the baseline / candidate |
 | --- | --- | --- |
-| Source and reviews | Exact current main SHA, reviewed changes, no unresolved security findings | PR #159 merged as code; complete-repository audit branch under review |
-| Backend and database regression | Rust format, check, strict Clippy and tests on PostgreSQL 16 and 18 | PASS on main merge SHA 277d7ed (Backend CI #42493945966) |
-| Client and admin regressions | Expo typecheck/security/layout guards and admin web build | PASS on main merge SHA 277d7ed (Frontend CI #42493945959) |
-| Android/Google Play | Signed AAB and real device/reviewer/permission/Data safety acceptance | NOT established by the web CI |
-| Dependency security | Fresh audit of the final locked Node/Rust graph; remediate remaining advisories or obtain independent, documented exposure/risk acceptance, including build/signing tooling | **BLOCKED**; node-forge remains an active high-severity advisory, while the braces advisory was withdrawn 2026-10-23; refresh the exact locked-graph and Rust advisory assessment, and obtain remediation or independent exposure sign-off |
-| Migration parity | Live readonly RDS ledger/checksums, pending migration and schema reconciliation | NOT verified live |
-| Client TLS | Positive and negative production RDS TLS/hostname checks | NOT verified live |
-| Infrastructure and operator | Scoped production IAM role, independent approval, least-privilege assessment | INCOMPLETE; connected audit identity is root |
-| Restore/rollback | Witnessed safe restoration and SHA-pinned application rollback evidence | NOT verified |
-| Privileged operator readiness | Approved Central Admin/Authority web credentials, TOTP and inbox acceptance | NOT verified live |
-| Support/automation | Exact live flags, notification QA, opt-in and audit; no external messages | Feature switches default OFF; live values unverified |
-| Cashfree and KYC | Provider/sandbox-to-live approval, legal/Play checks and specific enablement | GATED; not implied by merged code |
-| GitHub production approval | Exact approved release SHA, main push CI and authorized workflow run | NOT independently verified |
-| Deployed release | S3 artifacts, SSM success, EC2 running SHA marker, API/admin/Expo smoke | NOT established for SHA 277d7ed; release workflow skipped |
+| Source and reviews | Immutable SHA, reviewed diff and disposition of every material finding | Baseline is merged PR #174. The 9 November quality audit is a separate candidate; review its exact head. |
+| Backend and database regression | Format, check, strict Clippy and PostgreSQL 16/18 tests | Baseline [Backend CI](https://github.com/Aakruti7870/Track-My-RMC/actions/runs/42662483976) PASS. No local Rust/PostgreSQL run in the quality-audit workspace. Candidate CI must pass. |
+| Client and admin regression | Expo typecheck/guards/export, responsive browser checks and admin build | Baseline [Frontend CI](https://github.com/Aakruti7870/Track-My-RMC/actions/runs/42662483981) PASS. Candidate validation is recorded in [the audit](audits/2026-11-09-project-quality-audit.md). |
+| Android / Google Play | Signed candidate AAB; device/reviewer/permission/Data safety acceptance | Web tests do not establish signed-device or Play acceptance. Retain artifact digest, version code, devices and reviewer evidence. |
+| Dependency security | Final locked Node and selected-production Rust graphs; disposition of active advisories | Baseline [Dependency Security Audit](https://github.com/Aakruti7870/Track-My-RMC/actions/runs/42662483988) PASS under its configured policy. Local npm scan: frontend full 41 moderate + 1 low affected entries; production subset 34 moderate + 1 low; admin full 0. All report 0 high/critical. Current lock resolves node-forge 1.4.3; the braces advisory was withdrawn. Residual exposure review remains required; workflow success alone is not that review. |
+| Migration parity | Read-only candidate migration/checksum comparison, pending migration review and schema compatibility | 56 tracked automatic migration files at baseline. Current live ledger and rollback compatibility were not independently inspected in this audit. |
+| RDS TLS | Positive connection and negative untrusted-CA/hostname cases against the intended environment | Existing deployment workflow success is recorded; independently retain the required TLS evidence for the release. |
+| Infrastructure and operator | Approved scoped release identity and reviewer, current least-privilege assessment | Not independently revalidated here. Historical reports about an earlier connected root identity are not current identity evidence. |
+| Restore / rollback | Witnessed restore with measured recovery time/data loss; compatible SHA-pinned rollback | Not independently revalidated here. A configured backup is not a restore drill. |
+| Privileged operators | Approved Central Admin/Authority identities, MFA, permission denial, scoped inbox and revocation | Synthetic browser acceptance and baseline CI are available. Actual approved operator enrollment/acceptance must be recorded separately. |
+| Support / automation | Approved flags, opt-in, authorization rechecks, monitoring and notification acceptance | Both automation switches remain separately governed. No worker activation or external communication was performed by this audit. |
+| Cashfree / KYC | Approved provider environment/entitlements, consent, reconciliation and specific enablement | Provider acceptance is independent. Sandbox code, mocked responses and UI navigation do not prove live settlement or KYC verification. |
+| GitHub release approval | Matching approved main SHA, successful push CI/security and authorized workflow | Baseline has a successful manually dispatched release run. A new candidate needs its own exact-SHA approval. |
+| Deployed release | Artifact digest, S3 object identity, SSM result, runtime SHA and origin/edge smoke | Baseline [AWS run 42662931432](https://github.com/Aakruti7870/Track-My-RMC/actions/runs/42662931432) completed successfully, including SSM deploy and trusted-origin/edge verification. This is workflow evidence, not an independent live runtime inspection or evidence that the audit branch is deployed. |
 
-The main-branch backend/frontend jobs for 277d7ed passed. The two production workflow invocations on that SHA were **skipped**; there is no confirmation of a deployment for it.
+Record each outstanding gate as PASS, FAIL, NOT VERIFIED or NOT APPLICABLE with rationale, owner, reviewer, immutable artifact/SHA and an evidence link. Never infer release approval from the absence of a failing test.
 
-Production activation requires **all** relevant release gates to pass on the selected immutable commit. Do not replace this evidence with unscoped root commands, modified applied migration checksums, placeholder credentials or a bypassed approval variable.
+Historical 8 November assessment: baseline `277d7ed` had skipped release invocations and a then-open dependency assessment. That snapshot does not describe the 9 November baseline. Preserve historical reports; use the dated evidence above and re-check the actual candidate.
 
-Primary references: [AWS deployment](DEPLOYMENT.md), [PR #157 security assessment](security/pr157-release-assessment.md), [PR #159 support assessment](security/pr159-release-acceptance.md), [RMC payment policy](payments/RMC_PREPAID_PLAY_COMPLIANCE_AND_ROLLOUT.md) and [this repository audit](audits/2026-11-08-repository-audit.md).
+References: [AWS deployment](DEPLOYMENT.md), [quality audit](audits/2026-11-09-project-quality-audit.md), [dependency review](DEPENDENCY_SECURITY_REVIEW.md), [locked-graph evidence](audits/2026-11-09-dependency-evidence.json), [support acceptance](security/pr159-release-acceptance.md) and [payment policy](payments/RMC_PREPAID_PLAY_COMPLIANCE_AND_ROLLOUT.md).
