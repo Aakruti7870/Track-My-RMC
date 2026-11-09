@@ -15,25 +15,18 @@ import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 import { modulesForRole } from "@/src/navigation/moduleCatalog";
 import { usePermissions } from "@/src/permissions/PermissionProvider";
 
-const MODES: { key: "system" | "light" | "dark"; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { key: "light", label: "Light", icon: "sunny-outline" },
-  { key: "dark", label: "Dark", icon: "moon-outline" },
-  { key: "system", label: "System", icon: "phone-portrait-outline" },
-];
-
 // Customer More is a five-link settings/documentation menu, not the full
 // role directory. Keep the shared catalog intact for authorization and Home.
 const CUSTOMER_MORE_KEYS = [
   "account-deletion",
   "customer-support",
-  "notifications",
   "quotations",
   "documents",
 ] as const;
 
 export default function CustomerMore() {
   const { review } = usePermissions();
-  const { colors, mode, setMode } = useTheme();
+  const { colors, scheme, toggle } = useTheme();
   const { user, signOut } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -55,7 +48,14 @@ export default function CustomerMore() {
         contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120, gap: spacing.lg }}
         showsVerticalScrollIndicator={false}
       >
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><VectorSymbol name="settings" size={35} /><AppText variant="title">More</AppText></View>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+          <VectorSymbol name="settings" size={35} />
+          <AppText variant="title" style={{ flex: 1 }}>More</AppText>
+          <Pressable testID="customer-more-theme" accessibilityRole="button" accessibilityLabel="Switch light or dark mode"
+            onPress={toggle} style={styles.themeTarget}>
+            <Ionicons name={scheme === "dark" ? "sunny-outline" : "moon-outline"} size={25} color={colors.onSurface} />
+          </Pressable>
+        </View>
         <Pressable accessibilityRole="button" onPress={review} style={{minHeight:48,justifyContent:"center"}}><View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><VectorSymbol name="permission-settings" size={33} /><AppText variant="heading">Permission settings</AppText></View></Pressable>
 
         <Card style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
@@ -99,30 +99,6 @@ export default function CustomerMore() {
           </Card>
         </View>
 
-        <View style={{ gap: spacing.sm }}>
-          <AppText variant="label">Appearance</AppText>
-          <View style={styles.modeRow}>
-            {MODES.map((m) => {
-              const selected = mode === m.key;
-              return (
-                <Pressable
-                  key={m.key}
-                  testID={`theme-mode-${m.key}`}
-                  onPress={() => setMode(m.key)}
-                  style={[
-                    styles.mode,
-                    { backgroundColor: selected ? colors.brand : colors.surfaceSecondary, borderColor: selected ? colors.brand : colors.border },
-                  ]}
-                >
-                  <Ionicons name={m.icon} size={18} color={selected ? colors.onBrand : colors.onSurfaceSecondary} />
-                  <AppText style={{ fontFamily: fonts.medium, fontSize: fontSize.sm, color: selected ? colors.onBrand : colors.onSurfaceSecondary }}>
-                    {m.label}
-                  </AppText>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
         <View testID="role-module-directory" style={{ gap: spacing.sm }}>
           {moreModules.map(module => (
             <Pressable
@@ -159,9 +135,9 @@ export default function CustomerMore() {
           <AppText variant="caption">Privacy Policy, Terms of Service and official support details must use your approved business/legal content before release. No placeholder policy text is shown.</AppText>
         </Card>
 
-        <Pressable testID="logout-button" onPress={doLogout} style={[styles.logout, { borderColor: colors.error }]}>
-          <VectorSymbol name="logout" size={27} />
-          <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: colors.error }}>Logout</AppText>
+        <Pressable testID="logout-button" onPress={doLogout} style={[styles.logout, { backgroundColor: colors.isDark ? "#96352D" : "#B42318" }]}>
+          <Ionicons name="log-out-outline" size={23} color="#FFFFFF" />
+          <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: "#FFFFFF" }}>Sign out</AppText>
         </Pressable>
 
         <AppText variant="caption" center>TrackMyRMC · 2.0.16 (74)</AppText>
@@ -173,17 +149,7 @@ export default function CustomerMore() {
 
 const styles = StyleSheet.create({
   avatar: { width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center" },
-  modeRow: { flexDirection: "row", gap: spacing.sm },
-  mode: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.xs,
-    height: 44,
-    borderRadius: radius.md,
-    borderWidth: 1,
-  },
+  themeTarget: { width: 46, height: 46, alignItems: "center", justifyContent: "center" },
   item: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 68, borderWidth: 1, borderRadius: radius.md, padding: spacing.md },
   moduleIcon: { width: 42, height: 42, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
   logout: {
@@ -193,7 +159,6 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     height: 52,
     borderRadius: radius.md,
-    borderWidth: 1,
   },
   kycAction: { height: 44, borderRadius: radius.md, borderWidth: 1, alignItems: "center", justifyContent: "center" },
 });
