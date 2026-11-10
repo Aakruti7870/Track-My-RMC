@@ -640,9 +640,10 @@ pub async fn get_portal_summary(
         sqlx::query_scalar("SELECT COUNT(*) FROM user_profiles WHERE kyc_status = 'pending'")
             .fetch_one(&state.db)
             .await?;
-    let onboarding_requests: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM plant_listing_requests WHERE status = 'PENDING'",
-    ).fetch_one(&state.db).await?;
+    let onboarding_requests: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM plant_listing_requests WHERE status = 'PENDING'")
+            .fetch_one(&state.db)
+            .await?;
     let onboarding_approved: i64 = sqlx::query_scalar(
         "SELECT COUNT(DISTINCT plant_id) FROM plant_listing_requests WHERE status = 'APPROVED' AND plant_id IS NOT NULL",
     ).fetch_one(&state.db).await?;
@@ -664,7 +665,6 @@ pub async fn get_portal_summary(
         ]
     })))
 }
-
 
 #[derive(Debug, Deserialize)]
 pub struct PlantMasterFilter {
@@ -726,9 +726,14 @@ pub async fn list_plant_master(
                    WHERE lr.plant_id = p.id AND lr.status = 'APPROVED')))
     "#;
     let total: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) {predicate}"))
-        .bind(&q).bind(&city).bind(&state_filter).bind(status)
-        .fetch_one(&state.db).await?;
-    let rows: Vec<serde_json::Value> = sqlx::query_scalar(&format!(r#"
+        .bind(&q)
+        .bind(&city)
+        .bind(&state_filter)
+        .bind(status)
+        .fetch_one(&state.db)
+        .await?;
+    let rows: Vec<serde_json::Value> = sqlx::query_scalar(&format!(
+        r#"
         SELECT jsonb_build_object(
             'id',p.id,'name',p.name,'code',p.code,
             'address',p.address_line,'city',p.city,'state',p.state,
@@ -741,10 +746,19 @@ pub async fn list_plant_master(
             'staff_count',(SELECT COUNT(*) FROM plant_staff ps
                 WHERE ps.plant_id=p.id AND ps.is_active AND ps.removed_at IS NULL))
         {predicate} ORDER BY p.updated_at DESC,p.id LIMIT $5 OFFSET $6
-    "#))
-        .bind(&q).bind(&city).bind(&state_filter).bind(status).bind(limit).bind(offset)
-        .fetch_all(&state.db).await?;
-    Ok(Json(json!({"items":rows,"total":total,"limit":limit,"offset":offset})))
+    "#
+    ))
+    .bind(&q)
+    .bind(&city)
+    .bind(&state_filter)
+    .bind(status)
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(
+        json!({"items":rows,"total":total,"limit":limit,"offset":offset}),
+    ))
 }
 
 /// One plant, one source of truth: owner and existing staff slot assignments.
@@ -756,7 +770,8 @@ pub async fn get_plant_master(
 ) -> Result<Json<serde_json::Value>, AppError> {
     admin.require("plant.view")?;
     admin.require("user.view")?;
-    let plant: Option<serde_json::Value> = sqlx::query_scalar(r#"
+    let plant: Option<serde_json::Value> = sqlx::query_scalar(
+        r#"
         SELECT jsonb_build_object(
             'id',p.id,'name',p.name,'code',p.code,'address',p.address_line,
             'city',p.city,'state',p.state,'pincode',p.pincode,
@@ -769,9 +784,14 @@ pub async fn get_plant_master(
                 SELECT 1 FROM plant_listing_requests lr
                 WHERE lr.plant_id=p.id AND lr.status='APPROVED'))
         FROM rmc_plants p JOIN users u ON u.id=p.owner_id WHERE p.id=$1
-    "#).bind(plant_id).fetch_optional(&state.db).await?;
+    "#,
+    )
+    .bind(plant_id)
+    .fetch_optional(&state.db)
+    .await?;
     let plant = plant.ok_or_else(|| AppError::NotFound("Plant not found".into()))?;
-    let staff: Vec<serde_json::Value> = sqlx::query_scalar(r#"
+    let staff: Vec<serde_json::Value> = sqlx::query_scalar(
+        r#"
         SELECT jsonb_build_object(
             'user_id',u.id,'name',u.full_name,'email',u.email,'role',ps.role,
             'active',ps.is_active,'employment_status',ps.employment_status,
@@ -779,7 +799,11 @@ pub async fn get_plant_master(
         FROM plant_staff ps JOIN users u ON u.id=ps.user_id
         WHERE ps.plant_id=$1 AND ps.removed_at IS NULL
         ORDER BY ps.role,u.full_name
-    "#).bind(plant_id).fetch_all(&state.db).await?;
+    "#,
+    )
+    .bind(plant_id)
+    .fetch_all(&state.db)
+    .await?;
     Ok(Json(json!({"plant":plant,"staff":staff})))
 }
 
