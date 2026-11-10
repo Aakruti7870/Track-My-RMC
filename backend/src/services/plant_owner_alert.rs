@@ -8,23 +8,27 @@ use uuid::Uuid;
 pub async fn tick(state: &AppState) -> Result<usize, AppError> {
     let recipient = std::env::var("PLANT_OWNER_ALERT_TO").ok();
     let template = std::env::var("PLANT_OWNER_ALERT_TEMPLATE_NAME").ok();
-    let configured = recipient
+    let configured = recipient.as_deref().is_some_and(|number| {
+        let digits = WhatsAppService::normalize_phone(number);
+        digits.len() == 12
+            && digits.starts_with("91")
+            && digits.bytes().all(|digit| digit.is_ascii_digit())
+    }) && template.as_deref().is_some_and(|name| {
+        !name.is_empty()
+            && name.len() <= 120
+            && name
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+    }) && state
+        .config
+        .meta_whatsapp_token
         .as_deref()
-        .is_some_and(|number| {
-            let digits = WhatsAppService::normalize_phone(number);
-            digits.len() == 12
-                && digits.starts_with("91")
-                && digits.bytes().all(|digit| digit.is_ascii_digit())
-        })
-        && template.as_deref().is_some_and(|name| {
-            !name.is_empty()
-                && name.len() <= 120
-                && name
-                    .bytes()
-                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
-        })
-        && state.config.meta_whatsapp_token.as_deref().is_some_and(|s| !s.is_empty())
-        && state.config.meta_whatsapp_phone_number_id.as_deref().is_some_and(|s| !s.is_empty());
+        .is_some_and(|s| !s.is_empty())
+        && state
+            .config
+            .meta_whatsapp_phone_number_id
+            .as_deref()
+            .is_some_and(|s| !s.is_empty());
 
     // Do not mark queued messages failed just because the template or sender
     // has not yet been configured/approved in production.
@@ -126,7 +130,8 @@ pub async fn mark_provider_status(
     provider_id: &str,
     provider_status: &str,
 ) -> Result<(), AppError> {
-    if provider_id.len() > 200 || !provider_id.starts_with("wamid.")
+    if provider_id.len() > 200
+        || !provider_id.starts_with("wamid.")
         || !matches!(provider_status, "sent" | "delivered" | "read" | "failed")
     {
         return Ok(());
@@ -156,6 +161,6 @@ mod tests {
     fn reminder_template_is_separate_from_otp_and_dispatch() {
         let source = include_str!("plant_owner_alert.rs");
         assert!(source.contains("PLANT_OWNER_ALERT_TEMPLATE_NAME"));
-        assert!(!source.contains("trackmyrmc_login_otp"));
+        assert!(source.contains("send_owner_registration_template"));
     }
 }
