@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Linking, Modal, Pressable, ScrollView, Share, StyleSheet, View } from "react-native";
+import { Linking, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { apiErrorDetail, apiGet, apiPost } from "@/src/api/client";
+import { apiPost } from "@/src/api/client";
 import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { useToast } from "@/src/components/ui/Toast";
@@ -146,16 +146,6 @@ export default function TripDetail() {
     }
   };
 
-  const shareTripDetails = async () => {
-    if (!id || !token) return;
-    try {
-      const { message } = await apiGet<{ message: string }>(`/loads/${id}/share-trip`, token);
-      await Share.share({ message });
-    } catch (error: unknown) {
-      toast(apiErrorDetail(error, "Unable to share the assigned trip"), "error");
-    }
-  };
-
   const openNavigation = async () => {
     const destination = (data?.site_address || t?.site_address || t?.site_name || "").trim();
     if (!destination) {
@@ -240,11 +230,6 @@ export default function TripDetail() {
               colors={colors}
             />
           </Card>
-
-          {["DISPATCHED", "EN_ROUTE", "ARRIVED", "UNLOADING", "DELIVERED"].includes(t.status) ? (
-            <Button testID="driver-share-trip" label="Share Trip Details" variant="outline"
-              onPress={() => void shareTripDetails()} />
-          ) : null}
 
           {t.status === "DELIVERED" ? (
             <Card
