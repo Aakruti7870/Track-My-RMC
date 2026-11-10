@@ -48,20 +48,44 @@ pub fn normalize_recipient(raw: &str) -> Result<String, AppError> {
     Ok(format!("+{normalized}"))
 }
 
-/// Called inside the same PostgreSQL transaction as dispatch, *never* on prepare.
-/// Retries and duplicate dispatch calls cannot create a second message event.
-pub async fn enqueue_in_tx(
+/// Challan generation creates a *draft* event in its transaction.
+/// This does not claim the vehicle has departed and never calls Meta.
+pub async fn prepare_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    load_id: Uuid,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO dispatch_whatsapp_events(load_id,order_id,plant_id,status)
+         SELECT l.id,o.id,o.plant_id,'waiting_dispatch'
+         FROM order_loads l JOIN orders o ON o.id=l.order_id
+         JOIN challans ch ON ch.load_id=l.id
+         WHERE l.id=$1
+         ON CONFLICT(load_id) DO NOTHING",
+    )
+    .bind(load_id)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+/// An actual dispatch changes the prepared event to an eligible queue entry.
+/// Both the state transition and queue activation commit atomically.
+/// Safe to call even if an older load has no pre-created outbox entry.
+pub async fn activate_on_dispatch_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     load_id: Uuid,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO dispatch_whatsapp_events(load_id,order_id,plant_id,status)
          SELECT l.id,o.id,o.plant_id,
-           CASE WHEN c.opted_in THEN 'pending' ELSE 'needs_consent' END
+           CASE WHEN COALESCE(c.opted_in,FALSE) THEN 'pending' ELSE 'needs_consent' END
          FROM order_loads l JOIN orders o ON o.id=l.order_id
+         JOIN challans ch ON ch.load_id=l.id
          LEFT JOIN dispatch_whatsapp_contacts c ON c.order_id=o.id
-         WHERE l.id=$1
-         ON CONFLICT(load_id) DO NOTHING",
+         WHERE l.id=$1 AND l.status='dispatched'
+         ON CONFLICT(load_id) DO UPDATE SET
+           status=EXCLUDED.status,updated_at=NOW()
+         WHERE dispatch_whatsapp_events.status='waiting_dispatch'",
     )
     .bind(load_id)
     .execute(&mut **tx)
