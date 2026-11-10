@@ -32,7 +32,7 @@ try {
       if(path.endsWith('/otp/send'))return reply({status:'EMAIL_OTP_SENT'});
       if(path.endsWith('/auth/login')){currentEmail=route.request().postDataJSON().email;return reply({challenge_token:'synthetic-challenge'});}
       if(path.endsWith('/verify-totp'))return reply({token:'synthetic-token-'+currentEmail,user:{id:currentEmail,role:'central_admin',full_name:currentEmail}});
-      if(path.endsWith('/auth/me'))return reply({permissions:['user.view','plant.view','plant_owners.manage']});
+      if(path.endsWith('/auth/me'))return reply({permissions:['user.view','plant.view','plant_owners.manage','order.view']});
       if(path.endsWith('/summary'))return reply({kpis:[{label:'Onboarding Requests',value:1}]});
       if(path==='/api/notifications')return reply({items:[{id:'admin-notice-1',event:'plant_onboarding',title:'Plant onboarding request received',body:'Synthetic approval notice',read:false,created_at:'2026-11-10T01:00:00Z'}],unread:1});
       if(path==='/api/notifications/read-all')return reply({success:true,updated:1});
@@ -48,7 +48,7 @@ try {
       },staff:[{user_id:'staff-fixture',name:'Test Supervisor',email:'supervisor@example.invalid',role:'supervisor',active:true,employment_status:'ACTIVE'}]});
       if(path==='/health')return reply({status:'ok',database:'connected',environment:'test'});
       if(path.endsWith('/collections/users'))return reply({items:[{id:'synthetic-user',full_name:'Previous workspace record'}]});
-      if(path.endsWith('/collections/plants')){
+      if(path.endsWith('/collections/orders')){
         if(delayPlants)await new Promise(resolve=>{releasePlants=resolve;});
         if(plantFails)return route.fulfill({status:403,contentType:'text/html',body:'<h1>private-proxy-diagnostic</h1>'});
         return reply({items:[]});
@@ -73,7 +73,7 @@ try {
     await button('Open plant record').click();
     await page.getByText('Test Supervisor').waitFor();
     await button('users').click();await page.getByText('Previous workspace record',{exact:true}).waitFor();
-    delayPlants=true;await button('plants').click();await page.getByRole('status').filter({hasText:'Loading records'}).waitFor();
+    delayPlants=true;await button('orders').click();await page.getByRole('status').filter({hasText:'Loading records'}).waitFor();
     assert.equal(await page.getByText('Previous workspace record',{exact:true}).count(),0);
     for(let i=0;!releasePlants&&i<50;i++)await delay(20);assert(releasePlants);releasePlants();delayPlants=false;
     await button('Retry loading records').waitFor();
