@@ -39,6 +39,7 @@ export default function DispatchOrder() {
   const toast = useToast();
   const [whatsappPhone, setWhatsappPhone] = useState("");
   const [confirmedConsent, setConfirmedConsent] = useState(false);
+  const [marketingConsent, setMarketingConsent] = useState(false);
   const [savingConsent, setSavingConsent] = useState(false);
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -57,9 +58,10 @@ export default function DispatchOrder() {
       await apiPost(`/staff/orders/${id}/dispatch-whatsapp-contact`, token, {
         phone: whatsappPhone || o?.customer_mobile || o?.customer_phone || "",
         opted_in: true,
+        marketing_opted_in: marketingConsent,
         consent_source: "customer_phone",
       });
-      toast("Customer's WhatsApp delivery consent recorded", "success");
+      toast("Customer's WhatsApp preferences recorded", "success");
     } catch {
       toast("Unable to record customer consent", "error");
     } finally {
@@ -111,7 +113,8 @@ export default function DispatchOrder() {
             <AppText variant="heading">WhatsApp Dispatch Contact</AppText>
             <AppText variant="caption">
               Record the customer's explicit permission for delivery updates.
-              This does not register a new customer account or authorize marketing.
+              Delivery messages require customer permission. App promotions require a separate
+              opt-in; never assume consent from a concrete purchase.
             </AppText>
             <Input label="WhatsApp phone" keyboardType="phone-pad" maxLength={18}
               placeholder={o.customer_mobile || o.customer_phone || "+91…"}
@@ -122,7 +125,14 @@ export default function DispatchOrder() {
               <Ionicons name={confirmedConsent ? "checkbox" : "square-outline"} size={24} color={colors.brand} />
               <AppText style={{ flex: 1 }}>The customer agreed to WhatsApp delivery notifications.</AppText>
             </Pressable>
-            <Button label="Save Delivery Contact" variant="outline" loading={savingConsent}
+            <Pressable accessibilityRole="checkbox"
+              accessibilityState={{ checked: marketingConsent }}
+              onPress={() => setMarketingConsent(value => !value)}
+              style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+              <Ionicons name={marketingConsent ? "checkbox" : "square-outline"} size={24} color={colors.brand} />
+              <AppText style={{ flex: 1 }}>Customer separately agreed to optional TrackMyRMC WhatsApp app promotions.</AppText>
+            </Pressable>
+            <Button label="Save WhatsApp Preferences" variant="outline" loading={savingConsent}
               onPress={() => void saveDeliveryContact()} />
           </Card>
         </ScrollView>
