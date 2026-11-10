@@ -153,9 +153,9 @@ impl WhatsAppService {
             .map_err(|_| "marketing_template_not_configured".to_string())?;
         if template_name.is_empty()
             || template_name.len() > 120
-            || !template_name.bytes().all(|byte| {
-                byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_'
-            })
+            || !template_name
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
         {
             return Err("marketing_template_invalid".into());
         }
@@ -191,16 +191,25 @@ impl WhatsAppService {
             "https://graph.facebook.com/{}/{}/messages",
             self.api_version, number_id
         );
-        let response = self.client.post(url).bearer_auth(token).json(&payload)
-            .send().await.map_err(|_| "provider_outcome_unknown".to_string())?;
+        let response = self
+            .client
+            .post(url)
+            .bearer_auth(token)
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|_| "provider_outcome_unknown".to_string())?;
         if !response.status().is_success() {
             let status = response.status();
             tracing::warn!(status = %status, "Meta rejected marketing template");
             return Err(format!("marketing_provider_http_{}", status.as_u16()));
         }
-        let body: serde_json::Value = response.json().await
+        let body: serde_json::Value = response
+            .json()
+            .await
             .map_err(|_| "provider_response_unknown".to_string())?;
-        let provider_id = body["messages"][0]["id"].as_str()
+        let provider_id = body["messages"][0]["id"]
+            .as_str()
             .filter(|id| id.starts_with("wamid.") && id.len() < 200)
             .ok_or_else(|| "provider_message_id_missing".to_string())?;
         Ok(provider_id.to_string())
