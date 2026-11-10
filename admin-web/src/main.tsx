@@ -1556,6 +1556,119 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
               </section>
             )}
 
+
+            {user.role === 'central_admin' && permissions.includes('support.manage') && (
+              <section id="marketing-center" aria-label="Marketing CRM and broadcast drafts"
+                style={{marginTop:18,padding:14,border:'1px solid #334155',borderRadius:12}}>
+                <div style={{display:'flex',gap:10,alignItems:'center'}}>
+                  <Megaphone size={22} aria-hidden="true"/>
+                  <div>
+                    <h2 style={{margin:0,fontSize:19}}>Marketing & Broadcast Center</h2>
+                    <p style={{fontSize:12,color:'#cbd5e1',margin:'4px 0 0'}}>
+                      Named contact segments, consent records and campaign drafts. No live WhatsApp or SMS sending.
+                    </p>
+                  </div>
+                </div>
+                <button type="button" disabled={marketingBusy} onClick={()=>void loadMarketing()}
+                  style={{...buttonStyle,marginTop:12}}>
+                  {showMarketing?'Refresh CRM overview':'Open Marketing CRM'}
+                </button>
+                {showMarketing&&<>
+                  {marketingError&&<p role="alert" style={{color:'#fecaca'}}>{marketingError}</p>}
+                  {marketingBusy&&<p role="status">Updating marketing workspace…</p>}
+                  {marketing&&<>
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(115px,1fr))',gap:8,marginTop:12}}>
+                      {([
+                        ['Stored contacts',marketing.contacts.all],
+                        ['Opted in (recorded)',marketing.contacts.opted_in],
+                        ['Consent unverified',marketing.contacts.unverified],
+                        ['Opted out',marketing.contacts.opted_out]
+                      ] as const).map(([key,value])=><div key={key}
+                        style={{border:'1px solid #475569',borderRadius:9,padding:10,background:'#111827'}}>
+                        <div style={{fontSize:11,color:'#cbd5e1'}}>{key}</div>
+                        <strong style={{fontSize:20}}>{value}</strong>
+                      </div>)}
+                    </div>
+                    <p style={{fontSize:12,color:'#fbbf24',margin:'10px 0'}}>
+                      This is an internal CRM, not a WhatsApp chat group. Uploaded phone numbers never prove consent;
+                      campaign approval, approved Meta templates, provider credentials, recipient suppression and dispatch are not enabled.
+                    </p>
+                    <h3 style={{fontSize:16,marginBottom:6}}>Contact groups</h3>
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:8}}>
+                      {marketing.segments.map(group=><div key={group.id}
+                        style={{padding:11,borderRadius:8,border:'1px solid #475569',background:'#111827'}}>
+                        <strong style={{fontSize:13}}>{group.name}</strong>
+                        <p style={{fontSize:12,color:'#cbd5e1',margin:'5px 0'}}>{group.members} members</p>
+                      </div>)}
+                      {!marketing.segments.length&&<p>No contact groups. Create one below.</p>}
+                    </div>
+                    <div style={{borderTop:'1px solid #334155',marginTop:16,paddingTop:12,display:'grid',gap:10}}>
+                      <h3 style={{fontSize:16,margin:0}}>Create group / import contacts / save draft</h3>
+                      <p style={{fontSize:12,color:'#cbd5e1',margin:0}}>
+                        Every change requires a fresh authenticator verification and audit reason. One file may contain up to 500 records.
+                      </p>
+                      <label style={{fontSize:12}}>New group name
+                        <input value={marketingGroup} maxLength={100} onChange={e=>setMarketingGroup(e.target.value)}
+                          style={inputStyle} placeholder="Example: Mumbai opted-in contractors"/>
+                      </label>
+                      <button type="button" disabled={marketingBusy||marketingGroup.trim().length<3}
+                        onClick={()=>void saveMarketing('segment')} style={{...buttonStyle,marginTop:0}}>
+                        Create named contact group
+                      </button>
+                      <label style={{fontSize:12}}>Existing contact group
+                        <select value={marketingSegment} onChange={e=>setMarketingSegment(e.target.value)}
+                          style={inputStyle} disabled={!marketing.segments.length}>
+                          {!marketing.segments.length&&<option value="">Create a group first</option>}
+                          {marketing.segments.map(group=><option key={group.id} value={group.id}>{group.name}</option>)}
+                        </select>
+                      </label>
+                      <label style={{fontSize:12}}>Import CSV contacts (phone,name headers; export Excel to CSV)
+                        <input type="file" accept=".csv,text/csv" style={inputStyle}
+                          onChange={e=>void parseMarketingCsv(e.target.files?.[0])}/>
+                      </label>
+                      <p style={{fontSize:12,color:'#cbd5e1',margin:0}}>
+                        {marketingCsv.length} validated contact rows ready for internal import. Duplicates are resolved by phone number; consent is not changed.
+                      </p>
+                      <button type="button" disabled={marketingBusy||!marketingSegment||marketingCsv.length===0}
+                        onClick={()=>void saveMarketing('contacts')} style={{...buttonStyle,marginTop:0}}>
+                        Import contacts (no marketing opt-in)
+                      </button>
+                      <label style={{fontSize:12}}>Draft campaign title
+                        <input value={marketingCampaign} maxLength={120} onChange={e=>setMarketingCampaign(e.target.value)}
+                          style={inputStyle} placeholder="Example: Concrete supply update"/>
+                      </label>
+                      <label style={{fontSize:12}}>Proposed approved-template identifier
+                        <input value={marketingTemplate} maxLength={120}
+                          onChange={e=>setMarketingTemplate(e.target.value)}
+                          style={inputStyle} placeholder="example_update"/>
+                      </label>
+                      <button type="button" disabled={marketingBusy||!marketingSegment||!marketingCampaign.trim()||!marketingTemplate.trim()}
+                        onClick={()=>void saveMarketing('draft')} style={{...buttonStyle,marginTop:0}}>
+                        Save campaign draft — do not send
+                      </button>
+                      <label style={{fontSize:12}}>Audit reason (required for every action)
+                        <input value={marketingReason} maxLength={500}
+                          onChange={e=>setMarketingReason(e.target.value)} style={inputStyle}/>
+                      </label>
+                      <label style={{fontSize:12}}>Fresh authenticator code
+                        <input type="password" inputMode="numeric" maxLength={6} pattern="[0-9]{6}"
+                          value={marketingCode} onChange={e=>setMarketingCode(e.target.value)} style={inputStyle}/>
+                      </label>
+                    </div>
+                    <h3 style={{fontSize:16,marginBottom:6}}>Campaign drafts</h3>
+                    {marketing.campaigns.map(draft=><article key={draft.id}
+                      style={{borderTop:'1px solid #334155',padding:'9px 0',fontSize:13}}>
+                      <strong>{draft.name}</strong> · {draft.segment}
+                      <div style={{color:'#cbd5e1',fontSize:12}}>
+                        Template {draft.template} · {draft.status} · No send action available
+                      </div>
+                    </article>)}
+                    {!marketing.campaigns.length&&<p>No campaigns drafted.</p>}
+                  </>}
+                </>}
+              </section>
+            )}
+
             {user.role === 'central_admin' && permissions.includes('system.view') && (
               <section id="automation-governance" aria-label="Native automation governance" style={{marginTop:18,padding:14,border:'1px solid #334155',borderRadius:10}}>
                 <h2 style={{marginTop:0,fontSize:19}}>Native Automation Center</h2>
