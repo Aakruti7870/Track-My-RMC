@@ -33,7 +33,19 @@ try {
       if(path.endsWith('/auth/login')){currentEmail=route.request().postDataJSON().email;return reply({challenge_token:'synthetic-challenge'});}
       if(path.endsWith('/verify-totp'))return reply({token:'synthetic-token-'+currentEmail,user:{id:currentEmail,role:'central_admin',full_name:currentEmail}});
       if(path.endsWith('/auth/me'))return reply({permissions:['user.view','plant.view','plant_owners.manage']});
-      if(path.endsWith('/summary'))return reply({kpis:[]});
+      if(path.endsWith('/summary'))return reply({kpis:[{label:'Onboarding Requests',value:1}]});
+      if(path==='/api/notifications')return reply({items:[{id:'admin-notice-1',event:'plant_onboarding',title:'Plant onboarding request received',body:'Synthetic approval notice',read:false,created_at:'2026-11-10T01:00:00Z'}],unread:1});
+      if(path==='/api/notifications/read-all')return reply({success:true,updated:1});
+      if(path==='/api/control-center/plants/master')return reply({items:[{
+        id:'synthetic-plant',name:'Synthetic Plant A',code:'PLANT-TEST',city:'Panvel',state:'Maharashtra',
+        address:'Example test address',owner_name:'Fixture Owner',owner_email:'fixture-owner@example.invalid',
+        owner_active:true,active:true,google_place_id:null,onboarding_approved:true,staff_count:1
+      }],total:1});
+      if(path==='/api/control-center/plants/synthetic-plant/master')return reply({plant:{
+        id:'synthetic-plant',name:'Synthetic Plant A',code:'PLANT-TEST',city:'Panvel',state:'Maharashtra',
+        address:'Example test address',owner_name:'Fixture Owner',owner_email:'fixture-owner@example.invalid',
+        owner_active:true,active:true,google_place_id:null,onboarding_approved:true,staff_count:1
+      },staff:[{user_id:'staff-fixture',name:'Test Supervisor',email:'supervisor@example.invalid',role:'supervisor',active:true,employment_status:'ACTIVE'}]});
       if(path==='/health')return reply({status:'ok',database:'connected',environment:'test'});
       if(path.endsWith('/collections/users'))return reply({items:[{id:'synthetic-user',full_name:'Previous workspace record'}]});
       if(path.endsWith('/collections/plants')){
@@ -54,6 +66,12 @@ try {
       await page.getByRole('heading',{name:'Command Center',exact:true}).waitFor();
     };
     await page.goto(origin+'/admin/');await signIn('first@example.invalid');
+    await page.getByRole('button',{name:'Review admin notifications'}).click();
+    await page.getByText('Synthetic approval notice').waitFor();
+    await button('Open registered plants').click();
+    await page.getByText('Fixture Owner').first().waitFor();
+    await button('Open plant record').click();
+    await page.getByText('Test Supervisor').waitFor();
     await button('users').click();await page.getByText('Previous workspace record',{exact:true}).waitFor();
     delayPlants=true;await button('plants').click();await page.getByRole('status').filter({hasText:'Loading records'}).waitFor();
     assert.equal(await page.getByText('Previous workspace record',{exact:true}).count(),0);
@@ -72,6 +90,8 @@ try {
     assert.equal(await page.getByLabel('Approved administrator email').inputValue(),'');await signIn('second@example.invalid');
     assert.equal(await page.getByLabel('Plant Owner access controls').count(),0);
     assert.equal(await page.getByText('Previous account plant · TEST-001',{exact:true}).count(),0);
+    assert.equal(await page.getByText('Test Supervisor',{exact:true}).count(),0);
+    assert.equal(await button('Close plant record').count(),0);
     await button('Plant Owner approvals and access').click();
     for(const label of ['Registered Plant Owner account ID','Reason for privileged change','Fresh authenticator code'])assert.equal(await page.getByLabel(label,{exact:true}).inputValue(),'');
     assert.deepEqual(errors,[]);await context.close();
