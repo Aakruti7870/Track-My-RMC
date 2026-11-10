@@ -153,6 +153,9 @@ pub async fn advance(
         .bind(id).bind(target).execute(&mut *tx).await?;
     sqlx::query("INSERT INTO trip_status_history (load_id,actor_id,from_status,to_status) VALUES ($1,$2,$3,$4)")
         .bind(id).bind(actor).bind(load.status).bind(target).execute(&mut *tx).await?;
+    if action == "dispatch" {
+        super::dispatch_whatsapp::enqueue_in_tx(&mut tx, id).await?;
+    }
     tx.commit().await?;
     Ok(target)
 }
