@@ -219,7 +219,7 @@ pub async fn mark_provider_status(
         return Ok(());
     }
     // "failed" never overwrites delivery; out-of-order updates cannot downgrade.
-    sqlx::query(
+    let changed: Option<(Uuid, Uuid)> = sqlx::query_as(
         "UPDATE dispatch_whatsapp_marketing_events
          SET status=$2,updated_at=NOW(),
              delivered_at=CASE WHEN $2 IN ('delivered','read')
@@ -231,11 +231,19 @@ pub async fn mark_provider_status(
             OR ($2='delivered' AND status IN ('accepted','sent'))
             OR ($2='read' AND status IN ('accepted','sent','delivered'))
             OR ($2='failed' AND status IN ('accepted','sent'))
-           )",
+           )
+         RETURNING plant_id,order_id",
     )
     .bind(provider_id)
     .bind(status)
-    .execute(&state.db)
+    .fetch_optional(&state.db)
     .await?;
+    if let Some((plant_id, order_id)) = changed {
+        if status == "failed" {
+            super::dispatch_whatsapp::alert_owner_review(
+                state, plant_id, order_id, true,
+            ).await?;
+        }
+    }
     Ok(())
 }
