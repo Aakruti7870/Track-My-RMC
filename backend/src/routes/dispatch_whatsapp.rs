@@ -452,12 +452,25 @@ pub async fn receive_meta_webhook(
         return Ok(StatusCode::OK);
     }
     for entry in data["entry"].as_array().into_iter().flatten() {
-        if state.config.meta_whatsapp_waba_id.as_deref() != entry["id"].as_str() {
+        if state.config.meta_whatsapp_waba_id.as_deref().filter(|id| !id.is_empty())
+            != entry["id"].as_str() || entry["id"].as_str().is_none() {
             continue;
         }
         for change in entry["changes"].as_array().into_iter().flatten() {
             if change["field"] != "messages" {
                 continue;
+            }
+            // Ignore status and inbound events for any unrelated sending number.
+            let sender_id = change["value"]["metadata"]["phone_number_id"].as_str();
+            if sender_id.is_none()
+                || sender_id != state.config.meta_whatsapp_phone_number_id.as_deref()
+            {
+                continue;
+            }
+            for inbound in change["value"]["messages"].as_array().into_iter().flatten() {
+                crate::routes::admin_whatsapp::ingest_verified_message(
+                    &state, sender_id.unwrap_or_default(), inbound,
+                ).await?;
             }
             // Explicit recipient STOP on the verified sender cancels all pending
             // marketing for that number across all tenant plants.
@@ -494,6 +507,15 @@ pub async fn receive_meta_webhook(
                             .bind(&phone)
                             .execute(&mut *tx)
                             .await?;
+                            // STOP also revokes the central CRM marketing consent,
+                            // regardless of which source originally recorded it.
+                            sqlx::query(
+                                "UPDATE admin_marketing_contacts SET
+                                     consent_status='OPTED_OUT',
+                                     consent_evidence='WhatsApp STOP request',
+                                     consent_recorded_at=NULL, updated_at=NOW()
+                                 WHERE phone_e164=$1"
+                            ).bind(format!("+{phone}")).execute(&mut *tx).await?;
                             tx.commit().await?;
                         }
                     }
@@ -507,6 +529,8 @@ pub async fn receive_meta_webhook(
                     crate::services::dispatch_marketing::mark_provider_status(&state, id, status)
                         .await?;
                     crate::services::plant_owner_alert::mark_provider_status(&state, id, status)
+                        .await?;
+                    crate::routes::admin_whatsapp::mark_verified_status(&state, id, status)
                         .await?;
                 }
             }
