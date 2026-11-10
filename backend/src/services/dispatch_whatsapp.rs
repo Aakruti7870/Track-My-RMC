@@ -147,11 +147,12 @@ pub async fn tick(state: &AppState) -> Result<usize, AppError> {
         };
 
         let url = tracking_url(load_id, &state.config.jwt_secret);
+        let quantity_text = format!("{quantity:.2}");
         let params = [
             plant.as_str(),
             order.as_str(),
             grade.as_str(),
-            &format!("{quantity:.2}"),
+            quantity_text.as_str(),
             mixer.as_str(),
             url.as_str(),
         ];
