@@ -188,7 +188,9 @@ pub async fn get_customer_consent(
     .await?;
     let (opted_in, marketing_opted_in) =
         consent.ok_or_else(|| AppError::NotFound("Order not found".into()))?;
-    Ok(Json(json!({"opted_in": opted_in, "marketing_opted_in": marketing_opted_in})))
+    Ok(Json(
+        json!({"opted_in": opted_in, "marketing_opted_in": marketing_opted_in}),
+    ))
 }
 
 pub async fn get_owner_preference(
@@ -499,7 +501,8 @@ pub async fn receive_meta_webhook(
                     (notification["id"].as_str(), notification["status"].as_str())
                 {
                     dispatch_whatsapp::mark_provider_status(&state, id, status).await?;
-                    crate::services::dispatch_marketing::mark_provider_status(&state, id, status).await?;
+                    crate::services::dispatch_marketing::mark_provider_status(&state, id, status)
+                        .await?;
                 }
             }
         }
