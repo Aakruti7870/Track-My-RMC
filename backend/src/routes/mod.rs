@@ -32,6 +32,7 @@ pub mod owner_routes;
 pub mod payroll_routes;
 pub mod permission_consent;
 pub mod plant_onboarding;
+pub mod plant_owner_registration;
 pub mod plant_plans_routes;
 pub mod plant_profile;
 pub mod plant_staff_manager;
@@ -835,6 +836,19 @@ pub fn build_app_router(state: AppState) -> Router {
         .route(
             "/api/plant-onboarding/requests",
             post(plant_onboarding::submit_onboarding),
+        )
+        // Five-field contact registration does not approve a plant or account.
+        .route(
+            "/api/plant-owner-registration/requests",
+            post(plant_owner_registration::submit),
+        )
+        .route(
+            "/api/control-center/plant-owner-registration/requests",
+            get(plant_owner_registration::list),
+        )
+        .route(
+            "/api/control-center/plant-owner-registration/:request_id/contacted",
+            post(plant_owner_registration::mark_contacted),
         )
         .route(
             "/api/plant-discovery/requests",
