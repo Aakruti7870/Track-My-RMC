@@ -105,13 +105,15 @@ export function DriverIdentityCard() {
             <View testID="driver-identity-full-details" style={styles.detailSection}>
                 <View style={[styles.detailsDivider, { backgroundColor: colors.divider }]} />
                 <View style={styles.grid}>
-                  {fields.map(field => (
+                  {fields.map((field, index) => (
                     <View
                       key={field.label}
                       style={[styles.field, narrow ? styles.narrowField : null, {
                         width: wide ? "32.3%" : "48.6%",
-                        borderColor: colors.border,
-                        backgroundColor: colors.surfaceElevated,
+                        borderColor: index < 6 ? colors.borderStrong : colors.border,
+                        backgroundColor: index < 6
+                          ? (colors.isDark ? "rgba(255,138,0,0.10)" : "#FFF4EB")
+                          : colors.surfaceElevated,
                       }]}
                     >
                       <View style={styles.fieldHeading}>
