@@ -346,6 +346,110 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
     finally{setPlacesLoading(false);}
   }
 
+
+  async function openPlantGovernance(plantId:string) {
+    setGovError('');setGovernance(null);
+    try{
+      const response=await apiClient.get('/api/control-center/plants/'+encodeURIComponent(plantId)+'/governance');
+      const data=response.data as Governance;
+      setGovernance(data);setGovMode(data.intake_mode);
+      setGovTrust(data.trust_status==='VERIFIED'?'VERIFIED':'REVOKED');setGovExpiry(data.trust_until||'');
+    }catch(e){setGovError(errorMessage(e));}
+  }
+  async function savePlantGovernance(kind:'intake'|'trust') {
+    if(!governance||govReason.trim().length<10||!(/^[0-9]{6}$/).test(govCode.trim())){
+      setGovError('Provide a reason of 10 or more characters and a current six-digit authenticator code.');return;
+    }
+    const id=governance.plant_id;
+    if(!window.confirm('Apply this audited decision to '+governance.plant_name+'?'))return;
+    setGovBusy(true);setGovError('');
+    try{
+      await apiClient.post('/api/control-center/step-up',{code:govCode.trim()});
+      await apiClient.post('/api/control-center/plants/'+encodeURIComponent(id)+'/governance',{
+        kind,value:kind==='intake'?govMode:govTrust,
+        valid_until:kind==='trust'&&govTrust==='VERIFIED'?govExpiry:null,reason:govReason.trim()
+      });
+      setGovCode('');setGovReason('');
+      await openPlantGovernance(id);
+      setNotice('Plant decision saved and audited.');
+    }catch(e){setGovCode('');setGovError(errorMessage(e));}
+    finally{setGovBusy(false);}
+  }
+  async function loadMarketing() {
+    setShowMarketing(true);setMarketingBusy(true);setMarketingError('');
+    try{
+      const response=await apiClient.get('/api/control-center/marketing/overview');
+      const value=response.data as MarketingStats;setMarketing(value);
+      setMarketingSegment(current=>value.segments.some(s=>s.id===current)?current:value.segments[0]?.id||'');
+    }catch(e){setMarketingError(errorMessage(e));}
+    finally{setMarketingBusy(false);}
+  }
+  async function parseMarketingCsv(file?:File) {
+    setMarketingCsv([]);setMarketingError('');
+    if(!file)return;
+    if(!file.name.toLowerCase().endsWith('.csv')||file.size>256000){
+      setMarketingError('Export a CSV file (maximum 250 KB) with phone,name columns.');return;
+    }
+    try{
+      const source=(await file.text()).replace(/^\uFEFF/,'');
+      const records:string[][]=[];let record:string[]=[];let field='';let quoted=false;
+      for(let i=0;i<source.length;i++){
+        const char=source[i];
+        if(char==='"'){
+          if(quoted&&source[i+1]==='"'){field+='"';i++;}else{quoted=!quoted;}
+        }else if(char===','&&!quoted){record.push(field);field='';}
+        else if((char==='\n'||char==='\r')&&!quoted){
+          record.push(field);field='';
+          if(record.some(v=>v.trim()))records.push(record);
+          record=[];if(char==='\r'&&source[i+1]==='\n')i++;
+        }else{field+=char;}
+      }
+      if(quoted)throw new Error('CSV contains an unclosed quoted field.');
+      record.push(field);if(record.some(v=>v.trim()))records.push(record);
+      const headers=records.shift()?.map(v=>v.trim().toLowerCase())||[];
+      if(headers.length!==2||headers[0]!=='phone'||headers[1]!=='name')
+        throw new Error('CSV headers must be exactly phone,name.');
+      if(records.length===0||records.length>500)throw new Error('Use between 1 and 500 contact rows per import.');
+      if(records.some(r=>r.length!==2||!r[0].trim()||r[0].length>40||r[1].length>120))
+        throw new Error('Every row must contain a valid phone field and an optional name.');
+      setMarketingCsv(records.map(r=>({phone:r[0].trim(),name:r[1].trim()})));
+    }catch(e){setMarketingError(errorMessage(e));}
+  }
+  async function saveMarketing(action:'segment'|'contacts'|'draft') {
+    if(!(/^[0-9]{6}$/).test(marketingCode.trim())||marketingReason.trim().length<10){
+      setMarketingError('A six-digit authenticator code and 10-character audit reason are required.');return;
+    }
+    if(action!=='segment'&&!marketingSegment){
+      setMarketingError('Select a named contact group first.');return;
+    }
+    if(action==='contacts'&&!marketingCsv.length){
+      setMarketingError('Import a validated CSV file before submitting.');return;
+    }
+    setMarketingBusy(true);setMarketingError('');
+    try{
+      await apiClient.post('/api/control-center/step-up',{code:marketingCode.trim()});
+      if(action==='segment'){
+        await apiClient.post('/api/control-center/marketing/segments',{name:marketingGroup,reason:marketingReason});
+        setMarketingGroup('');
+      }else if(action==='contacts'){
+        await apiClient.post('/api/control-center/marketing/contacts/import',{
+          segment_id:marketingSegment,contacts:marketingCsv,reason:marketingReason
+        });
+        setMarketingCsv([]);
+      }else{
+        await apiClient.post('/api/control-center/marketing/campaigns',{
+          segment_id:marketingSegment,name:marketingCampaign,
+          template:marketingTemplate,reason:marketingReason
+        });
+        setMarketingCampaign('');setMarketingTemplate('');
+      }
+      setMarketingCode('');setMarketingReason('');
+      setNotice('Marketing records saved internally. No messages sent.');
+      await loadMarketing();
+    }catch(e){setMarketingCode('');setMarketingError(errorMessage(e));}
+    finally{setMarketingBusy(false);}
+  }
+
   async function loadNativeAutomation() {
     setShowNativeAutomation(true);setBusy(true);setError('');
     try {
