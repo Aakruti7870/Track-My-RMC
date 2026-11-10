@@ -201,6 +201,9 @@ pub async fn tick(state: &AppState) -> Result<usize, AppError> {
                 .bind(reason)
                 .execute(&state.db)
                 .await?;
+                super::dispatch_whatsapp::alert_owner_review(
+                    state, plant_id, order_id, true
+                ).await?;
             }
         }
     }
