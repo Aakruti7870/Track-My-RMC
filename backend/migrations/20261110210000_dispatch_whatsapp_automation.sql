@@ -12,7 +12,7 @@ CREATE TABLE dispatch_whatsapp_plant_settings (
 -- Do not confuse Android notification permission with WhatsApp opt-in.
 CREATE TABLE dispatch_whatsapp_contacts (
     order_id UUID PRIMARY KEY REFERENCES orders(id) ON DELETE CASCADE,
-    phone_e164 VARCHAR(16) NOT NULL CHECK (phone_e164 ~ '^[+][1-9][0-9]{9,14}),
+    phone_e164 VARCHAR(16) NOT NULL CHECK (phone_e164 ~ '^[+][1-9][0-9]{9,14}$'),
     opted_in BOOLEAN NOT NULL DEFAULT FALSE,
     marketing_opted_in BOOLEAN NOT NULL DEFAULT FALSE,
     marketing_consent_recorded_at TIMESTAMPTZ,
