@@ -43,7 +43,9 @@ pub fn normalize_recipient(raw: &str) -> Result<String, AppError> {
         digits
     };
     if !(10..=15).contains(&normalized.len()) || normalized.starts_with('0') {
-        return Err(AppError::BadRequest("WhatsApp phone needs a country code".into()));
+        return Err(AppError::BadRequest(
+            "WhatsApp phone needs a country code".into(),
+        ));
     }
     Ok(format!("+{normalized}"))
 }
@@ -145,9 +147,8 @@ pub async fn tick(state: &AppState) -> Result<usize, AppError> {
         let plant_id: Uuid = row.get("plant_id");
 
         // Recheck live consent/settings before the request (operator can revoke).
-        let details: Option<(String, String, String, String, f64, String)> =
-            sqlx::query_as(
-                "SELECT contact.phone_e164,p.name,o.order_number,o.concrete_grade,
+        let details: Option<(String, String, String, String, f64, String)> = sqlx::query_as(
+            "SELECT contact.phone_e164,p.name,o.order_number,o.concrete_grade,
                         l.quantity_m3::DOUBLE PRECISION,m.registration_number
                  FROM order_loads l JOIN orders o ON o.id=l.order_id
                  JOIN rmc_plants p ON p.id=o.plant_id
@@ -158,12 +159,12 @@ pub async fn tick(state: &AppState) -> Result<usize, AppError> {
                    AND contact.opted_in AND settings.enabled
                    AND l.status IN ('dispatched','en_route','arrived','pouring')
                    AND l.dispatched_at > NOW() - INTERVAL '2 hours'",
-            )
-            .bind(load_id)
-            .bind(order_id)
-            .bind(plant_id)
-            .fetch_optional(&state.db)
-            .await?;
+        )
+        .bind(load_id)
+        .bind(order_id)
+        .bind(plant_id)
+        .fetch_optional(&state.db)
+        .await?;
 
         let Some((phone, plant, order, grade, quantity, mixer)) = details else {
             sqlx::query(
@@ -233,12 +234,11 @@ pub async fn mark_provider_status(
     }
     // Do not downgrade read to delivered or sent, or delivered to sent.
     // Failed provider status remains visible to the human operator.
-    let event: Option<(String,)> = sqlx::query_as(
-        "SELECT status FROM dispatch_whatsapp_events WHERE provider_message_id=$1",
-    )
-    .bind(provider_id)
-    .fetch_optional(&state.db)
-    .await?;
+    let event: Option<(String,)> =
+        sqlx::query_as("SELECT status FROM dispatch_whatsapp_events WHERE provider_message_id=$1")
+            .bind(provider_id)
+            .fetch_optional(&state.db)
+            .await?;
     if let Some((previous,)) = event {
         if rank(provider_status) >= rank(&previous) {
             sqlx::query(
@@ -280,7 +280,10 @@ mod tests {
     #[test]
     fn recipient_validation_handles_indian_and_international_numbers() {
         assert_eq!(normalize_recipient("9876543210").unwrap(), "+919876543210");
-        assert_eq!(normalize_recipient("+919876543210").unwrap(), "+919876543210");
+        assert_eq!(
+            normalize_recipient("+919876543210").unwrap(),
+            "+919876543210"
+        );
         assert!(normalize_recipient("not a number").is_err());
     }
 }
