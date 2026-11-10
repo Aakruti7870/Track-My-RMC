@@ -22,6 +22,28 @@ assert.equal(resources.AppSecurityGroup.Properties.SecurityGroupIngress?.length 
 assert.deepEqual(resources.DatabaseSecurityGroup.Properties.SecurityGroupIngress, [{ IpProtocol: 'tcp', FromPort: 5432, ToPort: 5432, SourceSecurityGroupId: { Ref: 'AppSecurityGroup' }, Description: 'PostgreSQL from the isolated staging host only' }]);
 assert.ok(resources.AppSecurityGroup.Properties.SecurityGroupEgress.every(rule => rule.FromPort === 443 || (rule.FromPort === 5432 && rule.CidrIp === '10.88.0.0/16')));
 assert.equal(resources.AppHost.Properties.MetadataOptions.HttpTokens, 'required');
+const allStagingInstances = Object.entries(resources).filter(([, resource]) => resource.Type === 'AWS::EC2::Instance');
+assert.deepEqual(allStagingInstances.map(([name]) => name), ['AppHost'], 'Any additional instance requires a fresh security review and scanner waiver removal');
+for (const [name, resource] of allStagingInstances) assert.equal(resource.Properties.MetadataOptions?.HttpTokens, 'required', `IMDSv2 must be enforced on ${name}`);
+assert.equal(resources.AppSubnet.Properties.MapPublicIpOnLaunch, false, 'Staging app subnet must not automatically assign public IPs');
+for (const forbidden of ['Gateway', 'GatewayAttachment', 'PublicRoutes', 'PublicRoute', 'PublicRouteAssociation']) assert.equal(resources[forbidden], undefined, `Internet route still present: ${forbidden}`);
+assert.equal(resources.AppRouteTableAssociation.Properties.SubnetId.Ref, 'AppSubnet');
+assert.ok(resources.ArtifactS3GatewayEndpoint.Properties.RouteTableIds.some(ref => ref.Ref === 'AppRouteTable'));
+for (const [name, service] of [['SsmEndpoint','ssm'],['SsmMessagesEndpoint','ssmmessages'],['Ec2MessagesEndpoint','ec2messages'],['SecretsManagerEndpoint','secretsmanager']]) {
+  const endpoint = resources[name].Properties;
+  assert.equal(endpoint.VpcEndpointType, 'Interface', `${name}: interface endpoint required`);
+  assert.equal(endpoint.PrivateDnsEnabled, true);
+  assert.equal(endpoint.ServiceName['Fn::Sub'], `com.amazonaws.${'${AWS::Region}'}.${service}`);
+}
+assert.ok(resources.AppSecurityGroup.Properties.SecurityGroupEgress.every(rule => rule.CidrIp !== '0.0.0.0/0'));
+assert.equal(resources.AppSecurityGroup.Properties.SecurityGroupEgress.find(rule => rule.FromPort === 443).DestinationSecurityGroupId.Ref, 'InterfaceEndpointSecurityGroup');
+assert.equal(resources.Artifacts.Properties.BucketEncryption.ServerSideEncryptionConfiguration[0].ServerSideEncryptionByDefault.SSEAlgorithm, 'aws:kms');
+assert.deepEqual(resources.Artifacts.Properties.BucketEncryption.ServerSideEncryptionConfiguration[0].ServerSideEncryptionByDefault.KMSMasterKeyID, {'Fn::GetAtt':['ArtifactKmsKey','Arn']});
+assert.equal(resources.ArtifactKmsKey.Properties.EnableKeyRotation, true);
+assert.ok(resources.RuntimePolicy.Properties.PolicyDocument.Statement.some(s => s.Sid === 'DecryptOwnStagingArtifacts' && s.Effect === 'Allow' && s.Action.includes('kms:Decrypt')));
+for (const r of Object.values(resources)) {
+  if (r.Type === 'AWS::EC2::Route') assert.notEqual(r.Properties?.DestinationCidrBlock, '0.0.0.0/0', 'Public internet route prohibited');
+}
 assert.equal(resources.AppHost.Properties.CreditSpecification.CPUCredits, 'standard');
 assert.equal(resources.AppHost.Properties.BlockDeviceMappings[0].Ebs.Encrypted, true);
 assert.equal(resources.AppHost.Properties.BlockDeviceMappings[0].Ebs.DeleteOnTermination, true);

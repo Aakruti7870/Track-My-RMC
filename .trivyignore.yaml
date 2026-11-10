@@ -1,0 +1,9 @@
+# Exactly one confirmed CloudFormation parser mismatch.
+# IMDSv2 is REQUIRED on every staging EC2 instance. Verification is mandatory
+# before Trivy and as part of backend CI; no other misconfiguration is waived.
+misconfigurations:
+  - id: AVD-AWS-0028
+    paths:
+      - "ops/staging/foundation.json"
+    expired_at: 2026-12-11
+    statement: "Trivy reports IMDSv1 even though AppHost MetadataOptions.HttpTokens is required; both AWS ValidateTemplate and independent static guard verify IMDSv2. Narrow time-bounded scanner parser exception."

@@ -11,7 +11,7 @@ ARG EXPO_PUBLIC_BACKEND_URL=https://trackmyrmc.com
 ENV EXPO_PUBLIC_BACKEND_URL=${EXPO_PUBLIC_BACKEND_URL}
 RUN npm run build:preview
 
-FROM nginx:1.27-alpine
+FROM ghcr.io/nginxinc/nginx-unprivileged:1.27-alpine@sha256:e234d4f7e346c098f7b22245690372382aded5be988611eb2c53ae62231eece7
 
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
@@ -24,5 +24,8 @@ COPY --from=build /app/legacy-service-worker.js /usr/share/nginx/html/service-wo
 COPY --from=build /app/legacy-service-worker.js /usr/share/nginx/html/sw.js
 COPY --from=build /app/legacy-service-worker.js /usr/share/nginx/html/expo-service-worker.js
 
+# Unprivileged upstream uses writable /tmp PID/cache paths and listens on 8080.
+# Explicit UID/GID prevents any default-user regression.
+USER 101:101
 EXPOSE 8080
 CMD ["nginx", "-g", "daemon off;"]

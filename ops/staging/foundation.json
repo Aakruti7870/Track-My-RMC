@@ -86,36 +86,6 @@
         ]
       }
     },
-    "Gateway": {
-      "Type": "AWS::EC2::InternetGateway",
-      "Properties": {
-        "Tags": [
-          {
-            "Key": "Project",
-            "Value": "TrackMyRMC"
-          },
-          {
-            "Key": "Environment",
-            "Value": "staging"
-          },
-          {
-            "Key": "ManagedBy",
-            "Value": "CloudFormation"
-          }
-        ]
-      }
-    },
-    "GatewayAttachment": {
-      "Type": "AWS::EC2::VPCGatewayAttachment",
-      "Properties": {
-        "VpcId": {
-          "Ref": "Vpc"
-        },
-        "InternetGatewayId": {
-          "Ref": "Gateway"
-        }
-      }
-    },
     "AppSubnet": {
       "Type": "AWS::EC2::Subnet",
       "Properties": {
@@ -131,7 +101,7 @@
             }
           ]
         },
-        "MapPublicIpOnLaunch": true,
+        "MapPublicIpOnLaunch": false,
         "Tags": [
           {
             "Key": "Project",
@@ -212,52 +182,6 @@
         ]
       }
     },
-    "PublicRoutes": {
-      "Type": "AWS::EC2::RouteTable",
-      "Properties": {
-        "VpcId": {
-          "Ref": "Vpc"
-        },
-        "Tags": [
-          {
-            "Key": "Project",
-            "Value": "TrackMyRMC"
-          },
-          {
-            "Key": "Environment",
-            "Value": "staging"
-          },
-          {
-            "Key": "ManagedBy",
-            "Value": "CloudFormation"
-          }
-        ]
-      }
-    },
-    "PublicRoute": {
-      "Type": "AWS::EC2::Route",
-      "DependsOn": "GatewayAttachment",
-      "Properties": {
-        "RouteTableId": {
-          "Ref": "PublicRoutes"
-        },
-        "DestinationCidrBlock": "0.0.0.0/0",
-        "GatewayId": {
-          "Ref": "Gateway"
-        }
-      }
-    },
-    "PublicRouteAssociation": {
-      "Type": "AWS::EC2::SubnetRouteTableAssociation",
-      "Properties": {
-        "SubnetId": {
-          "Ref": "AppSubnet"
-        },
-        "RouteTableId": {
-          "Ref": "PublicRoutes"
-        }
-      }
-    },
     "AppSecurityGroup": {
       "Type": "AWS::EC2::SecurityGroup",
       "Properties": {
@@ -270,8 +194,10 @@
             "IpProtocol": "tcp",
             "FromPort": 443,
             "ToPort": 443,
-            "CidrIp": "0.0.0.0/0",
-            "Description": "AWS APIs, SSM and HTTPS package repositories"
+            "DestinationSecurityGroupId": {
+              "Ref": "InterfaceEndpointSecurityGroup"
+            },
+            "Description": "Private AWS interface VPC endpoints only"
           },
           {
             "IpProtocol": "tcp",
@@ -492,8 +418,15 @@
           "ServerSideEncryptionConfiguration": [
             {
               "ServerSideEncryptionByDefault": {
-                "SSEAlgorithm": "AES256"
-              }
+                "SSEAlgorithm": "aws:kms",
+                "KMSMasterKeyID": {
+                  "Fn::GetAtt": [
+                    "ArtifactKmsKey",
+                    "Arn"
+                  ]
+                }
+              },
+              "BucketKeyEnabled": true
             }
           ]
         },
@@ -608,7 +541,14 @@
     },
     "AppHost": {
       "Type": "AWS::EC2::Instance",
-      "DependsOn": "PublicRoute",
+      "DependsOn": [
+        "SsmEndpoint",
+        "SsmMessagesEndpoint",
+        "Ec2MessagesEndpoint",
+        "SecretsManagerEndpoint",
+        "ArtifactS3GatewayEndpoint",
+        "EndpointIngress443"
+      ],
       "Properties": {
         "ImageId": {
           "Ref": "ImageId"
@@ -796,9 +736,238 @@
               "NotResource": {
                 "Fn::Sub": "${Artifacts.Arn}/releases/*"
               }
+            },
+            {
+              "Sid": "DecryptOwnStagingArtifacts",
+              "Effect": "Allow",
+              "Action": [
+                "kms:Decrypt"
+              ],
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "ArtifactKmsKey",
+                    "Arn"
+                  ]
+                }
+              ],
+              "Condition": {
+                "StringEquals": {
+                  "kms:ViaService": {
+                    "Fn::Sub": "s3.${AWS::Region}.amazonaws.com"
+                  }
+                }
+              }
             }
           ]
         }
+      }
+    },
+    "AppRouteTable": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "Tags": [
+          {
+            "Key": "Project",
+            "Value": "TrackMyRMC"
+          },
+          {
+            "Key": "Environment",
+            "Value": "staging"
+          }
+        ]
+      }
+    },
+    "AppRouteTableAssociation": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": {
+          "Ref": "AppSubnet"
+        },
+        "RouteTableId": {
+          "Ref": "AppRouteTable"
+        }
+      }
+    },
+    "InterfaceEndpointSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Private TLS endpoints for staging AWS control-plane services",
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "SecurityGroupEgress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 443,
+            "ToPort": 443,
+            "CidrIp": "10.88.0.0/16",
+            "Description": "Inside isolated staging VPC only"
+          }
+        ]
+      }
+    },
+    "EndpointIngress443": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "Properties": {
+        "GroupId": {
+          "Ref": "InterfaceEndpointSecurityGroup"
+        },
+        "IpProtocol": "tcp",
+        "FromPort": 443,
+        "ToPort": 443,
+        "SourceSecurityGroupId": {
+          "Ref": "AppSecurityGroup"
+        },
+        "Description": "Staging app TLS to interface endpoints only"
+      }
+    },
+    "SsmEndpoint": {
+      "Type": "AWS::EC2::VPCEndpoint",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "ServiceName": {
+          "Fn::Sub": "com.amazonaws.${AWS::Region}.ssm"
+        },
+        "VpcEndpointType": "Interface",
+        "PrivateDnsEnabled": true,
+        "SubnetIds": [
+          {
+            "Ref": "AppSubnet"
+          }
+        ],
+        "SecurityGroupIds": [
+          {
+            "Ref": "InterfaceEndpointSecurityGroup"
+          }
+        ]
+      }
+    },
+    "SsmMessagesEndpoint": {
+      "Type": "AWS::EC2::VPCEndpoint",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "ServiceName": {
+          "Fn::Sub": "com.amazonaws.${AWS::Region}.ssmmessages"
+        },
+        "VpcEndpointType": "Interface",
+        "PrivateDnsEnabled": true,
+        "SubnetIds": [
+          {
+            "Ref": "AppSubnet"
+          }
+        ],
+        "SecurityGroupIds": [
+          {
+            "Ref": "InterfaceEndpointSecurityGroup"
+          }
+        ]
+      }
+    },
+    "Ec2MessagesEndpoint": {
+      "Type": "AWS::EC2::VPCEndpoint",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "ServiceName": {
+          "Fn::Sub": "com.amazonaws.${AWS::Region}.ec2messages"
+        },
+        "VpcEndpointType": "Interface",
+        "PrivateDnsEnabled": true,
+        "SubnetIds": [
+          {
+            "Ref": "AppSubnet"
+          }
+        ],
+        "SecurityGroupIds": [
+          {
+            "Ref": "InterfaceEndpointSecurityGroup"
+          }
+        ]
+      }
+    },
+    "SecretsManagerEndpoint": {
+      "Type": "AWS::EC2::VPCEndpoint",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "ServiceName": {
+          "Fn::Sub": "com.amazonaws.${AWS::Region}.secretsmanager"
+        },
+        "VpcEndpointType": "Interface",
+        "PrivateDnsEnabled": true,
+        "SubnetIds": [
+          {
+            "Ref": "AppSubnet"
+          }
+        ],
+        "SecurityGroupIds": [
+          {
+            "Ref": "InterfaceEndpointSecurityGroup"
+          }
+        ]
+      }
+    },
+    "ArtifactS3GatewayEndpoint": {
+      "Type": "AWS::EC2::VPCEndpoint",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "ServiceName": {
+          "Fn::Sub": "com.amazonaws.${AWS::Region}.s3"
+        },
+        "VpcEndpointType": "Gateway",
+        "RouteTableIds": [
+          {
+            "Ref": "AppRouteTable"
+          }
+        ]
+      }
+    },
+    "ArtifactKmsKey": {
+      "Type": "AWS::KMS::Key",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "Description": "Staging-only S3 artifact encryption key; deploy only after cost and KMS access approval",
+        "EnableKeyRotation": true,
+        "Enabled": true,
+        "KeyPolicy": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "EnableAccountIAMPolicies",
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
+                  "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"
+                }
+              },
+              "Action": "kms:*",
+              "Resource": "*"
+            }
+          ]
+        },
+        "Tags": [
+          {
+            "Key": "Project",
+            "Value": "TrackMyRMC"
+          },
+          {
+            "Key": "Environment",
+            "Value": "staging"
+          }
+        ]
       }
     }
   },
