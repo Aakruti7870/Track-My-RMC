@@ -66,6 +66,7 @@ pub async fn plant_governance(
         "SELECT jsonb_build_object(
             'plant_id',p.id,'plant_name',p.name,'active',p.is_active,
             'intake_mode',COALESCE(c.order_intake_mode,'DIRECT'),
+            'discovery_visible',COALESCE(c.discovery_visible,TRUE),
             'trust_status',COALESCE(t.status,'NOT_VERIFIED'),
             'trust_until',t.valid_until,
             'trust_current',COALESCE(t.status='VERIFIED' AND t.valid_until>=CURRENT_DATE
@@ -123,6 +124,28 @@ pub async fn decide_plant(
             .await?;
     let active = active.ok_or_else(|| AppError::NotFound("Plant not found".into()))?;
     match body.kind.as_str() {
+        "visibility" => {
+            // Keep customer publication separate from operational activation.
+            // Existing dispatch, staff and historical orders remain available.
+            let visible = match body.value.as_str() {
+                "VISIBLE" => true,
+                "HOLD" => false,
+                _ => return Err(AppError::BadRequest("Unknown visibility decision".into())),
+            };
+            sqlx::query(
+                "INSERT INTO plant_admin_controls(plant_id,discovery_visible,changed_by,change_reason)
+                 VALUES($1,$2,$3,$4)
+                 ON CONFLICT(plant_id) DO UPDATE SET
+                 discovery_visible=EXCLUDED.discovery_visible,
+                 changed_by=EXCLUDED.changed_by,change_reason=EXCLUDED.change_reason,updated_at=NOW()",
+            )
+            .bind(plant)
+            .bind(visible)
+            .bind(admin.user_id)
+            .bind(why)
+            .execute(&mut *tx)
+            .await?;
+        }
         "intake" => {
             admin.require("order.view")?;
             if !matches!(

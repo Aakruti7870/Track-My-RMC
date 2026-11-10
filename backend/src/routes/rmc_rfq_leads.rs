@@ -185,9 +185,26 @@ pub async fn create(
             "Quotation request limit reached. Please try later".into(),
         ));
     }
+    // A held registered Google business must never fall through into a new
+    // unregistered-supplier lead or the approved-plant quotation path.
+    if let Some(place_id) = payload.google_place_id.as_deref() {
+        let held: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM rmc_plants p
+             JOIN plant_admin_controls c ON c.plant_id=p.id
+             WHERE p.google_place_id=$1 AND NOT c.discovery_visible)",
+        )
+        .bind(place_id)
+        .fetch_one(&state.db)
+        .await?;
+        if held {
+            return Err(AppError::Conflict("Selected plant is not available".into()));
+        }
+    }
     let approved_plant = if let Some(plant_id) = payload.plant_id {
         let exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM rmc_plants p WHERE id=$1 AND is_active AND EXISTS(SELECT 1 FROM plant_listing_requests r WHERE r.plant_id=p.id AND r.status='APPROVED'))"
+            "SELECT EXISTS(SELECT 1 FROM rmc_plants p WHERE id=$1 AND is_active
+                 AND NOT EXISTS(SELECT 1 FROM plant_admin_controls c WHERE c.plant_id=p.id AND NOT c.discovery_visible)
+                 AND EXISTS(SELECT 1 FROM plant_listing_requests r WHERE r.plant_id=p.id AND r.status='APPROVED'))"
         ).bind(plant_id).fetch_one(&state.db).await?;
         if !exists {
             return Err(AppError::Conflict("Selected plant is not approved".into()));
@@ -199,7 +216,9 @@ pub async fn create(
             .as_deref()
             .expect("validated source");
         let linked: Option<Uuid> = sqlx::query_scalar(
-            "SELECT p.id FROM rmc_plants p WHERE p.google_place_id=$1 AND p.is_active AND EXISTS(SELECT 1 FROM plant_listing_requests r WHERE r.plant_id=p.id AND r.status='APPROVED') LIMIT 1"
+            "SELECT p.id FROM rmc_plants p WHERE p.google_place_id=$1 AND p.is_active
+                 AND NOT EXISTS(SELECT 1 FROM plant_admin_controls c WHERE c.plant_id=p.id AND NOT c.discovery_visible)
+                 AND EXISTS(SELECT 1 FROM plant_listing_requests r WHERE r.plant_id=p.id AND r.status='APPROVED') LIMIT 1"
         ).bind(place).fetch_optional(&state.db).await?;
         if linked.is_none() {
             verify_google_place(&state, place).await?;
