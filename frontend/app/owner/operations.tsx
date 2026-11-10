@@ -172,7 +172,7 @@ export default function OwnerOperations() {
         {rules && !rules.worker_enabled ? <AppText accessibilityRole="alert" style={{ color: "#F59E0B", fontSize: 12 }}>
           Automation engine not activated. Preferences are saved, but the background worker is currently off.
         </AppText> : null}
-        <OwnerGlass style={{ padding: 12, gap: 8, borderColor: p.border }} testID="owner-whatsapp-dispatch-automation">
+        <OwnerGlass style={{ padding: 12, gap: 8, borderColor: p.border }}>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
             <View style={{ flex: 1 }}>
               <AppText style={{ color: p.text, fontWeight: "700", fontSize: 14 }}>Automatic WhatsApp Dispatch</AppText>
