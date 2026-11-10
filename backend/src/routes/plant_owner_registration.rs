@@ -53,6 +53,13 @@ fn bounded(value: &str, min: usize, max: usize, label: &str) -> Result<String, A
     Ok(value.to_owned())
 }
 
+// The mobile form accepts multiline addresses. Normalize line breaks to
+// printable spaces, while bounded() rejects all other control characters.
+fn registered_address(value: &str) -> Result<String, AppError> {
+    let normalized = value.replace('\\r', " ").replace('\\n', " ");
+    bounded(&normalized, 5, 500, "Registered business address")
+}
+
 fn official_email(value: &str) -> Result<String, AppError> {
     let email = bounded(value, 6, 254, "Email")?.to_ascii_lowercase();
     let Some((local, domain)) = email.split_once('@') else {
@@ -102,12 +109,7 @@ pub async fn submit(
 ) -> Result<Json<Value>, AppError> {
     let owner_name = bounded(&body.owner_name, 2, 120, "Plant Owner name")?;
     let business_name = bounded(&body.business_name, 2, 160, "Registered business name")?;
-    let business_address = bounded(
-        &body.business_address,
-        5,
-        500,
-        "Registered business address",
-    )?;
+    let business_address = registered_address(&body.business_address)?;
     let email = official_email(&body.email)?;
     let whatsapp = indian_whatsapp(&body.whatsapp_number)?;
 
@@ -256,7 +258,15 @@ pub async fn mark_contacted(
 
 #[cfg(test)]
 mod tests {
-    use super::{indian_whatsapp, official_email};
+    use super::{indian_whatsapp, official_email, registered_address};
+
+    #[test]
+    fn accepts_multiline_registered_business_address() {
+        assert_eq!(
+            registered_address("Plot 7\\nIndustrial Road\\r\\nPanvel").unwrap(),
+            "Plot 7 Industrial Road  Panvel"
+        );
+    }
 
     #[test]
     fn accepts_indian_whatsapp_and_lowercases_emails() {
