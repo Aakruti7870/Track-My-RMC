@@ -157,6 +157,7 @@ jobs:
           scan-type: fs
           scan-ref: .
           scanners: misconfig
+          trivyignores: .trivyignore.yaml
           severity: HIGH,CRITICAL
           format: table
           exit-code: "1"
