@@ -1,6 +1,6 @@
 pub mod account_deletion;
-pub mod admin_routes;
 pub mod admin_governance;
+pub mod admin_routes;
 pub mod assistant_routes;
 pub mod auth_routes;
 pub mod authority_governance;
