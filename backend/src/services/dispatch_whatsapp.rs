@@ -103,7 +103,7 @@ pub async fn alert_owner_review(
     source_id: Uuid,
     marketing: bool,
 ) -> Result<(), AppError> {
-    let (event_type,title,body) = if marketing {
+    let (event_type, title, body) = if marketing {
         (
             "whatsapp_marketing_review",
             "WhatsApp app promotion needs review",
