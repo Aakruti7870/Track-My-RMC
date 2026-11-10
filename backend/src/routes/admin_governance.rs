@@ -257,7 +257,9 @@ fn checked_google_place_id(input: &str) -> Result<&str, AppError> {
         || place_id.len() > 256
         || !place_id.chars().all(|c| c.is_ascii_graphic())
     {
-        return Err(AppError::BadRequest("Enter an exact Google Place ID".into()));
+        return Err(AppError::BadRequest(
+            "Enter an exact Google Place ID".into(),
+        ));
     }
     Ok(place_id)
 }
@@ -293,7 +295,11 @@ pub async fn decide_google_place_visibility(
     let visible = match body.value.as_str() {
         "VISIBLE" => true,
         "HOLD" => false,
-        _ => return Err(AppError::BadRequest("Unknown Google Place visibility decision".into())),
+        _ => {
+            return Err(AppError::BadRequest(
+                "Unknown Google Place visibility decision".into(),
+            ))
+        }
     };
     crate::routes::control_center_routes::require_recent_step_up(&state, &admin, &headers).await?;
     let mut tx = state.db.begin().await?;
@@ -320,7 +326,9 @@ pub async fn decide_google_place_visibility(
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
-    Ok(Json(json!({"success":true,"place_id":id,"visible":visible})))
+    Ok(Json(
+        json!({"success":true,"place_id":id,"visible":visible}),
+    ))
 }
 
 pub async fn marketing_overview(
