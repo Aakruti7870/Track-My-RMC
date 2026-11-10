@@ -67,6 +67,8 @@ pub async fn plant_governance(
             'plant_id',p.id,'plant_name',p.name,'active',p.is_active,
             'intake_mode',COALESCE(c.order_intake_mode,'DIRECT'),
             'discovery_visible',COALESCE(c.discovery_visible,TRUE),
+            'google_place_blocked',EXISTS(SELECT 1 FROM google_plant_visibility_exclusions x
+                WHERE x.place_id=p.google_place_id AND NOT x.is_visible),
             'trust_status',COALESCE(t.status,'NOT_VERIFIED'),
             'trust_until',t.valid_until,
             'trust_current',COALESCE(t.status='VERIFIED' AND t.valid_until>=CURRENT_DATE

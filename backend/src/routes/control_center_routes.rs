@@ -721,12 +721,16 @@ pub async fn list_plant_master(
           AND ($3 = '' OR p.state ILIKE '%' || $3 || '%')
           AND ($4 = 'all'
                OR ($4 = 'inactive' AND NOT p.is_active)
-               OR ($4 = 'held' AND EXISTS(
-                   SELECT 1 FROM plant_admin_controls c
-                   WHERE c.plant_id=p.id AND NOT c.discovery_visible))
-               OR ($4 = 'visible' AND NOT EXISTS(
-                   SELECT 1 FROM plant_admin_controls c
-                   WHERE c.plant_id=p.id AND NOT c.discovery_visible))
+               OR ($4 = 'held' AND (
+                   EXISTS(SELECT 1 FROM plant_admin_controls c
+                          WHERE c.plant_id=p.id AND NOT c.discovery_visible)
+                   OR EXISTS(SELECT 1 FROM google_plant_visibility_exclusions x
+                             WHERE x.place_id=p.google_place_id AND NOT x.is_visible)))
+               OR ($4 = 'visible'
+                   AND NOT EXISTS(SELECT 1 FROM plant_admin_controls c
+                                  WHERE c.plant_id=p.id AND NOT c.discovery_visible)
+                   AND NOT EXISTS(SELECT 1 FROM google_plant_visibility_exclusions x
+                                  WHERE x.place_id=p.google_place_id AND NOT x.is_visible))
                OR ($4 = 'approved' AND p.is_active AND EXISTS(
                    SELECT 1 FROM plant_listing_requests lr
                    WHERE lr.plant_id = p.id AND lr.status = 'APPROVED'))
@@ -748,6 +752,8 @@ pub async fn list_plant_master(
             'address',p.address_line,'city',p.city,'state',p.state,
             'active',p.is_active,'google_place_id',p.google_place_id,
             'discovery_visible',COALESCE((SELECT c.discovery_visible FROM plant_admin_controls c WHERE c.plant_id=p.id),TRUE),
+            'google_place_blocked',EXISTS(SELECT 1 FROM google_plant_visibility_exclusions x
+                WHERE x.place_id=p.google_place_id AND NOT x.is_visible),
             'owner_id',u.id,'owner_name',u.full_name,'owner_email',u.email,
             'owner_active',u.is_active,
             'onboarding_approved',EXISTS(
@@ -789,6 +795,8 @@ pub async fn get_plant_master(
             'contact_email',p.contact_email,'contact_phone',p.contact_phone,
             'google_place_id',p.google_place_id,'active',p.is_active,
             'discovery_visible',COALESCE((SELECT c.discovery_visible FROM plant_admin_controls c WHERE c.plant_id=p.id),TRUE),
+            'google_place_blocked',EXISTS(SELECT 1 FROM google_plant_visibility_exclusions x
+                WHERE x.place_id=p.google_place_id AND NOT x.is_visible),
             'capacity_m3_per_hr',p.capacity_m3_per_hr,
             'owner_id',u.id,'owner_name',u.full_name,'owner_email',u.email,
             'owner_active',u.is_active,'owner_verified',u.is_verified,

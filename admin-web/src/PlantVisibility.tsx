@@ -3,9 +3,9 @@ import apiClient from './api';
 
 type Plant = {
   id: string; name: string; code: string; city: string; state: string;
-  active: boolean; onboarding_approved: boolean; discovery_visible: boolean;
+  active: boolean; onboarding_approved: boolean; discovery_visible: boolean; google_place_blocked: boolean;
 };
-type Governance = { plant_id: string; plant_name: string; discovery_visible: boolean };
+type Governance = { plant_id: string; plant_name: string; discovery_visible: boolean; google_place_blocked: boolean };
 type HeldPlace = { place_id: string; reason: string; updated_at: string };
 const field: React.CSSProperties = { display: 'block', width: '100%', marginTop: 5, padding: 9, borderRadius: 7, border: '1px solid #64748b', background: '#0f172a', color: '#f8fafc', boxSizing: 'border-box' };
 const button: React.CSSProperties = { borderRadius: 8, border: '1px solid #64748b', padding: '9px 12px', cursor: 'pointer', color: '#f8fafc', background: '#1e293b', fontWeight: 600 };
@@ -147,7 +147,7 @@ export function PlantVisibility() {
           {rows.map(plant => <article key={plant.id} style={{ padding: 12, border: '1px solid #475569', background: '#111827', borderRadius: 9 }}>
             <strong>{plant.name}</strong>
             <p style={{ fontSize: 12, color: '#cbd5e1' }}>{plant.code} · {plant.city}, {plant.state}</p>
-            <p style={{ fontSize: 12 }}><strong>Visibility:</strong> {plant.discovery_visible ? 'No hold' : 'ON HOLD — hidden'}</p>
+            <p style={{ fontSize: 12 }}><strong>Visibility:</strong> {plant.google_place_blocked ? 'ON HOLD — linked Google Place ID' : plant.discovery_visible ? 'No hold' : 'ON HOLD — hidden'}</p>
             <p style={{ fontSize: 12, color: '#cbd5e1' }}>{plant.active ? 'Operationally active' : 'Operationally inactive'} · {plant.onboarding_approved ? 'Approved' : 'Not approved'}</p>
             <button type="button" disabled={busy} style={button} onClick={() => void select(plant.id)}>Select plant</button>
           </article>)}
@@ -160,7 +160,7 @@ export function PlantVisibility() {
       </>}
       {selected && <div style={{ padding: 12, marginTop: 14, borderRadius: 9, border: '1px solid #64748b', background: '#172334' }}>
         <h3 style={{ fontSize: 16, marginTop: 0 }}>{selected.plant_name} — Visibility decision</h3>
-        <p style={{ fontSize: 12 }}>Current: <strong>{selected.discovery_visible ? 'No visibility hold' : 'ON HOLD'}</strong></p>
+        <p style={{ fontSize: 12 }}>Current: <strong>{selected.discovery_visible ? 'No registered-plant hold' : 'Registered-plant ON HOLD'}</strong>{selected.google_place_blocked ? ' · Linked Google Place ID is separately on hold' : ''}</p>
         <label style={{ display: 'block', fontSize: 12, marginBottom: 9 }}>Required audit reason (10–500 characters)
           <input style={field} maxLength={500} minLength={10} value={reason} onChange={event => setReason(event.target.value)} placeholder="Reason and evidence for this decision" disabled={busy} />
         </label>
