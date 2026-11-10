@@ -148,6 +148,7 @@ export default function OwnerDriverManagement() {
         blood_group: form.blood_group || null,
         driving_licence_number: form.driving_licence_number.trim() || null,
         driving_licence_valid_until: form.driving_licence_valid_until.trim() || null,
+        update_driving_licence: true,
         emergency_contact_1_name: form.emergency_contact_1_name || null,
         emergency_contact_1_phone: form.emergency_contact_1_phone || null,
         emergency_contact_2_name: form.emergency_contact_2_name || null,
