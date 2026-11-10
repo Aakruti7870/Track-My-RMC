@@ -83,14 +83,14 @@ export function DriverIdentityCard() {
       <View style={styles.body}>
         <View style={styles.recordLine}>
           <Ionicons name="lock-closed-outline" size={12} color={colors.onSurfaceTertiary} />
-          <AppText style={styles.recordText}>Plant-managed records · Read only</AppText>
+          <AppText style={[styles.recordText, { color: colors.onSurfaceTertiary }]}>Plant-managed records · Read only</AppText>
         </View>
 
         {data ? (
           <>
             <View style={styles.personRow}>
               <View style={styles.personName}>
-                <AppText style={styles.nameLabel}>DRIVER NAME</AppText>
+                <AppText style={[styles.nameLabel, { color: colors.onSurfaceTertiary }]}>DRIVER NAME</AppText>
                 <AppText style={[styles.driverName, { color: colors.onSurface }]} numberOfLines={2}>
                   {show(data.driver_name)}
                 </AppText>
@@ -152,7 +152,7 @@ export function DriverIdentityCard() {
                     </View>
                   ))}
                 </View>
-                <AppText style={styles.licenceDisclaimer}>
+                <AppText style={[styles.licenceDisclaimer, { color: colors.onSurfaceTertiary }]}>
                   Licence information is supplied by the plant; it is not independently government-verified.
                 </AppText>
               </View>
@@ -185,10 +185,10 @@ const styles = StyleSheet.create({
   bandTitle: { fontFamily: fonts.semibold, fontSize: 10, letterSpacing: 0.25, flexShrink: 1, textAlign: "right" },
   body: { padding: 12, gap: 9 },
   recordLine: { flexDirection: "row", alignItems: "center", gap: 5 },
-  recordText: { fontFamily: fonts.medium, fontSize: 10, color: "#767D86", lineHeight: 14 },
+  recordText: { fontFamily: fonts.medium, fontSize: 10, lineHeight: 14 },
   personRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   personName: { flex: 1, minWidth: 0, gap: 2 },
-  nameLabel: { fontFamily: fonts.semibold, fontSize: 10, color: "#767D86", letterSpacing: 0.35 },
+  nameLabel: { fontFamily: fonts.semibold, fontSize: 10, letterSpacing: 0.35 },
   driverName: { fontFamily: fonts.bold, fontSize: 16, lineHeight: 21, flexShrink: 1 },
   tmBadge: { maxWidth: "45%", minWidth: 88, paddingHorizontal: 9, paddingVertical: 6, borderRadius: radius.sm, borderWidth: 1, gap: 2 },
   tmLabel: { fontFamily: fonts.bold, fontSize: 9, letterSpacing: 0.4 },
@@ -204,7 +204,7 @@ const styles = StyleSheet.create({
   fieldHeading: { flexDirection: "row", alignItems: "center", gap: 5 },
   fieldLabel: { flex: 1, fontFamily: fonts.bold, fontSize: 10, lineHeight: 13, letterSpacing: 0.1 },
   fieldValue: { fontFamily: fonts.semibold, fontSize: 12, lineHeight: 17, flexShrink: 1 },
-  licenceDisclaimer: { fontFamily: fonts.regular, fontSize: 10, lineHeight: 15, color: "#767D86" },
+  licenceDisclaimer: { fontFamily: fonts.regular, fontSize: 10, lineHeight: 15 },
   error: { gap: 8 },
   retry: { minHeight: 44, alignSelf: "flex-start", justifyContent: "center" },
 });
