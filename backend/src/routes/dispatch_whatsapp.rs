@@ -253,11 +253,7 @@ pub async fn get_owner_preference(
     })))
 }
 
-async fn ensure_owner(
-    state: &AppState,
-    owner_id: Uuid,
-    plant_id: Uuid,
-) -> Result<(), AppError> {
+async fn ensure_owner(state: &AppState, owner_id: Uuid, plant_id: Uuid) -> Result<(), AppError> {
     let active: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM rmc_plants
          WHERE id=$1 AND owner_id=$2 AND is_active=TRUE)",
@@ -267,7 +263,9 @@ async fn ensure_owner(
     .fetch_one(&state.db)
     .await?;
     if !active {
-        return Err(AppError::Forbidden("Active plant ownership required".into()));
+        return Err(AppError::Forbidden(
+            "Active plant ownership required".into(),
+        ));
     }
     Ok(())
 }
@@ -304,13 +302,12 @@ async fn authorize_load_share(
     user: &AuthUser,
     load_id: Uuid,
 ) -> Result<Uuid, AppError> {
-    let row: (Uuid, Option<Uuid>) = sqlx::query_as(
-        "SELECT order_id,driver_id FROM order_loads WHERE id=$1",
-    )
-    .bind(load_id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Load not found".into()))?;
+    let row: (Uuid, Option<Uuid>) =
+        sqlx::query_as("SELECT order_id,driver_id FROM order_loads WHERE id=$1")
+            .bind(load_id)
+            .fetch_optional(&state.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Load not found".into()))?;
     if user.role == "driver" && row.1 == Some(user.user_id) {
         return Ok(row.0);
     }
@@ -342,11 +339,8 @@ pub async fn public_trip(
     State(state): State<AppState>,
     Path((load_id, signature)): Path<(Uuid, String)>,
 ) -> Result<impl IntoResponse, AppError> {
-    if !dispatch_whatsapp::verify_tracking_signature(
-        load_id,
-        &signature,
-        &state.config.jwt_secret,
-    ) {
+    if !dispatch_whatsapp::verify_tracking_signature(load_id, &signature, &state.config.jwt_secret)
+    {
         return Err(AppError::NotFound("Trip link invalid or expired".into()));
     }
     let data: Option<Value> = sqlx::query_scalar(
@@ -415,7 +409,9 @@ pub async fn verify_meta_webhook(
         || query.get("hub.mode").map(String::as_str) != Some("subscribe")
         || query.get("hub.verify_token") != Some(&expected)
     {
-        return Err(AppError::Unauthorized("Invalid Meta webhook challenge".into()));
+        return Err(AppError::Unauthorized(
+            "Invalid Meta webhook challenge".into(),
+        ));
     }
     let challenge = query
         .get("hub.challenge")
