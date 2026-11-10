@@ -145,4 +145,84 @@ impl WhatsAppService {
         info!("WhatsApp OTP accepted by Meta Cloud API");
         Ok(())
     }
+    /// Utility dispatch only. The Meta template must already be approved with
+    /// six positional body parameters in this precise order:
+    /// plant, order, grade, quantity, mixer, secure tracking URL.
+    /// Never reuse the login OTP or promotional marketing template.
+    pub async fn send_dispatch_template(
+        &self,
+        recipient: &str,
+        params: &[&str; 6],
+    ) -> Result<String, String> {
+        let template_name = std::env::var("META_DISPATCH_TEMPLATE_NAME")
+            .map_err(|_| "dispatch_template_not_configured".to_string())?;
+        if template_name.is_empty()
+            || template_name.len() > 120
+            || !template_name
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+        {
+            return Err("dispatch_template_name_invalid".into());
+        }
+        let (Some(token), Some(number_id)) = (&self.token, &self.phone_number_id) else {
+            return Err("meta_sender_not_configured".into());
+        };
+        if token.trim().is_empty()
+            || number_id.is_empty()
+            || !number_id.bytes().all(|byte| byte.is_ascii_digit())
+        {
+            return Err("meta_sender_not_configured".into());
+        }
+        let to = Self::normalize_phone(recipient);
+        if !(10..=15).contains(&to.len()) || !to.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Err("invalid_recipient".into());
+        }
+        let payload = json!({
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to,
+            "type": "template",
+            "template": {
+                "name": template_name,
+                "language": {
+                    "code": std::env::var("META_DISPATCH_TEMPLATE_LOCALE")
+                        .unwrap_or_else(|_| "en_US".to_string())
+                },
+                "components": [{
+                    "type": "body",
+                    "parameters": params.iter().map(|text| json!({
+                        "type": "text", "text": text
+                    })).collect::<Vec<_>>()
+                }]
+            }
+        });
+        let url = format!(
+            "https://graph.facebook.com/{}/{}/messages",
+            self.api_version, number_id
+        );
+        let response = self
+            .client
+            .post(url)
+            .bearer_auth(token)
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|_| "provider_outcome_unknown".to_string())?;
+        if !response.status().is_success() {
+            // No customer phone, token, URL, or response body enters the logs.
+            let status = response.status();
+            tracing::warn!(status = %status, "Meta rejected dispatch utility template");
+            return Err(format!("provider_http_{}", status.as_u16()));
+        }
+        let body: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|_| "provider_response_unknown".to_string())?;
+        let message_id = body["messages"][0]["id"]
+            .as_str()
+            .filter(|id| id.starts_with("wamid.") && id.len() < 200)
+            .ok_or_else(|| "provider_message_id_missing".to_string())?;
+        Ok(message_id.to_string())
+    }
+
 }
