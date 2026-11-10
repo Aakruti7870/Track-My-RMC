@@ -319,3 +319,63 @@ jobs:
           path: frontend/android/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
           retention-days: 14
+
+      # APK for direct-device smoke testing only. AAB remains the Play upload file.
+      # Play App Signing may use a different certificate, so do not treat this
+      # upload-key-signed APK as an in-place update to a Play-installed build.
+      - name: Build unsigned release APK
+        working-directory: frontend/android
+        env:
+          GOOGLE_MAPS_ANDROID_KEY: ${{ env.GOOGLE_MAPS_ANDROID_KEY }}
+          EXPO_PUBLIC_GOOGLE_MAPS_KEY: ${{ env.EXPO_PUBLIC_GOOGLE_MAPS_KEY }}
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleRelease --no-daemon
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: Zipalign, sign and validate test APK
+        working-directory: frontend/android
+        env:
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          test -d "$sdk/build-tools"
+          build_tools="$(find "$sdk/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          test -x "$build_tools/zipalign"
+          test -x "$build_tools/apksigner"
+          test -x "$build_tools/aapt"
+          unsigned=app/build/outputs/apk/release/app-release-unsigned.apk
+          aligned="$RUNNER_TEMP/trackmyrmc-release-aligned.apk"
+          signed=app/build/outputs/apk/release/trackmyrmc-v2.0.34-vc94-signed.apk
+          "$build_tools/zipalign" -P 16 -f 4 "$unsigned" "$aligned"
+          if [ "$KEY_PASSWORD_MODE" = primary ]; then
+            keypass="$KEY_PASSWORD"
+          else
+            keypass="$STORE_PASSWORD"
+          fi
+          APK_KEY_PASSWORD="$keypass" "$build_tools/apksigner" sign \
+            --ks app/upload-keystore.jks \
+            --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass env:STORE_PASSWORD \
+            --key-pass env:APK_KEY_PASSWORD \
+            --out "$signed" "$aligned"
+          test -s "$signed"
+          "$build_tools/apksigner" verify --verbose --print-certs "$signed" > "$RUNNER_TEMP/apk-verify.txt"
+          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' "$RUNNER_TEMP/apk-verify.txt"
+          cert="$(sed -n 's/^Signer #1 certificate SHA-1 digest: //p' "$RUNNER_TEMP/apk-verify.txt" | head -n 1 | tr -d ':' | tr '[:lower:]' '[:upper:]')"
+          expected="$(printf '%s' "$EXPECTED_PLAY_UPLOAD_SHA1" | tr -d ':')"
+          test "$cert" = "$expected"
+          "$build_tools/zipalign" -c -P 16 4 "$signed"
+          "$build_tools/aapt" dump badging "$signed" | grep -F "package: name='$PACKAGE_NAME' versionCode='$VERSION_CODE' versionName='$VERSION_NAME'"
+          echo "Signed APK SHA256: $(sha256sum "$signed" | awk '{print $1}')"
+
+      - name: Upload signed APK for direct-device testing
+        uses: actions/upload-artifact@v4
+        with:
+          name: trackmyrmc-v2.0.34-vc94-signed-test-apk
+          path: frontend/android/app/build/outputs/apk/release/trackmyrmc-v2.0.34-vc94-signed.apk
+          if-no-files-found: error
+          retention-days: 14
