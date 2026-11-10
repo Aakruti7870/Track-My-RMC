@@ -148,7 +148,9 @@ async fn validate(
         }
     }
     let plant = sqlx::query(
-        "SELECT owner_id,is_active,latitude,longitude,EXISTS(SELECT 1 FROM plant_listing_requests r WHERE r.plant_id=rmc_plants.id AND r.status='APPROVED') AS verified FROM rmc_plants WHERE id=$1 FOR SHARE",
+        "SELECT owner_id,is_active,latitude,longitude,EXISTS(SELECT 1 FROM plant_listing_requests r WHERE r.plant_id=rmc_plants.id AND r.status='APPROVED') AS verified,
+          COALESCE((SELECT order_intake_mode FROM plant_admin_controls WHERE plant_id=rmc_plants.id),'DIRECT') AS intake_mode
+         FROM rmc_plants WHERE id=$1 FOR SHARE",
     )
     .bind(req.plant_id)
     .fetch_optional(&mut *conn)
@@ -156,6 +158,14 @@ async fn validate(
     .ok_or_else(|| AppError::NotFound("Plant not available".into()))?;
     if !plant.get::<bool, _>("is_active") || !plant.get::<bool, _>("verified") {
         return Err(AppError::Conflict("Plant not available".into()));
+    }
+    // Direct orders remain a plant-specific privilege. ADMIN_REVIEW routes
+    // through the existing human RFQ path; no pending order or payment is
+    // silently created until a verified plant can accept a direct order.
+    if !req.save_draft && plant.get::<String, _>("intake_mode") != "DIRECT" {
+        return Err(AppError::Conflict(
+            "Direct ordering is restricted for this plant. Request quotation instead.".into(),
+        ));
     }
     let mut coordinates = req.lat.zip(req.lng);
     if let Some(id) = req.site_id {
