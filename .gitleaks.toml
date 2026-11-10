@@ -62,3 +62,22 @@ condition = "AND"
 regexTarget = "line"
 paths = ['''(?:^|/)frontend/google-services\.json$''']
 regexes = ['''"current_key"\s*:\s*"AIza[\w-]{35}"''']
+
+[[rules.allowlists]]
+description = "Exact mock-only password, truncated JWT and TOTP documentation examples (not credentials)"
+condition = "AND"
+regexTarget = "line"
+paths = ['''(?:^|/)docs/API\.md$''']
+regexes = [
+  '''^\s*"password": "SecurePassword123",\s*$''',
+  '''^\s*"token": "eyJhbGciOiJIUzI1NiIs\.\.\.",\s*$''',
+  '''^\s*"password": "SecurePassword123"\s*$''',
+  '''^\s*"secret": "JBSWY3DPEHPK3PXP\.\.\.",\s*$''',
+]
+
+[[rules.allowlists]]
+description = "Rust browser automation token is an identifier expression, not embedded credential"
+condition = "AND"
+regexTarget = "line"
+paths = ['''(?:^|/)backend/examples/mobile_browser_fixture\.rs$''']
+regexes = ['''^\s*token:\s*fixture\.capture_token,\s*$''']

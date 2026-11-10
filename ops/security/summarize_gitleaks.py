@@ -61,18 +61,48 @@ def count_review_buckets(report):
             label = "firebase-client-json"
         elif location.endswith("/ops/staging/evidence/iam-isolation-simulation.json"):
             label = "staging-iam-policy-artifact"
+        elif location.endswith("/docs/payments/rmc_prepaid_play_compliance_and_rollout.md"):
+            label = "payment-policy-document"
+        elif location.endswith("/docs/api.md"):
+            label = "documentation-demo-auth"
+        elif location.endswith("/docs/kyc_sandbox_digilocker_integration.md"):
+            label = "kyc-documentation"
+        elif "/docs/security/" in "/" + location:
+            label = "security-documentation"
+        elif "/docs/release/" in "/" + location:
+            label = "release-documentation"
+        elif "/docs/" in "/" + location:
+            label = "other-documentation"
+        elif location.endswith("/ops/staging/evidence/iam-isolation-simulation.json"):
+            label = "iam-simulation-record"
+        elif location.endswith("/ops/release/verify-digilocker-credentials.py"):
+            label = "kyc-verifier-source"
+        elif "/ops/staging/evidence/" in "/" + location:
+            label = "other-staging-evidence"
+        elif "/ops/release/" in "/" + location:
+            label = "other-release-script"
         elif "/ops/" in "/" + location:
             label = "other-operations"
         elif location.endswith("/backend/tests/single_session_staff_slot_tests.rs"):
             label = "session-test-fixture"
+        elif location.endswith("/backend/tests/authority_web_security_tests.rs"):
+            label = "authority-test-fixture"
+        elif location.endswith("/backend/tests/parity_workflow_tests.rs"):
+            label = "parity-test-fixture"
+        elif "/backend/tests/" in "/" + location:
+            label = "other-backend-test"
         elif "/tests/" in "/" + location or "/fixtures/" in "/" + location:
             label = "other-test-fixture"
         elif location.endswith("/backend/examples/mobile_browser_fixture.rs"):
             label = "browser-demo-fixture"
+        elif "/backend/migrations/" in "/" + location:
+            label = "database-schema-example"
+        elif "/frontend/scripts/" in "/" + location:
+            label = "frontend-script"
         elif "/.github/workflows/" in "/" + location:
             label = "ci-fixture"
-        elif "/docs/" in "/" + location:
-            label = "other-documentation"
+        elif "/backend/examples/" in "/" + location:
+            label = "other-backend-example"
         else:
             label = "other-unclassified"
         counts[label] += 1

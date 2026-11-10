@@ -46,6 +46,17 @@ class SummaryTests(unittest.TestCase):
         self.assertEqual(dict(labels), {"other-operations": 1})
         self.assertNotIn(marker, str(labels))
 
+    def test_known_diagnostic_groups_preserve_privacy(self):
+        testcases = [
+            ("docs/payments/RMC_PREPAID_PLAY_COMPLIANCE_AND_ROLLOUT.md", "payment-policy-document"),
+            ("ops/staging/evidence/iam-isolation-simulation.json", "iam-simulation-record"),
+            ("backend/tests/single_session_staff_slot_tests.rs", "session-test-fixture"),
+            ("backend/examples/mobile_browser_fixture.rs", "browser-demo-fixture"),
+        ]
+        for file, expected in testcases:
+            labels = module.count_review_buckets([{"File": file, "Secret": "REDACTED"}])
+            self.assertEqual(dict(labels), {expected: 1})
+
     def test_rejects_malformed_report(self):
         with self.assertRaises(ValueError):
             module.summarize({"not": "a list"})
