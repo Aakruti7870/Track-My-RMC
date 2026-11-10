@@ -157,8 +157,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Disabled until real-device and Firebase provider acceptance.
     if std::env::var("PUSH_NOTIFICATIONS_ENABLED").ok().as_deref() == Some("true") {
-        let mut worker = trackmyrmc_backend::services::push_delivery::PushDeliveryWorker::from_env()
-            .map_err(|reason| std::io::Error::new(std::io::ErrorKind::InvalidInput, reason))?;
+        let mut worker =
+            trackmyrmc_backend::services::push_delivery::PushDeliveryWorker::from_env()
+                .map_err(|reason| std::io::Error::new(std::io::ErrorKind::InvalidInput, reason))?;
         let notification_db = state.db.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
