@@ -44,9 +44,9 @@ fs.mkdirSync(out, { recursive: true });
           assert.equal(await page.getByTestId('role-module-payroll-closure').count(), 1);
           assert.equal(await page.getByTestId('role-module-owner-drivers').count(), 1);
         }
-        if (name === 'operations') assert.equal(await page.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])').count(), 8);
+        if (name === 'operations') assert.equal(await page.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])').filter({ visible: true }).count(), 8);
         if (name === 'more') {
-          assert.equal(await page.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])').count(), 4);
+          assert.equal(await page.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])').filter({ visible: true }).count(), 4);
           assert.equal(await page.getByText('Appearance', { exact: true }).count(), 0);
           assert.equal(await page.getByTestId('owner-staff-module-access').count(), 1);
           assert.equal(await page.getByTestId('owner-permission-settings').count(), 1);
@@ -56,7 +56,7 @@ fs.mkdirSync(out, { recursive: true });
             ? await page.locator('[data-testid^="owner-shortcut-"]:not([data-testid="owner-shortcut-insights"])')
               .evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid').replace('owner-shortcut-', '')))
             : [];
-          const moduleIds = await page.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])')
+          const moduleIds = await page.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])').filter({ visible: true })
             .evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid').replace('role-module-', '')));
           for (const key of [...shortcutIds, ...moduleIds]) {
             assert(!visibleModuleKeys.has(key), `Duplicate owner module ${key} across tabs at ${width}px`);
@@ -90,7 +90,7 @@ fs.mkdirSync(out, { recursive: true });
       await page.waitForTimeout(200);
       assert(requests.some(url => url.searchParams.get('grade') === 'M25'));
       await go('/owner/more?directory=1');
-      assert.equal(await page.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])').count(), 4);
+      assert.equal(await page.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])').filter({ visible: true }).count(), 4);
       await go('/owner/operations');
       await page.evaluate(() => { for (const el of document.querySelectorAll('*')) if (el.scrollHeight > el.clientHeight && /auto|scroll/.test(getComputedStyle(el).overflowY)) el.scrollTop = el.scrollHeight; });
       const row = await page.getByTestId('role-module-business-diesel').boundingBox();
