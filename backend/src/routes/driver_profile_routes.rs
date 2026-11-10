@@ -104,9 +104,9 @@ pub async fn get_driver_identity(
     let months = profile
         .as_ref()
         .and_then(|p| p.get::<Option<i32>, _>("total_driving_experience_months"));
-    let licence_valid_until = profile.as_ref().and_then(|p| {
-        p.get::<Option<NaiveDate>, _>("driving_licence_valid_until")
-    });
+    let licence_valid_until = profile
+        .as_ref()
+        .and_then(|p| p.get::<Option<NaiveDate>, _>("driving_licence_valid_until"));
     Ok(Json(json!({
         "success": true,
         "plant_name": plant.get::<String, _>("name"),
@@ -456,19 +456,28 @@ fn validate_driving_licence(
     number: Option<String>,
     valid_until: Option<String>,
 ) -> Result<(Option<String>, Option<NaiveDate>), AppError> {
-    let number = bounded_optional(number, 32, "Driving licence number")?
-        .map(|s| s.to_ascii_uppercase());
-    if number.as_ref().is_some_and(|value| {
-        value.len() < 5 || !value.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, ' ' | '-' | '/'))
-    }) {
+    let number = bounded_optional(number, 32, "Driving licence number")?;
+    let number = number.map(|value| value.to_ascii_uppercase());
+    fn allowed_character(c: char) -> bool {
+        c.is_ascii_alphanumeric() || matches!(c, ' ' | '-' | '/')
+    }
+    if number
+        .as_ref()
+        .is_some_and(|value| value.len() < 5 || !value.chars().all(allowed_character))
+    {
         return Err(AppError::BadRequest("Invalid driving licence number".into()));
     }
-    let date = valid_until
-        .map(|value| NaiveDate::parse_from_str(value.trim(), "%Y-%m-%d")
-            .map_err(|_| AppError::BadRequest("Licence validity must be YYYY-MM-DD".into())))
-        .transpose()?;
+    let date = match valid_until {
+        Some(raw) => Some(
+            NaiveDate::parse_from_str(raw.trim(), "%Y-%m-%d")
+                .map_err(|_| AppError::BadRequest("Licence validity must be YYYY-MM-DD".into()))?,
+        ),
+        None => None,
+    };
     if date.is_some() && number.is_none() {
-        return Err(AppError::BadRequest("Licence number is required when validity is provided".into()));
+        return Err(AppError::BadRequest(
+            "Licence number is required when validity is provided".into(),
+        ));
     }
     Ok((number, date))
 }
@@ -684,14 +693,22 @@ mod tests {
     #[test]
     fn licence_validation_preserves_optional_and_expired_records() {
         assert_eq!(validate_driving_licence(None, None).unwrap(), (None, None));
-        assert_eq!(
-            validate_driving_licence(Some("mh01 2024 123456".into()), Some("2030-01-15".into())).unwrap().0,
-            Some("MH01 2024 123456".into()),
-        );
-        assert!(validate_driving_licence(None, Some("2030-01-15".into())).is_err());
-        assert!(validate_driving_licence(Some("MH012024123456".into()), Some("not-a-date".into())).is_err());
-        assert!(validate_driving_licence(Some("bad<script>".into()), None).is_err());
-        assert!(validate_driving_licence(Some("MH012024123456".into()), Some("2020-01-15".into())).is_ok());
+        let valid = validate_driving_licence(
+            Some("mh01 2024 123456".into()),
+            Some("2030-01-15".into()),
+        )
+        .unwrap();
+        assert_eq!(valid.0, Some("MH01 2024 123456".into()));
+        let missing_number = validate_driving_licence(None, Some("2030-01-15".into()));
+        assert!(missing_number.is_err());
+        let invalid_date =
+            validate_driving_licence(Some("MH012024123456".into()), Some("not-a-date".into()));
+        assert!(invalid_date.is_err());
+        let unsafe_number = validate_driving_licence(Some("bad<script>".into()), None);
+        assert!(unsafe_number.is_err());
+        let expired =
+            validate_driving_licence(Some("MH012024123456".into()), Some("2020-01-15".into()));
+        assert!(expired.is_ok());
     }
     #[test]
     fn phone_normalization() {
