@@ -292,7 +292,7 @@ export default function PlantOnboarding() {
                 <AppText style={styles.prefixText}>+91</AppText>
               </View>
               <TextInput testID="onboarding-mobile" value={mobile}
-                onChangeText={(value) => setMobile(value.replace(/\\D/g, "").slice(0, 10))}
+                onChangeText={(value) => setMobile(value.replace(/\D/g, "").slice(0, 10))}
                 placeholder="10 Digit WhatsApp Number" placeholderTextColor={colors.onSurfaceTertiary}
                 keyboardType="number-pad" maxLength={10}
                 style={[styles.phoneInput, { color: colors.onSurface }]} />
