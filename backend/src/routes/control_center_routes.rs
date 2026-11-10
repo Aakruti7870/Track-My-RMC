@@ -795,7 +795,7 @@ mod security_tests {
             "Panvel"
         );
         assert!(bounded_plant_filter(Some("x".repeat(101)), "search").is_err());
-        assert!(bounded_plant_filter(Some("bad\\nregion".replace("\\\\n", "\\n")), "state").is_err());
+        assert!(bounded_plant_filter(Some("bad\nregion".into()), "state").is_err());
     }
 
     #[test]
