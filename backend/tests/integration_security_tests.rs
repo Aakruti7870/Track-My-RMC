@@ -614,15 +614,41 @@ async fn step_up_is_session_bound_expiring_and_logout_revokes_sessions(db: PgPoo
     let router = app(state.clone());
     let (id, email, secret) =
         identity(&db, "central_admin", true, vec!["reviewer_access.manage"]).await;
-    let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
-    let (_, login) = request(
+    // Login uses the previous TOTP window so that the current code remains
+    // available for step-up. A clock rollover during login can otherwise make
+    // the previous code two windows old before the handler verifies it.
+    let challenge = admin_challenge(&db, &email).await;
+    let login_now = chrono::Utc::now().timestamp();
+    let login_code = TotpEngine::compute_code(&secret, (login_now - 30) as u64).unwrap();
+    let (mut status, mut login) = request(
         &router,
         "/login",
         None,
-        Some(json!({"challenge_token":admin_challenge(&db, &email).await,"code":TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp()-30) as u64).unwrap()})),
+        Some(json!({"challenge_token":challenge,"code":login_code})),
     )
     .await;
-    let token = login["token"].as_str().unwrap();
+    if status == StatusCode::UNAUTHORIZED
+        && chrono::Utc::now().timestamp().div_euclid(30) != login_now.div_euclid(30)
+    {
+        // Retry only when a real 30-second boundary occurred. All other
+        // authentication failures remain hard failures of this security test.
+        let challenge = admin_challenge(&db, &email).await;
+        let retry_code =
+            TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp() - 30) as u64)
+                .unwrap();
+        (status, login) = request(
+            &router,
+            "/login",
+            None,
+            Some(json!({"challenge_token":challenge,"code":retry_code})),
+        )
+        .await;
+    }
+    assert_eq!(status, StatusCode::OK, "Control Center login must succeed");
+    let token = login["token"]
+        .as_str()
+        .expect("Successful Control Center login must contain a token");
+    let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
     let payload = json!({"enabled":false,"reason":"isolated test reviewer switch"});
     assert_eq!(
         request(&router, "/reviewer", Some(token), Some(payload.clone()))
