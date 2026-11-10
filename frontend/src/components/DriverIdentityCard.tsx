@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import { Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "@/src/theme/ThemeProvider";
@@ -39,17 +39,15 @@ const formattedDate = (value: string | null | undefined) => {
 };
 
 /**
- * Compact by default on phones. The entire nine-field plant record remains
- * accessible in-place; no personal data is baked into an image asset.
+ * The entire nine-field card is visible immediately on Driver Home after login.
+ * Layout, values, and themes are native and responsive; no personal data is baked into assets.
  */
 export function DriverIdentityCard() {
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
   const { data, loading, error, reload } = useGet<DriverIdentity>("/driver/identity");
-  const [expanded, setExpanded] = useState(false);
   const wide = width >= 720;
   const narrow = width < 360;
-  const detailsOpen = wide || expanded;
 
   const fields: Detail[] = data ? [
     { label: "PLANT NAME", value: show(data.plant_name), icon: "business-outline" },
@@ -103,37 +101,14 @@ export function DriverIdentityCard() {
               </View>
             </View>
 
-            <View style={[styles.plantSummary, { backgroundColor: colors.surfaceTertiary }]}>
-              <Ionicons name="business-outline" size={17} color={colors.brand} />
-              <AppText style={[styles.plantText, { color: colors.onSurface }]} numberOfLines={2}>
-                {show(data.plant_name)}
-              </AppText>
-            </View>
-
-            {!wide ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ expanded }}
-                testID="driver-identity-toggle-details"
-                onPress={() => setExpanded(current => !current)}
-                style={[styles.toggle, { borderColor: colors.border }]}
-              >
-                <AppText style={[styles.toggleLabel, { color: colors.brand }]}>
-                  {expanded ? "Hide Driver Card Details" : "View Full Driver Card"}
-                </AppText>
-                <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={17} color={colors.brand} />
-              </Pressable>
-            ) : null}
-
-            {detailsOpen ? (
-              <View testID="driver-identity-full-details" style={styles.detailSection}>
+            <View testID="driver-identity-full-details" style={styles.detailSection}>
                 <View style={[styles.detailsDivider, { backgroundColor: colors.divider }]} />
                 <View style={styles.grid}>
                   {fields.map(field => (
                     <View
                       key={field.label}
-                      style={[styles.field, {
-                        width: wide ? "32.3%" : narrow ? "100%" : "48.6%",
+                      style={[styles.field, narrow ? styles.narrowField : null, {
+                        width: wide ? "32.3%" : "48.6%",
                         borderColor: colors.border,
                         backgroundColor: colors.surfaceElevated,
                       }]}
@@ -156,7 +131,6 @@ export function DriverIdentityCard() {
                   Licence information is supplied by the plant; it is not independently government-verified.
                 </AppText>
               </View>
-            ) : null}
           </>
         ) : null}
 
@@ -178,29 +152,26 @@ const styles = StyleSheet.create({
   card: { borderRadius: radius.lg, borderWidth: 1, overflow: "hidden" },
   brandBand: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    minHeight: 36, paddingHorizontal: 12, paddingVertical: 7, gap: spacing.sm,
+    minHeight: 34, paddingHorizontal: 10, paddingVertical: 6, gap: spacing.sm,
   },
   brandIdentity: { flexDirection: "row", alignItems: "center", gap: 5, flexShrink: 1 },
   brandText: { fontFamily: fonts.bold, fontSize: 11, letterSpacing: 0.3 },
   bandTitle: { fontFamily: fonts.semibold, fontSize: 10, letterSpacing: 0.25, flexShrink: 1, textAlign: "right" },
-  body: { padding: 12, gap: 9 },
+  body: { padding: 10, gap: 8 },
   recordLine: { flexDirection: "row", alignItems: "center", gap: 5 },
   recordText: { fontFamily: fonts.medium, fontSize: 10, lineHeight: 14 },
-  personRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  personRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   personName: { flex: 1, minWidth: 0, gap: 2 },
   nameLabel: { fontFamily: fonts.semibold, fontSize: 10, letterSpacing: 0.35 },
   driverName: { fontFamily: fonts.bold, fontSize: 16, lineHeight: 21, flexShrink: 1 },
   tmBadge: { maxWidth: "45%", minWidth: 88, paddingHorizontal: 9, paddingVertical: 6, borderRadius: radius.sm, borderWidth: 1, gap: 2 },
   tmLabel: { fontFamily: fonts.bold, fontSize: 9, letterSpacing: 0.4 },
   tmNumber: { fontFamily: fonts.bold, fontSize: 12, lineHeight: 16, textAlign: "right" },
-  plantSummary: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 9, paddingVertical: 8, borderRadius: radius.sm },
-  plantText: { fontFamily: fonts.medium, fontSize: 12, lineHeight: 16, flex: 1 },
-  toggle: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, minHeight: 44, borderWidth: 1, borderRadius: radius.sm },
-  toggleLabel: { fontFamily: fonts.semibold, fontSize: 12 },
-  detailSection: { gap: 10 },
+  detailSection: { gap: 7 },
   detailsDivider: { height: StyleSheet.hairlineWidth },
-  grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: 8 },
-  field: { borderRadius: radius.sm, borderWidth: 1, padding: 9, minHeight: 65, gap: 5 },
+  grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: 6 },
+  field: { borderRadius: radius.sm, borderWidth: 1, padding: 8, minHeight: 58, gap: 3 },
+  narrowField: { padding: 6 },
   fieldHeading: { flexDirection: "row", alignItems: "center", gap: 5 },
   fieldLabel: { flex: 1, fontFamily: fonts.bold, fontSize: 10, lineHeight: 13, letterSpacing: 0.1 },
   fieldValue: { fontFamily: fonts.semibold, fontSize: 12, lineHeight: 17, flexShrink: 1 },
