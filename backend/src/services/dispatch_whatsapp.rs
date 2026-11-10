@@ -275,36 +275,33 @@ pub async fn mark_provider_status(
     provider_id: &str,
     provider_status: &str,
 ) -> Result<(), AppError> {
-    let rank = |s: &str| match s {
-        "sent" => 1,
-        "delivered" => 2,
-        "read" => 3,
-        "failed" => 4,
-        _ => 0,
-    };
-    if rank(provider_status) == 0 || provider_id.len() > 200 {
+    if !matches!(provider_status, "sent" | "delivered" | "read" | "failed")
+        || provider_id.len() > 200
+    {
         return Ok(());
     }
-    // Do not downgrade read to delivered or sent, or delivered to sent.
-    // Failed provider status remains visible to the human operator.
-    let event: Option<(String,)> =
-        sqlx::query_as("SELECT status FROM dispatch_whatsapp_events WHERE provider_message_id=$1")
-            .bind(provider_id)
-            .fetch_optional(&state.db)
-            .await?;
-    if let Some((previous,)) = event {
-        if rank(provider_status) >= rank(&previous) {
-            sqlx::query(
-                "UPDATE dispatch_whatsapp_events SET status=$2,
-                 delivered_at=CASE WHEN $2 IN ('delivered','read')
-                                  THEN COALESCE(delivered_at,NOW()) ELSE delivered_at END,
-                 updated_at=NOW() WHERE provider_message_id=$1
-                 AND status IN ('accepted','sent','delivered','read','failed')",
-            )
-            .bind(provider_id)
-            .bind(provider_status)
-            .execute(&state.db)
-            .await?;
+    // A late "failed" webhook may not downgrade a delivered/read receipt.
+    let changed: Option<(Uuid, Uuid)> = sqlx::query_as(
+        "UPDATE dispatch_whatsapp_events SET status=$2,
+           delivered_at=CASE WHEN $2 IN ('delivered','read')
+             THEN COALESCE(delivered_at,NOW()) ELSE delivered_at END,
+           updated_at=NOW()
+         WHERE provider_message_id=$1
+           AND (
+               ($2='sent' AND status='accepted')
+            OR ($2='delivered' AND status IN ('accepted','sent'))
+            OR ($2='read' AND status IN ('accepted','sent','delivered'))
+            OR ($2='failed' AND status IN ('accepted','sent'))
+           )
+         RETURNING plant_id,load_id",
+    )
+    .bind(provider_id)
+    .bind(provider_status)
+    .fetch_optional(&state.db)
+    .await?;
+    if let Some((plant, load)) = changed {
+        if provider_status == "failed" {
+            alert_owner_review(state, plant, load, false).await?;
         }
     }
     Ok(())
