@@ -303,7 +303,10 @@ fn normalize_phone(raw: &str) -> Result<String, AppError> {
         return Err(AppError::BadRequest("Invalid phone number format".into()));
     }
     let digits: String = text.chars().filter(char::is_ascii_digit).collect();
-    let normalized = if digits.len() == 10 {
+    // Preserve an explicitly supplied country code, even when the complete
+    // international number contains exactly ten digits. Only local Indian
+    // ten-digit numbers without '+' receive the default +91 prefix.
+    let normalized = if digits.len() == 10 && !text.starts_with('+') {
         format!("+91{digits}")
     } else {
         format!("+{digits}")
@@ -494,6 +497,8 @@ mod tests {
     fn contact_normalization_is_bounded_and_requires_country() {
         assert_eq!(normalize_phone("9876543210").unwrap(), "+919876543210");
         assert_eq!(normalize_phone("+919876543210").unwrap(), "+919876543210");
+        assert_eq!(normalize_phone("+1234567890").unwrap(), "+1234567890");
+        assert_eq!(normalize_phone("+49 151 1234 5678").unwrap(), "+4915112345678");
         assert!(normalize_phone("123").is_err());
         assert!(normalize_phone("9876543210;attack").is_err());
         assert!(normalize_phone("00919876543210").is_err());
