@@ -120,3 +120,42 @@ pub async fn tick(state: &AppState) -> Result<usize, AppError> {
 
     Ok(rows.len())
 }
+
+pub async fn mark_provider_status(
+    state: &AppState,
+    provider_id: &str,
+    provider_status: &str,
+) -> Result<(), AppError> {
+    if provider_id.len() > 200 || !provider_id.starts_with("wamid.")
+        || !matches!(provider_status, "sent" | "delivered" | "read" | "failed")
+    {
+        return Ok(());
+    }
+    let status = provider_status.to_ascii_uppercase();
+    sqlx::query(
+        "UPDATE plant_owner_registration_requests
+         SET alert_status=$2, updated_at=NOW(),
+             alert_error=CASE WHEN $2='FAILED' THEN 'provider_reported_failed'
+                              ELSE NULL END
+         WHERE alert_provider_id=$1
+           AND (($2='SENT' AND alert_status='ACCEPTED')
+             OR ($2='DELIVERED' AND alert_status IN ('ACCEPTED','SENT'))
+             OR ($2='READ' AND alert_status IN ('ACCEPTED','SENT','DELIVERED'))
+             OR ($2='FAILED' AND alert_status IN ('ACCEPTED','SENT')))",
+    )
+    .bind(provider_id)
+    .bind(status)
+    .execute(&state.db)
+    .await?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn reminder_template_is_separate_from_otp_and_dispatch() {
+        let source = include_str!("plant_owner_alert.rs");
+        assert!(source.contains("PLANT_OWNER_ALERT_TEMPLATE_NAME"));
+        assert!(!source.contains("trackmyrmc_login_otp"));
+    }
+}
