@@ -285,5 +285,4 @@ impl WhatsAppService {
             .ok_or_else(|| "provider_message_id_missing".to_string())?;
         Ok(message_id.to_string())
     }
-
 }
