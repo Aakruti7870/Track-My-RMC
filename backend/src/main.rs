@@ -133,6 +133,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         info!("Opt-in WhatsApp marketing worker enabled");
     }
 
+    // Separate utility alert queue for Plant Owner registration leads.
+    // Opt in only after an approved Meta template and operator recipient are configured.
+    if std::env::var("PLANT_OWNER_ALERT_WORKER_ENABLED")
+        .ok()
+        .as_deref()
+        == Some("true")
+    {
+        let registration_state = state.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(15));
+            loop {
+                interval.tick().await;
+                if let Err(error) =
+                    trackmyrmc_backend::services::plant_owner_alert::tick(&registration_state).await
+                {
+                    tracing::error!(error = ?error, "Plant Owner alert worker failed");
+                }
+            }
+        });
+        info!("Plant Owner utility alert worker enabled");
+    }
+
     let cors = if config
         .cors_allowed_origins
         .iter()
