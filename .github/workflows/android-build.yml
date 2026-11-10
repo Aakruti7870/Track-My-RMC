@@ -93,7 +93,7 @@ jobs:
         run: |
           set -euo pipefail
           test -s google-services.json
-          node -e "const c=require('./google-services.json'); const a=c.client?.find(x=>x.client_info?.android_client_info?.package_name===process.env.PACKAGE_NAME); if(!a || !a.api_key?.some(x=>/^AIza[\\w-]{35}$/.test(x.current_key||'')) || !c.project_info?.project_id || !a.client_info?.mobilesdk_app_id){ console.error('Firebase Android release config incomplete'); process.exit(1); } console.log('Firebase Android config verified')"
+          node -e "const c=require('./google-services.json'); const a=c.client?.find(x=>x.client_info?.android_client_info?.package_name===process.env.PACKAGE_NAME); if(!a || !a.api_key?.some(x=>/^AIza[\w-]{35}$/.test(x.current_key||'')) || !c.project_info?.project_id || !a.client_info?.mobilesdk_app_id){ console.error('Firebase Android release config incomplete'); process.exit(1); } console.log('Firebase Android config verified')"
 
       - name: Configure AWS credentials
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
