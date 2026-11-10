@@ -323,9 +323,7 @@ impl WhatsAppService {
             return Err("meta_sender_not_configured".into());
         }
         let to = Self::normalize_phone(recipient);
-        if to.len() != 12 || !to.starts_with("91")
-            || !to.bytes().all(|b| b.is_ascii_digit())
-        {
+        if to.len() != 12 || !to.starts_with("91") || !to.bytes().all(|b| b.is_ascii_digit()) {
             return Err("invalid_alert_recipient".into());
         }
         let payload = json!({
@@ -351,7 +349,8 @@ impl WhatsAppService {
             "https://graph.facebook.com/{}/{}/messages",
             self.api_version, sender_id
         );
-        let response = self.client
+        let response = self
+            .client
             .post(url)
             .bearer_auth(token)
             .json(&payload)
@@ -363,7 +362,9 @@ impl WhatsAppService {
             tracing::warn!(status = %status, "Meta rejected registration alert template");
             return Err(format!("registration_provider_http_{}", status.as_u16()));
         }
-        let body: serde_json::Value = response.json().await
+        let body: serde_json::Value = response
+            .json()
+            .await
             .map_err(|_| "provider_response_unknown".to_string())?;
         let provider_id = body["messages"][0]["id"]
             .as_str()
@@ -371,5 +372,4 @@ impl WhatsAppService {
             .ok_or_else(|| "provider_message_id_missing".to_string())?;
         Ok(provider_id.to_string())
     }
-
 }
