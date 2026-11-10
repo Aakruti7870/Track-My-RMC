@@ -2,7 +2,36 @@
 
 ## Status
 
-Phase 1 of the Central Admin web-only redesign is in draft PR #180. This file documents **code-level scope only**. It is not evidence of production activation, live Google Places configuration, real notifications, end-to-end approvals, or released marketing capability.
+Phase 1 was merged in PR #180 (main commit `07f80ecbf62b7e37499ea6ba04b7c32940724443`). Phase 2 is being developed separately, with AWS deployment explicitly blocked until whole-program acceptance. This file documents **code-level scope only**. It is not evidence of production activation, live Google Places configuration, real notifications, end-to-end approvals, or released marketing capability.
+
+## Reconciled UX decisions, November 7–10, 2026
+
+The highest Super Admin remains web-only; the Control Center uses existing React dark/glass layout, not a new design system. Keep Central Admin's email OTP → TOTP enrollment/verification and one-hour session. Do not add a password, mobile Admin role, duplicate Appearance toggle, another identity provider, or bypass privileged step-up.
+
+| Navigation card | Authoritative display/action | Never attach |
+| --- | --- | --- |
+| Platform KPIs | Read-only `/api/control-center/summary` plus service health | Approval form or duplicate orders module |
+| Notifications | Existing authenticated `/api/notifications`; notification opens matching approval workspace | Global unscoped push messages or new notification table |
+| Approval Queue | Existing Owner onboarding, plant-profile section review, KYC review and supplier RFQ outreach | Automatic approval, new staff role, duplicate document upload screen |
+| Plant Master | First-party plants; one selected plant shows Owner, staff, verification and intake policy | Raw Google contact dumps or new staff tables |
+| TMRMC Verified | Trust decision inside selected plant, based on approved listing, published identification/licence and explicit expiring review | Google Places `businessStatus` or generic onboarding approval alone |
+| Orders & RFQs | Existing order / quotation service and incoming-order policy | Automatic acceptance, payment or Cashfree subscription |
+| Marketing & Broadcast | Consent-aware names/segments, bounded CSV upload, draft-only templates, later approved delivery | Unsolicited messaging, implicit opt-in, auto-created WhatsApp chat groups |
+| Native Automation | Existing Rust/PostgreSQL templates and manual human review tasks | New external automation engine |
+| Authority & Governance | Existing explicit web-only delegation, session revocation and audit | Unrestricted Authority/Super Admin role equivalence |
+
+Owner/staff mobile automation may use 4–4–2 compact tiles, but this is **not** a web Super Admin responsive-layout requirement. Shared design principles are touch targets, consistent typography, one module per function and clean Home/More navigation.
+
+### Phase 2 code-level status (not provider or production acceptance)
+
+- Added explicit `plant_admin_controls` intake modes. Existing approved active plants default to `DIRECT`, preserving existing launch behavior; modes other than DIRECT block submitted orders at the Rust domain service. `ADMIN_REVIEW` currently redirects users to the **existing RFQ/manual review path**, not an invented admin-created order.
+- Added `plant_trust_reviews` and per-plant governance read/decision, with recent TOTP step-up and audit. Trust is distinct from onboarding and published certificate review; the latter already has its own queue and evidence route.
+- Added separate `admin_marketing_segments` / `contacts` / `memberships` / `campaign_drafts` stores: this is deliberate **new** data for a previously absent CRM, not a replacement for the existing order or support lead database.
+- **Channel-first marketing UX:** Super Admin chooses a channel name through **Create Channel**. No preset/example group is created in the database; no channel is selected automatically. File upload is hidden until the administrator creates a channel or explicitly opens one they previously created. The same user can create multiple named channels.
+- A channel is an *internal* `admin_marketing_segments` record, **not** an actual WhatsApp Channel. The single validated CSV file must contain `phone,name` columns, 1–1,000 rows and at most 1,000 **unique member contacts per channel**. The Rust import executes in one transaction under a parent channel row lock, deduplicating phone numbers and rejecting imports that would exceed capacity without partial import.
+- Contact imports are always `UNVERIFIED` by default and never modify existing consent or opt-out state; campaign records are `DRAFT` only. There is **no** provider send endpoint, approved campaign approval flow or outbound worker.
+- Existing Plant Master detail opens governance in the same plant card; Marketing is a dedicated workspace from one navigation card. The UI uses the current admin font, colors, borders, inputs and responsive grid; no new frontend framework.
+- Work remains for complete consent lifecycle, template/provider/webhook integration, audited marketing send approval, verified plant KPIs, central staff lifecycle delegation, RFQ case triage, multi-plant analytics and independent prelaunch tests. Do not deploy merely because CI compiles.
 
 ## Reuse and module ownership
 

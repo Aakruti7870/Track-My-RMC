@@ -38,6 +38,12 @@ fn text(value: &Option<String>, max: usize, required: bool) -> Result<(), AppErr
     Ok(())
 }
 
+fn intake_permits_direct_order(mode: &str, save_draft: bool) -> bool {
+    // Inactive and unverified plants are denied separately before this check.
+    // Drafts remain editable offline; no notification, payment or order is submitted.
+    save_draft || mode == "DIRECT"
+}
+
 async fn validate(
     conn: &mut PgConnection,
     customer: Uuid,
@@ -148,7 +154,9 @@ async fn validate(
         }
     }
     let plant = sqlx::query(
-        "SELECT owner_id,is_active,latitude,longitude,EXISTS(SELECT 1 FROM plant_listing_requests r WHERE r.plant_id=rmc_plants.id AND r.status='APPROVED') AS verified FROM rmc_plants WHERE id=$1 FOR SHARE",
+        "SELECT owner_id,is_active,latitude,longitude,EXISTS(SELECT 1 FROM plant_listing_requests r WHERE r.plant_id=rmc_plants.id AND r.status='APPROVED') AS verified,
+          COALESCE((SELECT order_intake_mode FROM plant_admin_controls WHERE plant_id=rmc_plants.id),'DIRECT') AS intake_mode
+         FROM rmc_plants WHERE id=$1 FOR SHARE",
     )
     .bind(req.plant_id)
     .fetch_optional(&mut *conn)
@@ -156,6 +164,14 @@ async fn validate(
     .ok_or_else(|| AppError::NotFound("Plant not available".into()))?;
     if !plant.get::<bool, _>("is_active") || !plant.get::<bool, _>("verified") {
         return Err(AppError::Conflict("Plant not available".into()));
+    }
+    // Direct orders remain a plant-specific privilege. ADMIN_REVIEW routes
+    // through the existing human RFQ path; no pending order or payment is
+    // silently created until a verified plant can accept a direct order.
+    if !intake_permits_direct_order(&plant.get::<String, _>("intake_mode"), req.save_draft) {
+        return Err(AppError::Conflict(
+            "Direct ordering is restricted for this plant. Request quotation instead.".into(),
+        ));
     }
     let mut coordinates = req.lat.zip(req.lng);
     if let Some(id) = req.site_id {
@@ -410,4 +426,17 @@ pub async fn place_with_preview(
     }
     tx.commit().await?;
     Ok(order)
+}
+
+#[cfg(test)]
+mod central_order_intake_tests {
+    use super::intake_permits_direct_order;
+    #[test]
+    fn only_direct_allows_submitted_orders() {
+        assert!(intake_permits_direct_order("DIRECT", false));
+        for mode in ["ADMIN_REVIEW", "RFQ_ONLY", "DISABLED", "UNKNOWN"] {
+            assert!(!intake_permits_direct_order(mode, false));
+            assert!(intake_permits_direct_order(mode, true));
+        }
+    }
 }

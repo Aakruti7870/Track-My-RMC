@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { Bell, Building2, ClipboardCheck, Factory, ShieldCheck, Workflow } from 'lucide-react';
+import { Bell, Building2, ClipboardCheck, Factory, Megaphone, ShieldCheck, Workflow } from 'lucide-react';
 import { AuthenticatorQr } from './AuthenticatorQr';
 import apiClient, { getAccessToken, setAccessToken } from './api';
 
@@ -22,6 +22,15 @@ type Health = {
 };
 
 type PortalKpi = { label: string; value: string | number };
+type Governance = { plant_id:string;plant_name:string;active:boolean;
+  intake_mode:string;trust_status:string;trust_until:string|null;trust_current:boolean };
+type MarketingStats = {
+  segments:Array<{id:string;name:string;members:number}>;
+  contacts:{all:number;opted_in:number;opted_out:number;unverified:number};
+  campaigns:Array<{id:string;name:string;segment:string;template:string;status:string}>;
+  send_enabled:boolean;
+};
+type ImportedContact = { phone:string;name:string };
 type PlantMasterItem = {
   id: string; name: string; code: string; city: string; state: string;
   address: string; owner_name: string; owner_email: string | null;
@@ -133,6 +142,25 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
   const [masterError,setMasterError]=useState('');
   const [masterDetail,setMasterDetail]=useState<PlantMasterDetail | null>(null);
   const [masterDetailError,setMasterDetailError]=useState('');
+  const [governance,setGovernance]=useState<Governance|null>(null);
+  const [govMode,setGovMode]=useState('DIRECT');
+  const [govTrust,setGovTrust]=useState('REVOKED');
+  const [govExpiry,setGovExpiry]=useState('');
+  const [govReason,setGovReason]=useState('');
+  const [govCode,setGovCode]=useState('');
+  const [govError,setGovError]=useState('');
+  const [govBusy,setGovBusy]=useState(false);
+  const [marketing,setMarketing]=useState<MarketingStats|null>(null);
+  const [marketingError,setMarketingError]=useState('');
+  const [marketingReason,setMarketingReason]=useState('');
+  const [marketingCode,setMarketingCode]=useState('');
+  const [marketingGroup,setMarketingGroup]=useState('');
+  const [marketingSegment,setMarketingSegment]=useState('');
+  const [marketingCsv,setMarketingCsv]=useState<ImportedContact[]>([]);
+  const [marketingCampaign,setMarketingCampaign]=useState('');
+  const [marketingTemplate,setMarketingTemplate]=useState('');
+  const [marketingBusy,setMarketingBusy]=useState(false);
+  const [showMarketing,setShowMarketing]=useState(false);
   const [placesQuery,setPlacesQuery]=useState('');
   const [googlePlaces,setGooglePlaces]=useState<GooglePlace[]>([]);
   const [placesLoading,setPlacesLoading]=useState(false);
@@ -274,6 +302,21 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
     return()=>{active=false;};
   },[stage,user?.role]);
 
+
+  async function openAdminApproval(event:string) {
+    if(event==='plant_onboarding' && permissions.includes('plant_owners.manage')){
+      await loadOwnerRequests();
+    }else if(event==='rmc_rfq_lead' && permissions.includes('support.view')){
+      await loadWorkspace('rmc_rfq_leads');
+    }else if(event==='plant_profile' && permissions.includes('plant.view')){
+      await loadPlantProfileQueue();
+    }else if(event==='kyc' && permissions.includes('kyc.view')){
+      await loadWorkspace('kyc');
+    }else{return;}
+    // One existing approval workspace, not a second copy embedded in the bell.
+    window.location.hash='operations-workspaces';
+  }
+
   async function markAdminNoticesRead() {
     try{
       await apiClient.post('/api/notifications/read-all');
@@ -316,6 +359,114 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
       setGooglePlaces(response.data?.places||[]);
     }catch(e){setPlacesError(errorMessage(e));}
     finally{setPlacesLoading(false);}
+  }
+
+
+  async function openPlantGovernance(plantId:string) {
+    setGovError('');setGovernance(null);
+    try{
+      const response=await apiClient.get('/api/control-center/plants/'+encodeURIComponent(plantId)+'/governance');
+      const data=response.data as Governance;
+      setGovernance(data);setGovMode(data.intake_mode);
+      setGovTrust(data.trust_status==='VERIFIED'?'VERIFIED':'REVOKED');setGovExpiry(data.trust_until||'');
+    }catch(e){setGovError(errorMessage(e));}
+  }
+  async function savePlantGovernance(kind:'intake'|'trust') {
+    if(!governance||govReason.trim().length<10||!(/^[0-9]{6}$/).test(govCode.trim())){
+      setGovError('Provide a reason of 10 or more characters and a current six-digit authenticator code.');return;
+    }
+    const id=governance.plant_id;
+    if(!window.confirm('Apply this audited decision to '+governance.plant_name+'?'))return;
+    setGovBusy(true);setGovError('');
+    try{
+      await apiClient.post('/api/control-center/step-up',{code:govCode.trim()});
+      await apiClient.post('/api/control-center/plants/'+encodeURIComponent(id)+'/governance',{
+        kind,value:kind==='intake'?govMode:govTrust,
+        valid_until:kind==='trust'&&govTrust==='VERIFIED'?govExpiry:null,reason:govReason.trim()
+      });
+      setGovCode('');setGovReason('');
+      await openPlantGovernance(id);
+      setNotice('Plant decision saved and audited.');
+    }catch(e){setGovCode('');setGovError(errorMessage(e));}
+    finally{setGovBusy(false);}
+  }
+  async function loadMarketing() {
+    setShowMarketing(true);setMarketingBusy(true);setMarketingError('');
+    try{
+      const response=await apiClient.get('/api/control-center/marketing/overview');
+      const value=response.data as MarketingStats;setMarketing(value);
+      setMarketingSegment(current=>value.segments.some(s=>s.id===current)?current:'');
+    }catch(e){setMarketingError(errorMessage(e));}
+    finally{setMarketingBusy(false);}
+  }
+  async function parseMarketingCsv(file?:File) {
+    setMarketingCsv([]);setMarketingError('');
+    if(!file)return;
+    if(!file.name.toLowerCase().endsWith('.csv')||file.size>256000){
+      setMarketingError('Export a CSV file (maximum 250 KB) with phone,name columns.');return;
+    }
+    try{
+      const source=(await file.text()).replace(/^\uFEFF/,'');
+      const records:string[][]=[];let record:string[]=[];let field='';let quoted=false;
+      for(let i=0;i<source.length;i++){
+        const char=source[i];
+        if(char==='"'){
+          if(quoted&&source[i+1]==='"'){field+='"';i++;}else{quoted=!quoted;}
+        }else if(char===','&&!quoted){record.push(field);field='';}
+        else if((char==='\n'||char==='\r')&&!quoted){
+          record.push(field);field='';
+          if(record.some(v=>v.trim()))records.push(record);
+          record=[];if(char==='\r'&&source[i+1]==='\n')i++;
+        }else{field+=char;}
+      }
+      if(quoted)throw new Error('CSV contains an unclosed quoted field.');
+      record.push(field);if(record.some(v=>v.trim()))records.push(record);
+      const headers=records.shift()?.map(v=>v.trim().toLowerCase())||[];
+      if(headers.length!==2||headers[0]!=='phone'||headers[1]!=='name')
+        throw new Error('CSV headers must be exactly phone,name.');
+      if(records.length===0||records.length>1000)throw new Error('Use between 1 and 1,000 contact rows per file.');
+      if(records.some(r=>r.length!==2||!r[0].trim()||r[0].length>40||r[1].length>120))
+        throw new Error('Every row must contain a valid phone field and an optional name.');
+      setMarketingCsv(records.map(r=>({phone:r[0].trim(),name:r[1].trim()})));
+    }catch(e){setMarketingError(errorMessage(e));}
+  }
+  async function saveMarketing(action:'segment'|'contacts'|'draft') {
+    if(!(/^[0-9]{6}$/).test(marketingCode.trim())||marketingReason.trim().length<10){
+      setMarketingError('A six-digit authenticator code and 10-character audit reason are required.');return;
+    }
+    if(action!=='segment'&&!marketingSegment){
+      setMarketingError('Create a channel and open it before uploading contacts or saving drafts.');return;
+    }
+    if(action==='contacts'&&!marketingCsv.length){
+      setMarketingError('Import a validated CSV file before submitting.');return;
+    }
+    setMarketingBusy(true);setMarketingError('');
+    try{
+      await apiClient.post('/api/control-center/step-up',{code:marketingCode.trim()});
+      if(action==='segment'){
+        const created=await apiClient.post('/api/control-center/marketing/segments',{name:marketingGroup,reason:marketingReason});
+        setMarketingSegment(String(created.data.id));setMarketingCsv([]);setMarketingGroup('');
+      }else if(action==='contacts'){
+        await apiClient.post('/api/control-center/marketing/contacts/import',{
+          segment_id:marketingSegment,contacts:marketingCsv,reason:marketingReason
+        });
+        setMarketingCsv([]);
+      }else{
+        await apiClient.post('/api/control-center/marketing/campaigns',{
+          segment_id:marketingSegment,name:marketingCampaign,
+          template:marketingTemplate,reason:marketingReason
+        });
+        setMarketingCampaign('');setMarketingTemplate('');
+      }
+      setMarketingCode('');setMarketingReason('');
+      setNotice(action==='segment'
+        ? 'Channel created. You can now upload a contact file into this channel.'
+        : action==='contacts'
+          ? 'Contact file imported into your channel. No messages sent or consent granted.'
+          : 'Campaign draft saved. No messages sent.');
+      await loadMarketing();
+    }catch(e){setMarketingCode('');setMarketingError(errorMessage(e));}
+    finally{setMarketingBusy(false);}
   }
 
   async function loadNativeAutomation() {
@@ -1235,17 +1386,22 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                   {adminNotices.map(item=><article key={item.id} style={{padding:'9px 0',borderBottom:'1px solid #334155'}}>
                     <div style={{display:'flex',gap:8,alignItems:'center'}}><strong style={{fontSize:13}}>{item.title}</strong>{!item.read&&<span style={{fontSize:11,color:'#86efac'}}>New</span>}</div>
                     <p style={{fontSize:12,color:'#cbd5e1',margin:'4px 0'}}>{item.body}</p>
+                    {(['plant_onboarding','rmc_rfq_lead','plant_profile','kyc'].includes(item.event)) && (
+                      <button type="button" style={{...buttonStyle,width:'auto',marginTop:4,padding:'6px 10px',fontSize:12}}
+                        onClick={()=>void openAdminApproval(item.event)}>Open matching review queue</button>
+                    )}
                   </article>)}
                   {!adminNotices.length&&!adminNoticeError&&<p>No notifications to show.</p>}
                 </section>}
                 <nav aria-label="Control Center sections" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:9,marginTop:14}}>
                   {([
-                    {href:'#platform-overview',label:'Platform KPIs',caption:'Live overview',icon:Building2},
-                    {href:'#plant-master',label:'Plant Master',caption:'Registered plants & owners',icon:Factory},
-                    {href:'#operations-workspaces',label:'Onboarding & RFQs',caption:'Review queues',icon:ClipboardCheck},
-                    {href:'#automation-governance',label:'Automation',caption:'Native workflow health',icon:Workflow},
-                    {href:'#authority-governance',label:'Governance',caption:'Permissions & audit',icon:ShieldCheck},
-                  ] as const).map(item=><a key={item.label} href={item.href}
+                    {href:'#platform-overview',label:'Platform KPIs',caption:'Live overview',icon:Building2,allowed:permissions.includes('system.view')},
+                    {href:'#plant-master',label:'Plant Master',caption:'Owners, staff, verification & intake',icon:Factory,allowed:permissions.includes('plant.view')&&permissions.includes('user.view')},
+                    {href:'#operations-workspaces',label:'Approval Queue',caption:'Onboarding, documents and RFQs',icon:ClipboardCheck,allowed:permissions.includes('plant_owners.manage')||permissions.includes('kyc.view')||permissions.includes('support.view')},
+                    {href:'#marketing-center',label:'Marketing CRM',caption:'Contact groups and campaign drafts',icon:Megaphone,allowed:permissions.includes('support.manage')},
+                    {href:'#automation-governance',label:'Automation',caption:'Native workflow health',icon:Workflow,allowed:permissions.includes('system.view')},
+                    {href:'#authority-governance',label:'Governance',caption:'Permissions & audit',icon:ShieldCheck,allowed:permissions.includes('admin_access.manage')},
+                  ] as const).filter(item=>item.allowed).map(item=><a key={item.label} href={item.href}
                     style={{padding:12,border:'1px solid #475569',borderRadius:10,background:'rgba(30,41,59,.85)',color:'#f8fafc',textDecoration:'none',display:'grid',gap:6}}>
                     <item.icon size={22} aria-hidden="true"/>
                     <strong style={{fontSize:13}}>{item.label}</strong>
@@ -1254,7 +1410,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                 </nav>
               </section>
             )}
-            {user.role === 'central_admin' && (
+            {user.role === 'central_admin' && permissions.includes('system.view') && (
               <section id="platform-overview" aria-label="Platform overview" style={{ marginTop: 14, padding: 16, border: '1px solid #334155', borderRadius: 10 }}>
                 <h2 style={{ marginTop: 0, fontSize: 18 }}>Live platform overview</h2>
                 {adminOverviewError && <p role="alert" style={{ color: '#fecaca' }}>Unable to load overview: {adminOverviewError}</p>}
@@ -1327,6 +1483,64 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                     <p style={{fontSize:12,color:'#cbd5e1'}}>{masterDetail.plant.address}, {masterDetail.plant.city}, {masterDetail.plant.state} {masterDetail.plant.pincode||''}</p>
                     <p style={{fontSize:13}}><strong>Owner:</strong> {masterDetail.plant.owner_name} · {masterDetail.plant.owner_email||'No email'}</p>
                     <p style={{fontSize:12}}><strong>Status:</strong> {masterDetail.plant.onboarding_approved?'Onboarding approved':'Onboarding approval not confirmed'} · {masterDetail.plant.active?'Active':'Inactive'}</p>
+
+                    <div style={{marginTop:14,padding:12,border:'1px solid #475569',borderRadius:10,background:'#101c2d'}}>
+                      <h4 style={{margin:'0 0 5px'}}>Verification & order intake</h4>
+                      <p style={{fontSize:12,color:'#cbd5e1',margin:'0 0 8px'}}>
+                        Separate onboarding, document publication, TMRMC Verified review, and direct-order authorization.
+                      </p>
+                      <button type="button" disabled={govBusy}
+                        onClick={()=>void openPlantGovernance(masterDetail.plant.id)}
+                        style={{...buttonStyle,width:'auto',marginTop:3}}>
+                        Review plant governance
+                      </button>
+                      {govError&&<p role="alert">{govError}</p>}
+                      {governance?.plant_id===masterDetail.plant.id && <div style={{display:'grid',gap:10,marginTop:12}}>
+                        <p style={{margin:0,fontSize:13}}>
+                          <strong>TMRMC Verified:</strong> {governance.trust_current?'Verified (currently valid)':'Not verified or expired'}
+                          {' · '}<strong>Direct-order policy:</strong> {governance.intake_mode}
+                        </p>
+                        <label style={{fontSize:12}}>Incoming order mode
+                          <select value={govMode} onChange={e=>setGovMode(e.target.value)} style={inputStyle} disabled={govBusy}>
+                            <option value="DIRECT">DIRECT — normal verified-plant order flow</option>
+                            <option value="ADMIN_REVIEW">ADMIN_REVIEW — block direct order; RFQ / human review</option>
+                            <option value="RFQ_ONLY">RFQ_ONLY — quotations only</option>
+                            <option value="DISABLED">DISABLED — no direct orders</option>
+                          </select>
+                        </label>
+                        <label style={{fontSize:12}}>TMRMC Verified decision
+                          <select value={govTrust} onChange={e=>setGovTrust(e.target.value)} style={inputStyle} disabled={govBusy}>
+                            <option value="VERIFIED">Approve reviewed plant documents</option>
+                            <option value="REVOKED">Revoke / do not verify</option>
+                          </select>
+                        </label>
+                        {govTrust==='VERIFIED' && <label style={{fontSize:12}}>Verification valid until
+                          <input type="date" value={govExpiry} onChange={e=>setGovExpiry(e.target.value)} style={inputStyle} disabled={govBusy}/>
+                        </label>}
+                        <p style={{fontSize:12,color:'#cbd5e1',margin:0}}>
+                          Verification requires approved onboarding, published identification and current published licence evidence.
+                          It does not automatically approve orders, subscription charges, staff access or marketing.
+                        </p>
+                        <label style={{fontSize:12}}>Required audit reason
+                          <input value={govReason} minLength={10} maxLength={500} onChange={e=>setGovReason(e.target.value)}
+                            style={inputStyle} disabled={govBusy} placeholder="Explain the decision and evidence"/>
+                        </label>
+                        <label style={{fontSize:12}}>Plant governance authenticator code
+                          <input type="password" inputMode="numeric" pattern="[0-9]{6}" maxLength={6}
+                            value={govCode} onChange={e=>setGovCode(e.target.value)} style={inputStyle} disabled={govBusy}/>
+                        </label>
+                        <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+                          <button type="button" disabled={govBusy||!permissions.includes('order.view')}
+                            onClick={()=>void savePlantGovernance('intake')} style={{...buttonStyle,width:'auto',marginTop:0}}>
+                            Save order intake
+                          </button>
+                          <button type="button" disabled={govBusy}
+                            onClick={()=>void savePlantGovernance('trust')} style={{...buttonStyle,width:'auto',marginTop:0,background:'#166534'}}>
+                            Save TMRMC Verified review
+                          </button>
+                        </div>
+                      </div>}
+                    </div>
                     <h4 style={{margin:'15px 0 6px'}}>Staff roles ({masterDetail.staff.length} assigned)</h4>
                     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:8}}>
                       {masterDetail.staff.map(staff=><div key={staff.user_id} style={{border:'1px solid #475569',padding:9,borderRadius:8}}>
@@ -1361,6 +1575,158 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                     </div>
                     <p style={{fontSize:11,color:'#cbd5e1'}}>Place data: Google Maps. Results are not added to the database or contact lists.</p>
                   </section>
+                </>}
+              </section>
+            )}
+
+
+            {user.role === 'central_admin' && permissions.includes('support.manage') && (
+              <section id="marketing-center" aria-label="Marketing CRM and broadcast drafts"
+                style={{marginTop:18,padding:14,border:'1px solid #334155',borderRadius:12}}>
+                <div style={{display:'flex',gap:10,alignItems:'center'}}>
+                  <Megaphone size={22} aria-hidden="true"/>
+                  <div>
+                    <h2 style={{margin:0,fontSize:19}}>Marketing & Broadcast Center</h2>
+                    <p style={{fontSize:12,color:'#cbd5e1',margin:'4px 0 0'}}>
+                      Create your own channels first, then upload contacts into the channel you choose.
+                      These are internal TrackMyRMC contact channels, not WhatsApp Channels or chat groups.
+                    </p>
+                  </div>
+                </div>
+                <button type="button" disabled={marketingBusy} onClick={()=>void loadMarketing()}
+                  style={{...buttonStyle,marginTop:12}}>
+                  {showMarketing?'Refresh Marketing Center':'Open Marketing CRM'}
+                </button>
+                {showMarketing&&<>
+                  {marketingError&&<p role="alert" style={{color:'#fecaca'}}>{marketingError}</p>}
+                  {marketingBusy&&<p role="status">Updating marketing workspace…</p>}
+                  {marketing&&<>
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(115px,1fr))',gap:8,marginTop:12}}>
+                      {([
+                        ['Stored contacts',marketing.contacts.all],
+                        ['Opted in (recorded)',marketing.contacts.opted_in],
+                        ['Consent unverified',marketing.contacts.unverified],
+                        ['Opted out',marketing.contacts.opted_out]
+                      ] as const).map(([key,value])=><div key={key}
+                        style={{border:'1px solid #475569',borderRadius:9,padding:10,background:'#111827'}}>
+                        <div style={{fontSize:11,color:'#cbd5e1'}}>{key}</div>
+                        <strong style={{fontSize:20}}>{value}</strong>
+                      </div>)}
+                    </div>
+                    <p style={{fontSize:12,color:'#fbbf24',margin:'10px 0'}}>
+                      CSV imports never establish marketing consent or send messages. Campaigns remain drafts until
+                      separately approved Meta templates, recipient consent, and explicit send authorization exist.
+                    </p>
+
+                    <section aria-label="Create custom marketing channel"
+                      style={{border:'1px solid #475569',borderRadius:10,padding:13,marginTop:14,display:'grid',gap:10}}>
+                      <h3 style={{margin:0,fontSize:17}}>1. Create Channel</h3>
+                      <p style={{margin:0,fontSize:12,color:'#cbd5e1'}}>
+                        No preset groups. Enter the channel name you want; create as many named channels as required.
+                        Each channel supports at most 1,000 unique contacts.
+                      </p>
+                      <label style={{fontSize:12}}>Channel name
+                        <input aria-label="New channel name" value={marketingGroup} maxLength={100}
+                          onChange={e=>setMarketingGroup(e.target.value)} style={inputStyle}
+                          placeholder="Enter your preferred channel name"/>
+                      </label>
+                      <label style={{fontSize:12}}>Audit reason for this change
+                        <input aria-label="Marketing audit reason" value={marketingReason} maxLength={500}
+                          onChange={e=>setMarketingReason(e.target.value)} style={inputStyle}
+                          placeholder="Reason for creating or updating your channel"/>
+                      </label>
+                      <label style={{fontSize:12}}>Marketing CRM authenticator code
+                        <input aria-label="Marketing CRM authenticator code" type="password"
+                          inputMode="numeric" maxLength={6} pattern="[0-9]{6}"
+                          value={marketingCode} onChange={e=>setMarketingCode(e.target.value)} style={inputStyle}/>
+                      </label>
+                      <button type="button" disabled={marketingBusy||marketingGroup.trim().length<3}
+                        onClick={()=>void saveMarketing('segment')} style={{...buttonStyle,marginTop:0}}>
+                        Create Channel
+                      </button>
+                    </section>
+
+                    <section aria-label="Your marketing channels" style={{marginTop:16}}>
+                      <h3 style={{fontSize:17,margin:'0 0 8px'}}>Your Channels</h3>
+                      <p style={{fontSize:12,color:'#cbd5e1',margin:'0 0 10px'}}>
+                        To add contacts to a channel created earlier, select that channel below.
+                        No channel is selected automatically.
+                      </p>
+                      {!marketing.segments.length&&<p>No channels created yet. Start with Create Channel above.</p>}
+                      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:9}}>
+                        {marketing.segments.map(channel=><article key={channel.id}
+                          style={{padding:12,borderRadius:9,border:'1px solid '+(marketingSegment===channel.id?'#60a5fa':'#475569'),
+                            background:marketingSegment===channel.id?'#172a42':'#111827'}}>
+                          <strong style={{fontSize:14}}>{channel.name}</strong>
+                          <p style={{fontSize:12,color:'#cbd5e1',margin:'6px 0'}}>
+                            {channel.members} / 1,000 contacts
+                          </p>
+                          <button type="button" disabled={marketingBusy} aria-label={'Open channel '+channel.name}
+                            onClick={()=>{setMarketingSegment(channel.id);setMarketingCsv([]);setMarketingError('');}}
+                            style={{...buttonStyle,marginTop:4,padding:'9px 12px'}}>
+                            {marketingSegment===channel.id?'Channel selected':'Open Channel'}
+                          </button>
+                        </article>)}
+                      </div>
+                    </section>
+
+                    {marketingSegment&&marketing.segments.some(channel=>channel.id===marketingSegment)&&
+                      <section aria-label="Selected channel contact import"
+                        style={{borderTop:'1px solid #475569',marginTop:16,paddingTop:14,display:'grid',gap:10}}>
+                        <h3 style={{fontSize:17,margin:0}}>
+                          2. Upload Contact File — {marketing.segments.find(channel=>channel.id===marketingSegment)?.name}
+                        </h3>
+                        <p style={{fontSize:12,color:'#cbd5e1',margin:0}}>
+                          Upload your CSV after creating or opening this channel. Export Excel contacts as CSV with the
+                          exact headers <code>phone,name</code>. Maximum 1,000 rows per file; maximum 1,000 unique
+                          contacts per channel. Repeated numbers are deduplicated automatically.
+                        </p>
+                        <label style={{fontSize:12}}>Choose contact file
+                          <input aria-label="Channel contact file" type="file" accept=".csv,text/csv" style={inputStyle}
+                            disabled={marketingBusy}
+                            onChange={e=>{
+                              const selected=e.currentTarget.files?.[0];
+                              e.currentTarget.value='';
+                              void parseMarketingCsv(selected);
+                            }}/>
+                        </label>
+                        <p style={{fontSize:12,color:'#cbd5e1',margin:0}}>
+                          {marketingCsv.length} validated contact rows ready to import into this channel.
+                          Uploads do not change marketing opt-in status.
+                        </p>
+                        <button type="button" disabled={marketingBusy||marketingCsv.length===0}
+                          onClick={()=>void saveMarketing('contacts')}
+                          style={{...buttonStyle,marginTop:0}}>
+                          Import Contact File into Channel
+                        </button>
+                        <h3 style={{fontSize:17,margin:'12px 0 0'}}>3. Prepare Campaign Draft (optional)</h3>
+                        <label style={{fontSize:12}}>Draft campaign title
+                          <input value={marketingCampaign} maxLength={120}
+                            onChange={e=>setMarketingCampaign(e.target.value)}
+                            style={inputStyle} placeholder="Enter campaign title"/>
+                        </label>
+                        <label style={{fontSize:12}}>Proposed WhatsApp template identifier
+                          <input value={marketingTemplate} maxLength={120}
+                            onChange={e=>setMarketingTemplate(e.target.value)}
+                            style={inputStyle} placeholder="example_update"/>
+                        </label>
+                        <button type="button" disabled={marketingBusy||!marketingCampaign.trim()||!marketingTemplate.trim()}
+                          onClick={()=>void saveMarketing('draft')} style={{...buttonStyle,marginTop:0}}>
+                          Save Campaign Draft — Do Not Send
+                        </button>
+                      </section>
+                    }
+
+                    <h3 style={{fontSize:16,marginBottom:6}}>Saved campaign drafts</h3>
+                    {marketing.campaigns.map(draft=><article key={draft.id}
+                      style={{borderTop:'1px solid #334155',padding:'9px 0',fontSize:13}}>
+                      <strong>{draft.name}</strong> · {draft.segment}
+                      <div style={{color:'#cbd5e1',fontSize:12}}>
+                        Template {draft.template} · {draft.status} · No send action available
+                      </div>
+                    </article>)}
+                    {!marketing.campaigns.length&&<p>No campaigns drafted.</p>}
+                  </>}
                 </>}
               </section>
             )}

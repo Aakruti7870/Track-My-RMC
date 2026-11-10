@@ -51,7 +51,11 @@ pub async fn list_plants(
             .map_err(|_| AppError::InternalError("Plant serialization failed".into()))?;
         value["grades"] = json!(grades);
         value["verified"] = json!(verified);
-        value["order_enabled"] = json!(plant.is_active && verified);
+        let intake_mode: String = sqlx::query_scalar(
+            "SELECT COALESCE((SELECT order_intake_mode FROM plant_admin_controls WHERE plant_id=$1),'DIRECT')",
+        ).bind(plant.id).fetch_one(&state.db).await?;
+        value["order_intake_mode"] = json!(intake_mode);
+        value["order_enabled"] = json!(plant.is_active && verified && intake_mode == "DIRECT");
         value["status"] = json!(if plant.is_active {
             "active"
         } else {

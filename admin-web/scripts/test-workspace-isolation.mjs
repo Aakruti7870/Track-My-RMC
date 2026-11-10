@@ -25,6 +25,7 @@ try {
     });
     const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
     let plantFails=true,delayPlants=false,releasePlants,currentEmail='';
+    const channels=[];const importedPhones=new Set();let importCalls=0;
     await page.route('**/*',async route=>{
       const url=new URL(route.request().url());if(url.origin===origin)return route.continue();
       assert.equal(url.origin,api,'Unexpected external request');const path=url.pathname;
@@ -32,7 +33,7 @@ try {
       if(path.endsWith('/otp/send'))return reply({status:'EMAIL_OTP_SENT'});
       if(path.endsWith('/auth/login')){currentEmail=route.request().postDataJSON().email;return reply({challenge_token:'synthetic-challenge'});}
       if(path.endsWith('/verify-totp'))return reply({token:'synthetic-token-'+currentEmail,user:{id:currentEmail,role:'central_admin',full_name:currentEmail}});
-      if(path.endsWith('/auth/me'))return reply({permissions:['user.view','plant.view','plant_owners.manage','order.view']});
+      if(path.endsWith('/auth/me'))return reply({permissions:['user.view','plant.view','plant_owners.manage','order.view','support.manage']});
       if(path.endsWith('/summary'))return reply({kpis:[{label:'Onboarding Requests',value:1}]});
       if(path==='/api/notifications')return reply({items:[{id:'admin-notice-1',event:'plant_onboarding',title:'Plant onboarding request received',body:'Synthetic approval notice',read:false,created_at:'2026-11-10T01:00:00Z'}],unread:1});
       if(path==='/api/notifications/read-all')return reply({success:true,updated:1});
@@ -41,6 +42,31 @@ try {
         address:'Example test address',owner_name:'Fixture Owner',owner_email:'fixture-owner@example.invalid',
         owner_active:true,active:true,google_place_id:null,onboarding_approved:true,staff_count:1
       }],total:1});
+      if(path==='/api/control-center/plants/synthetic-plant/governance')return reply({
+        plant_id:'synthetic-plant',plant_name:'Synthetic Plant A',active:true,intake_mode:'RFQ_ONLY',
+        trust_status:'REVOKED',trust_until:null,trust_current:false
+      });
+      if(path==='/api/control-center/step-up')return reply({success:true,verified:true,step_up_fresh:true});
+      if(path==='/api/control-center/marketing/overview')return reply({
+        segments:channels.map(c=>({id:c.id,name:c.name,members:c.contacts.size})),
+        contacts:{all:importedPhones.size,opted_in:0,opted_out:0,unverified:importedPhones.size},
+        campaigns:[],send_enabled:false
+      });
+      if(path==='/api/control-center/marketing/segments' && route.request().method()==='POST'){
+        const {name,reason}=route.request().postDataJSON();
+        assert(name.length>=3 && reason.length>=10);
+        const channel={id:'channel-'+(channels.length+1),name,contacts:new Set()};
+        channels.push(channel);return reply({success:true,id:channel.id,name});
+      }
+      if(path==='/api/control-center/marketing/contacts/import' && route.request().method()==='POST'){
+        const {segment_id,contacts,reason}=route.request().postDataJSON();
+        const channel=channels.find(c=>c.id===segment_id);
+        assert(channel,'Only an explicitly created channel may receive an import');
+        assert(reason.length>=10 && contacts.length<=1000);
+        for(const item of contacts){assert(item.phone && item.name!==undefined);channel.contacts.add(item.phone);importedPhones.add(item.phone);}
+        assert(channel.contacts.size<=1000,'One channel is bounded at 1000');
+        importCalls++;return reply({success:true,processed:contacts.length,added_unique:contacts.length,channel_members:channel.contacts.size,channel_limit:1000});
+      }
       if(path==='/api/control-center/plants/synthetic-plant/master')return reply({plant:{
         id:'synthetic-plant',name:'Synthetic Plant A',code:'PLANT-TEST',city:'Panvel',state:'Maharashtra',
         address:'Example test address',owner_name:'Fixture Owner',owner_email:'fixture-owner@example.invalid',
@@ -72,6 +98,33 @@ try {
     await page.getByText('Fixture Owner').first().waitFor();
     await button('Open plant record').click();
     await page.getByText('Test Supervisor').waitFor();
+    await button('Review plant governance').click();
+    await page.getByText('Not verified or expired').waitFor();
+    await button('Open Marketing CRM').click();
+    await page.getByText('No channels created yet. Start with Create Channel above.').waitFor();
+    assert.equal(await page.getByLabel('Channel contact file').count(),0,'Upload must not appear without a channel');
+    await page.getByLabel('New channel name').fill('My Panvel Builders');
+    await page.getByLabel('Marketing audit reason').fill('Business contacts for regional CRM grouping');
+    await page.getByLabel('Marketing CRM authenticator code').fill('123456');
+    await button('Create Channel').click();
+    await page.getByRole('heading',{name:'2. Upload Contact File — My Panvel Builders'}).waitFor();
+    assert.equal(channels.length,1,'Only the user-created channel exists');
+    await page.getByLabel('Channel contact file').setInputFiles({
+      name:'my_contacts.csv',mimeType:'text/csv',
+      buffer:Buffer.from('phone,name\n+919876543210,One Builder\n+919876543211,Two Builder\n')
+    });
+    await page.getByText('2 validated contact rows ready to import into this channel.',{exact:false}).waitFor();
+    await page.getByLabel('Marketing audit reason').fill('Upload voluntarily provided contacts into selected channel');
+    await page.getByLabel('Marketing CRM authenticator code').fill('123456');
+    await button('Import Contact File into Channel').click();
+    await page.getByText('2 / 1,000 contacts').waitFor();
+    assert.equal(importCalls,1);
+    await page.getByLabel('New channel name').fill('Second Custom Channel');
+    await page.getByLabel('Marketing audit reason').fill('Separate supplier contact records for internal CRM');
+    await page.getByLabel('Marketing CRM authenticator code').fill('123456');
+    await button('Create Channel').click();
+    await page.getByRole('heading',{name:'2. Upload Contact File — Second Custom Channel'}).waitFor();
+    assert.equal(channels.length,2,'Multiple user-created channels are supported');
     await button('users').click();await page.getByText('Previous workspace record',{exact:true}).waitFor();
     delayPlants=true;await button('orders').click();await page.getByRole('status').filter({hasText:'Loading records'}).waitFor();
     assert.equal(await page.getByText('Previous workspace record',{exact:true}).count(),0);
@@ -91,6 +144,9 @@ try {
     assert.equal(await page.getByLabel('Plant Owner access controls').count(),0);
     assert.equal(await page.getByText('Previous account plant · TEST-001',{exact:true}).count(),0);
     assert.equal(await page.getByText('Test Supervisor',{exact:true}).count(),0);
+    assert.equal(await page.getByText('My Panvel Builders',{exact:true}).count(),0);
+    assert.equal(await page.getByText('Second Custom Channel',{exact:true}).count(),0);
+    assert.equal(await page.getByLabel('Channel contact file').count(),0);
     assert.equal(await button('Close plant record').count(),0);
     await button('Plant Owner approvals and access').click();
     for(const label of ['Registered Plant Owner account ID','Reason for privileged change','Fresh authenticator code'])assert.equal(await page.getByLabel(label,{exact:true}).inputValue(),'');
