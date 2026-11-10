@@ -47,67 +47,63 @@ def count_categories(report):
 
 
 def count_review_buckets(report):
-    """Bounded classifications only. Never print matching values or source paths."""
+    """Print aggregate fixed categories only; never expose paths or credential values."""
     if not isinstance(report, list) or any(not isinstance(x, dict) for x in report):
         raise ValueError("Malformed Gitleaks report")
     counts = collections.Counter()
     for finding in report:
-        location = str(finding.get("File", "")).replace("\\", "/").lower()
-        if location.endswith("/docs/api.md") or location == "docs/api.md":
-            label = "documentation-demo-auth"
-        elif location.endswith("/docs/cashfree_sandbox_integration_review.md"):
-            label = "documentation-payment-request"
-        elif location.endswith("/frontend/google-services.json"):
-            label = "firebase-client-json"
-        elif location.endswith("/ops/staging/evidence/iam-isolation-simulation.json"):
-            label = "staging-iam-policy-artifact"
-        elif location.endswith("/docs/payments/rmc_prepaid_play_compliance_and_rollout.md"):
-            label = "payment-policy-document"
-        elif location.endswith("/docs/api.md"):
-            label = "documentation-demo-auth"
-        elif location.endswith("/docs/kyc_sandbox_digilocker_integration.md"):
-            label = "kyc-documentation"
-        elif "/docs/security/" in "/" + location:
-            label = "security-documentation"
-        elif "/docs/release/" in "/" + location:
-            label = "release-documentation"
-        elif "/docs/" in "/" + location:
-            label = "other-documentation"
-        elif location.endswith("/ops/staging/evidence/iam-isolation-simulation.json"):
-            label = "iam-simulation-record"
-        elif location.endswith("/ops/release/verify-digilocker-credentials.py"):
-            label = "kyc-verifier-source"
-        elif "/ops/staging/evidence/" in "/" + location:
-            label = "other-staging-evidence"
-        elif "/ops/release/" in "/" + location:
-            label = "other-release-script"
-        elif "/ops/" in "/" + location:
-            label = "other-operations"
-        elif location.endswith("/backend/tests/single_session_staff_slot_tests.rs"):
-            label = "session-test-fixture"
-        elif location.endswith("/backend/tests/authority_web_security_tests.rs"):
-            label = "authority-test-fixture"
-        elif location.endswith("/backend/tests/parity_workflow_tests.rs"):
-            label = "parity-test-fixture"
-        elif "/backend/tests/" in "/" + location:
-            label = "other-backend-test"
-        elif "/tests/" in "/" + location or "/fixtures/" in "/" + location:
-            label = "other-test-fixture"
-        elif location.endswith("/backend/examples/mobile_browser_fixture.rs"):
-            label = "browser-demo-fixture"
-        elif "/backend/migrations/" in "/" + location:
-            label = "database-schema-example"
-        elif "/frontend/scripts/" in "/" + location:
-            label = "frontend-script"
-        elif "/.github/workflows/" in "/" + location:
-            label = "ci-fixture"
-        elif "/backend/examples/" in "/" + location:
-            label = "other-backend-example"
+        path = str(finding.get("File", "")).replace("\\", "/").lower()
+        # Exact paths first. Broad categories come last; avoid shadowing.
+        if path.endswith("/docs/api.md") or path == "docs/api.md":
+            category = "documentation-demo-auth"
+        elif path.endswith("/docs/cashfree_sandbox_integration_review.md"):
+            category = "documentation-payment-request"
+        elif path.endswith("/docs/payments/rmc_prepaid_play_compliance_and_rollout.md"):
+            category = "payment-policy-document"
+        elif path.endswith("/docs/kyc_sandbox_digilocker_integration.md"):
+            category = "kyc-documentation"
+        elif path.endswith("/frontend/google-services.json"):
+            category = "firebase-client-json"
+        elif path.endswith("/ops/staging/evidence/iam-isolation-simulation.json"):
+            category = "iam-simulation-record"
+        elif path.endswith("/ops/release/verify-digilocker-credentials.py"):
+            category = "kyc-verifier-source"
+        elif path.endswith("/backend/tests/single_session_staff_slot_tests.rs"):
+            category = "session-test-fixture"
+        elif path.endswith("/backend/tests/authority_web_security_tests.rs"):
+            category = "authority-test-fixture"
+        elif path.endswith("/backend/tests/parity_workflow_tests.rs"):
+            category = "parity-test-fixture"
+        elif path.endswith("/backend/examples/mobile_browser_fixture.rs"):
+            category = "browser-demo-fixture"
+        elif "/docs/security/" in "/" + path:
+            category = "security-documentation"
+        elif "/docs/release/" in "/" + path:
+            category = "release-documentation"
+        elif "/docs/" in "/" + path:
+            category = "other-documentation"
+        elif "/ops/staging/evidence/" in "/" + path:
+            category = "other-staging-evidence"
+        elif "/ops/release/" in "/" + path:
+            category = "other-release-script"
+        elif "/ops/" in "/" + path:
+            category = "other-operations"
+        elif "/backend/tests/" in "/" + path:
+            category = "other-backend-test"
+        elif "/tests/" in "/" + path or "/fixtures/" in "/" + path:
+            category = "other-test-fixture"
+        elif "/backend/migrations/" in "/" + path:
+            category = "database-schema-example"
+        elif "/frontend/scripts/" in "/" + path:
+            category = "frontend-script"
+        elif "/.github/workflows/" in "/" + path:
+            category = "ci-fixture"
+        elif "/backend/examples/" in "/" + path:
+            category = "other-backend-example"
         else:
-            label = "other-unclassified"
-        counts[label] += 1
+            category = "other-unclassified"
+        counts[category] += 1
     return counts
-
 
 def main():
     parser = argparse.ArgumentParser()
