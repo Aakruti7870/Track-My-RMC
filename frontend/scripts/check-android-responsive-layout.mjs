@@ -46,6 +46,33 @@ function scanLayoutViolations(file) {
   }
 }
 
+// The Driver Home must stay compact by default while retaining every field
+// from the plant-managed digital card on demand, including the licence pair.
+const identityCard = fs.readFileSync(path.join(srcDir, "components/DriverIdentityCard.tsx"), "utf8");
+const driverManager = fs.readFileSync(path.join(appDir, "owner/drivers.tsx"), "utf8");
+for (const field of [
+  "PLANT NAME", "BLOOD GROUP", "EMERGENCY CONTACT 1",
+  "DRIVING LICENCE NUMBER", "VALIDITY", "EMERGENCY CONTACT 2",
+  "EMPLOYEE ID", "COMPANY JOINING DATE", "TOTAL DRIVING EXPERIENCE",
+]) {
+  if (!identityCard.includes(field)) fail("Driver digital card field missing: " + field);
+}
+if (!identityCard.includes("wide || expanded") ||
+    !identityCard.includes("driver-identity-toggle-details") ||
+    !identityCard.includes("driver-identity-full-details")) {
+  fail("Driver card must be compact on phones with an accessible, expandable full record.");
+}
+if (!identityCard.includes("useWindowDimensions") ||
+    !identityCard.includes("colors.brandSoft") ||
+    !identityCard.includes("colors.surfaceSecondary")) {
+  fail("Driver card must use responsive widths and the existing day/night theme tokens.");
+}
+for (const key of ["driving_licence_number", "driving_licence_valid_until"]) {
+  if (!driverManager.includes(key) || !identityCard.includes(key)) {
+    fail("Missing owner-to-driver licence data wiring for " + key);
+  }
+}
+
 if (config.orientation !== "portrait") fail("Expo orientation must remain portrait for the current Android screen contract.");
 if (config.android?.edgeToEdgeEnabled !== true) fail("Android edge-to-edge layout must remain enabled.");
 if (!rootLayout.includes("<SafeAreaProvider>")) fail("Root layout must provide SafeAreaProvider.");
