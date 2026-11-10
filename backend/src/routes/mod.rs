@@ -60,6 +60,15 @@ pub fn build_app_router(state: AppState) -> Router {
             "/api/control-center/collections/:kind",
             get(control_center_routes::collection),
         )
+        // Central Admin Plant Master is a distinct, permission-gated read model.
+        .route(
+            "/api/control-center/plants/master",
+            get(control_center_routes::list_plant_master),
+        )
+        .route(
+            "/api/control-center/plants/:plant_id/master",
+            get(control_center_routes::get_plant_master),
+        )
         .route(
             "/api/admin/auth/method",
             post(crate::auth::control_center::method),
