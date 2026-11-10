@@ -1553,7 +1553,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                 </section>}
               </>}
               <nav style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                {['users','plants','orders','support','service_enquiries','rmc_rfq_leads','kyc','audit','sessions'].filter(kind=>permissions.includes(({users:'user.view',plants:'plant.view',orders:'order.view',support:'support.view',service_enquiries:'support.view',rmc_rfq_leads:'support.view',kyc:'kyc.view',audit:'audit.view',sessions:'session.view'} as Record<string,string>)[kind])).map(kind=>
+                {['users','orders','support','service_enquiries','rmc_rfq_leads','kyc','audit','sessions'].filter(kind=>permissions.includes(({users:'user.view',plants:'plant.view',orders:'order.view',support:'support.view',service_enquiries:'support.view',rmc_rfq_leads:'support.view',kyc:'kyc.view',audit:'audit.view',sessions:'session.view'} as Record<string,string>)[kind])).map(kind=>
                   <button key={kind} disabled={busy} onClick={()=>void loadWorkspace(kind)} style={{...buttonStyle,width:'auto',textTransform:'capitalize'}}>{kind}</button>)}
               </nav>
               {workspace && <><h2 style={{textTransform:'capitalize'}}>{workspace}</h2>
