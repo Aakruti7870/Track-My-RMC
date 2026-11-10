@@ -80,6 +80,11 @@ try {
         return reply({items:[]});
       }
       if(path.endsWith('/plant-discovery/requests'))return reply({requests:[{id:'test-request',name:'Previous account plant',request_number:'TEST-001',applicant_email:'fixture@example.invalid',address:'Test address',city:'Test city',state:'Test state'}]});
+      if(path==='/api/control-center/plant-owner-registration/requests')
+        return reply({requests:[{id:'test-registration',request_number:'TMRMC-REG-TEST',
+          owner_name:'New Applicant',business_name:'Registration Test Concrete',
+          business_address:'Test Road Panvel',email:'new@example.invalid',
+          whatsapp_number:'919876543210',status:'PENDING',alert_status:'ACCEPTED'}]});
       if(path.endsWith('/auth/logout'))return route.fulfill(failedLogout?{status:503,json:{message:'Synthetic availability failure'}}:{json:{success:true}});
       throw Error('Unexpected API path: '+path);
     });
@@ -135,6 +140,7 @@ try {
     plantFails=false;await button('Retry loading records').click();await page.getByText('No records on this page.',{exact:true}).waitFor();
     assert.equal(await button('Retry loading records').count(),0);
     await button('Plant Owner approvals and access').click();await page.getByText('Previous account plant · TEST-001',{exact:true}).waitFor();
+    await page.getByRole('heading',{name:'Registration Test Concrete · TMRMC-REG-TEST'}).waitFor();
     await page.getByLabel('Registered Plant Owner account ID',{exact:true}).fill('previous-account-id');
     await page.getByLabel('Reason for privileged change',{exact:true}).fill('Unsent private account reason');
     await page.getByLabel('Fresh authenticator code',{exact:true}).fill('123456');

@@ -61,13 +61,14 @@ export default function PlantOnboarding() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const toast = useToast();
-  const params = useLocalSearchParams<{ email?: string }>();
+  const params = useLocalSearchParams<{ email?: string; mode?: string }>();
 
   const initialEmail = useMemo(() => {
     const raw = Array.isArray(params.email) ? params.email[0] : params.email;
     return (raw || "").trim().toLowerCase();
   }, [params.email]);
 
+  const compactRegistration = params.mode === "owner_registration";
   const [ownerName, setOwnerName] = useState("");
   const [email, setEmail] = useState(initialEmail);
   const [mobile, setMobile] = useState("");
@@ -185,6 +186,26 @@ export default function PlantOnboarding() {
     if (!validEmail(email)) return setError("Enter a valid email address");
     if (mobile.length !== 10) return setError("Enter a valid 10-digit mobile number");
     if (plantName.trim().length < 2) return setError("Enter the plant name");
+    if (compactRegistration) {
+      if (address.trim().length < 5) return setError("Enter the registered business address");
+      setSubmitting(true);
+      try {
+        const response = await apiPublicPost<OnboardingResponse>("/plant-owner-registration/requests", {
+          owner_name: ownerName.trim(),
+          business_name: plantName.trim(),
+          business_address: address.trim(),
+          email: email.trim().toLowerCase(),
+          whatsapp_number: "91" + mobile,
+        });
+        setRequestId(response.request_id);
+        toast("Official email registration request submitted", "success");
+      } catch (e: any) {
+        setError(e.detail || "Could not submit registration request");
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
     if (!locationMarked || lat === null || lng === null) return setError("Mark the plant location before submitting");
 
     setSubmitting(true);
@@ -214,9 +235,9 @@ export default function PlantOnboarding() {
         <View style={[styles.successIcon, { backgroundColor: colors.success + "18" }]}>
           <Ionicons name="checkmark-circle" size={52} color={colors.success} />
         </View>
-        <AppText variant="title" center>Onboarding Request Received</AppText>
+        <AppText variant="title" center>{compactRegistration ? "Registration Request Received" : "Onboarding Request Received"}</AppText>
         <AppText variant="bodyMuted" center>
-          Thank you, {ownerName.trim()}. Your plant details are now pending TrackMyRMC Authority review.
+          {compactRegistration ? `Thank you, ${ownerName.trim()}. Your official email registration request is pending Super Admin review.` : `Thank you, ${ownerName.trim()}. Your plant details are now pending TrackMyRMC Authority review.`}
         </AppText>
         <View style={[styles.requestCard, { borderColor: colors.border, backgroundColor: colors.surfaceSecondary }]}>
           <AppText variant="caption" center>REQUEST ID</AppText>
@@ -225,9 +246,71 @@ export default function PlantOnboarding() {
           </AppText>
         </View>
         <AppText variant="caption" center>
-          Approval is not automatic. Once approved, use your registered email on Plant Staff Login to receive an email OTP.
+          {compactRegistration ? "Submitting this request does not verify your email or activate an Owner account. The team will contact you for plant verification." : "Approval is not automatic. Once approved, use your registered email on Plant Staff Login to receive an email OTP."}
         </AppText>
         <Button label="Back to Login" onPress={() => router.replace("/login" as any)} />
+      </View>
+    );
+  }
+
+  if (compactRegistration) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.surface }}>
+        <View style={{ height: insets.top }} />
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <View style={styles.headerRow}>
+            <Pressable onPress={() => router.back()} hitSlop={12} style={[styles.backButton, { borderColor: colors.border }]}>
+              <Ionicons name="arrow-back" size={20} color={colors.onSurface} />
+            </Pressable>
+            <View style={{ flex: 1, gap: 2 }}>
+              <AppText variant="title">Register As Plant Owner</AppText>
+              <AppText variant="caption">Official business email registration request</AppText>
+            </View>
+          </View>
+          <View style={[styles.infoBanner, { backgroundColor: colors.brandSoft, borderColor: colors.brand + "55" }]}>
+            <Ionicons name="shield-checkmark-outline" size={22} color={colors.brand} />
+            <AppText variant="caption" style={{ flex: 1 }}>
+              Your details go to the Super Admin for review. Registration does not create an active account or verify email ownership.
+            </AppText>
+          </View>
+          <View style={styles.section}>
+            <Input testID="onboarding-owner-name" label="Plant Owner Name"
+              value={ownerName} onChangeText={setOwnerName} placeholder="Full name" autoCapitalize="words" />
+            <Input testID="onboarding-business-name" label="Registered Business Name"
+              value={plantName} onChangeText={setPlantName} placeholder="Registered company or firm name" />
+            <AppText variant="label">Registered Business Address</AppText>
+            <TextInput testID="onboarding-business-address" value={address}
+              onChangeText={setAddress} placeholder="Full registered business address"
+              placeholderTextColor={colors.onSurfaceTertiary} multiline
+              style={[styles.addressInput, { color: colors.onSurface, borderColor: colors.border, backgroundColor: colors.surfaceSecondary }]} />
+            <Input testID="onboarding-email" label="Email ID" value={email}
+              onChangeText={(value) => setEmail(value.trimStart().toLowerCase())}
+              placeholder="name@company.com" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
+            <AppText variant="label">WhatsApp Number</AppText>
+            <View style={[styles.phoneInputWrap, { borderColor: colors.border, backgroundColor: colors.surfaceSecondary }]}>
+              <View style={[styles.prefix, { borderRightColor: colors.border }]}>
+                <AppText style={styles.prefixText}>+91</AppText>
+              </View>
+              <TextInput testID="onboarding-mobile" value={mobile}
+                onChangeText={(value) => setMobile(value.replace(/\D/g, "").slice(0, 10))}
+                placeholder="10 Digit WhatsApp Number" placeholderTextColor={colors.onSurfaceTertiary}
+                keyboardType="number-pad" maxLength={10}
+                style={[styles.phoneInput, { color: colors.onSurface }]} />
+            </View>
+          </View>
+          {error ? (
+            <View style={[styles.errorBox, { borderColor: colors.error + "66", backgroundColor: colors.error + "10" }]}>
+              <Ionicons name="alert-circle-outline" size={19} color={colors.error} />
+              <AppText variant="caption" color={colors.error} style={{ flex: 1 }}>{error}</AppText>
+            </View>
+          ) : null}
+          <Button testID="onboarding-register-official-email" label="Register Official Email"
+            onPress={submit} loading={submitting}
+            icon={<Ionicons name="mail-outline" size={18} color={colors.onBrand} />} />
+          <AppText variant="caption" center>
+            A pending registration lead is created for review. No payment or account activation occurs on submission.
+          </AppText>
+        </ScrollView>
       </View>
     );
   }

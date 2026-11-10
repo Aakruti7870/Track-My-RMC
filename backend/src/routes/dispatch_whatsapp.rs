@@ -506,6 +506,8 @@ pub async fn receive_meta_webhook(
                     dispatch_whatsapp::mark_provider_status(&state, id, status).await?;
                     crate::services::dispatch_marketing::mark_provider_status(&state, id, status)
                         .await?;
+                    crate::services::plant_owner_alert::mark_provider_status(&state, id, status)
+                        .await?;
                 }
             }
         }
