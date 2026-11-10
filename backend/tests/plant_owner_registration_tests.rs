@@ -115,14 +115,13 @@ async fn registering_creates_one_pending_lead_and_admin_notice(db: PgPool) {
         .unwrap();
     assert_eq!(count, 1);
 
-    let active_owners: i64 =
-        sqlx::query_scalar(
-            "SELECT COUNT(*) FROM users WHERE role IN ('owner','plant_owner')
-             AND LOWER(email)='owner@example.com'",
-        )
-            .fetch_one(&db)
-            .await
-            .unwrap();
+    let active_owners: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM users WHERE role IN ('owner','plant_owner')
+         AND LOWER(email)='owner@example.com'",
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
     assert_eq!(active_owners, 0);
 }
 
