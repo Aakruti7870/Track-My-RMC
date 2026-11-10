@@ -1,5 +1,6 @@
 pub mod account_deletion;
 pub mod admin_routes;
+pub mod admin_governance;
 pub mod assistant_routes;
 pub mod auth_routes;
 pub mod authority_governance;
@@ -68,6 +69,27 @@ pub fn build_app_router(state: AppState) -> Router {
         .route(
             "/api/control-center/plants/:plant_id/master",
             get(control_center_routes::get_plant_master),
+        )
+        // Phase 2: explicit MFA-gated plant decisions and consent-only CRM.
+        .route(
+            "/api/control-center/plants/:plant_id/governance",
+            get(admin_governance::plant_governance).post(admin_governance::decide_plant),
+        )
+        .route(
+            "/api/control-center/marketing/overview",
+            get(admin_governance::marketing_overview),
+        )
+        .route(
+            "/api/control-center/marketing/segments",
+            post(admin_governance::create_segment),
+        )
+        .route(
+            "/api/control-center/marketing/contacts/import",
+            post(admin_governance::import_contacts),
+        )
+        .route(
+            "/api/control-center/marketing/campaigns",
+            post(admin_governance::create_campaign_draft),
         )
         .route(
             "/api/admin/auth/method",
