@@ -516,6 +516,17 @@ pub async fn receive_meta_webhook(
                                      consent_recorded_at=NULL, updated_at=NOW()
                                  WHERE phone_e164=$1"
                             ).bind(format!("+{phone}")).execute(&mut *tx).await?;
+                            // No queued central CRM message may outlive a
+                            // customer STOP event. In-flight provider sends are
+                            // marked uncertain and require independent review.
+                            sqlx::query(
+                                "UPDATE admin_marketing_deliveries SET
+                                  status='cancelled',updated_at=NOW()
+                                 WHERE contact_id IN (
+                                   SELECT id FROM admin_marketing_contacts
+                                   WHERE phone_e164=$1
+                                 ) AND status='pending'"
+                            ).bind(format!("+{phone}")).execute(&mut *tx).await?;
                             tx.commit().await?;
                         }
                     }
@@ -531,6 +542,8 @@ pub async fn receive_meta_webhook(
                     crate::services::plant_owner_alert::mark_provider_status(&state, id, status)
                         .await?;
                     crate::routes::admin_whatsapp::mark_verified_status(&state, id, status)
+                        .await?;
+                    crate::routes::admin_campaign::mark_provider_status(&state, id, status)
                         .await?;
                 }
             }
