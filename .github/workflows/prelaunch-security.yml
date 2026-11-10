@@ -149,6 +149,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Enforce staging CloudFormation isolation before the narrow Trivy parser waiver
+        run: node ops/staging/verify-isolation.mjs
       - name: Check checked-in IaC and configuration
         uses: aquasecurity/trivy-action@v0.36.0
         with:
