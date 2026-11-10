@@ -241,6 +241,86 @@ pub async fn decide_plant(
     ))
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GooglePlaceVisibilityDecision {
+    pub place_id: String,
+    pub value: String,
+    pub reason: String,
+}
+
+fn checked_google_place_id(input: &str) -> Result<&str, AppError> {
+    let place_id = input.trim();
+    if place_id.is_empty()
+        || place_id.len() > 256
+        || !place_id.chars().all(|c| c.is_ascii_graphic())
+    {
+        return Err(AppError::BadRequest("Enter an exact Google Place ID".into()));
+    }
+    Ok(place_id)
+}
+
+/// Only held Place IDs are returned. Other Google businesses are never copied into our database.
+pub async fn held_google_places(
+    State(state): State<AppState>,
+    admin: WebAdmin,
+) -> Result<Json<Value>, AppError> {
+    admin.require("plant.view")?;
+    admin.require("plant_owners.manage")?;
+    let rows: Vec<Value> = sqlx::query_scalar(
+        "SELECT jsonb_build_object('place_id',place_id,'reason',change_reason,'updated_at',updated_at)
+         FROM google_plant_visibility_exclusions WHERE is_visible=FALSE
+         ORDER BY updated_at DESC,place_id LIMIT 100",
+    )
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(json!({"items":rows,"limit":100})))
+}
+
+/// Exact-ID suppression of unregistered Google Places results inside TrackMyRMC only.
+pub async fn decide_google_place_visibility(
+    State(state): State<AppState>,
+    admin: WebAdmin,
+    headers: HeaderMap,
+    Json(body): Json<GooglePlaceVisibilityDecision>,
+) -> Result<Json<Value>, AppError> {
+    admin.require("plant.view")?;
+    admin.require("plant_owners.manage")?;
+    let id = checked_google_place_id(&body.place_id)?;
+    let why = reason(&body.reason)?;
+    let visible = match body.value.as_str() {
+        "VISIBLE" => true,
+        "HOLD" => false,
+        _ => return Err(AppError::BadRequest("Unknown Google Place visibility decision".into())),
+    };
+    crate::routes::control_center_routes::require_recent_step_up(&state, &admin, &headers).await?;
+    let mut tx = state.db.begin().await?;
+    sqlx::query(
+        "INSERT INTO google_plant_visibility_exclusions(place_id,is_visible,changed_by,change_reason)
+         VALUES($1,$2,$3,$4)
+         ON CONFLICT(place_id) DO UPDATE SET
+         is_visible=EXCLUDED.is_visible,changed_by=EXCLUDED.changed_by,
+         change_reason=EXCLUDED.change_reason,updated_at=NOW()",
+    )
+    .bind(id)
+    .bind(visible)
+    .bind(admin.user_id)
+    .bind(why)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata)
+         VALUES($1,'control_center.google_place_visibility','google_place',$2,$3)",
+    )
+    .bind(admin.user_id)
+    .bind(id)
+    .bind(json!({"value":body.value,"reason":why}))
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(json!({"success":true,"place_id":id,"visible":visible})))
+}
+
 pub async fn marketing_overview(
     State(state): State<AppState>,
     admin: WebAdmin,

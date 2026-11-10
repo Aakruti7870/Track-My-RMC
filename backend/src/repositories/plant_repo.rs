@@ -17,6 +17,10 @@ pub async fn list_plants(pool: &PgPool) -> Result<Vec<RmcPlant>, AppError> {
               SELECT 1 FROM plant_admin_controls c
               WHERE c.plant_id=p.id AND NOT c.discovery_visible
           )
+          AND NOT EXISTS (
+              SELECT 1 FROM google_plant_visibility_exclusions x
+              WHERE x.place_id=p.google_place_id AND NOT x.is_visible
+          )
         ORDER BY p.rating DESC, p.name ASC
         "#,
     )

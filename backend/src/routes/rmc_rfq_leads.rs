@@ -191,7 +191,9 @@ pub async fn create(
         let held: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM rmc_plants p
              JOIN plant_admin_controls c ON c.plant_id=p.id
-             WHERE p.google_place_id=$1 AND NOT c.discovery_visible)",
+             WHERE p.google_place_id=$1 AND NOT c.discovery_visible)
+             OR EXISTS(SELECT 1 FROM google_plant_visibility_exclusions x
+                       WHERE x.place_id=$1 AND NOT x.is_visible)",
         )
         .bind(place_id)
         .fetch_one(&state.db)
@@ -204,6 +206,7 @@ pub async fn create(
         let exists: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM rmc_plants p WHERE id=$1 AND is_active
                  AND NOT EXISTS(SELECT 1 FROM plant_admin_controls c WHERE c.plant_id=p.id AND NOT c.discovery_visible)
+                 AND NOT EXISTS(SELECT 1 FROM google_plant_visibility_exclusions x WHERE x.place_id=p.google_place_id AND NOT x.is_visible)
                  AND EXISTS(SELECT 1 FROM plant_listing_requests r WHERE r.plant_id=p.id AND r.status='APPROVED'))"
         ).bind(plant_id).fetch_one(&state.db).await?;
         if !exists {
@@ -218,6 +221,7 @@ pub async fn create(
         let linked: Option<Uuid> = sqlx::query_scalar(
             "SELECT p.id FROM rmc_plants p WHERE p.google_place_id=$1 AND p.is_active
                  AND NOT EXISTS(SELECT 1 FROM plant_admin_controls c WHERE c.plant_id=p.id AND NOT c.discovery_visible)
+                 AND NOT EXISTS(SELECT 1 FROM google_plant_visibility_exclusions x WHERE x.place_id=p.google_place_id AND NOT x.is_visible)
                  AND EXISTS(SELECT 1 FROM plant_listing_requests r WHERE r.plant_id=p.id AND r.status='APPROVED') LIMIT 1"
         ).bind(place).fetch_optional(&state.db).await?;
         if linked.is_none() {

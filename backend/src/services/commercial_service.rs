@@ -204,7 +204,8 @@ pub async fn request(
             let matches_plant: bool = sqlx::query_scalar(
                 "SELECT EXISTS(SELECT 1 FROM rmc_plants
                  WHERE id=$1 AND google_place_id=$2 AND is_active=TRUE
-                   AND NOT EXISTS(SELECT 1 FROM plant_admin_controls c WHERE c.plant_id=rmc_plants.id AND NOT c.discovery_visible))",
+                   AND NOT EXISTS(SELECT 1 FROM plant_admin_controls c WHERE c.plant_id=rmc_plants.id AND NOT c.discovery_visible)
+                   AND NOT EXISTS(SELECT 1 FROM google_plant_visibility_exclusions x WHERE x.place_id=rmc_plants.google_place_id AND NOT x.is_visible))",
             )
             .bind(payload.plant_id)
             .bind(place)
@@ -225,6 +226,7 @@ pub async fn request(
     }
     let available:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM rmc_plants p WHERE id=$1 AND is_active
                  AND NOT EXISTS(SELECT 1 FROM plant_admin_controls c WHERE c.plant_id=p.id AND NOT c.discovery_visible)
+                 AND NOT EXISTS(SELECT 1 FROM google_plant_visibility_exclusions x WHERE x.place_id=p.google_place_id AND NOT x.is_visible)
                  AND EXISTS(SELECT 1 FROM plant_listing_requests r WHERE r.plant_id=p.id AND status='APPROVED'))").bind(payload.plant_id).fetch_one(&mut *tx).await?;
     if !available {
         return Err(AppError::Conflict(
