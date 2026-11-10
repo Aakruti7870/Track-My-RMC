@@ -72,11 +72,15 @@ fn official_email(value: &str) -> Result<String, AppError> {
 
 fn indian_whatsapp(value: &str) -> Result<String, AppError> {
     let text = value.trim();
-    if text.chars().any(|c| !(c.is_ascii_digit() || c == '+' || c == ' ' || c == '-'))
+    if text
+        .chars()
+        .any(|c| !(c.is_ascii_digit() || c == '+' || c == ' ' || c == '-'))
         || text.matches('+').count() > 1
         || (text.contains('+') && !text.starts_with('+'))
     {
-        return Err(AppError::BadRequest("Enter a 10-digit WhatsApp number".into()));
+        return Err(AppError::BadRequest(
+            "Enter a 10-digit WhatsApp number".into(),
+        ));
     }
     let digits: String = text.chars().filter(char::is_ascii_digit).collect();
     let formatted = if digits.len() == 10 {
@@ -85,7 +89,9 @@ fn indian_whatsapp(value: &str) -> Result<String, AppError> {
         digits
     };
     if formatted.len() != 12 || !formatted.starts_with("91") {
-        return Err(AppError::BadRequest("Enter a 10-digit Indian WhatsApp number".into()));
+        return Err(AppError::BadRequest(
+            "Enter a 10-digit Indian WhatsApp number".into(),
+        ));
     }
     Ok(formatted)
 }
@@ -96,7 +102,12 @@ pub async fn submit(
 ) -> Result<Json<Value>, AppError> {
     let owner_name = bounded(&body.owner_name, 2, 120, "Plant Owner name")?;
     let business_name = bounded(&body.business_name, 2, 160, "Registered business name")?;
-    let business_address = bounded(&body.business_address, 5, 500, "Registered business address")?;
+    let business_address = bounded(
+        &body.business_address,
+        5,
+        500,
+        "Registered business address",
+    )?;
     let email = official_email(&body.email)?;
     let whatsapp = indian_whatsapp(&body.whatsapp_number)?;
 
@@ -152,9 +163,9 @@ pub async fn submit(
     .fetch_one(&mut *tx)
     .await
     .map_err(|error| match &error {
-        sqlx::Error::Database(db) if db.code().as_deref() == Some("23505") => {
-            AppError::Conflict("A registration request for this email or number is already pending.".into())
-        }
+        sqlx::Error::Database(db) if db.code().as_deref() == Some("23505") => AppError::Conflict(
+            "A registration request for this email or number is already pending.".into(),
+        ),
         _ => AppError::from(error),
     })?;
 
@@ -188,10 +199,7 @@ pub async fn submit(
     })))
 }
 
-pub async fn list(
-    State(state): State<AppState>,
-    admin: WebAdmin,
-) -> Result<Json<Value>, AppError> {
+pub async fn list(State(state): State<AppState>, admin: WebAdmin) -> Result<Json<Value>, AppError> {
     admin.require("plant_owners.manage")?;
     let requests = sqlx::query_as::<_, RegistrationRecord>(
         "SELECT id,request_number,owner_name,business_name,business_address,
@@ -227,7 +235,9 @@ pub async fn mark_contacted(
     .fetch_optional(&mut *tx)
     .await?;
     let Some((number,)) = changed else {
-        return Err(AppError::Conflict("Only pending registration requests can be marked contacted.".into()));
+        return Err(AppError::Conflict(
+            "Only pending registration requests can be marked contacted.".into(),
+        ));
     };
     sqlx::query(
         "INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata)
@@ -239,7 +249,9 @@ pub async fn mark_contacted(
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
-    Ok(Json(json!({"success":true,"status":"CONTACTED","request_number":number})))
+    Ok(Json(
+        json!({"success":true,"status":"CONTACTED","request_number":number}),
+    ))
 }
 
 #[cfg(test)]
@@ -250,7 +262,10 @@ mod tests {
     fn accepts_indian_whatsapp_and_lowercases_emails() {
         assert_eq!(indian_whatsapp("79779 10374").unwrap(), "917977910374");
         assert_eq!(indian_whatsapp("+91 79779 10374").unwrap(), "917977910374");
-        assert_eq!(official_email(" Owner@Example.COM ").unwrap(), "owner@example.com");
+        assert_eq!(
+            official_email(" Owner@Example.COM ").unwrap(),
+            "owner@example.com"
+        );
     }
 
     #[test]
