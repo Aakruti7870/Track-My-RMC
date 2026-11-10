@@ -174,11 +174,14 @@ async fn approved_meta_template(state: &AppState, name: &str) -> Result<(), AppE
             AppError::Forbidden("Meta WhatsApp Business Account not configured".into())
         })?;
     let language = std::env::var("META_ADMIN_MARKETING_LOCALE").unwrap_or_else(|_| "en_US".into());
-    let url = format!(
-        "https://graph.facebook.com/{}/{waba}/message_templates",
-        state.config.meta_graph_api_version
-    );
+    let url = crate::routes::admin_whatsapp::meta_graph_endpoint(
+        &state.config.meta_graph_api_version,
+        waba,
+        "message_templates",
+    )?;
     let client = reqwest::Client::builder()
+        .https_only(true)
+        .redirect(reqwest::redirect::Policy::none())
         .timeout(std::time::Duration::from_secs(12))
         .build()
         .map_err(|_| AppError::InternalError("HTTP client unavailable".into()))?;
@@ -425,7 +428,14 @@ pub async fn tick(state: &AppState) -> Result<usize, AppError> {
     else {
         return Ok(0);
     };
+    let url = crate::routes::admin_whatsapp::meta_graph_endpoint(
+        &state.config.meta_graph_api_version,
+        phone_id,
+        "messages",
+    )?;
     let client = reqwest::Client::builder()
+        .https_only(true)
+        .redirect(reqwest::redirect::Policy::none())
         .timeout(std::time::Duration::from_secs(15))
         .build()
         .map_err(|_| AppError::InternalError("HTTP client unavailable".into()))?;
@@ -480,12 +490,8 @@ pub async fn tick(state: &AppState) -> Result<usize, AppError> {
             .await?;
             continue;
         }
-        let url = format!(
-            "https://graph.facebook.com/{}/{phone_id}/messages",
-            state.config.meta_graph_api_version
-        );
         let result = client
-            .post(url)
+            .post(url.clone())
             .bearer_auth(token)
             .json(&json!({
                "messaging_product":"whatsapp","recipient_type":"individual",

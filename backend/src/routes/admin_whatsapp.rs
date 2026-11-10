@@ -12,6 +12,37 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use uuid::Uuid;
 
+// The Meta transport must never resolve a caller-controlled URL or downgrade
+// to cleartext. Path segments are validated before an HTTPS-only request.
+pub(crate) fn meta_graph_endpoint(
+    version: &str,
+    id: &str,
+    endpoint: &str,
+) -> Result<reqwest::Url, AppError> {
+    let numeric_version = version.strip_prefix('v').and_then(|v| v.split_once('.'));
+    let version_ok = numeric_version.is_some_and(|(major, minor)| {
+        !major.is_empty()
+            && !minor.is_empty()
+            && major.bytes().all(|c| c.is_ascii_digit())
+            && minor.bytes().all(|c| c.is_ascii_digit())
+    });
+    if !version_ok
+        || !(1..=32).contains(&id.len())
+        || !id.bytes().all(|c| c.is_ascii_digit())
+        || !matches!(endpoint, "messages" | "message_templates")
+    {
+        return Err(AppError::BadRequest("Invalid Meta Graph endpoint configuration".into()));
+    }
+    let mut url = reqwest::Url::parse("https://graph.facebook.com/")
+        .map_err(|_| AppError::InternalError("Meta Graph HTTPS endpoint unavailable".into()))?;
+    {
+        let mut segments = url.path_segments_mut()
+            .map_err(|_| AppError::InternalError("Meta Graph path unavailable".into()))?;
+        segments.push(version).push(id).push(endpoint);
+    }
+    Ok(url)
+}
+
 fn configured_sender(state: &AppState) -> Result<&str, AppError> {
     state
         .config
@@ -305,6 +336,11 @@ pub async fn reply(
             "Manual inbox reply limit reached".into(),
         ));
     }
+    let url = meta_graph_endpoint(
+        &state.config.meta_graph_api_version,
+        &sender,
+        "messages",
+    )?;
     // Reserve before I/O: unknown provider result must never be automatically sent again.
     sqlx::query(
         "INSERT INTO admin_whatsapp_messages
@@ -319,11 +355,9 @@ pub async fn reply(
     .bind(body.request_id)
     .execute(&state.db)
     .await?;
-    let url = format!(
-        "https://graph.facebook.com/{}/{}/messages",
-        state.config.meta_graph_api_version, sender
-    );
     let client = reqwest::Client::builder()
+        .https_only(true)
+        .redirect(reqwest::redirect::Policy::none())
         .timeout(std::time::Duration::from_secs(15))
         .build()
         .map_err(|_| AppError::InternalError("HTTP client unavailable".into()))?;
@@ -386,6 +420,19 @@ mod tests {
         assert_eq!(kind, "image");
         assert!(!text.contains("secret"));
         assert_eq!(safe_text("a\u{0}b"), "ab");
+    }
+    #[test]
+    fn meta_graph_api_rejects_cleartext_or_untrusted_destinations() {
+        let url = meta_graph_endpoint("v24.0", "1234567890", "messages")
+            .expect("valid Meta messages endpoint");
+        assert_eq!(url.as_str(), "https://graph.facebook.com/v24.0/1234567890/messages");
+        assert_eq!(url.host_str(), Some("graph.facebook.com"));
+        let templates = meta_graph_endpoint("v24.0", "1234567890", "message_templates")
+            .expect("valid Meta templates endpoint");
+        assert_eq!(templates.scheme(), "https");
+        assert!(meta_graph_endpoint("http://evil.example", "1234567890", "messages").is_err());
+        assert!(meta_graph_endpoint("v24.0", "12345/../../attacker", "messages").is_err());
+        assert!(meta_graph_endpoint("v24.0", "1234567890", "redirect").is_err());
     }
     #[test]
     fn invalid_future_timestamp_never_extends_reply_window() {
