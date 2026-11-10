@@ -10,7 +10,6 @@ use axum::{
 use chrono::{NaiveDate, Utc};
 use serde::Deserialize;
 use serde_json::{json, Value};
-use sqlx::Row;
 use uuid::Uuid;
 
 fn reason(value: &str) -> Result<&str, AppError> {
