@@ -14,6 +14,7 @@ pub mod native_support_automation;
 pub mod order_service;
 pub mod otp_delivery;
 pub mod payroll_service;
+pub mod plant_owner_alert;
 pub mod play_review;
 pub mod tracking_service;
 pub mod trip_lifecycle;
