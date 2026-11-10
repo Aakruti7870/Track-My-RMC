@@ -97,6 +97,7 @@ jobs:
             exit "$rc"
           fi
           echo "GITLEAKS_CURRENT_MATCHES=$count" >> "$GITHUB_ENV"
+          echo "::notice::Current HEAD has $count potential secret occurrence(s); no matching data disclosed."
           echo "Current HEAD snapshot: $count potential secret occurrence(s)." >> "$GITHUB_STEP_SUMMARY"
           if (( count > 0 )); then
             echo "::warning::Potential credentials remain in current tracked files. Private validation required."
