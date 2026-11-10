@@ -61,8 +61,8 @@ export const STAFF_TAB_KEYS: Readonly<Record<string, readonly string[]>> = {
   fleet_manager: ["fleet-manager-fleet", "fleet-manager-drivers"],
   store_manager: ["store-manager-stock"],
 };
-// Six useful role-specific cards stay on Home; the remaining allowed catalog
-// destinations are on More. Each route appears at most once per role directory.
+// Keep preferred Home ordering. All operational links belong on Home;
+// More is restricted to identity and personal document destinations.
 export const STAFF_HOME_KEYS: Readonly<Record<string, readonly string[]>> = {
   admin: ["business-inventory", "business-staff", "business-reports", "business-fleet", "business-attendance", "business-mixes"],
   dispatcher: ["business-inventory", "business-attendance", "business-reports", "public-plant-profile", "shift-roster", "workforce"],
@@ -73,19 +73,30 @@ export const STAFF_HOME_KEYS: Readonly<Record<string, readonly string[]>> = {
   fleet_manager: ["business-diesel", "business-attendance", "business-reports", "shift-roster", "my-payslip", "workforce"],
   store_manager: ["business-inventory", "business-suppliers", "business-purchases", "business-diesel", "business-reports", "business-attendance"],
 };
+export const STAFF_MORE_KEYS = ["public-plant-profile", "my-payslip"] as const;
 export type StaffModuleScope = "home" | "more" | "all";
 export function staffModulesForScope(role: string | null | undefined, scope: StaffModuleScope): RoleModule[] {
   const tabKeys = STAFF_TAB_KEYS[role || ""] || [];
-  const homeKeys = STAFF_HOME_KEYS[role || ""] || [];
+  const moreKeys: readonly string[] = STAFF_MORE_KEYS;
+  const preferred = STAFF_HOME_KEYS[role || ""] || [];
   const seen = new Set<string>();
-  return modulesForRole(role).filter(module => {
-    if (scope !== "all" && (tabKeys.includes(module.key) ||
-      (scope === "home" ? !homeKeys.includes(module.key) : homeKeys.includes(module.key)))) return false;
+  const available = modulesForRole(role).filter(module => {
+    if (module.key === "notifications") return false; // The top-bar bell is canonical.
+    if (scope !== "all" && tabKeys.includes(module.key)) return false;
+    const personal = moreKeys.includes(module.key);
+    if (scope === "home" && personal) return false;
+    if (scope === "more" && !personal) return false;
     const routeKey = typeof module.route === "string" ? module.route : JSON.stringify(module.route);
     if (seen.has(routeKey)) return false;
     seen.add(routeKey);
     return true;
   });
+  return scope === "home"
+    ? available.sort((a, b) => {
+        const i = preferred.indexOf(a.key), j = preferred.indexOf(b.key);
+        return (i < 0 ? 999 : i) - (j < 0 ? 999 : j);
+      })
+    : available;
 }
 
 // Only existing functional destinations are eligible: do not turn design ideas
@@ -128,29 +139,9 @@ export function StaffModuleDirectory({
     return () => { active = false; };
   }, [token, validRole, role]));
 
-  // The Owner's audited grant matrix controls access, never the card layout.
-  // Promote permitted work modules into the same compact Home grid (up to eight);
-  // any overflow stays on More. No module appears on both home and more.
-  const scopedModules = useMemo(() => {
-    if (scope === "all") return staffModulesForScope(role, "all");
-    const enabled = (item: RoleModule) => {
-      const permission = STAFF_MODULE_PERMISSIONS[item.key];
-      return !permission || (allowed || []).includes(permission);
-    };
-    const home = staffModulesForScope(role, "home").filter(enabled);
-    const extras = staffModulesForScope(role, "more").filter(item =>
-      !!STAFF_MODULE_PERMISSIONS[item.key] && enabled(item));
-    const routes = new Set(home.map(item => String(item.route)));
-    for (const module of extras) {
-      if (home.length >= 8) break;
-      if (!routes.has(String(module.route))) {
-        home.push(module);
-        routes.add(String(module.route));
-      }
-    }
-    return scope === "home" ? home :
-      staffModulesForScope(role, "more").filter(item => !routes.has(String(item.route)));
-  }, [role, scope, allowed]);
+  // Every permitted work destination appears on Home. No silent eight-card
+  // cap and no operational leftovers on the account-focused More screen.
+  const scopedModules = useMemo(() => staffModulesForScope(role, scope), [role, scope]);
   const modules = useMemo(() => scopedModules.filter(item => {
     const key = STAFF_MODULE_PERMISSIONS[item.key];
     if (key && !(allowed || []).includes(key)) return false;
@@ -253,7 +244,7 @@ export function StaffModuleDirectory({
                     },
                   ]}>
                   <View style={styles.iconWrap}>
-                    {module.symbol ? <VectorSymbol name={module.symbol} size={38} warmAccent /> :
+                    {module.symbol ? <VectorSymbol name={module.symbol} size={34} warmAccent /> :
                       <Ionicons name={module.icon} size={30} color={colors.brand} />}
                   </View>
                   <AppText numberOfLines={2} style={[styles.cardTitle, { color: colors.onSurface }]}>{module.label}</AppText>
@@ -281,9 +272,9 @@ const styles = StyleSheet.create({
   groupTitle: { flexDirection: "row", alignItems: "center", gap: 8 },
   groupMark: { height: 16, width: 3, borderRadius: 3 },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 9 },
-  card: { minHeight: 132, maxWidth: "100%", borderWidth: 1, borderRadius: 16, padding: 8, alignItems: "center", justifyContent: "center", gap: 4,
+  card: { minHeight: 112, maxWidth: "100%", borderWidth: 1, borderRadius: 16, padding: 7, alignItems: "center", justifyContent: "center", gap: 3,
     shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.09, shadowRadius: 12, elevation: 2 },
-  iconWrap: { height: 42, alignItems: "center", justifyContent: "center" },
+  iconWrap: { height: 37, alignItems: "center", justifyContent: "center" },
   cardTitle: { fontFamily: fonts.semibold, fontSize: 12, textAlign: "center", lineHeight: 16 },
   cardDescription: { fontFamily: fonts.regular, fontSize: 10, textAlign: "center", lineHeight: 14 },
   search: { flexDirection: "row", alignItems: "center", gap: 9, borderWidth: 1, borderRadius: radius.md, paddingHorizontal: 12 },

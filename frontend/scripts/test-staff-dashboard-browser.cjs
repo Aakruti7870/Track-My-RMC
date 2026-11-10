@@ -66,12 +66,15 @@ fs.mkdirSync(out, { recursive: true });
         await page.waitForFunction(() => !document.body.innerText.includes('Checking staff permissions…'));
         const homeCards = page.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])');
         const homeKeys = await homeCards.evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid')));
-        assert(homeKeys.length > 0 && homeKeys.length <= 8, role + ' Home card count invalid: expected at most eight permission-approved cards, got ' + homeKeys.length);
+        assert(homeKeys.length > 0, role + ' Home must expose permission-approved operational cards');
         assert.equal(new Set(homeKeys).size, homeKeys.length, role + ' duplicated a Home card');
+        assert(homeKeys.every(key => !['role-module-public-plant-profile', 'role-module-my-payslip'].includes(key)),
+          role + ' must keep personal documents and profile cards on More only');
         let homeSizes = await homeCards.evaluateAll(nodes => nodes.map(node => ({
           width: node.getBoundingClientRect().width, height: node.getBoundingClientRect().height,
         })));
-        assert(homeSizes.every(box => box.width >= 125 && box.width <= 240 && box.height >= 120 && box.height <= 165),
+        // Compact staff tiles intentionally use 112dp minimum; preserve readable labels and width constraints.
+        assert(homeSizes.every(box => box.width >= 125 && box.width <= 240 && box.height >= 112 && box.height <= 165),
           role + ' oversize or clipped Home card at ' + width + 'px: ' + JSON.stringify(homeSizes));
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
           role + ' Home horizontal overflow at ' + width);
@@ -83,7 +86,11 @@ fs.mkdirSync(out, { recursive: true });
         const moreCards = page.locator('[data-testid="role-module-directory"]:has([data-testid="staff-module-search"]) [data-testid^="role-module-"]');
         const moreKeys = await moreCards.evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid')));
         assert.equal(new Set(moreKeys).size, moreKeys.length, role + ' duplicated a More card');
-        for (const key of moreKeys) assert(!homeKeys.includes(key), role + ' repeats ' + key + ' between Home and More');
+        for (const key of moreKeys) {
+          assert(['role-module-public-plant-profile', 'role-module-my-payslip'].includes(key),
+            role + ' More must contain only account and personal documents');
+          assert(!homeKeys.includes(key), role + ' repeats ' + key + ' between Home and More');
+        }
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
           role + ' More horizontal overflow at ' + width);
         if (width === 390) await page.screenshot({ path: out + '/' + role + '-more-390.png', fullPage: true });

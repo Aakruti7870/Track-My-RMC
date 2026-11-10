@@ -41,6 +41,7 @@ const trip = read("frontend/app/trip/[id].tsx");
 const plants = read("frontend/app/customer/plants.tsx");
 const currentLocation = read("frontend/src/location/currentLocation.ts");
 const workforce = read("frontend/app/workforce.tsx");
+const workforceEvidence = read("frontend/src/location/workforceEvidence.ts");
 const onboarding = read("frontend/app/plant-onboarding.tsx");
 const pod = read("frontend/app/pod/[id].tsx");
 const push = read("frontend/src/notifications/PushNotificationBridge.tsx");
@@ -75,7 +76,7 @@ assert(trip.includes("Agree & Continue") && trip.includes("Not now"), "Driver di
 assert(tracking.indexOf("requestBackgroundLocationConsent()") < tracking.indexOf("Location.requestBackgroundPermissionsAsync()"), "Driver disclosure must precede the background permission request.");
 assert(plants.indexOf("requestNearbyPlantsLocationConsent()") >= 0 && plants.indexOf("requestNearbyPlantsLocationConsent()") < plants.indexOf("Location.requestForegroundPermissionsAsync()"), "Nearby Plants disclosure must precede foreground location permission.");
 assert(currentLocation.includes("requestAttendanceLocationConsent") && currentLocation.includes("requestSosLocationConsent"), "Attendance and SOS location must use purpose-specific disclosures.");
-assert(workforce.includes("requestFieldVisitLocationConsent") && workforce.includes("requestAttendanceLocationConsent"), "Workforce attendance and client visits must use purpose-specific disclosures.");
+assert(workforce.includes("workforceLocationEvidence as locationEvidence") && workforceEvidence.includes("requestFieldVisitLocationConsent") && workforceEvidence.includes("requestAttendanceLocationConsent"), "Workforce attendance and client visits must reuse purpose-specific disclosures.");
 assert(onboarding.includes("requestPlantOnboardingLocationConsent") && onboarding.indexOf("requestPlantOnboardingLocationConsent()") < onboarding.indexOf("Location.requestForegroundPermissionsAsync()"), "Plant onboarding disclosure must precede foreground location permission.");
 assert(pod.includes("Camera access for proof of delivery") && pod.indexOf("Camera access for proof of delivery") < pod.indexOf("ImagePicker.requestCameraPermissionsAsync()"), "Camera disclosure must precede the camera permission request.");
 assert(pod.includes("Choose a proof-of-delivery photo"), "Photo picker must explain what selected data is attached.");

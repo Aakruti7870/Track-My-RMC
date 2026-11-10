@@ -303,7 +303,9 @@ export default function OwnerOperations() {
           Recent automation: {(history?.jobs ?? []).slice(0, 5).map(job => `${job.template_key}: ${job.status}`).join(" · ") || "No executions yet"}
         </AppText> : null}
       </View>
-      {ownerModules(OPERATIONS_KEYS).map(module => <OwnerModuleRow key={module.key} module={module} />)}
+      <View testID="owner-operations-module-directory" style={{ gap: 8 }}>
+        {ownerModules(OPERATIONS_KEYS).map(module => <OwnerModuleRow key={module.key} module={module} />)}
+      </View>
     </OwnerList>
   </OwnerFrame>;
 }

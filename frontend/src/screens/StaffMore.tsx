@@ -10,18 +10,13 @@ import { useTheme } from "@/src/theme/ThemeProvider";
 import { StaffModuleDirectory } from "@/src/screens/StaffModuleDirectory";
 import { AppText } from "@/src/components/ui/AppText";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
+import { OperationalHomeTopBar } from "@/src/components/OperationalHomeTopBar";
 import { Card } from "@/src/components/ui/Card";
 import { Badge } from "@/src/components/ui/Badge";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 
-const MODES: { key: "system" | "light" | "dark"; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { key: "light", label: "Light", icon: "sunny-outline" },
-  { key: "dark", label: "Dark", icon: "moon-outline" },
-  { key: "system", label: "System", icon: "phone-portrait-outline" },
-];
-
 export function StaffMore() {
-  const { colors, mode, setMode } = useTheme();
+  const { colors } = useTheme();
   const { user, token, signOut } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -49,6 +44,7 @@ export function StaffMore() {
   return (
     <View style={{ flex: 1, backgroundColor: "transparent" }}>
       <View style={{ height: insets.top }} />
+      <OperationalHomeTopBar />
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120, gap: spacing.md, width: "100%", maxWidth: 980, alignSelf: "center" }} showsVerticalScrollIndicator={false}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><VectorSymbol name="settings" size={35} /><AppText variant="title">More</AppText></View>
 
@@ -65,21 +61,6 @@ export function StaffMore() {
           </View>
         </Card>
 
-        <View style={{ gap: spacing.sm }}>
-          <AppText variant="label">Appearance</AppText>
-          <View style={styles.modeRow}>
-            {MODES.map((m) => {
-              const selected = mode === m.key;
-              return (
-                <Pressable key={m.key} testID={`theme-mode-${m.key}`} accessibilityRole="radio" accessibilityState={{ checked: selected }} accessibilityLabel={m.label + " theme"} onPress={() => setMode(m.key)} style={[styles.mode, { backgroundColor: selected ? colors.brand : colors.surfaceSecondary, borderColor: selected ? colors.brand : colors.border }]}>
-                  <Ionicons name={m.icon} size={18} color={selected ? colors.onBrand : colors.onSurfaceSecondary} />
-                  <AppText style={{ fontFamily: fonts.medium, fontSize: fontSize.sm, color: selected ? colors.onBrand : colors.onSurfaceSecondary }}>{m.label}</AppText>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-
         {managerEnabled ? (
           <Pressable testID="staff-manager-workspace" accessibilityRole="button"
             accessibilityLabel="Manage plant staff"
@@ -94,7 +75,6 @@ export function StaffMore() {
           </Pressable>
         ) : null}
 
-        {managerResources.fleet ? <Pressable accessibilityRole="button" onPress={()=>router.push("/business/fleet")}><AppText>Manage delegated fleet</AppText></Pressable> : null}
         {managerResources.drivers ? <Pressable accessibilityRole="button" onPress={()=>router.push("/owner/drivers")}><AppText>Manage delegated Drivers</AppText></Pressable> : null}
         {managerResources.permissions ? <Pressable accessibilityRole="button" onPress={()=>router.push("/staff-module-access")}><AppText>Manage delegated module permissions</AppText></Pressable> : null}
         <StaffModuleDirectory role={user?.role} title="Other modules" scope="more" searchable />
@@ -110,7 +90,7 @@ export function StaffMore() {
           <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceTertiary} />
         </Pressable>
 
-        <Pressable testID="logout-button" accessibilityRole="button" accessibilityLabel="Sign out of staff account" onPress={doLogout} style={[styles.logout, { borderColor: colors.error }]}><VectorSymbol name="logout" size={27} /><AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: colors.error }}>Logout</AppText></Pressable>
+        <Pressable testID="logout-button" accessibilityRole="button" accessibilityLabel="Sign out of staff account" onPress={doLogout} style={[styles.logout, { backgroundColor: colors.isDark ? "#96352D" : "#B42318" }]}><Ionicons name="log-out-outline" size={22} color="#FFFFFF" /><AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: "#FFFFFF" }}>Sign out</AppText></Pressable>
         <AppText variant="caption" center>TrackMyRMC · v2.0.18 (76)</AppText>
       </ScrollView>
     </View>
@@ -119,8 +99,6 @@ export function StaffMore() {
 
 const styles = StyleSheet.create({
   avatar: { width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center" },
-  modeRow: { flexDirection: "row", gap: spacing.sm },
-  mode: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.xs, height: 44, borderRadius: radius.md, borderWidth: 1 },
-  logout: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, height: 52, borderRadius: radius.md, borderWidth: 1 },
+  logout: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, height: 52, borderRadius: radius.md },
   manage: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 64, padding: spacing.md, borderRadius: radius.md, borderWidth: 1 },
 });

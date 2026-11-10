@@ -30,33 +30,50 @@ fs.mkdirSync(out, { recursive: true });
         }
         await route.fulfill({ json });
       });
-      const go = async path => { await page.goto('http://127.0.0.1:8765/owner/'); await page.getByTestId('operational-theme').waitFor(); if (path.includes('directory=1')) await page.getByRole('button', { name: 'Browse other plant modules', exact: true }).click(); else { const tab = path.split('/')[2]; if (tab) await page.getByTestId(`tab-${tab}`).click(); } await page.waitForTimeout(250); };
+      const go = async path => { await page.goto('http://127.0.0.1:8765/owner/'); await page.getByTestId('operational-theme').waitFor(); { const tab = path.includes('directory=1') ? 'more' : path.split('/')[2]; if (tab) await page.getByTestId(`tab-${tab}`).click(); } await page.waitForTimeout(250); };
       const visibleModuleKeys = new Set();
       for (const name of ['home', 'orders', 'operations', 'more']) {
         await go('/owner' + (name === 'home' ? '' : '/' + name));
         const tab = page.getByTestId(`tab-${name}`);
         assert.equal(await tab.getAttribute('aria-selected'), 'true');
         assert.equal(await page.getByText('TrackMyRMC Play Review Owner', { exact: true }).count(), 0);
-        if (name === 'home') assert.equal(await page.locator('[data-testid^="owner-shortcut-"]').count(), 6);
-        if (name === 'operations') assert.equal(await page.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])').count(), 6);
-        if (name === 'more') assert.equal(await page.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])').count(), 20);
+        if (name === 'home') {
+          assert.equal(await page.locator('[data-testid^="owner-shortcut-"]').count(), 5);
+          assert.equal(await page.locator('[data-testid^="owner-metric-"]').count(), 8);
+          assert.equal(await page.getByTestId('owner-commercial-grid').locator(':scope > *').count(), 12, '12 commercial tiles hold 13 separately accessible modules');
+          assert.equal(await page.getByTestId('role-module-payroll-closure').count(), 1);
+          assert.equal(await page.getByTestId('role-module-owner-drivers').count(), 1);
+        }
+        if (name === 'operations') assert.equal(await page.getByTestId('owner-operations-module-directory').locator('[data-testid^="role-module-"]').count(), 8);
+        if (name === 'more') {
+          assert.equal(await page.getByTestId('role-module-directory').locator('[data-testid^="role-module-"]').count(), 4);
+          assert.equal(await page.getByText('Appearance', { exact: true }).count(), 0);
+          assert.equal(await page.getByTestId('owner-staff-module-access').count(), 1);
+          assert.equal(await page.getByTestId('owner-permission-settings').count(), 1);
+        }
         if (name !== 'orders') {
-          const selector = name === 'home' ? '[data-testid^="owner-shortcut-"]' : '[data-testid^="role-module-"]:not([data-testid="role-module-directory"])';
-          const ids = await page.locator(selector).evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid')));
-          for (const id of ids) {
-            const key = id.replace(name === 'home' ? 'owner-shortcut-' : 'role-module-', '');
+          const shortcutIds = name === 'home'
+            ? await page.locator('[data-testid^="owner-shortcut-"]:not([data-testid="owner-shortcut-insights"])')
+              .evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid').replace('owner-shortcut-', '')))
+            : [];
+          const moduleSurface = name === 'operations' ? page.getByTestId('owner-operations-module-directory')
+            : name === 'more' ? page.getByTestId('role-module-directory')
+            : page;
+          const moduleIds = await moduleSurface.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])')
+            .evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid').replace('role-module-', '')));
+          for (const key of [...shortcutIds, ...moduleIds]) {
             assert(!visibleModuleKeys.has(key), `Duplicate owner module ${key} across tabs at ${width}px`);
             visibleModuleKeys.add(key);
           }
         }
         if (name === 'home') {
           const heights = await page.locator('[data-testid^="owner-shortcut-"]').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().height));
-          assert(heights.every(height => height >= 95 && height <= 140), `Owner shortcut card outside compact range at ${width}px: ${heights}`);
+          assert(heights.every(height => height >= 82 && height <= 135), `Owner shortcut card outside compact range at ${width}px: ${heights}`);
         }
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `Horizontal overflow at ${width}`);
         await page.screenshot({ path: `${out}/${scheme}-${width}-${name}.png`, animations: 'disabled' });
       }
-      assert.equal(visibleModuleKeys.size, 32, 'Every owner module must appear in exactly one tab group');
+      assert.equal(visibleModuleKeys.size, 30, '30 owner cards plus Plant Attendance metric and Notifications bell form 32 unique destinations');
       await go('/owner');
       const homeUrl = page.url();
       await page.getByTestId('tab-quick-actions').click();
@@ -76,7 +93,7 @@ fs.mkdirSync(out, { recursive: true });
       await page.waitForTimeout(200);
       assert(requests.some(url => url.searchParams.get('grade') === 'M25'));
       await go('/owner/more?directory=1');
-      assert.equal(await page.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])').count(), 20);
+      assert.equal(await page.getByTestId('role-module-directory').locator('[data-testid^="role-module-"]').count(), 4);
       await go('/owner/operations');
       await page.evaluate(() => { for (const el of document.querySelectorAll('*')) if (el.scrollHeight > el.clientHeight && /auto|scroll/.test(getComputedStyle(el).overflowY)) el.scrollTop = el.scrollHeight; });
       const row = await page.getByTestId('role-module-business-diesel').boundingBox();
@@ -98,7 +115,7 @@ fs.mkdirSync(out, { recursive: true });
       await page.getByText('The service is temporarily unavailable. Please try again.', { exact: true }).waitFor();
       assert.deepEqual(errors, []);
       await context.close();
-      console.log(`PASS owner: ${scheme} ${width}px — layout, 32 uniquely placed destinations, Quick, search, filters, detail navigation, error state, live theme`);
+      console.log(`PASS owner: ${scheme} ${width}px — 8 metrics, 5 Quick tiles, 12 Commercial cards/13 destinations, unique tabs and top-only theme`);
     }
 
     // Compact Native Automation regression: four tiles per row at mobile and tablet widths.

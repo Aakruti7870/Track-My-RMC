@@ -52,7 +52,7 @@ export function RoleModuleDirectory({ role, title = "Your Modules" }: {
     "payroll-closure": "payroll",
   };
   const guardedRole = !!role && ["admin","dispatcher","operator","supervisor","accountant","quality_engineer","fleet_manager","store_manager"].includes(role);
-  const modules = modulesForRole(role).filter(m => !guardedRole
+  const modules = modulesForRole(role).filter(m => m.key !== "notifications").filter(m => !guardedRole
     || !moduleKey[m.key] || (allowed || []).includes(moduleKey[m.key]));
 
   if (modules.length === 0) return null;
