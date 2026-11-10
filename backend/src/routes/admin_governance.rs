@@ -79,10 +79,14 @@ pub async fn plant_governance(
                       AND s.section_key='certifications' AND s.published_data IS NOT NULL
                       AND (
                         (s.published_data->>'cto'='yes'
+                         AND NULLIF(BTRIM(s.published_data->>'cto_number'),'') IS NOT NULL
+                         AND NULLIF(BTRIM(s.published_data->>'cto_document'),'') IS NOT NULL
                          AND (s.published_data->>'cto_expiry')::date >= CURRENT_DATE
                          AND (s.published_data->>'cto_expiry')::date >= t.valid_until)
                         OR
                         (s.published_data->>'license'='yes'
+                         AND NULLIF(BTRIM(s.published_data->>'license_number'),'') IS NOT NULL
+                         AND NULLIF(BTRIM(s.published_data->>'license_document'),'') IS NOT NULL
                          AND (s.published_data->>'license_expiry')::date >= CURRENT_DATE
                          AND (s.published_data->>'license_expiry')::date >= t.valid_until)
                       )
