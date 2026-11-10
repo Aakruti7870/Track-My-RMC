@@ -32,7 +32,7 @@ CREATE UNIQUE INDEX ux_admin_marketing_segments_name ON admin_marketing_segments
 
 CREATE TABLE admin_marketing_contacts (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    phone_e164 VARCHAR(16) NOT NULL UNIQUE CHECK (phone_e164 ~ '^\\+[1-9][0-9]{7,14}$'),
+    phone_e164 VARCHAR(16) NOT NULL UNIQUE CHECK (phone_e164 ~ '^[+][1-9][0-9]{7,14}$'),
     display_name VARCHAR(120) NOT NULL DEFAULT '',
     source_label VARCHAR(100) NOT NULL DEFAULT 'provided_csv',
     consent_status VARCHAR(16) NOT NULL DEFAULT 'UNVERIFIED'
