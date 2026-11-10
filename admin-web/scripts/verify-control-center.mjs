@@ -120,7 +120,7 @@ try {
   const approved=page.waitForResponse(response=>response.url().endsWith('/approve') && response.request().method()==='POST');
   await application.getByRole('button',{name:'Approve Plant Owner and plant',exact:true}).click();
   const approval=await approved;assert.equal(approval.status(),200);const identity=await approval.json();
-  await page.getByText('No pending Plant Owner requests.',{exact:true}).waitFor();
+  await page.getByText('No pending full Plant Owner onboarding requests.',{exact:true}).waitFor();
   await page.getByLabel('Registered Plant Owner account ID',{exact:true}).fill(identity.owner_id);
   await page.getByLabel('Fresh authenticator code',{exact:true}).fill(await freshCode());
   await page.getByLabel('Reason for privileged change',{exact:true}).fill('Suspend compromised synthetic Owner');
