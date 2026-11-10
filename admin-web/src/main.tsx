@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { Bell, Building2, ClipboardCheck, Factory, ShieldCheck, Workflow } from 'lucide-react';
+import { Bell, Building2, ClipboardCheck, Factory, Megaphone, ShieldCheck, Workflow } from 'lucide-react';
 import { AuthenticatorQr } from './AuthenticatorQr';
 import apiClient, { getAccessToken, setAccessToken } from './api';
 
@@ -22,6 +22,15 @@ type Health = {
 };
 
 type PortalKpi = { label: string; value: string | number };
+type Governance = { plant_id:string;plant_name:string;active:boolean;
+  intake_mode:string;trust_status:string;trust_until:string|null;trust_current:boolean };
+type MarketingStats = {
+  segments:Array<{id:string;name:string;members:number}>;
+  contacts:{all:number;opted_in:number;opted_out:number;unverified:number};
+  campaigns:Array<{id:string;name:string;segment:string;template:string;status:string}>;
+  send_enabled:boolean;
+};
+type ImportedContact = { phone:string;name:string };
 type PlantMasterItem = {
   id: string; name: string; code: string; city: string; state: string;
   address: string; owner_name: string; owner_email: string | null;
@@ -133,6 +142,25 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
   const [masterError,setMasterError]=useState('');
   const [masterDetail,setMasterDetail]=useState<PlantMasterDetail | null>(null);
   const [masterDetailError,setMasterDetailError]=useState('');
+  const [governance,setGovernance]=useState<Governance|null>(null);
+  const [govMode,setGovMode]=useState('DIRECT');
+  const [govTrust,setGovTrust]=useState('REVOKED');
+  const [govExpiry,setGovExpiry]=useState('');
+  const [govReason,setGovReason]=useState('');
+  const [govCode,setGovCode]=useState('');
+  const [govError,setGovError]=useState('');
+  const [govBusy,setGovBusy]=useState(false);
+  const [marketing,setMarketing]=useState<MarketingStats|null>(null);
+  const [marketingError,setMarketingError]=useState('');
+  const [marketingReason,setMarketingReason]=useState('');
+  const [marketingCode,setMarketingCode]=useState('');
+  const [marketingGroup,setMarketingGroup]=useState('');
+  const [marketingSegment,setMarketingSegment]=useState('');
+  const [marketingCsv,setMarketingCsv]=useState<ImportedContact[]>([]);
+  const [marketingCampaign,setMarketingCampaign]=useState('');
+  const [marketingTemplate,setMarketingTemplate]=useState('');
+  const [marketingBusy,setMarketingBusy]=useState(false);
+  const [showMarketing,setShowMarketing]=useState(false);
   const [placesQuery,setPlacesQuery]=useState('');
   const [googlePlaces,setGooglePlaces]=useState<GooglePlace[]>([]);
   const [placesLoading,setPlacesLoading]=useState(false);
