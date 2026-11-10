@@ -697,7 +697,10 @@ pub async fn list_plant_master(
     let city = bounded_plant_filter(filters.city, "city")?;
     let state_filter = bounded_plant_filter(filters.state, "state")?;
     let status = filters.status.as_deref().unwrap_or("all");
-    if !matches!(status, "all" | "approved" | "unverified" | "inactive" | "held" | "visible") {
+    if !matches!(
+        status,
+        "all" | "approved" | "unverified" | "inactive" | "held" | "visible"
+    ) {
         return Err(AppError::BadRequest("Invalid plant status filter".into()));
     }
     let limit = filters.limit.unwrap_or(20).clamp(1, 50);

@@ -446,7 +446,9 @@ pub async fn request_google_quote(
     .fetch_one(&state.db)
     .await?;
     if held {
-        return Err(AppError::Conflict("This plant is not available for discovery".into()));
+        return Err(AppError::Conflict(
+            "This plant is not available for discovery".into(),
+        ));
     }
 
     // If a Google listing is already linked to an approved TrackMyRMC plant,
