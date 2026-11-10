@@ -1,6 +1,7 @@
 import React from "react";
 import { Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { useGet } from "@/src/hooks/useApi";
 import { AppText } from "@/src/components/ui/AppText";
@@ -70,13 +71,13 @@ export function DriverIdentityCard() {
         borderColor: colors.isDark ? colors.borderStrong : colors.border,
       }]}
     >
-      <View style={[styles.brandBand, { backgroundColor: colors.brandSoft }]}>
+      <LinearGradient colors={colors.isDark ? ["#66320C", "#231C19"] : ["#FFB363", "#FFF0E6"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.brandBand}>
         <View style={styles.brandIdentity}>
           <Ionicons name="shield-checkmark-outline" size={18} color={colors.brand} />
           <AppText style={[styles.brandText, { color: colors.onSurface }]}>TRACKMYRMC</AppText>
         </View>
         <AppText style={[styles.bandTitle, { color: colors.onSurfaceSecondary }]}>DIGITAL DRIVER CARD</AppText>
-      </View>
+      </LinearGradient>
 
       <View style={styles.body}>
         <View style={styles.recordLine}>
