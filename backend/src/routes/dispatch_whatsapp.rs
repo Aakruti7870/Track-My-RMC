@@ -441,6 +441,9 @@ pub async fn receive_meta_webhook(
     mac.update(&body);
     mac.verify_slice(&signature)
         .map_err(|_| AppError::Unauthorized("Invalid Meta signature".into()))?;
+    if body.len() > 64 * 1024 {
+        return Err(AppError::BadRequest("Webhook payload is too large".into()));
+    }
     let data: Value = serde_json::from_slice(&body)
         .map_err(|_| AppError::BadRequest("Invalid webhook body".into()))?;
     if data["object"] != "whatsapp_business_account" {
@@ -453,6 +456,43 @@ pub async fn receive_meta_webhook(
         for change in entry["changes"].as_array().into_iter().flatten() {
             if change["field"] != "messages" {
                 continue;
+            }
+            // Explicit recipient STOP on the verified sender cancels all pending
+            // marketing for that number across all tenant plants.
+            for inbound in change["value"]["messages"].as_array().into_iter().flatten() {
+                let text = inbound["text"]["body"].as_str()
+                    .unwrap_or("").trim().to_ascii_uppercase();
+                if matches!(text.as_str(), "STOP" | "UNSUBSCRIBE" | "OPT OUT") {
+                    if let Some(from) = inbound["from"].as_str() {
+                        if let Ok(phone) = dispatch_whatsapp::normalize_recipient(from) {
+                            let mut tx = state.db.begin().await?;
+                            sqlx::query(
+                                "UPDATE dispatch_whatsapp_marketing_events SET
+                                    status='cancelled',last_error='recipient_opted_out',
+                                    updated_at=NOW()
+                                 WHERE order_id IN (
+                                     SELECT order_id FROM dispatch_whatsapp_contacts
+                                     WHERE phone_e164=$1
+                                 ) AND status IN (
+                                     'waiting_dispatch','needs_consent','pending'
+                                 )",
+                            )
+                            .bind(&phone)
+                            .execute(&mut *tx)
+                            .await?;
+                            sqlx::query(
+                                "UPDATE dispatch_whatsapp_contacts
+                                 SET marketing_opted_in=FALSE,
+                                     marketing_consent_recorded_at=NULL,updated_at=NOW()
+                                 WHERE phone_e164=$1",
+                            )
+                            .bind(&phone)
+                            .execute(&mut *tx)
+                            .await?;
+                            tx.commit().await?;
+                        }
+                    }
+                }
             }
             for notification in change["value"]["statuses"].as_array().into_iter().flatten() {
                 if let (Some(id), Some(status)) =
