@@ -363,21 +363,21 @@ pub async fn import_contacts(
     let mut tx = state.db.begin().await?;
     // Serialize concurrent imports into the same user-created channel, so
     // two simultaneous files cannot jointly bypass the 1000-unique-member cap.
-    let locked: Option<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM admin_marketing_segments WHERE id=$1 FOR UPDATE",
-    )
-    .bind(body.segment_id)
-    .fetch_optional(&mut *tx)
-    .await?;
+    let locked: Option<Uuid> =
+        sqlx::query_scalar("SELECT id FROM admin_marketing_segments WHERE id=$1 FOR UPDATE")
+            .bind(body.segment_id)
+            .fetch_optional(&mut *tx)
+            .await?;
     if locked.is_none() {
-        return Err(AppError::NotFound("Channel not found. Create a channel first.".into()));
+        return Err(AppError::NotFound(
+            "Channel not found. Create a channel first.".into(),
+        ));
     }
-    let current_members: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM admin_marketing_memberships WHERE segment_id=$1",
-    )
-    .bind(body.segment_id)
-    .fetch_one(&mut *tx)
-    .await?;
+    let current_members: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM admin_marketing_memberships WHERE segment_id=$1")
+            .bind(body.segment_id)
+            .fetch_one(&mut *tx)
+            .await?;
     let phones: Vec<String> = clean.iter().map(|(phone, _)| phone.clone()).collect();
     let new_members: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM (
