@@ -16,7 +16,6 @@ use hmac::{Hmac, Mac};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sha2::Sha256;
-use sqlx::Row;
 use std::collections::HashMap;
 use uuid::Uuid;
 
