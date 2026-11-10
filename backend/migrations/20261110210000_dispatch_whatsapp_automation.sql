@@ -3,6 +3,8 @@
 CREATE TABLE dispatch_whatsapp_plant_settings (
     plant_id UUID PRIMARY KEY REFERENCES rmc_plants(id) ON DELETE CASCADE,
     enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    -- Separate marketing approval; delivery notifications do not grant this.
+    marketing_enabled BOOLEAN NOT NULL DEFAULT FALSE,
     updated_by UUID REFERENCES users(id),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -12,6 +14,8 @@ CREATE TABLE dispatch_whatsapp_contacts (
     order_id UUID PRIMARY KEY REFERENCES orders(id) ON DELETE CASCADE,
     phone_e164 VARCHAR(16) NOT NULL CHECK (phone_e164 ~ '^[+][1-9][0-9]{9,14}),
     opted_in BOOLEAN NOT NULL DEFAULT FALSE,
+    marketing_opted_in BOOLEAN NOT NULL DEFAULT FALSE,
+    marketing_consent_recorded_at TIMESTAMPTZ,
     consent_source VARCHAR(32) NOT NULL CHECK (
         consent_source IN ('customer_app', 'written_order', 'customer_phone', 'in_person')
     ),
@@ -81,3 +85,39 @@ CREATE INDEX idx_dispatch_whatsapp_events_queue
     ON dispatch_whatsapp_events (created_at, load_id) WHERE status = 'pending';
 CREATE INDEX idx_dispatch_whatsapp_events_owner
     ON dispatch_whatsapp_events (plant_id, created_at DESC);
+
+-- Marketing is separate from transactional delivery and never shares a send
+-- decision, template, consent flag or deduplication identity.
+-- One campaign eligibility record per order, created with the challan.
+CREATE TABLE dispatch_whatsapp_marketing_events (
+    order_id UUID PRIMARY KEY REFERENCES orders(id) ON DELETE CASCADE,
+    plant_id UUID NOT NULL REFERENCES rmc_plants(id) ON DELETE CASCADE,
+    status VARCHAR(24) NOT NULL DEFAULT 'waiting_dispatch'
+        CHECK (status IN (
+           'waiting_dispatch','needs_consent','pending','sending',
+           'accepted','sent','delivered','read','failed','uncertain',
+           'skipped','cancelled'
+        )),
+    attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts BETWEEN 0 AND 20),
+    provider_message_id TEXT UNIQUE,
+    last_error VARCHAR(120),
+    attempted_at TIMESTAMPTZ,
+    accepted_at TIMESTAMPTZ,
+    delivered_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_dispatch_whatsapp_marketing_queue
+    ON dispatch_whatsapp_marketing_events (created_at,order_id)
+    WHERE status='pending';
+CREATE INDEX idx_dispatch_whatsapp_marketing_owner
+    ON dispatch_whatsapp_marketing_events (plant_id,created_at DESC);
+
+-- Hard per-plant/recipient cooldown, atomic across concurrent workers.
+-- An ambiguous HTTP send still consumes the cooldown to prevent spam.
+CREATE TABLE dispatch_whatsapp_marketing_cooldowns (
+    plant_id UUID NOT NULL REFERENCES rmc_plants(id) ON DELETE CASCADE,
+    phone_e164 VARCHAR(16) NOT NULL,
+    reserved_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (plant_id,phone_e164)
+);
