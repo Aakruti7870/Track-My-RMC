@@ -91,6 +91,26 @@ export default function OwnerOperations() {
   const { data: history, refetch: refreshHistory } =
     useGet<{ jobs: AutomationHistory[] }>(base ? `${base}/history` : null);
   const selectedRule = (rules?.rules ?? []).find(rule => rule.key === selectedRuleKey);
+  const dispatchUrl = plantId ? `/owner/plants/${encodeURIComponent(plantId)}/dispatch-whatsapp` : null;
+  const { data: whatsappSettings, refetch: refreshWhatsappSettings } =
+    useGet<{ enabled: boolean; worker_enabled: boolean; template_configured: boolean;
+      summary: { pending: number; needs_consent: number; needs_review: number; delivered: number } }>(dispatchUrl);
+  const [updatingWhatsapp, setUpdatingWhatsapp] = useState(false);
+
+  async function updateWhatsapp(enabled: boolean) {
+    if (!dispatchUrl || !token || updatingWhatsapp) return;
+    setUpdatingWhatsapp(true);
+    setRequestError("");
+    try {
+      await apiPut(dispatchUrl, token, { enabled });
+      setNotice("Dispatch WhatsApp plant preference saved.");
+      await refreshWhatsappSettings();
+    } catch (error) {
+      setRequestError(apiErrorDetail(error, "Could not update dispatch WhatsApp preference."));
+    } finally {
+      setUpdatingWhatsapp(false);
+    }
+  }
 
   async function updateRule(rule: AutomationRule, enabled: boolean, reminderMinutes?: number, slaMinutes?: number) {
     if (!base || !token || busyRule || (enabled && (!rule.published || rule.globally_paused))) return;
@@ -152,6 +172,36 @@ export default function OwnerOperations() {
         {rules && !rules.worker_enabled ? <AppText accessibilityRole="alert" style={{ color: "#F59E0B", fontSize: 12 }}>
           Automation engine not activated. Preferences are saved, but the background worker is currently off.
         </AppText> : null}
+        <OwnerGlass style={{ padding: 12, gap: 8, borderColor: p.border }} testID="owner-whatsapp-dispatch-automation">
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <AppText style={{ color: p.text, fontWeight: "700", fontSize: 14 }}>Automatic WhatsApp Dispatch</AppText>
+              <AppText style={{ color: p.muted, fontSize: 12 }}>
+                One transactional alert per mixer load, after dispatch and customer consent.
+              </AppText>
+            </View>
+            <Pressable accessibilityRole="switch"
+              accessibilityState={{ checked: whatsappSettings?.enabled || false, disabled: updatingWhatsapp || !plantId }}
+              disabled={updatingWhatsapp || !plantId}
+              onPress={() => void updateWhatsapp(!whatsappSettings?.enabled)}
+              style={{ backgroundColor: whatsappSettings?.enabled ? p.accent : p.glass,
+                borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9 }}>
+              <AppText style={{ color: whatsappSettings?.enabled ? "#FFFFFF" : p.text, fontWeight: "700" }}>
+                {whatsappSettings?.enabled ? "ON" : "OFF"}
+              </AppText>
+            </Pressable>
+          </View>
+          <AppText style={{ color: p.muted, fontSize: 12 }}>
+            Worker: {whatsappSettings?.worker_enabled ? "Enabled" : "Not activated"} ·
+            Template: {whatsappSettings?.template_configured ? "Configured" : "Pending"}
+          </AppText>
+          {whatsappSettings?.summary ? (
+            <AppText style={{ color: p.muted, fontSize: 12 }}>
+              Pending {whatsappSettings.summary.pending} · Consent required {whatsappSettings.summary.needs_consent} ·
+              Delivered {whatsappSettings.summary.delivered} · Review {whatsappSettings.summary.needs_review}
+            </AppText>
+          ) : null}
+        </OwnerGlass>
         <View testID="owner-automation-grid" style={{ flexDirection: "row", flexWrap: "wrap", gap: AUTOMATION_GRID_GAP }}>
           {(rules?.rules ?? []).map(rule => {
             const available = rule.published && !rule.globally_paused;
