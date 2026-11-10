@@ -88,14 +88,14 @@ export default function OrderDetail() {
   const [whatsappBusy, setWhatsappBusy] = useState(false);
   const whatsappPath = !isOwner && id ? `/customer/orders/${id}/dispatch-whatsapp-consent` : null;
   const { data: whatsappConsent, refetch: refreshWhatsappConsent } =
-    useGet<{ opted_in: boolean }>(whatsappPath);
+    useGet<{ opted_in: boolean; marketing_opted_in: boolean }>(whatsappPath);
 
-  const saveWhatsappConsent = async (opted_in: boolean) => {
+  const saveWhatsappConsent = async (opted_in: boolean, marketing_opted_in: boolean) => {
     if (!token || !id) return;
     setWhatsappBusy(true);
     try {
-      await apiPost(`/customer/orders/${id}/dispatch-whatsapp-consent`, token, { opted_in });
-      toast(opted_in ? "WhatsApp delivery updates enabled" : "WhatsApp delivery updates disabled", "success");
+      await apiPost(`/customer/orders/${id}/dispatch-whatsapp-consent`, token, { opted_in, marketing_opted_in });
+      toast("WhatsApp preferences saved", "success");
       await refreshWhatsappConsent();
     } catch {
       toast("Could not update WhatsApp delivery preference", "error");
@@ -257,7 +257,18 @@ export default function OrderDetail() {
                 label={whatsappConsent?.opted_in ? "Disable WhatsApp Updates" : "Enable WhatsApp Updates"}
                 variant="outline"
                 loading={whatsappBusy}
-                onPress={() => void saveWhatsappConsent(!whatsappConsent?.opted_in)}
+                onPress={() => void saveWhatsappConsent(!whatsappConsent?.opted_in, Boolean(whatsappConsent?.marketing_opted_in))}
+              />
+              <AppText variant="heading">App Promotions (optional)</AppText>
+              <AppText variant="caption">
+                Separately agree to occasional WhatsApp information about TrackMyRMC,
+                concrete ordering and pump booking. You can disable this anytime.
+              </AppText>
+              <Button
+                label={whatsappConsent?.marketing_opted_in ? "Disable App Promotions" : "Allow App Promotions"}
+                variant="outline"
+                loading={whatsappBusy}
+                onPress={() => void saveWhatsappConsent(Boolean(whatsappConsent?.opted_in), !whatsappConsent?.marketing_opted_in)}
               />
             </Card>
           ) : null}
