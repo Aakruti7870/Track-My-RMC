@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { Bell, Building2, ClipboardCheck, Factory, Megaphone, ShieldCheck, Workflow } from 'lucide-react';
 import { AuthenticatorQr } from './AuthenticatorQr';
+import { PlantVisibility } from './PlantVisibility';
 import apiClient, { getAccessToken, setAccessToken } from './api';
 
 type Stage = 'central-login' | 'central-otp' | 'central-mfa' | 'central-recover' | 'central-recovery-codes' | 'authority-login' | 'authority-password' | 'email' | 'otp' | 'mfa-enroll' | 'mfa-login' | 'authenticated';
@@ -1405,6 +1406,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                   {([
                     {href:'#platform-overview',label:'Platform KPIs',caption:'Live overview',icon:Building2,allowed:permissions.includes('system.view')},
                     {href:'#plant-master',label:'Plant Master',caption:'Owners, staff, verification & intake',icon:Factory,allowed:permissions.includes('plant.view')&&permissions.includes('user.view')},
+                    {href:'#plant-visibility',label:'Plant Visibility',caption:'Hold and restore customer map listings',icon:Factory,allowed:permissions.includes('plant.view')&&permissions.includes('plant_owners.manage')&&permissions.includes('user.view')},
                     {href:'#operations-workspaces',label:'Approval Queue',caption:'Onboarding, documents and RFQs',icon:ClipboardCheck,allowed:permissions.includes('plant_owners.manage')||permissions.includes('kyc.view')||permissions.includes('support.view')},
                     {href:'#marketing-center',label:'Marketing CRM',caption:'Contact groups and campaign drafts',icon:Megaphone,allowed:permissions.includes('support.manage')},
                     {href:'#automation-governance',label:'Automation',caption:'Native workflow health',icon:Workflow,allowed:permissions.includes('system.view')},
@@ -1433,6 +1435,9 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                 </div>
                 <p style={{ color: '#94a3b8', fontSize: 12 }}>Read-only statistics from the Rust API. This is not the complete reference Control Center.</p>
               </section>
+            )}
+            {user.role === 'central_admin' && permissions.includes('plant.view') && permissions.includes('user.view') && permissions.includes('plant_owners.manage') && (
+              <PlantVisibility />
             )}
             {user.role === 'central_admin' && permissions.includes('plant.view') && permissions.includes('user.view') && (
               <section id="plant-master" aria-label="Central Admin Plant Master" style={{marginTop:18,padding:14,border:'1px solid #334155',borderRadius:12}}>
