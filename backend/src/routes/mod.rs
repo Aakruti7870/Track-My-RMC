@@ -1400,7 +1400,8 @@ pub fn build_app_router(state: AppState) -> Router {
         )
         .route(
             "/api/customer/orders/:order_id/dispatch-whatsapp-consent",
-            post(dispatch_whatsapp::customer_consent),
+            get(dispatch_whatsapp::get_customer_consent)
+                .post(dispatch_whatsapp::customer_consent),
         )
         .route(
             "/api/staff/orders/:order_id/dispatch-whatsapp-contact",
