@@ -90,16 +90,7 @@ jobs:
           if (( rc == 1 )); then
             # Only disclose the number of matches, never matching text, filenames,
             # commit IDs or surrounding code in public GitHub Actions logs.
-            count="$(python3 - "$RUNNER_TEMP/gitleaks-private.json" <<'PY'
-import json
-import sys
-with open(sys.argv[1], encoding="utf-8") as stream:
-    findings = json.load(stream)
-if not isinstance(findings, list):
-    raise SystemExit("Unexpected Gitleaks report format")
-print(len(findings))
-PY
-)"
+            count="$(python3 -c 'import json,sys; report=json.load(open(sys.argv[1],encoding="utf-8")); assert isinstance(report,list); print(len(report))' "$RUNNER_TEMP/gitleaks-private.json")"
             echo "::error::Gitleaks detected $count potential secret occurrence(s) in Git history. Private validation/rotation required; no findings disclosed."
             echo "History scan identified $count potential secret occurrence(s)." >> "$GITHUB_STEP_SUMMARY"
             exit 1
