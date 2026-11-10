@@ -302,6 +302,21 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
     return()=>{active=false;};
   },[stage,user?.role]);
 
+
+  async function openAdminApproval(event:string) {
+    if(event==='plant_onboarding' && permissions.includes('plant_owners.manage')){
+      await loadOwnerRequests();
+    }else if(event==='rmc_rfq_lead' && permissions.includes('support.view')){
+      await loadWorkspace('rmc_rfq_leads');
+    }else if(event==='plant_profile' && permissions.includes('plant.view')){
+      await loadPlantProfileQueue();
+    }else if(event==='kyc' && permissions.includes('kyc.view')){
+      await loadWorkspace('kyc');
+    }else{return;}
+    // One existing approval workspace, not a second copy embedded in the bell.
+    window.location.hash='operations-workspaces';
+  }
+
   async function markAdminNoticesRead() {
     try{
       await apiClient.post('/api/notifications/read-all');
@@ -1367,6 +1382,10 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                   {adminNotices.map(item=><article key={item.id} style={{padding:'9px 0',borderBottom:'1px solid #334155'}}>
                     <div style={{display:'flex',gap:8,alignItems:'center'}}><strong style={{fontSize:13}}>{item.title}</strong>{!item.read&&<span style={{fontSize:11,color:'#86efac'}}>New</span>}</div>
                     <p style={{fontSize:12,color:'#cbd5e1',margin:'4px 0'}}>{item.body}</p>
+                    {(['plant_onboarding','rmc_rfq_lead','plant_profile','kyc'].includes(item.event)) && (
+                      <button type="button" style={{...buttonStyle,width:'auto',marginTop:4,padding:'6px 10px',fontSize:12}}
+                        onClick={()=>void openAdminApproval(item.event)}>Open matching review queue</button>
+                    )}
                   </article>)}
                   {!adminNotices.length&&!adminNoticeError&&<p>No notifications to show.</p>}
                 </section>}
