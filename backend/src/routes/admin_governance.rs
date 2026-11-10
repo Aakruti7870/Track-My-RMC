@@ -498,7 +498,10 @@ mod tests {
         assert_eq!(normalize_phone("9876543210").unwrap(), "+919876543210");
         assert_eq!(normalize_phone("+919876543210").unwrap(), "+919876543210");
         assert_eq!(normalize_phone("+1234567890").unwrap(), "+1234567890");
-        assert_eq!(normalize_phone("+49 151 1234 5678").unwrap(), "+4915112345678");
+        assert_eq!(
+            normalize_phone("+49 151 1234 5678").unwrap(),
+            "+4915112345678"
+        );
         assert!(normalize_phone("123").is_err());
         assert!(normalize_phone("9876543210;attack").is_err());
         assert!(normalize_phone("00919876543210").is_err());
