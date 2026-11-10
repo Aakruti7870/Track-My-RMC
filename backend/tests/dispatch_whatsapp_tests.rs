@@ -102,19 +102,26 @@ async fn fixture(db: &PgPool) -> (Uuid, Uuid, Uuid, Uuid) {
 async fn challan_prepares_both_outboxes_without_sending(db: PgPool) {
     let (_, _, order, load) = fixture(&db).await;
     let mut tx = db.begin().await.unwrap();
-    dispatch_whatsapp::prepare_in_tx(&mut tx, load).await.unwrap();
-    dispatch_whatsapp::prepare_in_tx(&mut tx, load).await.unwrap();
-    dispatch_marketing::prepare_in_tx(&mut tx, load).await.unwrap();
-    dispatch_marketing::prepare_in_tx(&mut tx, load).await.unwrap();
+    dispatch_whatsapp::prepare_in_tx(&mut tx, load)
+        .await
+        .unwrap();
+    dispatch_whatsapp::prepare_in_tx(&mut tx, load)
+        .await
+        .unwrap();
+    dispatch_marketing::prepare_in_tx(&mut tx, load)
+        .await
+        .unwrap();
+    dispatch_marketing::prepare_in_tx(&mut tx, load)
+        .await
+        .unwrap();
     tx.commit().await.unwrap();
 
-    let utility_status: String = sqlx::query_scalar(
-        "SELECT status FROM dispatch_whatsapp_events WHERE load_id=$1",
-    )
-    .bind(load)
-    .fetch_one(&db)
-    .await
-    .unwrap();
+    let utility_status: String =
+        sqlx::query_scalar("SELECT status FROM dispatch_whatsapp_events WHERE load_id=$1")
+            .bind(load)
+            .fetch_one(&db)
+            .await
+            .unwrap();
     let promo_status: String = sqlx::query_scalar(
         "SELECT status FROM dispatch_whatsapp_marketing_events WHERE order_id=$1",
     )
@@ -141,49 +148,55 @@ async fn dispatch_activates_both_events_once_with_separate_consent(db: PgPool) {
     .unwrap();
 
     let mut tx = db.begin().await.unwrap();
-    dispatch_whatsapp::prepare_in_tx(&mut tx, load).await.unwrap();
-    dispatch_marketing::prepare_in_tx(&mut tx, load).await.unwrap();
+    dispatch_whatsapp::prepare_in_tx(&mut tx, load)
+        .await
+        .unwrap();
+    dispatch_marketing::prepare_in_tx(&mut tx, load)
+        .await
+        .unwrap();
     // A premature dispatch activation cannot send anything.
     dispatch_whatsapp::activate_on_dispatch_in_tx(&mut tx, load)
-        .await.unwrap();
+        .await
+        .unwrap();
     dispatch_marketing::activate_on_dispatch_in_tx(&mut tx, load)
-        .await.unwrap();
+        .await
+        .unwrap();
     tx.commit().await.unwrap();
 
-    let before: String = sqlx::query_scalar(
-        "SELECT status FROM dispatch_whatsapp_events WHERE load_id=$1",
-    )
-    .bind(load)
-    .fetch_one(&db)
-    .await
-    .unwrap();
+    let before: String =
+        sqlx::query_scalar("SELECT status FROM dispatch_whatsapp_events WHERE load_id=$1")
+            .bind(load)
+            .fetch_one(&db)
+            .await
+            .unwrap();
     assert_eq!(before, "waiting_dispatch");
 
-    sqlx::query(
-        "UPDATE order_loads SET status='dispatched',dispatched_at=NOW() WHERE id=$1",
-    )
-    .bind(load)
-    .execute(&db)
-    .await
-    .unwrap();
+    sqlx::query("UPDATE order_loads SET status='dispatched',dispatched_at=NOW() WHERE id=$1")
+        .bind(load)
+        .execute(&db)
+        .await
+        .unwrap();
     let mut tx = db.begin().await.unwrap();
     dispatch_whatsapp::activate_on_dispatch_in_tx(&mut tx, load)
-        .await.unwrap();
+        .await
+        .unwrap();
     dispatch_marketing::activate_on_dispatch_in_tx(&mut tx, load)
-        .await.unwrap();
+        .await
+        .unwrap();
     dispatch_whatsapp::activate_on_dispatch_in_tx(&mut tx, load)
-        .await.unwrap();
+        .await
+        .unwrap();
     dispatch_marketing::activate_on_dispatch_in_tx(&mut tx, load)
-        .await.unwrap();
+        .await
+        .unwrap();
     tx.commit().await.unwrap();
 
-    let utility: String = sqlx::query_scalar(
-        "SELECT status FROM dispatch_whatsapp_events WHERE load_id=$1",
-    )
-    .bind(load)
-    .fetch_one(&db)
-    .await
-    .unwrap();
+    let utility: String =
+        sqlx::query_scalar("SELECT status FROM dispatch_whatsapp_events WHERE load_id=$1")
+            .bind(load)
+            .fetch_one(&db)
+            .await
+            .unwrap();
     let marketing: String = sqlx::query_scalar(
         "SELECT status FROM dispatch_whatsapp_marketing_events WHERE order_id=$1",
     )
@@ -194,13 +207,12 @@ async fn dispatch_activates_both_events_once_with_separate_consent(db: PgPool) {
     assert_eq!(utility, "pending");
     assert_eq!(marketing, "needs_consent");
 
-    let event_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM dispatch_whatsapp_events WHERE plant_id=$1",
-    )
-    .bind(plant)
-    .fetch_one(&db)
-    .await
-    .unwrap();
+    let event_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM dispatch_whatsapp_events WHERE plant_id=$1")
+            .bind(plant)
+            .fetch_one(&db)
+            .await
+            .unwrap();
     let promo_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM dispatch_whatsapp_marketing_events WHERE plant_id=$1",
     )
