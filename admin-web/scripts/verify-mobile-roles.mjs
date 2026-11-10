@@ -336,13 +336,16 @@ try {
     // checks for existing routes. Do not capture response bodies or credentials.
     if (user.role === 'customer') {
       await expect(page.getByTestId('customer-module-grid')).toBeVisible();
-      await page.getByText('More', { exact: true }).last().click();
+      // Customer Notifications are accessed from the Home header, not More.
+      await expect(page.getByTestId('notifications-bell')).toBeVisible();
+      await page.getByTestId('tab-more').click();
+      await expect(page.getByTestId('tab-more')).toHaveAttribute('aria-selected', 'true');
     }
     // Verify each unique module destination across the redesigned tab surfaces.
     // The old single-page catalog assertion must not duplicate Home cards.
     const disabledKeys = user.role === 'dispatcher' ? ['business-reports'] : [];
     const visibleKeys = user.role === 'customer'
-      ? ['account-deletion', 'customer-support', 'notifications', 'quotations', 'documents']
+      ? ['account-deletion', 'customer-support', 'quotations', 'documents']
       : modulesForRole(user.role).map(module => module.key)
         .filter(key => key !== 'notifications' && !disabledKeys.includes(key));
     // Staff and Driver notifications are exclusively in the shared header.
@@ -481,7 +484,8 @@ try {
       console.log('PASS: real Expo Owner seven-slot directory, Manager appointment/revocation and five-action permission editor');
     }
     if (user.role === 'customer') {
-      await expect(page.getByTestId('role-module-directory').locator('[data-testid^="role-module-"]')).toHaveCount(5);
+      await expect(page.getByTestId('role-module-directory').locator('[data-testid^="role-module-"]')).toHaveCount(4);
+      await expect(page.getByTestId('role-module-notifications')).toHaveCount(0);
       await expect(page.getByText('All Customer Modules', { exact: true })).toHaveCount(0);
     }
     if (user.role === 'customer') {
