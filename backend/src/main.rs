@@ -155,6 +155,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         info!("Plant Owner utility alert worker enabled");
     }
 
+    // Disabled until real-device and Firebase provider acceptance.
+    if std::env::var("PUSH_NOTIFICATIONS_ENABLED").ok().as_deref() == Some("true") {
+        let mut worker = trackmyrmc_backend::services::push_delivery::PushDeliveryWorker::from_env()
+            .map_err(|reason| std::io::Error::new(std::io::ErrorKind::InvalidInput, reason))?;
+        let notification_db = state.db.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
+            loop {
+                interval.tick().await;
+                if let Err(error) = worker.tick(&notification_db).await {
+                    tracing::error!(error = %error, "Operational push notification tick failed");
+                }
+            }
+        });
+        info!("Operational FCM notification delivery worker enabled");
+    }
+
     let cors = if config
         .cors_allowed_origins
         .iter()

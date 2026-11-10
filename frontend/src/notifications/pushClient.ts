@@ -3,7 +3,27 @@ import { Platform } from "react-native";
 
 import { apiPost } from "@/src/api/client";
 
-const CHANNEL_ID = "default";
+const CHANNEL_ID = "default"; // Preserve the existing user-configurable general channel.
+const STANDARD_CHANNEL_ID = "trackmyrmc_operations_standard_v1";
+const LOUD_CHANNEL_ID = "trackmyrmc_operations_loud_v1";
+
+async function registerOperationalChannels(Notifications: typeof import("expo-notifications")): Promise<void> {
+  // Android channel sound/importance is immutable after first creation.
+  // These versioned IDs avoid silently reusing the prior default-sound channel.
+  await Notifications.setNotificationChannelAsync(STANDARD_CHANNEL_ID, {
+    name: "Plant operations",
+    description: "Standard sound for plant staff order updates",
+    importance: Notifications.AndroidImportance.HIGH,
+    sound: "trackmyrmc_standard.wav",
+  });
+  await Notifications.setNotificationChannelAsync(LOUD_CHANNEL_ID, {
+    name: "Urgent orders and driver assignments",
+    description: "Distinctive loud alert for new orders and assigned trips",
+    importance: Notifications.AndroidImportance.HIGH,
+    sound: "trackmyrmc_loud.wav",
+    vibrationPattern: [0, 350, 180, 350],
+  });
+}
 let foregroundHandlerConfigured = false;
 
 async function notificationsModule() {
@@ -65,6 +85,7 @@ export async function registerPushDevice(
     sound: "default",
   });
 
+  await registerOperationalChannels(Notifications);
   let permission = await Notifications.getPermissionsAsync();
   if (permission.status !== "granted" && requestPermission) {
     // The caller must show TrackMyRMC's app-owned notification explanation and
