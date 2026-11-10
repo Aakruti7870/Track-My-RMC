@@ -201,9 +201,8 @@ pub async fn tick(state: &AppState) -> Result<usize, AppError> {
                 .bind(reason)
                 .execute(&state.db)
                 .await?;
-                super::dispatch_whatsapp::alert_owner_review(
-                    state, plant_id, order_id, true
-                ).await?;
+                super::dispatch_whatsapp::alert_owner_review(state, plant_id, order_id, true)
+                    .await?;
             }
         }
     }
@@ -240,9 +239,7 @@ pub async fn mark_provider_status(
     .await?;
     if let Some((plant_id, order_id)) = changed {
         if status == "failed" {
-            super::dispatch_whatsapp::alert_owner_review(
-                state, plant_id, order_id, true,
-            ).await?;
+            super::dispatch_whatsapp::alert_owner_review(state, plant_id, order_id, true).await?;
         }
     }
     Ok(())
