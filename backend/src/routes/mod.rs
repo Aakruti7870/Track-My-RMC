@@ -1,4 +1,5 @@
 pub mod account_deletion;
+pub mod admin_campaign;
 pub mod admin_governance;
 pub mod admin_whatsapp;
 pub mod admin_routes;
@@ -109,6 +110,11 @@ pub fn build_app_router(state: AppState) -> Router {
             "/api/control-center/marketing/campaigns",
             post(admin_governance::create_campaign_draft),
         )
+        .route("/api/control-center/marketing/contacts",get(admin_campaign::contacts))
+        .route("/api/control-center/marketing/contacts/consent",post(admin_campaign::consent))
+        .route("/api/control-center/marketing/campaigns/:id/approve",post(admin_campaign::approve))
+        .route("/api/control-center/marketing/campaigns/:id/launch",post(admin_campaign::launch))
+        .route("/api/control-center/marketing/campaigns/:id/cancel",post(admin_campaign::cancel))
         .route(
             "/api/admin/auth/method",
             post(crate::auth::control_center::method),
