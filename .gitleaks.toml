@@ -55,3 +55,10 @@ regexTarget = "line"
 paths = ['''(?:^|/)ops/staging/evidence/iam-isolation-simulation\.json$''']
 regexes = ['''"EvalResourceName"\s*:\s*"arn:aws:secretsmanager:[^"\n]+"''']
 
+
+[[rules.allowlists]]
+description = "Firebase Android config is a documented public client identifier, not a backend credential"
+condition = "AND"
+regexTarget = "line"
+paths = ['''(?:^|/)frontend/google-services\.json$''']
+regexes = ['''"current_key"\s*:\s*"AIza[\w-]{35}"''']

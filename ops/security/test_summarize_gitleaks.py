@@ -39,6 +39,13 @@ class SummaryTests(unittest.TestCase):
         self.assertNotIn(marker, str(counts))
         self.assertNotIn("private-location", str(counts))
 
+    def test_review_buckets_never_emit_untrusted_path(self):
+        marker = "PRIVATE_PATH_UNSAFE"
+        sample=[{"File": "/tmp/" + marker + "/ops/more.py","Secret": marker}]
+        labels=module.count_review_buckets(sample)
+        self.assertEqual(dict(labels), {"other-operations": 1})
+        self.assertNotIn(marker, str(labels))
+
     def test_rejects_malformed_report(self):
         with self.assertRaises(ValueError):
             module.summarize({"not": "a list"})
