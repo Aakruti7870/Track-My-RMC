@@ -1373,8 +1373,9 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                 <nav aria-label="Control Center sections" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:9,marginTop:14}}>
                   {([
                     {href:'#platform-overview',label:'Platform KPIs',caption:'Live overview',icon:Building2},
-                    {href:'#plant-master',label:'Plant Master',caption:'Registered plants & owners',icon:Factory},
-                    {href:'#operations-workspaces',label:'Onboarding & RFQs',caption:'Review queues',icon:ClipboardCheck},
+                    {href:'#plant-master',label:'Plant Master',caption:'Owners, staff, verification & intake',icon:Factory},
+                    {href:'#operations-workspaces',label:'Approval Queue',caption:'Onboarding, documents and RFQs',icon:ClipboardCheck},
+                    {href:'#marketing-center',label:'Marketing CRM',caption:'Contact groups and campaign drafts',icon:Megaphone},
                     {href:'#automation-governance',label:'Automation',caption:'Native workflow health',icon:Workflow},
                     {href:'#authority-governance',label:'Governance',caption:'Permissions & audit',icon:ShieldCheck},
                   ] as const).map(item=><a key={item.label} href={item.href}
