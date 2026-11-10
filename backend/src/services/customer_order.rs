@@ -161,7 +161,7 @@ async fn validate(
                           WHERE c.plant_id=rmc_plants.id AND NOT c.discovery_visible)
            AND NOT EXISTS(SELECT 1 FROM google_plant_visibility_exclusions x
                           WHERE x.place_id=rmc_plants.google_place_id AND NOT x.is_visible)
-         FOR SHARE
+         FOR SHARE",
     )
     .bind(req.plant_id)
     .fetch_optional(&mut *conn)

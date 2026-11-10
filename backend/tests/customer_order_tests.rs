@@ -2220,12 +2220,20 @@ async fn visibility_hold_hides_discovery_blocks_new_orders_and_can_be_restored(d
 
 // Google Places exclusions are independent of a registered plant's active and onboarding status.
 #[sqlx::test]
-async fn exact_google_place_hold_blocks_unregistered_leads_and_linked_registered_search(db: PgPool) {
+async fn exact_google_place_hold_blocks_unregistered_leads_and_linked_registered_search(
+    db: PgPool,
+) {
     let (_, app, _, plant, token) = fixture(&db).await;
     let owner: Uuid = sqlx::query_scalar("SELECT owner_id FROM rmc_plants WHERE id=$1")
-        .bind(plant).fetch_one(&db).await.unwrap();
+        .bind(plant)
+        .fetch_one(&db)
+        .await
+        .unwrap();
     sqlx::query("UPDATE rmc_plants SET google_place_id='external-test-place' WHERE id=$1")
-        .bind(plant).execute(&db).await.unwrap();
+        .bind(plant)
+        .execute(&db)
+        .await
+        .unwrap();
     sqlx::query(
         "INSERT INTO google_plant_visibility_exclusions(place_id,is_visible,changed_by,change_reason)
          VALUES('external-test-place',FALSE,$1,'Block Google-linked listing during audit'),
@@ -2234,18 +2242,39 @@ async fn exact_google_place_hold_blocks_unregistered_leads_and_linked_registered
 
     let (status, listing) = call(&app, "/api/customer/plants", None, &token).await;
     assert_eq!(status, StatusCode::OK);
-    assert!(!listing["plants"].as_array().unwrap().iter().any(|p| p["id"] == plant.to_string()));
+    assert!(!listing["plants"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|p| p["id"] == plant.to_string()));
 
-    let (status, _) = call(&app, "/api/customer/plants/google-quote-interest",
-        Some(json!({"google_place_id":"unregistered-test-place"})), &token).await;
+    let (status, _) = call(
+        &app,
+        "/api/customer/plants/google-quote-interest",
+        Some(json!({"google_place_id":"unregistered-test-place"})),
+        &token,
+    )
+    .await;
     assert_eq!(status, StatusCode::CONFLICT);
-    let (status, _) = call(&app, "/api/customer/orders",
-        Some(order(plant, "external-place-blocked-order")), &token).await;
-    assert!(matches!(status, StatusCode::NOT_FOUND | StatusCode::CONFLICT));
+    let (status, _) = call(
+        &app,
+        "/api/customer/orders",
+        Some(order(plant, "external-place-blocked-order")),
+        &token,
+    )
+    .await;
+    assert!(matches!(
+        status,
+        StatusCode::NOT_FOUND | StatusCode::CONFLICT
+    ));
 
     sqlx::query("UPDATE google_plant_visibility_exclusions SET is_visible=TRUE WHERE place_id='external-test-place'")
         .execute(&db).await.unwrap();
     let (status, listing) = call(&app, "/api/customer/plants", None, &token).await;
     assert_eq!(status, StatusCode::OK);
-    assert!(listing["plants"].as_array().unwrap().iter().any(|p| p["id"] == plant.to_string()));
+    assert!(listing["plants"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|p| p["id"] == plant.to_string()));
 }
