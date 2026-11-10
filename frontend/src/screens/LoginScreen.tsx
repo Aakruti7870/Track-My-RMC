@@ -155,7 +155,7 @@ export default function LoginScreen() {
     setError(null);
     const fullNumber = loginPhone(mobile);
     if (!fullNumber) {
-      setError("Enter 10 digits or a full number with +country code");
+      setError("Enter a valid WhatsApp number");
       return;
     }
     setLoading(true);
@@ -311,7 +311,7 @@ export default function LoginScreen() {
   };
 
   const openOnboarding = () => {
-    router.push({ pathname: "/plant-onboarding" as any, params: { email: plantEmail.trim().toLowerCase() } } as any);
+    router.push({ pathname: "/plant-onboarding" as any, params: { email: plantEmail.trim().toLowerCase(), mode: "owner_registration" } } as any);
   };
 
   const otpColors = {
@@ -469,7 +469,7 @@ export default function LoginScreen() {
               testID="login-mobile-input"
               value={mobile}
               onChangeText={(text) => { setMobile((text.trimStart().startsWith("+") ? "+" : "") + text.replace(/\D/g, "").slice(0, 15)); setError(null); }}
-              placeholder="10 digits or +country code"
+              placeholder="10 Digit WhatsApp Number"
               placeholderTextColor={colors.onSurfaceTertiary}
               keyboardType="phone-pad"
               inputMode="tel"
@@ -511,7 +511,7 @@ export default function LoginScreen() {
         <Pressable
           testID="login-open-onboarding-form"
           accessibilityRole="button"
-          accessibilityLabel="Open Onboarding Form"
+          accessibilityLabel="Register As Plant Owner"
           accessibilityHint="Opens the existing plant onboarding form and prefills your work email if entered"
           onPress={openOnboarding}
           style={({ pressed }) => [
@@ -535,7 +535,7 @@ export default function LoginScreen() {
           >
             <Ionicons name="document-text-outline" size={21} color={colors.isDark ? "#BBF7D0" : "#166534"} />
             <AppText style={[styles.onboardingLinkLabel, { color: colors.isDark ? "#BBF7D0" : "#166534" }]}>
-              Open Onboarding Form
+              Register As Plant Owner
             </AppText>
             <Ionicons name="arrow-forward" size={18} color={colors.isDark ? "#BBF7D0" : "#166534"} />
           </LinearGradient>
