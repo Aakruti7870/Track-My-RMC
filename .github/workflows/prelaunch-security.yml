@@ -95,6 +95,7 @@ jobs:
           if (( rc == 1 )); then
             count="$(python3 ops/security/summarize_gitleaks.py "$RUNNER_TEMP/gitleaks-current.json" --count)"
             python3 ops/security/summarize_gitleaks.py "$RUNNER_TEMP/gitleaks-current.json" --rules-only
+            python3 ops/security/summarize_gitleaks.py "$RUNNER_TEMP/gitleaks-current.json" --categories-only
           elif (( rc != 0 )); then
             echo "::error::Current-tree Gitleaks scan failed to execute; diagnostics withheld."
             exit "$rc"
@@ -120,6 +121,7 @@ jobs:
             # commit IDs or surrounding code in public GitHub Actions logs.
             count="$(python3 ops/security/summarize_gitleaks.py "$RUNNER_TEMP/gitleaks-private.json" --count)"
             python3 ops/security/summarize_gitleaks.py "$RUNNER_TEMP/gitleaks-private.json" --rules-only
+            python3 ops/security/summarize_gitleaks.py "$RUNNER_TEMP/gitleaks-private.json" --categories-only
             echo "::error::Gitleaks detected $count potential secret occurrence(s) in Git history. Private validation/rotation required; no findings disclosed."
             echo "History scan identified $count potential secret occurrence(s)." >> "$GITHUB_STEP_SUMMARY"
             exit 1

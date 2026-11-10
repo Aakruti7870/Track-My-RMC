@@ -20,6 +20,25 @@ class SummaryTests(unittest.TestCase):
         self.assertNotIn(marker, str(rules))
         self.assertNotIn("internal/location", str(rules))
 
+    def test_private_categories_are_bounded(self):
+        marker = "TOP_SECRET"
+        sample = [
+            {"File": "/tmp/run/.github/workflows/ci.yml", "Secret": marker},
+            {"File": "frontend/google-services.json", "Secret": marker},
+            {"File": "backend/src/routes/auth.rs", "Secret": marker},
+            {"File": "ops/staging/foundation.json", "Secret": marker},
+            {"File": "other/private-location.log", "Secret": marker},
+        ]
+        counts = module.count_categories(sample)
+        self.assertEqual(sum(counts.values()), 5)
+        self.assertEqual(counts["ci-workflow"], 1)
+        self.assertEqual(counts["firebase-public-config"], 1)
+        self.assertEqual(counts["source-code"], 1)
+        self.assertEqual(counts["operations"], 1)
+        self.assertEqual(counts["other-unclassified"], 1)
+        self.assertNotIn(marker, str(counts))
+        self.assertNotIn("private-location", str(counts))
+
     def test_rejects_malformed_report(self):
         with self.assertRaises(ValueError):
             module.summarize({"not": "a list"})
