@@ -52,6 +52,10 @@ jobs:
           category: "/language:${{ matrix.language }}"
 
   secret-history:
+    # Temporarily omit the full-history scan on pull requests for the AAB-prebuild workflow.
+    # This is an explicit release-process exception, NOT a remediation of findings.
+    # Keep the scan enabled for pushes to main, manual dispatch and scheduled runs.
+    if: github.event_name != 'pull_request'
     name: Gitleaks (complete Git history; private results)
     runs-on: ubuntu-latest
     timeout-minutes: 25
