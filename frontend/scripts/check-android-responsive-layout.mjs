@@ -46,8 +46,8 @@ function scanLayoutViolations(file) {
   }
 }
 
-// The Driver Home must stay compact by default while retaining every field
-// from the plant-managed digital card on demand, including the licence pair.
+// The Driver Home must display the complete nine-field digital card immediately
+// after login, without requiring extra taps, including the licence pair.
 const identityCard = fs.readFileSync(path.join(srcDir, "components/DriverIdentityCard.tsx"), "utf8");
 const driverManager = fs.readFileSync(path.join(appDir, "owner/drivers.tsx"), "utf8");
 for (const field of [
@@ -57,10 +57,11 @@ for (const field of [
 ]) {
   if (!identityCard.includes(field)) fail("Driver digital card field missing: " + field);
 }
-if (!identityCard.includes("wide || expanded") ||
-    !identityCard.includes("driver-identity-toggle-details") ||
-    !identityCard.includes("driver-identity-full-details")) {
-  fail("Driver card must be compact on phones with an accessible, expandable full record.");
+if (!identityCard.includes('testID="driver-identity-full-details"') ||
+    identityCard.includes("driver-identity-toggle-details") ||
+    identityCard.includes("detailsOpen ?") ||
+    identityCard.includes("View Full Driver Card")) {
+  fail("The full Driver card must be visible on the Home screen immediately without an expand action.");
 }
 if (!identityCard.includes("useWindowDimensions") ||
     !identityCard.includes("colors.brandSoft") ||
