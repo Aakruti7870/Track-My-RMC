@@ -465,7 +465,9 @@ fn validate_driving_licence(
         .as_ref()
         .is_some_and(|value| value.len() < 5 || !value.chars().all(allowed_character))
     {
-        return Err(AppError::BadRequest("Invalid driving licence number".into()));
+        return Err(AppError::BadRequest(
+            "Invalid driving licence number".into(),
+        ));
     }
     let date = match valid_until {
         Some(raw) => Some(
