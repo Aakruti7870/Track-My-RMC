@@ -1413,10 +1413,6 @@ pub fn build_app_router(state: AppState) -> Router {
                 .put(dispatch_whatsapp::set_owner_preference),
         )
         .route(
-            "/api/loads/:load_id/share-trip",
-            get(dispatch_whatsapp::share_trip),
-        )
-        .route(
             "/api/loads/:load_id/dispatch-whatsapp-status",
             get(dispatch_whatsapp::load_status),
         )
