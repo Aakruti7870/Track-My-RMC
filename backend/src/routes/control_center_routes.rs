@@ -784,8 +784,7 @@ pub async fn get_plant_master(
             'onboarding_approved',EXISTS(
                 SELECT 1 FROM plant_listing_requests lr
                 WHERE lr.plant_id=p.id AND lr.status='APPROVED'),
-            'intake_mode',COALESCE((SELECT order_intake_mode FROM plant_admin_controls WHERE plant_id=p.id),'DIRECT'),
-)
+            'intake_mode',COALESCE((SELECT order_intake_mode FROM plant_admin_controls WHERE plant_id=p.id),'DIRECT'))
         FROM rmc_plants p JOIN users u ON u.id=p.owner_id WHERE p.id=$1
     "#,
     )
