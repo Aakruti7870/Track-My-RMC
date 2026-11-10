@@ -52,20 +52,31 @@ pub struct PushDeliveryWorker {
 
 impl PushDeliveryWorker {
     pub fn from_env() -> Result<Self, String> {
-        let credential = std::env::var("FCM_SERVICE_ACCOUNT_JSON")
-            .map_err(|_| "FCM_SERVICE_ACCOUNT_JSON is required when PUSH_NOTIFICATIONS_ENABLED=true")?;
-        let account: ServiceAccount = serde_json::from_str(&credential)
-            .map_err(|_| "FCM_SERVICE_ACCOUNT_JSON must contain a valid service account JSON object")?;
+        let credential = std::env::var("FCM_SERVICE_ACCOUNT_JSON").map_err(|_| {
+            "FCM_SERVICE_ACCOUNT_JSON is required when PUSH_NOTIFICATIONS_ENABLED=true"
+        })?;
+        let account: ServiceAccount = serde_json::from_str(&credential).map_err(|_| {
+            "FCM_SERVICE_ACCOUNT_JSON must contain a valid service account JSON object"
+        })?;
         if account.project_id.is_empty()
-            || !account.project_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+            || !account
+                .project_id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-')
             || !account.client_email.ends_with(".gserviceaccount.com")
             || !account.private_key.contains("PRIVATE KEY")
         {
             return Err("FCM service account fields are invalid".into());
         }
-        let http = Client::builder().timeout(Duration::from_secs(12)).build()
+        let http = Client::builder()
+            .timeout(Duration::from_secs(12))
+            .build()
             .map_err(|_| "Unable to initialize FCM client")?;
-        Ok(Self { http, account, cached_oauth: None })
+        Ok(Self {
+            http,
+            account,
+            cached_oauth: None,
+        })
     }
 
     async fn oauth(&mut self) -> WorkerResult<String> {
@@ -86,12 +97,15 @@ impl PushDeliveryWorker {
             },
             &EncodingKey::from_rsa_pem(self.account.private_key.as_bytes())?,
         )?;
-        let response = self.http.post("https://oauth2.googleapis.com/token")
+        let response = self
+            .http
+            .post("https://oauth2.googleapis.com/token")
             .form(&[
                 ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
                 ("assertion", assertion.as_str()),
             ])
-            .send().await?;
+            .send()
+            .await?;
         if !response.status().is_success() {
             return Err(format!("FCM OAuth refused request: {}", response.status()).into());
         }
@@ -100,11 +114,20 @@ impl PushDeliveryWorker {
             return Err("FCM OAuth returned no token".into());
         }
         let lifetime = token.expires_in.saturating_sub(120).max(30);
-        self.cached_oauth = Some((token.access_token.clone(), Instant::now() + Duration::from_secs(lifetime)));
+        self.cached_oauth = Some((
+            token.access_token.clone(),
+            Instant::now() + Duration::from_secs(lifetime),
+        ));
         Ok(token.access_token)
     }
 
-    fn fcm_payload(event: &str, token: &str, title: &str, body: &str, reference: &str) -> Option<Value> {
+    fn fcm_payload(
+        event: &str,
+        token: &str,
+        title: &str,
+        body: &str,
+        reference: &str,
+    ) -> Option<Value> {
         let (channel_id, sound) = channel_for(event)?;
         Some(json!({
             "message": {
@@ -127,7 +150,9 @@ impl PushDeliveryWorker {
             "SELECT COUNT(*) FROM notification_push_outbox
              WHERE status IN ('pending','processing') AND next_attempt_at <= NOW() AND attempts < 8"
         ).fetch_one(db).await?;
-        if due == 0 { return Ok(0); }
+        if due == 0 {
+            return Ok(0);
+        }
         // Obtain a provider token before claiming any row so transient credential
         // failures do not consume attempts or strand otherwise deliverable alerts.
         let oauth = self.oauth().await?;
@@ -142,7 +167,10 @@ impl PushDeliveryWorker {
                     next_attempt_at=NOW()+INTERVAL '2 minutes'
                FROM claim WHERE q.id=claim.id RETURNING q.id"
         ).fetch_all(db).await?;
-        let url = format!("https://fcm.googleapis.com/v1/projects/{}/messages:send", self.account.project_id);
+        let url = format!(
+            "https://fcm.googleapis.com/v1/projects/{}/messages:send",
+            self.account.project_id
+        );
         for (id,) in &ids {
             let row = sqlx::query(
                 "SELECT n.title, n.body, n.notification_type, COALESCE(n.reference_id,'') AS reference_id,
@@ -195,7 +223,13 @@ impl PushDeliveryWorker {
                     .bind(id).execute(db).await?;
                 continue;
             };
-            let response = self.http.post(&url).bearer_auth(&oauth).json(&payload).send().await;
+            let response = self
+                .http
+                .post(&url)
+                .bearer_auth(&oauth)
+                .json(&payload)
+                .send()
+                .await;
             match response {
                 Ok(result) if result.status().is_success() => {
                     sqlx::query("UPDATE notification_push_outbox SET status='sent', delivered_at=NOW(),last_error=NULL WHERE id=$1")
@@ -207,21 +241,35 @@ impl PushDeliveryWorker {
                         Err(_) => "FCM network failure".to_string(),
                     };
                     let temporary = match &result {
-                        Ok(result) => result.status() == StatusCode::TOO_MANY_REQUESTS || result.status().is_server_error(),
+                        Ok(result) => {
+                            result.status() == StatusCode::TOO_MANY_REQUESTS
+                                || result.status().is_server_error()
+                        }
                         Err(_) => true,
                     };
-                    let attempts: i32 = sqlx::query_scalar("SELECT attempts FROM notification_push_outbox WHERE id=$1")
-                        .bind(id).fetch_one(db).await?;
+                    let attempts: i32 = sqlx::query_scalar(
+                        "SELECT attempts FROM notification_push_outbox WHERE id=$1",
+                    )
+                    .bind(id)
+                    .fetch_one(db)
+                    .await?;
                     let retry = temporary && attempts < 8;
                     // If a response is unequivocally permanent, leave the token
                     // registered until explicit provider invalid-token handling.
-                    let secs = (10_i32.saturating_mul(2_i32.pow((attempts as u32).min(6)))).min(900);
+                    let secs =
+                        (10_i32.saturating_mul(2_i32.pow((attempts as u32).min(6)))).min(900);
                     sqlx::query(
                         "UPDATE notification_push_outbox SET
                          status=CASE WHEN $2 THEN 'pending' ELSE 'failed' END,
                          next_attempt_at=NOW()+($3::int * INTERVAL '1 second'),
-                         last_error=$4 WHERE id=$1"
-                    ).bind(id).bind(retry).bind(secs).bind(reason).execute(db).await?;
+                         last_error=$4 WHERE id=$1",
+                    )
+                    .bind(id)
+                    .bind(retry)
+                    .bind(secs)
+                    .bind(reason)
+                    .execute(db)
+                    .await?;
                 }
             }
         }
@@ -234,16 +282,30 @@ mod tests {
     use super::*;
     #[test]
     fn only_known_events_have_audio_channels() {
-        assert_eq!(channel_for("new_order"), Some((LOUD_CHANNEL, "trackmyrmc_loud")));
-        assert_eq!(channel_for("new_order_staff"), Some((STANDARD_CHANNEL, "trackmyrmc_standard")));
-        assert_eq!(channel_for("trip_assigned"), Some((LOUD_CHANNEL, "trackmyrmc_loud")));
+        assert_eq!(
+            channel_for("new_order"),
+            Some((LOUD_CHANNEL, "trackmyrmc_loud"))
+        );
+        assert_eq!(
+            channel_for("new_order_staff"),
+            Some((STANDARD_CHANNEL, "trackmyrmc_standard"))
+        );
+        assert_eq!(
+            channel_for("trip_assigned"),
+            Some((LOUD_CHANNEL, "trackmyrmc_loud"))
+        );
         assert_eq!(channel_for("support_followup"), None);
         assert_eq!(channel_for("delivered"), None);
     }
     #[test]
     fn payload_routes_to_authenticated_notification_feed() {
-        let value = PushDeliveryWorker::fcm_payload("trip_assigned", "device", "Trip", "Assigned", "load").unwrap();
-        assert_eq!(value["message"]["android"]["notification"]["channel_id"], LOUD_CHANNEL);
+        let value =
+            PushDeliveryWorker::fcm_payload("trip_assigned", "device", "Trip", "Assigned", "load")
+                .unwrap();
+        assert_eq!(
+            value["message"]["android"]["notification"]["channel_id"],
+            LOUD_CHANNEL
+        );
         assert_eq!(value["message"]["data"]["route"], "/notifications");
         assert_eq!(value["message"]["data"]["reference_id"], "load");
     }
