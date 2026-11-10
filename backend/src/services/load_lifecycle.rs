@@ -130,6 +130,7 @@ pub async fn advance(
             // Pre-create the notification while the challan is generated;
             // the customer is not told "dispatched" until actual dispatch.
             super::dispatch_whatsapp::prepare_in_tx(&mut tx, id).await?;
+            super::dispatch_marketing::prepare_in_tx(&mut tx, id).await?;
         } else {
             let ready: bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM challans c JOIN gate_passes g ON g.load_id=c.load_id WHERE c.load_id=$1)")
                 .bind(id).fetch_one(&mut *tx).await?;
@@ -158,6 +159,7 @@ pub async fn advance(
         .bind(id).bind(actor).bind(load.status).bind(target).execute(&mut *tx).await?;
     if action == "dispatch" {
         super::dispatch_whatsapp::activate_on_dispatch_in_tx(&mut tx, id).await?;
+        super::dispatch_marketing::activate_on_dispatch_in_tx(&mut tx, id).await?;
     }
     tx.commit().await?;
     Ok(target)
