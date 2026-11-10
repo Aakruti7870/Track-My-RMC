@@ -31,12 +31,15 @@ pub(crate) fn meta_graph_endpoint(
         || !id.bytes().all(|c| c.is_ascii_digit())
         || !matches!(endpoint, "messages" | "message_templates")
     {
-        return Err(AppError::BadRequest("Invalid Meta Graph endpoint configuration".into()));
+        return Err(AppError::BadRequest(
+            "Invalid Meta Graph endpoint configuration".into(),
+        ));
     }
     let mut url = reqwest::Url::parse("https://graph.facebook.com/")
         .map_err(|_| AppError::InternalError("Meta Graph HTTPS endpoint unavailable".into()))?;
     {
-        let mut segments = url.path_segments_mut()
+        let mut segments = url
+            .path_segments_mut()
             .map_err(|_| AppError::InternalError("Meta Graph path unavailable".into()))?;
         segments.push(version).push(id).push(endpoint);
     }
@@ -336,11 +339,7 @@ pub async fn reply(
             "Manual inbox reply limit reached".into(),
         ));
     }
-    let url = meta_graph_endpoint(
-        &state.config.meta_graph_api_version,
-        &sender,
-        "messages",
-    )?;
+    let url = meta_graph_endpoint(&state.config.meta_graph_api_version, &sender, "messages")?;
     // Reserve before I/O: unknown provider result must never be automatically sent again.
     sqlx::query(
         "INSERT INTO admin_whatsapp_messages
@@ -425,7 +424,10 @@ mod tests {
     fn meta_graph_api_rejects_cleartext_or_untrusted_destinations() {
         let url = meta_graph_endpoint("v24.0", "1234567890", "messages")
             .expect("valid Meta messages endpoint");
-        assert_eq!(url.as_str(), "https://graph.facebook.com/v24.0/1234567890/messages");
+        assert_eq!(
+            url.as_str(),
+            "https://graph.facebook.com/v24.0/1234567890/messages"
+        );
         assert_eq!(url.host_str(), Some("graph.facebook.com"));
         let templates = meta_graph_endpoint("v24.0", "1234567890", "message_templates")
             .expect("valid Meta templates endpoint");
