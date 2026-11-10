@@ -695,11 +695,9 @@ mod tests {
     #[test]
     fn licence_validation_preserves_optional_and_expired_records() {
         assert_eq!(validate_driving_licence(None, None).unwrap(), (None, None));
-        let valid = validate_driving_licence(
-            Some("mh01 2024 123456".into()),
-            Some("2030-01-15".into()),
-        )
-        .unwrap();
+        let valid =
+            validate_driving_licence(Some("mh01 2024 123456".into()), Some("2030-01-15".into()))
+                .unwrap();
         assert_eq!(valid.0, Some("MH01 2024 123456".into()));
         let missing_number = validate_driving_licence(None, Some("2030-01-15".into()));
         assert!(missing_number.is_err());
