@@ -13,8 +13,8 @@ pub mod customer_routes;
 pub mod customer_services;
 pub mod digilocker_kyc;
 pub mod discovery;
-pub mod dispatcher_routes;
 pub mod dispatch_whatsapp;
+pub mod dispatcher_routes;
 pub mod driver_dropoffs;
 pub mod driver_profile_routes;
 pub mod driver_routes;
@@ -1400,8 +1400,7 @@ pub fn build_app_router(state: AppState) -> Router {
         )
         .route(
             "/api/customer/orders/:order_id/dispatch-whatsapp-consent",
-            get(dispatch_whatsapp::get_customer_consent)
-                .post(dispatch_whatsapp::customer_consent),
+            get(dispatch_whatsapp::get_customer_consent).post(dispatch_whatsapp::customer_consent),
         )
         .route(
             "/api/staff/orders/:order_id/dispatch-whatsapp-contact",
