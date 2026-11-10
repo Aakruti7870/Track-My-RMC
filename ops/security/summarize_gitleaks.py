@@ -52,7 +52,7 @@ def count_review_buckets(report):
         raise ValueError("Malformed Gitleaks report")
     counts = collections.Counter()
     for finding in report:
-        path = str(finding.get("File", "")).replace("\\", "/").lower()
+        path = "/" + str(finding.get("File", "")).replace("\\", "/").lower().lstrip("/")
         # Exact paths first. Broad categories come last; avoid shadowing.
         if path.endswith("/docs/api.md") or path == "docs/api.md":
             category = "documentation-demo-auth"
