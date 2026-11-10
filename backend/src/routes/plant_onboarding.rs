@@ -342,7 +342,7 @@ pub async fn submit_onboarding(
         "INSERT INTO notifications (user_id, title, body, notification_type, reference_id)
          SELECT id, 'Plant onboarding request received',
                 $1, 'plant_onboarding', $2
-         FROM users WHERE role = 'admin' AND is_active = TRUE",
+         FROM users WHERE role IN ('admin', 'central_admin') AND is_active = TRUE",
     )
     .bind(format!(
         "A new plant partner request ({}) is waiting for review.",

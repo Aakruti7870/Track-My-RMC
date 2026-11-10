@@ -99,7 +99,7 @@ try {
   await page.getByRole('heading', { name: 'Command Center', exact: true }).waitFor();
   await page.getByRole('button', { name: 'users', exact: true }).click();
   await page.locator('tbody').getByText('CI Central Admin', { exact: true }).waitFor();
-  for (const kind of ['plants', 'orders', 'support', 'audit', 'sessions']) {
+  for (const kind of ['orders', 'support', 'audit', 'sessions']) {
     const [response] = await Promise.all([
       page.waitForResponse(response => response.url().includes('/api/control-center/collections/' + kind)),
       page.getByRole('button', { name: kind, exact: true }).click(),

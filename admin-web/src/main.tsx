@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
+import { Bell, Building2, ClipboardCheck, Factory, ShieldCheck, Workflow } from 'lucide-react';
 import { AuthenticatorQr } from './AuthenticatorQr';
 import apiClient, { getAccessToken, setAccessToken } from './api';
 
@@ -21,6 +22,22 @@ type Health = {
 };
 
 type PortalKpi = { label: string; value: string | number };
+type PlantMasterItem = {
+  id: string; name: string; code: string; city: string; state: string;
+  address: string; owner_name: string; owner_email: string | null;
+  owner_active: boolean; active: boolean; google_place_id: string | null;
+  onboarding_approved: boolean; staff_count: number;
+};
+type PlantMasterStaff = {
+  user_id: string; name: string; email: string | null; role: string;
+  active: boolean; employment_status: string; invitation_expires_at?: string | null;
+};
+type PlantMasterDetail = { plant: PlantMasterItem & {
+  pincode?: string; contact_phone?: string; contact_email?: string;
+  capacity_m3_per_hr?: number; owner_verified?: boolean;
+}; staff: PlantMasterStaff[] };
+type AdminNotice = { id: string; event: string; title: string; body: string; read: boolean; created_at: string };
+type GooglePlace = { place_id: string; name: string; address: string; business_status?: string };
 type AuthorityAccount = {
   id: string; email: string; full_name: string; enabled: boolean;
   mfa_enrolled: boolean; permissions: string[];
@@ -100,6 +117,26 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
   const [health, setHealth] = useState<Health | null>(null);
   const [adminKpis, setAdminKpis] = useState<PortalKpi[]>([]);
   const [adminOverviewError, setAdminOverviewError] = useState('');
+  const [adminNotices,setAdminNotices]=useState<AdminNotice[]>([]);
+  const [adminUnread,setAdminUnread]=useState(0);
+  const [adminNoticeError,setAdminNoticeError]=useState('');
+  const [showAdminNotices,setShowAdminNotices]=useState(false);
+  const [showPlantMaster,setShowPlantMaster]=useState(false);
+  const [masterSearch,setMasterSearch]=useState('');
+  const [masterCity,setMasterCity]=useState('');
+  const [masterState,setMasterState]=useState('');
+  const [masterStatus,setMasterStatus]=useState('all');
+  const [masterItems,setMasterItems]=useState<PlantMasterItem[]>([]);
+  const [masterTotal,setMasterTotal]=useState(0);
+  const [masterOffset,setMasterOffset]=useState(0);
+  const [masterLoading,setMasterLoading]=useState(false);
+  const [masterError,setMasterError]=useState('');
+  const [masterDetail,setMasterDetail]=useState<PlantMasterDetail | null>(null);
+  const [masterDetailError,setMasterDetailError]=useState('');
+  const [placesQuery,setPlacesQuery]=useState('');
+  const [googlePlaces,setGooglePlaces]=useState<GooglePlace[]>([]);
+  const [placesLoading,setPlacesLoading]=useState(false);
+  const [placesError,setPlacesError]=useState('');
   const [permissions,setPermissions]=useState<string[]>([]);
   const [workspace,setWorkspace]=useState('');
   const [records,setRecords]=useState<Array<Record<string,unknown>>>([]);
@@ -212,6 +249,74 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
       });
     return () => { active = false; };
   }, [stage, user?.role]);
+
+
+  async function loadAdminNotices() {
+    if(user?.role!=='central_admin')return;
+    try{
+      const response=await apiClient.get('/api/notifications',{params:{limit:20}});
+      setAdminNotices(response.data?.items||[]);
+      setAdminUnread(Number(response.data?.unread||0));
+      setAdminNoticeError('');
+    }catch(e){setAdminNoticeError(errorMessage(e));}
+  }
+
+  useEffect(()=>{
+    if(stage!=='authenticated'||user?.role!=='central_admin')return;
+    let active=true;
+    apiClient.get('/api/notifications',{params:{limit:20}})
+      .then(response=>{
+        if(!active)return;
+        setAdminNotices(response.data?.items||[]);
+        setAdminUnread(Number(response.data?.unread||0));
+      })
+      .catch(e=>{if(active)setAdminNoticeError(errorMessage(e));});
+    return()=>{active=false;};
+  },[stage,user?.role]);
+
+  async function markAdminNoticesRead() {
+    try{
+      await apiClient.post('/api/notifications/read-all');
+      await loadAdminNotices();
+    }catch(e){setAdminNoticeError(errorMessage(e));}
+  }
+
+  async function loadPlantMaster(offset=0) {
+    if(!permissions.includes('plant.view')||!permissions.includes('user.view')){
+      setMasterError('Plant and user directory permissions are required.');return;
+    }
+    setShowPlantMaster(true);setMasterLoading(true);setMasterError('');
+    setMasterDetail(null);setMasterDetailError('');setMasterItems([]);
+    try{
+      const response=await apiClient.get('/api/control-center/plants/master',{params:{
+        q:masterSearch,city:masterCity,state:masterState,status:masterStatus,limit:20,offset
+      }});
+      setMasterItems(response.data?.items||[]);
+      setMasterTotal(Number(response.data?.total||0));
+      setMasterOffset(offset);
+    }catch(e){setMasterError(errorMessage(e));}
+    finally{setMasterLoading(false);}
+  }
+
+  async function openPlantMaster(id:string) {
+    setMasterDetail(null);setMasterDetailError('');
+    try{
+      const response=await apiClient.get('/api/control-center/plants/'+encodeURIComponent(id)+'/master');
+      setMasterDetail(response.data as PlantMasterDetail);
+    }catch(e){setMasterDetailError(errorMessage(e));}
+  }
+
+  async function searchGooglePlaces(event:React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if(placesQuery.trim().length<3){setPlacesError('Enter at least three characters.');return;}
+    setPlacesLoading(true);setPlacesError('');setGooglePlaces([]);
+    try{
+      const response=await apiClient.get('/api/plant-onboarding/places',{params:{q:placesQuery.trim()}});
+      if(response.data?.configured===false)throw new Error('Google Places is not configured on this backend.');
+      setGooglePlaces(response.data?.places||[]);
+    }catch(e){setPlacesError(errorMessage(e));}
+    finally{setPlacesLoading(false);}
+  }
 
   async function loadNativeAutomation() {
     setShowNativeAutomation(true);setBusy(true);setError('');
@@ -1106,16 +1211,48 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
               <p style={{ color: '#94a3b8', fontSize: 12 }}>This portal is being connected incrementally to secured Rust APIs. Privileged actions require recent authenticator verification.</p>
             </div>
             {user.role === 'central_admin' && (
-              <nav aria-label="Control Center sections" style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:14}}>
-                {([
-                  ['#platform-overview','Platform KPIs'],
-                  ['#automation-governance','Automation'],
-                  ['#authority-governance','Authority'],
-                  ['#operations-workspaces','Operations & Marketing'],
-                ] as const).map(([href,label])=><a key={href} href={href}
-                  style={{padding:'9px 13px',borderRadius:8,color:'#f8fafc',background:'#25364e',
-                    border:'1px solid #475569',textDecoration:'none',fontSize:13,fontWeight:650}}>{label}</a>)}
-              </nav>
+              <section aria-label="Central Admin quick navigation" style={{marginTop:16}}>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
+                  <div>
+                    <h2 style={{fontSize:19,margin:'0 0 4px'}}>TMRMC Control Center</h2>
+                    <p style={{fontSize:12,color:'#cbd5e1',margin:0}}>One secure workspace for approvals, plant operations and platform oversight.</p>
+                  </div>
+                  <button type="button" onClick={()=>setShowAdminNotices(value=>!value)}
+                    style={{...buttonStyle,width:'auto',marginTop:0,background:'#25364e',display:'flex',alignItems:'center',gap:8}}
+                    aria-label="Review admin notifications">
+                    <Bell size={17} aria-hidden="true"/> Notifications {adminUnread>0?'('+adminUnread+')':''}
+                  </button>
+                </div>
+                {showAdminNotices && <section aria-label="Admin notifications" style={{border:'1px solid #475569',borderRadius:10,padding:12,marginTop:10,background:'#111827'}}>
+                  <div style={{display:'flex',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}>
+                    <strong>Approval and enquiry notifications</strong>
+                    <div style={{display:'flex',gap:8}}>
+                      <button type="button" disabled={busy} onClick={()=>void loadAdminNotices()} style={{...buttonStyle,width:'auto',marginTop:0,padding:'7px 10px'}}>Refresh</button>
+                      <button type="button" disabled={busy||adminUnread===0} onClick={()=>void markAdminNoticesRead()} style={{...buttonStyle,width:'auto',marginTop:0,padding:'7px 10px',background:'#334155'}}>Mark all read</button>
+                    </div>
+                  </div>
+                  {adminNoticeError && <p role="alert">{adminNoticeError}</p>}
+                  {adminNotices.map(item=><article key={item.id} style={{padding:'9px 0',borderBottom:'1px solid #334155'}}>
+                    <div style={{display:'flex',gap:8,alignItems:'center'}}><strong style={{fontSize:13}}>{item.title}</strong>{!item.read&&<span style={{fontSize:11,color:'#86efac'}}>New</span>}</div>
+                    <p style={{fontSize:12,color:'#cbd5e1',margin:'4px 0'}}>{item.body}</p>
+                  </article>)}
+                  {!adminNotices.length&&!adminNoticeError&&<p>No notifications to show.</p>}
+                </section>}
+                <nav aria-label="Control Center sections" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:9,marginTop:14}}>
+                  {([
+                    {href:'#platform-overview',label:'Platform KPIs',caption:'Live overview',icon:Building2},
+                    {href:'#plant-master',label:'Plant Master',caption:'Registered plants & owners',icon:Factory},
+                    {href:'#operations-workspaces',label:'Onboarding & RFQs',caption:'Review queues',icon:ClipboardCheck},
+                    {href:'#automation-governance',label:'Automation',caption:'Native workflow health',icon:Workflow},
+                    {href:'#authority-governance',label:'Governance',caption:'Permissions & audit',icon:ShieldCheck},
+                  ] as const).map(item=><a key={item.label} href={item.href}
+                    style={{padding:12,border:'1px solid #475569',borderRadius:10,background:'rgba(30,41,59,.85)',color:'#f8fafc',textDecoration:'none',display:'grid',gap:6}}>
+                    <item.icon size={22} aria-hidden="true"/>
+                    <strong style={{fontSize:13}}>{item.label}</strong>
+                    <span style={{fontSize:11,color:'#cbd5e1'}}>{item.caption}</span>
+                  </a>)}
+                </nav>
+              </section>
             )}
             {user.role === 'central_admin' && (
               <section id="platform-overview" aria-label="Platform overview" style={{ marginTop: 14, padding: 16, border: '1px solid #334155', borderRadius: 10 }}>
@@ -1133,6 +1270,101 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                 <p style={{ color: '#94a3b8', fontSize: 12 }}>Read-only statistics from the Rust API. This is not the complete reference Control Center.</p>
               </section>
             )}
+            {user.role === 'central_admin' && permissions.includes('plant.view') && permissions.includes('user.view') && (
+              <section id="plant-master" aria-label="Central Admin Plant Master" style={{marginTop:18,padding:14,border:'1px solid #334155',borderRadius:12}}>
+                <div style={{display:'flex',alignItems:'center',gap:10}}>
+                  <Factory size={24} aria-hidden="true"/>
+                  <div>
+                    <h2 style={{margin:0,fontSize:19}}>Plant Master</h2>
+                    <p style={{fontSize:12,color:'#cbd5e1',margin:'4px 0 0'}}>A joined directory of first-party plant, owner and staff records. Google-listed places are separate.</p>
+                  </div>
+                </div>
+                <button type="button" disabled={masterLoading} onClick={()=>void loadPlantMaster()} style={{...buttonStyle,marginTop:12}}>
+                  {showPlantMaster?'Refresh registered plants':'Open registered plants'}
+                </button>
+                {showPlantMaster && <>
+                  <form onSubmit={event=>{event.preventDefault();void loadPlantMaster(0);}} style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))',gap:9,marginTop:12}}>
+                    <label style={{fontSize:12}}>Name, code or Place ID
+                      <input aria-label="Plant Master search" maxLength={100} value={masterSearch} onChange={e=>setMasterSearch(e.target.value)} style={inputStyle} />
+                    </label>
+                    <label style={{fontSize:12}}>City
+                      <input maxLength={100} value={masterCity} onChange={e=>setMasterCity(e.target.value)} style={inputStyle}/>
+                    </label>
+                    <label style={{fontSize:12}}>State
+                      <input maxLength={100} value={masterState} onChange={e=>setMasterState(e.target.value)} style={inputStyle}/>
+                    </label>
+                    <label style={{fontSize:12}}>Registration status
+                      <select value={masterStatus} onChange={e=>setMasterStatus(e.target.value)} style={inputStyle}>
+                        <option value="all">All registered</option><option value="approved">Onboarding approved</option>
+                        <option value="unverified">Awaiting onboarding approval</option><option value="inactive">Inactive</option>
+                      </select>
+                    </label>
+                    <button type="submit" style={{...buttonStyle,alignSelf:'end',marginTop:0}} disabled={masterLoading}>Search plants</button>
+                  </form>
+                  {masterLoading && <p role="status">Loading Plant Master…</p>}
+                  {masterError && <div role="alert" style={{marginTop:12}}>{masterError}
+                    <button type="button" onClick={()=>void loadPlantMaster(masterOffset)}>Retry Plant Master</button></div>}
+                  {!masterLoading&&!masterError&&<>
+                    <p style={{fontSize:12,color:'#cbd5e1'}}>{masterTotal} matching registered plants · Showing {masterItems.length} on this page</p>
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(235px,1fr))',gap:9}}>
+                      {masterItems.map(item=><article key={item.id} style={{border:'1px solid #475569',background:'#111827',borderRadius:9,padding:12}}>
+                        <strong>{item.name}</strong>
+                        <p style={{fontSize:12,color:'#cbd5e1',margin:'6px 0'}}>{item.code} · {item.city}, {item.state}</p>
+                        <p style={{fontSize:12,margin:'6px 0'}}>{item.onboarding_approved?'Onboarding approved':item.active?'Approval not confirmed':'Inactive'} · {item.staff_count} active staff</p>
+                        <p style={{fontSize:12,color:'#cbd5e1',margin:'6px 0'}}>Owner: {item.owner_name} · {item.owner_email||'No email'}</p>
+                        <button type="button" onClick={()=>void openPlantMaster(item.id)} style={{...buttonStyle,marginTop:6}}>Open plant record</button>
+                      </article>)}
+                    </div>
+                    {!masterItems.length&&<p>No matching registered plants. Google Places search below is separate.</p>}
+                    <div style={{display:'flex',gap:8,alignItems:'center',marginTop:10}}>
+                      <button type="button" disabled={masterOffset===0||masterLoading} onClick={()=>void loadPlantMaster(Math.max(0,masterOffset-20))}>Previous</button>
+                      <button type="button" disabled={masterOffset+20>=masterTotal||masterLoading} onClick={()=>void loadPlantMaster(masterOffset+20)}>Next</button>
+                    </div>
+                  </>}
+                  {masterDetailError&&<p role="alert">{masterDetailError}</p>}
+                  {masterDetail&&<section aria-label="Selected plant details" style={{border:'1px solid #64748b',background:'#172334',borderRadius:10,padding:14,marginTop:14}}>
+                    <h3 style={{margin:'0 0 6px',fontSize:17}}>{masterDetail.plant.name} · Plant record</h3>
+                    <p style={{fontSize:12,color:'#cbd5e1'}}>{masterDetail.plant.address}, {masterDetail.plant.city}, {masterDetail.plant.state} {masterDetail.plant.pincode||''}</p>
+                    <p style={{fontSize:13}}><strong>Owner:</strong> {masterDetail.plant.owner_name} · {masterDetail.plant.owner_email||'No email'}</p>
+                    <p style={{fontSize:12}}><strong>Status:</strong> {masterDetail.plant.onboarding_approved?'Onboarding approved':'Onboarding approval not confirmed'} · {masterDetail.plant.active?'Active':'Inactive'}</p>
+                    <h4 style={{margin:'15px 0 6px'}}>Staff roles ({masterDetail.staff.length} assigned)</h4>
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:8}}>
+                      {masterDetail.staff.map(staff=><div key={staff.user_id} style={{border:'1px solid #475569',padding:9,borderRadius:8}}>
+                        <strong style={{fontSize:13}}>{staff.role.replace(/_/g,' ')}</strong>
+                        <p style={{fontSize:12,margin:'5px 0'}}>{staff.name} · {staff.email||'No work email'}</p>
+                        <span style={{fontSize:12,color:'#cbd5e1'}}>{staff.employment_status}</span>
+                      </div>)}
+                    </div>
+                    {!masterDetail.staff.length&&<p>No staff assignments yet.</p>}
+                    <p style={{fontSize:12,color:'#cbd5e1'}}>Staff invitations and role-slot replacements remain under existing Plant Owner / authorized Manager workflows. No privileged bypass is introduced here.</p>
+                    <button type="button" onClick={()=>setMasterDetail(null)} style={{...buttonStyle,background:'#334155'}}>Close plant record</button>
+                  </section>}
+                  <section aria-label="Google Places discovery" style={{borderTop:'1px solid #334155',marginTop:18,paddingTop:14}}>
+                    <h3 style={{fontSize:16,margin:'0 0 4px'}}>Discover Google-listed RMC plants</h3>
+                    <p style={{fontSize:12,color:'#cbd5e1'}}>Read-only live search. A Google listing is not verified ownership, onboarding, or an eligible recipient for marketing.</p>
+                    <form onSubmit={searchGooglePlaces} style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'end'}}>
+                      <label style={{flex:'1 1 230px',fontSize:12}}>Plant or area
+                        <input value={placesQuery} maxLength={120} onChange={e=>setPlacesQuery(e.target.value)} style={inputStyle} placeholder="Ready mix concrete plant in Panvel"/>
+                      </label>
+                      <button type="submit" disabled={placesLoading} style={{...buttonStyle,width:'auto',marginTop:0}}>Search Google Places</button>
+                    </form>
+                    {placesLoading&&<p role="status">Searching Google Places…</p>}
+                    {placesError&&<p role="alert">{placesError}</p>}
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:8,marginTop:10}}>
+                      {googlePlaces.map(item=><article key={item.place_id} style={{border:'1px solid #475569',borderRadius:8,padding:10}}>
+                        <strong style={{fontSize:13}}>{item.name}</strong>
+                        <p style={{fontSize:12,color:'#cbd5e1'}}>{item.address}</p>
+                        <p style={{fontSize:11}}>Google-listed · Not TMRMC verified</p>
+                        <a target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:'#93c5fd'}}
+                          href={'https://www.google.com/maps/search/?api=1&query=RMC%20Plant&query_place_id='+encodeURIComponent(item.place_id)}>View on Google Maps</a>
+                      </article>)}
+                    </div>
+                    <p style={{fontSize:11,color:'#cbd5e1'}}>Place data: Google Maps. Results are not added to the database or contact lists.</p>
+                  </section>
+                </>}
+              </section>
+            )}
+
             {user.role === 'central_admin' && permissions.includes('system.view') && (
               <section id="automation-governance" aria-label="Native automation governance" style={{marginTop:18,padding:14,border:'1px solid #334155',borderRadius:10}}>
                 <h2 style={{marginTop:0,fontSize:19}}>Native Automation Center</h2>
@@ -1321,7 +1553,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                 </section>}
               </>}
               <nav style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                {['users','plants','orders','support','service_enquiries','rmc_rfq_leads','kyc','audit','sessions'].filter(kind=>permissions.includes(({users:'user.view',plants:'plant.view',orders:'order.view',support:'support.view',service_enquiries:'support.view',rmc_rfq_leads:'support.view',kyc:'kyc.view',audit:'audit.view',sessions:'session.view'} as Record<string,string>)[kind])).map(kind=>
+                {['users','orders','support','service_enquiries','rmc_rfq_leads','kyc','audit','sessions'].filter(kind=>permissions.includes(({users:'user.view',plants:'plant.view',orders:'order.view',support:'support.view',service_enquiries:'support.view',rmc_rfq_leads:'support.view',kyc:'kyc.view',audit:'audit.view',sessions:'session.view'} as Record<string,string>)[kind])).map(kind=>
                   <button key={kind} disabled={busy} onClick={()=>void loadWorkspace(kind)} style={{...buttonStyle,width:'auto',textTransform:'capitalize'}}>{kind}</button>)}
               </nav>
               {workspace && <><h2 style={{textTransform:'capitalize'}}>{workspace}</h2>

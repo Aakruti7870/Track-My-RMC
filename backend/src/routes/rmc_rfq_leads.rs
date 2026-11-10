@@ -276,7 +276,7 @@ pub async fn create(
     };
     sqlx::query(
         "INSERT INTO notifications(user_id,title,body,notification_type,reference_id)
-         SELECT id,'New RMC supplier enquiry',$1,'rmc_rfq_lead',$2 FROM users WHERE role='admin' AND is_active"
+         SELECT id,'New RMC supplier enquiry',$1,'rmc_rfq_lead',$2 FROM users WHERE role IN ('admin','central_admin') AND is_active"
     ).bind(format!("Enquiry {} needs supplier onboarding and admin follow-up",lead_id))
     .bind(lead_id.to_string()).execute(&mut *tx).await?;
     sqlx::query(
