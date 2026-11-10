@@ -86,7 +86,7 @@ export default function PublicSharedTrip() {
             <AppText>Challan: {trip.challan_number}</AppText>
             <AppText>Batch time: {new Date(trip.batch_time).toLocaleString()}</AppText>
             {Platform.OS === "web" ? (
-              <Button label="Print / Save Challan as PDF" variant="outline" onPress={printChallan} />
+              <Button label="Print Delivery Summary" variant="outline" onPress={printChallan} />
             ) : null}
           </Card>
           {trip.location ? (
