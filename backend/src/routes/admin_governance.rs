@@ -343,9 +343,9 @@ pub async fn import_contacts(
 ) -> Result<Json<Value>, AppError> {
     admin.require("support.manage")?;
     let why = reason(&body.reason)?;
-    if body.contacts.is_empty() || body.contacts.len() > 100 {
+    if body.contacts.is_empty() || body.contacts.len() > 1000 {
         return Err(AppError::BadRequest(
-            "Import one to 100 contacts per request".into(),
+            "Import one to 1000 contacts per file".into(),
         ));
     }
     // Validate all lines before touching persistent data.
@@ -361,13 +361,42 @@ pub async fn import_contacts(
     }
     crate::routes::control_center_routes::require_recent_step_up(&state, &admin, &headers).await?;
     let mut tx = state.db.begin().await?;
-    let exists: bool =
-        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM admin_marketing_segments WHERE id=$1)")
-            .bind(body.segment_id)
-            .fetch_one(&mut *tx)
-            .await?;
-    if !exists {
-        return Err(AppError::NotFound("Contact group not found".into()));
+    // Serialize concurrent imports into the same user-created channel, so
+    // two simultaneous files cannot jointly bypass the 1000-unique-member cap.
+    let locked: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM admin_marketing_segments WHERE id=$1 FOR UPDATE",
+    )
+    .bind(body.segment_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if locked.is_none() {
+        return Err(AppError::NotFound("Channel not found. Create a channel first.".into()));
+    }
+    let current_members: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM admin_marketing_memberships WHERE segment_id=$1",
+    )
+    .bind(body.segment_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    let phones: Vec<String> = clean.iter().map(|(phone, _)| phone.clone()).collect();
+    let new_members: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM (
+            SELECT DISTINCT phone_e164 FROM unnest($2::text[]) AS imported(phone_e164)
+        ) incoming
+        WHERE NOT EXISTS (
+            SELECT 1 FROM admin_marketing_memberships m
+            JOIN admin_marketing_contacts c ON c.id=m.contact_id
+            WHERE m.segment_id=$1 AND c.phone_e164=incoming.phone_e164
+        )",
+    )
+    .bind(body.segment_id)
+    .bind(&phones)
+    .fetch_one(&mut *tx)
+    .await?;
+    if current_members + new_members > 1000 {
+        return Err(AppError::Conflict(
+            "This channel supports at most 1000 unique contacts. Remove duplicates or choose a smaller file.".into(),
+        ));
     }
     for (phone, name) in &clean {
         // Import never grants opt-in and never reverses an opt-out.
@@ -393,13 +422,15 @@ pub async fn import_contacts(
     )
     .bind(admin.user_id)
     .bind(body.segment_id.to_string())
-    .bind(json!({"count":clean.len(),"reason":why,"opt_in_granted":false}))
+    .bind(json!({"count":clean.len(),"added_unique":new_members,"channel_total":current_members+new_members,"reason":why,"opt_in_granted":false}))
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
     Ok(Json(
-        json!({"success":true,"processed":clean.len(),"consent_status":"UNVERIFIED",
-      "message":"Contacts imported for internal organization only. Import does not grant marketing consent."}),
+        json!({"success":true,"processed":clean.len(),"added_unique":new_members,
+      "channel_members":current_members+new_members,"channel_limit":1000,
+      "consent_status":"UNVERIFIED",
+      "message":"Contacts imported into the selected channel. Import does not grant marketing consent or send messages."}),
     ))
 }
 
