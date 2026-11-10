@@ -133,6 +133,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         info!("Opt-in WhatsApp marketing worker enabled");
     }
 
+    // Central CRM campaigns are independent of transactional dispatch marketing.
+    // Without explicit release activation this worker is not even spawned.
+    if std::env::var("ADMIN_MARKETING_SEND_ENABLED").ok().as_deref() == Some("true") {
+        let admin_marketing_state = state.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+            loop {
+                interval.tick().await;
+                if let Err(error) =
+                    trackmyrmc_backend::routes::admin_campaign::tick(&admin_marketing_state).await
+                {
+                    tracing::error!(error = ?error, "Admin CRM marketing worker failed");
+                }
+            }
+        });
+        info!("Consent-reviewed Admin CRM marketing worker enabled");
+    }
+
     // Separate utility alert queue for Plant Owner registration leads.
     // Opt in only after an approved Meta template and operator recipient are configured.
     if std::env::var("PLANT_OWNER_ALERT_WORKER_ENABLED")
