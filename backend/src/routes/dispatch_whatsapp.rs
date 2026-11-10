@@ -462,8 +462,11 @@ pub async fn receive_meta_webhook(
             // Explicit recipient STOP on the verified sender cancels all pending
             // marketing for that number across all tenant plants.
             for inbound in change["value"]["messages"].as_array().into_iter().flatten() {
-                let text = inbound["text"]["body"].as_str()
-                    .unwrap_or("").trim().to_ascii_uppercase();
+                let text = inbound["text"]["body"]
+                    .as_str()
+                    .unwrap_or("")
+                    .trim()
+                    .to_ascii_uppercase();
                 if matches!(text.as_str(), "STOP" | "UNSUBSCRIBE" | "OPT OUT") {
                     if let Some(from) = inbound["from"].as_str() {
                         if let Ok(phone) = dispatch_whatsapp::normalize_recipient(from) {
