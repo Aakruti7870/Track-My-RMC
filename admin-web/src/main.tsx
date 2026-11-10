@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { Bell, Building2, ClipboardCheck, Factory, FileClock, Megaphone, ShieldCheck, Workflow } from 'lucide-react';
+import { Bell, Building2, ClipboardCheck, Factory, ShieldCheck, Workflow } from 'lucide-react';
 import { AuthenticatorQr } from './AuthenticatorQr';
 import apiClient, { getAccessToken, setAccessToken } from './api';
 
@@ -1243,7 +1243,6 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                     {href:'#platform-overview',label:'Platform KPIs',caption:'Live overview',icon:Building2},
                     {href:'#plant-master',label:'Plant Master',caption:'Registered plants & owners',icon:Factory},
                     {href:'#operations-workspaces',label:'Onboarding & RFQs',caption:'Review queues',icon:ClipboardCheck},
-                    {href:'#operations-workspaces',label:'Support & Outreach',caption:'Consented invitations',icon:Megaphone},
                     {href:'#automation-governance',label:'Automation',caption:'Native workflow health',icon:Workflow},
                     {href:'#authority-governance',label:'Governance',caption:'Permissions & audit',icon:ShieldCheck},
                   ] as const).map(item=><a key={item.label} href={item.href}
