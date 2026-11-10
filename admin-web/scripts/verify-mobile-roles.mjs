@@ -343,35 +343,56 @@ try {
     const disabledKeys = user.role === 'dispatcher' ? ['business-reports'] : [];
     const visibleKeys = user.role === 'customer'
       ? ['account-deletion', 'customer-support', 'notifications', 'quotations', 'documents']
-      : modulesForRole(user.role).map(module => module.key).filter(key => !disabledKeys.includes(key));
+      : modulesForRole(user.role).map(module => module.key)
+        .filter(key => key !== 'notifications' && !disabledKeys.includes(key));
+    // Staff and Driver notifications are exclusively in the shared header.
+    if (user.role !== 'customer') await expect(page.getByTestId('operational-notifications')).toBeVisible();
     const visibleModuleCards = async (locator = page) => {
       const cards = locator.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])')
         .filter({ visible: true });
       return cards.evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid').slice('role-module-'.length)));
     };
     if (user.role === 'plant_owner') {
-      phase = 'owner Home shortcut inventory';
-      await expect(page.locator('[data-testid^="owner-shortcut-"]')).toHaveCount(6);
+      phase = 'owner Home shortcut, metrics and Commercial inventory';
+      await expect(page.locator('[data-testid^="owner-shortcut-"]')).toHaveCount(5);
       const homeKeys = await page.locator('[data-testid^="owner-shortcut-"]').filter({ visible: true })
         .evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid').slice('owner-shortcut-'.length)));
-      assert.equal(homeKeys.length, 6, 'Owner Home must render six compact priority shortcuts');
+      assert.deepEqual(new Set(homeKeys), new Set([
+        'owner-orders', 'owner-production-dispatch', 'business-inventory', 'business-staff', 'insights',
+      ]), 'Owner Home must have four unique routes plus the local Insights toggle');
+      await expect(page.locator('[data-testid^="owner-metric-"]')).toHaveCount(8);
+      await expect(page.getByTestId('owner-metric-plant_attendance_today')).toBeVisible();
+      const commercialGrid = page.getByTestId('owner-commercial-grid');
+      await expect(commercialGrid).toBeVisible();
+      await expect(commercialGrid.locator(':scope > *')).toHaveCount(12);
+      await expect(commercialGrid.locator('[data-testid^="role-module-"]')).toHaveCount(13);
+      const commercialKeys = await visibleModuleCards(commercialGrid);
+      await expect(page.getByTestId('role-module-owner-drivers')).toBeVisible();
       phase = 'owner Operations navigation';
       await page.getByTestId('tab-operations').click();
       phase = 'owner automation center';
       await expect(page.getByTestId('owner-native-automation-center')).toBeVisible();
       phase = 'owner Operations module inventory';
-      await expect(page.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])')).toHaveCount(6);
+      await expect(page.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])')).toHaveCount(8);
       const operationsKeys = await visibleModuleCards();
       phase = 'owner More navigation';
       await page.getByTestId('tab-more').click();
-      phase = 'owner More module inventory';
+      phase = 'owner More account-only inventory';
       await expect(page.getByTestId('role-module-directory')).toBeVisible();
       const ownerMoreDirectory = page.getByTestId('role-module-directory');
-      await expect(ownerMoreDirectory.locator('[data-testid^="role-module-"]')).toHaveCount(20);
+      await expect(ownerMoreDirectory.locator('[data-testid^="role-module-"]')).toHaveCount(4);
+      await expect(page.getByTestId('owner-staff-module-access')).toBeVisible();
+      await expect(page.getByTestId('owner-permission-settings')).toBeVisible();
+      await expect(page.getByTestId('owner-logout')).toBeVisible();
       const moreKeys = await visibleModuleCards(ownerMoreDirectory);
       phase = 'owner module catalog reconciliation';
-      const rendered = [...homeKeys, ...operationsKeys, ...moreKeys];
-      const expectedOwnerKeys = new Set([...visibleKeys, 'owner-drivers']);
+      const rendered = [...homeKeys.filter(key => key !== 'insights'), ...commercialKeys,
+        ...operationsKeys, ...moreKeys, 'owner-drivers'];
+      // Attendance is the Home KPI (not a duplicate module card); notifications
+      // is in the header, and Insights is a local toggle (not a catalog route).
+      const expectedOwnerKeys = new Set([
+        ...visibleKeys.filter(key => key !== 'business-attendance'), 'owner-drivers',
+      ]);
       const duplicateOwnerKeys = rendered.filter((key, index) => rendered.indexOf(key) !== index);
       const missingOwnerKeys = [...expectedOwnerKeys].filter(key => !rendered.includes(key));
       const unexpectedOwnerKeys = rendered.filter(key => !expectedOwnerKeys.has(key));
@@ -404,6 +425,7 @@ try {
         'All authorized driver modules must be discoverable exactly once on More');
     } else {
       const nativeTabKeys = {
+        admin: ['admin-orders', 'admin-fleet'],
         dispatcher: ['dispatcher-queue', 'dispatcher-fleet'],
         operator: ['operator-production'],
         supervisor: ['supervisor-operations', 'supervisor-incidents'],
@@ -418,13 +440,17 @@ try {
       await expect.poll(async () => (await homeDirectory.innerText()).includes('Checking staff permissions…')).toBe(false);
       await expect.poll(() => homeDirectory.locator('[data-testid^="role-module-"]').count()).toBeGreaterThan(0);
       const homeKeys = await visibleModuleCards(homeDirectory);
-      assert(homeKeys.length > 0 && homeKeys.length <= 8, 'Staff Home requires one to eight permission-eligible compact role tiles');
+      assert(homeKeys.length > 0, 'Staff Home must expose permission-eligible operational destinations');
+      assert(homeKeys.every(key => !['public-plant-profile', 'my-payslip'].includes(key)),
+        'Staff Home must not duplicate personal More modules');
       await page.getByTestId('tab-more').click();
       const moreDirectory = page.locator('[data-testid="role-module-directory"]:has([data-testid="staff-module-search"])')
         .filter({ visible: true });
       await expect(moreDirectory).toBeVisible();
       await expect.poll(async () => (await moreDirectory.innerText()).includes('Checking staff permissions…')).toBe(false);
       const moreKeys = await visibleModuleCards(moreDirectory);
+      assert(moreKeys.every(key => ['public-plant-profile', 'my-payslip'].includes(key)),
+        'Staff More must contain only personal/account destinations');
       const rendered = [...nativeTabKeys, ...homeKeys, ...moreKeys];
       assert.equal(new Set(rendered).size, rendered.length, 'Staff module cards must not repeat');
       assert.deepEqual(new Set(rendered), new Set(visibleKeys),
