@@ -640,6 +640,15 @@ pub async fn get_portal_summary(
         sqlx::query_scalar("SELECT COUNT(*) FROM user_profiles WHERE kyc_status = 'pending'")
             .fetch_one(&state.db)
             .await?;
+    let onboarding_requests: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM plant_listing_requests WHERE status = 'PENDING'",
+    ).fetch_one(&state.db).await?;
+    let onboarding_approved: i64 = sqlx::query_scalar(
+        "SELECT COUNT(DISTINCT plant_id) FROM plant_listing_requests WHERE status = 'APPROVED' AND plant_id IS NOT NULL",
+    ).fetch_one(&state.db).await?;
+    let pending_supplier_rfqs: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM rmc_rfq_leads WHERE status = 'PENDING_SUPPLIER' AND expires_at > NOW()",
+    ).fetch_one(&state.db).await?;
 
     Ok(Json(json!({
         "success": true,
@@ -648,9 +657,130 @@ pub async fn get_portal_summary(
             { "label": "Registered Users", "value": if auth_user.permissions.iter().any(|p| p == "user.view") { Some(total_users) } else { None } },
             { "label": "Total Orders", "value": if auth_user.permissions.iter().any(|p| p == "order.view") { Some(total_orders) } else { None } },
             { "label": "Paid Revenue", "value": if auth_user.permissions.iter().any(|p| p == "payment.view") { Some(total_revenue) } else { None } },
-            { "label": "Pending KYC Verifications", "value": if auth_user.permissions.iter().any(|p| p == "kyc.view") { Some(pending_kyc) } else { None } }
+            { "label": "Pending KYC Verifications", "value": if auth_user.permissions.iter().any(|p| p == "kyc.view") { Some(pending_kyc) } else { None } },
+            { "label": "Onboarding Requests", "value": if auth_user.permissions.iter().any(|p| p == "plant_owners.manage") { Some(onboarding_requests) } else { None } },
+            { "label": "Approved Plant Listings", "value": if auth_user.permissions.iter().any(|p| p == "plant.view") { Some(onboarding_approved) } else { None } },
+            { "label": "Unmatched Supplier RFQs", "value": if auth_user.permissions.iter().any(|p| p == "support.view") { Some(pending_supplier_rfqs) } else { None } }
         ]
     })))
+}
+
+
+#[derive(Debug, Deserialize)]
+pub struct PlantMasterFilter {
+    q: Option<String>,
+    city: Option<String>,
+    state: Option<String>,
+    status: Option<String>,
+    limit: Option<i64>,
+    offset: Option<i64>,
+}
+
+fn bounded_plant_filter(value: Option<String>, name: &str) -> Result<String, AppError> {
+    let value = value.unwrap_or_default().trim().to_string();
+    if value.chars().count() > 100 || value.chars().any(char::is_control) {
+        return Err(AppError::BadRequest(format!("Invalid {name} filter")));
+    }
+    Ok(value)
+}
+
+/// Read-only, server-filtered platform directory. Google Places results are never
+/// silently imported into this table; only first-party registered plant rows appear.
+pub async fn list_plant_master(
+    State(state): State<AppState>,
+    admin: WebAdmin,
+    axum::extract::Query(filters): axum::extract::Query<PlantMasterFilter>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    admin.require("plant.view")?;
+    admin.require("user.view")?; // Owner email and employee identities are personal data.
+    let q = bounded_plant_filter(filters.q, "search")?;
+    let city = bounded_plant_filter(filters.city, "city")?;
+    let state_filter = bounded_plant_filter(filters.state, "state")?;
+    let status = filters.status.as_deref().unwrap_or("all");
+    if !matches!(status, "all" | "approved" | "unverified" | "inactive") {
+        return Err(AppError::BadRequest("Invalid plant status filter".into()));
+    }
+    let limit = filters.limit.unwrap_or(20).clamp(1, 50);
+    let offset = filters.offset.unwrap_or(0);
+    if !(0..=10000).contains(&offset) {
+        return Err(AppError::BadRequest("Invalid plant page offset".into()));
+    }
+
+    // Parameterized queries intentionally share their predicate for an accurate
+    // total, independent of the current page. Never interpolate client input.
+    let predicate = r#"
+        FROM rmc_plants p
+        JOIN users u ON u.id = p.owner_id
+        WHERE ($1 = '' OR p.name ILIKE '%' || $1 || '%'
+               OR p.code ILIKE '%' || $1 || '%'
+               OR COALESCE(p.google_place_id, '') ILIKE '%' || $1 || '%')
+          AND ($2 = '' OR p.city ILIKE '%' || $2 || '%')
+          AND ($3 = '' OR p.state ILIKE '%' || $3 || '%')
+          AND ($4 = 'all'
+               OR ($4 = 'inactive' AND NOT p.is_active)
+               OR ($4 = 'approved' AND p.is_active AND EXISTS(
+                   SELECT 1 FROM plant_listing_requests lr
+                   WHERE lr.plant_id = p.id AND lr.status = 'APPROVED'))
+               OR ($4 = 'unverified' AND p.is_active AND NOT EXISTS(
+                   SELECT 1 FROM plant_listing_requests lr
+                   WHERE lr.plant_id = p.id AND lr.status = 'APPROVED')))
+    "#;
+    let total: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) {predicate}"))
+        .bind(&q).bind(&city).bind(&state_filter).bind(status)
+        .fetch_one(&state.db).await?;
+    let rows: Vec<serde_json::Value> = sqlx::query_scalar(&format!(r#"
+        SELECT jsonb_build_object(
+            'id',p.id,'name',p.name,'code',p.code,
+            'address',p.address_line,'city',p.city,'state',p.state,
+            'active',p.is_active,'google_place_id',p.google_place_id,
+            'owner_id',u.id,'owner_name',u.full_name,'owner_email',u.email,
+            'owner_active',u.is_active,
+            'onboarding_approved',EXISTS(
+                SELECT 1 FROM plant_listing_requests lr
+                WHERE lr.plant_id=p.id AND lr.status='APPROVED'),
+            'staff_count',(SELECT COUNT(*) FROM plant_staff ps
+                WHERE ps.plant_id=p.id AND ps.is_active AND ps.removed_at IS NULL))
+        {predicate} ORDER BY p.updated_at DESC,p.id LIMIT $5 OFFSET $6
+    "#))
+        .bind(&q).bind(&city).bind(&state_filter).bind(status).bind(limit).bind(offset)
+        .fetch_all(&state.db).await?;
+    Ok(Json(json!({"items":rows,"total":total,"limit":limit,"offset":offset})))
+}
+
+/// One plant, one source of truth: owner and existing staff slot assignments.
+/// Mutations remain with current owner and delegated manager APIs.
+pub async fn get_plant_master(
+    State(state): State<AppState>,
+    admin: WebAdmin,
+    Path(plant_id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    admin.require("plant.view")?;
+    admin.require("user.view")?;
+    let plant: Option<serde_json::Value> = sqlx::query_scalar(r#"
+        SELECT jsonb_build_object(
+            'id',p.id,'name',p.name,'code',p.code,'address',p.address_line,
+            'city',p.city,'state',p.state,'pincode',p.pincode,
+            'contact_email',p.contact_email,'contact_phone',p.contact_phone,
+            'google_place_id',p.google_place_id,'active',p.is_active,
+            'capacity_m3_per_hr',p.capacity_m3_per_hr,
+            'owner_id',u.id,'owner_name',u.full_name,'owner_email',u.email,
+            'owner_active',u.is_active,'owner_verified',u.is_verified,
+            'onboarding_approved',EXISTS(
+                SELECT 1 FROM plant_listing_requests lr
+                WHERE lr.plant_id=p.id AND lr.status='APPROVED'))
+        FROM rmc_plants p JOIN users u ON u.id=p.owner_id WHERE p.id=$1
+    "#).bind(plant_id).fetch_optional(&state.db).await?;
+    let plant = plant.ok_or_else(|| AppError::NotFound("Plant not found".into()))?;
+    let staff: Vec<serde_json::Value> = sqlx::query_scalar(r#"
+        SELECT jsonb_build_object(
+            'user_id',u.id,'name',u.full_name,'email',u.email,'role',ps.role,
+            'active',ps.is_active,'employment_status',ps.employment_status,
+            'invitation_expires_at',ps.invitation_expires_at)
+        FROM plant_staff ps JOIN users u ON u.id=ps.user_id
+        WHERE ps.plant_id=$1 AND ps.removed_at IS NULL
+        ORDER BY ps.role,u.full_name
+    "#).bind(plant_id).fetch_all(&state.db).await?;
+    Ok(Json(json!({"plant":plant,"staff":staff})))
 }
 
 #[cfg(test)]
