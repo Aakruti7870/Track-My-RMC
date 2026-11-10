@@ -114,7 +114,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Separate marketing worker: independent provider approval and customer opt-in.
     // Disabled by default; order dispatch and Utility delivery continue without it.
     if std::env::var("DISPATCH_WHATSAPP_MARKETING_ENABLED")
-        .ok().as_deref() == Some("true")
+        .ok()
+        .as_deref()
+        == Some("true")
     {
         let marketing_state = state.clone();
         tokio::spawn(async move {
