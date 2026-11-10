@@ -117,6 +117,28 @@ pub async fn submit(
     }
 
     let mut tx = state.db.begin().await?;
+    // Public contact forms need a backend-side abuse ceiling in addition
+    // to Nginx / edge throttling. Serialize count + insert across API replicas.
+    // Operationally configurable; defaults to 60 new leads per hour.
+    sqlx::query("SELECT pg_advisory_xact_lock(184, 20261110)")
+        .execute(&mut *tx)
+        .await?;
+    let hourly: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM plant_owner_registration_requests
+         WHERE created_at > NOW() - INTERVAL '1 hour'",
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    let limit = std::env::var("PLANT_OWNER_REGISTRATION_HOURLY_LIMIT")
+        .ok()
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(60)
+        .clamp(1, 1000);
+    if hourly >= limit {
+        return Err(AppError::RateLimited(
+            "Registration is temporarily busy. Please try again later.".into(),
+        ));
+    }
     let (id, number): (Uuid, String) = sqlx::query_as(
         "INSERT INTO plant_owner_registration_requests
           (owner_name,business_name,business_address,email,whatsapp_number)
