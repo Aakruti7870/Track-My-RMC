@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS plant_owner_registration_requests (
     status VARCHAR(20) NOT NULL DEFAULT 'PENDING'
         CHECK (status IN ('PENDING', 'CONTACTED', 'CLOSED')),
     alert_status VARCHAR(20) NOT NULL DEFAULT 'PENDING'
-        CHECK (alert_status IN ('PENDING', 'SENDING', 'ACCEPTED', 'UNCERTAIN', 'FAILED')),
+        CHECK (alert_status IN ('PENDING', 'SENDING', 'ACCEPTED', 'SENT', 'DELIVERED', 'READ', 'UNCERTAIN', 'FAILED')),
     alert_attempts INTEGER NOT NULL DEFAULT 0,
     alert_attempted_at TIMESTAMPTZ,
     alert_accepted_at TIMESTAMPTZ,
