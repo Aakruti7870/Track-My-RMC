@@ -204,6 +204,10 @@ pub struct UpsertDriverProfile {
     pub blood_group: Option<String>,
     pub driving_licence_number: Option<String>,
     pub driving_licence_valid_until: Option<String>,
+    // Older app versions omit this flag. Their profile saves must not erase
+    // licence data recorded by a newer owner-managed client.
+    #[serde(default)]
+    pub update_driving_licence: bool,
     pub emergency_contact_1_name: Option<String>,
     pub emergency_contact_1_phone: Option<String>,
     pub emergency_contact_2_name: Option<String>,
@@ -528,10 +532,14 @@ pub async fn save_driver_profile(
     {
         return Err(AppError::BadRequest("Unsupported blood group".into()));
     }
-    let (licence_number, licence_valid_until) = validate_driving_licence(
-        input.driving_licence_number,
-        input.driving_licence_valid_until,
-    )?;
+    let (licence_number, licence_valid_until) = if input.update_driving_licence {
+        validate_driving_licence(
+            input.driving_licence_number,
+            input.driving_licence_valid_until,
+        )?
+    } else {
+        (None, None)
+    };
     let ec1_name = bounded_optional(input.emergency_contact_1_name, 120, "Contact 1 name")?;
     let ec2_name = bounded_optional(input.emergency_contact_2_name, 120, "Contact 2 name")?;
     let ec1_phone = validate_contact(input.emergency_contact_1_phone)?;
@@ -629,8 +637,10 @@ pub async fn save_driver_profile(
           emergency_contact_1_phone=EXCLUDED.emergency_contact_1_phone,
           emergency_contact_2_name=EXCLUDED.emergency_contact_2_name,
           emergency_contact_2_phone=EXCLUDED.emergency_contact_2_phone,
-          driving_licence_number=EXCLUDED.driving_licence_number,
-          driving_licence_valid_until=EXCLUDED.driving_licence_valid_until,
+          driving_licence_number=CASE WHEN $13 THEN EXCLUDED.driving_licence_number
+                                      ELSE driver_employment_profiles.driving_licence_number END,
+          driving_licence_valid_until=CASE WHEN $13 THEN EXCLUDED.driving_licence_valid_until
+                                          ELSE driver_employment_profiles.driving_licence_valid_until END,
           is_active=TRUE,employment_status='ACTIVE',updated_at=NOW()"#,
     )
     .bind(plant_id)
@@ -645,6 +655,7 @@ pub async fn save_driver_profile(
     .bind(&ec2_phone)
     .bind(&licence_number)
     .bind(licence_valid_until)
+    .bind(input.update_driving_licence)
     .execute(&mut *tx)
     .await;
     if let Err(err) = update {
@@ -671,7 +682,6 @@ pub async fn save_driver_profile(
         "employment",
         "blood_group",
         "emergency_contacts",
-        "driving_licence",
         "mixer_assignment",
     ])
     .execute(&mut *tx)
