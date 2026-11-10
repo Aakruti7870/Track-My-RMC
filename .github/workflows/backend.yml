@@ -89,10 +89,6 @@ jobs:
           cd backend
           cargo test --all --verbose
 
-      - name: Show lockfile-only dependency diff for follow-up commit
-        if: always()
-        run: git diff -- backend/Cargo.lock
-
       - name: Compile locked Rust release without AWS access
         if: success() && matrix.postgres == 16
         working-directory: backend
