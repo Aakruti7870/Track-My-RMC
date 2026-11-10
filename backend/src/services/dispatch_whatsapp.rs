@@ -95,6 +95,46 @@ pub async fn activate_on_dispatch_in_tx(
     Ok(())
 }
 
+/// Owner notification for ambiguous/rejected WhatsApp delivery, without PII.
+/// Not an external send, and never used to change any order approval state.
+pub async fn alert_owner_review(
+    state: &AppState,
+    plant_id: Uuid,
+    source_id: Uuid,
+    marketing: bool,
+) -> Result<(), AppError> {
+    let (event_type,title,body) = if marketing {
+        (
+            "whatsapp_marketing_review",
+            "WhatsApp app promotion needs review",
+            "An opted-in promotional message could not be confirmed. Check the WhatsApp automation status.",
+        )
+    } else {
+        (
+            "whatsapp_dispatch_review",
+            "WhatsApp dispatch update needs review",
+            "A dispatch notification could not be confirmed. Check the WhatsApp automation status.",
+        )
+    };
+    sqlx::query(
+        "INSERT INTO notifications(user_id,title,body,notification_type,reference_id)
+         SELECT p.owner_id,$2,$3,$4,$5 FROM rmc_plants p
+         WHERE p.id=$1 AND p.is_active
+           AND NOT EXISTS(
+             SELECT 1 FROM notifications n WHERE n.user_id=p.owner_id
+               AND n.notification_type=$4 AND n.reference_id=$5
+           )",
+    )
+    .bind(plant_id)
+    .bind(title)
+    .bind(body)
+    .bind(event_type)
+    .bind(source_id.to_string())
+    .execute(&state.db)
+    .await?;
+    Ok(())
+}
+
 /// Owned by Rust/Tokio; no external workflow runner and no extra automation grants.
 /// This must only be called when DISPATCH_WHATSAPP_ENABLED=true.
 pub async fn tick(state: &AppState) -> Result<usize, AppError> {
@@ -223,6 +263,7 @@ pub async fn tick(state: &AppState) -> Result<usize, AppError> {
                 .bind(reason)
                 .execute(&state.db)
                 .await?;
+                alert_owner_review(state, plant_id, load_id, false).await?;
             }
         }
     }
