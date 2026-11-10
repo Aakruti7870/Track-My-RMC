@@ -96,6 +96,14 @@ pub async fn activate_on_dispatch_in_tx(
 /// Owned by Rust/Tokio; no external workflow runner and no extra automation grants.
 /// This must only be called when DISPATCH_WHATSAPP_ENABLED=true.
 pub async fn tick(state: &AppState) -> Result<usize, AppError> {
+    // A missing template or sender must not consume the only notification attempt.
+    if std::env::var("META_DISPATCH_TEMPLATE_NAME")
+        .ok().filter(|value| !value.is_empty()).is_none()
+        || state.config.meta_whatsapp_token.as_deref().unwrap_or("").is_empty()
+        || state.config.meta_whatsapp_phone_number_id.as_deref().unwrap_or("").is_empty()
+    {
+        return Ok(0);
+    }
     // A crashed or timed-out request may have been accepted at Meta.
     // Surface uncertain attempts to operators instead of resending blindly.
     sqlx::query(
