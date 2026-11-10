@@ -35,6 +35,8 @@ try {
       if(path.endsWith('/verify-totp'))return reply({token:'synthetic-token-'+currentEmail,user:{id:currentEmail,role:'central_admin',full_name:currentEmail}});
       if(path.endsWith('/auth/me'))return reply({permissions:['user.view','plant.view','plant_owners.manage','order.view','support.manage']});
       if(path.endsWith('/summary'))return reply({kpis:[{label:'Onboarding Requests',value:1}]});
+      if(path==='/api/control-center/whatsapp/stats')return reply({counts:{conversations:0,unread:0,incoming_today:0},replies_enabled:false});
+      if(path==='/api/control-center/whatsapp/chats')return reply({threads:[]});
       if(path==='/api/notifications')return reply({items:[{id:'admin-notice-1',event:'plant_onboarding',title:'Plant onboarding request received',body:'Synthetic approval notice',read:false,created_at:'2026-11-10T01:00:00Z'}],unread:1});
       if(path==='/api/notifications/read-all')return reply({success:true,updated:1});
       if(path==='/api/control-center/plants/master')return reply({items:[{
@@ -89,6 +91,8 @@ try {
       throw Error('Unexpected API path: '+path);
     });
     const button=name=>page.getByRole('button',{name,exact:true});
+    const adminNav=name=>page.getByRole('navigation',{name:'Control Center sections'})
+      .getByRole('button',{name:new RegExp('^'+name+'\\b')});
     const signIn=async email=>{
       await page.getByLabel('Approved administrator email').fill(email);
       await button('Send email verification code').click();
@@ -97,16 +101,19 @@ try {
       await page.getByRole('heading',{name:'Command Center',exact:true}).waitFor();
     };
     await page.goto(origin+'/admin/');await signIn('first@example.invalid');
+    await adminNav('Chats').click();
+    await page.getByText('No incoming WhatsApp conversations recorded.').waitFor();
+    assert.equal(await page.getByRole('button',{name:'Send WhatsApp reply'}).count(),0,'WhatsApp sending must remain gated off');
     await page.getByRole('button',{name:'Review admin notifications'}).click();
     await page.getByText('Synthetic approval notice').waitFor();
-    await button('Plant Master').click();
+    await adminNav('Plant Master').click();
     await button('Open registered plants').click();
     await page.getByText('Fixture Owner').first().waitFor();
     await button('Open plant record').click();
     await page.getByText('Test Supervisor').waitFor();
     await button('Review plant governance').click();
     await page.getByText('Not verified or expired').waitFor();
-    await button('Marketing CRM').click();
+    await adminNav('Marketing CRM').click();
     await button('Open Marketing CRM').click();
     await page.getByText('No channels created yet. Start with Create Channel above.').waitFor();
     assert.equal(await page.getByLabel('Channel contact file').count(),0,'Upload must not appear without a channel');
@@ -132,7 +139,7 @@ try {
     await button('Create Channel').click();
     await page.getByRole('heading',{name:'2. Upload Contact File — Second Custom Channel'}).waitFor();
     assert.equal(channels.length,2,'Multiple user-created channels are supported');
-    await button('Approval Queue').click();
+    await adminNav('Approval Queue').click();
     await button('users').click();await page.getByText('Previous workspace record',{exact:true}).waitFor();
     delayPlants=true;await button('orders').click();await page.getByRole('status').filter({hasText:'Loading records'}).waitFor();
     assert.equal(await page.getByText('Previous workspace record',{exact:true}).count(),0);
@@ -157,7 +164,7 @@ try {
     assert.equal(await page.getByText('Second Custom Channel',{exact:true}).count(),0);
     assert.equal(await page.getByLabel('Channel contact file').count(),0);
     assert.equal(await button('Close plant record').count(),0);
-    await button('Approval Queue').click();
+    await adminNav('Approval Queue').click();
     await button('Plant Owner approvals and access').click();
     for(const label of ['Registered Plant Owner account ID','Reason for privileged change','Fresh authenticator code'])assert.equal(await page.getByLabel(label,{exact:true}).inputValue(),'');
     assert.deepEqual(errors,[]);await context.close();

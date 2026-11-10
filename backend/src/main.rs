@@ -135,7 +135,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Central CRM campaigns are independent of transactional dispatch marketing.
     // Without explicit release activation this worker is not even spawned.
-    if std::env::var("ADMIN_MARKETING_SEND_ENABLED").ok().as_deref() == Some("true") {
+    if std::env::var("ADMIN_MARKETING_SEND_ENABLED")
+        .ok()
+        .as_deref()
+        == Some("true")
+    {
         let admin_marketing_state = state.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));

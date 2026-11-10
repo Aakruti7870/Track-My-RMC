@@ -1,8 +1,8 @@
 pub mod account_deletion;
 pub mod admin_campaign;
 pub mod admin_governance;
-pub mod admin_whatsapp;
 pub mod admin_routes;
+pub mod admin_whatsapp;
 pub mod assistant_routes;
 pub mod auth_routes;
 pub mod authority_governance;
@@ -66,14 +66,26 @@ pub fn build_app_router(state: AppState) -> Router {
             get(control_center_routes::collection),
         )
         // Meta inbound support inbox: dedicated web-MFA Central Admin only.
-        .route("/api/control-center/whatsapp/stats",get(admin_whatsapp::stats))
-        .route("/api/control-center/whatsapp/chats",get(admin_whatsapp::chats))
-        .route("/api/control-center/whatsapp/chats/:phone",
-            get(admin_whatsapp::messages))
-        .route("/api/control-center/whatsapp/chats/:phone/read",
-            post(admin_whatsapp::mark_read))
-        .route("/api/control-center/whatsapp/chats/:phone/reply",
-            post(admin_whatsapp::reply))
+        .route(
+            "/api/control-center/whatsapp/stats",
+            get(admin_whatsapp::stats),
+        )
+        .route(
+            "/api/control-center/whatsapp/chats",
+            get(admin_whatsapp::chats),
+        )
+        .route(
+            "/api/control-center/whatsapp/chats/:phone",
+            get(admin_whatsapp::messages),
+        )
+        .route(
+            "/api/control-center/whatsapp/chats/:phone/read",
+            post(admin_whatsapp::mark_read),
+        )
+        .route(
+            "/api/control-center/whatsapp/chats/:phone/reply",
+            post(admin_whatsapp::reply),
+        )
         // Central Admin Plant Master is a distinct, permission-gated read model.
         .route(
             "/api/control-center/plants/master",
@@ -110,11 +122,26 @@ pub fn build_app_router(state: AppState) -> Router {
             "/api/control-center/marketing/campaigns",
             post(admin_governance::create_campaign_draft),
         )
-        .route("/api/control-center/marketing/contacts",get(admin_campaign::contacts))
-        .route("/api/control-center/marketing/contacts/consent",post(admin_campaign::consent))
-        .route("/api/control-center/marketing/campaigns/:id/approve",post(admin_campaign::approve))
-        .route("/api/control-center/marketing/campaigns/:id/launch",post(admin_campaign::launch))
-        .route("/api/control-center/marketing/campaigns/:id/cancel",post(admin_campaign::cancel))
+        .route(
+            "/api/control-center/marketing/contacts",
+            get(admin_campaign::contacts),
+        )
+        .route(
+            "/api/control-center/marketing/contacts/consent",
+            post(admin_campaign::consent),
+        )
+        .route(
+            "/api/control-center/marketing/campaigns/:id/approve",
+            post(admin_campaign::approve),
+        )
+        .route(
+            "/api/control-center/marketing/campaigns/:id/launch",
+            post(admin_campaign::launch),
+        )
+        .route(
+            "/api/control-center/marketing/campaigns/:id/cancel",
+            post(admin_campaign::cancel),
+        )
         .route(
             "/api/admin/auth/method",
             post(crate::auth::control_center::method),

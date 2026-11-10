@@ -452,8 +452,14 @@ pub async fn receive_meta_webhook(
         return Ok(StatusCode::OK);
     }
     for entry in data["entry"].as_array().into_iter().flatten() {
-        if state.config.meta_whatsapp_waba_id.as_deref().filter(|id| !id.is_empty())
-            != entry["id"].as_str() || entry["id"].as_str().is_none() {
+        if state
+            .config
+            .meta_whatsapp_waba_id
+            .as_deref()
+            .filter(|id| !id.is_empty())
+            != entry["id"].as_str()
+            || entry["id"].as_str().is_none()
+        {
             continue;
         }
         for change in entry["changes"].as_array().into_iter().flatten() {
@@ -469,8 +475,11 @@ pub async fn receive_meta_webhook(
             }
             for inbound in change["value"]["messages"].as_array().into_iter().flatten() {
                 crate::routes::admin_whatsapp::ingest_verified_message(
-                    &state, sender_id.unwrap_or_default(), inbound,
-                ).await?;
+                    &state,
+                    sender_id.unwrap_or_default(),
+                    inbound,
+                )
+                .await?;
             }
             // Explicit recipient STOP on the verified sender cancels all pending
             // marketing for that number across all tenant plants.
@@ -514,8 +523,11 @@ pub async fn receive_meta_webhook(
                                      consent_status='OPTED_OUT',
                                      consent_evidence='WhatsApp STOP request',
                                      consent_recorded_at=NULL, updated_at=NOW()
-                                 WHERE phone_e164=$1"
-                            ).bind(format!("+{phone}")).execute(&mut *tx).await?;
+                                 WHERE phone_e164=$1",
+                            )
+                            .bind(format!("+{phone}"))
+                            .execute(&mut *tx)
+                            .await?;
                             // No queued central CRM message may outlive a
                             // customer STOP event. In-flight provider sends are
                             // marked uncertain and require independent review.
@@ -525,8 +537,11 @@ pub async fn receive_meta_webhook(
                                  WHERE contact_id IN (
                                    SELECT id FROM admin_marketing_contacts
                                    WHERE phone_e164=$1
-                                 ) AND status='pending'"
-                            ).bind(format!("+{phone}")).execute(&mut *tx).await?;
+                                 ) AND status='pending'",
+                            )
+                            .bind(format!("+{phone}"))
+                            .execute(&mut *tx)
+                            .await?;
                             tx.commit().await?;
                         }
                     }
@@ -541,10 +556,8 @@ pub async fn receive_meta_webhook(
                         .await?;
                     crate::services::plant_owner_alert::mark_provider_status(&state, id, status)
                         .await?;
-                    crate::routes::admin_whatsapp::mark_verified_status(&state, id, status)
-                        .await?;
-                    crate::routes::admin_campaign::mark_provider_status(&state, id, status)
-                        .await?;
+                    crate::routes::admin_whatsapp::mark_verified_status(&state, id, status).await?;
+                    crate::routes::admin_campaign::mark_provider_status(&state, id, status).await?;
                 }
             }
         }
