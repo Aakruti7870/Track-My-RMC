@@ -97,7 +97,9 @@ try {
   await page.getByLabel('I have saved the recovery codes', {exact:true}).check();
   await page.getByRole('button', {name:'Continue to Control Center',exact:true}).click();
   await page.getByRole('heading', { name: 'Command Center', exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Approval Queue', exact: true }).click();
+  // Workspace navigation buttons include a descriptive caption in their accessible name.
+  await page.getByRole('navigation', { name: 'Control Center sections' })
+    .getByRole('button', { name: /^Approval Queue\b/ }).click();
   await page.getByRole('button', { name: 'users', exact: true }).click();
   await page.locator('tbody').getByText('CI Central Admin', { exact: true }).waitFor();
   for (const kind of ['orders', 'support', 'audit', 'sessions']) {
