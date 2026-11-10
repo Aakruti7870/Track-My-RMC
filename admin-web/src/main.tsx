@@ -187,6 +187,18 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
   const [placesLoading,setPlacesLoading]=useState(false);
   const [placesError,setPlacesError]=useState('');
   const [permissions,setPermissions]=useState<string[]>([]);
+  useEffect(()=>{
+    if(stage!=='authenticated'||user?.role!=='central_admin'||!permissions.includes('support.manage'))return;
+    let active=true;
+    apiClient.get('/api/control-center/whatsapp/stats').then(r=>{
+      if(!active)return;
+      const counts=r.data?.counts||{};
+      setChatStats({unread:Number(counts.unread||0),conversations:Number(counts.conversations||0),
+        incoming_today:Number(counts.incoming_today||0)});
+      setChatUnread(Number(counts.unread||0));
+    }).catch(()=>{if(active)setChatStats(null);});
+    return ()=>{active=false;};
+  },[stage,user?.role,permissions.join(',')]);
   const [workspace,setWorkspace]=useState('');
   const [records,setRecords]=useState<Array<Record<string,unknown>>>([]);
   const [workspaceOffset,setWorkspaceOffset]=useState(0);
