@@ -373,8 +373,10 @@ try {
       phase = 'owner automation center';
       await expect(page.getByTestId('owner-native-automation-center')).toBeVisible();
       phase = 'owner Operations module inventory';
-      await expect(page.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])').filter({ visible: true })).toHaveCount(8);
-      const operationsKeys = await visibleModuleCards();
+      const ownerOperationsDirectory = page.getByTestId('owner-operations-module-directory');
+      await expect(ownerOperationsDirectory).toBeVisible();
+      await expect(ownerOperationsDirectory.locator('[data-testid^="role-module-"]')).toHaveCount(8);
+      const operationsKeys = await visibleModuleCards(ownerOperationsDirectory);
       phase = 'owner More navigation';
       await page.getByTestId('tab-more').click();
       phase = 'owner More account-only inventory';
