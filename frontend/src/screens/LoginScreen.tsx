@@ -512,7 +512,7 @@ export default function LoginScreen() {
           testID="login-open-onboarding-form"
           accessibilityRole="button"
           accessibilityLabel="Register As Plant Owner"
-          accessibilityHint="Opens the existing plant onboarding form and prefills your work email if entered"
+          accessibilityHint="Opens the Plant Owner registration request and prefills the email if entered"
           onPress={openOnboarding}
           style={({ pressed }) => [
             styles.onboardingLink,
