@@ -395,7 +395,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
     try{
       const response=await apiClient.get('/api/control-center/marketing/overview');
       const value=response.data as MarketingStats;setMarketing(value);
-      setMarketingSegment(current=>value.segments.some(s=>s.id===current)?current:value.segments[0]?.id||'');
+      setMarketingSegment(current=>value.segments.some(s=>s.id===current)?current:'');
     }catch(e){setMarketingError(errorMessage(e));}
     finally{setMarketingBusy(false);}
   }
@@ -424,7 +424,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
       const headers=records.shift()?.map(v=>v.trim().toLowerCase())||[];
       if(headers.length!==2||headers[0]!=='phone'||headers[1]!=='name')
         throw new Error('CSV headers must be exactly phone,name.');
-      if(records.length===0||records.length>100)throw new Error('Use between 1 and 100 contact rows per import.');
+      if(records.length===0||records.length>1000)throw new Error('Use between 1 and 1,000 contact rows per file.');
       if(records.some(r=>r.length!==2||!r[0].trim()||r[0].length>40||r[1].length>120))
         throw new Error('Every row must contain a valid phone field and an optional name.');
       setMarketingCsv(records.map(r=>({phone:r[0].trim(),name:r[1].trim()})));
@@ -435,7 +435,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
       setMarketingError('A six-digit authenticator code and 10-character audit reason are required.');return;
     }
     if(action!=='segment'&&!marketingSegment){
-      setMarketingError('Select a named contact group first.');return;
+      setMarketingError('Create a channel and open it before uploading contacts or saving drafts.');return;
     }
     if(action==='contacts'&&!marketingCsv.length){
       setMarketingError('Import a validated CSV file before submitting.');return;
@@ -444,8 +444,8 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
     try{
       await apiClient.post('/api/control-center/step-up',{code:marketingCode.trim()});
       if(action==='segment'){
-        await apiClient.post('/api/control-center/marketing/segments',{name:marketingGroup,reason:marketingReason});
-        setMarketingGroup('');
+        const created=await apiClient.post('/api/control-center/marketing/segments',{name:marketingGroup,reason:marketingReason});
+        setMarketingSegment(String(created.data.id));setMarketingCsv([]);setMarketingGroup('');
       }else if(action==='contacts'){
         await apiClient.post('/api/control-center/marketing/contacts/import',{
           segment_id:marketingSegment,contacts:marketingCsv,reason:marketingReason
@@ -459,7 +459,11 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
         setMarketingCampaign('');setMarketingTemplate('');
       }
       setMarketingCode('');setMarketingReason('');
-      setNotice('Marketing records saved internally. No messages sent.');
+      setNotice(action==='segment'
+        ? 'Channel created. You can now upload a contact file into this channel.'
+        : action==='contacts'
+          ? 'Contact file imported into your channel. No messages sent or consent granted.'
+          : 'Campaign draft saved. No messages sent.');
       await loadMarketing();
     }catch(e){setMarketingCode('');setMarketingError(errorMessage(e));}
     finally{setMarketingBusy(false);}
