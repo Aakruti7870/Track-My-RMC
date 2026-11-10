@@ -4,7 +4,6 @@
 use crate::{error::AppError, state::AppState};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use hmac::{Hmac, Mac};
-use serde_json::json;
 use sha2::Sha256;
 use sqlx::Row;
 use uuid::Uuid;
@@ -224,22 +223,6 @@ pub async fn mark_provider_status(
         }
     }
     Ok(())
-}
-
-pub fn utility_preview(
-    plant: &str,
-    order: &str,
-    grade: &str,
-    quantity: f64,
-    mixer: &str,
-    url: &str,
-) -> serde_json::Value {
-    json!({
-        "message": format!(
-            "🚛 Your concrete order is dispatched!\nPlant: {plant}\nOrder: {order}\nGrade: {grade}\nQuantity: {quantity:.2} m³\nTransit Mixer: {mixer}\nTrack your delivery and view challan: {url}\nTrackMyRMC — Built Better."
-        ),
-        "tracking_url": url
-    })
 }
 
 #[cfg(test)]
