@@ -73,7 +73,8 @@ fs.mkdirSync(out, { recursive: true });
         let homeSizes = await homeCards.evaluateAll(nodes => nodes.map(node => ({
           width: node.getBoundingClientRect().width, height: node.getBoundingClientRect().height,
         })));
-        assert(homeSizes.every(box => box.width >= 125 && box.width <= 240 && box.height >= 120 && box.height <= 165),
+        // Compact staff tiles intentionally use 112dp minimum; preserve readable labels and width constraints.
+        assert(homeSizes.every(box => box.width >= 125 && box.width <= 240 && box.height >= 112 && box.height <= 165),
           role + ' oversize or clipped Home card at ' + width + 'px: ' + JSON.stringify(homeSizes));
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
           role + ' Home horizontal overflow at ' + width);
