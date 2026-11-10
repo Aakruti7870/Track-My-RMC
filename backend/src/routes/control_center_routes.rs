@@ -789,6 +789,16 @@ mod security_tests {
     use axum::http::HeaderValue;
 
     #[test]
+    fn plant_master_filters_are_bounded_and_reject_controls() {
+        assert_eq!(
+            bounded_plant_filter(Some("  Panvel  ".into()), "city").unwrap(),
+            "Panvel"
+        );
+        assert!(bounded_plant_filter(Some("x".repeat(101)), "search").is_err());
+        assert!(bounded_plant_filter(Some("bad\\nregion".replace("\\\\n", "\\n")), "state").is_err());
+    }
+
+    #[test]
     fn step_up_requires_bearer_session() {
         let headers = HeaderMap::new();
         assert!(session_token_hash(&headers).is_err());
