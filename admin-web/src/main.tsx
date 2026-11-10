@@ -1521,7 +1521,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                           <input value={govReason} minLength={10} maxLength={500} onChange={e=>setGovReason(e.target.value)}
                             style={inputStyle} disabled={govBusy} placeholder="Explain the decision and evidence"/>
                         </label>
-                        <label style={{fontSize:12}}>Fresh authenticator code
+                        <label style={{fontSize:12}}>Plant governance authenticator code
                           <input type="password" inputMode="numeric" pattern="[0-9]{6}" maxLength={6}
                             value={govCode} onChange={e=>setGovCode(e.target.value)} style={inputStyle} disabled={govBusy}/>
                         </label>
@@ -1669,7 +1669,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                         <input value={marketingReason} maxLength={500}
                           onChange={e=>setMarketingReason(e.target.value)} style={inputStyle}/>
                       </label>
-                      <label style={{fontSize:12}}>Fresh authenticator code
+                      <label style={{fontSize:12}}>Marketing CRM authenticator code
                         <input type="password" inputMode="numeric" maxLength={6} pattern="[0-9]{6}"
                           value={marketingCode} onChange={e=>setMarketingCode(e.target.value)} style={inputStyle}/>
                       </label>
