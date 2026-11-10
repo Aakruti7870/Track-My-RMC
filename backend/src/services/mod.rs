@@ -16,6 +16,7 @@ pub mod otp_delivery;
 pub mod payroll_service;
 pub mod plant_owner_alert;
 pub mod play_review;
+pub mod push_delivery;
 pub mod tracking_service;
 pub mod trip_lifecycle;
 pub mod whatsapp_service;

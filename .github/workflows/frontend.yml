@@ -39,6 +39,8 @@ jobs:
         run: npm run typecheck
       - name: Permission consent race and notification registration regressions
         run: node --test scripts/test-permission-consent.cjs
+      - name: Validate custom operational notification sound assets and channels
+        run: node --test scripts/test-custom-notification-sounds.cjs
       - name: API base path regressions
         run: npm run test:api-base
       - name: Image parser security and Metro asset compatibility
