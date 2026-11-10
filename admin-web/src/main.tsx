@@ -177,6 +177,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
   const [rfqOutreachCode, setRfqOutreachCode] = useState('');
   const [rfqOutreachNotes, setRfqOutreachNotes] = useState<Record<string,string>>({});
   const [ownerRequests,setOwnerRequests]=useState<Array<Record<string,any>>>([]);
+  const [registrationRequests,setRegistrationRequests]=useState<Array<Record<string,any>>>([]);
   const [ownerCode,setOwnerCode]=useState('');
   const [ownerReason,setOwnerReason]=useState('');
   const [ownerId,setOwnerId]=useState('');
@@ -304,7 +305,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
 
 
   async function openAdminApproval(event:string) {
-    if(event==='plant_onboarding' && permissions.includes('plant_owners.manage')){
+    if((event==='plant_onboarding'||event==='plant_owner_registration') && permissions.includes('plant_owners.manage')){
       await loadOwnerRequests();
     }else if(event==='rmc_rfq_lead' && permissions.includes('support.view')){
       await loadWorkspace('rmc_rfq_leads');
@@ -626,7 +627,14 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
   }
   async function loadOwnerRequests(){
     setBusy(true);setError('');setShowOwners(true);
-    try{const response=await apiClient.get('/api/plant-discovery/requests');setOwnerRequests(response.data.requests||[]);}
+    try{
+      const [onboarding,registrations]=await Promise.all([
+        apiClient.get('/api/plant-discovery/requests'),
+        apiClient.get('/api/control-center/plant-owner-registration/requests')
+      ]);
+      setOwnerRequests(onboarding.data.requests||[]);
+      setRegistrationRequests(registrations.data.requests||[]);
+    }
     catch(e){setError(errorMessage(e));}finally{setBusy(false);}
   }
   async function ownerAction(path:string,body:Record<string,unknown>){
@@ -1386,7 +1394,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                   {adminNotices.map(item=><article key={item.id} style={{padding:'9px 0',borderBottom:'1px solid #334155'}}>
                     <div style={{display:'flex',gap:8,alignItems:'center'}}><strong style={{fontSize:13}}>{item.title}</strong>{!item.read&&<span style={{fontSize:11,color:'#86efac'}}>New</span>}</div>
                     <p style={{fontSize:12,color:'#cbd5e1',margin:'4px 0'}}>{item.body}</p>
-                    {(['plant_onboarding','rmc_rfq_lead','plant_profile','kyc'].includes(item.event)) && (
+                    {(['plant_onboarding','plant_owner_registration','rmc_rfq_lead','plant_profile','kyc'].includes(item.event)) && (
                       <button type="button" style={{...buttonStyle,width:'auto',marginTop:4,padding:'6px 10px',fontSize:12}}
                         onClick={()=>void openAdminApproval(item.event)}>Open matching review queue</button>
                     )}
@@ -1912,7 +1920,25 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                       <button disabled={busy} onClick={()=>void ownerAction('/api/plant-discovery/requests/'+id+'/reject',{})} style={buttonStyle}>Reject request</button>
                     </article>;
                   })}
-                  {!ownerRequests.length && <p>No pending Plant Owner requests.</p>}
+                  {!ownerRequests.length && <p>No pending full Plant Owner onboarding requests.</p>}
+                  <h3 style={{fontSize:16,margin:'12px 0 0'}}>Official email registration requests ({registrationRequests.length})</h3>
+                  <p style={{fontSize:12,color:'#cbd5e1',margin:0}}>
+                    Contact-only leads. Confirm business identity, email ownership and plant location using the separate onboarding workflow before activating any Owner account.
+                  </p>
+                  {registrationRequests.map(row=>{
+                    const id=String(row.id||'');
+                    return <article key={id} style={{border:'1px solid #475569',padding:12,borderRadius:8}}>
+                      <h4 style={{fontSize:14,margin:'0 0 6px'}}>{String(row.business_name)} · {String(row.request_number)}</h4>
+                      <p style={{fontSize:12,margin:'4px 0'}}>Plant Owner: {String(row.owner_name)}</p>
+                      <p style={{fontSize:12,margin:'4px 0'}}>Registered address: {String(row.business_address)}</p>
+                      <p style={{fontSize:12,margin:'4px 0'}}>Official email: {String(row.email)} · WhatsApp: +{String(row.whatsapp_number)}</p>
+                      <p style={{fontSize:12,margin:'4px 0'}}>Follow-up: {String(row.status)} · Meta alert: {String(row.alert_status)}</p>
+                      {row.status==='PENDING' && <button type="button" disabled={busy}
+                        onClick={()=>void ownerAction('/api/control-center/plant-owner-registration/'+encodeURIComponent(id)+'/contacted',{})}
+                        style={{...buttonStyle,width:'auto',background:'#166534'}}>Mark Contacted (requires MFA and reason)</button>}
+                    </article>;
+                  })}
+                  {!registrationRequests.length && <p>No pending official email registration leads.</p>}
                   <label>Registered Plant Owner account ID<input value={ownerId} onChange={e=>setOwnerId(e.target.value)} style={inputStyle}/></label>
                   <button disabled={busy || !ownerId} onClick={()=>void ownerAction('/api/control-center/owners/'+encodeURIComponent(ownerId)+'/status',{active:false})} style={buttonStyle}>Suspend / revoke Owner access</button>
                   <button disabled={busy || !ownerId} onClick={()=>void ownerAction('/api/control-center/owners/'+encodeURIComponent(ownerId)+'/status',{active:true})} style={buttonStyle}>Reactivate approved Owner</button>
