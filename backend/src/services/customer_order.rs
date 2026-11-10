@@ -433,10 +433,10 @@ mod central_order_intake_tests {
     use super::intake_permits_direct_order;
     #[test]
     fn only_direct_allows_submitted_orders() {
-        assert!(intake_permits_direct_order("DIRECT",false));
-        for mode in ["ADMIN_REVIEW","RFQ_ONLY","DISABLED","UNKNOWN"] {
-            assert!(!intake_permits_direct_order(mode,false));
-            assert!(intake_permits_direct_order(mode,true));
+        assert!(intake_permits_direct_order("DIRECT", false));
+        for mode in ["ADMIN_REVIEW", "RFQ_ONLY", "DISABLED", "UNKNOWN"] {
+            assert!(!intake_permits_direct_order(mode, false));
+            assert!(intake_permits_direct_order(mode, true));
         }
     }
 }
