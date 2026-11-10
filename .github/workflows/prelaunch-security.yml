@@ -1,0 +1,124 @@
+name: Prelaunch Static Security Scans
+
+# Read-only repository analysis. Never targets production endpoints, AWS resources,
+# runtime credentials, provider APIs, or customer data.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prelaunch-security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: rust
+            build-mode: none
+          - language: javascript-typescript
+            build-mode: none
+          - language: actions
+            build-mode: none
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          queries: security-extended
+      - name: Analyze repository
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"
+
+  secret-history:
+    name: Gitleaks (complete Git history; private results)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install pinned Gitleaks binary and verify checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          release='https://github.com/gitleaks/gitleaks/releases/download/v8.30.1'
+          curl --fail --silent --show-error --location --retry 3 \
+            -o "$RUNNER_TEMP/gitleaks_8.30.1_linux_x64.tar.gz" \
+            "$release/gitleaks_8.30.1_linux_x64.tar.gz"
+          curl --fail --silent --show-error --location --retry 3 \
+            -o "$RUNNER_TEMP/gitleaks_8.30.1_checksums.txt" \
+            "$release/gitleaks_8.30.1_checksums.txt"
+          grep -F 'gitleaks_8.30.1_linux_x64.tar.gz' \
+            "$RUNNER_TEMP/gitleaks_8.30.1_checksums.txt" | \
+            (cd "$RUNNER_TEMP" && sha256sum --check --status)
+          tar -xzf "$RUNNER_TEMP/gitleaks_8.30.1_linux_x64.tar.gz" \
+            -C "$RUNNER_TEMP" gitleaks
+          chmod 0700 "$RUNNER_TEMP/gitleaks"
+      - name: Scan all commits without publishing potential credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          rc=0
+          "$RUNNER_TEMP/gitleaks" git . \
+            --no-banner --redact --log-opts='--all' \
+            --report-format json \
+            --report-path "$RUNNER_TEMP/gitleaks-private.json" \
+            > "$RUNNER_TEMP/gitleaks-private.log" 2>&1 || rc=$?
+          if (( rc == 1 )); then
+            echo "::error::Potential committed secret detected. Review privately; rotate verified exposed credentials. No findings uploaded or printed."
+            exit 1
+          elif (( rc != 0 )); then
+            echo "::error::Gitleaks could not complete (exit $rc). Logs withheld to avoid credential exposure."
+            exit "$rc"
+          fi
+          echo "Gitleaks history scan passed."
+      - name: Erase local Gitleaks evidence
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/gitleaks-private.json" "$RUNNER_TEMP/gitleaks-private.log"
+
+  iac-misconfiguration:
+    name: Trivy (high/critical repository misconfigurations)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check checked-in IaC and configuration
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: misconfig
+          severity: HIGH,CRITICAL
+          format: table
+          exit-code: "1"
+          hide-progress: "true"
+          skip-dirs: frontend/node_modules,admin-web/node_modules,backend/target
