@@ -1460,6 +1460,64 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                     <p style={{fontSize:12,color:'#cbd5e1'}}>{masterDetail.plant.address}, {masterDetail.plant.city}, {masterDetail.plant.state} {masterDetail.plant.pincode||''}</p>
                     <p style={{fontSize:13}}><strong>Owner:</strong> {masterDetail.plant.owner_name} · {masterDetail.plant.owner_email||'No email'}</p>
                     <p style={{fontSize:12}}><strong>Status:</strong> {masterDetail.plant.onboarding_approved?'Onboarding approved':'Onboarding approval not confirmed'} · {masterDetail.plant.active?'Active':'Inactive'}</p>
+
+                    <div style={{marginTop:14,padding:12,border:'1px solid #475569',borderRadius:10,background:'#101c2d'}}>
+                      <h4 style={{margin:'0 0 5px'}}>Verification & order intake</h4>
+                      <p style={{fontSize:12,color:'#cbd5e1',margin:'0 0 8px'}}>
+                        Separate onboarding, document publication, TMRMC Verified review, and direct-order authorization.
+                      </p>
+                      <button type="button" disabled={govBusy}
+                        onClick={()=>void openPlantGovernance(masterDetail.plant.id)}
+                        style={{...buttonStyle,width:'auto',marginTop:3}}>
+                        Review plant governance
+                      </button>
+                      {govError&&<p role="alert">{govError}</p>}
+                      {governance?.plant_id===masterDetail.plant.id && <div style={{display:'grid',gap:10,marginTop:12}}>
+                        <p style={{margin:0,fontSize:13}}>
+                          <strong>TMRMC Verified:</strong> {governance.trust_current?'Verified (currently valid)':'Not verified or expired'}
+                          {' · '}<strong>Direct-order policy:</strong> {governance.intake_mode}
+                        </p>
+                        <label style={{fontSize:12}}>Incoming order mode
+                          <select value={govMode} onChange={e=>setGovMode(e.target.value)} style={inputStyle} disabled={govBusy}>
+                            <option value="DIRECT">DIRECT — normal verified-plant order flow</option>
+                            <option value="ADMIN_REVIEW">ADMIN_REVIEW — block direct order; RFQ / human review</option>
+                            <option value="RFQ_ONLY">RFQ_ONLY — quotations only</option>
+                            <option value="DISABLED">DISABLED — no direct orders</option>
+                          </select>
+                        </label>
+                        <label style={{fontSize:12}}>TMRMC Verified decision
+                          <select value={govTrust} onChange={e=>setGovTrust(e.target.value)} style={inputStyle} disabled={govBusy}>
+                            <option value="VERIFIED">Approve reviewed plant documents</option>
+                            <option value="REVOKED">Revoke / do not verify</option>
+                          </select>
+                        </label>
+                        {govTrust==='VERIFIED' && <label style={{fontSize:12}}>Verification valid until
+                          <input type="date" value={govExpiry} onChange={e=>setGovExpiry(e.target.value)} style={inputStyle} disabled={govBusy}/>
+                        </label>}
+                        <p style={{fontSize:12,color:'#cbd5e1',margin:0}}>
+                          Verification requires approved onboarding, published identification and current published licence evidence.
+                          It does not automatically approve orders, subscription charges, staff access or marketing.
+                        </p>
+                        <label style={{fontSize:12}}>Required audit reason
+                          <input value={govReason} minLength={10} maxLength={500} onChange={e=>setGovReason(e.target.value)}
+                            style={inputStyle} disabled={govBusy} placeholder="Explain the decision and evidence"/>
+                        </label>
+                        <label style={{fontSize:12}}>Fresh authenticator code
+                          <input type="password" inputMode="numeric" pattern="[0-9]{6}" maxLength={6}
+                            value={govCode} onChange={e=>setGovCode(e.target.value)} style={inputStyle} disabled={govBusy}/>
+                        </label>
+                        <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+                          <button type="button" disabled={govBusy||!permissions.includes('order.view')}
+                            onClick={()=>void savePlantGovernance('intake')} style={{...buttonStyle,width:'auto',marginTop:0}}>
+                            Save order intake
+                          </button>
+                          <button type="button" disabled={govBusy}
+                            onClick={()=>void savePlantGovernance('trust')} style={{...buttonStyle,width:'auto',marginTop:0,background:'#166534'}}>
+                            Save TMRMC Verified review
+                          </button>
+                        </div>
+                      </div>}
+                    </div>
                     <h4 style={{margin:'15px 0 6px'}}>Staff roles ({masterDetail.staff.length} assigned)</h4>
                     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:8}}>
                       {masterDetail.staff.map(staff=><div key={staff.user_id} style={{border:'1px solid #475569',padding:9,borderRadius:8}}>
