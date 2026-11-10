@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Modal, Pressable, ScrollView, Share, View } from "react-native";
+import { Modal, Pressable, ScrollView, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { apiErrorDetail, apiGet, apiPost, apiPut } from "@/src/api/client";
@@ -131,16 +131,6 @@ export function LoadPlanner({ orderId, resourceBase, onChanged }: Props) {
     finally { setBusy(false); }
   };
 
-  const shareLoad = async (loadId: string) => {
-    if (!token) return;
-    try {
-      const { message } = await apiGet<{ message: string }>(`/loads/${loadId}/share-trip`, token);
-      await Share.share({ message });
-    } catch (error: unknown) {
-      toast(apiErrorDetail(error, "Could not share trip details"), "error");
-    }
-  };
-
   if (loading && !data) return <><Skeleton height={90} style={{ borderRadius: radius.lg }} /><Skeleton height={130} style={{ borderRadius: radius.lg }} /></>;
 
   const availableVehicles = vehicles.filter((v) => ["available", "idle"].includes(v.status) || data?.loads.some((l) => l.vehicle_id === v.id && !["DELIVERED", "CANCELLED"].includes(l.status)));
@@ -188,9 +178,6 @@ export function LoadPlanner({ orderId, resourceBase, onChanged }: Props) {
           ) : null}
           {load.status === "READY_TO_DISPATCH" && load.gate_pass_number ? (
             <Button label="Dispatch Load" onPress={() => action(`/loads/${load.id}/dispatch`, "Load dispatched")} loading={busy} />
-          ) : null}
-          {["DISPATCHED", "EN_ROUTE", "ARRIVED", "UNLOADING", "DELIVERED", "COMPLETED"].includes(load.status) ? (
-            <Button testID={`share-trip-${load.id}`} label="Share Trip Details" variant="outline" onPress={() => void shareLoad(load.id)} />
           ) : null}
           {["PLANNED", "ASSIGNED"].includes(load.status) ? (
             <Button label="Cancel Load" variant="outline" onPress={() => action(`/loads/${load.id}/cancel`, "Load cancelled")} />
