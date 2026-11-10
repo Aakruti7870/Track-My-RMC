@@ -38,6 +38,12 @@ fn text(value: &Option<String>, max: usize, required: bool) -> Result<(), AppErr
     Ok(())
 }
 
+fn intake_permits_direct_order(mode: &str, save_draft: bool) -> bool {
+    // Inactive and unverified plants are denied separately before this check.
+    // Drafts remain editable offline; no notification, payment or order is submitted.
+    save_draft || mode == "DIRECT"
+}
+
 async fn validate(
     conn: &mut PgConnection,
     customer: Uuid,
@@ -162,7 +168,7 @@ async fn validate(
     // Direct orders remain a plant-specific privilege. ADMIN_REVIEW routes
     // through the existing human RFQ path; no pending order or payment is
     // silently created until a verified plant can accept a direct order.
-    if !req.save_draft && plant.get::<String, _>("intake_mode") != "DIRECT" {
+    if !intake_permits_direct_order(&plant.get::<String, _>("intake_mode"), req.save_draft) {
         return Err(AppError::Conflict(
             "Direct ordering is restricted for this plant. Request quotation instead.".into(),
         ));
@@ -420,4 +426,17 @@ pub async fn place_with_preview(
     }
     tx.commit().await?;
     Ok(order)
+}
+
+#[cfg(test)]
+mod central_order_intake_tests {
+    use super::intake_permits_direct_order;
+    #[test]
+    fn only_direct_allows_submitted_orders() {
+        assert!(intake_permits_direct_order("DIRECT",false));
+        for mode in ["ADMIN_REVIEW","RFQ_ONLY","DISABLED","UNKNOWN"] {
+            assert!(!intake_permits_direct_order(mode,false));
+            assert!(intake_permits_direct_order(mode,true));
+        }
+    }
 }
