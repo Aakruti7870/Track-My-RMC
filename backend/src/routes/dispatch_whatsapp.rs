@@ -280,35 +280,6 @@ async fn authorize_load_share(
     Ok(row.0)
 }
 
-/// Explicit share button stays useful when staff cannot use automation.
-pub async fn share_trip(
-    State(state): State<AppState>,
-    user: AuthUser,
-    Path(load_id): Path<Uuid>,
-) -> Result<impl IntoResponse, AppError> {
-    authorize_load_share(&state, &user, load_id).await?;
-    let row: Option<(String, String, String, f64, String)> = sqlx::query_as(
-        "SELECT p.name,o.order_number,o.concrete_grade,
-            l.quantity_m3::DOUBLE PRECISION,m.registration_number
-         FROM order_loads l JOIN orders o ON o.id=l.order_id
-         JOIN rmc_plants p ON p.id=o.plant_id
-         JOIN transit_mixers m ON m.id=l.mixer_id
-         JOIN challans c ON c.load_id=l.id
-         WHERE l.id=$1 AND l.status IN ('dispatched','en_route','arrived','pouring','completed')
-           AND l.dispatched_at > NOW() - INTERVAL '72 hours'",
-    )
-    .bind(load_id)
-    .fetch_optional(&state.db)
-    .await?;
-    let (plant, order, grade, quantity, mixer) = row.ok_or_else(|| {
-        AppError::Conflict("Sharing requires a recently dispatched challan".into())
-    })?;
-    let url = dispatch_whatsapp::tracking_url(load_id, &state.config.jwt_secret);
-    Ok(Json(dispatch_whatsapp::utility_preview(
-        &plant, &order, &grade, quantity, &mixer, &url,
-    )))
-}
-
 /// Public mobile-web view requires an unforgeable signed, short-lived link.
 pub async fn public_trip(
     State(state): State<AppState>,
