@@ -83,7 +83,7 @@ try {
     await button('Review plant governance').click();
     await page.getByText('Not verified or expired').waitFor();
     await button('Open Marketing CRM').click();
-    await page.getByText('Synthetic Opt-in Group').waitFor();
+    await page.getByText('Synthetic Opt-in Group',{exact:true}).first().waitFor();
     await button('users').click();await page.getByText('Previous workspace record',{exact:true}).waitFor();
     delayPlants=true;await button('orders').click();await page.getByRole('status').filter({hasText:'Loading records'}).waitFor();
     assert.equal(await page.getByText('Previous workspace record',{exact:true}).count(),0);
