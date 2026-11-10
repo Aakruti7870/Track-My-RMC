@@ -669,6 +669,15 @@ pub async fn save_driver_profile(
         }
         return Err(err.into());
     }
+    let mut changed_fields = vec![
+        "employment",
+        "blood_group",
+        "emergency_contacts",
+        "mixer_assignment",
+    ];
+    if input.update_driving_licence {
+        changed_fields.push("driving_licence");
+    }
     sqlx::query(
         r#"INSERT INTO driver_employment_audit
            (plant_id,driver_id,actor_user_id,action,changed_fields)
@@ -678,12 +687,7 @@ pub async fn save_driver_profile(
     .bind(driver_id)
     .bind(auth_user.user_id)
     .bind(if exists { "UPDATED" } else { "CREATED" })
-    .bind(vec![
-        "employment",
-        "blood_group",
-        "emergency_contacts",
-        "mixer_assignment",
-    ])
+    .bind(changed_fields)
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
@@ -694,7 +698,7 @@ pub async fn save_driver_profile(
 
 #[cfg(test)]
 mod tests {
-    use super::{experience_label, validate_driving_licence};
+    use super::{experience_label, validate_driving_licence, UpsertDriverProfile};
     #[test]
     fn experience_months_display() {
         assert_eq!(experience_label(Some(102)), "8 Years 6 Months");
@@ -719,6 +723,23 @@ mod tests {
         let expired =
             validate_driving_licence(Some("MH012024123456".into()), Some("2020-01-15".into()));
         assert!(expired.is_ok());
+    }
+    #[test]
+    fn legacy_driver_save_cannot_clear_licence_by_omission() {
+        let legacy = serde_json::json!({
+            "phone": "+919876543210",
+            "employee_id": "EMP-01",
+            "company_joining_date": "2026-01-10",
+            "total_driving_experience_months": 48
+        });
+        let old: UpsertDriverProfile = serde_json::from_value(legacy.clone()).unwrap();
+        assert!(!old.update_driving_licence);
+        let mut updated = legacy;
+        updated["update_driving_licence"] = serde_json::json!(true);
+        updated["driving_licence_number"] = serde_json::json!("MH012024123456");
+        updated["driving_licence_valid_until"] = serde_json::json!("2030-01-15");
+        let new: UpsertDriverProfile = serde_json::from_value(updated).unwrap();
+        assert!(new.update_driving_licence);
     }
     #[test]
     fn phone_normalization() {
