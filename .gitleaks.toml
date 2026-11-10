@@ -1,0 +1,57 @@
+# Gitleaks v8.30.1: keep ALL default detection rules. These are reviewed,
+# non-sensitive public-client or synthetic fixtures, not generic file exemptions.
+# Never add path-only or commit-wide allowlists.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "gcp-api-key"
+[[rules.allowlists]]
+description = "Firebase Android client config: public project identifier, not a server secret; independently verify Firebase-only API restrictions"
+condition = "AND"
+regexTarget = "line"
+paths = ['''(?:^|/)frontend/google-services\.json$''']
+regexes = ['''"current_key"\s*:\s*"AIza[\w-]{35}"''']
+
+[[rules]]
+id = "generic-api-key"
+[[rules.allowlists]]
+description = "Public CI-only test JWT strings used in disposable PostgreSQL jobs"
+condition = "AND"
+regexTarget = "line"
+paths = ['''(?:^|/)\.github/workflows/(?:backend|deploy-aws-production)\.yml$''']
+regexes = [
+  '''JWT_SECRET:\s*test_jwt_secret_key_at_least_32_characters_long''',
+  '''JWT_SECRET:\s*isolated_ci_only_secret_that_exceeds_sixty_four_bytes_[0-9]+'''
+]
+
+[[rules.allowlists]]
+description = "Test-only Google Maps manifest fixture on frontend CI; never a live Android map key"
+condition = "AND"
+regexTarget = "line"
+paths = ['''(?:^|/)\.github/workflows/frontend\.yml$''']
+regexes = ['''GOOGLE_MAPS_ANDROID_KEY:\s*[^\n]*test[^\n]*''']
+
+[[rules.allowlists]]
+description = "Cashfree sample request idempotency keys are public de-duplication identifiers, not authentication credentials"
+condition = "AND"
+regexTarget = "line"
+paths = ['''(?:^|/)docs/CASHFREE_SANDBOX_INTEGRATION_REVIEW\.md$''']
+regexes = ['''"(?:idempotency_key|refund_key)"\s*:\s*"[A-Za-z0-9_.-]{10,80}"''']
+
+[[rules.allowlists]]
+description = "Explicitly synthetic Rust test fixtures, never production signing keys"
+condition = "AND"
+regexTarget = "line"
+paths = ['''(?:^|/)backend/tests/[^/]+\.rs$''']
+regexes = [
+  '''(?i)(?:jwt_secret|secret)\s*[:=]\s*"(?:synthetic|isolated_ci_only|test[_-])[^"\n]{10,80}"''',
+]
+
+[[rules.allowlists]]
+description = "Staging IAM simulation contains ARNs of resources, not values of secrets"
+condition = "AND"
+regexTarget = "line"
+paths = ['''(?:^|/)ops/staging/evidence/iam-isolation-simulation\.json$''']
+regexes = ['''"EvalResourceName"\s*:\s*"arn:aws:secretsmanager:[^"\n]+"''']
+

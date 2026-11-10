@@ -88,6 +88,7 @@ jobs:
           git archive --format=tar HEAD | tar -xf - -C "$RUNNER_TEMP/gitleaks-head"
           rc=0
           "$RUNNER_TEMP/gitleaks" dir "$RUNNER_TEMP/gitleaks-head" \
+            --config "$GITHUB_WORKSPACE/.gitleaks.toml" \
             --no-banner --redact --report-format json \
             --report-path "$RUNNER_TEMP/gitleaks-current.json" \
             > "$RUNNER_TEMP/gitleaks-current.log" 2>&1 || rc=$?
@@ -112,6 +113,7 @@ jobs:
           set -euo pipefail
           rc=0
           "$RUNNER_TEMP/gitleaks" git . \
+            --config "$GITHUB_WORKSPACE/.gitleaks.toml" \
             --no-banner --redact --log-opts='--all' \
             --report-format json \
             --report-path "$RUNNER_TEMP/gitleaks-private.json" \
