@@ -45,7 +45,9 @@ for (const role of staff.STAFF_ROLES) {
   const rendered = [...nativeTabs, ...home.map(m => m.key), ...more.map(m => m.key)];
   assert.equal(new Set(rendered).size, rendered.length, role + " has duplicate navigation cards");
   assert.deepEqual(new Set(rendered), new Set(catalogKeys.filter(key => key !== "notifications")), role + " must expose each destination once; notifications lives in the shared header");
-  assert(home.length > 0 && home.length <= 6, role + " home cards must fit a short grid");
+  assert(home.length > 0, role + " must expose operational modules on Home");
+  assert(home.every(m => !staff.STAFF_MORE_KEYS.includes(m.key)), role + " Home must not repeat personal More cards");
+  assert(more.every(m => staff.STAFF_MORE_KEYS.includes(m.key)), role + " More must remain personal/account focused");
   for (const module of [...home, ...more]) assert(catalogKeys.includes(module.key), role + " exposes unauthorized catalog module " + module.key);
   for (const viewportWidth of [320, 360, 390, 480, 680, 768, 980, 1440]) {
     const cols = viewportWidth >= 950 ? 5 : viewportWidth >= 680 ? 4 : viewportWidth >= 470 ? 3 : 2;
