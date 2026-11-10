@@ -1372,13 +1372,13 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                 </section>}
                 <nav aria-label="Control Center sections" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:9,marginTop:14}}>
                   {([
-                    {href:'#platform-overview',label:'Platform KPIs',caption:'Live overview',icon:Building2},
-                    {href:'#plant-master',label:'Plant Master',caption:'Owners, staff, verification & intake',icon:Factory},
-                    {href:'#operations-workspaces',label:'Approval Queue',caption:'Onboarding, documents and RFQs',icon:ClipboardCheck},
-                    {href:'#marketing-center',label:'Marketing CRM',caption:'Contact groups and campaign drafts',icon:Megaphone},
-                    {href:'#automation-governance',label:'Automation',caption:'Native workflow health',icon:Workflow},
-                    {href:'#authority-governance',label:'Governance',caption:'Permissions & audit',icon:ShieldCheck},
-                  ] as const).map(item=><a key={item.label} href={item.href}
+                    {href:'#platform-overview',label:'Platform KPIs',caption:'Live overview',icon:Building2,allowed:permissions.includes('system.view')},
+                    {href:'#plant-master',label:'Plant Master',caption:'Owners, staff, verification & intake',icon:Factory,allowed:permissions.includes('plant.view')&&permissions.includes('user.view')},
+                    {href:'#operations-workspaces',label:'Approval Queue',caption:'Onboarding, documents and RFQs',icon:ClipboardCheck,allowed:permissions.includes('plant_owners.manage')||permissions.includes('kyc.view')||permissions.includes('support.view')},
+                    {href:'#marketing-center',label:'Marketing CRM',caption:'Contact groups and campaign drafts',icon:Megaphone,allowed:permissions.includes('support.manage')},
+                    {href:'#automation-governance',label:'Automation',caption:'Native workflow health',icon:Workflow,allowed:permissions.includes('system.view')},
+                    {href:'#authority-governance',label:'Governance',caption:'Permissions & audit',icon:ShieldCheck,allowed:permissions.includes('admin_access.manage')},
+                  ] as const).filter(item=>item.allowed).map(item=><a key={item.label} href={item.href}
                     style={{padding:12,border:'1px solid #475569',borderRadius:10,background:'rgba(30,41,59,.85)',color:'#f8fafc',textDecoration:'none',display:'grid',gap:6}}>
                     <item.icon size={22} aria-hidden="true"/>
                     <strong style={{fontSize:13}}>{item.label}</strong>
@@ -1387,7 +1387,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                 </nav>
               </section>
             )}
-            {user.role === 'central_admin' && (
+            {user.role === 'central_admin' && permissions.includes('system.view') && (
               <section id="platform-overview" aria-label="Platform overview" style={{ marginTop: 14, padding: 16, border: '1px solid #334155', borderRadius: 10 }}>
                 <h2 style={{ marginTop: 0, fontSize: 18 }}>Live platform overview</h2>
                 {adminOverviewError && <p role="alert" style={{ color: '#fecaca' }}>Unable to load overview: {adminOverviewError}</p>}
