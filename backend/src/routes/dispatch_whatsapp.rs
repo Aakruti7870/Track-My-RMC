@@ -149,6 +149,24 @@ pub async fn customer_consent(
     Ok(Json(json!({"success": true, "opted_in": input.opted_in})))
 }
 
+pub async fn get_customer_consent(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(order_id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    check_role(&user, &["customer"])?;
+    let consent: Option<Option<bool>> = sqlx::query_scalar(
+        "SELECT (SELECT opted_in FROM dispatch_whatsapp_contacts WHERE order_id=o.id)
+         FROM orders o WHERE o.id=$1 AND o.customer_id=$2",
+    )
+    .bind(order_id)
+    .bind(user.user_id)
+    .fetch_optional(&state.db)
+    .await?;
+    let opted_in = consent.ok_or_else(|| AppError::NotFound("Order not found".into()))?;
+    Ok(Json(json!({"opted_in": opted_in.unwrap_or(false)})))
+}
+
 pub async fn get_owner_preference(
     State(state): State<AppState>,
     user: AuthUser,
