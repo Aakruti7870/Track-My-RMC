@@ -744,8 +744,6 @@ pub async fn list_plant_master(
                 SELECT 1 FROM plant_listing_requests lr
                 WHERE lr.plant_id=p.id AND lr.status='APPROVED'),
             'intake_mode',COALESCE((SELECT order_intake_mode FROM plant_admin_controls WHERE plant_id=p.id),'DIRECT'),
-            'tmrmc_verified',EXISTS(SELECT 1 FROM plant_trust_reviews t WHERE t.plant_id=p.id
-                AND t.status='VERIFIED' AND t.valid_until>=CURRENT_DATE),
             'staff_count',(SELECT COUNT(*) FROM plant_staff ps
                 WHERE ps.plant_id=p.id AND ps.is_active AND ps.removed_at IS NULL))
         {predicate} ORDER BY p.updated_at DESC,p.id LIMIT $5 OFFSET $6
@@ -787,8 +785,7 @@ pub async fn get_plant_master(
                 SELECT 1 FROM plant_listing_requests lr
                 WHERE lr.plant_id=p.id AND lr.status='APPROVED'),
             'intake_mode',COALESCE((SELECT order_intake_mode FROM plant_admin_controls WHERE plant_id=p.id),'DIRECT'),
-            'tmrmc_verified',EXISTS(SELECT 1 FROM plant_trust_reviews t WHERE t.plant_id=p.id
-                AND t.status='VERIFIED' AND t.valid_until>=CURRENT_DATE))
+)
         FROM rmc_plants p JOIN users u ON u.id=p.owner_id WHERE p.id=$1
     "#,
     )
