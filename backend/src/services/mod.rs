@@ -3,6 +3,7 @@ pub mod commercial_service;
 pub mod customer_observations;
 pub mod customer_order;
 pub mod dispatch_service;
+pub mod dispatch_whatsapp;
 pub mod email_service;
 pub mod native_automation;
 pub mod native_closed_loop;
