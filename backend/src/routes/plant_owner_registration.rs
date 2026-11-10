@@ -56,7 +56,7 @@ fn bounded(value: &str, min: usize, max: usize, label: &str) -> Result<String, A
 // The mobile form accepts multiline addresses. Normalize line breaks to
 // printable spaces, while bounded() rejects all other control characters.
 fn registered_address(value: &str) -> Result<String, AppError> {
-    let normalized = value.replace('\r', " ").replace('\n', " ");
+    let normalized = value.replace(['\r', '\n'], " ");
     bounded(&normalized, 5, 500, "Registered business address")
 }
 
