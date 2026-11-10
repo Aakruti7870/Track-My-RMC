@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -6,6 +6,11 @@ import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useTheme } from "@/src/theme/ThemeProvider";
+import { useAuth } from "@/src/auth/AuthContext";
+import { apiPost } from "@/src/api/client";
+import { useToast } from "@/src/components/ui/Toast";
+import { Button } from "@/src/components/ui/Button";
+import { Input } from "@/src/components/ui/Input";
 import { useGet } from "@/src/hooks/useApi";
 import { AppText } from "@/src/components/ui/AppText";
 import { Badge } from "@/src/components/ui/Badge";
@@ -20,6 +25,7 @@ type OrderDetail = {
   order_number: string;
   customer_name?: string;
   customer_mobile?: string;
+  customer_phone?: string;
   grade: string;
   quantity: number;
   site_name?: string;
@@ -29,11 +35,39 @@ type OrderDetail = {
 
 export default function DispatchOrder() {
   const { colors, scheme } = useTheme();
+  const { token } = useAuth();
+  const toast = useToast();
+  const [whatsappPhone, setWhatsappPhone] = useState("");
+  const [confirmedConsent, setConfirmedConsent] = useState(false);
+  const [marketingConsent, setMarketingConsent] = useState(false);
+  const [savingConsent, setSavingConsent] = useState(false);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data, loading, error, refetch, reload } = useGet<{ order: OrderDetail }>(`/staff/orders/${id}`);
   const o = data?.order;
+
+  const saveDeliveryContact = async () => {
+    if (!token || !id) return;
+    if (!confirmedConsent) {
+      toast("Confirm that the customer agreed to WhatsApp delivery messages", "error");
+      return;
+    }
+    setSavingConsent(true);
+    try {
+      await apiPost(`/staff/orders/${id}/dispatch-whatsapp-contact`, token, {
+        phone: whatsappPhone || o?.customer_mobile || o?.customer_phone || "",
+        opted_in: true,
+        marketing_opted_in: marketingConsent,
+        consent_source: "customer_phone",
+      });
+      toast("Customer's WhatsApp preferences recorded", "success");
+    } catch {
+      toast("Unable to record customer consent", "error");
+    } finally {
+      setSavingConsent(false);
+    }
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
@@ -75,6 +109,32 @@ export default function DispatchOrder() {
           ) : null}
 
           <LoadPlanner orderId={o.id} resourceBase="/staff" onChanged={refetch} />
+          <Card style={{ gap: spacing.sm }} testID="staff-dispatch-whatsapp-contact">
+            <AppText variant="heading">WhatsApp Dispatch Contact</AppText>
+            <AppText variant="caption">
+              Record the customer's explicit permission for delivery updates.
+              Delivery messages require customer permission. App promotions require a separate
+              opt-in; never assume consent from a concrete purchase.
+            </AppText>
+            <Input label="WhatsApp phone" keyboardType="phone-pad" maxLength={18}
+              placeholder={o.customer_mobile || o.customer_phone || "+91…"}
+              value={whatsappPhone} onChangeText={setWhatsappPhone} />
+            <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: confirmedConsent }}
+              onPress={() => setConfirmedConsent(value => !value)}
+              style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+              <Ionicons name={confirmedConsent ? "checkbox" : "square-outline"} size={24} color={colors.brand} />
+              <AppText style={{ flex: 1 }}>The customer agreed to WhatsApp delivery notifications.</AppText>
+            </Pressable>
+            <Pressable accessibilityRole="checkbox"
+              accessibilityState={{ checked: marketingConsent }}
+              onPress={() => setMarketingConsent(value => !value)}
+              style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+              <Ionicons name={marketingConsent ? "checkbox" : "square-outline"} size={24} color={colors.brand} />
+              <AppText style={{ flex: 1 }}>Customer separately agreed to optional TrackMyRMC WhatsApp app promotions.</AppText>
+            </Pressable>
+            <Button label="Save WhatsApp Preferences" variant="outline" loading={savingConsent}
+              onPress={() => void saveDeliveryContact()} />
+          </Card>
         </ScrollView>
       ) : null}
     </View>

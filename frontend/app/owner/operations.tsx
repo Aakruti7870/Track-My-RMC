@@ -91,6 +91,29 @@ export default function OwnerOperations() {
   const { data: history, refetch: refreshHistory } =
     useGet<{ jobs: AutomationHistory[] }>(base ? `${base}/history` : null);
   const selectedRule = (rules?.rules ?? []).find(rule => rule.key === selectedRuleKey);
+  const dispatchUrl = plantId ? `/owner/plants/${encodeURIComponent(plantId)}/dispatch-whatsapp` : null;
+  const { data: whatsappSettings, refetch: refreshWhatsappSettings } =
+    useGet<{ enabled: boolean; marketing_enabled: boolean;
+      worker_enabled: boolean; marketing_worker_enabled: boolean;
+      template_configured: boolean; marketing_template_configured: boolean;
+      summary: { pending: number; needs_consent: number; needs_review: number; delivered: number };
+      marketing_summary: { pending: number; needs_consent: number; needs_review: number; delivered: number; skipped: number } }>(dispatchUrl);
+  const [updatingWhatsapp, setUpdatingWhatsapp] = useState(false);
+
+  async function updateWhatsapp(enabled: boolean, marketing_enabled: boolean) {
+    if (!dispatchUrl || !token || updatingWhatsapp) return;
+    setUpdatingWhatsapp(true);
+    setRequestError("");
+    try {
+      await apiPut(dispatchUrl, token, { enabled, marketing_enabled });
+      setNotice("Dispatch WhatsApp plant preference saved.");
+      await refreshWhatsappSettings();
+    } catch (error) {
+      setRequestError(apiErrorDetail(error, "Could not update dispatch WhatsApp preference."));
+    } finally {
+      setUpdatingWhatsapp(false);
+    }
+  }
 
   async function updateRule(rule: AutomationRule, enabled: boolean, reminderMinutes?: number, slaMinutes?: number) {
     if (!base || !token || busyRule || (enabled && (!rule.published || rule.globally_paused))) return;
@@ -152,6 +175,68 @@ export default function OwnerOperations() {
         {rules && !rules.worker_enabled ? <AppText accessibilityRole="alert" style={{ color: "#F59E0B", fontSize: 12 }}>
           Automation engine not activated. Preferences are saved, but the background worker is currently off.
         </AppText> : null}
+        <OwnerGlass style={{ padding: 12, gap: 8, borderColor: p.border }}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <AppText style={{ color: p.text, fontWeight: "700", fontSize: 14 }}>Automatic WhatsApp Dispatch</AppText>
+              <AppText style={{ color: p.muted, fontSize: 12 }}>
+                One transactional alert per mixer load, after dispatch and customer consent.
+              </AppText>
+            </View>
+            <Pressable accessibilityRole="switch"
+              accessibilityState={{ checked: whatsappSettings?.enabled || false, disabled: updatingWhatsapp || !plantId }}
+              disabled={updatingWhatsapp || !plantId}
+              onPress={() => void updateWhatsapp(!whatsappSettings?.enabled, Boolean(whatsappSettings?.marketing_enabled))}
+              style={{ backgroundColor: whatsappSettings?.enabled ? p.accent : p.glass,
+                borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9 }}>
+              <AppText style={{ color: whatsappSettings?.enabled ? "#FFFFFF" : p.text, fontWeight: "700" }}>
+                {whatsappSettings?.enabled ? "ON" : "OFF"}
+              </AppText>
+            </Pressable>
+          </View>
+          <AppText style={{ color: p.muted, fontSize: 12 }}>
+            Worker: {whatsappSettings?.worker_enabled ? "Enabled" : "Not activated"} ·
+            Template: {whatsappSettings?.template_configured ? "Configured" : "Pending"}
+          </AppText>
+          {whatsappSettings?.summary ? (
+            <AppText style={{ color: p.muted, fontSize: 12 }}>
+              Utility: Pending {whatsappSettings.summary.pending} · Consent required {whatsappSettings.summary.needs_consent} ·
+              Delivered {whatsappSettings.summary.delivered} · Review {whatsappSettings.summary.needs_review}
+            </AppText>
+          ) : null}
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <AppText style={{ color: p.text, fontWeight: "700", fontSize: 14 }}>Optional App Promotion</AppText>
+              <AppText style={{ color: p.muted, fontSize: 12 }}>
+                Separate Meta Marketing template, explicit opt-in, at most once per customer every 30 days.
+              </AppText>
+            </View>
+            <Pressable accessibilityRole="switch"
+              accessibilityState={{ checked: whatsappSettings?.marketing_enabled || false,
+                disabled: updatingWhatsapp || !plantId }}
+              disabled={updatingWhatsapp || !plantId}
+              onPress={() => void updateWhatsapp(Boolean(whatsappSettings?.enabled), !whatsappSettings?.marketing_enabled)}
+              style={{ backgroundColor: whatsappSettings?.marketing_enabled ? p.accent : p.glass,
+                borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9 }}>
+              <AppText style={{ color: whatsappSettings?.marketing_enabled ? "#FFFFFF" : p.text, fontWeight: "700" }}>
+                {whatsappSettings?.marketing_enabled ? "ON" : "OFF"}
+              </AppText>
+            </Pressable>
+          </View>
+          <AppText style={{ color: p.muted, fontSize: 12 }}>
+            Marketing worker: {whatsappSettings?.marketing_worker_enabled ? "Enabled" : "Not activated"} ·
+            Template: {whatsappSettings?.marketing_template_configured ? "Configured" : "Pending"}
+          </AppText>
+          {whatsappSettings?.marketing_summary ? (
+            <AppText style={{ color: p.muted, fontSize: 12 }}>
+              Marketing: Pending {whatsappSettings.marketing_summary.pending} ·
+              Consent required {whatsappSettings.marketing_summary.needs_consent} ·
+              Delivered {whatsappSettings.marketing_summary.delivered} ·
+              Review {whatsappSettings.marketing_summary.needs_review} ·
+              Cooldown {whatsappSettings.marketing_summary.skipped}
+            </AppText>
+          ) : null}
+        </OwnerGlass>
         <View testID="owner-automation-grid" style={{ flexDirection: "row", flexWrap: "wrap", gap: AUTOMATION_GRID_GAP }}>
           {(rules?.rules ?? []).map(rule => {
             const available = rule.published && !rule.globally_paused;

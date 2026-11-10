@@ -93,6 +93,46 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         info!("Native internal automation worker enabled");
     }
 
+    // Independent, explicitly controlled transactional WhatsApp worker.
+    // Turning this on never activates the existing internal automation templates.
+    if std::env::var("DISPATCH_WHATSAPP_ENABLED").ok().as_deref() == Some("true") {
+        let delivery_state = state.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
+            loop {
+                interval.tick().await;
+                if let Err(error) =
+                    trackmyrmc_backend::services::dispatch_whatsapp::tick(&delivery_state).await
+                {
+                    tracing::error!(error = ?error, "Dispatch WhatsApp worker failed");
+                }
+            }
+        });
+        info!("Transactional dispatch WhatsApp worker enabled");
+    }
+
+    // Separate marketing worker: independent provider approval and customer opt-in.
+    // Disabled by default; order dispatch and Utility delivery continue without it.
+    if std::env::var("DISPATCH_WHATSAPP_MARKETING_ENABLED")
+        .ok()
+        .as_deref()
+        == Some("true")
+    {
+        let marketing_state = state.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
+            loop {
+                interval.tick().await;
+                if let Err(error) =
+                    trackmyrmc_backend::services::dispatch_marketing::tick(&marketing_state).await
+                {
+                    tracing::error!(error = ?error, "Dispatch marketing worker failed");
+                }
+            }
+        });
+        info!("Opt-in WhatsApp marketing worker enabled");
+    }
+
     let cors = if config
         .cors_allowed_origins
         .iter()

@@ -13,6 +13,7 @@ pub mod customer_routes;
 pub mod customer_services;
 pub mod digilocker_kyc;
 pub mod discovery;
+pub mod dispatch_whatsapp;
 pub mod dispatcher_routes;
 pub mod driver_dropoffs;
 pub mod driver_profile_routes;
@@ -1386,6 +1387,33 @@ pub fn build_app_router(state: AppState) -> Router {
         .route(
             "/api/automation/provider-callback",
             post(automation_routes::provider_callback),
+        )
+        // --- Transactional WhatsApp: never reuse OTP / marketing templates ---
+        .route(
+            "/api/public/trip-share/:load_id/:signature",
+            get(dispatch_whatsapp::public_trip),
+        )
+        .route(
+            "/api/meta/dispatch-webhook",
+            get(dispatch_whatsapp::verify_meta_webhook)
+                .post(dispatch_whatsapp::receive_meta_webhook),
+        )
+        .route(
+            "/api/customer/orders/:order_id/dispatch-whatsapp-consent",
+            get(dispatch_whatsapp::get_customer_consent).post(dispatch_whatsapp::customer_consent),
+        )
+        .route(
+            "/api/staff/orders/:order_id/dispatch-whatsapp-contact",
+            post(dispatch_whatsapp::staff_record_contact),
+        )
+        .route(
+            "/api/owner/plants/:plant_id/dispatch-whatsapp",
+            get(dispatch_whatsapp::get_owner_preference)
+                .put(dispatch_whatsapp::set_owner_preference),
+        )
+        .route(
+            "/api/loads/:load_id/dispatch-whatsapp-status",
+            get(dispatch_whatsapp::load_status),
         )
         .with_state(state)
 }
