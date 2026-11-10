@@ -99,12 +99,14 @@ try {
     await page.goto(origin+'/admin/');await signIn('first@example.invalid');
     await page.getByRole('button',{name:'Review admin notifications'}).click();
     await page.getByText('Synthetic approval notice').waitFor();
+    await button('Plant Master').click();
     await button('Open registered plants').click();
     await page.getByText('Fixture Owner').first().waitFor();
     await button('Open plant record').click();
     await page.getByText('Test Supervisor').waitFor();
     await button('Review plant governance').click();
     await page.getByText('Not verified or expired').waitFor();
+    await button('Marketing CRM').click();
     await button('Open Marketing CRM').click();
     await page.getByText('No channels created yet. Start with Create Channel above.').waitFor();
     assert.equal(await page.getByLabel('Channel contact file').count(),0,'Upload must not appear without a channel');
@@ -130,6 +132,7 @@ try {
     await button('Create Channel').click();
     await page.getByRole('heading',{name:'2. Upload Contact File — Second Custom Channel'}).waitFor();
     assert.equal(channels.length,2,'Multiple user-created channels are supported');
+    await button('Approval Queue').click();
     await button('users').click();await page.getByText('Previous workspace record',{exact:true}).waitFor();
     delayPlants=true;await button('orders').click();await page.getByRole('status').filter({hasText:'Loading records'}).waitFor();
     assert.equal(await page.getByText('Previous workspace record',{exact:true}).count(),0);
@@ -154,6 +157,7 @@ try {
     assert.equal(await page.getByText('Second Custom Channel',{exact:true}).count(),0);
     assert.equal(await page.getByLabel('Channel contact file').count(),0);
     assert.equal(await button('Close plant record').count(),0);
+    await button('Approval Queue').click();
     await button('Plant Owner approvals and access').click();
     for(const label of ['Registered Plant Owner account ID','Reason for privileged change','Fresh authenticator code'])assert.equal(await page.getByLabel(label,{exact:true}).inputValue(),'');
     assert.deepEqual(errors,[]);await context.close();
