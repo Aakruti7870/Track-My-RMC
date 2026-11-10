@@ -1588,13 +1588,14 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                   <div>
                     <h2 style={{margin:0,fontSize:19}}>Marketing & Broadcast Center</h2>
                     <p style={{fontSize:12,color:'#cbd5e1',margin:'4px 0 0'}}>
-                      Named contact segments, consent records and campaign drafts. No live WhatsApp or SMS sending.
+                      Create your own channels first, then upload contacts into the channel you choose.
+                      These are internal TrackMyRMC contact channels, not WhatsApp Channels or chat groups.
                     </p>
                   </div>
                 </div>
                 <button type="button" disabled={marketingBusy} onClick={()=>void loadMarketing()}
                   style={{...buttonStyle,marginTop:12}}>
-                  {showMarketing?'Refresh CRM overview':'Open Marketing CRM'}
+                  {showMarketing?'Refresh Marketing Center':'Open Marketing CRM'}
                 </button>
                 {showMarketing&&<>
                   {marketingError&&<p role="alert" style={{color:'#fecaca'}}>{marketingError}</p>}
@@ -1613,72 +1614,110 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                       </div>)}
                     </div>
                     <p style={{fontSize:12,color:'#fbbf24',margin:'10px 0'}}>
-                      This is an internal CRM, not a WhatsApp chat group. Uploaded phone numbers never prove consent;
-                      campaign approval, approved Meta templates, provider credentials, recipient suppression and dispatch are not enabled.
+                      CSV imports never establish marketing consent or send messages. Campaigns remain drafts until
+                      separately approved Meta templates, recipient consent, and explicit send authorization exist.
                     </p>
-                    <h3 style={{fontSize:16,marginBottom:6}}>Contact groups</h3>
-                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:8}}>
-                      {marketing.segments.map(group=><div key={group.id}
-                        style={{padding:11,borderRadius:8,border:'1px solid #475569',background:'#111827'}}>
-                        <strong style={{fontSize:13}}>{group.name}</strong>
-                        <p style={{fontSize:12,color:'#cbd5e1',margin:'5px 0'}}>{group.members} members</p>
-                      </div>)}
-                      {!marketing.segments.length&&<p>No contact groups. Create one below.</p>}
-                    </div>
-                    <div style={{borderTop:'1px solid #334155',marginTop:16,paddingTop:12,display:'grid',gap:10}}>
-                      <h3 style={{fontSize:16,margin:0}}>Create group / import contacts / save draft</h3>
-                      <p style={{fontSize:12,color:'#cbd5e1',margin:0}}>
-                        Every change requires a fresh authenticator verification and audit reason. One file may contain up to 100 records.
+
+                    <section aria-label="Create custom marketing channel"
+                      style={{border:'1px solid #475569',borderRadius:10,padding:13,marginTop:14,display:'grid',gap:10}}>
+                      <h3 style={{margin:0,fontSize:17}}>1. Create Channel</h3>
+                      <p style={{margin:0,fontSize:12,color:'#cbd5e1'}}>
+                        No preset groups. Enter the channel name you want; create as many named channels as required.
+                        Each channel supports at most 1,000 unique contacts.
                       </p>
-                      <label style={{fontSize:12}}>New group name
-                        <input value={marketingGroup} maxLength={100} onChange={e=>setMarketingGroup(e.target.value)}
-                          style={inputStyle} placeholder="Example: Mumbai opted-in contractors"/>
+                      <label style={{fontSize:12}}>Channel name
+                        <input aria-label="New channel name" value={marketingGroup} maxLength={100}
+                          onChange={e=>setMarketingGroup(e.target.value)} style={inputStyle}
+                          placeholder="Enter your preferred channel name"/>
+                      </label>
+                      <label style={{fontSize:12}}>Audit reason for this change
+                        <input aria-label="Marketing audit reason" value={marketingReason} maxLength={500}
+                          onChange={e=>setMarketingReason(e.target.value)} style={inputStyle}
+                          placeholder="Reason for creating or updating your channel"/>
+                      </label>
+                      <label style={{fontSize:12}}>Marketing CRM authenticator code
+                        <input aria-label="Marketing CRM authenticator code" type="password"
+                          inputMode="numeric" maxLength={6} pattern="[0-9]{6}"
+                          value={marketingCode} onChange={e=>setMarketingCode(e.target.value)} style={inputStyle}/>
                       </label>
                       <button type="button" disabled={marketingBusy||marketingGroup.trim().length<3}
                         onClick={()=>void saveMarketing('segment')} style={{...buttonStyle,marginTop:0}}>
-                        Create named contact group
+                        Create Channel
                       </button>
-                      <label style={{fontSize:12}}>Existing contact group
-                        <select value={marketingSegment} onChange={e=>setMarketingSegment(e.target.value)}
-                          style={inputStyle} disabled={!marketing.segments.length}>
-                          {!marketing.segments.length&&<option value="">Create a group first</option>}
-                          {marketing.segments.map(group=><option key={group.id} value={group.id}>{group.name}</option>)}
-                        </select>
-                      </label>
-                      <label style={{fontSize:12}}>Import CSV contacts (phone,name headers; export Excel to CSV)
-                        <input type="file" accept=".csv,text/csv" style={inputStyle}
-                          onChange={e=>void parseMarketingCsv(e.target.files?.[0])}/>
-                      </label>
-                      <p style={{fontSize:12,color:'#cbd5e1',margin:0}}>
-                        {marketingCsv.length} validated contact rows ready for internal import. Duplicates are resolved by phone number; consent is not changed.
+                    </section>
+
+                    <section aria-label="Your marketing channels" style={{marginTop:16}}>
+                      <h3 style={{fontSize:17,margin:'0 0 8px'}}>Your Channels</h3>
+                      <p style={{fontSize:12,color:'#cbd5e1',margin:'0 0 10px'}}>
+                        To add contacts to a channel created earlier, select that channel below.
+                        No channel is selected automatically.
                       </p>
-                      <button type="button" disabled={marketingBusy||!marketingSegment||marketingCsv.length===0}
-                        onClick={()=>void saveMarketing('contacts')} style={{...buttonStyle,marginTop:0}}>
-                        Import contacts (no marketing opt-in)
-                      </button>
-                      <label style={{fontSize:12}}>Draft campaign title
-                        <input value={marketingCampaign} maxLength={120} onChange={e=>setMarketingCampaign(e.target.value)}
-                          style={inputStyle} placeholder="Example: Concrete supply update"/>
-                      </label>
-                      <label style={{fontSize:12}}>Proposed approved-template identifier
-                        <input value={marketingTemplate} maxLength={120}
-                          onChange={e=>setMarketingTemplate(e.target.value)}
-                          style={inputStyle} placeholder="example_update"/>
-                      </label>
-                      <button type="button" disabled={marketingBusy||!marketingSegment||!marketingCampaign.trim()||!marketingTemplate.trim()}
-                        onClick={()=>void saveMarketing('draft')} style={{...buttonStyle,marginTop:0}}>
-                        Save campaign draft — do not send
-                      </button>
-                      <label style={{fontSize:12}}>Audit reason (required for every action)
-                        <input value={marketingReason} maxLength={500}
-                          onChange={e=>setMarketingReason(e.target.value)} style={inputStyle}/>
-                      </label>
-                      <label style={{fontSize:12}}>Marketing CRM authenticator code
-                        <input type="password" inputMode="numeric" maxLength={6} pattern="[0-9]{6}"
-                          value={marketingCode} onChange={e=>setMarketingCode(e.target.value)} style={inputStyle}/>
-                      </label>
-                    </div>
-                    <h3 style={{fontSize:16,marginBottom:6}}>Campaign drafts</h3>
+                      {!marketing.segments.length&&<p>No channels created yet. Start with Create Channel above.</p>}
+                      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:9}}>
+                        {marketing.segments.map(channel=><article key={channel.id}
+                          style={{padding:12,borderRadius:9,border:'1px solid '+(marketingSegment===channel.id?'#60a5fa':'#475569'),
+                            background:marketingSegment===channel.id?'#172a42':'#111827'}}>
+                          <strong style={{fontSize:14}}>{channel.name}</strong>
+                          <p style={{fontSize:12,color:'#cbd5e1',margin:'6px 0'}}>
+                            {channel.members} / 1,000 contacts
+                          </p>
+                          <button type="button" disabled={marketingBusy} aria-label={'Open channel '+channel.name}
+                            onClick={()=>{setMarketingSegment(channel.id);setMarketingCsv([]);setMarketingError('');}}
+                            style={{...buttonStyle,marginTop:4,padding:'9px 12px'}}>
+                            {marketingSegment===channel.id?'Channel selected':'Open Channel'}
+                          </button>
+                        </article>)}
+                      </div>
+                    </section>
+
+                    {marketingSegment&&marketing.segments.some(channel=>channel.id===marketingSegment)&&
+                      <section aria-label="Selected channel contact import"
+                        style={{borderTop:'1px solid #475569',marginTop:16,paddingTop:14,display:'grid',gap:10}}>
+                        <h3 style={{fontSize:17,margin:0}}>
+                          2. Upload Contact File — {marketing.segments.find(channel=>channel.id===marketingSegment)?.name}
+                        </h3>
+                        <p style={{fontSize:12,color:'#cbd5e1',margin:0}}>
+                          Upload your CSV after creating or opening this channel. Export Excel contacts as CSV with the
+                          exact headers <code>phone,name</code>. Maximum 1,000 rows per file; maximum 1,000 unique
+                          contacts per channel. Repeated numbers are deduplicated automatically.
+                        </p>
+                        <label style={{fontSize:12}}>Choose contact file
+                          <input aria-label="Channel contact file" type="file" accept=".csv,text/csv" style={inputStyle}
+                            disabled={marketingBusy}
+                            onChange={e=>{
+                              const selected=e.currentTarget.files?.[0];
+                              e.currentTarget.value='';
+                              void parseMarketingCsv(selected);
+                            }}/>
+                        </label>
+                        <p style={{fontSize:12,color:'#cbd5e1',margin:0}}>
+                          {marketingCsv.length} validated contact rows ready to import into this channel.
+                          Uploads do not change marketing opt-in status.
+                        </p>
+                        <button type="button" disabled={marketingBusy||marketingCsv.length===0}
+                          onClick={()=>void saveMarketing('contacts')}
+                          style={{...buttonStyle,marginTop:0}}>
+                          Import Contact File into Channel
+                        </button>
+                        <h3 style={{fontSize:17,margin:'12px 0 0'}}>3. Prepare Campaign Draft (optional)</h3>
+                        <label style={{fontSize:12}}>Draft campaign title
+                          <input value={marketingCampaign} maxLength={120}
+                            onChange={e=>setMarketingCampaign(e.target.value)}
+                            style={inputStyle} placeholder="Enter campaign title"/>
+                        </label>
+                        <label style={{fontSize:12}}>Proposed WhatsApp template identifier
+                          <input value={marketingTemplate} maxLength={120}
+                            onChange={e=>setMarketingTemplate(e.target.value)}
+                            style={inputStyle} placeholder="example_update"/>
+                        </label>
+                        <button type="button" disabled={marketingBusy||!marketingCampaign.trim()||!marketingTemplate.trim()}
+                          onClick={()=>void saveMarketing('draft')} style={{...buttonStyle,marginTop:0}}>
+                          Save Campaign Draft — Do Not Send
+                        </button>
+                      </section>
+                    }
+
+                    <h3 style={{fontSize:16,marginBottom:6}}>Saved campaign drafts</h3>
                     {marketing.campaigns.map(draft=><article key={draft.id}
                       style={{borderTop:'1px solid #334155',padding:'9px 0',fontSize:13}}>
                       <strong>{draft.name}</strong> · {draft.segment}
