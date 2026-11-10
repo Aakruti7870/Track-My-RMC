@@ -85,6 +85,24 @@ export default function OrderDetail() {
   const { data, loading, error, reload } = useGet<Detail>(`${base}${id}`);
 
   const [busy, setBusy] = useState(false);
+  const [whatsappBusy, setWhatsappBusy] = useState(false);
+  const whatsappPath = !isOwner && id ? `/customer/orders/${id}/dispatch-whatsapp-consent` : null;
+  const { data: whatsappConsent, refetch: refreshWhatsappConsent } =
+    useGet<{ opted_in: boolean }>(whatsappPath);
+
+  const saveWhatsappConsent = async (opted_in: boolean) => {
+    if (!token || !id) return;
+    setWhatsappBusy(true);
+    try {
+      await apiPost(`/customer/orders/${id}/dispatch-whatsapp-consent`, token, { opted_in });
+      toast(opted_in ? "WhatsApp delivery updates enabled" : "WhatsApp delivery updates disabled", "success");
+      await refreshWhatsappConsent();
+    } catch {
+      toast("Could not update WhatsApp delivery preference", "error");
+    } finally {
+      setWhatsappBusy(false);
+    }
+  };
   const [showReject, setShowReject] = useState(false);
   const [reason, setReason] = useState("");
   const [advanceRupees, setAdvanceRupees] = useState("");
@@ -227,6 +245,22 @@ export default function OrderDetail() {
               <Badge label={o.payment_status} status={o.payment_status} />
             </View>
           </Card>
+
+          {!isOwner ? (
+            <Card style={{ gap: spacing.sm }} testID="customer-dispatch-whatsapp-consent">
+              <AppText variant="heading">WhatsApp Delivery Updates</AppText>
+              <AppText variant="caption">
+                Receive transaction-only updates when this order's concrete is dispatched.
+                This does not subscribe you to promotional WhatsApp messages.
+              </AppText>
+              <Button
+                label={whatsappConsent?.opted_in ? "Disable WhatsApp Updates" : "Enable WhatsApp Updates"}
+                variant="outline"
+                loading={whatsappBusy}
+                onPress={() => void saveWhatsappConsent(!whatsappConsent?.opted_in)}
+              />
+            </Card>
+          ) : null}
 
           <Card style={{ gap: spacing.sm }}>
             {isOwner ? <AppText variant="label">CUSTOMER DETAILS</AppText> : null}
