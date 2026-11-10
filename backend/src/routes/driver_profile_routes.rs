@@ -66,6 +66,7 @@ pub async fn get_driver_identity(
         return Ok(Json(json!({
             "success": true, "plant_name": null, "plant_address": null,
             "tm_number": null, "driver_name": name, "blood_group": null,
+            "driving_licence_number": null, "driving_licence_valid_until": null,
             "emergency_contact_1": null, "emergency_contact_2": null,
             "employment": {
                 "employee_id": null, "company_joining_date": null,
@@ -82,7 +83,8 @@ pub async fn get_driver_identity(
     let profile = sqlx::query(
         r#"SELECT employee_code, company_joining_date, total_driving_experience_months,
                   blood_group, emergency_contact_1_name, emergency_contact_1_phone,
-                  emergency_contact_2_name, emergency_contact_2_phone
+                  emergency_contact_2_name, emergency_contact_2_phone,
+                  driving_licence_number, driving_licence_valid_until
            FROM driver_employment_profiles
            WHERE plant_id=$1 AND driver_id=$2 AND is_active=TRUE"#,
     )
@@ -102,6 +104,9 @@ pub async fn get_driver_identity(
     let months = profile
         .as_ref()
         .and_then(|p| p.get::<Option<i32>, _>("total_driving_experience_months"));
+    let licence_valid_until = profile
+        .as_ref()
+        .and_then(|p| p.get::<Option<NaiveDate>, _>("driving_licence_valid_until"));
     Ok(Json(json!({
         "success": true,
         "plant_name": plant.get::<String, _>("name"),
@@ -109,6 +114,8 @@ pub async fn get_driver_identity(
         "tm_number": tm,
         "driver_name": name,
         "blood_group": field("blood_group"),
+        "driving_licence_number": field("driving_licence_number"),
+        "driving_licence_valid_until": licence_valid_until.map(|date| date.to_string()),
         "emergency_contact_1": {
             "name": field("emergency_contact_1_name"),
             "phone": field("emergency_contact_1_phone")
@@ -168,6 +175,8 @@ pub async fn list_plant_drivers(
             'employee_id', ep.employee_code, 'company_joining_date', ep.company_joining_date,
             'total_driving_experience_months', ep.total_driving_experience_months,
             'blood_group', ep.blood_group,
+            'driving_licence_number', ep.driving_licence_number,
+            'driving_licence_valid_until', ep.driving_licence_valid_until,
             'emergency_contact_1_name', ep.emergency_contact_1_name,
             'emergency_contact_1_phone', ep.emergency_contact_1_phone,
             'emergency_contact_2_name', ep.emergency_contact_2_name,
@@ -193,6 +202,12 @@ pub struct UpsertDriverProfile {
     pub company_joining_date: String,
     pub total_driving_experience_months: i32,
     pub blood_group: Option<String>,
+    pub driving_licence_number: Option<String>,
+    pub driving_licence_valid_until: Option<String>,
+    // Older app versions omit this flag. Their profile saves must not erase
+    // licence data recorded by a newer owner-managed client.
+    #[serde(default)]
+    pub update_driving_licence: bool,
     pub emergency_contact_1_name: Option<String>,
     pub emergency_contact_1_phone: Option<String>,
     pub emergency_contact_2_name: Option<String>,
@@ -439,6 +454,40 @@ fn validate_contact(value: Option<String>) -> Result<Option<String>, AppError> {
     Ok(Some(phone))
 }
 
+// Plant-entered licence details are not government-verified by this endpoint.
+// Keep both values optional so existing profiles and partial onboarding remain readable.
+fn validate_driving_licence(
+    number: Option<String>,
+    valid_until: Option<String>,
+) -> Result<(Option<String>, Option<NaiveDate>), AppError> {
+    let number = bounded_optional(number, 32, "Driving licence number")?;
+    let number = number.map(|value| value.to_ascii_uppercase());
+    fn allowed_character(c: char) -> bool {
+        c.is_ascii_alphanumeric() || matches!(c, ' ' | '-' | '/')
+    }
+    if number
+        .as_ref()
+        .is_some_and(|value| value.len() < 5 || !value.chars().all(allowed_character))
+    {
+        return Err(AppError::BadRequest(
+            "Invalid driving licence number".into(),
+        ));
+    }
+    let date = match valid_until {
+        Some(raw) => Some(
+            NaiveDate::parse_from_str(raw.trim(), "%Y-%m-%d")
+                .map_err(|_| AppError::BadRequest("Licence validity must be YYYY-MM-DD".into()))?,
+        ),
+        None => None,
+    };
+    if date.is_some() && number.is_none() {
+        return Err(AppError::BadRequest(
+            "Licence number is required when validity is provided".into(),
+        ));
+    }
+    Ok((number, date))
+}
+
 pub async fn save_driver_profile(
     State(state): State<AppState>,
     auth_user: AuthUser,
@@ -483,6 +532,14 @@ pub async fn save_driver_profile(
     {
         return Err(AppError::BadRequest("Unsupported blood group".into()));
     }
+    let (licence_number, licence_valid_until) = if input.update_driving_licence {
+        validate_driving_licence(
+            input.driving_licence_number,
+            input.driving_licence_valid_until,
+        )?
+    } else {
+        (None, None)
+    };
     let ec1_name = bounded_optional(input.emergency_contact_1_name, 120, "Contact 1 name")?;
     let ec2_name = bounded_optional(input.emergency_contact_2_name, 120, "Contact 2 name")?;
     let ec1_phone = validate_contact(input.emergency_contact_1_phone)?;
@@ -569,8 +626,9 @@ pub async fn save_driver_profile(
         r#"INSERT INTO driver_employment_profiles
           (plant_id,driver_id,employee_code,company_joining_date,total_driving_experience_months,
            blood_group,emergency_contact_1_name,emergency_contact_1_phone,
-           emergency_contact_2_name,emergency_contact_2_phone,is_active,employment_status,updated_at)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,TRUE,'ACTIVE',NOW())
+           emergency_contact_2_name,emergency_contact_2_phone,
+           driving_licence_number,driving_licence_valid_until,is_active,employment_status,updated_at)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,TRUE,'ACTIVE',NOW())
           ON CONFLICT(plant_id,driver_id) DO UPDATE SET
           employee_code=EXCLUDED.employee_code, company_joining_date=EXCLUDED.company_joining_date,
           total_driving_experience_months=EXCLUDED.total_driving_experience_months,
@@ -579,6 +637,10 @@ pub async fn save_driver_profile(
           emergency_contact_1_phone=EXCLUDED.emergency_contact_1_phone,
           emergency_contact_2_name=EXCLUDED.emergency_contact_2_name,
           emergency_contact_2_phone=EXCLUDED.emergency_contact_2_phone,
+          driving_licence_number=CASE WHEN $13 THEN EXCLUDED.driving_licence_number
+                                      ELSE driver_employment_profiles.driving_licence_number END,
+          driving_licence_valid_until=CASE WHEN $13 THEN EXCLUDED.driving_licence_valid_until
+                                          ELSE driver_employment_profiles.driving_licence_valid_until END,
           is_active=TRUE,employment_status='ACTIVE',updated_at=NOW()"#,
     )
     .bind(plant_id)
@@ -591,6 +653,9 @@ pub async fn save_driver_profile(
     .bind(&ec1_phone)
     .bind(&ec2_name)
     .bind(&ec2_phone)
+    .bind(&licence_number)
+    .bind(licence_valid_until)
+    .bind(input.update_driving_licence)
     .execute(&mut *tx)
     .await;
     if let Err(err) = update {
@@ -604,6 +669,15 @@ pub async fn save_driver_profile(
         }
         return Err(err.into());
     }
+    let mut changed_fields = vec![
+        "employment",
+        "blood_group",
+        "emergency_contacts",
+        "mixer_assignment",
+    ];
+    if input.update_driving_licence {
+        changed_fields.push("driving_licence");
+    }
     sqlx::query(
         r#"INSERT INTO driver_employment_audit
            (plant_id,driver_id,actor_user_id,action,changed_fields)
@@ -613,12 +687,7 @@ pub async fn save_driver_profile(
     .bind(driver_id)
     .bind(auth_user.user_id)
     .bind(if exists { "UPDATED" } else { "CREATED" })
-    .bind(vec![
-        "employment",
-        "blood_group",
-        "emergency_contacts",
-        "mixer_assignment",
-    ])
+    .bind(changed_fields)
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
@@ -629,13 +698,48 @@ pub async fn save_driver_profile(
 
 #[cfg(test)]
 mod tests {
-    use super::experience_label;
+    use super::{experience_label, validate_driving_licence, UpsertDriverProfile};
     #[test]
     fn experience_months_display() {
         assert_eq!(experience_label(Some(102)), "8 Years 6 Months");
         assert_eq!(experience_label(Some(12)), "1 Year");
         assert_eq!(experience_label(Some(1)), "1 Month");
         assert_eq!(experience_label(None), "Not provided");
+    }
+    #[test]
+    fn licence_validation_preserves_optional_and_expired_records() {
+        assert_eq!(validate_driving_licence(None, None).unwrap(), (None, None));
+        let valid =
+            validate_driving_licence(Some("mh01 2024 123456".into()), Some("2030-01-15".into()))
+                .unwrap();
+        assert_eq!(valid.0, Some("MH01 2024 123456".into()));
+        let missing_number = validate_driving_licence(None, Some("2030-01-15".into()));
+        assert!(missing_number.is_err());
+        let invalid_date =
+            validate_driving_licence(Some("MH012024123456".into()), Some("not-a-date".into()));
+        assert!(invalid_date.is_err());
+        let unsafe_number = validate_driving_licence(Some("bad<script>".into()), None);
+        assert!(unsafe_number.is_err());
+        let expired =
+            validate_driving_licence(Some("MH012024123456".into()), Some("2020-01-15".into()));
+        assert!(expired.is_ok());
+    }
+    #[test]
+    fn legacy_driver_save_cannot_clear_licence_by_omission() {
+        let legacy = serde_json::json!({
+            "phone": "+919876543210",
+            "employee_id": "EMP-01",
+            "company_joining_date": "2026-01-10",
+            "total_driving_experience_months": 48
+        });
+        let old: UpsertDriverProfile = serde_json::from_value(legacy.clone()).unwrap();
+        assert!(!old.update_driving_licence);
+        let mut updated = legacy;
+        updated["update_driving_licence"] = serde_json::json!(true);
+        updated["driving_licence_number"] = serde_json::json!("MH012024123456");
+        updated["driving_licence_valid_until"] = serde_json::json!("2030-01-15");
+        let new: UpsertDriverProfile = serde_json::from_value(updated).unwrap();
+        assert!(new.update_driving_licence);
     }
     #[test]
     fn phone_normalization() {

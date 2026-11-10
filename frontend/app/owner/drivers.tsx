@@ -16,6 +16,7 @@ type DriverRecord = {
   driver_id: string; driver_name: string; phone: string;
   employee_id: string | null; company_joining_date: string | null;
   total_driving_experience_months: number | null; blood_group: string | null;
+  driving_licence_number: string | null; driving_licence_valid_until: string | null;
   emergency_contact_1_name: string | null; emergency_contact_1_phone: string | null;
   emergency_contact_2_name: string | null; emergency_contact_2_phone: string | null;
   tm_number: string | null; is_active: boolean;verified:boolean; employment_status:string; released_at:string|null;
@@ -23,6 +24,7 @@ type DriverRecord = {
 const empty = {
   phone: "", employee_id: "", company_joining_date: "",
   exp_years: "", exp_months: "", blood_group: "",
+  driving_licence_number: "", driving_licence_valid_until: "",
   emergency_contact_1_name: "", emergency_contact_1_phone: "",
   emergency_contact_2_name: "", emergency_contact_2_phone: "",
   transit_mixer_id: "",
@@ -108,6 +110,8 @@ export default function OwnerDriverManagement() {
       exp_years: months == null ? "" : String(Math.floor(months / 12)),
       exp_months: months == null ? "" : String(months % 12),
       blood_group: driver.blood_group ?? "",
+      driving_licence_number: driver.driving_licence_number ?? "",
+      driving_licence_valid_until: driver.driving_licence_valid_until ?? "",
       emergency_contact_1_name: driver.emergency_contact_1_name ?? "",
       emergency_contact_1_phone: driver.emergency_contact_1_phone ?? "",
       emergency_contact_2_name: driver.emergency_contact_2_name ?? "",
@@ -129,6 +133,11 @@ export default function OwnerDriverManagement() {
       setError("Enter a valid registered driver mobile, employee ID, joining date, and driving experience");
       return;
     }
+    if (form.driving_licence_valid_until.trim() &&
+      (!form.driving_licence_number.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(form.driving_licence_valid_until))) {
+      setError("Enter a driving licence number and validity in YYYY-MM-DD format");
+      return;
+    }
     setSaving(true); setError(null);
     try {
       await apiPut(`/business/plants/${plantId}/drivers`, token, {
@@ -137,6 +146,9 @@ export default function OwnerDriverManagement() {
         company_joining_date: form.company_joining_date,
         total_driving_experience_months: years * 12 + months,
         blood_group: form.blood_group || null,
+        driving_licence_number: form.driving_licence_number.trim() || null,
+        driving_licence_valid_until: form.driving_licence_valid_until.trim() || null,
+        update_driving_licence: true,
         emergency_contact_1_name: form.emergency_contact_1_name || null,
         emergency_contact_1_phone: form.emergency_contact_1_phone || null,
         emergency_contact_2_name: form.emergency_contact_2_name || null,
@@ -193,6 +205,9 @@ export default function OwnerDriverManagement() {
           <View style={{ flex: 1 }}><Input label="Driving years *" value={form.exp_years} keyboardType="numeric" onChangeText={setField("exp_years")} /></View>
           <View style={{ flex: 1 }}><Input label="Additional months *" value={form.exp_months} keyboardType="numeric" onChangeText={setField("exp_months")} /></View>
         </View>
+        <AppText variant="caption">Driving licence details (entered by the plant; not government-verified)</AppText>
+        <Input label="Driving Licence Number" value={form.driving_licence_number} onChangeText={setField("driving_licence_number")} autoCapitalize="characters" placeholder="MH01 2024 123456" />
+        <Input label="Licence Validity" value={form.driving_licence_valid_until} onChangeText={setField("driving_licence_valid_until")} placeholder="YYYY-MM-DD" />
         <AppText variant="caption">Blood group (optional medical information)</AppText>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
           {bloodGroups.map(b => <Pressable key={b || "none"} onPress={() => setField("blood_group")(b)} accessibilityRole="button"
