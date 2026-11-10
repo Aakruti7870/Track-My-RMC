@@ -100,9 +100,21 @@ pub async fn activate_on_dispatch_in_tx(
 pub async fn tick(state: &AppState) -> Result<usize, AppError> {
     // A missing template or sender must not consume the only notification attempt.
     if std::env::var("META_DISPATCH_TEMPLATE_NAME")
-        .ok().filter(|value| !value.is_empty()).is_none()
-        || state.config.meta_whatsapp_token.as_deref().unwrap_or("").is_empty()
-        || state.config.meta_whatsapp_phone_number_id.as_deref().unwrap_or("").is_empty()
+        .ok()
+        .filter(|value| !value.is_empty())
+        .is_none()
+        || state
+            .config
+            .meta_whatsapp_token
+            .as_deref()
+            .unwrap_or("")
+            .is_empty()
+        || state
+            .config
+            .meta_whatsapp_phone_number_id
+            .as_deref()
+            .unwrap_or("")
+            .is_empty()
     {
         return Ok(0);
     }
