@@ -2102,3 +2102,179 @@ async fn owner_dashboard_filters_are_paginated_and_plant_scoped(db: PgPool) {
     assert_eq!(home["cards"]["active_staff"], 0);
     assert_eq!(home["cards"]["dispatched_loads"], 0);
 }
+
+#[sqlx::test]
+async fn visibility_hold_hides_discovery_blocks_new_orders_and_can_be_restored(db: PgPool) {
+    let (_, app, _, plant, token) = fixture(&db).await;
+    let (status, listed) = call(&app, "/api/customer/plants", None, &token).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(listed["plants"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|p| p["id"] == plant.to_string()));
+
+    let owner: Uuid = sqlx::query_scalar("SELECT owner_id FROM rmc_plants WHERE id=$1")
+        .bind(plant)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE rmc_plants SET google_place_id='test-linked-place-hold' WHERE id=$1")
+        .bind(plant)
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO plant_admin_controls(plant_id,discovery_visible,changed_by,change_reason)
+         VALUES($1,FALSE,$2,'Compliance review pending; hide from customer discovery')",
+    )
+    .bind(plant)
+    .bind(owner)
+    .execute(&db)
+    .await
+    .unwrap();
+
+    let (status, listed) = call(&app, "/api/customer/plants", None, &token).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(!listed["plants"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|p| p["id"] == plant.to_string()));
+
+    let (status, search) = call(
+        &app,
+        "/api/customer/plants/search",
+        Some(json!({"lat":19.0,"lng":73.0,"radius_km":50.0,"grade":"M25"})),
+        &token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{search}");
+    assert!(!search["plants"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|p| p["id"] == plant.to_string()));
+
+    let (status, compare) = call(
+        &app,
+        "/api/customer/compare-plants?grade=M25&quantity=6",
+        None,
+        &token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{compare}");
+    assert_eq!(compare["count"], 0);
+
+    let (status, _) = call(
+        &app,
+        "/api/customer/orders",
+        Some(order(plant, "held-plant-order")),
+        &token,
+    )
+    .await;
+    assert!(matches!(
+        status,
+        StatusCode::NOT_FOUND | StatusCode::CONFLICT
+    ));
+
+    let (status, _) = call(
+        &app,
+        "/api/customer/plants/google-quote-interest",
+        Some(json!({"google_place_id":"test-linked-place-hold"})),
+        &token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    // Existing customer and mobile sessions cannot mutate the web-only governance record.
+    let (status, _) = call(
+        &app,
+        &format!("/api/control-center/plants/{plant}/governance"),
+        Some(json!({"kind":"visibility","value":"VISIBLE","reason":"Unauthorized change attempt"})),
+        &token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    let active: bool = sqlx::query_scalar("SELECT is_active FROM rmc_plants WHERE id=$1")
+        .bind(plant)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert!(active, "Visibility holds must not deactivate the plant");
+
+    sqlx::query("UPDATE plant_admin_controls SET discovery_visible=TRUE WHERE plant_id=$1")
+        .bind(plant)
+        .execute(&db)
+        .await
+        .unwrap();
+    let (status, restored) = call(&app, "/api/customer/plants", None, &token).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(restored["plants"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|p| p["id"] == plant.to_string()));
+}
+
+// Google Places exclusions are independent of a registered plant's active and onboarding status.
+#[sqlx::test]
+async fn exact_google_place_hold_blocks_unregistered_leads_and_linked_registered_search(
+    db: PgPool,
+) {
+    let (_, app, _, plant, token) = fixture(&db).await;
+    let owner: Uuid = sqlx::query_scalar("SELECT owner_id FROM rmc_plants WHERE id=$1")
+        .bind(plant)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE rmc_plants SET google_place_id='external-test-place' WHERE id=$1")
+        .bind(plant)
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO google_plant_visibility_exclusions(place_id,is_visible,changed_by,change_reason)
+         VALUES('external-test-place',FALSE,$1,'Block Google-linked listing during audit'),
+               ('unregistered-test-place',FALSE,$1,'Block unrelated Google listing during audit')"
+    ).bind(owner).execute(&db).await.unwrap();
+
+    let (status, listing) = call(&app, "/api/customer/plants", None, &token).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(!listing["plants"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|p| p["id"] == plant.to_string()));
+
+    let (status, _) = call(
+        &app,
+        "/api/customer/plants/google-quote-interest",
+        Some(json!({"google_place_id":"unregistered-test-place"})),
+        &token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    let (status, _) = call(
+        &app,
+        "/api/customer/orders",
+        Some(order(plant, "external-place-blocked-order")),
+        &token,
+    )
+    .await;
+    assert!(matches!(
+        status,
+        StatusCode::NOT_FOUND | StatusCode::CONFLICT
+    ));
+
+    sqlx::query("UPDATE google_plant_visibility_exclusions SET is_visible=TRUE WHERE place_id='external-test-place'")
+        .execute(&db).await.unwrap();
+    let (status, listing) = call(&app, "/api/customer/plants", None, &token).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(listing["plants"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|p| p["id"] == plant.to_string()));
+}

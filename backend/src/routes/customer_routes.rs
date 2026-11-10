@@ -111,6 +111,8 @@ pub async fn compare_plants(
         JOIN rmc_plants p ON p.id = rc.plant_id
         WHERE rc.active = TRUE
           AND p.is_active = TRUE
+          AND NOT EXISTS(SELECT 1 FROM plant_admin_controls c WHERE c.plant_id=p.id AND NOT c.discovery_visible)
+          AND NOT EXISTS(SELECT 1 FROM google_plant_visibility_exclusions x WHERE x.place_id=p.google_place_id AND NOT x.is_visible)
           AND LOWER(rc.grade) = LOWER($1)
         "#,
     )

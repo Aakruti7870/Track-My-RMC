@@ -156,7 +156,12 @@ async fn validate(
     let plant = sqlx::query(
         "SELECT owner_id,is_active,latitude,longitude,EXISTS(SELECT 1 FROM plant_listing_requests r WHERE r.plant_id=rmc_plants.id AND r.status='APPROVED') AS verified,
           COALESCE((SELECT order_intake_mode FROM plant_admin_controls WHERE plant_id=rmc_plants.id),'DIRECT') AS intake_mode
-         FROM rmc_plants WHERE id=$1 FOR SHARE",
+         FROM rmc_plants WHERE id=$1
+           AND NOT EXISTS(SELECT 1 FROM plant_admin_controls c
+                          WHERE c.plant_id=rmc_plants.id AND NOT c.discovery_visible)
+           AND NOT EXISTS(SELECT 1 FROM google_plant_visibility_exclusions x
+                          WHERE x.place_id=rmc_plants.google_place_id AND NOT x.is_visible)
+         FOR SHARE",
     )
     .bind(req.plant_id)
     .fetch_optional(&mut *conn)

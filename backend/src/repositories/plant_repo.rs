@@ -11,9 +11,17 @@ pub async fn list_plants(pool: &PgPool) -> Result<Vec<RmcPlant>, AppError> {
         r#"
         SELECT id, owner_id, name, code, latitude, longitude, address_line, city, state, pincode,
                contact_phone, contact_email, capacity_m3_per_hr, rating, is_active, created_at, updated_at
-        FROM rmc_plants
-        WHERE is_active = TRUE
-        ORDER BY rating DESC, name ASC
+        FROM rmc_plants p
+        WHERE p.is_active = TRUE
+          AND NOT EXISTS (
+              SELECT 1 FROM plant_admin_controls c
+              WHERE c.plant_id=p.id AND NOT c.discovery_visible
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM google_plant_visibility_exclusions x
+              WHERE x.place_id=p.google_place_id AND NOT x.is_visible
+          )
+        ORDER BY p.rating DESC, p.name ASC
         "#,
     )
     .fetch_all(pool)

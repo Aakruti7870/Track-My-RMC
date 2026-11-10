@@ -124,6 +124,14 @@ pub async fn search(
                     power(sin(radians(p.latitude-$2)/2),2) + cos(radians($2))*cos(radians(p.latitude))*power(sin(radians(p.longitude-$3)/2),2)
                 )))) END distance_km
             FROM rmc_plants p WHERE p.is_active
+            AND NOT EXISTS (
+                SELECT 1 FROM plant_admin_controls c
+                WHERE c.plant_id=p.id AND NOT c.discovery_visible
+            )
+            AND NOT EXISTS (
+                SELECT 1 FROM google_plant_visibility_exclusions x
+                WHERE x.place_id=p.google_place_id AND NOT x.is_visible
+            )
             AND EXISTS(SELECT 1 FROM play_review_fixtures f WHERE f.user_id=$1 AND f.role='customer' AND f.enabled)
                 = EXISTS(SELECT 1 FROM play_review_fixtures f WHERE f.plant_id=p.id AND f.role='customer' AND f.enabled)
         )
@@ -375,7 +383,25 @@ pub async fn google_nearby(
         .json()
         .await
         .map_err(|_| AppError::InternalError("Invalid Google Places response".into()))?;
-    let places = normalize_google_nearby(&payload, &query, radius);
+    let mut places = normalize_google_nearby(&payload, &query, radius);
+    // A held registered plant must not reappear as its linked Google Place.
+    // This does not control unrelated Google listings outside TrackMyRMC.
+    let held_ids: std::collections::HashSet<String> = sqlx::query_scalar(
+        "SELECT p.google_place_id FROM rmc_plants p
+         JOIN plant_admin_controls c ON c.plant_id=p.id
+         WHERE c.discovery_visible=FALSE AND p.google_place_id IS NOT NULL
+         UNION
+         SELECT x.place_id FROM google_plant_visibility_exclusions x WHERE x.is_visible=FALSE",
+    )
+    .fetch_all(&state.db)
+    .await?
+    .into_iter()
+    .collect();
+    places.retain(|place| {
+        place["place_id"]
+            .as_str()
+            .is_none_or(|place_id| !held_ids.contains(place_id))
+    });
     Ok(Json(json!({
         "places": places,
         "source": "google_places",
@@ -416,11 +442,30 @@ pub async fn request_google_quote(
         ));
     }
 
+    // A held registered Place ID cannot be reintroduced as an unregistered lead.
+    let held: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM rmc_plants p
+         JOIN plant_admin_controls c ON c.plant_id=p.id
+         WHERE p.google_place_id=$1 AND NOT c.discovery_visible)
+         OR EXISTS(SELECT 1 FROM google_plant_visibility_exclusions x
+                   WHERE x.place_id=$1 AND NOT x.is_visible)",
+    )
+    .bind(place_id)
+    .fetch_one(&state.db)
+    .await?;
+    if held {
+        return Err(AppError::Conflict(
+            "This plant is not available for discovery".into(),
+        ));
+    }
+
     // If a Google listing is already linked to an approved TrackMyRMC plant,
     // send the client to the existing verified-plant quotation workflow.
     let registered: Option<Uuid> = sqlx::query_scalar(
         "SELECT p.id FROM rmc_plants p
          WHERE p.google_place_id=$1 AND p.is_active
+           AND NOT EXISTS(SELECT 1 FROM google_plant_visibility_exclusions x
+                          WHERE x.place_id=p.google_place_id AND NOT x.is_visible)
            AND EXISTS (SELECT 1 FROM plant_listing_requests r
                        WHERE r.plant_id=p.id AND r.status='APPROVED')
          LIMIT 1",

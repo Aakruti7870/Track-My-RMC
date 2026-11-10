@@ -72,6 +72,12 @@ pub fn build_app_router(state: AppState) -> Router {
             "/api/control-center/plants/:plant_id/master",
             get(control_center_routes::get_plant_master),
         )
+        // Exact Google Place ID hold for linked and unregistered map listings.
+        .route(
+            "/api/control-center/plants/google-visibility",
+            get(admin_governance::held_google_places)
+                .post(admin_governance::decide_google_place_visibility),
+        )
         // Phase 2: explicit MFA-gated plant decisions and consent-only CRM.
         .route(
             "/api/control-center/plants/:plant_id/governance",
