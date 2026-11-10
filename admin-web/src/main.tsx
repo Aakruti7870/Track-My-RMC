@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { Bell, Building2, ClipboardCheck, Factory, Megaphone, ShieldCheck, Workflow } from 'lucide-react';
+import { Bell, Building2, ClipboardCheck, Factory, Megaphone, ShieldCheck, Workflow, MessageCircle } from 'lucide-react';
 import { AuthenticatorQr } from './AuthenticatorQr';
 import { PlantVisibility } from './PlantVisibility';
+import { WhatsAppChats } from './WhatsAppChats';
+import { AdminSecurity } from './AdminSecurity';
 import apiClient, { getAccessToken, setAccessToken } from './api';
 
 type Stage = 'central-login' | 'central-otp' | 'central-mfa' | 'central-recover' | 'central-recovery-codes' | 'authority-login' | 'authority-password' | 'email' | 'otp' | 'mfa-enroll' | 'mfa-login' | 'authenticated';
@@ -105,8 +107,26 @@ function errorMessage(error: unknown): string {
   return 'The request could not be completed. Please try again.';
 }
 
+const SCREENS = ['overview','plants','visibility','approvals','marketing','automation','governance','chats'] as const;
+type AdminScreen = typeof SCREENS[number];
+function currentScreen(): AdminScreen {
+  const value = window.location.hash.replace(/^#\/admin\//,'');
+  return SCREENS.find(item=>item===value)||'overview';
+}
 function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; onSignedOut: (message: string) => void }) {
   const [stage, setStage] = useState<Stage>('central-login');
+  const [adminScreen,setAdminScreen]=useState<AdminScreen>(currentScreen);
+  const [chatStats,setChatStats]=useState<{unread:number;conversations:number;incoming_today:number}|null>(null);
+  const [chatUnread,setChatUnread]=useState(0);
+  function navigateAdmin(page:AdminScreen) {
+    window.location.hash='#/admin/'+page;
+    setAdminScreen(page);
+  }
+  useEffect(()=>{
+    const update=()=>setAdminScreen(currentScreen());
+    window.addEventListener('hashchange',update);
+    return ()=>window.removeEventListener('hashchange',update);
+  },[]);
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
   const [mfaCode, setMfaCode] = useState('');
@@ -167,6 +187,18 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
   const [placesLoading,setPlacesLoading]=useState(false);
   const [placesError,setPlacesError]=useState('');
   const [permissions,setPermissions]=useState<string[]>([]);
+  useEffect(()=>{
+    if(stage!=='authenticated'||user?.role!=='central_admin'||!permissions.includes('support.manage'))return;
+    let active=true;
+    apiClient.get('/api/control-center/whatsapp/stats').then(r=>{
+      if(!active)return;
+      const counts=r.data?.counts||{};
+      setChatStats({unread:Number(counts.unread||0),conversations:Number(counts.conversations||0),
+        incoming_today:Number(counts.incoming_today||0)});
+      setChatUnread(Number(counts.unread||0));
+    }).catch(()=>{if(active)setChatStats(null);});
+    return ()=>{active=false;};
+  },[stage,user?.role,permissions.join(',')]);
   const [workspace,setWorkspace]=useState('');
   const [records,setRecords]=useState<Array<Record<string,unknown>>>([]);
   const [workspaceOffset,setWorkspaceOffset]=useState(0);
@@ -316,7 +348,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
       await loadWorkspace('kyc');
     }else{return;}
     // One existing approval workspace, not a second copy embedded in the bell.
-    window.location.hash='operations-workspaces';
+    navigateAdmin('approvals');
   }
 
   async function markAdminNoticesRead() {
@@ -1404,23 +1436,27 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                 </section>}
                 <nav aria-label="Control Center sections" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:9,marginTop:14}}>
                   {([
-                    {href:'#platform-overview',label:'Platform KPIs',caption:'Live overview',icon:Building2,allowed:permissions.includes('system.view')},
-                    {href:'#plant-master',label:'Plant Master',caption:'Owners, staff, verification & intake',icon:Factory,allowed:permissions.includes('plant.view')&&permissions.includes('user.view')},
-                    {href:'#plant-visibility',label:'Plant Visibility',caption:'Hold and restore customer map listings',icon:Factory,allowed:permissions.includes('plant.view')&&permissions.includes('plant_owners.manage')&&permissions.includes('user.view')},
-                    {href:'#operations-workspaces',label:'Approval Queue',caption:'Onboarding, documents and RFQs',icon:ClipboardCheck,allowed:permissions.includes('plant_owners.manage')||permissions.includes('kyc.view')||permissions.includes('support.view')},
-                    {href:'#marketing-center',label:'Marketing CRM',caption:'Contact groups and campaign drafts',icon:Megaphone,allowed:permissions.includes('support.manage')},
-                    {href:'#automation-governance',label:'Automation',caption:'Native workflow health',icon:Workflow,allowed:permissions.includes('system.view')},
-                    {href:'#authority-governance',label:'Governance',caption:'Permissions & audit',icon:ShieldCheck,allowed:permissions.includes('admin_access.manage')},
-                  ] as const).filter(item=>item.allowed).map(item=><a key={item.label} href={item.href}
-                    style={{padding:12,border:'1px solid #475569',borderRadius:10,background:'rgba(30,41,59,.85)',color:'#f8fafc',textDecoration:'none',display:'grid',gap:6}}>
+                    {page:'overview',label:'Platform KPIs',caption:'Live overview',icon:Building2,allowed:permissions.includes('system.view')},
+                    {page:'plants',label:'Plant Master',caption:'Owners, staff, verification & intake',icon:Factory,allowed:permissions.includes('plant.view')&&permissions.includes('user.view')},
+                    {page:'visibility',label:'Plant Visibility',caption:'Hold / restore customer app listings',icon:Factory,allowed:permissions.includes('plant.view')&&permissions.includes('plant_owners.manage')&&permissions.includes('user.view')},
+                    {page:'approvals',label:'Approval Queue',caption:'Onboarding, documents and RFQs',icon:ClipboardCheck,allowed:true},
+                    {page:'marketing',label:'Marketing CRM',caption:'Contact channels and campaign drafts',icon:Megaphone,allowed:permissions.includes('support.manage')},
+                    {page:'automation',label:'Automation',caption:'Native workflow health',icon:Workflow,allowed:permissions.includes('system.view')},
+                    {page:'governance',label:'Governance',caption:'Permissions, audit and security',icon:ShieldCheck,allowed:true},
+                    {page:'chats',label:'Chats',caption:chatUnread>0?chatUnread+' unread WhatsApp replies':'Customer WhatsApp inbox',icon:MessageCircle,allowed:permissions.includes('support.manage')},
+                  ] as const).filter(item=>item.allowed).map(item=><button key={item.label} type="button"
+                    onClick={()=>navigateAdmin(item.page)} aria-current={adminScreen===item.page?'page':undefined}
+                    style={{padding:12,border:'1px solid '+(adminScreen===item.page?'#7c3aed':'#475569'),
+                      borderRadius:10,background:adminScreen===item.page?'rgba(76,29,149,.60)':'rgba(30,41,59,.85)',
+                      color:'#f8fafc',textDecoration:'none',display:'grid',gap:6,cursor:'pointer',textAlign:'left'}}>
                     <item.icon size={22} aria-hidden="true"/>
                     <strong style={{fontSize:13}}>{item.label}</strong>
                     <span style={{fontSize:11,color:'#cbd5e1'}}>{item.caption}</span>
-                  </a>)}
+                  </button>)}
                 </nav>
               </section>
             )}
-            {user.role === 'central_admin' && permissions.includes('system.view') && (
+            {user.role === 'central_admin' && adminScreen==='overview' && permissions.includes('system.view') && (
               <section id="platform-overview" aria-label="Platform overview" style={{ marginTop: 14, padding: 16, border: '1px solid #334155', borderRadius: 10 }}>
                 <h2 style={{ marginTop: 0, fontSize: 18 }}>Live platform overview</h2>
                 {adminOverviewError && <p role="alert" style={{ color: '#fecaca' }}>Unable to load overview: {adminOverviewError}</p>}
@@ -1436,10 +1472,10 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                 <p style={{ color: '#94a3b8', fontSize: 12 }}>Read-only statistics from the Rust API. This is not the complete reference Control Center.</p>
               </section>
             )}
-            {user.role === 'central_admin' && permissions.includes('plant.view') && permissions.includes('user.view') && permissions.includes('plant_owners.manage') && (
+            {user.role === 'central_admin' && adminScreen==='visibility' && permissions.includes('plant.view') && permissions.includes('user.view') && permissions.includes('plant_owners.manage') && (
               <PlantVisibility />
             )}
-            {user.role === 'central_admin' && permissions.includes('plant.view') && permissions.includes('user.view') && (
+            {user.role === 'central_admin' && adminScreen==='plants' && permissions.includes('plant.view') && permissions.includes('user.view') && (
               <section id="plant-master" aria-label="Central Admin Plant Master" style={{marginTop:18,padding:14,border:'1px solid #334155',borderRadius:12}}>
                 <div style={{display:'flex',alignItems:'center',gap:10}}>
                   <Factory size={24} aria-hidden="true"/>
@@ -1594,7 +1630,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
             )}
 
 
-            {user.role === 'central_admin' && permissions.includes('support.manage') && (
+            {user.role === 'central_admin' && adminScreen==='marketing' && permissions.includes('support.manage') && (
               <section id="marketing-center" aria-label="Marketing CRM and broadcast drafts"
                 style={{marginTop:18,padding:14,border:'1px solid #334155',borderRadius:12}}>
                 <div style={{display:'flex',gap:10,alignItems:'center'}}>
@@ -1745,7 +1781,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
               </section>
             )}
 
-            {user.role === 'central_admin' && permissions.includes('system.view') && (
+            {user.role === 'central_admin' && adminScreen==='automation' && permissions.includes('system.view') && (
               <section id="automation-governance" aria-label="Native automation governance" style={{marginTop:18,padding:14,border:'1px solid #334155',borderRadius:10}}>
                 <h2 style={{marginTop:0,fontSize:19}}>Native Automation Center</h2>
                 <p style={{fontSize:12,color:'#cbd5e1'}}>TrackMyRMC-owned Rust workflows. Central policy is separate from each Plant Owner's activation.</p>
@@ -1817,7 +1853,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
               </section>
             )}
 
-            {user.role === 'central_admin' && permissions.includes('admin_access.manage') && (
+            {user.role === 'central_admin' && adminScreen==='governance' && permissions.includes('admin_access.manage') && (
               <section id="authority-governance" aria-label="Authority governance" style={{marginTop:18,padding:16,border:'1px solid #334155',borderRadius:12}}>
                 <h2 style={{margin:'0 0 6px',fontSize:19}}>Authority Access Governance</h2>
                 <p style={{fontSize:13,color:'#cbd5e1',lineHeight:1.5}}>
@@ -1873,7 +1909,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
               </section>
             )}
 
-            {user.role === 'central_admin' && <section id="operations-workspaces" aria-label="Authorized workspaces" style={{marginTop:18}}>
+            {user.role === 'central_admin' && adminScreen==='approvals' && <section id="operations-workspaces" aria-label="Authorized workspaces" style={{marginTop:18}}>
 
               {permissions.includes('plant_owners.manage') && permissions.includes('plant.view') && <>
                 <button onClick={()=>void loadPlantProfileQueue()} disabled={busy} style={buttonStyle}>Plant Profile · Verification Queue</button>
@@ -2034,6 +2070,28 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                 <button disabled={busy||records.length<25} onClick={()=>void loadWorkspace(workspace,workspaceOffset+25)}>Next</button>
               </>}
             </section>}
+            {user.role === 'central_admin' && adminScreen==='governance' && (
+              <AdminSecurity permissions={permissions} onRevokeAll={()=>{
+                setAccessToken(null);
+                onSignedOut('All Super Admin sessions revoked. Sign in again.');
+              }}/>
+            )}
+            {user.role === 'central_admin' && adminScreen==='chats' && permissions.includes('support.manage') && (
+              <WhatsAppChats onUnreadChange={setChatUnread}/>
+            )}
+            {user.role === 'central_admin' && adminScreen==='overview' && permissions.includes('support.manage') && (
+              <section aria-label="WhatsApp Chat KPIs" style={{marginTop:15,padding:14,border:'1px solid #475569',borderRadius:10}}>
+                <h2 style={{fontSize:17,marginTop:0}}>WhatsApp Customer Inbox</h2>
+                <div style={{display:'flex',gap:20,flexWrap:'wrap',fontSize:13}}>
+                  <span>Conversations: <strong>{chatStats?.conversations??'Unavailable'}</strong></span>
+                  <span>Unread: <strong>{chatStats?.unread??'Unavailable'}</strong></span>
+                  <span>Incoming (24h): <strong>{chatStats?.incoming_today??'Unavailable'}</strong></span>
+                </div>
+                <button type="button" style={{...buttonStyle,width:'auto',marginTop:12}} onClick={()=>navigateAdmin('chats')}>
+                  Open WhatsApp Chats
+                </button>
+              </section>
+            )}
             {user.role === 'authority' && (
               <section aria-label="Delegated Authority Operations" style={{marginTop:18,padding:16,border:'1px solid #334155',borderRadius:12}}>
                 <h2 style={{margin:'0 0 8px',fontSize:20}}>Authority Operations</h2>
