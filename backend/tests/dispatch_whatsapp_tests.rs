@@ -8,7 +8,7 @@ async fn fixture(db: &PgPool) -> (Uuid, Uuid, Uuid, Uuid) {
         "INSERT INTO users(phone,hashed_password,full_name,role)
          VALUES($1,'unused','Test Plant Owner','owner') RETURNING id",
     )
-    .bind(format!("o-{}", Uuid::new_v4().simple()))
+    .bind(Uuid::new_v4().simple().to_string()[..18].to_string())
     .fetch_one(db)
     .await
     .unwrap();
@@ -16,7 +16,7 @@ async fn fixture(db: &PgPool) -> (Uuid, Uuid, Uuid, Uuid) {
         "INSERT INTO users(phone,hashed_password,full_name,role)
          VALUES($1,'unused','Test Customer','customer') RETURNING id",
     )
-    .bind(format!("c-{}", Uuid::new_v4().simple()))
+    .bind(Uuid::new_v4().simple().to_string()[..18].to_string())
     .fetch_one(db)
     .await
     .unwrap();
@@ -24,7 +24,7 @@ async fn fixture(db: &PgPool) -> (Uuid, Uuid, Uuid, Uuid) {
         "INSERT INTO users(phone,hashed_password,full_name,role)
          VALUES($1,'unused','Test Driver','driver') RETURNING id",
     )
-    .bind(format!("d-{}", Uuid::new_v4().simple()))
+    .bind(Uuid::new_v4().simple().to_string()[..18].to_string())
     .fetch_one(db)
     .await
     .unwrap();
