@@ -24,16 +24,21 @@ pub struct ConsentInput {
     pub phone: String,
     pub opted_in: bool,
     pub consent_source: String,
+    #[serde(default)]
+    pub marketing_opted_in: bool,
 }
 
 #[derive(Deserialize)]
 pub struct CustomerConsentInput {
     pub opted_in: bool,
+    #[serde(default)]
+    pub marketing_opted_in: bool,
 }
 
 #[derive(Deserialize)]
 pub struct PlantPreferenceInput {
     pub enabled: bool,
+    pub marketing_enabled: Option<bool>,
 }
 
 async fn update_contact(
@@ -42,16 +47,20 @@ async fn update_contact(
     actor_id: Uuid,
     phone: &str,
     opted_in: bool,
+    marketing_opted_in: bool,
     source: &str,
 ) -> Result<(), AppError> {
     let normalized = dispatch_whatsapp::normalize_recipient(phone)?;
     let mut tx = state.db.begin().await?;
     sqlx::query(
         "INSERT INTO dispatch_whatsapp_contacts
-           (order_id,phone_e164,opted_in,consent_source,consent_actor_id)
-         VALUES($1,$2,$3,$4,$5)
+           (order_id,phone_e164,opted_in,marketing_opted_in,
+            marketing_consent_recorded_at,consent_source,consent_actor_id)
+         VALUES($1,$2,$3,$4,CASE WHEN $4 THEN NOW() ELSE NULL END,$5,$6)
          ON CONFLICT(order_id) DO UPDATE SET
            phone_e164=EXCLUDED.phone_e164,opted_in=EXCLUDED.opted_in,
+           marketing_opted_in=EXCLUDED.marketing_opted_in,
+           marketing_consent_recorded_at=EXCLUDED.marketing_consent_recorded_at,
            consent_source=EXCLUDED.consent_source,
            consent_actor_id=EXCLUDED.consent_actor_id,
            consent_recorded_at=NOW(),updated_at=NOW()",
@@ -59,6 +68,7 @@ async fn update_contact(
     .bind(order_id)
     .bind(normalized)
     .bind(opted_in)
+    .bind(marketing_opted_in)
     .bind(source)
     .bind(actor_id)
     .execute(&mut *tx)
@@ -73,6 +83,16 @@ async fn update_contact(
     )
     .bind(order_id)
     .bind(opted_in)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "UPDATE dispatch_whatsapp_marketing_events SET
+           status=CASE WHEN $2 THEN 'pending' ELSE 'needs_consent' END,
+           updated_at=NOW()
+         WHERE order_id=$1 AND status IN ('needs_consent','pending')",
+    )
+    .bind(order_id)
+    .bind(marketing_opted_in)
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
@@ -113,10 +133,12 @@ pub async fn staff_record_contact(
         user.user_id,
         &input.phone,
         input.opted_in,
+        input.marketing_opted_in,
         &input.consent_source,
     )
     .await?;
-    Ok(Json(json!({"success": true, "opted_in": input.opted_in})))
+    Ok(Json(json!({"success": true, "opted_in": input.opted_in,
+        "marketing_opted_in": input.marketing_opted_in})))
 }
 
 /// Registered customers may grant/revoke WhatsApp consent without staff involvement.
@@ -142,6 +164,7 @@ pub async fn customer_consent(
         user.user_id,
         &phone,
         input.opted_in,
+        input.marketing_opted_in,
         "customer_app",
     )
     .await?;
@@ -154,16 +177,18 @@ pub async fn get_customer_consent(
     Path(order_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&user, &["customer"])?;
-    let consent: Option<Option<bool>> = sqlx::query_scalar(
-        "SELECT (SELECT opted_in FROM dispatch_whatsapp_contacts WHERE order_id=o.id)
-         FROM orders o WHERE o.id=$1 AND o.customer_id=$2",
+    let consent: Option<(bool, bool)> = sqlx::query_as(
+        "SELECT COALESCE(c.opted_in,FALSE),COALESCE(c.marketing_opted_in,FALSE)
+         FROM orders o LEFT JOIN dispatch_whatsapp_contacts c ON c.order_id=o.id
+         WHERE o.id=$1 AND o.customer_id=$2",
     )
     .bind(order_id)
     .bind(user.user_id)
     .fetch_optional(&state.db)
     .await?;
-    let opted_in = consent.ok_or_else(|| AppError::NotFound("Order not found".into()))?;
-    Ok(Json(json!({"opted_in": opted_in.unwrap_or(false)})))
+    let (opted_in, marketing_opted_in) =
+        consent.ok_or_else(|| AppError::NotFound("Order not found".into()))?;
+    Ok(Json(json!({"opted_in": opted_in, "marketing_opted_in": marketing_opted_in})))
 }
 
 pub async fn get_owner_preference(
@@ -176,6 +201,26 @@ pub async fn get_owner_preference(
     let enabled: bool = sqlx::query_scalar(
         "SELECT COALESCE((SELECT enabled FROM dispatch_whatsapp_plant_settings
          WHERE plant_id=$1),FALSE)",
+    )
+    .bind(plant_id)
+    .fetch_one(&state.db)
+    .await?;
+    let marketing_enabled: bool = sqlx::query_scalar(
+        "SELECT COALESCE((SELECT marketing_enabled
+         FROM dispatch_whatsapp_plant_settings WHERE plant_id=$1),FALSE)",
+    )
+    .bind(plant_id)
+    .fetch_one(&state.db)
+    .await?;
+    let marketing_summary: Value = sqlx::query_scalar(
+        "SELECT jsonb_build_object(
+          'pending',COUNT(*) FILTER(WHERE status='pending'),
+          'needs_consent',COUNT(*) FILTER(WHERE status='needs_consent'),
+          'accepted',COUNT(*) FILTER(WHERE status='accepted'),
+          'delivered',COUNT(*) FILTER(WHERE status IN ('delivered','read')),
+          'needs_review',COUNT(*) FILTER(WHERE status IN ('failed','uncertain')),
+          'skipped',COUNT(*) FILTER(WHERE status='skipped'))
+         FROM dispatch_whatsapp_marketing_events WHERE plant_id=$1",
     )
     .bind(plant_id)
     .fetch_one(&state.db)
@@ -194,6 +239,12 @@ pub async fn get_owner_preference(
     .await?;
     Ok(Json(json!({
         "enabled": enabled,
+        "marketing_enabled": marketing_enabled,
+        "marketing_worker_enabled": std::env::var("DISPATCH_WHATSAPP_MARKETING_ENABLED")
+            .ok().as_deref() == Some("true"),
+        "marketing_template_configured": std::env::var("META_MARKETING_TEMPLATE_NAME")
+            .ok().is_some_and(|v| !v.trim().is_empty()),
+        "marketing_summary": marketing_summary,
         "worker_enabled": std::env::var("DISPATCH_WHATSAPP_ENABLED")
             .ok().as_deref() == Some("true"),
         "template_configured": std::env::var("META_DISPATCH_TEMPLATE_NAME")
@@ -230,16 +281,22 @@ pub async fn set_owner_preference(
     check_role(&user, &["owner", "plant_owner"])?;
     ensure_owner(&state, user.user_id, plant_id).await?;
     sqlx::query(
-        "INSERT INTO dispatch_whatsapp_plant_settings(plant_id,enabled,updated_by)
-         VALUES($1,$2,$3) ON CONFLICT(plant_id) DO UPDATE SET
-         enabled=EXCLUDED.enabled,updated_by=EXCLUDED.updated_by,updated_at=NOW()",
+        "INSERT INTO dispatch_whatsapp_plant_settings
+             (plant_id,enabled,marketing_enabled,updated_by)
+         VALUES($1,$2,COALESCE($3,FALSE),$4)
+         ON CONFLICT(plant_id) DO UPDATE SET
+         enabled=EXCLUDED.enabled,
+         marketing_enabled=COALESCE($3,dispatch_whatsapp_plant_settings.marketing_enabled),
+         updated_by=EXCLUDED.updated_by,updated_at=NOW()",
     )
     .bind(plant_id)
     .bind(input.enabled)
+    .bind(input.marketing_enabled)
     .bind(user.user_id)
     .execute(&state.db)
     .await?;
-    Ok(Json(json!({"success": true, "enabled": input.enabled})))
+    Ok(Json(json!({"success": true, "enabled": input.enabled,
+        "marketing_enabled": input.marketing_enabled})))
 }
 
 async fn authorize_load_share(
