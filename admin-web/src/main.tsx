@@ -424,7 +424,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
       const headers=records.shift()?.map(v=>v.trim().toLowerCase())||[];
       if(headers.length!==2||headers[0]!=='phone'||headers[1]!=='name')
         throw new Error('CSV headers must be exactly phone,name.');
-      if(records.length===0||records.length>500)throw new Error('Use between 1 and 500 contact rows per import.');
+      if(records.length===0||records.length>100)throw new Error('Use between 1 and 100 contact rows per import.');
       if(records.some(r=>r.length!==2||!r[0].trim()||r[0].length>40||r[1].length>120))
         throw new Error('Every row must contain a valid phone field and an optional name.');
       setMarketingCsv(records.map(r=>({phone:r[0].trim(),name:r[1].trim()})));
@@ -1624,7 +1624,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                     <div style={{borderTop:'1px solid #334155',marginTop:16,paddingTop:12,display:'grid',gap:10}}>
                       <h3 style={{fontSize:16,margin:0}}>Create group / import contacts / save draft</h3>
                       <p style={{fontSize:12,color:'#cbd5e1',margin:0}}>
-                        Every change requires a fresh authenticator verification and audit reason. One file may contain up to 500 records.
+                        Every change requires a fresh authenticator verification and audit reason. One file may contain up to 100 records.
                       </p>
                       <label style={{fontSize:12}}>New group name
                         <input value={marketingGroup} maxLength={100} onChange={e=>setMarketingGroup(e.target.value)}
