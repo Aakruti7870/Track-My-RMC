@@ -1582,6 +1582,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                         <strong style={{fontSize:13}}>{item.name}</strong>
                         <p style={{fontSize:12,color:'#cbd5e1'}}>{item.address}</p>
                         <p style={{fontSize:11}}>Google-listed · Not TMRMC verified</p>
+                        <p style={{fontSize:11,overflowWrap:'anywhere'}}>Place ID: <code>{item.place_id}</code></p>
                         <a target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:'#93c5fd'}}
                           href={'https://www.google.com/maps/search/?api=1&query=RMC%20Plant&query_place_id='+encodeURIComponent(item.place_id)}>View on Google Maps</a>
                       </article>)}
