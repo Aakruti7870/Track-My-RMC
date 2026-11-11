@@ -17,7 +17,7 @@ import { Button } from "@/src/components/ui/Button";
 import { EmptyView, ErrorView } from "@/src/components/StateViews";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 
-type Incident = { id: string; alert_type: string; status: string; driver_name: string; message?: string | null; created_at?: string };
+type Incident = { id: string; alert_type: string; status: string; driver_name: string; message?: string | null; vehicle?: string; order_number?: string; created_at?: string };
 
 export default function OwnerIncidents() {
   const { colors, scheme } = useTheme();
