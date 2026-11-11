@@ -1,16 +1,16 @@
-import React, {useCallback, useState} from 'react';
+import React, {useCallback, useEffect, useState} from 'react';
 import apiClient from './api';
 
 type Admin={id:string;name:string;email:string;enabled:boolean};
 type Plant={id:string;name:string;code:string;city?:string;state?:string};
 type Reviewer={enabled:boolean;environment:string;mode:string};
-const panel:React.CSSProperties={background:'rgba(15,23,42,.94)',border:'1px solid #475569',borderRadius:13,padding:14};
-const field:React.CSSProperties={display:'block',width:'100%',boxSizing:'border-box',padding:10,marginTop:5,background:'#020617',color:'#f8fafc',border:'1px solid #64748b',borderRadius:8};
-const button:React.CSSProperties={padding:'9px 14px',borderRadius:8,border:0,color:'#fff',background:'#7c3aed',fontWeight:700,cursor:'pointer'};
-const secondary:React.CSSProperties={...button,background:'#334155'};
+const panel:React.CSSProperties={background:'rgba(26,31,38,.94)',border:'1px solid rgba(255,154,61,.24)',borderRadius:13,padding:14};
+const field:React.CSSProperties={display:'block',width:'100%',boxSizing:'border-box',padding:10,marginTop:5,background:'#0E1116',color:'#F4F6FA',border:'1px solid #6B7380',borderRadius:8};
+const button:React.CSSProperties={padding:'9px 14px',borderRadius:8,border:0,color:'#fff',background:'#FF8A00',fontWeight:700,cursor:'pointer'};
+const secondary:React.CSSProperties={...button,background:'#1D232D'};
 function message(e:unknown){return e&&typeof e==='object'&&'message'in e&&typeof e.message==='string'?e.message:'Request could not be completed.';}
-export function AdminSecurity({permissions,onRevokeAll}:{
-  permissions:string[];onRevokeAll:()=>void;
+export function AdminSecurity({permissions,onRevokeAll,activeSection='all'}:{
+  permissions:string[];onRevokeAll:()=>void;activeSection?:string;
 }){
   const [reviewer,setReviewer]=useState<Reviewer|null>(null);
   const [admins,setAdmins]=useState<Admin[]>([]);
@@ -27,17 +27,22 @@ export function AdminSecurity({permissions,onRevokeAll}:{
   const [error,setError]=useState('');
   const [notice,setNotice]=useState('');
   const can=(s:string)=>permissions.includes(s);
+  const show=(section:string)=>activeSection==='all'||activeSection===section;
   const load=useCallback(async()=>{
     setBusy(true);setError('');
-    const jobs:Promise<void>[]=[
-      apiClient.get('/api/control-center/capabilities').then(r=>setCapabilities(r.data?.permissions||[]))
-    ];
-    if(can('reviewer_access.manage'))jobs.push(apiClient.get('/api/control-center/reviewer-access').then(r=>setReviewer(r.data)));
-    if(can('admin_access.manage'))jobs.push(apiClient.get('/api/control-center/admin-access').then(r=>setAdmins(r.data?.admins||[])));
-    if(can('plant.view'))jobs.push(apiClient.get('/api/control-center/unowned-plants').then(r=>setPlants(r.data?.plants||[])));
+    const jobs:Promise<void>[]=[];
+    if(show('capabilities')||show('sessions'))jobs.push(
+      apiClient.get('/api/control-center/capabilities').then(r=>setCapabilities(r.data?.permissions||[])));
+    if(show('reviewer')&&can('reviewer_access.manage'))jobs.push(
+      apiClient.get('/api/control-center/reviewer-access').then(r=>setReviewer(r.data)));
+    if(show('admin-access')&&can('admin_access.manage'))jobs.push(
+      apiClient.get('/api/control-center/admin-access').then(r=>setAdmins(r.data?.admins||[])));
+    if((show('unowned')||show('assign-owner'))&&can('plant.view'))jobs.push(
+      apiClient.get('/api/control-center/unowned-plants').then(r=>setPlants(r.data?.plants||[])));
     try{await Promise.all(jobs);}catch(e){setError(message(e));}
     finally{setBusy(false);}
-  },[permissions]);
+  },[permissions,activeSection]);
+  useEffect(()=>{void load();},[load]);
   async function privileged(action:()=>Promise<unknown>,description:string,clear=true){
     if(!/^[0-9]{6}$/.test(code.trim())||reason.trim().length<10||reason.trim().length>500){
       setError('Enter a current 6-digit authenticator code and an audit reason (10–500 characters).');return;
@@ -62,12 +67,12 @@ export function AdminSecurity({permissions,onRevokeAll}:{
     }catch(e){setError(message(e));}finally{setBusy(false);}
   }
   return <section id="security-tools" aria-label="Central Admin Security and Access Controls" style={{...panel,marginTop:16}}>
-    <h2 style={{fontSize:19,margin:'0 0 5px'}}>Platform Security & Administrative Access</h2>
-    <p style={{fontSize:12,color:'#cbd5e1'}}>Existing Rust privileges exposed without creating another Super Admin identity. All changes require explicit justification, permission and fresh MFA.</p>
+    <h2 style={{fontSize:19,margin:'0 0 5px'}}>{({reviewer:'Reviewer Access','admin-access':'Admin Access',unowned:'Unowned Plants','assign-owner':'Assign Plant Owner',diagnostics:'AI Command · Database Diagnostics',capabilities:'Platform Capabilities',sessions:'Logout All Sessions'} as Record<string,string>)[activeSection]||'Platform Security & Administrative Access'}</h2>
+    <p style={{fontSize:12,color:'#B8C1CC'}}>Existing Rust privileges exposed without creating another Super Admin identity. All changes require explicit justification, permission and fresh MFA.</p>
     <button type="button" style={secondary} onClick={()=>void load()} disabled={busy}>Load / Refresh Security Controls</button>
-    {error&&<p role="alert" style={{color:'#fecaca'}}>{error}</p>}
-    {notice&&<p role="status" style={{color:'#86efac'}}>{notice}</p>}
-    <div style={{...panel,background:'#111827',marginTop:12,display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:12}}>
+    {error&&<p role="alert" style={{color:'#FDECEC'}}>{error}</p>}
+    {notice&&<p role="status" style={{color:'#72D59B'}}>{notice}</p>}
+    <div style={{...panel,background:'#1D232D',marginTop:12,display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:12}}>
       <label>Audit reason (all privileged changes)
         <input aria-label="Platform security audit reason" maxLength={500} value={reason} onChange={e=>setReason(e.target.value)} style={field} disabled={busy} placeholder="At least 10 characters"/>
       </label>
@@ -77,19 +82,19 @@ export function AdminSecurity({permissions,onRevokeAll}:{
       </label>
     </div>
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(270px,1fr))',gap:12,marginTop:12}}>
-      {can('reviewer_access.manage')&&<section aria-label="Reviewer Access" style={panel}>
+      {show('reviewer')&&can('reviewer_access.manage')&&<section aria-label="Reviewer Access" style={panel}>
         <h3 style={{fontSize:16,marginTop:0}}>Google Play Reviewer Access</h3>
         <p style={{fontSize:12}}>Current: {reviewer?.mode||'Load controls'} · {reviewer?.environment||'Unknown environment'}</p>
-        <p style={{fontSize:12,color:'#fbbf24'}}>Disabling reviewer access can interrupt Google Play testing and revoke test sessions.</p>
+        <p style={{fontSize:12,color:'#F59E0B'}}>Disabling reviewer access can interrupt Google Play testing and revoke test sessions.</p>
         <button disabled={busy||!reviewer} type="button" style={secondary}
           onClick={()=>void privileged(()=>apiClient.post('/api/control-center/reviewer-access',{enabled:!reviewer?.enabled,reason}),
             reviewer?.enabled?'Disable Play reviewer access':'Enable Play reviewer access')}>
           {reviewer?.enabled?'Disable Reviewer Access':'Enable Reviewer Access'}
         </button>
       </section>}
-      {can('admin_access.manage')&&<section aria-label="Admin Access" style={panel}>
+      {show('admin-access')&&can('admin_access.manage')&&<section aria-label="Admin Access" style={panel}>
         <h3 style={{fontSize:16,marginTop:0}}>Central Admin Access</h3>
-        <p style={{fontSize:12,color:'#cbd5e1'}}>Manage existing approved Central Admin identities. This does not create or promote users.</p>
+        <p style={{fontSize:12,color:'#B8C1CC'}}>Manage existing approved Central Admin identities. This does not create or promote users.</p>
         <label>Existing Central Admin account
           <select aria-label="Select existing Central Admin" value={targetAdmin} onChange={e=>setTargetAdmin(e.target.value)} style={field}>
             <option value="">Select an existing account</option>
@@ -105,9 +110,9 @@ export function AdminSecurity({permissions,onRevokeAll}:{
           </button>)}
         </div>
       </section>}
-      {can('plant.view')&&<section aria-label="Unowned Plant Assignment" style={panel}>
+      {(show('unowned')||show('assign-owner'))&&can('plant.view')&&<section aria-label="Unowned Plant Assignment" style={panel}>
         <h3 style={{fontSize:16,marginTop:0}}>Unowned Plants & Owner Assignment</h3>
-        <p style={{fontSize:12,color:'#cbd5e1'}}>Only already-active Plant Owner identities may be assigned. No automatic role promotion.</p>
+        <p style={{fontSize:12,color:'#B8C1CC'}}>Only already-active Plant Owner identities may be assigned. No automatic role promotion.</p>
         <label>Unowned plant
           <select aria-label="Unowned plant" value={selectedPlant} onChange={e=>setSelectedPlant(e.target.value)} style={field}>
             <option value="">Choose a plant</option>
@@ -115,7 +120,14 @@ export function AdminSecurity({permissions,onRevokeAll}:{
           </select>
         </label>
         <p style={{fontSize:12}}>{plants.length} unowned records loaded</p>
-        {can('owner.assign')&&<>
+        {show('unowned')&&<div aria-label="Unowned plant records" style={{display:'grid',gap:8,marginTop:12}}>
+          {plants.slice(0,50).map(p=><article key={p.id} style={{border:'1px solid rgba(255,154,61,.24)',padding:10,borderRadius:10}}>
+            <strong>{p.name}</strong>
+            <p style={{fontSize:12,margin:'5px 0'}}>{p.code} · {p.city||'City not recorded'}, {p.state||'State not recorded'}</p>
+            {can('owner.assign')&&<button type="button" style={secondary} onClick={()=>{setSelectedPlant(p.id);window.location.hash='#/admin/assign-owner';}}>Review owner assignment</button>}
+          </article>)}
+        </div>}
+        {show('assign-owner')&&can('owner.assign')&&<>
           <label>Approved Plant Owner user UUID
             <input aria-label="Approved owner user ID" style={field} value={ownerId} onChange={e=>setOwnerId(e.target.value)} maxLength={36} placeholder="Existing owner account UUID"/>
           </label>
@@ -126,27 +138,27 @@ export function AdminSecurity({permissions,onRevokeAll}:{
           </button>
         </>}
       </section>}
-      {can('ai.diagnose')&&<section aria-label="Read-only Diagnostics" style={panel}>
+      {show('diagnostics')&&can('ai.diagnose')&&<section aria-label="Read-only Diagnostics" style={panel}>
         <h3 style={{fontSize:16,marginTop:0}}>Platform Diagnostic Check</h3>
-        <p style={{fontSize:12,color:'#cbd5e1'}}>The existing API only verifies database connectivity. It does not run AI tasks, deployments or privileged commands.</p>
+        <p style={{fontSize:12,color:'#B8C1CC'}}>The existing API only verifies database connectivity. It does not run AI tasks, deployments or privileged commands.</p>
         <label>Diagnostic request
           <input aria-label="Diagnostic request" value={diagnostic} onChange={e=>setDiagnostic(e.target.value)} maxLength={160} style={field}/>
         </label>
         <button type="button" disabled={busy} onClick={()=>void runDiagnostic()} style={{...secondary,marginTop:10}}>Run Read-only Diagnostic</button>
         {diagnosticResult&&<p role="status">{diagnosticResult}</p>}
       </section>}
-      <section aria-label="Session and Capabilities" style={panel}>
+      {(show('sessions')||show('capabilities'))&&<section aria-label="Session and Capabilities" style={panel}>
         <h3 style={{fontSize:16,marginTop:0}}>Session Security & Capabilities</h3>
-        <p style={{fontSize:12,color:'#cbd5e1'}}>Dedicated Central Admin web session and currently authorized permissions.</p>
-        <p style={{fontSize:12,overflowWrap:'anywhere'}}>{capabilities.length?capabilities.join(' · '):'Load controls to view permitted capabilities.'}</p>
-        <button type="button" disabled={busy} style={{...button,background:'#991b1b'}}
+        <p style={{fontSize:12,color:'#B8C1CC'}}>Dedicated Central Admin web session and currently authorized permissions.</p>
+        {show('capabilities')&&<p style={{fontSize:12,overflowWrap:'anywhere'}}>{capabilities.length?capabilities.join(' · '):'No capabilities returned by the authorized Rust endpoint.'}</p>}
+        {show('sessions')&&<button type="button" disabled={busy} style={{...button,background:'#9B2C2C'}}
           onClick={()=>void privileged(async()=>{
             await apiClient.post('/api/control-center/logout-all');
             onRevokeAll();
           },'Revoke every active session for this Super Admin account',false)}>
           Logout All My Sessions
-        </button>
-      </section>
+        </button>}
+      </section>}
     </div>
   </section>;
 }
