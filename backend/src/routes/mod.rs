@@ -31,6 +31,7 @@ pub mod notifications;
 pub mod order_payment;
 pub mod owner_access;
 pub mod owner_routes;
+pub mod owner_dispatches;
 pub mod payroll_routes;
 pub mod permission_consent;
 pub mod plant_onboarding;
@@ -922,6 +923,7 @@ pub fn build_app_router(state: AppState) -> Router {
             get(owner_routes::get_billing_overview),
         )
         .route("/api/owner/home", get(owner_routes::get_owner_home))
+        .route("/api/owner/dispatches/today", get(owner_dispatches::today))
         .route(
             "/api/control-center/owners/:user_id/status",
             post(owner_access::status),
