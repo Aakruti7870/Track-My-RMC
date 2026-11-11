@@ -9,6 +9,7 @@ import { ErrorView } from "@/src/components/StateViews";
 import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
 import { fonts } from "@/src/theme/tokens";
 import { modulesForRole } from "@/src/navigation/moduleCatalog";
+import { operationalStatus, type OperationalStatus } from "@/src/theme/tokens";
 import { HOME_KEYS, DRIVER_MODULE, ownerDestination } from "@/src/owner/modules";
 import { OwnerCommercial } from "@/src/owner/OwnerCommercial";
 import { OwnerInsights } from "@/src/owner/OwnerInsights";
@@ -19,8 +20,8 @@ type HomeData = { cards: Record<string, number>; plant_count: number };
 const SHORT_COPY = ["Approve & manage", "Batching & workflows", "Stock & reorders", "Staff, attendance"];
 const METRICS: { key: string; label: string; basis: string; symbol: VectorSymbolName; destination: string }[] = [
   { key: "todays_orders", label: "Total Orders", basis: "Due today", symbol: "plant-orders", destination: "today" },
-  { key: "dispatched_loads", label: "Dispatches", basis: "Loads sent today", symbol: "production-dispatch", destination: "processing" },
-  { key: "pending_approvals", label: "Pending Approvals", basis: "Awaiting review", symbol: "quotation-requests", destination: "pending" },
+  { key: "dispatched_loads", label: "Dispatches", basis: "Loads dispatched today", symbol: "production-dispatch", destination: "/owner/dispatches" },
+  { key: "pending_approvals", label: "Pending Order Approvals", basis: "Orders awaiting review", symbol: "pending-approval", destination: "pending" },
   { key: "active_staff", label: "Plant Staff", basis: "Active linked staff", symbol: "plant-staff", destination: "/business/staff" },
   { key: "plant_attendance_today", label: "Plant Attendance", basis: "Checked in today", symbol: "attendance", destination: "/business/attendance" },
   { key: "plant_expenses_today", label: "Expenses", basis: "Records today", symbol: "expenses", destination: "/business/expenses" },
@@ -69,18 +70,24 @@ export default function OwnerHome() {
       <AppText style={[ui.section, { color: p.text }]}>Today at a Glance</AppText>
       {error ? <ErrorView message={error} onRetry={reload} /> : null}
       <View style={styles.metrics}>
-        {METRICS.map(metric => <Pressable key={metric.key} testID={`owner-metric-${metric.key}`}
+        {METRICS.map(metric => {
+          const value = Number(data?.cards[metric.key] ?? 0);
+          const tone: OperationalStatus = metric.key === "pending_approvals" ? "warning"
+            : metric.key === "active_mixers" || metric.key === "dispatched_loads" || metric.key === "todays_orders" ? "success"
+            : metric.key === "ordered_qty" ? "approval" : "neutral";
+          const emphasis = value > 0 ? operationalStatus(tone, p.dark) : p.muted;
+          return <Pressable key={metric.key} testID={`owner-metric-${metric.key}`}
           accessibilityRole="button" accessibilityLabel={`${metric.label}, ${data?.cards[metric.key] ?? "unavailable"}, ${metric.basis}`}
           onPress={() => openMetric(metric.destination)} style={{ width: metricWidth }}>
-          <OwnerGlass style={styles.metric}>
+          <OwnerGlass style={[styles.metric, value > 0 && tone !== "neutral" ? { borderColor: emphasis + "70" } : null]}>
             <VectorSymbol name={metric.symbol} size={30} warmAccent />
             <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-              <AppText style={{ fontSize: 10, color: p.text }}>{metric.label}</AppText>
-              {loading && !data ? <Skeleton height={22} /> : <AppText style={{ fontFamily: fonts.bold, fontSize: 22, color: p.text }}>{data?.cards[metric.key] ?? "—"}</AppText>}
+              <AppText style={{ fontSize: 10, color: p.text }} numberOfLines={2}>{metric.label}</AppText>
+              {loading && !data ? <Skeleton height={22} /> : <AppText style={{ fontFamily: fonts.bold, fontSize: 22, color: emphasis }}>{data?.cards[metric.key] ?? "—"}</AppText>}
               <AppText style={{ fontSize: 9, color: p.muted }}>{metric.basis}</AppText>
             </View>
           </OwnerGlass>
-        </Pressable>)}
+        </Pressable>; })}
       </View>
 
       <AppText style={[ui.section, { color: p.text }]}>Quick Access</AppText>

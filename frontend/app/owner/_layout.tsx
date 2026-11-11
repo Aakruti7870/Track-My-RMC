@@ -28,6 +28,7 @@ export default function OwnerLayout() {
       {TABS.map((t) => (
         <Tabs.Screen key={t.name} name={t.name} />
       ))}
+      <Tabs.Screen name="dispatches" options={{ href: null }} />
     </Tabs>
   );
 }

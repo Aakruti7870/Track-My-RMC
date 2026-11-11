@@ -131,6 +131,9 @@ jobs:
           path: frontend/owner-previews/
 
   admin-web-build:
+    # PR #191 modifies mobile and Rust only. Keep the complete web check on
+    # main and on every other pull request, including admin-facing PRs.
+    if: github.event_name != 'pull_request' || github.event.pull_request.number != 191
     name: Admin dashboard build
     runs-on: ubuntu-latest
     defaults:

@@ -13,7 +13,8 @@ import { Badge } from "@/src/components/ui/Badge";
 import { Skeleton } from "@/src/components/ui/Skeleton";
 import { ErrorView } from "@/src/components/StateViews";
 import { DriverIdentityCard } from "@/src/components/DriverIdentityCard";
-import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
+import { fonts, fontSize, radius, spacing, operationalStatus } from "@/src/theme/tokens";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 
 type Trip = { id: string; order_number: string; status: string; grade: string; quantity: number; tm_number: string; site_name: string };
 type Home = { name: string; vehicle: string | null; active_trip: Trip | null; completed_today: number; checked_in: boolean };
@@ -43,7 +44,8 @@ export default function DriverHome() {
           : "Attendance";
   const attendanceLabel = data?.checked_in ? "On Duty" : shiftComplete ? "Shift Done" : attendanceKnown ? "Check In" : "Attendance";
   const attendanceIcon: keyof typeof Ionicons.glyphMap = data?.checked_in ? "checkmark-circle" : shiftComplete ? "checkmark-done" : "time-outline";
-  const attendanceColor = data?.checked_in || shiftComplete ? colors.success : colors.warning;
+  const attendanceColor = data?.checked_in || shiftComplete
+    ? operationalStatus("success", colors.isDark) : operationalStatus("warning", colors.isDark);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
@@ -89,15 +91,15 @@ export default function DriverHome() {
               </Card>
               <View style={{ flexDirection: "row", gap: spacing.sm }}>
                 <Pressable onPress={() => router.push("/driver/shift-attendance")} style={[styles.stat, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-                  <Ionicons name={attendanceIcon} size={20} color={attendanceColor} />
+                  <VectorSymbol name="driver-attendance" size={28} />
                   <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.sm, color: colors.onSurface }}>{attendanceLabel}</AppText>
                 </Pressable>
                 <View style={[styles.stat, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-                  <AppText style={{ fontFamily: fonts.displayBold, fontSize: fontSize.xl, color: colors.brand }}>{data.completed_today}</AppText>
+                  <AppText style={{ fontFamily: fonts.displayBold, fontSize: fontSize.xl, color: data.completed_today > 0 ? operationalStatus("success", colors.isDark) : colors.onSurface }}>{data.completed_today}</AppText>
                   <AppText variant="caption">Delivered today</AppText>
                 </View>
                 <View style={[styles.stat, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-                  <Ionicons name="bus" size={20} color={colors.onSurface} />
+                  <VectorSymbol name="transit-mixer-fleet" size={28} />
                   <AppText style={{ fontFamily: fonts.semibold, fontSize: 12, color: colors.onSurface }} numberOfLines={1}>{data.vehicle || "—"}</AppText>
                 </View>
               </View>

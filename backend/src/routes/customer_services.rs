@@ -45,6 +45,14 @@ pub enum NewServiceEnquiry {
         mobile_number: String,
         delivery_date: NaiveDate,
     },
+    PumpRental {
+        customer_name: String,
+        contact_number: String,
+        location: String,
+        required_date: NaiveDate,
+        pump_type: String,
+        estimated_hours: f64,
+    },
 }
 
 fn field(value: &str, label: &str, minimum: usize, maximum: usize) -> Result<String, AppError> {
@@ -154,6 +162,24 @@ pub async fn create(
                     "expected_price_per_sq_ft": positive_number(expected_price_per_sq_ft, "Expected rate", 10_000_000.0)?}),
             )
         }
+        NewServiceEnquiry::PumpRental {
+            customer_name,
+            contact_number,
+            location,
+            required_date,
+            pump_type,
+            estimated_hours,
+        } => (
+            "PUMP_RENTAL",
+            field(&customer_name, "Customer name", 2, 150)?,
+            phone(&contact_number)?,
+            field(&location, "Pump site address", 3, 500)?,
+            valid_date(required_date)?,
+            json!({
+                "pump_type": field(&pump_type, "Pump type", 2, 60)?,
+                "estimated_hours": positive_number(estimated_hours, "Estimated rental hours", 72.0)?
+            }),
+        ),
         NewServiceEnquiry::BuildingMaterial {
             material_type,
             location,
@@ -184,11 +210,23 @@ pub async fn create(
             )
         }
     };
+    let mut tx = state.db.begin().await?;
     let id: Uuid = sqlx::query_scalar(
         "INSERT INTO customer_service_enquiries (customer_id, service_type, contact_name, contact_phone, location, required_date, details) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id",
     )
     .bind(auth.user_id).bind(kind).bind(name).bind(mobile).bind(location).bind(date).bind(details)
-    .fetch_one(&state.db).await?;
+    .fetch_one(&mut *tx).await?;
+    sqlx::query(
+        "INSERT INTO notifications(user_id,title,body,notification_type,reference_id)
+         SELECT u.id,'New service enquiry',
+           'A customer service enquiry is awaiting review and follow-up.',
+           'service_enquiry', $1
+         FROM users u WHERE u.is_active=TRUE AND u.role IN ('central_admin','authority')",
+    )
+    .bind(id.to_string())
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
     Ok((
         StatusCode::CREATED,
         Json(
@@ -244,13 +282,14 @@ pub async fn update_status(
         return Err(AppError::BadRequest("Invalid enquiry status".into()));
     }
     let mut tx = state.db.begin().await?;
-    let previous: Option<String> =
-        sqlx::query_scalar("SELECT status FROM customer_service_enquiries WHERE id=$1 FOR UPDATE")
-            .bind(id)
-            .fetch_optional(&mut *tx)
-            .await?;
+    let previous: Option<(String, Uuid)> = sqlx::query_as(
+        "SELECT status,customer_id FROM customer_service_enquiries WHERE id=$1 FOR UPDATE",
+    )
+    .bind(id)
+    .fetch_optional(&mut *tx)
+    .await?;
     let previous = previous.ok_or_else(|| AppError::NotFound("Enquiry not found".into()))?;
-    if previous != update.status {
+    if previous.0 != update.status {
         sqlx::query(
             "UPDATE customer_service_enquiries SET status=$1, updated_at=NOW() WHERE id=$2",
         )
@@ -264,7 +303,16 @@ pub async fn update_status(
         )
         .bind(admin.user_id)
         .bind(id.to_string())
-        .bind(json!({"old_status": previous, "new_status": update.status, "reason": update.reason.trim()}))
+        .bind(json!({"old_status": previous.0, "new_status": update.status, "reason": update.reason.trim()}))
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "INSERT INTO notifications(user_id,title,body,notification_type,reference_id)
+             VALUES($1,'Service enquiry update',$2,'service_enquiry_update',$3)",
+        )
+        .bind(previous.1)
+        .bind(format!("Your service enquiry is now {}.", update.status))
+        .bind(id.to_string())
         .execute(&mut *tx)
         .await?;
     }

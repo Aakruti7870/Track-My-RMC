@@ -14,7 +14,10 @@ import { Input } from "@/src/components/ui/Input";
 import { Skeleton } from "@/src/components/ui/Skeleton";
 import { useToast } from "@/src/components/ui/Toast";
 import { useTheme } from "@/src/theme/ThemeProvider";
-import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
+import { fonts, fontSize, radius, spacing, operationalStatus, type OperationalStatus } from "@/src/theme/tokens";
+import { MODULE_CATALOG } from "@/src/navigation/moduleCatalog";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
+import { Badge } from "@/src/components/ui/Badge";
 
 type Plant = { id: string; name: string; city?: string; grades?: string[] };
 type FieldDef = { key: string; label: string; placeholder?: string; numeric?: boolean; required?: boolean };
@@ -581,6 +584,7 @@ export function BusinessModule({ kind }: { kind: string }) {
     finally { setSaving(false); }
   };
 
+  const moduleSymbol = MODULE_CATALOG.find(module => module.route === `/business/${kind}`)?.symbol;
   const report = kind === "reports" ? data : null;
   const profile = kind === "profile" ? data?.profile : null;
 
@@ -591,9 +595,12 @@ export function BusinessModule({ kind }: { kind: string }) {
         contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120, gap: spacing.lg }}
         refreshControl={<RefreshControl refreshing={false} onRefresh={load} tintColor={colors.brand} />}
       >
-        <View style={{ gap: 3 }}>
-          <AppText variant="title">{def.title}</AppText>
-          <AppText variant="caption">{def.subtitle}</AppText>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          {moduleSymbol ? <VectorSymbol name={moduleSymbol} size={40} /> : null}
+          <View style={{ flex: 1, gap: 3 }}>
+            <AppText variant="title">{def.title}</AppText>
+            <AppText variant="caption">{def.subtitle}</AppText>
+          </View>
         </View>
         {kind === "staff" && (user?.role === "plant_owner" || user?.role === "owner") ? (
           <Button label="Onboard / Manage Drivers" variant="outline" onPress={() => router.push("/owner/drivers")} />
@@ -647,7 +654,21 @@ export function BusinessModule({ kind }: { kind: string }) {
               ["Billed ₹", report.billed], ["Outstanding ₹", report.outstanding], ["Low stock", report.low_stock],
               ["Fleet", report.fleet], ["Available TMs", report.available_mixers],
             ].map(([label, value]) => (
-              <Card key={String(label)} style={styles.stat}><AppText variant="caption">{label}</AppText><AppText variant="heading">{String(value ?? 0)}</AppText></Card>
+              <Card key={String(label)} style={[styles.stat, {
+                borderColor: Number(value || 0) > 0 && String(label) === "Low stock"
+                  ? operationalStatus("critical", colors.isDark) + "70"
+                  : colors.border
+              }]}>
+                <AppText variant="caption">{label}</AppText>
+                <AppText variant="heading" style={{ color: Number(value || 0) <= 0 ? colors.onSurface
+                  : operationalStatus(
+                      (String(label) === "Low stock" ? "critical"
+                        : String(label) === "Outstanding ₹" ? "warning"
+                        : ["Delivered m³", "Available TMs"].includes(String(label)) ? "success"
+                        : "neutral") as OperationalStatus,
+                      colors.isDark,
+                    ) }}>{String(value ?? 0)}</AppText>
+              </Card>
             ))}
           </View>
         ) : kind === "profile" ? (
@@ -672,6 +693,13 @@ export function BusinessModule({ kind }: { kind: string }) {
                   <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: colors.onSurface }}>{r.title}</AppText>
                   {r.subtitle ? <AppText variant="caption">{r.subtitle}</AppText> : null}
                   {r.meta ? <AppText style={{ fontFamily: fonts.regular, fontSize: 11, color: colors.onSurfaceTertiary }}>{r.meta}</AppText> : null}
+                  {kind === "inventory" && r.raw ? (
+                    <Badge size="sm"
+                      label={Number(r.raw.stock) <= 0 ? "Out of stock"
+                        : Number(r.raw.stock) <= Number(r.raw.reorder) ? "Low stock" : "In stock"}
+                      status={Number(r.raw.stock) <= 0 ? "OUT_OF_STOCK"
+                        : Number(r.raw.stock) <= Number(r.raw.reorder) ? "LOW_STOCK" : "IN_STOCK"} />
+                  ) : kind === "fleet" && r.raw?.status ? <Badge label={r.raw.status} status={r.raw.status} size="sm" /> : null}
                 </View>
                 {kind === "fleet" && canEditModule && ["available", "maintenance"].includes(r.raw?.status) ? (
                   <Button label={r.raw?.status === "maintenance" ? "Set Available" : "Set Maintenance"} variant="outline" onPress={() => toggleFleet(r)} />

@@ -14,22 +14,29 @@ import { useToast } from "@/src/components/ui/Toast";
 import { useGet } from "@/src/hooks/useApi";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { fonts, spacing } from "@/src/theme/tokens";
+import { Badge } from "@/src/components/ui/Badge";
+import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
 
-type Service = "cement" | "labour" | "material";
+type Service = "cement" | "labour" | "material" | "pump";
 type FormKey =
   | "customer_name" | "contact_number" | "cement_brand" | "required_bags"
   | "location" | "required_date" | "work_name" | "duration_days"
   | "work_start_date" | "total_sq_ft" | "expected_price_per_sq_ft"
-  | "material_type" | "contact_person_name" | "mobile_number" | "delivery_date";
+  | "material_type" | "contact_person_name" | "mobile_number" | "delivery_date"
+  | "pump_type" | "estimated_hours";
 
 const MATERIALS = ["10 MM", "20 MM", "40 MM", "Crushed Sand", "Gujrat Washed Sand", "Cement Bag"] as const;
 const TITLES: Record<Service, string> = {
   cement: "Cement Enquiry",
   labour: "Labour Contractor Enquiry",
   material: "Building Material Enquiry",
+  pump: "Concrete Pump Rental Enquiry",
 };
 const TYPES: Record<Service, string> = {
-  cement: "CEMENT", labour: "LABOUR_CONTRACTOR", material: "BUILDING_MATERIAL",
+  cement: "CEMENT", labour: "LABOUR_CONTRACTOR", material: "BUILDING_MATERIAL", pump: "PUMP_RENTAL",
+};
+const ENQUIRY_SYMBOLS: Partial<Record<Service, VectorSymbolName>> = {
+  cement: "cement", labour: "labour-contractor", material: "building-material",
 };
 type Enquiry = { id: string; service_type: string; status: string; created_at: string; required_date: string };
 type EnquiryResponse = { enquiries: Enquiry[] };
@@ -49,7 +56,7 @@ function validPhone(value: string): boolean {
 
 export default function ServiceEnquiryScreen() {
   const { service } = useLocalSearchParams<{ service?: string }>();
-  const selected: Service = service === "labour" || service === "material" ? service : "cement";
+  const selected: Service = service === "labour" || service === "material" || service === "pump" ? service : "cement";
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { token, user } = useAuth();
@@ -60,7 +67,7 @@ export default function ServiceEnquiryScreen() {
     cement_brand: "", required_bags: "", location: "", required_date: "",
     work_name: "", duration_days: "", work_start_date: "", total_sq_ft: "",
     expected_price_per_sq_ft: "", material_type: "", contact_person_name: user?.name || "",
-    mobile_number: user?.phone || "", delivery_date: "",
+    mobile_number: user?.phone || "", delivery_date: "", pump_type: "", estimated_hours: "",
   });
   const [showMaterials, setShowMaterials] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -116,6 +123,19 @@ export default function ServiceEnquiryScreen() {
         duration_days: days, work_start_date: fields.work_start_date,
         total_sq_ft: area, expected_price_per_sq_ft: price,
       };
+    } else if (selected === "pump") {
+      const hours = Number(fields.estimated_hours);
+      if (fields.customer_name.trim().length < 2 || !validPhone(fields.contact_number) ||
+          fields.pump_type.trim().length < 2 || !(hours > 0) || hours > 72 ||
+          !Number.isFinite(hours) || !validDate(fields.required_date)) {
+        setMessage("Enter your name, phone, pump type, required date and rental hours (up to 72).");
+        return;
+      }
+      payload = {
+        service_type: "PUMP_RENTAL", customer_name: fields.customer_name.trim(),
+        contact_number: fields.contact_number.trim(), location, required_date: fields.required_date,
+        pump_type: fields.pump_type.trim(), estimated_hours: hours,
+      };
     } else {
       if (!MATERIALS.some(item => item === fields.material_type) ||
           fields.contact_person_name.trim().length < 2 ||
@@ -149,6 +169,8 @@ export default function ServiceEnquiryScreen() {
         <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => router.back()} style={styles.back}>
           <Ionicons name="arrow-back" size={24} color={colors.onSurface} />
         </Pressable>
+        {ENQUIRY_SYMBOLS[selected] ? <VectorSymbol name={ENQUIRY_SYMBOLS[selected]!} size={42} /> :
+          <Ionicons name="construct-outline" size={37} color={colors.brand} />}
         <View style={{ flex: 1 }}>
           <AppText style={[styles.heading, { color: colors.onSurface }]}>{TITLES[selected]}</AppText>
           <AppText variant="caption">Request a call or quotation. No payment required.</AppText>
@@ -185,6 +207,16 @@ export default function ServiceEnquiryScreen() {
                 {field("expected_price_per_sq_ft", "Expected Price Per Sq Ft (₹)", { keyboardType: "numeric" })}
                 <AppText variant="caption">Your account name and contact number will be included with the enquiry.</AppText>
               </>
+            ) : selected === "pump" ? (
+              <>
+                {field("customer_name", "Customer Name")}
+                {field("contact_number", "Contact Number", { keyboardType: "phone-pad" })}
+                {field("location", "Pump Rental Site Address")}
+                {field("pump_type", "Pump Type (boom / line / other)")}
+                {field("estimated_hours", "Estimated Rental Hours", { keyboardType: "numeric" })}
+                {date("required_date", "Required Date")}
+                <AppText variant="caption">Availability and quotation require manual supplier confirmation. This is not a confirmed booking.</AppText>
+              </>
             ) : (
               <>
                 <AppText style={{ fontFamily: fonts.semibold, color: colors.onSurface }}>Material Type</AppText>
@@ -215,7 +247,7 @@ export default function ServiceEnquiryScreen() {
                 {date("delivery_date", "Delivery Date")}
               </>
             )}
-            <AppText variant="caption">Dates use YYYY-MM-DD (example: 2026-11-05). Submission is an enquiry, not a confirmed order.</AppText>
+            <AppText variant="caption">Dates use YYYY-MM-DD. Submission is an enquiry, not a confirmed order or booking.</AppText>
             {message ? <AppText style={{ color: colors.error }} testID="service-enquiry-error">{message}</AppText> : null}
             <Button label="Submit Enquiry" loading={submitting} disabled={!token} onPress={() => void submit()} testID="submit-service-enquiry" />
           </Card>
@@ -229,7 +261,7 @@ export default function ServiceEnquiryScreen() {
                 <AppText style={{ fontFamily: fonts.semibold }}>{item.service_type.replace(/_/g, " ")}</AppText>
                 <AppText variant="caption">Requested: {item.required_date}</AppText>
               </View>
-              <AppText style={{ color: colors.brand, fontFamily: fonts.semibold }}>{item.status}</AppText>
+              <Badge label={item.status} status={item.status} size="sm" />
             </View>
           ))}
           {history.data && !history.data.enquiries.some(item => item.service_type === TYPES[selected]) ? <AppText variant="caption">No previous enquiries for this service.</AppText> : null}

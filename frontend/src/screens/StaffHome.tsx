@@ -17,7 +17,7 @@ import { Skeleton } from "@/src/components/ui/Skeleton";
 import { ErrorView } from "@/src/components/StateViews";
 import { StaffCollection } from "@/src/screens/StaffCollection";
 import { StaffModuleDirectory } from "@/src/screens/StaffModuleDirectory";
-import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
+import { fonts, fontSize, radius, spacing, operationalStatus, type OperationalStatus } from "@/src/theme/tokens";
 
 const PLANT_HERO_IMAGE = require("../../assets/images/Plant _Owner_All_staff_top_card.webp");
 
@@ -48,6 +48,15 @@ const KPI_ARTWORK: Record<string, VectorSymbolName> = {
   "Available": "fleet-availability", "On Trip": "assigned-trips", "Drivers": "drivers",
   "Open Incidents": "incident-register",
 };
+/** A zero alert is neutral; a positive exception is actionable. */
+function kpiTone(k: Kpi): OperationalStatus {
+  if (k.value <= 0) return "neutral";
+  if (["Open Incidents"].includes(k.label)) return "critical";
+  if (["Low Stock", "Pending Orders", "Outstanding"].includes(k.label)) return "warning";
+  if (["Items OK", "Staff Present Today", "Received", "Available", "Available TMs"].includes(k.label))
+    return "success";
+  return "neutral";
+}
 function formatValue(k: Kpi): string {
   const value = Number(k.value);
   if (!Number.isFinite(value)) return "—";
@@ -139,14 +148,17 @@ export function StaffHome() {
                 {data.kpis.map((c) => (
                   <View key={c.label} style={[styles.kpi, { width: kpiWidth,
                     backgroundColor: colors.isDark ? "rgba(29,35,43,0.88)" : "rgba(255,255,255,0.84)",
-                    borderColor: colors.isDark ? "rgba(255,154,61,0.26)" : "rgba(255,255,255,0.97)",
+                    borderColor: kpiTone(c) === "neutral"
+                      ? colors.border
+                      : operationalStatus(kpiTone(c), colors.isDark) + "60",
                   }]}>
                     <View style={styles.kpiIcon}>
                       {KPI_ARTWORK[c.label] ? <VectorSymbol name={KPI_ARTWORK[c.label]} size={30} warmAccent /> :
                         <Ionicons name={c.icon} size={24} color={colors.brand} />}
                       {c.label === "Low Stock" && c.value > 0 ? <Ionicons name="alert-circle" size={16} color={colors.warning} /> : null}
                     </View>
-                    <AppText style={{ fontFamily: fonts.displayBold, fontSize: fontSize.xl, color: colors.onSurface }} numberOfLines={1}>
+                    <AppText style={{ fontFamily: fonts.displayBold, fontSize: fontSize.xl,
+                      color: kpiTone(c) === "neutral" ? colors.onSurface : operationalStatus(kpiTone(c), colors.isDark) }} numberOfLines={1}>
                       {formatValue(c)}
                       {c.unit && c.unit !== "₹" ? <AppText style={{ fontFamily: fonts.medium, fontSize: 12, color: colors.onSurfaceTertiary }}> {c.unit}</AppText> : null}
                     </AppText>

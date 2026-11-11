@@ -121,10 +121,10 @@ for (const mobile of ["quickSymbol: 52", "toolSymbol: 52", "serviceSymbol: 58", 
 }
 assert.ok(customerHome.includes('quickGrid: { marginTop: 10 }') && customerHome.includes('toolGrid: { marginTop: 10 }') && customerHome.includes('serviceGrid: { marginTop: 10 }'), "Keep a 10dp gap between each section header and row.");
 assert.ok(customerHome.includes('promoPrimaryCard: { width: 240 }') && customerHome.includes('height: 50'), "Pump CTA must retain its 240x50dp dimensions.");
-assert.ok(customerHome.includes("Streamline Your Pour") && customerHome.includes("Book Your Pump Online!"), "Pump CTA copy mismatch.");
+assert.ok(customerHome.includes("Streamline Your Pour") && customerHome.includes("Request a Pump Quote"), "Pump CTA copy mismatch.");
 assert.ok(customerHome.includes('["pour-planner", "compare-plants", "projects", "saved-sites"]'), "Planning tools must be presented in the requested order.");
 assert.ok(customerHome.includes('["free-tools", "receiving-guide", "cube-tests", "customer-support"]'), "Expert advice must use the four existing authorized routes.");
-assert.ok(customerHome.includes('testID="home-pump-rental-promo"') && customerHome.includes('onPress={() => router.push("/support")}'), "Pump-rental callout must reach existing customer support, not a dead end.");
+assert.ok(customerHome.includes('testID="home-pump-rental-promo"') && customerHome.includes('pathname: "/customer/service-enquiry"') && customerHome.includes('service: "pump"'), "Pump-rental callout must open the dedicated pump service enquiry, not unrelated support.");
 assert.ok(!customerHome.includes('On Time,') && !customerHome.includes('Everytime') && !customerHome.includes('promoSecondaryCard'), "Remove the old On Time promotional card entirely.");
 assert.ok(customerHome.includes('quickCircle: { width: 56, height: 56, borderRadius: 28'), "52 dp action artwork must have a circular, clipping frame.");
 assert.ok(customerHome.includes('{ key: "plants", label: "Plants"'), "The third action label must remain Plants.");
@@ -157,7 +157,7 @@ for (const wrapper of ["styles.actionIcon", "styles.toolIcon", "styles.serviceIc
 }
 assert.ok(!customerHome.includes('contentContainerStyle={styles.moduleGrid}'), "Remove old horizontal shortcut strip.");
 const serviceForm = read("app/customer/service-enquiry.tsx");
-for (const kind of ["CEMENT", "LABOUR_CONTRACTOR", "BUILDING_MATERIAL"]) {
+for (const kind of ["CEMENT", "LABOUR_CONTRACTOR", "BUILDING_MATERIAL", "PUMP_RENTAL"]) {
   assert.ok(serviceForm.includes(`service_type: "${kind}"`), `Missing enquiry schema: ${kind}`);
 }
 assert.ok(serviceForm.includes('"/customer/service-enquiries"'), "Enquiry API integration missing.");

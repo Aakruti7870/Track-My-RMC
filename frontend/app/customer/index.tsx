@@ -160,13 +160,12 @@ export default function CustomerHome() {
     "Free Tools & Expert Advice", "home-advice-grid",
   );
 
-  // A pump-rental module is not yet implemented. Route enquiries to the
-  // existing, authorized support screen rather than an unrelated order form.
+  // Pump rental is a dedicated service enquiry, not a confirmed booking.
   const pumpOffer = (
     <View testID="home-pump-rental-promo" style={styles.promoRow}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Book Your Pump Online!"
-        accessibilityHint="Opens Customer Support for a pump rental enquiry"
-        onPress={() => router.push("/support")}
+      <Pressable accessibilityRole="button" accessibilityLabel="Request a concrete pump rental enquiry"
+        accessibilityHint="Opens the concrete pump rental enquiry form"
+        onPress={() => router.push({ pathname: "/customer/service-enquiry", params: { service: "pump" } })}
         style={({ pressed }) => [styles.promoCard, styles.promoPrimaryCard, { width: homeSize.pumpWidth, height: homeSize.pumpHeight, borderRadius: homeSize.pumpRadius, paddingHorizontal: homeSize.pumpPadding, gap: homeSize.pumpGap, backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.76 : 1 }]}>
         <Svg width={homeSize.pumpIconWidth} height={homeSize.pumpIconHeight} viewBox="0 0 64 64" accessible={false}>
           <Rect x="4" y="34" width="40" height="14" rx="3" fill={colors.brand} />
@@ -182,7 +181,7 @@ export default function CustomerHome() {
           <AppText numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}
             style={[styles.promoFirstLine, { fontSize: homeSize.pumpFirstSize, lineHeight: homeSize.pumpFirstLine, color: colors.onSurface }]}>Streamline Your Pour</AppText>
           <AppText numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}
-            style={[styles.promoSecondLine, { fontSize: homeSize.pumpSecondSize, lineHeight: homeSize.pumpSecondLine, color: colors.onSurface }]}>Book Your Pump Online!</AppText>
+            style={[styles.promoSecondLine, { fontSize: homeSize.pumpSecondSize, lineHeight: homeSize.pumpSecondLine, color: colors.onSurface }]}>Request a Pump Quote</AppText>
         </View>
       </Pressable>
     </View>

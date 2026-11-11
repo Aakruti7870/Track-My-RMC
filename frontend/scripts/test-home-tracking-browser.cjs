@@ -174,13 +174,13 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    throw Error('Single pump CTA must be horizontally centered');
  if(await page.getByText('On Time, Everytime').count())
    throw Error('Removed On Time card still appears');
- if(!await page.getByRole('button',{name:'Book Your Pump Online!'}).count())throw Error('Accessible pump CTA missing');
+ if(!await page.getByRole('button',{name:'Request a concrete pump rental enquiry'}).count())throw Error('Accessible pump CTA missing');
  for(const title of ['Quick Actions','Active Projects & Planning','Free Tools & Expert Advice','Supply & Workforce','Track My RMC','Built Better']){
    const style=await page.getByText(title,{exact:true}).first().evaluate(el=>{const s=getComputedStyle(el);return {size:s.fontSize,height:s.lineHeight,family:s.fontFamily};});
    if(style.size!==expected.heading+'px'||style.height!==expected.headingLine+'px'||!style.family.toLowerCase().includes('jakarta-bold'))
      throw Error('Home heading typography regression '+title+': '+JSON.stringify(style));
  }
- for(const [title,size,family] of [['Streamline Your Pour',expected.pumpFirst+'px','jakarta-medium'],['Book Your Pump Online!',expected.pumpSecond+'px','jakarta-semibold']]){
+ for(const [title,size,family] of [['Streamline Your Pour',expected.pumpFirst+'px','jakarta-medium'],['Request a Pump Quote',expected.pumpSecond+'px','jakarta-semibold']]){
    const style=await page.getByText(title,{exact:true}).first().evaluate(el=>{const s=getComputedStyle(el);return {size:s.fontSize,family:s.fontFamily};});
    if(style.size!==size||!style.family.toLowerCase().includes(family))
      throw Error('Pump CTA font regression '+title+': '+JSON.stringify(style));

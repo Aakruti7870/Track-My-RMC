@@ -237,19 +237,41 @@ export const motion = {
   deliberate: 280,
 };
 
+export type OperationalStatus = "success" | "approval" | "warning" | "critical" | "neutral";
+export const operationalPalette = {
+  success: "#22C55E",
+  approval: "#166534",
+  warning: "#F59E0B",
+  critical: "#EF4444",
+} as const;
+
+/** Severity is independent of brand styling and consistent between mobile roles. */
+export function operationalStatus(status: OperationalStatus, dark = false): string {
+  if (status === "neutral") return dark ? "#B8C1CC" : "#4A5568";
+  if (status === "approval" && dark) return operationalPalette.success;
+  if (status === "warning" && !dark) return "#92400E";
+  if (status === "critical" && !dark) return "#B91C1C";
+  return operationalPalette[status];
+}
+
 export function statusColor(colors: ThemeColors, status?: string) {
-  const s = (status || "").toUpperCase();
-  if (["VERIFIED", "KYC_VERIFIED"].includes(s)) return colors.verified;
-  if (["DELIVERED", "PAID", "ACTIVE", "APPROVED"].includes(s)) return colors.success;
-  if (
-    [
-      "DISPATCHED", "EN_ROUTE", "AT_SITE", "UNLOADING", "IN_PRODUCTION",
-      "LOADING", "READY_TO_DISPATCH", "TM_ASSIGNED", "DRIVER_ASSIGNED",
-      "ACCEPTED", "SCHEDULED", "POD_PENDING", "PRODUCTION_COMPLETE",
-    ].includes(s)
-  ) return colors.brand;
-  if (["PENDING", "DRAFT", "PARTIAL", "REQUIRES_REVERIFICATION"].includes(s)) return colors.warning;
-  if (["CANCELLED", "REJECTED", "UNPAID", "NOT_STARTED", "SUSPENDED", "DECLINED"].includes(s)) return colors.error;
+  const s = (status || "").trim().toUpperCase().replace(/[\s-]+/g, "_");
+  if (["APPROVED", "ACCEPTED", "CONFIRMED", "VERIFIED", "KYC_VERIFIED"].includes(s))
+    return operationalStatus("approval", colors.isDark);
+  if (["DELIVERED", "COMPLETED", "COMPLETE", "PAID", "ACTIVE", "RESOLVED",
+       "AVAILABLE", "RECEIVED", "IN_STOCK", "SUCCESS", "PASSED"].includes(s))
+    return operationalStatus("success", colors.isDark);
+  if (["CRITICAL", "SOS", "EMERGENCY", "FAILED", "FAIL", "CANCELLED", "REJECTED",
+       "DECLINED", "SUSPENDED", "OVERDUE", "EXPIRED", "OUT_OF_STOCK"].includes(s))
+    return operationalStatus("critical", colors.isDark);
+  if (["PENDING", "NEW", "OPEN", "DRAFT", "PARTIAL", "UNPAID", "LOW_STOCK",
+       "RESPONDING", "ACKNOWLEDGED", "CONTACTED", "NEEDS_REVIEW",
+       "REQUIRES_REVERIFICATION", "WAITING", "REORDER", "WARNING"].includes(s))
+    return operationalStatus("warning", colors.isDark);
+  if (["QUOTED", "PRODUCTION_COMPLETE", "DISPATCHED", "EN_ROUTE", "AT_SITE",
+       "UNLOADING", "IN_PRODUCTION", "LOADING", "READY_TO_DISPATCH", "TM_ASSIGNED",
+       "DRIVER_ASSIGNED", "SCHEDULED", "POD_PENDING"].includes(s))
+    return colors.brand;
   return colors.onSurfaceTertiary;
 }
 

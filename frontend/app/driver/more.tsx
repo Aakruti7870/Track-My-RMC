@@ -12,6 +12,7 @@ import { AppText } from "@/src/components/ui/AppText";
 import { Card } from "@/src/components/ui/Card";
 import { Badge } from "@/src/components/ui/Badge";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 
 export default function DriverMore() {
   const { colors } = useTheme();
@@ -24,7 +25,7 @@ export default function DriverMore() {
       <View style={{ height: insets.top }} />
       <OperationalHomeTopBar />
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120, gap: spacing.lg }}>
-        <AppText variant="title">More</AppText>
+        <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}><VectorSymbol name="settings" size={35} /><AppText variant="title">More</AppText></View>
         <Card style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
           <View style={[styles.avatar, { backgroundColor: colors.brand }]}><AppText style={{ fontFamily: fonts.displayBold, fontSize: fontSize.xl, color: colors.onBrand }}>{(user?.name || "D").charAt(0)}</AppText></View>
           <View style={{ flex: 1, gap: 4 }}><AppText variant="heading">{user?.name}</AppText><AppText variant="caption">{user?.phone}</AppText><Badge label="Driver" color={colors.brand} /></View>
@@ -32,12 +33,12 @@ export default function DriverMore() {
         <RoleModuleDirectory role={user?.role} title="Driver Modules" />
         <Pressable testID="driver-permission-settings" accessibilityRole="button" onPress={() => router.push("/permission-settings")}
           style={[styles.manage, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-          <Ionicons name="shield-checkmark-outline" size={22} color={colors.brand} />
+          <VectorSymbol name="permission-settings" size={35} />
           <View style={{ flex: 1 }}><AppText variant="heading">App permissions</AppText>
             <AppText variant="caption">Location, camera and Android notifications</AppText></View>
           <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceTertiary} />
         </Pressable>
-        <Pressable testID="driver-logout" onPress={async () => { await signOut(); router.replace("/login"); }} style={[styles.logout, { backgroundColor: colors.isDark ? "#96352D" : "#B42318" }]}><Ionicons name="log-out-outline" size={20} color="#FFFFFF" /><AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: "#FFFFFF" }}>Sign out</AppText></Pressable>
+        <Pressable testID="driver-logout" onPress={async () => { await signOut(); router.replace("/login"); }} style={[styles.logout, { backgroundColor: colors.isDark ? "#96352D" : "#B42318" }]}><VectorSymbol name="logout" size={24} /><AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: "#FFFFFF" }}>Sign out</AppText></Pressable>
         <AppText variant="caption" center>TrackMyRMC · v2.0.18 (76)</AppText>
       </ScrollView>
     </View>
