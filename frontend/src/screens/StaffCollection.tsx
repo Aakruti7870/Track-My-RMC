@@ -20,9 +20,11 @@ import { ErrorView } from "@/src/components/StateViews";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 
 const COLLECTION_SYMBOLS: Readonly<Record<string, VectorSymbolName>> = {
-  inventory: "stock-register", quality: "concrete-cube-testing",
-  dispatch: "driver-assignment", production: "batching-operations",
-  fleet: "transit-mixer-fleet",
+  inventory: "stock-register", quality: "quality-register",
+  dispatch: "dispatch-queue", production: "production-queue",
+  fleet: "transit-mixer-fleet", drivers: "drivers",
+  orders: "plant-orders", incidents: "incident-register",
+  invoices: "billing", ledger: "ledger", plants: "plants",
 };
 
 export type StaffAction = {
@@ -52,12 +54,13 @@ export type StaffItem = {
 type CreateDef = { label: string; path: string; form: "material" | "vehicle" };
 type CollectionData = { title: string; empty: string; items: StaffItem[]; create?: CreateDef };
 
-function ItemRow({ item, onAction, onPress }: { item: StaffItem; onAction: (i: StaffItem, a: StaffAction) => void; onPress?: () => void }) {
+function ItemRow({ item, onAction, onPress, symbol }: { item: StaffItem; onAction: (i: StaffItem, a: StaffAction) => void; onPress?: () => void; symbol?: VectorSymbolName }) {
   const { colors } = useTheme();
   const rowContent = (
     <>
       <View style={[styles.icon, { backgroundColor: colors.brandSoft }]}>
-        <Ionicons name={item.icon || "ellipse-outline"} size={18} color={colors.onBrandSoft} />
+        {symbol ? <VectorSymbol name={symbol} size={30} /> :
+          <Ionicons name={item.icon || "ellipse-outline"} size={18} color={colors.onBrandSoft} />}
       </View>
       <View style={{ flex: 1, gap: 2 }}>
         <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: colors.onSurface }} numberOfLines={1}>{item.primary}</AppText>
@@ -156,7 +159,7 @@ export function StaffCollection({ kind, embedded = false, limit, onItemPress }: 
     setBusy(true);
     try {
       await apiPost(path, token, body);
-      toast("Done", "success");
+      toast(path.endsWith("/acknowledge") ? "Incident acknowledged. Plant Owner notified." : "Done", "success");
       setModal(null);
       setNum(""); setText(""); setF1(""); setF2(""); setF3("");
       refetch();
@@ -203,6 +206,9 @@ export function StaffCollection({ kind, embedded = false, limit, onItemPress }: 
 
     const action = modal?.action;
     if (!action?.path) return toast("Action unavailable", "error");
+    if (action.key === "acknowledge-incident" && text.trim().length < 10) {
+      return toast("Explain the response in at least 10 characters", "error");
+    }
     if (action.input === "amount") {
       const amt = Number(num);
       if (!amt || amt <= 0) return toast("Enter a valid amount", "error");
@@ -235,7 +241,14 @@ export function StaffCollection({ kind, embedded = false, limit, onItemPress }: 
 
             return (
               <View key={it.id} style={i < items.length - 1 && { borderBottomColor: colors.divider, borderBottomWidth: StyleSheet.hairlineWidth }}>
-                <ItemRow item={it} onAction={onAction} onPress={itemPress} />
+                <ItemRow item={it} onAction={onAction} onPress={itemPress}
+                  symbol={kind === "incidents"
+                    ? (it.badge?.toUpperCase() === "RESOLVED" ? "success" : "warning")
+                    : kind === "inventory" && /low stock|reorder|critical|out of stock/i.test(it.badge || "")
+                    ? "low-stock-alert"
+                    : kind === "fleet" && /maintenance|repair/i.test(it.badge || "")
+                    ? "vehicle-maintenance"
+                    : collectionSymbol} />
               </View>
             );
           })}
@@ -269,7 +282,9 @@ export function StaffCollection({ kind, embedded = false, limit, onItemPress }: 
               <Input label="Note (optional)" value={text} onChangeText={setText} placeholder="e.g. supplier delivery" />
             </>
           ) : (
-            <Input label="Reason (optional)" value={text} onChangeText={setText} placeholder="Why is this rejected?" />
+            <Input label={modal?.action?.key === "acknowledge-incident" ? "Response note (10–500 characters)" : "Reason (optional)"}
+              value={text} maxLength={500} onChangeText={setText}
+              placeholder={modal?.action?.key === "acknowledge-incident" ? "Describe the action being taken" : "Reason for action"} />
           )}
           <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm }}>
             <View style={{ flex: 1 }}><Button testID="modal-cancel" label="Cancel" variant="outline" onPress={() => setModal(null)} /></View>

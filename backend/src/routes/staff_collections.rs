@@ -184,6 +184,9 @@ WHERE (o.plant_id IN (SELECT id FROM scope)
        OR (a.load_id IS NULL AND EXISTS (
            SELECT 1 FROM plant_staff ps JOIN scope sc ON sc.id = ps.plant_id
            WHERE ps.user_id = a.driver_id AND ps.is_active = TRUE
+           UNION ALL
+           SELECT 1 FROM driver_employment_profiles ep JOIN scope sc ON sc.id = ep.plant_id
+           WHERE ep.driver_id = a.driver_id AND ep.is_active=TRUE AND ep.released_at IS NULL
        )))
 ORDER BY a.created_at DESC LIMIT 300
 "#
@@ -355,11 +358,51 @@ pub async fn get_staff_collection(
         .await?;
     let can_nav_dispatch =
         ["dispatcher", "supervisor", "owner", "plant_owner"].contains(&auth_user.role.as_str());
+    let can_ack_incidents = if kind == "incidents" && auth_user.role == "supervisor" {
+        let plant: Option<uuid::Uuid> = sqlx::query_scalar(
+            "SELECT ps.plant_id FROM plant_staff ps JOIN users u ON u.id=ps.user_id
+             WHERE ps.user_id=$1 AND ps.role='supervisor' AND ps.is_active=TRUE
+               AND u.is_active=TRUE AND u.role='supervisor' LIMIT 1",
+        )
+        .bind(auth_user.user_id)
+        .fetch_optional(&state.db)
+        .await?;
+        if let Some(plant) = plant {
+            super::staff_module_permissions::require(
+                &state,
+                &auth_user,
+                plant,
+                "incidents",
+                super::staff_module_permissions::Action::Edit,
+            )
+            .await
+            .is_ok()
+        } else {
+            false
+        }
+    } else {
+        false
+    };
     let items: Vec<Value> = rows
         .iter()
         .map(|row| {
             let id: String = row.get("id");
             let status: String = row.get("badge_status");
+            let badge: String = row.get("badge");
+            let actions: Vec<Value> = if kind == "incidents"
+                && can_ack_incidents
+                && badge.eq_ignore_ascii_case("OPEN")
+            {
+                vec![json!({
+                    "key": "acknowledge-incident",
+                    "label": "Acknowledge / Respond",
+                    "style": "outline",
+                    "path": format!("/staff/incidents/{id}/acknowledge"),
+                    "input": "reason"
+                })]
+            } else {
+                Vec::new()
+            };
             let nav = if kind == "dispatch"
                 && can_nav_dispatch
                 && !status.eq_ignore_ascii_case("delivered")
@@ -376,10 +419,10 @@ pub async fn get_staff_collection(
                 "primary": row.get::<String, _>("primary_text"),
                 "secondary": row.get::<Option<String>, _>("secondary_text"),
                 "meta": row.get::<Option<String>, _>("meta_text"),
-                "badge": row.get::<String, _>("badge"),
+                "badge": badge,
                 "badge_status": status,
                 "nav": nav,
-                "actions": []
+                "actions": actions
             })
         })
         .collect();

@@ -17,7 +17,7 @@ import { Button } from "@/src/components/ui/Button";
 import { EmptyView, ErrorView } from "@/src/components/StateViews";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 
-type Incident = { id: string; type: string; status: string; driver_name: string; vehicle?: string; order_number?: string; remark?: string; created_at?: string };
+type Incident = { id: string; alert_type: string; status: string; driver_name: string; message?: string | null; created_at?: string };
 
 export default function OwnerIncidents() {
   const { colors, scheme } = useTheme();
@@ -66,12 +66,12 @@ export default function OwnerIncidents() {
               <View style={styles.rowBetween}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
                   <Ionicons name="warning" size={20} color={item.status === "OPEN" ? colors.error : colors.onSurfaceTertiary} />
-                  <AppText style={{ fontFamily: fonts.bold, fontSize: fontSize.base, color: colors.onSurface }}>{item.type}</AppText>
+                  <AppText style={{ fontFamily: fonts.bold, fontSize: fontSize.base, color: colors.onSurface }}>{item.alert_type}</AppText>
                 </View>
                 <Badge label={item.status} status={item.status === "OPEN" ? "PENDING" : "DELIVERED"} />
               </View>
               <AppText variant="caption">{item.driver_name}{item.vehicle ? ` · ${item.vehicle}` : ""}{item.order_number ? ` · ${item.order_number}` : ""}</AppText>
-              {item.remark ? <AppText variant="body">{item.remark}</AppText> : null}
+              {item.message ? <AppText variant="body">{item.message}</AppText> : null}
               {["OPEN", "RESPONDING"].includes(item.status) ? (
                 <Button testID={`resolve-${item.id}`} label="Acknowledge & Resolve" variant="outline" loading={busy === item.id} onPress={() => resolve(item.id)} />
               ) : null}
