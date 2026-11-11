@@ -20,8 +20,8 @@ import { ErrorView } from "@/src/components/StateViews";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 
 const COLLECTION_SYMBOLS: Readonly<Record<string, VectorSymbolName>> = {
-  inventory: "stock-register", quality: "quality-register",
-  dispatch: "dispatch-queue", production: "production-queue",
+  inventory: "stock-register", quality: "concrete-cube-testing",
+  dispatch: "driver-assignment", production: "production-queue",
   fleet: "transit-mixer-fleet", drivers: "drivers",
   orders: "plant-orders", incidents: "incident-register",
   invoices: "billing", ledger: "ledger", plants: "plants",
@@ -243,7 +243,8 @@ export function StaffCollection({ kind, embedded = false, limit, onItemPress }: 
               <View key={it.id} style={i < items.length - 1 && { borderBottomColor: colors.divider, borderBottomWidth: StyleSheet.hairlineWidth }}>
                 <ItemRow item={it} onAction={onAction} onPress={itemPress}
                   symbol={kind === "incidents"
-                    ? (it.badge?.toUpperCase() === "RESOLVED" ? "success" : "warning")
+                    ? (it.badge?.toUpperCase() === "RESOLVED" ? "success"
+                      : it.badge?.toUpperCase() === "OPEN" ? "emergency-sos" : "incident-register")
                     : kind === "inventory" && /low stock|reorder|critical|out of stock/i.test(it.badge || "")
                     ? "low-stock-alert"
                     : kind === "fleet" && /maintenance|repair/i.test(it.badge || "")

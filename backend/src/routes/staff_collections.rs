@@ -175,7 +175,9 @@ SELECT a.id::text id, 'warning-outline' icon,
        a.alert_type || ' · ' || COALESCE(u.full_name, 'Driver') primary_text,
        COALESCE(a.message, 'No details') secondary_text,
        o.order_number meta_text, a.status badge,
-       CASE WHEN upper(a.status) = 'RESOLVED' THEN 'DELIVERED' ELSE 'REJECTED' END badge_status
+       CASE WHEN upper(a.status) = 'RESOLVED' THEN 'RESOLVED'
+            WHEN upper(a.status) = 'RESPONDING' THEN 'RESPONDING'
+            ELSE 'CRITICAL' END badge_status
 FROM driver_sos_alerts a
 JOIN users u ON u.id = a.driver_id
 LEFT JOIN order_loads l ON l.id = a.load_id

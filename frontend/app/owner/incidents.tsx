@@ -13,6 +13,7 @@ import { useGet } from "@/src/hooks/useApi";
 import { AppText } from "@/src/components/ui/AppText";
 import { Card } from "@/src/components/ui/Card";
 import { Badge } from "@/src/components/ui/Badge";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { Button } from "@/src/components/ui/Button";
 import { EmptyView, ErrorView } from "@/src/components/StateViews";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
@@ -27,12 +28,14 @@ export default function OwnerIncidents() {
   const { token } = useAuth();
   const { data, loading, error, reload } = useGet<{ incidents: Incident[] }>("/owner/incidents");
   const [busy, setBusy] = useState<string | null>(null);
+  const [confirmResolve, setConfirmResolve] = useState<string | null>(null);
 
   const resolve = async (id: string) => {
     setBusy(id);
     try {
       await apiPost(`/owner/incidents/${id}/resolve`, token!);
       toast("Incident resolved", "success");
+      setConfirmResolve(null);
       reload();
     } catch (e: any) {
       toast(e.detail || "Failed", "error");
@@ -65,15 +68,23 @@ export default function OwnerIncidents() {
             <Card style={{ gap: spacing.sm }}>
               <View style={styles.rowBetween}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-                  <Ionicons name="warning" size={20} color={item.status === "OPEN" ? colors.error : colors.onSurfaceTertiary} />
+                  <VectorSymbol name={item.status === "RESOLVED" ? "success"
+                    : item.status === "OPEN" ? "emergency-sos" : "incident-register"} size={30} />
                   <AppText style={{ fontFamily: fonts.bold, fontSize: fontSize.base, color: colors.onSurface }}>{item.alert_type}</AppText>
                 </View>
-                <Badge label={item.status} status={item.status === "OPEN" ? "PENDING" : "DELIVERED"} />
+                <Badge label={item.status} status={item.status === "OPEN" ? "CRITICAL" : item.status} />
               </View>
               <AppText variant="caption">{item.driver_name}{item.vehicle ? ` · ${item.vehicle}` : ""}{item.order_number ? ` · ${item.order_number}` : ""}</AppText>
               {item.message ? <AppText variant="body">{item.message}</AppText> : null}
               {["OPEN", "RESPONDING"].includes(item.status) ? (
-                <Button testID={`resolve-${item.id}`} label="Acknowledge & Resolve" variant="outline" loading={busy === item.id} onPress={() => resolve(item.id)} />
+                confirmResolve === item.id ? (
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
+                    <Button testID={`confirm-resolve-${item.id}`} label="Confirm Resolution" variant="outline"
+                      loading={busy === item.id} onPress={() => void resolve(item.id)} />
+                    <Button label="Cancel" variant="outline" onPress={() => setConfirmResolve(null)} />
+                  </View>
+                ) : <Button testID={`resolve-${item.id}`} label="Resolve Incident" variant="outline"
+                    onPress={() => setConfirmResolve(item.id)} />
               ) : null}
             </Card>
           )}

@@ -2,8 +2,8 @@ mod support;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    Json,
     response::IntoResponse,
+    Json,
 };
 use sqlx::PgPool;
 use trackmyrmc_backend::{
@@ -515,7 +515,11 @@ async fn owner_dispatch_register_matches_kpi_and_ignores_unrelated_plants(db: Pg
     assert_eq!(data["cards"]["dispatched_loads"], 2);
     assert_eq!(page["total"], data["cards"]["dispatched_loads"]);
     assert_eq!(page["loads"].as_array().unwrap().len(), 2);
-    assert!(page["loads"].as_array().unwrap().iter().any(|load| load["status"] == "DELIVERED"));
+    assert!(page["loads"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|load| load["status"] == "DELIVERED"));
     assert!(page["loads"].as_array().unwrap().iter().all(|load| {
         load["plant_name"] == "Test Plant" && load["order_id"] == current.to_string()
     }));
@@ -572,10 +576,12 @@ async fn supervisor_can_acknowledge_only_assigned_incidents_and_owner_resolves(d
         "acknowledge-incident",
     );
     let request = || {
-        Json(serde_json::from_value(serde_json::json!({
-            "reason": "Supervisor is assisting the stopped mixer."
-        }))
-        .unwrap())
+        Json(
+            serde_json::from_value(serde_json::json!({
+                "reason": "Supervisor is assisting the stopped mixer."
+            }))
+            .unwrap(),
+        )
     };
     assert!(matches!(
         supervisor_incidents::acknowledge(
@@ -647,11 +653,11 @@ async fn service_enquiry_alerts_are_role_scoped_and_transactional(db: PgPool) {
         "pump_type": "Line pump",
         "estimated_hours": 6,
     });
-    let make_request = || {
-        Json(serde_json::from_value(payload.clone()).expect("valid pump enquiry"))
-    };
+    let make_request =
+        || Json(serde_json::from_value(payload.clone()).expect("valid pump enquiry"));
     assert!(matches!(
-        customer_services::create(State(app.clone()), user(outsider, "owner"), make_request()).await,
+        customer_services::create(State(app.clone()), user(outsider, "owner"), make_request())
+            .await,
         Err(AppError::Forbidden(_))
     ));
     let (code, created) =
