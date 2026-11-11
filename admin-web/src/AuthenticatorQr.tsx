@@ -45,7 +45,7 @@ export function AuthenticatorQr({ uri }: { uri: string }) {
         style={{ display: 'block', width: '100%', maxWidth: 256, height: 'auto', margin: 'auto', background: '#fff', borderRadius: 8 }}
       >
         <rect width={image.size} height={image.size} fill="#fff" />
-        <path d={image.path} fill="#111827" />
+        <path d={image.path} fill="#1D232D" />
       </svg>
     </div>
   );

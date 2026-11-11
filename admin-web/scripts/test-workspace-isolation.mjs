@@ -101,6 +101,16 @@ try {
       await page.getByRole('heading',{name:'Command Center',exact:true}).waitFor();
     };
     await page.goto(origin+'/admin/');await signIn('first@example.invalid');
+    const officialLogo=page.locator('img[alt="TrackMyRMC official logo"]').first();
+    await officialLogo.waitFor();
+    assert.equal(await officialLogo.evaluate(img=>img.complete&&img.naturalWidth>0),true,'official repository logo must render');
+    await adminNav('Dashboard').click();
+    await page.getByLabel('Dashboard module cards').waitFor();
+    assert.match(await page.locator('main').getAttribute('class')||'',/tm-dark/,'graphite theme should be the default');
+    await adminNav('Settings').click();
+    await button('Light').click();
+    assert.match(await page.locator('main').getAttribute('class')||'',/tm-light/,'light theme should use warm app tokens');
+    await button('Dark').click();
     await adminNav('Chats').click();
     await page.getByText('No incoming WhatsApp conversations recorded.').waitFor();
     assert.equal(await page.getByRole('button',{name:'Send WhatsApp reply'}).count(),0,'WhatsApp sending must remain gated off');
@@ -154,7 +164,7 @@ try {
     await page.getByLabel('Registered Plant Owner account ID',{exact:true}).fill('previous-account-id');
     await page.getByLabel('Reason for privileged change',{exact:true}).fill('Unsent private account reason');
     await page.getByLabel('Fresh authenticator code',{exact:true}).fill('123456');
-    await button('Sign out and revoke session').click();await page.getByRole('heading',{name:'Central Admin sign in',exact:true}).waitFor();
+    await button('Sign out').click();await page.getByRole('heading',{name:'Central Admin sign in',exact:true}).waitFor();
     await page.getByText(failedLogout?'Signed out locally. Server revocation could not be confirmed; the session expires automatically.':'Signed out and server session revoked.',{exact:true}).waitFor();
     assert.equal(await page.getByLabel('Approved administrator email').inputValue(),'');await signIn('second@example.invalid');
     assert.equal(await page.getByLabel('Plant Owner access controls').count(),0);

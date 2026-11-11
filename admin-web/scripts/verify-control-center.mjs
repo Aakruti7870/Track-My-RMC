@@ -132,7 +132,7 @@ try {
   assert.equal((await suspended).status(),200);
   console.log('PASS: real Control Center Owner approval and revocation require authenticated step-up');
   assert.equal(await page.evaluate(()=>sessionStorage.getItem('trackmyrmc_admin_token')),null,'bearer must not persist in browser storage');
-  await page.getByRole('button', { name: 'Sign out and revoke session', exact: true }).click();
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await page.getByRole('heading', { name: 'Central Admin sign in', exact: true }).waitFor();
   assert.equal(await page.evaluate(() => sessionStorage.getItem('trackmyrmc_admin_token')), null);
   const revoked=await page.request.get('http://127.0.0.1:8000/api/admin/auth/me',{headers:{Authorization:'Bearer '+token}});

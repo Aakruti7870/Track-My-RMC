@@ -7,8 +7,8 @@ type Plant = {
 };
 type Governance = { plant_id: string; plant_name: string; discovery_visible: boolean; google_place_blocked: boolean };
 type HeldPlace = { place_id: string; reason: string; updated_at: string };
-const field: React.CSSProperties = { display: 'block', width: '100%', marginTop: 5, padding: 9, borderRadius: 7, border: '1px solid #64748b', background: '#0f172a', color: '#f8fafc', boxSizing: 'border-box' };
-const button: React.CSSProperties = { borderRadius: 8, border: '1px solid #64748b', padding: '9px 12px', cursor: 'pointer', color: '#f8fafc', background: '#1e293b', fontWeight: 600 };
+const field: React.CSSProperties = { display: 'block', width: '100%', marginTop: 5, padding: 9, borderRadius: 7, border: '1px solid #6B7380', background: '#0E1116', color: '#F4F6FA', boxSizing: 'border-box' };
+const button: React.CSSProperties = { borderRadius: 8, border: '1px solid #6B7380', padding: '9px 12px', cursor: 'pointer', color: '#F4F6FA', background: '#1D232D', fontWeight: 600 };
 function message(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') return error.message;
   return 'Unable to complete the visibility request.';
@@ -119,9 +119,9 @@ export function PlantVisibility() {
   }
 
   return (
-    <section id="plant-visibility" aria-label="Plant Visibility" style={{ marginTop: 18, padding: 14, border: '1px solid #334155', borderRadius: 12 }}>
+    <section id="plant-visibility" aria-label="Plant Visibility" style={{ marginTop: 18, padding: 14, border: '1px solid #1D232D', borderRadius: 12 }}>
       <h2 style={{ margin: '0 0 6px', fontSize: 19 }}>Plant Visibility — Customer App & Map</h2>
-      <p style={{ fontSize: 12, color: '#cbd5e1', lineHeight: 1.55 }}>
+      <p style={{ fontSize: 12, color: '#B8C1CC', lineHeight: 1.55 }}>
         Hold a registered plant from customer lists, nearby maps, comparisons, linked Google Places listings and new customer orders/RFQs.
         Staff login, open orders, dispatch, challans and historical data are unaffected. This cannot hide an unlinked external Google business.
       </p>
@@ -139,16 +139,16 @@ export function PlantVisibility() {
         <button type="submit" disabled={busy || loading} style={button}>Search / Refresh</button>
       </form>
       {loading && <p role="status">Loading registered plants…</p>}
-      {error && <p role="alert" style={{ color: '#fecaca' }}>{error}</p>}
-      {notice && <p role="status" style={{ color: '#86efac' }}>{notice}</p>}
+      {error && <p role="alert" style={{ color: '#FDECEC' }}>{error}</p>}
+      {notice && <p role="status" style={{ color: '#72D59B' }}>{notice}</p>}
       {opened && !loading && !error && <>
-        <p style={{ fontSize: 12, color: '#cbd5e1' }}>{total} matching registered plants · {rows.length} shown</p>
+        <p style={{ fontSize: 12, color: '#B8C1CC' }}>{total} matching registered plants · {rows.length} shown</p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(210px,1fr))', gap: 9 }}>
-          {rows.map(plant => <article key={plant.id} style={{ padding: 12, border: '1px solid #475569', background: '#111827', borderRadius: 9 }}>
+          {rows.map(plant => <article key={plant.id} style={{ padding: 12, border: '1px solid rgba(255,154,61,.24)', background: '#1D232D', borderRadius: 9 }}>
             <strong>{plant.name}</strong>
-            <p style={{ fontSize: 12, color: '#cbd5e1' }}>{plant.code} · {plant.city}, {plant.state}</p>
+            <p style={{ fontSize: 12, color: '#B8C1CC' }}>{plant.code} · {plant.city}, {plant.state}</p>
             <p style={{ fontSize: 12 }}><strong>Visibility:</strong> {plant.google_place_blocked ? 'ON HOLD — linked Google Place ID' : plant.discovery_visible ? 'No hold' : 'ON HOLD — hidden'}</p>
-            <p style={{ fontSize: 12, color: '#cbd5e1' }}>{plant.active ? 'Operationally active' : 'Operationally inactive'} · {plant.onboarding_approved ? 'Approved' : 'Not approved'}</p>
+            <p style={{ fontSize: 12, color: '#B8C1CC' }}>{plant.active ? 'Operationally active' : 'Operationally inactive'} · {plant.onboarding_approved ? 'Approved' : 'Not approved'}</p>
             <button type="button" disabled={busy} style={button} onClick={() => void select(plant.id)}>Select plant</button>
           </article>)}
         </div>
@@ -158,7 +158,7 @@ export function PlantVisibility() {
           <button type="button" disabled={offset + 20 >= total || busy} onClick={() => void load(offset + 20)}>Next</button>
         </div>
       </>}
-      {selected && <div style={{ padding: 12, marginTop: 14, borderRadius: 9, border: '1px solid #64748b', background: '#172334' }}>
+      {selected && <div style={{ padding: 12, marginTop: 14, borderRadius: 9, border: '1px solid #6B7380', background: '#1D232D' }}>
         <h3 style={{ fontSize: 16, marginTop: 0 }}>{selected.plant_name} — Visibility decision</h3>
         <p style={{ fontSize: 12 }}>Current: <strong>{selected.discovery_visible ? 'No registered-plant hold' : 'Registered-plant ON HOLD'}</strong>{selected.google_place_blocked ? ' · Linked Google Place ID is separately on hold' : ''}</p>
         <label style={{ display: 'block', fontSize: 12, marginBottom: 9 }}>Required audit reason (10–500 characters)
@@ -168,14 +168,14 @@ export function PlantVisibility() {
           <input style={field} type="password" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={code} onChange={event => setCode(event.target.value)} disabled={busy} />
         </label>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button type="button" disabled={busy || !selected.discovery_visible} style={{ ...button, background: '#7f1d1d' }} onClick={() => void changeVisibility(false)}>Hold Visibility</button>
-          <button type="button" disabled={busy || selected.discovery_visible} style={{ ...button, background: '#166534' }} onClick={() => void changeVisibility(true)}>Restore Visibility</button>
+          <button type="button" disabled={busy || !selected.discovery_visible} style={{ ...button, background: '#9B2C2C' }} onClick={() => void changeVisibility(false)}>Hold Visibility</button>
+          <button type="button" disabled={busy || selected.discovery_visible} style={{ ...button, background: '#276749' }} onClick={() => void changeVisibility(true)}>Restore Visibility</button>
         </div>
-        <p style={{ fontSize: 11, color: '#94a3b8' }}>The API applies the hold on new searches. Customer devices with cached results may need a refresh.</p>
+        <p style={{ fontSize: 11, color: '#B7C2D2' }}>The API applies the hold on new searches. Customer devices with cached results may need a refresh.</p>
       </div>}
-      <div style={{ marginTop: 20, paddingTop: 14, borderTop: '1px solid #475569' }}>
+      <div style={{ marginTop: 20, paddingTop: 14, borderTop: '1px solid rgba(255,154,61,.24)' }}>
         <h3 style={{ margin: '0 0 6px', fontSize: 16 }}>Google-listed plants — Exact Place ID hold</h3>
-        <p style={{ fontSize: 12, color: '#cbd5e1' }}>
+        <p style={{ fontSize: 12, color: '#B8C1CC' }}>
           Use this for Google Places results, including plants not registered with TrackMyRMC.
           Find the exact Google Place ID using Plant Master → Discover Google-listed RMC plants.
           This removes the result from TrackMyRMC customer map discovery only, not Google Maps.
@@ -193,19 +193,19 @@ export function PlantVisibility() {
             value={externalCode} onChange={event => setExternalCode(event.target.value)} style={field} disabled={externalBusy}/>
         </label>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button type="button" disabled={externalBusy} style={{ ...button, background: '#7f1d1d' }}
+          <button type="button" disabled={externalBusy} style={{ ...button, background: '#9B2C2C' }}
             onClick={() => void changeExternalVisibility('HOLD')}>Hold Google Listing</button>
-          <button type="button" disabled={externalBusy} style={{ ...button, background: '#166534' }}
+          <button type="button" disabled={externalBusy} style={{ ...button, background: '#276749' }}
             onClick={() => void changeExternalVisibility('VISIBLE')}>Restore Google Listing</button>
           <button type="button" disabled={externalBusy} style={button} onClick={() => void loadExternalHolds()}>View / Refresh Held Place IDs</button>
         </div>
-        {externalError && <p role="alert" style={{ color: '#fecaca' }}>{externalError}</p>}
-        {externalNotice && <p role="status" style={{ color: '#86efac' }}>{externalNotice}</p>}
+        {externalError && <p role="alert" style={{ color: '#FDECEC' }}>{externalError}</p>}
+        {externalNotice && <p role="status" style={{ color: '#72D59B' }}>{externalNotice}</p>}
         {externalOpened && <>
           <h4 style={{ fontSize: 13 }}>Currently held Google Place IDs ({heldPlaces.length} shown, maximum 100)</h4>
-          {heldPlaces.map(item => <div key={item.place_id} style={{ padding: 10, marginBottom: 8, border: '1px solid #475569', borderRadius: 7 }}>
+          {heldPlaces.map(item => <div key={item.place_id} style={{ padding: 10, marginBottom: 8, border: '1px solid rgba(255,154,61,.24)', borderRadius: 7 }}>
             <code style={{ overflowWrap: 'anywhere' }}>{item.place_id}</code>
-            <p style={{ margin: '5px 0', color: '#cbd5e1', fontSize: 12 }}>{item.reason}</p>
+            <p style={{ margin: '5px 0', color: '#B8C1CC', fontSize: 12 }}>{item.reason}</p>
             <button type="button" disabled={externalBusy} style={button} onClick={() => setExternalId(item.place_id)}>Select for restore</button>
           </div>)}
           {!heldPlaces.length && <p style={{ fontSize: 12 }}>No Google Place IDs currently on hold.</p>}
