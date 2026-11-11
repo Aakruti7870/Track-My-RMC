@@ -282,11 +282,12 @@ pub async fn update_status(
         return Err(AppError::BadRequest("Invalid enquiry status".into()));
     }
     let mut tx = state.db.begin().await?;
-    let previous: Option<(String, Uuid)> =
-        sqlx::query_as("SELECT status,customer_id FROM customer_service_enquiries WHERE id=$1 FOR UPDATE")
-            .bind(id)
-            .fetch_optional(&mut *tx)
-            .await?;
+    let previous: Option<(String, Uuid)> = sqlx::query_as(
+        "SELECT status,customer_id FROM customer_service_enquiries WHERE id=$1 FOR UPDATE",
+    )
+    .bind(id)
+    .fetch_optional(&mut *tx)
+    .await?;
     let previous = previous.ok_or_else(|| AppError::NotFound("Enquiry not found".into()))?;
     if previous.0 != update.status {
         sqlx::query(

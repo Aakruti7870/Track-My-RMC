@@ -56,7 +56,9 @@ pub async fn acknowledge(
     .fetch_all(&state.db)
     .await?;
     if plants.len() != 1 {
-        return Err(AppError::NotFound("Incident not found in one active plant".into()));
+        return Err(AppError::NotFound(
+            "Incident not found in one active plant".into(),
+        ));
     }
     let plant = plants[0];
     super::staff_module_permissions::require(
@@ -77,10 +79,16 @@ pub async fn acknowledge(
     match status.as_deref() {
         Some("RESPONDING") => {
             tx.commit().await?;
-            return Ok(Json(json!({"success":true,"status":"RESPONDING","already_acknowledged":true})));
+            return Ok(Json(
+                json!({"success":true,"status":"RESPONDING","already_acknowledged":true}),
+            ));
         }
         Some("OPEN") => {}
-        Some(_) => return Err(AppError::Conflict("Only open incidents can be acknowledged".into())),
+        Some(_) => {
+            return Err(AppError::Conflict(
+                "Only open incidents can be acknowledged".into(),
+            ))
+        }
         None => return Err(AppError::NotFound("Incident not found".into())),
     }
 

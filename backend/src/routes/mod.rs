@@ -30,8 +30,8 @@ pub mod native_automation_routes;
 pub mod notifications;
 pub mod order_payment;
 pub mod owner_access;
-pub mod owner_routes;
 pub mod owner_dispatches;
+pub mod owner_routes;
 pub mod payroll_routes;
 pub mod permission_consent;
 pub mod plant_onboarding;
@@ -42,11 +42,11 @@ pub mod plant_staff_manager;
 pub mod play_review;
 pub mod rmc_rfq_leads;
 pub mod staff_collections;
-pub mod supervisor_incidents;
 pub mod staff_lifecycle;
 pub mod staff_module_permissions;
 pub mod staff_routes;
 pub mod storage_routes;
+pub mod supervisor_incidents;
 pub mod well_known;
 pub mod workforce_reports;
 pub mod workforce_routes;
@@ -780,7 +780,10 @@ pub fn build_app_router(state: AppState) -> Router {
             get(staff_module_permissions::get_staff).put(staff_module_permissions::replace_staff),
         )
         .route("/api/staff/home", get(staff_routes::get_staff_home))
-        .route("/api/staff/incidents/:incident_id/acknowledge", post(supervisor_incidents::acknowledge))
+        .route(
+            "/api/staff/incidents/:incident_id/acknowledge",
+            post(supervisor_incidents::acknowledge),
+        )
         .route(
             "/api/staff/collection/:kind",
             get(staff_collections::get_staff_collection),

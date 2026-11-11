@@ -109,7 +109,10 @@ pub async fn get_billing_overview(
     })))
 }
 
-pub(crate) async fn visible_plant_ids(state: &AppState, user: &AuthUser) -> Result<Vec<Uuid>, AppError> {
+pub(crate) async fn visible_plant_ids(
+    state: &AppState,
+    user: &AuthUser,
+) -> Result<Vec<Uuid>, AppError> {
     sqlx::query_scalar("SELECT p.id FROM rmc_plants p WHERE p.is_active AND (p.owner_id=$1 OR ($2='admin' AND EXISTS(SELECT 1 FROM plant_staff ps WHERE ps.plant_id=p.id AND ps.user_id=$1 AND ps.is_active))) ORDER BY p.id")
         .bind(user.user_id).bind(&user.role).fetch_all(&state.db).await.map_err(AppError::from)
 }

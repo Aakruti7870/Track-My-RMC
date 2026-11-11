@@ -389,20 +389,18 @@ pub async fn get_staff_collection(
             let id: String = row.get("id");
             let status: String = row.get("badge_status");
             let badge: String = row.get("badge");
-            let actions: Vec<Value> = if kind == "incidents"
-                && can_ack_incidents
-                && badge.eq_ignore_ascii_case("OPEN")
-            {
-                vec![json!({
-                    "key": "acknowledge-incident",
-                    "label": "Acknowledge / Respond",
-                    "style": "outline",
-                    "path": format!("/staff/incidents/{id}/acknowledge"),
-                    "input": "reason"
-                })]
-            } else {
-                Vec::new()
-            };
+            let actions: Vec<Value> =
+                if kind == "incidents" && can_ack_incidents && badge.eq_ignore_ascii_case("OPEN") {
+                    vec![json!({
+                        "key": "acknowledge-incident",
+                        "label": "Acknowledge / Respond",
+                        "style": "outline",
+                        "path": format!("/staff/incidents/{id}/acknowledge"),
+                        "input": "reason"
+                    })]
+                } else {
+                    Vec::new()
+                };
             let nav = if kind == "dispatch"
                 && can_nav_dispatch
                 && !status.eq_ignore_ascii_case("delivered")
