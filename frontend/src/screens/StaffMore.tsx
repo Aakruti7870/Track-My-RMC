@@ -78,8 +78,18 @@ export function StaffMore() {
           </Pressable>
         ) : null}
 
-        {managerResources.drivers ? <Pressable accessibilityRole="button" onPress={()=>router.push("/owner/drivers")}><AppText>Manage delegated Drivers</AppText></Pressable> : null}
-        {managerResources.permissions ? <Pressable accessibilityRole="button" onPress={()=>router.push("/staff-module-access")}><AppText>Manage delegated module permissions</AppText></Pressable> : null}
+        {managerResources.drivers ? <Pressable accessibilityRole="button"
+          onPress={() => router.push("/owner/drivers")}
+          style={[styles.manage, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+          <VectorSymbol name="drivers" size={33} />
+          <AppText variant="heading">Manage delegated Drivers</AppText>
+        </Pressable> : null}
+        {managerResources.permissions ? <Pressable accessibilityRole="button"
+          onPress={() => router.push("/staff-module-access")}
+          style={[styles.manage, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+          <VectorSymbol name="permission-settings" size={33} />
+          <AppText variant="heading">Manage delegated permissions</AppText>
+        </Pressable> : null}
         <StaffModuleDirectory role={user?.role} title="Other modules" scope="more" searchable />
 
         <Pressable testID="staff-permission-settings" accessibilityRole="button" accessibilityLabel="App permissions"
@@ -93,7 +103,7 @@ export function StaffMore() {
           <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceTertiary} />
         </Pressable>
 
-        <Pressable testID="logout-button" accessibilityRole="button" accessibilityLabel="Sign out of staff account" onPress={doLogout} style={[styles.logout, { backgroundColor: colors.isDark ? "#96352D" : "#B42318" }]}><Ionicons name="log-out-outline" size={22} color="#FFFFFF" /><AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: "#FFFFFF" }}>Sign out</AppText></Pressable>
+        <Pressable testID="logout-button" accessibilityRole="button" accessibilityLabel="Sign out of staff account" onPress={doLogout} style={[styles.logout, { backgroundColor: colors.isDark ? "#96352D" : "#B42318" }]}><VectorSymbol name="logout" size={24} /><AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: "#FFFFFF" }}>Sign out</AppText></Pressable>
         <AppText variant="caption" center>TrackMyRMC · v{appVersion} ({buildNumber})</AppText>
       </ScrollView>
     </View>
