@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { Bell, Building2, ClipboardCheck, Factory, Megaphone, ShieldCheck, Workflow, MessageCircle } from 'lucide-react';
+import './admin-theme.css';
+import { Bell, Building2, ClipboardCheck, Factory, Megaphone, ShieldCheck, Workflow, MessageCircle, LayoutDashboard, ChartNoAxesCombined, Eye, Users, UserRoundPlus, UserCog, Bot, Grid2X2, LogOut, Settings, ArrowRight } from 'lucide-react';
 import { AuthenticatorQr } from './AuthenticatorQr';
 import { PlantVisibility } from './PlantVisibility';
 import { WhatsAppChats } from './WhatsAppChats';
@@ -107,15 +108,38 @@ function errorMessage(error: unknown): string {
   return 'The request could not be completed. Please try again.';
 }
 
-const SCREENS = ['overview','plants','visibility','approvals','marketing','automation','governance','chats'] as const;
+const SCREENS = ['dashboard','overview','plants','visibility','approvals','marketing','automation','governance','chats','reviewer','admin-access','unowned','assign-owner','diagnostics','capabilities','sessions','settings'] as const;
 type AdminScreen = typeof SCREENS[number];
 function currentScreen(): AdminScreen {
   const value = window.location.hash.replace(/^#\/admin\//,'');
-  return SCREENS.find(item=>item===value)||'overview';
+  return SCREENS.find(item=>item===value)||'dashboard';
 }
+const ADMIN_MENU = [
+  {page:'dashboard',label:'Dashboard',caption:'Operations overview',icon:LayoutDashboard,tone:'orange',permissions:[]},
+  {page:'overview',label:'Platform KPIs',caption:'Live platform performance',icon:ChartNoAxesCombined,tone:'orange',permissions:['system.view']},
+  {page:'plants',label:'Plant Master',caption:'Plant owner, staff and verification',icon:Factory,tone:'green',permissions:['plant.view','user.view']},
+  {page:'visibility',label:'Plant Visibility',caption:'Hold and restore app discovery',icon:Eye,tone:'amber',permissions:['plant.view','plant_owners.manage','user.view']},
+  {page:'approvals',label:'Approval Queue',caption:'Onboarding, documents, KYC and RFQs',icon:ClipboardCheck,tone:'amber',permissions:[]},
+  {page:'marketing',label:'Marketing CRM',caption:'Channels, contacts and campaigns',icon:Megaphone,tone:'orange',permissions:['support.manage']},
+  {page:'chats',label:'Chats',caption:'Verified inbound Meta WhatsApp inbox',icon:MessageCircle,tone:'green',permissions:['support.manage']},
+  {page:'automation',label:'Automation',caption:'Native workflow and execution health',icon:Workflow,tone:'orange',permissions:['system.view']},
+  {page:'governance',label:'Governance',caption:'Authority, permissions and audit',icon:ShieldCheck,tone:'green',permissions:['admin_access.manage']},
+  {page:'reviewer',label:'Reviewer Access',caption:'Google Play reviewer test access',icon:Users,tone:'amber',permissions:['reviewer_access.manage']},
+  {page:'admin-access',label:'Admin Access',caption:'Existing Central Admin accounts',icon:UserCog,tone:'red',permissions:['admin_access.manage']},
+  {page:'unowned',label:'Unowned Plants',caption:'View plants without eligible owners',icon:Building2,tone:'amber',permissions:['plant.view']},
+  {page:'assign-owner',label:'Assign Plant Owner',caption:'Audited owner assignment',icon:UserRoundPlus,tone:'green',permissions:['owner.assign','plant.view']},
+  {page:'diagnostics',label:'AI Command',caption:'Read-only database diagnostic',icon:Bot,tone:'orange',permissions:['ai.diagnose']},
+  {page:'capabilities',label:'Capabilities',caption:'Authorized feature permissions',icon:Grid2X2,tone:'orange',permissions:[]},
+  {page:'sessions',label:'Logout All Sessions',caption:'Revoke my Super Admin sessions',icon:LogOut,tone:'red',permissions:[]},
+  {page:'settings',label:'Settings',caption:'Portal appearance',icon:Settings,tone:'orange',permissions:[]},
+] as const;
+const ADMIN_SECURITY_SCREENS: AdminScreen[]=['reviewer','admin-access','unowned','assign-owner','diagnostics','capabilities','sessions'];
 function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; onSignedOut: (message: string) => void }) {
   const [stage, setStage] = useState<Stage>('central-login');
   const [adminScreen,setAdminScreen]=useState<AdminScreen>(currentScreen);
+  const [appearance,setAppearance]=useState<'dark'|'light'|'system'>('dark');
+  const [systemDark,setSystemDark]=useState(()=>typeof window==='undefined'||window.matchMedia('(prefers-color-scheme: dark)').matches);
+  useEffect(()=>{const q=window.matchMedia('(prefers-color-scheme: dark)');const update=()=>setSystemDark(q.matches);q.addEventListener('change',update);return()=>q.removeEventListener('change',update);},[]);
   const [chatStats,setChatStats]=useState<{unread:number;conversations:number;incoming_today:number}|null>(null);
   const [chatUnread,setChatUnread]=useState(0);
   function navigateAdmin(page:AdminScreen) {
@@ -1098,28 +1122,30 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
     }
   }
 
+  const visibleMenu=ADMIN_MENU.filter(item=>item.permissions.every(permission=>permissions.includes(permission)));
+  const isDark=appearance==='dark'||(appearance==='system'&&systemDark);
   const pageStyle: React.CSSProperties = {
     minHeight: '100vh', padding: stage === 'authenticated' ? '20px clamp(10px, 3vw, 38px)' : '32px 18px',
     boxSizing: 'border-box',
-    fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    background: 'radial-gradient(ellipse at top, #1e3a5f 0%, #0f172a 52%, #020617 100%)',
-    color: '#f8fafc', display: 'flex', justifyContent: 'center',
+    fontFamily: 'Jakarta-Regular, "Plus Jakarta Sans", system-ui, sans-serif',
+    background: '#0E1116',
+    color: '#F4F6FA', display: 'flex', justifyContent: 'center',
     alignItems: stage === 'authenticated' ? 'flex-start' : 'center',
   };
   const panelStyle: React.CSSProperties = {
-    width: '100%', maxWidth: stage === 'authenticated' ? 1280 : 560,
+    width: '100%', maxWidth: stage === 'authenticated' ? 1800 : 600,
     boxSizing: 'border-box', padding: stage === 'authenticated' ? 'clamp(14px, 3vw, 30px)' : 28,
-    borderRadius: 18, border: '1px solid #334155', background: 'rgba(15, 23, 42, 0.94)',
+    borderRadius: 18, border: '1px solid #1D232D', background: 'rgba(26,31,38,0.94)',
     boxShadow: '0 24px 80px rgba(0,0,0,0.3)',
   };
   const inputStyle: React.CSSProperties = {
     width: '100%', boxSizing: 'border-box', padding: '12px 14px', marginTop: 7,
-    borderRadius: 9, border: '1px solid #475569', background: '#020617', color: '#f8fafc',
+    borderRadius: 9, border: '1px solid rgba(255,154,61,0.24)', background: '#0E1116', color: '#F4F6FA',
     fontSize: 16, outlineOffset: 2,
   };
   const buttonStyle: React.CSSProperties = {
     width: '100%', padding: '12px 16px', border: 0, borderRadius: 9, marginTop: 16,
-    background: busy ? '#475569' : '#7c3aed', color: '#fff', fontWeight: 700,
+    background: busy ? 'rgba(255,154,61,0.24)' : '#FF8A00', color: '#fff', fontWeight: 700,
     fontSize: 15, cursor: busy ? 'wait' : 'pointer',
   };
 
@@ -1131,17 +1157,17 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
       : records.length === 0 ? <p>No records on this page.</p> : null;
 
   const supportWorkspace = workspace === 'support' && permissions.includes('support.view') && (
-                  <section aria-label="Support case management" style={{border:'1px solid #475569',borderRadius:12,padding:14,marginTop:14}}>
+                  <section aria-label="Support case management" style={{border:'1px solid rgba(255,154,61,0.24)',borderRadius:12,padding:14,marginTop:14}}>
                     <h3 style={{fontSize:16}}>Customer Support Operations</h3>
-                    <p style={{fontSize:12,color:'#cbd5e1'}}>Open a case to view its conversation. Replies and status changes use dedicated server-enforced permissions.</p>
+                    <p style={{fontSize:12,color:'#B8C1CC'}}>Open a case to view its conversation. Replies and status changes use dedicated server-enforced permissions.</p>
                     {permissions.includes('support.reply') && (
-                      <div aria-label="Internal support follow-up alerts" style={{padding:12,margin:'8px 0',border:'1px solid #475569',borderRadius:8}}>
+                      <div aria-label="Internal support follow-up alerts" style={{padding:12,margin:'8px 0',border:'1px solid rgba(255,154,61,0.24)',borderRadius:8}}>
                         <strong>Support follow-up inbox</strong>
-                        <p style={{fontSize:12,color:'#cbd5e1'}}>Staff-only reminders. Opening an alert marks it read, but does not resolve the case or alter its SLA.</p>
+                        <p style={{fontSize:12,color:'#B8C1CC'}}>Staff-only reminders. Opening an alert marks it read, but does not resolve the case or alter its SLA.</p>
                         {supportAlerts.filter(alert=>!alert.is_read).map(alert=>(
                           <button type="button" key={String(alert.id)} disabled={busy}
                             onClick={()=>void openSupportCase(String(alert.case_id),String(alert.id))}
-                            style={{...buttonStyle,width:'auto',background:'#334155',marginRight:8,marginTop:5}}>
+                            style={{...buttonStyle,width:'auto',background:'#1D232D',marginRight:8,marginTop:5}}>
                             Review due case · {String(alert.case_id).slice(0,8)}
                           </button>
                         ))}
@@ -1150,15 +1176,15 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                     )}
                     <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                       {records.map(row=><button type="button" key={String(row.id)} disabled={busy}
-                        style={{...buttonStyle,width:'auto',background:'#334155',marginTop:0}}
+                        style={{...buttonStyle,width:'auto',background:'#1D232D',marginTop:0}}
                         onClick={()=>void openSupportCase(String(row.id))}>Open {String(row.subject||row.id)}</button>)}
                     </div>
-                    {supportCase && <div style={{borderTop:'1px solid #334155',paddingTop:12,marginTop:12,display:'grid',gap:8}}>
+                    {supportCase && <div style={{borderTop:'1px solid #1D232D',paddingTop:12,marginTop:12,display:'grid',gap:8}}>
                       <strong>{String(supportCase.case_number||'Support case')} · {String(supportCase.status||'')}</strong>
                       <p>{String(supportCase.subject||'')}</p>
                       <div style={{maxHeight:360,overflowY:'auto',display:'grid',gap:7}}>
                         {((supportCase.messages||[]) as Array<Record<string,unknown>>).map((entry,i)=>
-                          <div key={String(entry.id||i)} style={{background:'#172334',borderRadius:8,padding:10,fontSize:13}}>
+                          <div key={String(entry.id||i)} style={{background:'#1D232D',borderRadius:8,padding:10,fontSize:13}}>
                             <strong>{entry.internal?'Internal note':'Conversation'}</strong><div>{String(entry.message||'')}</div>
                           </div>)}
                       </div>
@@ -1176,7 +1202,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                           {['OPEN','IN_PROGRESS','RESOLVED','CLOSED'].filter(x=>x!==supportCase.status).map(status=>
                             <button type="button" key={status} disabled={busy||supportStepUp.length!==6}
-                              style={{...buttonStyle,width:'auto',background:'#334155'}} onClick={()=>void updateSupportStatus(status)}>{status.replace('_',' ')}</button>)}
+                              style={{...buttonStyle,width:'auto',background:'#1D232D'}} onClick={()=>void updateSupportStatus(status)}>{status.replace('_',' ')}</button>)}
                         </div>
                       </>}
                     </div>}
@@ -1184,30 +1210,30 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                 );
 
   return (
-    <main style={pageStyle}>
-      <section style={panelStyle} aria-labelledby="portal-title">
-        <div style={{ color: '#c4b5fd', fontSize: 12, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase' }}>
+    <main className={'tm-admin-root '+(isDark?'tm-dark':'tm-light')} style={pageStyle}>
+      <section className={stage==='authenticated'?'tm-authenticated-shell':'tm-login-shell'} style={panelStyle} aria-labelledby="portal-title">
+        <div className="tm-titlebar"><img src={import.meta.env.BASE_URL+'trackmyrmc-logo.png'} alt="TrackMyRMC official logo" className="tm-brand-logo"/><div className="tm-titlecopy"><div style={{ color: '#FF9A3D', fontSize: 12, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase' }}>
           TrackMyRMC · Secure Access
         </div>
         <h1 id="portal-title" style={{ margin: '10px 0 6px', fontSize: 30, lineHeight: 1.2 }}>
           {stage === 'authenticated' ? 'Command Center' : stage.startsWith('central-') ? 'Central Admin sign in' : stage === 'authority-login' ? 'Delegated Authority sign in' : 'Verified email sign in'}
         </h1>
-        <p style={{ color: '#cbd5e1', lineHeight: 1.6, marginTop: 0 }}>
+        <p style={{ color: '#B8C1CC', lineHeight: 1.6, marginTop: 0 }}>
           {stage === 'authenticated'
             ? 'Your access is restricted to the permissions assigned to your account.'
             : stage.startsWith('central-') ? 'Verify your registered email and authenticator to access the Control Center.' : stage === 'authority-login' ? 'Authority uses a password, authenticator and separate one-hour browser session with scoped permissions. Reloading this page requires signing in again.' : 'Approved staff and first-time Authority accounts use email verification followed by authenticator MFA.'}
-        </p>
+        </p></div></div>
 
-        {error && <div role="alert" style={{ padding: 12, borderRadius: 8, background: '#451a1a', border: '1px solid #b91c1c', color: '#fecaca', margin: '16px 0' }}>{error}</div>}
-        {notice && <div role="status" style={{ padding: 12, borderRadius: 8, background: '#172554', border: '1px solid #3730a3', color: '#dbeafe', margin: '16px 0' }}>{notice}</div>}
+        {error && <div role="alert" style={{ padding: 12, borderRadius: 8, background: '#35191B', border: '1px solid #E53E3E', color: '#FDECEC', margin: '16px 0' }}>{error}</div>}
+        {notice && <div role="status" style={{ padding: 12, borderRadius: 8, background: '#12251A', border: '1px solid #276749', color: '#E6F4EA', margin: '16px 0' }}>{notice}</div>}
 
         {stage === 'central-login' && (
           <form onSubmit={sendCentralOtp}>
             <label htmlFor="central-email">Approved administrator email</label>
             <input id="central-email" type="email" autoComplete="username" required value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} disabled={busy} />
             <button type="submit" disabled={busy} style={buttonStyle}>Send email verification code</button>
-            <button type="button" onClick={() => {setStage('authority-login');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Delegated Authority sign in</button>
-            <button type="button" onClick={() => {setAuthorityEnrollment(false);setStage('email');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Plant staff / approved MFA setup</button>
+            <button type="button" onClick={() => {setStage('authority-login');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid rgba(255,154,61,0.24)'}}>Delegated Authority sign in</button>
+            <button type="button" onClick={() => {setAuthorityEnrollment(false);setStage('email');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid rgba(255,154,61,0.24)'}}>Plant staff / approved MFA setup</button>
           </form>
         )}
 
@@ -1218,7 +1244,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
               value={otp} onChange={e=>setOtp(e.target.value)} style={inputStyle} disabled={busy} />
             <button type="submit" disabled={busy} style={buttonStyle}>Verify email code</button>
             <button type="button" disabled={busy} onClick={restartCentralLogin}
-              style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Start over or request a new code</button>
+              style={{...buttonStyle,background:'transparent',border:'1px solid rgba(255,154,61,0.24)'}}>Start over or request a new code</button>
           </form>
         )}
 
@@ -1234,17 +1260,17 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
             </button>
             {stage === 'central-mfa' && (
               <button type="button" disabled={busy} onClick={()=>{setMfaCode('');setError('');setStage('central-recover');}}
-                style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Recover with a saved code</button>
+                style={{...buttonStyle,background:'transparent',border:'1px solid rgba(255,154,61,0.24)'}}>Recover with a saved code</button>
             )}
             <button type="button" disabled={busy} onClick={restartCentralLogin}
-              style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Start over</button>
+              style={{...buttonStyle,background:'transparent',border:'1px solid rgba(255,154,61,0.24)'}}>Start over</button>
           </form>
         )}
 
         {stage === 'central-recovery-codes' && (
           <form onSubmit={finishCentralEnrollment}>
             <h2 style={{fontSize:19}}>Save your recovery codes</h2>
-            <p style={{color:'#cbd5e1'}}>Store these codes securely. Each code can be used once with a verified email to enroll a replacement authenticator.</p>
+            <p style={{color:'#B8C1CC'}}>Store these codes securely. Each code can be used once with a verified email to enroll a replacement authenticator.</p>
             <ul style={{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:8}}>
               {centralRecoveryCodes.map(code=><li key={code}><code>{code}</code></li>)}
             </ul>
@@ -1265,8 +1291,8 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
             <label htmlFor="authority-login-code" style={{display:'block',marginTop:18}}>Authenticator code</label>
             <input id="authority-login-code" inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" maxLength={6} value={mfaCode} onChange={e=>setMfaCode(e.target.value)} style={inputStyle} disabled={busy}/>
             <button type="submit" disabled={busy} style={buttonStyle}>Sign in with password + authenticator</button>
-            <button type="button" onClick={()=>{setAuthorityEnrollment(true);setStage('email');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>First sign-in: verify email and enroll authenticator</button>
-            <button type="button" onClick={()=>{setStage('central-login');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Central Admin sign in</button>
+            <button type="button" onClick={()=>{setAuthorityEnrollment(true);setStage('email');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid rgba(255,154,61,0.24)'}}>First sign-in: verify email and enroll authenticator</button>
+            <button type="button" onClick={()=>{setStage('central-login');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid rgba(255,154,61,0.24)'}}>Central Admin sign in</button>
           </form>
         )}
 
@@ -1281,34 +1307,34 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
 
         {stage === 'otp' && (
           <form onSubmit={verifyEmailOtp}>
-            <p style={{ color: '#cbd5e1' }}>Verification for <strong>{email}</strong></p>
+            <p style={{ color: '#B8C1CC' }}>Verification for <strong>{email}</strong></p>
             <label htmlFor="email-otp" style={{ display: 'block', marginTop: 18, fontWeight: 650 }}>Email verification code</label>
             <input id="email-otp" name="otp" type="text" inputMode="numeric" autoComplete="one-time-code" required
               maxLength={12} value={otp} onChange={(event) => setOtp(event.target.value)} style={inputStyle} disabled={busy} />
             <button type="submit" disabled={busy} style={buttonStyle}>{busy ? 'Verifying…' : 'Verify email code'}</button>
             <button type="button" disabled={busy} onClick={() => { setStage('email'); setOtp(''); setError(''); setNotice(''); }}
-              style={{ ...buttonStyle, background: 'transparent', border: '1px solid #475569' }}>Use another email</button>
+              style={{ ...buttonStyle, background: 'transparent', border: '1px solid rgba(255,154,61,0.24)' }}>Use another email</button>
           </form>
         )}
 
         {(stage === 'mfa-enroll' || stage === 'central-mfa') && enrollment && (
           <form onSubmit={stage === 'central-mfa' ? verifyCentralMfa : confirmEnrollment}>
             <h2 style={{ fontSize: 19 }}>Set up your authenticator</h2>
-            <p style={{ color: '#cbd5e1', lineHeight: 1.6 }}>Open Google Authenticator or another compatible app, choose <strong>Add account → Scan a QR code</strong>, and scan the code below. The issuer <strong>TrackMyRMC</strong> and account <strong>{enrollment.account}</strong> are included automatically.</p>
+            <p style={{ color: '#B8C1CC', lineHeight: 1.6 }}>Open Google Authenticator or another compatible app, choose <strong>Add account → Scan a QR code</strong>, and scan the code below. The issuer <strong>TrackMyRMC</strong> and account <strong>{enrollment.account}</strong> are included automatically.</p>
             <AuthenticatorQr uri={enrollment.otpauth_uri} />
-            <p style={{ color: '#cbd5e1', fontSize: 13, lineHeight: 1.6 }}>If setup and the authenticator are on the same device, select <strong>Enter a setup key</strong> instead. Name the entry <strong>TrackMyRMC ({enrollment.account})</strong>, use <strong>Time-based</strong> and the key below. A standalone manual key cannot auto-fill the account name.</p>
+            <p style={{ color: '#B8C1CC', fontSize: 13, lineHeight: 1.6 }}>If setup and the authenticator are on the same device, select <strong>Enter a setup key</strong> instead. Name the entry <strong>TrackMyRMC ({enrollment.account})</strong>, use <strong>Time-based</strong> and the key below. A standalone manual key cannot auto-fill the account name.</p>
             <label htmlFor="manual-key" style={{ display: 'block', fontWeight: 650 }}>Authenticator setup key</label>
             <textarea id="manual-key" readOnly value={enrollment.manual_key} rows={2}
               style={{ ...inputStyle, resize: 'vertical', fontFamily: 'monospace' }} />
-            <p style={{color:'#fde68a',fontSize:13,lineHeight:1.6}}>Use only the QR code or key from this current email-verified setup. Restarting or requesting another email challenge invalidates an unfinished earlier key. Turn on automatic date and time on the authenticator device, then submit a fresh six-digit code before the challenge expires. Codes used for an earlier successful action cannot be reused.</p>
+            <p style={{color:'#FBBF24',fontSize:13,lineHeight:1.6}}>Use only the QR code or key from this current email-verified setup. Restarting or requesting another email challenge invalidates an unfinished earlier key. Turn on automatic date and time on the authenticator device, then submit a fresh six-digit code before the challenge expires. Codes used for an earlier successful action cannot be reused.</p>
             <details style={{ marginTop: 12 }}>
-              <summary style={{ cursor: 'pointer', color: '#c4b5fd' }}>Show otpauth URI</summary>
+              <summary style={{ cursor: 'pointer', color: '#FF9A3D' }}>Show otpauth URI</summary>
               <textarea readOnly value={enrollment.otpauth_uri} rows={3} style={{ ...inputStyle, resize: 'vertical', fontFamily: 'monospace' }} />
             </details>
             {stage === 'mfa-enroll' && (
-            <div style={{ marginTop: 16, padding: 14, borderRadius: 10, border: '1px solid #92400e', background: '#451a03' }}>
-              <strong style={{ color: '#fde68a' }}>Save these recovery codes now</strong>
-              <p style={{ margin: '6px 0 10px', color: '#fde68a', fontSize: 13 }}>Each code is single-use. This screen will not show them again after setup.</p>
+            <div style={{ marginTop: 16, padding: 14, borderRadius: 10, border: '1px solid #C05621', background: '#2C170A' }}>
+              <strong style={{ color: '#FBBF24' }}>Save these recovery codes now</strong>
+              <p style={{ margin: '6px 0 10px', color: '#FBBF24', fontSize: 13 }}>Each code is single-use. This screen will not show them again after setup.</p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
                 {enrollment.recovery_codes.map((recoveryCode) => (
                   <code key={recoveryCode} style={{ padding: 8, background: '#1c1917', borderRadius: 6, textAlign: 'center' }}>{recoveryCode}</code>
@@ -1326,7 +1352,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
             <button type="submit" disabled={busy || (stage === 'mfa-enroll' && !recoveryCodesSaved)} style={buttonStyle}>{busy ? 'Enabling…' : 'Confirm authenticator setup'}</button>
             {stage === 'central-mfa' && (
               <button type="button" disabled={busy} onClick={restartCentralLogin}
-                style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Start over</button>
+                style={{...buttonStyle,background:'transparent',border:'1px solid rgba(255,154,61,0.24)'}}>Start over</button>
             )}
           </form>
         )}
@@ -1334,7 +1360,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
         {stage === 'authority-password' && (
           <form onSubmit={completeAuthorityEnrollment}>
             <h2 style={{fontSize:19}}>Set your private Authority password</h2>
-            <p style={{color:'#cbd5e1'}}>This one-time step requires your approved work-email challenge and enrolled authenticator. It never signs you into Expo.</p>
+            <p style={{color:'#B8C1CC'}}>This one-time step requires your approved work-email challenge and enrolled authenticator. It never signs you into Expo.</p>
             <label htmlFor="authority-initial-password">New password (16-128 characters)</label>
             <input id="authority-initial-password" type="password" autoComplete="new-password" required minLength={16}
               maxLength={128} value={newAuthorityPassword} onChange={e=>setNewAuthorityPassword(e.target.value)}
@@ -1358,22 +1384,35 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
               value={mfaCode} onChange={(event) => setMfaCode(event.target.value)} style={inputStyle} disabled={busy} />
             <button type="submit" disabled={busy} style={buttonStyle}>{busy ? 'Verifying…' : 'Verify MFA and sign in'}</button>
             <button type="button" onClick={()=>{setStage('authority-login');setMfaCode('');setChallengeToken('');setError('');}}
-              style={{...buttonStyle,background:'transparent',border:'1px solid #475569'}}>Authority enrolled? Continue to dedicated Authority sign in</button>
+              style={{...buttonStyle,background:'transparent',border:'1px solid rgba(255,154,61,0.24)'}}>Authority enrolled? Continue to dedicated Authority sign in</button>
           </form>
         )}
 
         {stage === 'authenticated' && user && (
-          <div>
-            <div style={{ marginTop: 20, padding: 16, border: '1px solid #334155', borderRadius: 10, background: '#111827',
+          <div className={'tm-workspace '+(user.role==='central_admin'?'tm-workspace-central':'tm-workspace-authority')}>
+            {user.role==='central_admin'&&<aside className="tm-sidebar" aria-label="Super Admin sidebar">
+              <div className="tm-sidebar-brand"><img src={import.meta.env.BASE_URL+'trackmyrmc-logo.png'} alt="TrackMyRMC official logo"/></div>
+              <nav aria-label="Control Center sections">
+                {visibleMenu.map(item=><button key={item.page} type="button"
+                  className={'tm-sidebar-link '+(adminScreen===item.page?'is-current':'')}
+                  aria-current={adminScreen===item.page?'page':undefined}
+                  onClick={()=>navigateAdmin(item.page)}><item.icon size={18} aria-hidden="true"/>
+                  <span>{item.label}</span>{item.page==='chats'&&chatUnread>0&&<em className="tm-unread">{chatUnread}</em>}
+                </button>)}
+              </nav>
+              <button type="button" className="tm-sidebar-logout" disabled={busy} onClick={()=>void logout()}><LogOut size={17}/> Sign out</button>
+            </aside>}
+            <div className={'tm-workspace-content tm-view-'+adminScreen}>
+            <div className="tm-identity-strip" style={{ marginTop: 20, padding: 16, border: '1px solid #1D232D', borderRadius: 10, background: '#1D232D',
               display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:8 }}>
               <p style={{ margin: '0 0 8px' }}><strong>Signed in as</strong> {user.full_name || user.email || user.phone || 'Staff user'}</p>
               <p style={{ margin: '0 0 8px' }}><strong>Role</strong> {user.role}</p>
               <p style={{ margin: 0 }}><strong>Session</strong> {user.role === 'central_admin' || user.role === 'authority' ? 'Dedicated one-hour web authenticator session' : 'Email OTP + MFA verified'}</p>
             </div>
             {user.role === 'authority' && (
-              <details style={{marginTop:14,padding:14,border:'1px solid #334155',borderRadius:10}}>
+              <details style={{marginTop:14,padding:14,border:'1px solid #1D232D',borderRadius:10}}>
                 <summary style={{cursor:'pointer',fontWeight:700}}>Account security · Change password</summary>
-                <p style={{fontSize:12,color:'#cbd5e1'}}>Requires your current password, authenticator and audit reason. Every session will be revoked.</p>
+                <p style={{fontSize:12,color:'#B8C1CC'}}>Requires your current password, authenticator and audit reason. Every session will be revoked.</p>
                 <form onSubmit={rotateWebPassword}>
                   <label htmlFor="rotate-current">Current password</label>
                   <input id="rotate-current" type="password" autoComplete="current-password" required
@@ -1395,38 +1434,38 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                 </form>
               </details>
             )}
-            <div style={{ marginTop: 14, padding: 16, border: '1px solid #334155', borderRadius: 10 }}>
+            {!(user.role==='central_admin'&&adminScreen==='dashboard')&&<div className="tm-health-strip" style={{ marginTop: 14, padding: 16, border: '1px solid #1D232D', borderRadius: 10 }}>
               <h2 style={{ marginTop: 0, fontSize: 18 }}>Service health</h2>
               <p><strong>API:</strong> {health?.status || 'Unavailable'}</p>
               <p><strong>Database:</strong> {health?.database || 'Not confirmed'}</p>
               <p><strong>Environment:</strong> {health?.environment || 'Unknown'}</p>
-              <p style={{ color: '#94a3b8', fontSize: 12 }}>This portal is being connected incrementally to secured Rust APIs. Privileged actions require recent authenticator verification.</p>
+              <p style={{ color: '#B7C2D2', fontSize: 12 }}>Service availability must be verified live. Privileged actions require recent authenticator verification.</p>
             </div>
             {user.role === 'central_admin' && (
-              <section aria-label="Central Admin quick navigation" style={{marginTop:16}}>
+              <section className="tm-central-nav" aria-label="Central Admin quick navigation" style={{marginTop:16}}>
                 <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
                   <div>
                     <h2 style={{fontSize:19,margin:'0 0 4px'}}>TMRMC Control Center</h2>
-                    <p style={{fontSize:12,color:'#cbd5e1',margin:0}}>One secure workspace for approvals, plant operations and platform oversight.</p>
+                    <p style={{fontSize:12,color:'#B8C1CC',margin:0}}>One secure workspace for approvals, plant operations and platform oversight.</p>
                   </div>
                   <button type="button" onClick={()=>setShowAdminNotices(value=>!value)}
-                    style={{...buttonStyle,width:'auto',marginTop:0,background:'#25364e',display:'flex',alignItems:'center',gap:8}}
+                    style={{...buttonStyle,width:'auto',marginTop:0,background:'#1D232D',display:'flex',alignItems:'center',gap:8}}
                     aria-label="Review admin notifications">
                     <Bell size={17} aria-hidden="true"/> Notifications {adminUnread>0?'('+adminUnread+')':''}
                   </button>
                 </div>
-                {showAdminNotices && <section aria-label="Admin notifications" style={{border:'1px solid #475569',borderRadius:10,padding:12,marginTop:10,background:'#111827'}}>
+                {showAdminNotices && <section aria-label="Admin notifications" style={{border:'1px solid rgba(255,154,61,0.24)',borderRadius:10,padding:12,marginTop:10,background:'#1D232D'}}>
                   <div style={{display:'flex',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}>
                     <strong>Approval and enquiry notifications</strong>
                     <div style={{display:'flex',gap:8}}>
                       <button type="button" disabled={busy} onClick={()=>void loadAdminNotices()} style={{...buttonStyle,width:'auto',marginTop:0,padding:'7px 10px'}}>Refresh</button>
-                      <button type="button" disabled={busy||adminUnread===0} onClick={()=>void markAdminNoticesRead()} style={{...buttonStyle,width:'auto',marginTop:0,padding:'7px 10px',background:'#334155'}}>Mark all read</button>
+                      <button type="button" disabled={busy||adminUnread===0} onClick={()=>void markAdminNoticesRead()} style={{...buttonStyle,width:'auto',marginTop:0,padding:'7px 10px',background:'#1D232D'}}>Mark all read</button>
                     </div>
                   </div>
                   {adminNoticeError && <p role="alert">{adminNoticeError}</p>}
-                  {adminNotices.map(item=><article key={item.id} style={{padding:'9px 0',borderBottom:'1px solid #334155'}}>
-                    <div style={{display:'flex',gap:8,alignItems:'center'}}><strong style={{fontSize:13}}>{item.title}</strong>{!item.read&&<span style={{fontSize:11,color:'#86efac'}}>New</span>}</div>
-                    <p style={{fontSize:12,color:'#cbd5e1',margin:'4px 0'}}>{item.body}</p>
+                  {adminNotices.map(item=><article key={item.id} style={{padding:'9px 0',borderBottom:'1px solid #1D232D'}}>
+                    <div style={{display:'flex',gap:8,alignItems:'center'}}><strong style={{fontSize:13}}>{item.title}</strong>{!item.read&&<span style={{fontSize:11,color:'#72D59B'}}>New</span>}</div>
+                    <p style={{fontSize:12,color:'#B8C1CC',margin:'4px 0'}}>{item.body}</p>
                     {(['plant_onboarding','plant_owner_registration','rmc_rfq_lead','plant_profile','kyc'].includes(item.event)) && (
                       <button type="button" style={{...buttonStyle,width:'auto',marginTop:4,padding:'6px 10px',fontSize:12}}
                         onClick={()=>void openAdminApproval(item.event)}>Open matching review queue</button>
@@ -1434,54 +1473,74 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                   </article>)}
                   {!adminNotices.length&&!adminNoticeError&&<p>No notifications to show.</p>}
                 </section>}
-                <nav aria-label="Control Center sections" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:9,marginTop:14}}>
-                  {([
-                    {page:'overview',label:'Platform KPIs',caption:'Live overview',icon:Building2,allowed:permissions.includes('system.view')},
-                    {page:'plants',label:'Plant Master',caption:'Owners, staff, verification & intake',icon:Factory,allowed:permissions.includes('plant.view')&&permissions.includes('user.view')},
-                    {page:'visibility',label:'Plant Visibility',caption:'Hold / restore customer app listings',icon:Factory,allowed:permissions.includes('plant.view')&&permissions.includes('plant_owners.manage')&&permissions.includes('user.view')},
-                    {page:'approvals',label:'Approval Queue',caption:'Onboarding, documents and RFQs',icon:ClipboardCheck,allowed:true},
-                    {page:'marketing',label:'Marketing CRM',caption:'Contact channels and campaign drafts',icon:Megaphone,allowed:permissions.includes('support.manage')},
-                    {page:'automation',label:'Automation',caption:'Native workflow health',icon:Workflow,allowed:permissions.includes('system.view')},
-                    {page:'governance',label:'Governance',caption:'Permissions, audit and security',icon:ShieldCheck,allowed:true},
-                    {page:'chats',label:'Chats',caption:chatUnread>0?chatUnread+' unread WhatsApp replies':'Customer WhatsApp inbox',icon:MessageCircle,allowed:permissions.includes('support.manage')},
-                  ] as const).filter(item=>item.allowed).map(item=><button key={item.label} type="button"
-                    onClick={()=>navigateAdmin(item.page)} aria-current={adminScreen===item.page?'page':undefined}
-                    style={{padding:12,border:'1px solid '+(adminScreen===item.page?'#7c3aed':'#475569'),
-                      borderRadius:10,background:adminScreen===item.page?'rgba(76,29,149,.60)':'rgba(30,41,59,.85)',
-                      color:'#f8fafc',textDecoration:'none',display:'grid',gap:6,cursor:'pointer',textAlign:'left'}}>
-                    <item.icon size={22} aria-hidden="true"/>
-                    <strong style={{fontSize:13}}>{item.label}</strong>
-                    <span style={{fontSize:11,color:'#cbd5e1'}}>{item.caption}</span>
-                  </button>)}
-                </nav>
+                {adminScreen==='dashboard'&&<>
+                  <div className="tm-kpi-row" aria-label="Dashboard live KPI tiles">
+                    {permissions.includes('system.view')&&adminKpis.slice(0,4).map((item,i)=><div className={'tm-kpi-card tm-kpi-'+i} key={item.label}>
+                      <small>{item.label}</small><strong>{String(item.value)}</strong><span>Platform API</span>
+                    </div>)}
+                    {adminOverviewError&&<div role="alert">{adminOverviewError}</div>}
+                    {permissions.includes('support.manage')&&<button type="button" className="tm-kpi-card tm-kpi-chat" onClick={()=>navigateAdmin('chats')}>
+                      <small>Unread WhatsApp Chats</small><strong>{chatStats?.unread??'—'}</strong><span>{chatStats?'Inbox API':'Not verified'}</span>
+                    </button>}
+                  </div>
+                  <div className="tm-module-grid" aria-label="Dashboard module cards">
+                    {visibleMenu.filter(item=>item.page!=='dashboard'&&item.page!=='settings').map(item=><button type="button" key={item.page}
+                        className={'tm-module-card tm-tone-'+item.tone} onClick={()=>navigateAdmin(item.page)}
+                        aria-label={'Open '+item.label}>
+                        <span className="tm-module-icon"><item.icon size={24} aria-hidden="true"/></span>
+                        <strong>{item.label}</strong><span className="tm-module-desc">{item.caption}</span>
+                        <span className="tm-module-action">Open workspace <ArrowRight size={16} aria-hidden="true"/></span>
+                      </button>)}
+                  </div>
+                </>}
               </section>
             )}
+            {user.role==='central_admin'&&adminScreen==='dashboard'&&<aside className="tm-dashboard-aside" aria-label="Dashboard activity and status">
+              <section className="tm-aside-panel"><h2><Bell size={18}/> Notifications</h2>
+                {adminNotices.slice(0,4).map(item=><div key={item.id} className="tm-aside-notice"><strong>{item.title}</strong><small>{item.body}</small></div>)}
+                {!adminNotices.length&&<p>No notifications recorded or available.</p>}
+                <button type="button" onClick={()=>{navigateAdmin('approvals');setShowAdminNotices(true)}}>Open Approval Queue</button>
+              </section>
+              <section className="tm-aside-panel"><h2>Quick Actions</h2><div className="tm-quick-actions">
+                {visibleMenu.filter(item=>['reviewer','admin-access','unowned','assign-owner','chats'].includes(item.page)).map(item=>
+                  <button type="button" key={item.page} onClick={()=>navigateAdmin(item.page)}>
+                    <item.icon size={20} aria-hidden="true"/><span>{item.label}</span>
+                  </button>)}
+              </div></section>
+              <section className="tm-aside-panel"><h2>System Status</h2>
+                <div className="tm-status-line"><span>API</span><strong>{health?.status||'Not verified'}</strong></div>
+                <div className="tm-status-line"><span>PostgreSQL</span><strong>{health?.database||'Not confirmed'}</strong></div>
+                <div className="tm-status-line"><span>Environment</span><strong>{health?.environment||'Unknown'}</strong></div>
+                <div className="tm-status-line"><span>Meta WhatsApp</span><strong>Requires live check</strong></div>
+                <div className="tm-status-line"><span>Resend OTP</span><strong>Requires live check</strong></div>
+              </section>
+            </aside>}
             {user.role === 'central_admin' && adminScreen==='overview' && permissions.includes('system.view') && (
-              <section id="platform-overview" aria-label="Platform overview" style={{ marginTop: 14, padding: 16, border: '1px solid #334155', borderRadius: 10 }}>
+              <section id="platform-overview" aria-label="Platform overview" style={{ marginTop: 14, padding: 16, border: '1px solid #1D232D', borderRadius: 10 }}>
                 <h2 style={{ marginTop: 0, fontSize: 18 }}>Live platform overview</h2>
-                {adminOverviewError && <p role="alert" style={{ color: '#fecaca' }}>Unable to load overview: {adminOverviewError}</p>}
-                {!adminOverviewError && adminKpis.length === 0 && <p style={{ color: '#94a3b8' }}>No overview data available.</p>}
+                {adminOverviewError && <p role="alert" style={{ color: '#FDECEC' }}>Unable to load overview: {adminOverviewError}</p>}
+                {!adminOverviewError && adminKpis.length === 0 && <p style={{ color: '#B7C2D2' }}>No overview data available.</p>}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(175px, 1fr))', gap: 10 }}>
                   {adminKpis.map((item) => (
-                    <div key={item.label} style={{ padding: 12, border: '1px solid #475569', borderRadius: 8, background: '#111827' }}>
-                      <div style={{ color: '#cbd5e1', fontSize: 12 }}>{item.label}</div>
+                    <div key={item.label} style={{ padding: 12, border: '1px solid rgba(255,154,61,0.24)', borderRadius: 8, background: '#1D232D' }}>
+                      <div style={{ color: '#B8C1CC', fontSize: 12 }}>{item.label}</div>
                       <strong style={{ fontSize: 22 }}>{String(item.value)}</strong>
                     </div>
                   ))}
                 </div>
-                <p style={{ color: '#94a3b8', fontSize: 12 }}>Read-only statistics from the Rust API. This is not the complete reference Control Center.</p>
+                <p style={{ color: '#B7C2D2', fontSize: 12 }}>Read-only statistics from the Rust API. This is not the complete reference Control Center.</p>
               </section>
             )}
             {user.role === 'central_admin' && adminScreen==='visibility' && permissions.includes('plant.view') && permissions.includes('user.view') && permissions.includes('plant_owners.manage') && (
               <PlantVisibility />
             )}
             {user.role === 'central_admin' && adminScreen==='plants' && permissions.includes('plant.view') && permissions.includes('user.view') && (
-              <section id="plant-master" aria-label="Central Admin Plant Master" style={{marginTop:18,padding:14,border:'1px solid #334155',borderRadius:12}}>
+              <section id="plant-master" aria-label="Central Admin Plant Master" style={{marginTop:18,padding:14,border:'1px solid #1D232D',borderRadius:12}}>
                 <div style={{display:'flex',alignItems:'center',gap:10}}>
                   <Factory size={24} aria-hidden="true"/>
                   <div>
                     <h2 style={{margin:0,fontSize:19}}>Plant Master</h2>
-                    <p style={{fontSize:12,color:'#cbd5e1',margin:'4px 0 0'}}>A joined directory of first-party plant, owner and staff records. Google-listed places are separate.</p>
+                    <p style={{fontSize:12,color:'#B8C1CC',margin:'4px 0 0'}}>A joined directory of first-party plant, owner and staff records. Google-listed places are separate.</p>
                   </div>
                 </div>
                 <button type="button" disabled={masterLoading} onClick={()=>void loadPlantMaster()} style={{...buttonStyle,marginTop:12}}>
@@ -1510,13 +1569,13 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                   {masterError && <div role="alert" style={{marginTop:12}}>{masterError}
                     <button type="button" onClick={()=>void loadPlantMaster(masterOffset)}>Retry Plant Master</button></div>}
                   {!masterLoading&&!masterError&&<>
-                    <p style={{fontSize:12,color:'#cbd5e1'}}>{masterTotal} matching registered plants · Showing {masterItems.length} on this page</p>
+                    <p style={{fontSize:12,color:'#B8C1CC'}}>{masterTotal} matching registered plants · Showing {masterItems.length} on this page</p>
                     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(235px,1fr))',gap:9}}>
-                      {masterItems.map(item=><article key={item.id} style={{border:'1px solid #475569',background:'#111827',borderRadius:9,padding:12}}>
+                      {masterItems.map(item=><article key={item.id} style={{border:'1px solid rgba(255,154,61,0.24)',background:'#1D232D',borderRadius:9,padding:12}}>
                         <strong>{item.name}</strong>
-                        <p style={{fontSize:12,color:'#cbd5e1',margin:'6px 0'}}>{item.code} · {item.city}, {item.state}</p>
+                        <p style={{fontSize:12,color:'#B8C1CC',margin:'6px 0'}}>{item.code} · {item.city}, {item.state}</p>
                         <p style={{fontSize:12,margin:'6px 0'}}>{item.onboarding_approved?'Onboarding approved':item.active?'Approval not confirmed':'Inactive'} · {item.staff_count} active staff</p>
-                        <p style={{fontSize:12,color:'#cbd5e1',margin:'6px 0'}}>Owner: {item.owner_name} · {item.owner_email||'No email'}</p>
+                        <p style={{fontSize:12,color:'#B8C1CC',margin:'6px 0'}}>Owner: {item.owner_name} · {item.owner_email||'No email'}</p>
                         <button type="button" onClick={()=>void openPlantMaster(item.id)} style={{...buttonStyle,marginTop:6}}>Open plant record</button>
                       </article>)}
                     </div>
@@ -1527,15 +1586,15 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                     </div>
                   </>}
                   {masterDetailError&&<p role="alert">{masterDetailError}</p>}
-                  {masterDetail&&<section aria-label="Selected plant details" style={{border:'1px solid #64748b',background:'#172334',borderRadius:10,padding:14,marginTop:14}}>
+                  {masterDetail&&<section aria-label="Selected plant details" style={{border:'1px solid #6B7380',background:'#1D232D',borderRadius:10,padding:14,marginTop:14}}>
                     <h3 style={{margin:'0 0 6px',fontSize:17}}>{masterDetail.plant.name} · Plant record</h3>
-                    <p style={{fontSize:12,color:'#cbd5e1'}}>{masterDetail.plant.address}, {masterDetail.plant.city}, {masterDetail.plant.state} {masterDetail.plant.pincode||''}</p>
+                    <p style={{fontSize:12,color:'#B8C1CC'}}>{masterDetail.plant.address}, {masterDetail.plant.city}, {masterDetail.plant.state} {masterDetail.plant.pincode||''}</p>
                     <p style={{fontSize:13}}><strong>Owner:</strong> {masterDetail.plant.owner_name} · {masterDetail.plant.owner_email||'No email'}</p>
                     <p style={{fontSize:12}}><strong>Status:</strong> {masterDetail.plant.onboarding_approved?'Onboarding approved':'Onboarding approval not confirmed'} · {masterDetail.plant.active?'Active':'Inactive'}</p>
 
-                    <div style={{marginTop:14,padding:12,border:'1px solid #475569',borderRadius:10,background:'#101c2d'}}>
+                    <div style={{marginTop:14,padding:12,border:'1px solid rgba(255,154,61,0.24)',borderRadius:10,background:'#14181F'}}>
                       <h4 style={{margin:'0 0 5px'}}>Verification & order intake</h4>
-                      <p style={{fontSize:12,color:'#cbd5e1',margin:'0 0 8px'}}>
+                      <p style={{fontSize:12,color:'#B8C1CC',margin:'0 0 8px'}}>
                         Separate onboarding, document publication, TMRMC Verified review, and direct-order authorization.
                       </p>
                       <button type="button" disabled={govBusy}
@@ -1566,7 +1625,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                         {govTrust==='VERIFIED' && <label style={{fontSize:12}}>Verification valid until
                           <input type="date" value={govExpiry} onChange={e=>setGovExpiry(e.target.value)} style={inputStyle} disabled={govBusy}/>
                         </label>}
-                        <p style={{fontSize:12,color:'#cbd5e1',margin:0}}>
+                        <p style={{fontSize:12,color:'#B8C1CC',margin:0}}>
                           Verification requires approved onboarding, published identification and current published licence evidence.
                           It does not automatically approve orders, subscription charges, staff access or marketing.
                         </p>
@@ -1584,7 +1643,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                             Save order intake
                           </button>
                           <button type="button" disabled={govBusy}
-                            onClick={()=>void savePlantGovernance('trust')} style={{...buttonStyle,width:'auto',marginTop:0,background:'#166534'}}>
+                            onClick={()=>void savePlantGovernance('trust')} style={{...buttonStyle,width:'auto',marginTop:0,background:'#276749'}}>
                             Save TMRMC Verified review
                           </button>
                         </div>
@@ -1592,19 +1651,19 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                     </div>
                     <h4 style={{margin:'15px 0 6px'}}>Staff roles ({masterDetail.staff.length} assigned)</h4>
                     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:8}}>
-                      {masterDetail.staff.map(staff=><div key={staff.user_id} style={{border:'1px solid #475569',padding:9,borderRadius:8}}>
+                      {masterDetail.staff.map(staff=><div key={staff.user_id} style={{border:'1px solid rgba(255,154,61,0.24)',padding:9,borderRadius:8}}>
                         <strong style={{fontSize:13}}>{staff.role.replace(/_/g,' ')}</strong>
                         <p style={{fontSize:12,margin:'5px 0'}}>{staff.name} · {staff.email||'No work email'}</p>
-                        <span style={{fontSize:12,color:'#cbd5e1'}}>{staff.employment_status}</span>
+                        <span style={{fontSize:12,color:'#B8C1CC'}}>{staff.employment_status}</span>
                       </div>)}
                     </div>
                     {!masterDetail.staff.length&&<p>No staff assignments yet.</p>}
-                    <p style={{fontSize:12,color:'#cbd5e1'}}>Staff invitations and role-slot replacements remain under existing Plant Owner / authorized Manager workflows. No privileged bypass is introduced here.</p>
-                    <button type="button" onClick={()=>setMasterDetail(null)} style={{...buttonStyle,background:'#334155'}}>Close plant record</button>
+                    <p style={{fontSize:12,color:'#B8C1CC'}}>Staff invitations and role-slot replacements remain under existing Plant Owner / authorized Manager workflows. No privileged bypass is introduced here.</p>
+                    <button type="button" onClick={()=>setMasterDetail(null)} style={{...buttonStyle,background:'#1D232D'}}>Close plant record</button>
                   </section>}
-                  <section aria-label="Google Places discovery" style={{borderTop:'1px solid #334155',marginTop:18,paddingTop:14}}>
+                  <section aria-label="Google Places discovery" style={{borderTop:'1px solid #1D232D',marginTop:18,paddingTop:14}}>
                     <h3 style={{fontSize:16,margin:'0 0 4px'}}>Discover Google-listed RMC plants</h3>
-                    <p style={{fontSize:12,color:'#cbd5e1'}}>Read-only live search. A Google listing is not verified ownership, onboarding, or an eligible recipient for marketing.</p>
+                    <p style={{fontSize:12,color:'#B8C1CC'}}>Read-only live search. A Google listing is not verified ownership, onboarding, or an eligible recipient for marketing.</p>
                     <form onSubmit={searchGooglePlaces} style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'end'}}>
                       <label style={{flex:'1 1 230px',fontSize:12}}>Plant or area
                         <input value={placesQuery} maxLength={120} onChange={e=>setPlacesQuery(e.target.value)} style={inputStyle} placeholder="Ready mix concrete plant in Panvel"/>
@@ -1614,16 +1673,16 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                     {placesLoading&&<p role="status">Searching Google Places…</p>}
                     {placesError&&<p role="alert">{placesError}</p>}
                     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:8,marginTop:10}}>
-                      {googlePlaces.map(item=><article key={item.place_id} style={{border:'1px solid #475569',borderRadius:8,padding:10}}>
+                      {googlePlaces.map(item=><article key={item.place_id} style={{border:'1px solid rgba(255,154,61,0.24)',borderRadius:8,padding:10}}>
                         <strong style={{fontSize:13}}>{item.name}</strong>
-                        <p style={{fontSize:12,color:'#cbd5e1'}}>{item.address}</p>
+                        <p style={{fontSize:12,color:'#B8C1CC'}}>{item.address}</p>
                         <p style={{fontSize:11}}>Google-listed · Not TMRMC verified</p>
                         <p style={{fontSize:11,overflowWrap:'anywhere'}}>Place ID: <code>{item.place_id}</code></p>
-                        <a target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:'#93c5fd'}}
+                        <a target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:'#FF9A3D'}}
                           href={'https://www.google.com/maps/search/?api=1&query=RMC%20Plant&query_place_id='+encodeURIComponent(item.place_id)}>View on Google Maps</a>
                       </article>)}
                     </div>
-                    <p style={{fontSize:11,color:'#cbd5e1'}}>Place data: Google Maps. Results are not added to the database or contact lists.</p>
+                    <p style={{fontSize:11,color:'#B8C1CC'}}>Place data: Google Maps. Results are not added to the database or contact lists.</p>
                   </section>
                 </>}
               </section>
@@ -1632,12 +1691,12 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
 
             {user.role === 'central_admin' && adminScreen==='marketing' && permissions.includes('support.manage') && (
               <section id="marketing-center" aria-label="Marketing CRM and broadcast drafts"
-                style={{marginTop:18,padding:14,border:'1px solid #334155',borderRadius:12}}>
+                style={{marginTop:18,padding:14,border:'1px solid #1D232D',borderRadius:12}}>
                 <div style={{display:'flex',gap:10,alignItems:'center'}}>
                   <Megaphone size={22} aria-hidden="true"/>
                   <div>
                     <h2 style={{margin:0,fontSize:19}}>Marketing & Broadcast Center</h2>
-                    <p style={{fontSize:12,color:'#cbd5e1',margin:'4px 0 0'}}>
+                    <p style={{fontSize:12,color:'#B8C1CC',margin:'4px 0 0'}}>
                       Create your own channels first, then upload contacts into the channel you choose.
                       These are internal TrackMyRMC contact channels, not WhatsApp Channels or chat groups.
                     </p>
@@ -1648,7 +1707,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                   {showMarketing?'Refresh Marketing Center':'Open Marketing CRM'}
                 </button>
                 {showMarketing&&<>
-                  {marketingError&&<p role="alert" style={{color:'#fecaca'}}>{marketingError}</p>}
+                  {marketingError&&<p role="alert" style={{color:'#FDECEC'}}>{marketingError}</p>}
                   {marketingBusy&&<p role="status">Updating marketing workspace…</p>}
                   {marketing&&<>
                     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(115px,1fr))',gap:8,marginTop:12}}>
@@ -1658,20 +1717,20 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                         ['Consent unverified',marketing.contacts.unverified],
                         ['Opted out',marketing.contacts.opted_out]
                       ] as const).map(([key,value])=><div key={key}
-                        style={{border:'1px solid #475569',borderRadius:9,padding:10,background:'#111827'}}>
-                        <div style={{fontSize:11,color:'#cbd5e1'}}>{key}</div>
+                        style={{border:'1px solid rgba(255,154,61,0.24)',borderRadius:9,padding:10,background:'#1D232D'}}>
+                        <div style={{fontSize:11,color:'#B8C1CC'}}>{key}</div>
                         <strong style={{fontSize:20}}>{value}</strong>
                       </div>)}
                     </div>
-                    <p style={{fontSize:12,color:'#fbbf24',margin:'10px 0'}}>
+                    <p style={{fontSize:12,color:'#F59E0B',margin:'10px 0'}}>
                       CSV imports never establish marketing consent or send messages. Campaigns remain drafts until
                       separately approved Meta templates, recipient consent, and explicit send authorization exist.
                     </p>
 
                     <section aria-label="Create custom marketing channel"
-                      style={{border:'1px solid #475569',borderRadius:10,padding:13,marginTop:14,display:'grid',gap:10}}>
+                      style={{border:'1px solid rgba(255,154,61,0.24)',borderRadius:10,padding:13,marginTop:14,display:'grid',gap:10}}>
                       <h3 style={{margin:0,fontSize:17}}>1. Create Channel</h3>
-                      <p style={{margin:0,fontSize:12,color:'#cbd5e1'}}>
+                      <p style={{margin:0,fontSize:12,color:'#B8C1CC'}}>
                         No preset groups. Enter the channel name you want; create as many named channels as required.
                         Each channel supports at most 1,000 unique contacts.
                       </p>
@@ -1698,17 +1757,17 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
 
                     <section aria-label="Your marketing channels" style={{marginTop:16}}>
                       <h3 style={{fontSize:17,margin:'0 0 8px'}}>Your Channels</h3>
-                      <p style={{fontSize:12,color:'#cbd5e1',margin:'0 0 10px'}}>
+                      <p style={{fontSize:12,color:'#B8C1CC',margin:'0 0 10px'}}>
                         To add contacts to a channel created earlier, select that channel below.
                         No channel is selected automatically.
                       </p>
                       {!marketing.segments.length&&<p>No channels created yet. Start with Create Channel above.</p>}
                       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:9}}>
                         {marketing.segments.map(channel=><article key={channel.id}
-                          style={{padding:12,borderRadius:9,border:'1px solid '+(marketingSegment===channel.id?'#60a5fa':'#475569'),
-                            background:marketingSegment===channel.id?'#172a42':'#111827'}}>
+                          style={{padding:12,borderRadius:9,border:'1px solid '+(marketingSegment===channel.id?'#FF9A3D':'rgba(255,154,61,0.24)'),
+                            background:marketingSegment===channel.id?'#1D232D':'#1D232D'}}>
                           <strong style={{fontSize:14}}>{channel.name}</strong>
-                          <p style={{fontSize:12,color:'#cbd5e1',margin:'6px 0'}}>
+                          <p style={{fontSize:12,color:'#B8C1CC',margin:'6px 0'}}>
                             {channel.members} / 1,000 contacts
                           </p>
                           <button type="button" disabled={marketingBusy} aria-label={'Open channel '+channel.name}
@@ -1722,11 +1781,11 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
 
                     {marketingSegment&&marketing.segments.some(channel=>channel.id===marketingSegment)&&
                       <section aria-label="Selected channel contact import"
-                        style={{borderTop:'1px solid #475569',marginTop:16,paddingTop:14,display:'grid',gap:10}}>
+                        style={{borderTop:'1px solid rgba(255,154,61,0.24)',marginTop:16,paddingTop:14,display:'grid',gap:10}}>
                         <h3 style={{fontSize:17,margin:0}}>
                           2. Upload Contact File — {marketing.segments.find(channel=>channel.id===marketingSegment)?.name}
                         </h3>
-                        <p style={{fontSize:12,color:'#cbd5e1',margin:0}}>
+                        <p style={{fontSize:12,color:'#B8C1CC',margin:0}}>
                           Upload your CSV after creating or opening this channel. Export Excel contacts as CSV with the
                           exact headers <code>phone,name</code>. Maximum 1,000 rows per file; maximum 1,000 unique
                           contacts per channel. Repeated numbers are deduplicated automatically.
@@ -1740,7 +1799,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                               void parseMarketingCsv(selected);
                             }}/>
                         </label>
-                        <p style={{fontSize:12,color:'#cbd5e1',margin:0}}>
+                        <p style={{fontSize:12,color:'#B8C1CC',margin:0}}>
                           {marketingCsv.length} validated contact rows ready to import into this channel.
                           Uploads do not change marketing opt-in status.
                         </p>
@@ -1769,9 +1828,9 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
 
                     <h3 style={{fontSize:16,marginBottom:6}}>Saved campaign drafts</h3>
                     {marketing.campaigns.map(draft=><article key={draft.id}
-                      style={{borderTop:'1px solid #334155',padding:'9px 0',fontSize:13}}>
+                      style={{borderTop:'1px solid #1D232D',padding:'9px 0',fontSize:13}}>
                       <strong>{draft.name}</strong> · {draft.segment}
-                      <div style={{color:'#cbd5e1',fontSize:12}}>
+                      <div style={{color:'#B8C1CC',fontSize:12}}>
                         Template {draft.template} · {draft.status} · No send action available
                       </div>
                     </article>)}
@@ -1782,17 +1841,17 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
             )}
 
             {user.role === 'central_admin' && adminScreen==='automation' && permissions.includes('system.view') && (
-              <section id="automation-governance" aria-label="Native automation governance" style={{marginTop:18,padding:14,border:'1px solid #334155',borderRadius:10}}>
+              <section id="automation-governance" aria-label="Native automation governance" style={{marginTop:18,padding:14,border:'1px solid #1D232D',borderRadius:10}}>
                 <h2 style={{marginTop:0,fontSize:19}}>Native Automation Center</h2>
-                <p style={{fontSize:12,color:'#cbd5e1'}}>TrackMyRMC-owned Rust workflows. Central policy is separate from each Plant Owner's activation.</p>
+                <p style={{fontSize:12,color:'#B8C1CC'}}>TrackMyRMC-owned Rust workflows. Central policy is separate from each Plant Owner's activation.</p>
                 <button type="button" disabled={busy} onClick={()=>void loadNativeAutomation()} style={buttonStyle}>
                   {showNativeAutomation ? 'Refresh automation health and templates' : 'Open Automation Center'}
                 </button>
                 {showNativeAutomation && <>
                   <p><strong>Internal worker:</strong> {automationHealth?.worker_enabled ? 'Configured on this API' : 'Disabled (safe default)'}</p>
                   <p><strong>Heartbeat:</strong> {automationHealth?.heartbeat?.recent ? 'Recent worker heartbeat' : 'No recent verified worker heartbeat'}</p>
-                  <p style={{fontSize:12,color:'#cbd5e1'}}>Queue status: {(automationHealth?.job_counts||[]).map(item=>`${item.status}: ${item.count}`).join(' · ') || 'No jobs recorded'}</p>
-                  {!permissions.includes('automation.manage') && <p style={{color:'#fbbf24',fontSize:12}}>
+                  <p style={{fontSize:12,color:'#B8C1CC'}}>Queue status: {(automationHealth?.job_counts||[]).map(item=>`${item.status}: ${item.count}`).join(' · ') || 'No jobs recorded'}</p>
+                  {!permissions.includes('automation.manage') && <p style={{color:'#F59E0B',fontSize:12}}>
                     Read-only access. Automation policy changes require separately approved automation.manage access.
                   </p>}
                   {permissions.includes('automation.manage') && <>
@@ -1801,28 +1860,28 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                       onChange={e=>setAutomationCode(e.target.value)} style={inputStyle}/>
                   </>}
                   <div style={{display:'grid',gap:10,marginTop:14}}>
-                    {automationTemplates.map(template=><div key={template.key} style={{border:'1px solid #475569',borderRadius:9,padding:12}}>
+                    {automationTemplates.map(template=><div key={template.key} style={{border:'1px solid rgba(255,154,61,0.24)',borderRadius:9,padding:12}}>
                       <strong>{template.label}</strong>
-                      <p style={{color:'#cbd5e1',fontSize:12,margin:'7px 0'}}>
+                      <p style={{color:'#B8C1CC',fontSize:12,margin:'7px 0'}}>
                         {template.event_type} · Version {template.version} · {template.enabled_plants} plant opt-ins
                       </p>
                       <p style={{fontSize:12,margin:'6px 0'}}>Policy: {!template.published ? 'Unpublished' : template.globally_paused ? 'Paused' : 'Published and active'}</p>
                       {permissions.includes('automation.manage') && <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
                         <button type="button" disabled={busy || template.globally_paused}
                           onClick={()=>void updateAutomationPolicy(template,template.published,true)}
-                          style={{...buttonStyle,width:'auto',marginTop:4,background:'#9a3412'}}>Emergency pause</button>
+                          style={{...buttonStyle,width:'auto',marginTop:4,background:'#C05621'}}>Emergency pause</button>
                         <button type="button" disabled={busy || (template.published && !template.globally_paused)}
                           onClick={()=>void updateAutomationPolicy(template,true,false)}
-                          style={{...buttonStyle,width:'auto',marginTop:4,background:'#166534'}}>Publish and resume</button>
+                          style={{...buttonStyle,width:'auto',marginTop:4,background:'#276749'}}>Publish and resume</button>
                         <button type="button" disabled={busy || (!template.published && template.globally_paused)}
                           onClick={()=>void updateAutomationPolicy(template,false,true)}
-                          style={{...buttonStyle,width:'auto',marginTop:4,background:'#475569'}}>Unpublish</button>
+                          style={{...buttonStyle,width:'auto',marginTop:4,background:'rgba(255,154,61,0.24)'}}>Unpublish</button>
                       </div>}
                     </div>)}
                   </div>
-                  {permissions.includes('automation.manage') && automationTemplates.length>0 && <div style={{border:'1px solid #475569',padding:12,borderRadius:9,marginTop:12}}>
+                  {permissions.includes('automation.manage') && automationTemplates.length>0 && <div style={{border:'1px solid rgba(255,154,61,0.24)',padding:12,borderRadius:9,marginTop:12}}>
                     <h3 style={{marginTop:0}}>Edit bounded order conditions</h3>
-                    <p style={{fontSize:12,color:'#cbd5e1'}}>Only paused templates can be changed. Unknown fields, scripts and URLs are not supported.</p>
+                    <p style={{fontSize:12,color:'#B8C1CC'}}>Only paused templates can be changed. Unknown fields, scripts and URLs are not supported.</p>
                     <label htmlFor="automation-key">Rule</label>
                     <select id="automation-key" style={inputStyle} value={automationKey} onChange={e=>setAutomationKey(e.target.value)}>
                       {automationTemplates.map(template=><option value={template.key} key={template.key}>{template.label}</option>)}
@@ -1840,23 +1899,23 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                   </div>}
                   {permissions.includes('audit.view') && <div style={{marginTop:14}}>
                     <h3>Recent execution history</h3>
-                    <p style={{fontSize:12,color:'#cbd5e1'}}>Global governance shows status only, without private plant or order details.</p>
-                    {automationJobs.slice(0,12).map(job=><div key={job.id} style={{borderTop:'1px solid #334155',padding:'8px 0'}}>
+                    <p style={{fontSize:12,color:'#B8C1CC'}}>Global governance shows status only, without private plant or order details.</p>
+                    {automationJobs.slice(0,12).map(job=><div key={job.id} style={{borderTop:'1px solid #1D232D',padding:'8px 0'}}>
                       <div style={{fontSize:12}}>{job.template_key} · {job.status} · {job.attempts} attempts</div>
                       {job.status==='DEAD_LETTER' && permissions.includes('automation.manage') &&
                         <button type="button" disabled={busy} onClick={()=>void retryNativeAutomationJob(job.id)}
                           style={{...buttonStyle,width:'auto',marginTop:5}}>MFA retry dead letter</button>}
                     </div>)}
-                    {!automationJobs.length && <p style={{fontSize:12,color:'#94a3b8'}}>No executions recorded.</p>}
+                    {!automationJobs.length && <p style={{fontSize:12,color:'#B7C2D2'}}>No executions recorded.</p>}
                   </div>}
                 </>}
               </section>
             )}
 
             {user.role === 'central_admin' && adminScreen==='governance' && permissions.includes('admin_access.manage') && (
-              <section id="authority-governance" aria-label="Authority governance" style={{marginTop:18,padding:16,border:'1px solid #334155',borderRadius:12}}>
+              <section id="authority-governance" aria-label="Authority governance" style={{marginTop:18,padding:16,border:'1px solid #1D232D',borderRadius:12}}>
                 <h2 style={{margin:'0 0 6px',fontSize:19}}>Authority Access Governance</h2>
-                <p style={{fontSize:13,color:'#cbd5e1',lineHeight:1.5}}>
+                <p style={{fontSize:13,color:'#B8C1CC',lineHeight:1.5}}>
                   Issue or revoke separate web-only Authority identities. Delegation never grants Central Admin,
                   payments, reviewer settings, platform automation policy or session administration.
                 </p>
@@ -1865,14 +1924,14 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                 </button>
                 {showAuthorityAccounts && <>
                   <div style={{display:'grid',gap:9,margin:'12px 0'}}>
-                    {authorityAccounts.map(account=><article key={account.id} style={{border:'1px solid #475569',borderRadius:10,padding:12,background:'#111827'}}>
-                      <strong>{account.full_name}</strong><div style={{fontSize:13,color:'#cbd5e1'}}>{account.email}</div>
+                    {authorityAccounts.map(account=><article key={account.id} style={{border:'1px solid rgba(255,154,61,0.24)',borderRadius:10,padding:12,background:'#1D232D'}}>
+                      <strong>{account.full_name}</strong><div style={{fontSize:13,color:'#B8C1CC'}}>{account.email}</div>
                       <div style={{fontSize:12,marginTop:5}}>{account.enabled?'Approved':'Disabled'} · MFA {account.mfa_enrolled?'enrolled':'not enrolled'} · {account.permissions.join(', ')||'No grants'}</div>
                       <button type="button" disabled={busy} onClick={()=>{
                         setAuthorityEmail(account.email||'');setAuthorityName(account.full_name||'');
                         setAuthorityEnabled(account.enabled);setAuthorityGrants(account.permissions);
                         setAuthorityReason('');setAuthorityAdminCode('');
-                      }} style={{...buttonStyle,width:'auto',background:'#334155'}}>Edit delegation</button>
+                      }} style={{...buttonStyle,width:'auto',background:'#1D232D'}}>Edit delegation</button>
                     </article>)}
                     {!authorityAccounts.length && <p>No Authority accounts provisioned. Create an approved identity below.</p>}
                   </div>
@@ -1886,7 +1945,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                       <input type="checkbox" checked={authorityEnabled} onChange={e=>setAuthorityEnabled(e.target.checked)} disabled={busy}/>
                       Approved / active
                     </label>
-                    <fieldset style={{border:'1px solid #475569',borderRadius:8,display:'grid',gap:7}}>
+                    <fieldset style={{border:'1px solid rgba(255,154,61,0.24)',borderRadius:8,display:'grid',gap:7}}>
                       <legend>Explicit delegation</legend>
                       {AUTHORITY_GRANTS.map(grant=><label key={grant.key} style={{display:'flex',gap:9,alignItems:'center',fontSize:13}}>
                         <input type="checkbox" checked={authorityGrants.includes(grant.key)} disabled={busy}
@@ -1901,7 +1960,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                       style={inputStyle} autoComplete="off" disabled={busy}/></label>
                     <button type="submit" disabled={busy} style={buttonStyle}>Save grants and revoke previous sessions</button>
                   </form>
-                  <p style={{fontSize:12,color:'#94a3b8'}}>
+                  <p style={{fontSize:12,color:'#B7C2D2'}}>
                     First-time Authority login: use the approved email to enroll an authenticator on this web portal,
                     then sign in via Delegated Authority. Never share authenticator recovery codes.
                   </p>
@@ -1914,7 +1973,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
               {permissions.includes('plant_owners.manage') && permissions.includes('plant.view') && <>
                 <button onClick={()=>void loadPlantProfileQueue()} disabled={busy} style={buttonStyle}>Plant Profile · Verification Queue</button>
                 {showPlantProfiles && <section aria-label="Plant profile verification" style={{display:'grid',gap:12,marginTop:12,marginBottom:18}}>
-                  <p style={{color:'#cbd5e1'}}>Review owner-submitted data and uploaded certificates before publishing. Unapproved information is never exposed to customers.</p>
+                  <p style={{color:'#B8C1CC'}}>Review owner-submitted data and uploaded certificates before publishing. Unapproved information is never exposed to customers.</p>
                   <label>Fresh authenticator code<input type="password" autoComplete="off" value={plantProfileCode}
                     onChange={e=>setPlantProfileCode(e.target.value)} style={inputStyle}/></label>
                   <label>Review note / rejection reason<input maxLength={500} value={plantProfileReason}
@@ -1923,13 +1982,13 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                     const plant=String(item.plant_id);
                     const section=String(item.section);
                     const data=(item.answers||{}) as Record<string,string>;
-                    return <article key={plant+':'+section} style={{padding:14,borderRadius:10,border:'1px solid #475569'}}>
+                    return <article key={plant+':'+section} style={{padding:14,borderRadius:10,border:'1px solid rgba(255,154,61,0.24)'}}>
                       <h3>{String(item.plant_name)} — {section.replace(/_/g,' ')}</h3>
                       <p>Pending submission · Revision {String(item.revision||'—')}</p>
                       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:8}}>
                         {Object.entries(data).filter(([key])=>!key.endsWith('_document')).map(([key,value])=>
-                          <div key={key} style={{padding:8,background:'#111827',borderRadius:6}}>
-                            <small style={{color:'#94a3b8'}}>{key.replace(/_/g,' ')}</small><div>{String(value)}</div>
+                          <div key={key} style={{padding:8,background:'#1D232D',borderRadius:6}}>
+                            <small style={{color:'#B7C2D2'}}>{key.replace(/_/g,' ')}</small><div>{String(value)}</div>
                           </div>)}
                       </div>
                       {section==='certifications' && <div style={{display:'flex',gap:7,flexWrap:'wrap',marginTop:10}}>
@@ -1938,9 +1997,9 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                             onClick={()=>void reviewPlantCertificate(plant,cert)}>Review {cert.toUpperCase()} evidence</button>)}
                       </div>}
                       <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:12}}>
-                        <button disabled={busy} style={{...buttonStyle,width:'auto',background:'#166534'}}
+                        <button disabled={busy} style={{...buttonStyle,width:'auto',background:'#276749'}}
                           onClick={()=>void decidePlantProfile(plant,section,true)}>Approve & Publish</button>
-                        <button disabled={busy} style={{...buttonStyle,width:'auto',background:'#991b1b'}}
+                        <button disabled={busy} style={{...buttonStyle,width:'auto',background:'#9B2C2C'}}
                           onClick={()=>void decidePlantProfile(plant,section,false)}>Reject / Request Changes</button>
                       </div>
                     </article>;
@@ -1955,7 +2014,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                   <label>Reason for privileged change<input maxLength={500} value={ownerReason} onChange={e=>setOwnerReason(e.target.value)} style={inputStyle}/></label>
                   {ownerRequests.map(row=>{
                     const id=String(row.id);const fields=ownerFields[id]||{city:String(row.city||''),state:String(row.state||''),pincode:''};
-                    return <article key={id} style={{border:'1px solid #475569',padding:12}}>
+                    return <article key={id} style={{border:'1px solid rgba(255,154,61,0.24)',padding:12}}>
                       <h3>{String(row.name)} · {String(row.request_number)}</h3><p>{String(row.applicant_email)} · {String(row.address)}</p>
                       {(['city','state','pincode'] as const).map(key=><label key={key}>{key}<input value={fields[key]} onChange={e=>setOwnerFields(old=>({...old,[id]:{...fields,[key]:e.target.value}}))} style={inputStyle}/></label>)}
                       <button disabled={busy} onClick={()=>void ownerAction('/api/plant-discovery/requests/'+id+'/approve',fields)} style={buttonStyle}>Approve Plant Owner and plant</button>
@@ -1964,12 +2023,12 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                   })}
                   {!ownerRequests.length && <p>No pending full Plant Owner onboarding requests.</p>}
                   <h3 style={{fontSize:16,margin:'12px 0 0'}}>Official email registration requests ({registrationRequests.length})</h3>
-                  <p style={{fontSize:12,color:'#cbd5e1',margin:0}}>
+                  <p style={{fontSize:12,color:'#B8C1CC',margin:0}}>
                     Contact-only leads. Confirm business identity, email ownership and plant location using the separate onboarding workflow before activating any Owner account.
                   </p>
                   {registrationRequests.map(row=>{
                     const id=String(row.id||'');
-                    return <article key={id} style={{border:'1px solid #475569',padding:12,borderRadius:8}}>
+                    return <article key={id} style={{border:'1px solid rgba(255,154,61,0.24)',padding:12,borderRadius:8}}>
                       <h4 style={{fontSize:14,margin:'0 0 6px'}}>{String(row.business_name)} · {String(row.request_number)}</h4>
                       <p style={{fontSize:12,margin:'4px 0'}}>Plant Owner: {String(row.owner_name)}</p>
                       <p style={{fontSize:12,margin:'4px 0'}}>Registered address: {String(row.business_address)}</p>
@@ -1977,7 +2036,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                       <p style={{fontSize:12,margin:'4px 0'}}>Follow-up: {String(row.status)} · Meta alert: {String(row.alert_status)}</p>
                       {row.status==='PENDING' && <button type="button" disabled={busy}
                         onClick={()=>void ownerAction('/api/control-center/plant-owner-registration/'+encodeURIComponent(id)+'/contacted',{})}
-                        style={{...buttonStyle,width:'auto',background:'#166534'}}>Mark Contacted (requires MFA and reason)</button>}
+                        style={{...buttonStyle,width:'auto',background:'#276749'}}>Mark Contacted (requires MFA and reason)</button>}
                     </article>;
                   })}
                   {!registrationRequests.length && <p>No pending official email registration leads.</p>}
@@ -1994,48 +2053,48 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                 {workspaceFeedback}
                 <div style={{overflowX:'auto'}}><table style={{width:'100%',fontSize:13,borderCollapse:'collapse'}}>
                   <thead><tr>{Object.keys(records[0]||{}).map(key=><th key={key} style={{textAlign:'left',padding:8}}>{key.replace(/_/g,' ')}</th>)}</tr></thead>
-                  <tbody>{records.map((row,index)=><tr key={String(row.id||index)}>{Object.entries(row).map(([key,value])=><td key={key} style={{padding:8,borderTop:'1px solid #334155'}}>{value===null?'—':typeof value==='object'?JSON.stringify(value):String(value)}</td>)}</tr>)}</tbody>
+                  <tbody>{records.map((row,index)=><tr key={String(row.id||index)}>{Object.entries(row).map(([key,value])=><td key={key} style={{padding:8,borderTop:'1px solid #1D232D'}}>{value===null?'—':typeof value==='object'?JSON.stringify(value):String(value)}</td>)}</tr>)}</tbody>
                 </table></div>
                 {supportWorkspace}
                 {workspace === 'service_enquiries' && permissions.includes('support.manage') && (
-                  <section aria-label="Service enquiry approvals" style={{border:'1px solid #475569',borderRadius:12,padding:14,marginTop:14,display:'grid',gap:10}}>
+                  <section aria-label="Service enquiry approvals" style={{border:'1px solid rgba(255,154,61,0.24)',borderRadius:12,padding:14,marginTop:14,display:'grid',gap:10}}>
                     <h3 style={{fontSize:16}}>Service Enquiry Follow-up</h3>
                     <label>Required audit reason<input maxLength={500} minLength={10} value={serviceReason} onChange={e=>setServiceReason(e.target.value)} style={inputStyle} disabled={busy}/></label>
                     <label>Fresh authenticator code<input type="password" maxLength={6} value={serviceStepUp} onChange={e=>setServiceStepUp(e.target.value)} style={inputStyle} disabled={busy}/></label>
-                    {records.map(row=><div key={String(row.id)} style={{padding:10,border:'1px solid #334155',borderRadius:8}}>
+                    {records.map(row=><div key={String(row.id)} style={{padding:10,border:'1px solid #1D232D',borderRadius:8}}>
                       <strong>{String(row.service_type||'Service')} · {String(row.status||'NEW')}</strong>
                       <div style={{display:'flex',gap:7,flexWrap:'wrap'}}>
                         {['CONTACTED','QUOTED','CLOSED'].filter(x=>x!==row.status).map(status=>
                           <button key={status} type="button" disabled={busy||serviceReason.trim().length<10||serviceStepUp.length!==6}
                             onClick={()=>void updateServiceEnquiry(String(row.id),status)}
-                            style={{...buttonStyle,width:'auto',background:'#334155'}}>{status}</button>)}
+                            style={{...buttonStyle,width:'auto',background:'#1D232D'}}>{status}</button>)}
                       </div>
                     </div>)}
                   </section>
                 )}
-                {workspace === 'kyc' && permissions.includes('kyc.review') && <div style={{marginTop:18,display:'grid',gap:12,border:'1px solid #475569',borderRadius:10,padding:14}}>
+                {workspace === 'kyc' && permissions.includes('kyc.review') && <div style={{marginTop:18,display:'grid',gap:12,border:'1px solid rgba(255,154,61,0.24)',borderRadius:10,padding:14}}>
                   <h3 style={{fontSize:16,margin:0}}>Customer Identity Review</h3>
-                  <p style={{fontSize:12,color:'#cbd5e1'}}>Approve only where the backend confirms provider consent and a verified name. Rejection and reset require an audit reason.</p>
+                  <p style={{fontSize:12,color:'#B8C1CC'}}>Approve only where the backend confirms provider consent and a verified name. Rejection and reset require an audit reason.</p>
                   <label>Reason for review<input required minLength={10} maxLength={500} value={centralKycReason}
                     onChange={e=>setCentralKycReason(e.target.value)} style={inputStyle} disabled={busy}/></label>
                   <label>Fresh Central Admin authenticator code<input type="password" autoComplete="off" inputMode="numeric"
                     pattern="[0-9]{6}" maxLength={6} value={centralKycCode} onChange={e=>setCentralKycCode(e.target.value)}
                     style={inputStyle} disabled={busy}/></label>
-                  {records.map(row=><article key={String(row.customer_id)} style={{borderTop:'1px solid #475569',padding:12}}>
+                  {records.map(row=><article key={String(row.customer_id)} style={{borderTop:'1px solid rgba(255,154,61,0.24)',padding:12}}>
                     <strong>{String(row.customer||'Customer')}</strong>
-                    <p style={{fontSize:12,color:'#cbd5e1'}}>Provider-verified name: {String(row.verified_name||'Not confirmed')} · Consent evidence: {row.evidence_verified?'Recorded':'Missing'}</p>
+                    <p style={{fontSize:12,color:'#B8C1CC'}}>Provider-verified name: {String(row.verified_name||'Not confirmed')} · Consent evidence: {row.evidence_verified?'Recorded':'Missing'}</p>
                     <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
                       <button type="button" disabled={busy||!row.evidence_verified||!row.verified_name||centralKycReason.length<10||centralKycCode.length!==6}
                         onClick={()=>void reviewCentralKyc(String(row.customer_id),'approve')}
-                        style={{...buttonStyle,width:'auto',background:'#166534'}}>Approve verified identity</button>
+                        style={{...buttonStyle,width:'auto',background:'#276749'}}>Approve verified identity</button>
                       <button type="button" disabled={busy||centralKycReason.length<10||centralKycCode.length!==6}
                         onClick={()=>void reviewCentralKyc(String(row.customer_id),'reject')}
-                        style={{...buttonStyle,width:'auto',background:'#7f1d1d'}}>Reject</button>
+                        style={{...buttonStyle,width:'auto',background:'#9B2C2C'}}>Reject</button>
                     </div>
                   </article>)}
                 </div>}
                 {workspace === 'rmc_rfq_leads' && permissions.includes('support.manage') && <div style={{marginTop:18,display:'grid',gap:12}}>
-                  <p style={{color:'#cbd5e1',lineHeight:1.5}}>
+                  <p style={{color:'#B8C1CC',lineHeight:1.5}}>
                     Unregistered suppliers have not received these enquiries. Use approved, permission-based outreach.
                     Customer details remain private until plant approval and customer reconfirmation.
                   </p>
@@ -2043,16 +2102,16 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                   <input id="rfq-step-up" value={rfqOutreachCode} onChange={e=>setRfqOutreachCode(e.target.value)}
                     autoComplete="off" type="password" style={inputStyle} disabled={busy} />
                   <button type="button" disabled={busy} onClick={()=>void shareRmcOnboardingLink()}
-                    style={{...buttonStyle,background:'#166534'}}>Share or Copy Generic Onboarding Link</button>
+                    style={{...buttonStyle,background:'#276749'}}>Share or Copy Generic Onboarding Link</button>
                   {records.filter(row=>row.status === 'PENDING_SUPPLIER').map(row=>{
                     const id=String(row.id || '');
                     const place=String(row.google_place_id || '');
-                    return <div key={id} style={{border:'1px solid #475569',borderRadius:12,padding:14,background:'#0f172a',display:'grid',gap:8}}>
+                    return <div key={id} style={{border:'1px solid rgba(255,154,61,0.24)',borderRadius:12,padding:14,background:'#0E1116',display:'grid',gap:8}}>
                       <strong>{String(row.customer_name || 'Customer')} · {String(row.grade || 'RMC')} · {String(row.quantity_m3 || '')} m³</strong>
                       <span>Current outreach: {String(row.outreach_status || 'NOT_CONTACTED')}</span>
                       {place && <button type="button" disabled={busy}
                         onClick={()=>window.open('https://www.google.com/maps/search/?api=1&query=RMC%20Plant&query_place_id='+encodeURIComponent(place),'_blank','noopener,noreferrer')}
-                        style={{...buttonStyle,marginTop:0,background:'#334155'}}>View Selected Supplier on Google Maps</button>}
+                        style={{...buttonStyle,marginTop:0,background:'#1D232D'}}>View Selected Supplier on Google Maps</button>}
                       <label>Internal follow-up note
                         <input value={rfqOutreachNotes[id] ?? String(row.outreach_notes || '')}
                           onChange={e=>setRfqOutreachNotes(prev=>({...prev,[id]:e.target.value}))} maxLength={1000}
@@ -2060,8 +2119,8 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                       </label>
                       <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                         <button type="button" disabled={busy} onClick={()=>void recordRfqOutreach(id,'INVITATION_SHARED')} style={{...buttonStyle,width:'auto',marginTop:0}}>Record Invite Shared</button>
-                        <button type="button" disabled={busy} onClick={()=>void recordRfqOutreach(id,'CONTACTED')} style={{...buttonStyle,width:'auto',marginTop:0,background:'#166534'}}>Mark Contacted</button>
-                        <button type="button" disabled={busy} onClick={()=>void recordRfqOutreach(id,'DECLINED')} style={{...buttonStyle,width:'auto',marginTop:0,background:'#7f1d1d'}}>Mark Declined</button>
+                        <button type="button" disabled={busy} onClick={()=>void recordRfqOutreach(id,'CONTACTED')} style={{...buttonStyle,width:'auto',marginTop:0,background:'#276749'}}>Mark Contacted</button>
+                        <button type="button" disabled={busy} onClick={()=>void recordRfqOutreach(id,'DECLINED')} style={{...buttonStyle,width:'auto',marginTop:0,background:'#9B2C2C'}}>Mark Declined</button>
                       </div>
                     </div>;
                   })}
@@ -2070,8 +2129,8 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                 <button disabled={busy||records.length<25} onClick={()=>void loadWorkspace(workspace,workspaceOffset+25)}>Next</button>
               </>}
             </section>}
-            {user.role === 'central_admin' && adminScreen==='governance' && (
-              <AdminSecurity permissions={permissions} onRevokeAll={()=>{
+            {user.role === 'central_admin' && ADMIN_SECURITY_SCREENS.includes(adminScreen) && (
+              <AdminSecurity activeSection={adminScreen} permissions={permissions} onRevokeAll={()=>{
                 setAccessToken(null);
                 onSignedOut('All Super Admin sessions revoked. Sign in again.');
               }}/>
@@ -2079,8 +2138,18 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
             {user.role === 'central_admin' && adminScreen==='chats' && permissions.includes('support.manage') && (
               <WhatsAppChats onUnreadChange={setChatUnread}/>
             )}
+            {user.role==='central_admin'&&adminScreen==='settings'&&<section className="tm-settings-panel" aria-label="Admin portal settings">
+              <h2>Control Center Appearance</h2>
+              <p>Display preference only. Authentication, permissions and session rules remain unchanged.</p>
+              <div className="tm-appearance-actions" role="group" aria-label="Appearance preference">
+                {(['dark','light','system'] as const).map(mode=><button type="button" key={mode}
+                  aria-pressed={appearance===mode} className={appearance===mode?'selected':''}
+                  onClick={()=>setAppearance(mode)}>{mode==='dark'?'Dark':mode==='light'?'Light':'System'}</button>)}
+              </div>
+              <p>The theme uses the official Customer and Plant Owner saffron, warm-white, graphite and verified green tokens.</p>
+            </section>
             {user.role === 'central_admin' && adminScreen==='overview' && permissions.includes('support.manage') && (
-              <section aria-label="WhatsApp Chat KPIs" style={{marginTop:15,padding:14,border:'1px solid #475569',borderRadius:10}}>
+              <section aria-label="WhatsApp Chat KPIs" style={{marginTop:15,padding:14,border:'1px solid rgba(255,154,61,0.24)',borderRadius:10}}>
                 <h2 style={{fontSize:17,marginTop:0}}>WhatsApp Customer Inbox</h2>
                 <div style={{display:'flex',gap:20,flexWrap:'wrap',fontSize:13}}>
                   <span>Conversations: <strong>{chatStats?.conversations??'Unavailable'}</strong></span>
@@ -2093,9 +2162,9 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
               </section>
             )}
             {user.role === 'authority' && (
-              <section aria-label="Delegated Authority Operations" style={{marginTop:18,padding:16,border:'1px solid #334155',borderRadius:12}}>
+              <section aria-label="Delegated Authority Operations" style={{marginTop:18,padding:16,border:'1px solid #1D232D',borderRadius:12}}>
                 <h2 style={{margin:'0 0 8px',fontSize:20}}>Authority Operations</h2>
-                <p style={{fontSize:13,color:'#cbd5e1',lineHeight:1.55}}>
+                <p style={{fontSize:13,color:'#B8C1CC',lineHeight:1.55}}>
                   Centrally delegated service operations only. Platform policy, financial mutations,
                   staff role elevation, automation settings and Central Admin access remain restricted.
                 </p>
@@ -2111,27 +2180,27 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                     ['kyc','kyc.view','KYC Review Queue'],
                   ] as const).filter(([,permission])=>permissions.includes(permission)).map(([kind,,label])=>
                     <button key={kind} type="button" disabled={busy} onClick={()=>void loadWorkspace(kind)}
-                      style={{...buttonStyle,marginTop:0,background:workspace===kind?'#166534':'#334155'}}>{label}</button>)}
+                      style={{...buttonStyle,marginTop:0,background:workspace===kind?'#276749':'#1D232D'}}>{label}</button>)}
                 </nav>
                 {workspace && <>
                   <h3 style={{margin:'18px 0 6px',fontSize:16,textTransform:'capitalize'}}>{workspace.replace(/_/g,' ')}</h3>
-                  <p style={{fontSize:12,color:'#94a3b8'}}>Current permission-scoped records. This view cannot broadcast to customers or suppliers.</p>
-                  <div style={{overflowX:'auto',border:'1px solid #334155',borderRadius:8}}>
+                  <p style={{fontSize:12,color:'#B7C2D2'}}>Current permission-scoped records. This view cannot broadcast to customers or suppliers.</p>
+                  <div style={{overflowX:'auto',border:'1px solid #1D232D',borderRadius:8}}>
                     <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
                       <thead><tr>{Object.keys(records[0]||{}).map(key=>
-                        <th key={key} scope="col" style={{textAlign:'left',padding:9,borderBottom:'1px solid #475569'}}>{key.replace(/_/g,' ')}</th>)}</tr></thead>
+                        <th key={key} scope="col" style={{textAlign:'left',padding:9,borderBottom:'1px solid rgba(255,154,61,0.24)'}}>{key.replace(/_/g,' ')}</th>)}</tr></thead>
                       <tbody>{records.map((row,index)=><tr key={String(row.id||row.customer_id||index)}>
                         {Object.entries(row).map(([key,value])=>
-                          <td key={key} style={{padding:9,borderTop:'1px solid #334155'}}>{value===null?'—':typeof value==='object'?JSON.stringify(value):String(value)}</td>)}
+                          <td key={key} style={{padding:9,borderTop:'1px solid #1D232D'}}>{value===null?'—':typeof value==='object'?JSON.stringify(value):String(value)}</td>)}
                       </tr>)}</tbody>
                     </table>
                   </div>
                   {workspaceFeedback}
                   {supportWorkspace}
                   {workspace==='kyc' && permissions.includes('kyc.review') && records.length>0 && (
-                    <div style={{marginTop:12,padding:12,border:'1px solid #475569',borderRadius:10}}>
+                    <div style={{marginTop:12,padding:12,border:'1px solid rgba(255,154,61,0.24)',borderRadius:10}}>
                       <h3 style={{fontSize:15}}>Customer verification decisions</h3>
-                      <p style={{fontSize:12,color:'#cbd5e1'}}>Review trusted evidence under the approved KYC process before making a decision. Each change requires recent authenticator verification.</p>
+                      <p style={{fontSize:12,color:'#B8C1CC'}}>Review trusted evidence under the approved KYC process before making a decision. Each change requires recent authenticator verification.</p>
                       <label>Fresh Authority authenticator code<input type="password" autoComplete="off"
                         inputMode="numeric" maxLength={6} pattern="[0-9]{6}" value={authorityReviewCode}
                         onChange={e=>setAuthorityReviewCode(e.target.value)} style={inputStyle} disabled={busy}/></label>
@@ -2139,16 +2208,16 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                         <textarea maxLength={500} rows={2} value={authorityReviewReason}
                           onChange={e=>setAuthorityReviewReason(e.target.value)} style={inputStyle} disabled={busy}/>
                       </label>
-                      {records.map(row=><div key={String(row.customer_id)} style={{borderTop:'1px solid #334155',padding:'10px 0'}}>
+                      {records.map(row=><div key={String(row.customer_id)} style={{borderTop:'1px solid #1D232D',padding:'10px 0'}}>
                         <strong>{String(row.customer||'Customer')}</strong>
                         <p style={{fontSize:12}}>Verified name: {String(row.verified_name||'Missing')} · Provider evidence: {row.evidence_verified?'Confirmed':'Not confirmed'}</p>
                         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                           <button type="button" disabled={busy||authorityReviewCode.length!==6||authorityReviewReason.trim().length<10||!row.evidence_verified||!row.verified_name}
                             onClick={()=>void reviewAuthorityKyc(String(row.customer_id),true)}
-                            style={{...buttonStyle,width:'auto',background:'#166534'}}>Approve KYC</button>
+                            style={{...buttonStyle,width:'auto',background:'#276749'}}>Approve KYC</button>
                           <button type="button" disabled={busy||authorityReviewCode.length!==6||authorityReviewReason.trim().length<10}
                             onClick={()=>void reviewAuthorityKyc(String(row.customer_id),false)}
-                            style={{...buttonStyle,width:'auto',background:'#7f1d1d'}}>Reject KYC</button>
+                            style={{...buttonStyle,width:'auto',background:'#9B2C2C'}}>Reject KYC</button>
                         </div>
                       </div>)}
                     </div>
@@ -2160,11 +2229,12 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                 </>}
               </section>
             )}
-            <button type="button" onClick={()=>void logout()} disabled={busy} style={buttonStyle}>{busy ? 'Signing out…' : 'Sign out and revoke session'}</button>
+            {user.role!=='central_admin'&&<button type="button" onClick={()=>void logout()} disabled={busy} style={buttonStyle}>{busy ? 'Signing out…' : 'Sign out and revoke session'}</button>}
+            </div>
           </div>
         )}
 
-        <p style={{ margin: '24px 0 0', borderTop: '1px solid #334155', paddingTop: 16, color: '#94a3b8', fontSize: 12, lineHeight: 1.5 }}>
+        <p style={{ margin: '24px 0 0', borderTop: '1px solid #1D232D', paddingTop: 16, color: '#B7C2D2', fontSize: 12, lineHeight: 1.5 }}>
           Never share verification codes or recovery codes. Admin and staff password-only login is disabled.
         </p>
       </section>
