@@ -22,8 +22,8 @@ env:
   EXPO_PUBLIC_BACKEND_URL: https://trackmyrmc.com
   EXPECTED_PLAY_UPLOAD_SHA1: "3D:5F:80:59:1C:BA:69:1B:03:28:4D:A1:74:91:38:1D:8F:A1:32:DC"
   PACKAGE_NAME: com.trackmyrmc.concreteking
-  VERSION_CODE: "94"
-  VERSION_NAME: "2.0.34"
+  VERSION_CODE: "95"
+  VERSION_NAME: "2.0.35"
   AWS_REGION: ap-south-1
   AWS_ROLE_ARN: arn:aws:iam::260234292958:role/TrackMyRMC-GitHubDeploy
   APP_SECRET_NAME: trackmyrmc/app-runtime
@@ -315,7 +315,7 @@ jobs:
       - name: Upload signed AAB
         uses: actions/upload-artifact@v4
         with:
-          name: trackmyrmc-v2.0.34-vc94-signed-aab
+          name: trackmyrmc-v2.0.35-vc95-signed-aab
           path: frontend/android/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
           retention-days: 14
@@ -349,7 +349,7 @@ jobs:
           test -x "$build_tools/aapt"
           unsigned=app/build/outputs/apk/release/app-release-unsigned.apk
           aligned="$RUNNER_TEMP/trackmyrmc-release-aligned.apk"
-          signed=app/build/outputs/apk/release/trackmyrmc-v2.0.34-vc94-signed.apk
+          signed=app/build/outputs/apk/release/trackmyrmc-v2.0.35-vc95-signed.apk
           "$build_tools/zipalign" -P 16 -f 4 "$unsigned" "$aligned"
           if [ "$KEY_PASSWORD_MODE" = primary ]; then
             keypass="$KEY_PASSWORD"
@@ -375,7 +375,7 @@ jobs:
       - name: Upload signed APK for direct-device testing
         uses: actions/upload-artifact@v4
         with:
-          name: trackmyrmc-v2.0.34-vc94-signed-test-apk
-          path: frontend/android/app/build/outputs/apk/release/trackmyrmc-v2.0.34-vc94-signed.apk
+          name: trackmyrmc-v2.0.35-vc95-signed-test-apk
+          path: frontend/android/app/build/outputs/apk/release/trackmyrmc-v2.0.35-vc95-signed.apk
           if-no-files-found: error
           retention-days: 14
