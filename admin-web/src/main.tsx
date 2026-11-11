@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import './admin-theme.css';
-import { Bell, Building2, ClipboardCheck, Factory, Megaphone, ShieldCheck, Workflow, MessageCircle, LayoutDashboard, ChartNoAxesCombined, Eye, Users, UserRoundPlus, UserCog, Bot, Grid2X2, LogOut, Settings, ArrowRight } from 'lucide-react';
+import { Bell, Building2, ClipboardCheck, Factory, Megaphone, ShieldCheck, Workflow, MessageCircle, LayoutDashboard, BarChart3, Eye, Users, UserRoundPlus, UserCog, Bot, Grid2X2, LogOut, Settings, ArrowRight } from 'lucide-react';
 import { AuthenticatorQr } from './AuthenticatorQr';
 import { PlantVisibility } from './PlantVisibility';
 import { WhatsAppChats } from './WhatsAppChats';
@@ -116,7 +116,7 @@ function currentScreen(): AdminScreen {
 }
 const ADMIN_MENU = [
   {page:'dashboard',label:'Dashboard',caption:'Operations overview',icon:LayoutDashboard,tone:'orange',permissions:[]},
-  {page:'overview',label:'Platform KPIs',caption:'Live platform performance',icon:ChartNoAxesCombined,tone:'orange',permissions:['system.view']},
+  {page:'overview',label:'Platform KPIs',caption:'Live platform performance',icon:BarChart3,tone:'orange',permissions:['system.view']},
   {page:'plants',label:'Plant Master',caption:'Plant owner, staff and verification',icon:Factory,tone:'green',permissions:['plant.view','user.view']},
   {page:'visibility',label:'Plant Visibility',caption:'Hold and restore app discovery',icon:Eye,tone:'amber',permissions:['plant.view','plant_owners.manage','user.view']},
   {page:'approvals',label:'Approval Queue',caption:'Onboarding, documents, KYC and RFQs',icon:ClipboardCheck,tone:'amber',permissions:[]},
