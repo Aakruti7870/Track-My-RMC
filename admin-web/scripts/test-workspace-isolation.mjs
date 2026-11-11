@@ -164,7 +164,7 @@ try {
     await page.getByLabel('Registered Plant Owner account ID',{exact:true}).fill('previous-account-id');
     await page.getByLabel('Reason for privileged change',{exact:true}).fill('Unsent private account reason');
     await page.getByLabel('Fresh authenticator code',{exact:true}).fill('123456');
-    await button('Sign out and revoke session').click();await page.getByRole('heading',{name:'Central Admin sign in',exact:true}).waitFor();
+    await button('Sign out').click();await page.getByRole('heading',{name:'Central Admin sign in',exact:true}).waitFor();
     await page.getByText(failedLogout?'Signed out locally. Server revocation could not be confirmed; the session expires automatically.':'Signed out and server session revoked.',{exact:true}).waitFor();
     assert.equal(await page.getByLabel('Approved administrator email').inputValue(),'');await signIn('second@example.invalid');
     assert.equal(await page.getByLabel('Plant Owner access controls').count(),0);
