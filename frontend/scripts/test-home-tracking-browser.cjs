@@ -180,7 +180,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    if(style.size!==expected.heading+'px'||style.height!==expected.headingLine+'px'||!style.family.toLowerCase().includes('jakarta-bold'))
      throw Error('Home heading typography regression '+title+': '+JSON.stringify(style));
  }
- for(const [title,size,family] of [['Streamline Your Pour',expected.pumpFirst+'px','jakarta-medium'],['Book Your Pump Online!',expected.pumpSecond+'px','jakarta-semibold']]){
+ for(const [title,size,family] of [['Streamline Your Pour',expected.pumpFirst+'px','jakarta-medium'],['Request a Pump Quote',expected.pumpSecond+'px','jakarta-semibold']]){
    const style=await page.getByText(title,{exact:true}).first().evaluate(el=>{const s=getComputedStyle(el);return {size:s.fontSize,family:s.fontFamily};});
    if(style.size!==size||!style.family.toLowerCase().includes(family))
      throw Error('Pump CTA font regression '+title+': '+JSON.stringify(style));
