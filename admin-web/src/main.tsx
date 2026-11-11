@@ -1440,7 +1440,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
               <p><strong>Database:</strong> {health?.database || 'Not confirmed'}</p>
               <p><strong>Environment:</strong> {health?.environment || 'Unknown'}</p>
               <p style={{ color: '#B7C2D2', fontSize: 12 }}>Service availability must be verified live. Privileged actions require recent authenticator verification.</p>
-            </div>
+            </div>}
             {user.role === 'central_admin' && (
               <section className="tm-central-nav" aria-label="Central Admin quick navigation" style={{marginTop:16}}>
                 <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
