@@ -101,6 +101,16 @@ try {
       await page.getByRole('heading',{name:'Command Center',exact:true}).waitFor();
     };
     await page.goto(origin+'/admin/');await signIn('first@example.invalid');
+    const officialLogo=page.locator('img[alt="TrackMyRMC official logo"]').first();
+    await officialLogo.waitFor();
+    assert.equal(await officialLogo.evaluate(img=>img.complete&&img.naturalWidth>0),true,'official repository logo must render');
+    await adminNav('Dashboard').click();
+    await page.getByLabel('Dashboard module cards').waitFor();
+    assert.match(await page.locator('main').getAttribute('class')||'',/tm-dark/,'graphite theme should be the default');
+    await adminNav('Settings').click();
+    await button('Light').click();
+    assert.match(await page.locator('main').getAttribute('class')||'',/tm-light/,'light theme should use warm app tokens');
+    await button('Dark').click();
     await adminNav('Chats').click();
     await page.getByText('No incoming WhatsApp conversations recorded.').waitFor();
     assert.equal(await page.getByRole('button',{name:'Send WhatsApp reply'}).count(),0,'WhatsApp sending must remain gated off');
