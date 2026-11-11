@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Constants from "expo-constants";
 
 import { useAuth } from "@/src/auth/AuthContext";
 import { apiGet } from "@/src/api/client";
@@ -20,6 +21,8 @@ export function StaffMore() {
   const { user, token, signOut } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const appVersion = Constants.nativeAppVersion ?? Constants.expoConfig?.version ?? "unknown";
+  const buildNumber = Constants.nativeBuildVersion ?? String(Constants.expoConfig?.android?.versionCode ?? "unknown");
   const [managerEnabled, setManagerEnabled] = React.useState(false);
   const [managerResources,setManagerResources]=React.useState({fleet:false,drivers:false,permissions:false});
   React.useEffect(() => {
@@ -91,7 +94,7 @@ export function StaffMore() {
         </Pressable>
 
         <Pressable testID="logout-button" accessibilityRole="button" accessibilityLabel="Sign out of staff account" onPress={doLogout} style={[styles.logout, { backgroundColor: colors.isDark ? "#96352D" : "#B42318" }]}><Ionicons name="log-out-outline" size={22} color="#FFFFFF" /><AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: "#FFFFFF" }}>Sign out</AppText></Pressable>
-        <AppText variant="caption" center>TrackMyRMC · v2.0.18 (76)</AppText>
+        <AppText variant="caption" center>TrackMyRMC · v{appVersion} ({buildNumber})</AppText>
       </ScrollView>
     </View>
   );

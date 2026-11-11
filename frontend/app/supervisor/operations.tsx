@@ -1,4 +1,6 @@
 import { StaffCollection } from "@/src/screens/StaffCollection";
-export default function Screen() {
-  return <StaffCollection kind="orders" />;
+
+// Supervisors inspect active dispatch operations; permission checks stay in Rust.
+export default function SupervisorOperations() {
+  return <StaffCollection kind="dispatch" />;
 }

@@ -72,7 +72,7 @@ export default function OwnerIncidents() {
               </View>
               <AppText variant="caption">{item.driver_name}{item.vehicle ? ` · ${item.vehicle}` : ""}{item.order_number ? ` · ${item.order_number}` : ""}</AppText>
               {item.remark ? <AppText variant="body">{item.remark}</AppText> : null}
-              {item.status === "OPEN" ? (
+              {["OPEN", "RESPONDING"].includes(item.status) ? (
                 <Button testID={`resolve-${item.id}`} label="Acknowledge & Resolve" variant="outline" loading={busy === item.id} onPress={() => resolve(item.id)} />
               ) : null}
             </Card>
