@@ -68,6 +68,22 @@ test("native PNG splash and Android app icons are unchanged", () => {
     "./assets/images/Splash_screen.png");
 });
 
+test("Android adaptive launcher artwork exists as a square PNG", () => {
+  const app = JSON.parse(fs.readFileSync(path.join(root, "app.json"), "utf8"));
+  const resolved = require(path.join(root, "app.config.js"))({ config: app.expo });
+  const adaptive = resolved.android.adaptiveIcon;
+  assert.equal(adaptive.foregroundImage, "./assets/images/adaptive-icon.png");
+  assert.equal(adaptive.backgroundColor, "#24282D");
+  const foreground = path.resolve(root, adaptive.foregroundImage);
+  assert.ok(fs.existsSync(foreground), `Missing Android adaptive foreground: ${foreground}`);
+  const bytes = fs.readFileSync(foreground);
+  assert.equal(bytes.subarray(0, 8).toString("hex"), "89504e470d0a1a0a", "Foreground must be a PNG");
+  const width = bytes.readUInt32BE(16);
+  const height = bytes.readUInt32BE(20);
+  assert.equal(width, height, "Android adaptive foreground must be square");
+  assert.ok(width >= 1024, "Android adaptive foreground resolution is too small");
+});
+
 test("visible-first images have priority without changing carousel order or timing", () => {
   const home = fs.readFileSync(path.join(root, "src/components/HomeCarousel.tsx"), "utf8");
   const login = fs.readFileSync(path.join(root, "src/screens/LoginScreen.tsx"), "utf8");
