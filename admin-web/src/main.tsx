@@ -2147,7 +2147,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                   onClick={()=>setAppearance(mode)}>{mode==='dark'?'Dark':mode==='light'?'Light':'System'}</button>)}
               </div>
               <p>The theme uses the official Customer and Plant Owner saffron, warm-white, graphite and verified green tokens.</p>
-            </section>
+            </section>}
             {user.role === 'central_admin' && adminScreen==='overview' && permissions.includes('support.manage') && (
               <section aria-label="WhatsApp Chat KPIs" style={{marginTop:15,padding:14,border:'1px solid rgba(255,154,61,0.24)',borderRadius:10}}>
                 <h2 style={{fontSize:17,marginTop:0}}>WhatsApp Customer Inbox</h2>
