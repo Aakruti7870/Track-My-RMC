@@ -1463,6 +1463,14 @@ pub fn build_app_router(state: AppState) -> Router {
             "/api/public/trip-share/:load_id/:signature",
             get(dispatch_whatsapp::public_trip),
         )
+        // Preserve the callback URL already configured in Meta. Both paths
+        // use the same authenticated GET challenge and HMAC-signed POST handler;
+        // a separate callback cannot be assumed safe for existing OTP traffic.
+        .route(
+            "/api/meta/whatsapp/webhook",
+            get(dispatch_whatsapp::verify_meta_webhook)
+                .post(dispatch_whatsapp::receive_meta_webhook),
+        )
         .route(
             "/api/meta/dispatch-webhook",
             get(dispatch_whatsapp::verify_meta_webhook)
