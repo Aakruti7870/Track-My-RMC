@@ -189,6 +189,7 @@ try {
     await page.getByLabel('Marketing audit reason').fill('Cancel synthetic approved test campaign');
     await page.getByLabel('Marketing CRM authenticator code').fill('123456');
     await button('Cancel Campaign').click();
+    await page.getByText('Campaign cancellation recorded. Messages already accepted by Meta cannot be recalled.').waitFor();
     assert.equal(campaigns[0].status,'CANCELLED');
     await page.getByLabel('New channel name').fill('Second Custom Channel');
     await page.getByLabel('Marketing audit reason').fill('Separate supplier contact records for internal CRM');
