@@ -35,6 +35,7 @@ type MarketingStats = {
   send_enabled:boolean;
 };
 type ImportedContact = { phone:string;name:string };
+type MarketingContact = { id:string;phone:string;name:string|null;consent_status:string;source:string|null;consent_recorded_at:string|null };
 type PlantMasterItem = {
   id: string; name: string; code: string; city: string; state: string;
   address: string; owner_name: string; owner_email: string | null;
@@ -204,6 +205,12 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
   const [marketingCsv,setMarketingCsv]=useState<ImportedContact[]>([]);
   const [marketingCampaign,setMarketingCampaign]=useState('');
   const [marketingTemplate,setMarketingTemplate]=useState('');
+  const [marketingContacts,setMarketingContacts]=useState<MarketingContact[]>([]);
+  const [marketingContactsLoading,setMarketingContactsLoading]=useState(false);
+  const [marketingConsentPhone,setMarketingConsentPhone]=useState('');
+  const [marketingConsentStatus,setMarketingConsentStatus]=useState<'OPTED_IN'|'OPTED_OUT'>('OPTED_OUT');
+  const [marketingConsentSource,setMarketingConsentSource]=useState('customer_opt_out');
+  const [marketingConsentEvidence,setMarketingConsentEvidence]=useState('');
   const [marketingBusy,setMarketingBusy]=useState(false);
   const [showMarketing,setShowMarketing]=useState(false);
   const [placesQuery,setPlacesQuery]=useState('');
@@ -522,6 +529,73 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
         : action==='contacts'
           ? 'Contact file imported into your channel. No messages sent or consent granted.'
           : 'Campaign draft saved. No messages sent.');
+      await loadMarketing();
+      if(action==='contacts')await refreshMarketingContacts();
+    }catch(e){setMarketingCode('');setMarketingError(errorMessage(e));}
+    finally{setMarketingBusy(false);}
+  }
+
+  // The contact list is private to the signed-in administrator and selected
+  // channel. Ignore old in-flight responses on role/session/channel changes.
+  useEffect(()=>{
+    let active=true;
+    setMarketingContacts([]);
+    setMarketingConsentPhone('');
+    if(stage!=='authenticated'||user?.role!=='central_admin'||!showMarketing||!marketingSegment)return ()=>{active=false;};
+    setMarketingContactsLoading(true);
+    apiClient.get('/api/control-center/marketing/contacts?segment_id='+encodeURIComponent(marketingSegment))
+      .then(response=>{if(active)setMarketingContacts(response.data?.contacts||[]);})
+      .catch(e=>{if(active)setMarketingError(errorMessage(e));})
+      .finally(()=>{if(active)setMarketingContactsLoading(false);});
+    return ()=>{active=false;};
+  },[stage,user?.role,showMarketing,marketingSegment]);
+
+  async function refreshMarketingContacts(){
+    if(!marketingSegment)return;
+    const response=await apiClient.get('/api/control-center/marketing/contacts?segment_id='+encodeURIComponent(marketingSegment));
+    setMarketingContacts(response.data?.contacts||[]);
+  }
+  async function recordMarketingConsent(){
+    if(!marketingConsentPhone||!marketingContacts.some(item=>item.phone===marketingConsentPhone)){
+      setMarketingError('Select a contact from this channel.');return;
+    }
+    if(!/^[0-9]{6}$/.test(marketingCode.trim())||marketingReason.trim().length<10||marketingConsentEvidence.trim().length<12){
+      setMarketingError('A fresh six-digit authenticator code, 10-character reason, and 12-character independent consent evidence are required.');return;
+    }
+    if(marketingConsentStatus==='OPTED_IN'&&marketingConsentSource==='customer_opt_out'){
+      setMarketingError('An opt-out source cannot establish consent.');return;
+    }
+    setMarketingBusy(true);setMarketingError('');
+    try{
+      await apiClient.post('/api/control-center/step-up',{code:marketingCode.trim()});
+      await apiClient.post('/api/control-center/marketing/contacts/consent',{
+        phone:marketingConsentPhone,status:marketingConsentStatus,source:marketingConsentSource,
+        evidence:marketingConsentEvidence.trim(),reason:marketingReason.trim()
+      });
+      setMarketingCode('');setMarketingReason('');setMarketingConsentEvidence('');
+      setNotice('Contact consent decision saved with audit evidence. No messages sent.');
+      await loadMarketing();await refreshMarketingContacts();
+    }catch(e){setMarketingCode('');setMarketingError(errorMessage(e));}
+    finally{setMarketingBusy(false);}
+  }
+  async function decideMarketingCampaign(id:string,action:'approve'|'launch'|'cancel'){
+    if(!/^[0-9]{6}$/.test(marketingCode.trim())||marketingReason.trim().length<10){
+      setMarketingError('Enter a fresh six-digit authenticator code and audit reason (at least 10 characters).');return;
+    }
+    if(action==='launch'){
+      if(!marketing?.send_enabled){setMarketingError('Production campaign sending is disabled on this backend.');return;}
+      if(!window.confirm('Send this approved campaign only to independently opted-in contacts? Queued messages cannot be recalled after Meta accepts them.'))return;
+    }
+    setMarketingBusy(true);setMarketingError('');
+    try{
+      await apiClient.post('/api/control-center/step-up',{code:marketingCode.trim()});
+      await apiClient.post('/api/control-center/marketing/campaigns/'+encodeURIComponent(id)+'/'+action,{
+        reason:marketingReason.trim()
+      });
+      setMarketingCode('');setMarketingReason('');
+      setNotice(action==='approve'?'Meta-approved template confirmed; no messages sent.'
+        :action==='launch'?'Campaign queued for independently consented contacts; delivery not yet confirmed.'
+        :'Campaign cancellation recorded. Messages already accepted by Meta cannot be recalled.');
       await loadMarketing();
     }catch(e){setMarketingCode('');setMarketingError(errorMessage(e));}
     finally{setMarketingBusy(false);}
@@ -1723,8 +1797,9 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                       </div>)}
                     </div>
                     <p style={{fontSize:12,color:'#F59E0B',margin:'10px 0'}}>
-                      CSV imports never establish marketing consent or send messages. Campaigns remain drafts until
-                      separately approved Meta templates, recipient consent, and explicit send authorization exist.
+                      CSV imports never establish marketing consent. {marketing.send_enabled
+                        ? 'Live campaign worker enabled; an operator must separately approve and launch each consent-reviewed campaign.'
+                        : 'Live campaign sending disabled by release policy. Approvals can be prepared but launching is blocked.'}
                     </p>
 
                     <section aria-label="Create custom marketing channel"
@@ -1826,12 +1901,65 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                       </section>
                     }
 
-                    <h3 style={{fontSize:16,marginBottom:6}}>Saved campaign drafts</h3>
+                    {marketingSegment&&<section aria-label="Selected channel marketing consent" style={{marginTop:16,padding:12,border:'1px solid rgba(255,154,61,0.24)',borderRadius:10}}>
+                      <h3 style={{fontSize:16,margin:'0 0 8px'}}>4. Record independently verified marketing consent</h3>
+                      <p style={{fontSize:12,color:'#B8C1CC'}}>Imported phone numbers have no permission to receive promotions. Record an actual customer request or opt-out; never infer consent from an import.</p>
+                      {marketingContactsLoading&&<p role="status">Loading channel contacts…</p>}
+                      <label style={{fontSize:12}}>Contact
+                        <select aria-label="Marketing consent contact" value={marketingConsentPhone} onChange={e=>setMarketingConsentPhone(e.target.value)} style={inputStyle}>
+                          <option value="">Select a channel contact</option>
+                          {marketingContacts.map(contact=><option key={contact.id} value={contact.phone}>
+                            {contact.name||contact.phone} · {contact.phone} · {contact.consent_status}
+                          </option>)}
+                        </select>
+                      </label>
+                      <label style={{fontSize:12}}>Customer decision
+                        <select aria-label="Marketing consent decision" value={marketingConsentStatus}
+                          onChange={e=>{const status=e.target.value as 'OPTED_IN'|'OPTED_OUT';setMarketingConsentStatus(status);setMarketingConsentSource(status==='OPTED_IN'?'signed_form':'customer_opt_out');}}
+                          style={inputStyle}>
+                          <option value="OPTED_OUT">Opted out / revoke</option>
+                          <option value="OPTED_IN">Explicitly opted in</option>
+                        </select>
+                      </label>
+                      <label style={{fontSize:12}}>Evidence source
+                        <select aria-label="Marketing consent source" value={marketingConsentSource} onChange={e=>setMarketingConsentSource(e.target.value)} style={inputStyle}>
+                          <option value="customer_checkbox">Customer checkbox</option>
+                          <option value="signed_form">Signed form</option>
+                          <option value="recorded_customer_request">Recorded customer request</option>
+                          <option value="whatsapp_explicit_opt_in">Explicit WhatsApp opt-in</option>
+                          {marketingConsentStatus==='OPTED_OUT'&&<option value="customer_opt_out">Customer opt-out</option>}
+                        </select>
+                      </label>
+                      <label style={{fontSize:12}}>Private consent / opt-out evidence (12–500 characters)
+                        <textarea aria-label="Marketing consent evidence" value={marketingConsentEvidence}
+                          maxLength={500} onChange={e=>setMarketingConsentEvidence(e.target.value)}
+                          style={inputStyle} rows={2} placeholder="Reference to the customer's recorded preference (no OTP, document contents or credentials)"/>
+                      </label>
+                      <p style={{fontSize:12,color:'#B8C1CC'}}>Use the authenticator code and audit reason in Create Channel above to record this decision.</p>
+                      <button type="button" disabled={marketingBusy||marketingContactsLoading||!marketingConsentPhone}
+                        onClick={()=>void recordMarketingConsent()} style={{...buttonStyle,marginTop:6}}>
+                        Save Audited Consent Decision — No Send
+                      </button>
+                    </section>}
+                    <h3 style={{fontSize:16,marginBottom:6}}>5. Campaign approval and launch</h3>
+                    <p style={{fontSize:12,color:'#B8C1CC'}}>Template approval checks Meta live status; campaign launch requires a separate operator confirmation, fresh MFA, consent records and a production release switch.</p>
                     {marketing.campaigns.map(draft=><article key={draft.id}
                       style={{borderTop:'1px solid #1D232D',padding:'9px 0',fontSize:13}}>
                       <strong>{draft.name}</strong> · {draft.segment}
-                      <div style={{color:'#B8C1CC',fontSize:12}}>
-                        Template {draft.template} · {draft.status} · No send action available
+                      <div style={{color:'#B8C1CC',fontSize:12}}>Template {draft.template} · {draft.status}</div>
+                      <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+                        {draft.status==='DRAFT'&&<button type="button" disabled={marketingBusy}
+                          onClick={()=>void decideMarketingCampaign(draft.id,'approve')}
+                          style={{...buttonStyle,width:'auto',marginTop:6}}>Approve Verified Meta Template</button>}
+                        {draft.status==='APPROVED'&&marketing.send_enabled&&<button type="button" disabled={marketingBusy}
+                          onClick={()=>void decideMarketingCampaign(draft.id,'launch')}
+                          style={{...buttonStyle,width:'auto',marginTop:6}}>Launch Campaign</button>}
+                        {draft.status==='APPROVED'&&!marketing.send_enabled&&<span style={{color:'#F59E0B',fontSize:12}}>
+                          Launch blocked — release gate disabled
+                        </span>}
+                        {['DRAFT','APPROVED','SENDING'].includes(draft.status)&&<button type="button" disabled={marketingBusy}
+                          onClick={()=>void decideMarketingCampaign(draft.id,'cancel')}
+                          style={{...buttonStyle,width:'auto',marginTop:6}}>Cancel Campaign</button>}
                       </div>
                     </article>)}
                     {!marketing.campaigns.length&&<p>No campaigns drafted.</p>}
