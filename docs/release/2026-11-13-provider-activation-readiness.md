@@ -32,7 +32,7 @@
 
 ### Meta WhatsApp Utility dispatch
 
-- Meta operator must configure the WABA webhook subscription at `https://trackmyrmc.com/api/meta/dispatch-webhook` for messages and status changes, an App Secret and a random verification token. Confirm the callback HMAC/GET challenge using Meta's configuration flow.
+- The existing Meta dashboard callback is `https://trackmyrmc.com/api/meta/whatsapp/webhook`. **Preserve this URL**. This PR maps it to the same signed webhook handler as the new `/api/meta/dispatch-webhook` endpoint. Do not change Meta's callback to the dispatch path merely to activate dispatch. After the reviewed code is deployed, configure the WABA webhook subscription for messages and status changes, an App Secret and a random verification token. Confirm the callback HMAC/GET challenge using Meta's configuration flow.
 - Obtain Meta approval for `trackmyrmc_trip_dispatched` in **UTILITY**, locale `en_US`, with six body parameters matching the Rust sender. Validate sender entitlement and Meta billing/quality/limits. A name saved in Secrets Manager is not template approval.
 - Customer delivery consent and the plant's own WhatsApp delivery preference remain independently required. The worker is activated by `DISPATCH_WHATSAPP_ENABLED=true` **only after separate release authorization**. The send occurs on confirmed dispatch, not challan preparation. Verify test load, duplicate suppression, a public signed link, and signed `accepted`→`sent`→`delivered/read` statuses; never treat API acceptance as customer receipt.
 
