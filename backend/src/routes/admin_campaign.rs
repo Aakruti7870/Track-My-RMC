@@ -10,7 +10,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-fn activation_enabled() -> bool {
+pub(crate) fn activation_enabled() -> bool {
     std::env::var("ADMIN_MARKETING_SEND_ENABLED")
         .ok()
         .as_deref()
