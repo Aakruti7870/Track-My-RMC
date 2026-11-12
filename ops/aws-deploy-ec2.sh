@@ -539,6 +539,23 @@ test -f "$RELEASE_STAGE/source/backend/Cargo.toml"
 test -f "$RELEASE_STAGE/source/frontend/package.json"
 test -f "$RELEASE_STAGE/source/admin-web/package.json"
 
+# Live DigiLocker activation must authenticate with the exact approved Live
+# credentials before replacing any running binaries or systemd environment.
+# This is NON-IDENTITY authentication only: the checker does not create a KYC
+# session, send a customer OTP, or print tokens/credentials/provider bodies.
+# A provider outage or rejected Live key must fail the deployment closed.
+if [[ "$TRACKMYRMC_KYC_ENABLED" == "true" && "$TRACKMYRMC_KYC_ENV" == "live" ]]; then
+  LIVE_KYC_PREFLIGHT="$RELEASE_STAGE/source/ops/release/verify-digilocker-credentials.py"
+  test -f "$LIVE_KYC_PREFLIGHT" || { echo 'Live DigiLocker preflight script missing' >&2; exit 1; }
+  TRACKMYRMC_KYC_ENV=live \
+    TRACKMYRMC_KYC_LIVE_APPROVED=true \
+    LIVE_KYC_API_KEY="$LIVE_KYC_API_KEY" \
+    LIVE_KYC_API_SECRET="$LIVE_KYC_API_SECRET" \
+    PYTHONDONTWRITEBYTECODE=1 python3 "$LIVE_KYC_PREFLIGHT" || {
+      echo 'Live DigiLocker authentication rejected; preserving current deployment and KYC flags' >&2
+      exit 1
+    }
+fi
 
 # Install the lightweight, local-only RDS rotation health watch. No new AWS
 # infrastructure is created. Secrets Manager is queried only if /health fails.
