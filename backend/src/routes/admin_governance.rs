@@ -360,7 +360,7 @@ pub async fn marketing_overview(
     .await?;
     Ok(Json(
         json!({"segments":segments,"contacts":totals,"campaigns":campaigns,
-        "send_enabled":false,"contact_import_requires_independent_opt_in":true}),
+        "send_enabled":crate::routes::admin_campaign::activation_enabled(),"contact_import_requires_independent_opt_in":true}),
     ))
 }
 

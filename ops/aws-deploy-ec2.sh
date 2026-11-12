@@ -464,6 +464,64 @@ if [[ "$TRACKMYRMC_KYC_ENABLED" == 'true' ]]; then
 fi
 
 
+# Independent, fail-closed Meta provider release switches. Secrets Manager flags
+# may be JSON booleans or literal "true"/"false"; nothing is enabled by default.
+read_provider_flag() {
+  local key="$1"
+  printf '%s' "$APP_JSON" | jq -er --arg key "$key" '
+    (.[$key] // false)
+    | if type == "boolean" then tostring
+      elif type == "string" and (. == "true" or . == "false") then .
+      else error("Invalid provider activation flag") end
+  '
+}
+DISPATCH_WHATSAPP_ENABLED="$(read_provider_flag DISPATCH_WHATSAPP_ENABLED)"
+DISPATCH_WHATSAPP_MARKETING_ENABLED="$(read_provider_flag DISPATCH_WHATSAPP_MARKETING_ENABLED)"
+ADMIN_MARKETING_SEND_ENABLED="$(read_provider_flag ADMIN_MARKETING_SEND_ENABLED)"
+ADMIN_WHATSAPP_REPLIES_ENABLED="$(read_provider_flag ADMIN_WHATSAPP_REPLIES_ENABLED)"
+META_APP_SECRET="$(printf '%s' "$APP_JSON" | jq -r '.META_APP_SECRET // empty')"
+META_WEBHOOK_VERIFY_TOKEN="$(printf '%s' "$APP_JSON" | jq -r '.META_WEBHOOK_VERIFY_TOKEN // empty')"
+META_DISPATCH_TEMPLATE_NAME="$(printf '%s' "$APP_JSON" | jq -r '.META_DISPATCH_TEMPLATE_NAME // empty')"
+META_MARKETING_TEMPLATE_NAME="$(printf '%s' "$APP_JSON" | jq -r '.META_MARKETING_TEMPLATE_NAME // empty')"
+META_DISPATCH_TEMPLATE_LOCALE="$(printf '%s' "$APP_JSON" | jq -r '.META_DISPATCH_TEMPLATE_LOCALE // "en_US"')"
+META_MARKETING_TEMPLATE_LOCALE="$(printf '%s' "$APP_JSON" | jq -r '.META_MARKETING_TEMPLATE_LOCALE // "en_US"')"
+META_ADMIN_MARKETING_LOCALE="$(printf '%s' "$APP_JSON" | jq -r '.META_ADMIN_MARKETING_LOCALE // "en_US"')"
+
+# Reject unsafe EnvironmentFile values even while workers are disabled.
+[[ -z "$META_APP_SECRET" || "$META_APP_SECRET" =~ ^[a-fA-F0-9]{32,128}$ ]] || {
+  echo "Invalid Meta application secret encoding" >&2; exit 1;
+}
+[[ -z "$META_WEBHOOK_VERIFY_TOKEN" || "$META_WEBHOOK_VERIFY_TOKEN" =~ ^[A-Za-z0-9_.+=:-]{32,256}$ ]] || {
+  echo "Invalid Meta webhook verification token encoding" >&2; exit 1;
+}
+for name in "$META_DISPATCH_TEMPLATE_NAME" "$META_MARKETING_TEMPLATE_NAME"; do
+  [[ -z "$name" || "$name" =~ ^[a-z0-9_]{1,120}$ ]] || {
+    echo "Invalid Meta template identifier" >&2; exit 1;
+  }
+done
+for locale in "$META_DISPATCH_TEMPLATE_LOCALE" "$META_MARKETING_TEMPLATE_LOCALE" "$META_ADMIN_MARKETING_LOCALE"; do
+  [[ "$locale" =~ ^[a-z]{2}(_[A-Z]{2})?$ ]] || {
+    echo "Invalid Meta template locale" >&2; exit 1;
+  }
+done
+if [[ "$DISPATCH_WHATSAPP_ENABLED" == "true" || "$ADMIN_MARKETING_SEND_ENABLED" == "true" || "$DISPATCH_WHATSAPP_MARKETING_ENABLED" == "true" || "$ADMIN_WHATSAPP_REPLIES_ENABLED" == "true" ]]; then
+  # HMAC and status receipts must work before any production send is allowed.
+  [[ -n "$META_APP_SECRET" && -n "$META_WEBHOOK_VERIFY_TOKEN" ]] || {
+    echo "Meta webhook signing/verification configuration required" >&2; exit 1;
+  }
+  [[ -n "$META_TOKEN" && "$META_PHONE" =~ ^[0-9]+$ && "$META_WABA" =~ ^[0-9]+$ ]] || {
+    echo "Meta sender credentials are not configured" >&2; exit 1;
+  }
+fi
+if [[ "$DISPATCH_WHATSAPP_ENABLED" == "true" && -z "$META_DISPATCH_TEMPLATE_NAME" ]]; then
+  echo "Approved dispatch Utility template name required" >&2; exit 1;
+fi
+if [[ "$DISPATCH_WHATSAPP_MARKETING_ENABLED" == "true" ]]; then
+  [[ "$DISPATCH_WHATSAPP_ENABLED" == "true" && -n "$META_MARKETING_TEMPLATE_NAME" ]] || {
+    echo "Dispatch promotional worker requires Utility worker and approved marketing template" >&2; exit 1;
+  }
+fi
+
 aws s3 cp "s3://$BUCKET/backend-$RELEASE_SHA" "$RELEASE_STAGE/backend"
 aws s3 cp "s3://$BUCKET/frontend-$RELEASE_SHA.tgz" "$RELEASE_STAGE/frontend.tgz"
 aws s3 cp "s3://$BUCKET/source-$RELEASE_SHA.tgz" "$RELEASE_STAGE/source.tgz"
@@ -554,6 +612,17 @@ META_WHATSAPP_TOKEN=$META_TOKEN
 META_PHONE_NUMBER_ID=$META_PHONE
 META_WABA_ID=$META_WABA
 META_GRAPH_API_VERSION=$META_GRAPH_API_VERSION
+META_APP_SECRET=$META_APP_SECRET
+META_WEBHOOK_VERIFY_TOKEN=$META_WEBHOOK_VERIFY_TOKEN
+META_DISPATCH_TEMPLATE_NAME=$META_DISPATCH_TEMPLATE_NAME
+META_DISPATCH_TEMPLATE_LOCALE=$META_DISPATCH_TEMPLATE_LOCALE
+META_MARKETING_TEMPLATE_NAME=$META_MARKETING_TEMPLATE_NAME
+META_MARKETING_TEMPLATE_LOCALE=$META_MARKETING_TEMPLATE_LOCALE
+META_ADMIN_MARKETING_LOCALE=$META_ADMIN_MARKETING_LOCALE
+DISPATCH_WHATSAPP_ENABLED=$DISPATCH_WHATSAPP_ENABLED
+DISPATCH_WHATSAPP_MARKETING_ENABLED=$DISPATCH_WHATSAPP_MARKETING_ENABLED
+ADMIN_MARKETING_SEND_ENABLED=$ADMIN_MARKETING_SEND_ENABLED
+ADMIN_WHATSAPP_REPLIES_ENABLED=$ADMIN_WHATSAPP_REPLIES_ENABLED
 PLAY_SIGNING_SHA256=$PLAY_SIGNING_SHA256
 PLAY_REVIEW_ACCESS_CODE=$PLAY_REVIEW_ACCESS_CODE
 GOOGLE_PLACES_API_KEY=$GOOGLE_PLACES_API_KEY
