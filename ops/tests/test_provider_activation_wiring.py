@@ -103,6 +103,13 @@ class ProviderActivationWiringTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(result.stdout.startswith("true|true|false|false"))
 
+    def test_existing_meta_callback_preserved_as_signed_alias(self):
+        routes = (DEPLOY.parents[0] / "backend" / "src" / "routes" / "mod.rs").read_text(encoding="utf-8")
+        for path in ('"/api/meta/whatsapp/webhook"', '"/api/meta/dispatch-webhook"'):
+            self.assertIn(path, routes)
+        signed_handler = "get(dispatch_whatsapp::verify_meta_webhook)\\n                .post(dispatch_whatsapp::receive_meta_webhook)"
+        self.assertGreaterEqual(routes.count(signed_handler), 2)
+
     def test_environment_exports_and_kyc_wiring_exist(self):
         for key in (
             "META_APP_SECRET", "META_WEBHOOK_VERIFY_TOKEN",
