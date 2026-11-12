@@ -26,6 +26,9 @@ try {
     const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
     let plantFails=true,delayPlants=false,releasePlants,currentEmail='';
     const channels=[];const importedPhones=new Set();let importCalls=0;
+    const consentByPhone=new Map();
+    const campaigns=[{id:'synthetic-campaign',name:'Test Release Campaign',segment:'Regional Builders',
+      template:'synthetic_approved_template',status:'DRAFT'}];
     await page.route('**/*',async route=>{
       const url=new URL(route.request().url());if(url.origin===origin)return route.continue();
       assert.equal(url.origin,api,'Unexpected external request');const path=url.pathname;
@@ -52,8 +55,33 @@ try {
       if(path==='/api/control-center/marketing/overview')return reply({
         segments:channels.map(c=>({id:c.id,name:c.name,members:c.contacts.size})),
         contacts:{all:importedPhones.size,opted_in:0,opted_out:0,unverified:importedPhones.size},
-        campaigns:[],send_enabled:false
+        campaigns,send_enabled:false
       });
+      if(path==='/api/control-center/marketing/contacts'&&route.request().method()==='GET'){
+        const selected=channels.find(c=>c.id===url.searchParams.get('segment_id'));
+        return reply({contacts:selected?[...selected.contacts].map(phone=>({
+          id:'test-contact-'+phone,phone,name:'Synthetic Builder',consent_status:consentByPhone.get(phone)||'UNVERIFIED',
+          source:null,consent_recorded_at:null,
+        })):[]});
+      }
+      if(path==='/api/control-center/marketing/contacts/consent'&&route.request().method()==='POST'){
+        const body=route.request().postDataJSON();
+        assert(importedPhones.has(body.phone),'Only imported contacts can have their consent updated');
+        assert(body.reason.length>=10&&body.evidence.length>=12);
+        assert(['OPTED_IN','OPTED_OUT'].includes(body.status));
+        consentByPhone.set(body.phone,body.status);return reply({success:true,status:body.status});
+      }
+      if(path==='/api/control-center/marketing/campaigns/synthetic-campaign/approve'){
+        const body=route.request().postDataJSON();
+        assert.equal(campaigns[0].status,'DRAFT');assert(body.reason.length>=10);
+        campaigns[0].status='APPROVED';return reply({success:true,status:'APPROVED',sent:false});
+      }
+      if(path==='/api/control-center/marketing/campaigns/synthetic-campaign/cancel'){
+        assert.equal(campaigns[0].status,'APPROVED');
+        campaigns[0].status='CANCELLED';return reply({success:true,status:'CANCELLED'});
+      }
+      if(path==='/api/control-center/marketing/campaigns/synthetic-campaign/launch')
+        throw Error('Production campaign launch must not be exposed while the worker is disabled');
       if(path==='/api/control-center/marketing/segments' && route.request().method()==='POST'){
         const {name,reason}=route.request().postDataJSON();
         assert(name.length>=3 && reason.length>=10);
@@ -143,6 +171,25 @@ try {
     await button('Import Contact File into Channel').click();
     await page.getByText('2 / 1,000 contacts').waitFor();
     assert.equal(importCalls,1);
+    await page.getByLabel('Marketing consent contact').selectOption('+919876543210');
+    await page.getByLabel('Marketing consent decision').selectOption('OPTED_IN');
+    await page.getByLabel('Marketing consent source').selectOption('signed_form');
+    await page.getByLabel('Marketing consent evidence').fill('Synthetic signed opt-in record for CI-only customer');
+    await page.getByLabel('Marketing audit reason').fill('Record explicitly consented campaign preferences');
+    await page.getByLabel('Marketing CRM authenticator code').fill('123456');
+    await button('Save Audited Consent Decision — No Send').click();
+    await page.getByText('Contact consent decision saved with audit evidence. No messages sent.').waitFor();
+    assert.equal(consentByPhone.get('+919876543210'),'OPTED_IN');
+    assert.equal(await button('Launch Campaign').count(),0,'Sending is disabled by release policy');
+    await page.getByLabel('Marketing audit reason').fill('Approve CI-only synthetic template and record governance');
+    await page.getByLabel('Marketing CRM authenticator code').fill('123456');
+    await button('Approve Verified Meta Template').click();
+    await page.getByText('Launch blocked — release gate disabled').waitFor();
+    assert.equal(await button('Launch Campaign').count(),0,'Approved does not bypass disabled worker');
+    await page.getByLabel('Marketing audit reason').fill('Cancel synthetic approved test campaign');
+    await page.getByLabel('Marketing CRM authenticator code').fill('123456');
+    await button('Cancel Campaign').click();
+    assert.equal(campaigns[0].status,'CANCELLED');
     await page.getByLabel('New channel name').fill('Second Custom Channel');
     await page.getByLabel('Marketing audit reason').fill('Separate supplier contact records for internal CRM');
     await page.getByLabel('Marketing CRM authenticator code').fill('123456');
