@@ -107,8 +107,8 @@ class ProviderActivationWiringTests(unittest.TestCase):
         routes = (DEPLOY.parents[0] / "backend" / "src" / "routes" / "mod.rs").read_text(encoding="utf-8")
         for path in ('"/api/meta/whatsapp/webhook"', '"/api/meta/dispatch-webhook"'):
             self.assertIn(path, routes)
-        signed_handler = "get(dispatch_whatsapp::verify_meta_webhook)\\n                .post(dispatch_whatsapp::receive_meta_webhook)"
-        self.assertGreaterEqual(routes.count(signed_handler), 2)
+        self.assertEqual(routes.count("get(dispatch_whatsapp::verify_meta_webhook)"), 2)
+        self.assertEqual(routes.count(".post(dispatch_whatsapp::receive_meta_webhook)"), 2)
 
     def test_environment_exports_and_kyc_wiring_exist(self):
         for key in (
