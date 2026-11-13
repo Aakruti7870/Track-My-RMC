@@ -534,6 +534,9 @@ pub async fn receive_meta_webhook(
             for inbound in change["value"]["messages"].as_array().into_iter().flatten() {
                 let text = inbound["text"]["body"].as_str().unwrap_or("");
                 if is_marketing_stop(text) {
+                    // STOP ALL explicitly revokes delivery WhatsApp updates too;
+                    // ordinary STOP only revokes promotional WhatsApp.
+                    let stop_all = text.trim().trim_end_matches(|c: char| matches!(c, '.' | '!' | '?')).trim().eq_ignore_ascii_case("STOP ALL");
                     if let Some(from) = inbound["from"].as_str() {
                         if let Ok(phone) = dispatch_whatsapp::normalize_recipient(from) {
                             let mut tx = state.db.begin().await?;
@@ -572,6 +575,29 @@ pub async fn receive_meta_webhook(
                             .bind(&phone)
                             .execute(&mut *tx)
                             .await?;
+                            if stop_all {
+                                sqlx::query(
+                                    "UPDATE dispatch_whatsapp_events
+                                     SET status='cancelled',
+                                         last_error='recipient_opted_out_all',
+                                         updated_at=NOW()
+                                     WHERE order_id IN (
+                                       SELECT order_id FROM dispatch_whatsapp_contacts
+                                       WHERE phone_e164=$1
+                                     ) AND status IN ('waiting_dispatch','needs_consent','pending')",
+                                )
+                                .bind(&phone)
+                                .execute(&mut *tx)
+                                .await?;
+                                sqlx::query(
+                                    "UPDATE dispatch_whatsapp_contacts
+                                     SET opted_in=FALSE,updated_at=NOW()
+                                     WHERE phone_e164=$1",
+                                )
+                                .bind(&phone)
+                                .execute(&mut *tx)
+                                .await?;
+                            }
                             // STOP also revokes the central CRM marketing consent,
                             // regardless of which source originally recorded it.
                             sqlx::query(
