@@ -184,8 +184,8 @@ export default function OwnerOperations() {
               </AppText>
             </View>
             <Pressable accessibilityRole="switch"
-              accessibilityState={{ checked: whatsappSettings?.enabled || false, disabled: updatingWhatsapp || !plantId }}
-              disabled={updatingWhatsapp || !plantId}
+              accessibilityState={{ checked: whatsappSettings?.enabled || false, disabled: updatingWhatsapp || !plantId || !whatsappSettings }}
+              disabled={updatingWhatsapp || !plantId || !whatsappSettings}
               onPress={() => {
                 const willEnable = !whatsappSettings?.enabled;
                 // First plant setup: prepare the consent-only first-dispatch
@@ -219,8 +219,8 @@ export default function OwnerOperations() {
             </View>
             <Pressable accessibilityRole="switch"
               accessibilityState={{ checked: whatsappSettings?.marketing_enabled || false,
-                disabled: updatingWhatsapp || !plantId }}
-              disabled={updatingWhatsapp || !plantId}
+                disabled: updatingWhatsapp || !plantId || !whatsappSettings }}
+              disabled={updatingWhatsapp || !plantId || !whatsappSettings}
               onPress={() => void updateWhatsapp(Boolean(whatsappSettings?.enabled), !whatsappSettings?.marketing_enabled)}
               style={{ backgroundColor: whatsappSettings?.marketing_enabled ? p.accent : p.glass,
                 borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9 }}>
