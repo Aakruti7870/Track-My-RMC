@@ -732,7 +732,10 @@ pub async fn issue(
     // To change a grade, first correct the approved order and production evidence.
     let recorded_grade: String = row.get("concrete_grade");
     let invoice_lines = parse_lines(&draft)?;
-    if invoice_lines.iter().any(|line| line.grade != recorded_grade) {
+    if invoice_lines
+        .iter()
+        .any(|line| line.grade != recorded_grade)
+    {
         return Err(AppError::Conflict(
             "Invoice grade differs from the production order; approve and reconcile the source order first".into()
         ));
