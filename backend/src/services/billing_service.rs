@@ -180,9 +180,11 @@ pub async fn create_invoice(
     }
 
     // An existing draft must not be bypassed by an older installed app client.
-    let reviewed_draft: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM invoice_drafts WHERE order_id=$1)"
-    ).bind(order).fetch_one(&mut *tx).await?;
+    let reviewed_draft: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM invoice_drafts WHERE order_id=$1)")
+            .bind(order)
+            .fetch_one(&mut *tx)
+            .await?;
     if reviewed_draft {
         return Err(AppError::Conflict(
             "Open the standard invoice editor and review the draft before issuing".into(),
