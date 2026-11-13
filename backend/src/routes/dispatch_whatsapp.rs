@@ -53,7 +53,7 @@ async fn update_contact(
     opted_in: bool,
     marketing_opted_in: bool,
     source: &str,
-    explicit_marketing_renewal: bool,
+    explicit_marketing_action: bool,
 ) -> Result<(), AppError> {
     let normalized = dispatch_whatsapp::normalize_recipient(phone)?;
     let mut tx = state.db.begin().await?;
@@ -63,18 +63,71 @@ async fn update_contact(
     .bind(&normalized)
     .fetch_one(&mut *tx)
     .await?;
-    if suppressed && marketing_opted_in && !explicit_marketing_renewal {
+    if suppressed && marketing_opted_in && !(explicit_marketing_action && source == "customer_app") {
         return Err(AppError::Forbidden(
             "Customer opted out of promotions; customer must explicitly re-enable them".into(),
         ));
     }
-    if explicit_marketing_renewal && source == "customer_app" && marketing_opted_in {
-        // Explicit positive action in the customer's authenticated order UI.
-        // Do not silently reinstate central CRM promotional consent.
-        sqlx::query("DELETE FROM whatsapp_marketing_opt_outs WHERE phone_e164=$1")
+    if explicit_marketing_action && source == "customer_app" {
+        if marketing_opted_in {
+            // Explicit positive action in the authenticated customer order UI.
+            // CRM remains opted out until its own evidenced re-consent.
+            sqlx::query("DELETE FROM whatsapp_marketing_opt_outs WHERE phone_e164=$1")
+                .bind(&normalized)
+                .execute(&mut *tx)
+                .await?;
+        } else {
+            // A customer pressing "Stop Promotions" also means all their
+            // existing orders and CRM campaigns, not only this order.
+            sqlx::query(
+                "INSERT INTO whatsapp_marketing_opt_outs(phone_e164,source)
+                 VALUES($1,'customer_app')
+                 ON CONFLICT(phone_e164) DO UPDATE SET
+                   opted_out_at=NOW(),source='customer_app',updated_at=NOW()",
+            )
             .bind(&normalized)
             .execute(&mut *tx)
             .await?;
+            sqlx::query(
+                "UPDATE dispatch_whatsapp_contacts
+                 SET marketing_opted_in=FALSE,
+                     marketing_consent_recorded_at=NULL,updated_at=NOW()
+                 WHERE phone_e164=$1",
+            )
+            .bind(&normalized)
+            .execute(&mut *tx)
+            .await?;
+            sqlx::query(
+                "UPDATE dispatch_whatsapp_marketing_events SET
+                   status='cancelled',last_error='recipient_opted_out',
+                   updated_at=NOW()
+                 WHERE order_id IN (SELECT order_id FROM dispatch_whatsapp_contacts
+                                    WHERE phone_e164=$1)
+                   AND status IN ('waiting_dispatch','needs_consent','pending')",
+            )
+            .bind(&normalized)
+            .execute(&mut *tx)
+            .await?;
+            sqlx::query(
+                "UPDATE admin_marketing_contacts SET
+                    consent_status='OPTED_OUT',consent_evidence='Customer app opt-out',
+                    consent_recorded_at=NULL,updated_at=NOW()
+                 WHERE phone_e164=$1",
+            )
+            .bind(&normalized)
+            .execute(&mut *tx)
+            .await?;
+            sqlx::query(
+                "UPDATE admin_marketing_deliveries
+                 SET status='cancelled',updated_at=NOW()
+                 WHERE contact_id IN (SELECT id FROM admin_marketing_contacts
+                                       WHERE phone_e164=$1)
+                   AND status='pending'",
+            )
+            .bind(&normalized)
+            .execute(&mut *tx)
+            .await?;
+        }
     }
     sqlx::query(
         "INSERT INTO dispatch_whatsapp_contacts
@@ -191,7 +244,7 @@ pub async fn customer_consent(
         input.opted_in,
         input.marketing_opted_in,
         "customer_app",
-        input.marketing_consent_action && input.marketing_opted_in,
+        input.marketing_consent_action,
     )
     .await?;
     Ok(Json(json!({"success": true, "opted_in": input.opted_in,
