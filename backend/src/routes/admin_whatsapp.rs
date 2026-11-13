@@ -94,25 +94,66 @@ fn preview(message: &Value) -> (&str, String) {
                     .unwrap_or("[Interactive reply]"),
             ),
         ),
-        "image" => (
-            "image",
-            "[Image received; media not stored in Admin inbox]".into(),
+        "image" | "video" | "audio" | "document" | "sticker" => {
+            let kind = message["type"].as_str().unwrap_or("other");
+            let label = match kind {
+                "image" => "Image",
+                "video" => "Video",
+                "audio" => "Voice message / audio",
+                "document" => "Document",
+                _ => "Sticker",
+            };
+            let caption = message[kind]["caption"].as_str().unwrap_or("");
+            let filename = if kind == "document" {
+                message[kind]["filename"].as_str().unwrap_or("")
+            } else {
+                ""
+            };
+            let caption = safe_text(caption);
+            let filename = safe_text(filename);
+            let suffix = if !caption.is_empty() {
+                format!(": {}", caption)
+            } else if !filename.is_empty() {
+                format!(": {}", filename)
+            } else {
+                String::new()
+            };
+            (kind, safe_text(&format!("[{label} received]{suffix}")))
+        }
+        "location" => {
+            let latitude = message["location"]["latitude"].as_f64();
+            let longitude = message["location"]["longitude"].as_f64();
+            let coords = latitude
+                .zip(longitude)
+                .filter(|(lat, lng)| (-90.0..=90.0).contains(lat) && (-180.0..=180.0).contains(lng))
+                .map(|(lat, lng)| format!(" ({lat:.6}, {lng:.6})"))
+                .unwrap_or_default();
+            let name = message["location"]["name"].as_str().unwrap_or("");
+            ("location", safe_text(&format!("[Location]{coords} {name}")))
+        }
+        "contacts" => {
+            let names = message["contacts"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .take(20)
+                .filter_map(|c| c["name"]["formatted_name"].as_str())
+                .map(safe_text)
+                .collect::<Vec<_>>();
+            ("contacts", safe_text(&format!("[Contacts shared] {}", names.join(", "))))
+        }
+        "reaction" => (
+            "reaction",
+            safe_text(
+                &format!("[Reaction] {}", message["reaction"]["emoji"].as_str().unwrap_or("")),
+            ),
         ),
-        "video" => (
-            "video",
-            "[Video received; media not stored in Admin inbox]".into(),
-        ),
-        "audio" => (
-            "audio",
-            "[Audio received; media not stored in Admin inbox]".into(),
-        ),
-        "document" => (
-            "document",
-            "[Document received; media not stored in Admin inbox]".into(),
-        ),
-        _ => ("other", "[Unsupported WhatsApp message type]".into()),
+        "order" => ("order", "[WhatsApp catalog order received]".into()),
+        "unsupported" => ("unsupported", "[WhatsApp cannot render this message type]".into()),
+        _ => ("other", "[Unknown WhatsApp message type]".into()),
     }
 }
+
 pub async fn ingest_verified_message(
     state: &AppState,
     recipient_id: &str,
@@ -128,14 +169,16 @@ pub async fn ingest_verified_message(
         return Ok(());
     };
     let (kind, body) = preview(message);
+    // Never persist the attachment itself or an expiring public provider URL.
+    let media_id = super::admin_whatsapp_media::webhook_media_id(message);
     let received_at = provider_message_time(message);
     sqlx::query(
         "INSERT INTO admin_whatsapp_messages
-          (provider_message_id,sender_phone_id,customer_phone,direction,kind,body,status,received_at)
-         VALUES ($1,$2,$3,'IN',$4,$5,'received',$6)
+          (provider_message_id,sender_phone_id,customer_phone,direction,kind,body,status,received_at,media_id)
+         VALUES ($1,$2,$3,'IN',$4,$5,'received',$6,$7)
          ON CONFLICT (provider_message_id) DO NOTHING"
     ).bind(id).bind(recipient_id).bind(from).bind(kind).bind(body)
-        .bind(received_at).execute(&state.db).await?;
+        .bind(received_at).bind(media_id).execute(&state.db).await?;
     Ok(())
 }
 pub async fn mark_verified_status(
@@ -214,7 +257,8 @@ pub async fn messages(
     let sender = configured_sender(&state)?;
     let items: Vec<Value> = sqlx::query_scalar(
         "SELECT jsonb_build_object('id',m.id,'direction',m.direction,
-           'kind',m.kind,'body',m.body,'status',m.status,'at',m.received_at)
+           'kind',m.kind,'body',m.body,'status',m.status,'at',m.received_at,
+           'has_media',m.media_id IS NOT NULL)
          FROM (SELECT * FROM admin_whatsapp_messages
            WHERE sender_phone_id=$1 AND customer_phone=$2
            ORDER BY received_at DESC,id DESC LIMIT 100) m
