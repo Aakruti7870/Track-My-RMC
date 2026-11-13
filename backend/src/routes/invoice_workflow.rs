@@ -106,10 +106,7 @@ fn decimal(value: &str, max: i64, zero_ok: bool) -> Result<BigDecimal, AppError>
         return Err(invalid("decimal amount"));
     }
     let d = BigDecimal::from_str(value).map_err(|_| invalid("decimal amount"))?;
-    if d > max
-        || (!zero_ok && d <= 0)
-        || (zero_ok && d < 0)
-    {
+    if d > max || (!zero_ok && d <= 0) || (zero_ok && d < 0) {
         return Err(invalid("decimal range"));
     }
     Ok(d)
