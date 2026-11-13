@@ -61,16 +61,23 @@ pub struct DraftInput {
     pub save_buyer: bool,
 }
 #[derive(Debug, Deserialize)]
-pub struct IssueInput { pub version: i32, pub confirmed: bool }
+pub struct IssueInput {
+    pub version: i32,
+    pub confirmed: bool,
+}
 #[derive(Debug, Deserialize)]
 pub struct ComplianceInput {
     pub e_invoice_required: bool,
     pub acceptance: String,
 }
-pub async fn record_compliance(State(state):State<AppState>,user:AuthUser,Path(plant):Path<Uuid>,
-    Json(input):Json<ComplianceInput>)->Result<Json<Value>,AppError>{
-    check_role(&user,&["owner","plant_owner"])?;
-    require_bill(&state,&user,plant,Action::Edit).await?;
+pub async fn record_compliance(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(plant): Path<Uuid>,
+    Json(input): Json<ComplianceInput>,
+) -> Result<Json<Value>, AppError> {
+    check_role(&user, &["owner", "plant_owner"])?;
+    require_bill(&state, &user, plant, Action::Edit).await?;
     if input.acceptance != "I have reviewed e-invoicing applicability for this plant GSTIN" {
         return Err(invalid("explicit owner compliance acknowledgment"));
     }
@@ -83,15 +90,26 @@ pub async fn record_compliance(State(state):State<AppState>,user:AuthUser,Path(p
     Ok(Json(json!({"success":true})))
 }
 
-
-fn invalid(field: &str) -> AppError { AppError::BadRequest(format!("Invalid or missing {field}")) }
-fn limited(value: &str, max: usize) -> bool { !value.trim().is_empty() && value.len() <= max }
+fn invalid(field: &str) -> AppError {
+    AppError::BadRequest(format!("Invalid or missing {field}"))
+}
+fn limited(value: &str, max: usize) -> bool {
+    !value.trim().is_empty() && value.len() <= max
+}
 fn decimal(value: &str, max: i64, zero_ok: bool) -> Result<BigDecimal, AppError> {
-    if value.len() > 28 || value.starts_with('-') || value.starts_with('+') || value.contains('e') || value.contains('E') {
+    if value.len() > 28
+        || value.starts_with('-')
+        || value.starts_with('+')
+        || value.contains('e')
+        || value.contains('E')
+    {
         return Err(invalid("decimal amount"));
     }
-    let d=BigDecimal::from_str(value).map_err(|_|invalid("decimal amount"))?;
-    if d > BigDecimal::from(max) || (!zero_ok && d <= BigDecimal::from(0)) || (zero_ok && d < BigDecimal::from(0)) {
+    let d = BigDecimal::from_str(value).map_err(|_| invalid("decimal amount"))?;
+    if d > BigDecimal::from(max)
+        || (!zero_ok && d <= BigDecimal::from(0))
+        || (zero_ok && d < BigDecimal::from(0))
+    {
         return Err(invalid("decimal range"));
     }
     Ok(d)
@@ -372,24 +390,42 @@ pub async fn workspace(
     let challans:Vec<Value>=sqlx::query_scalar(
       "SELECT jsonb_build_object('id',c.id,'challan_number',c.challan_number,'quantity_m3',c.quantity_m3::TEXT,'status',l.status)        FROM challans c JOIN order_loads l ON l.id=c.load_id JOIN orders o ON o.id=l.order_id        WHERE o.id=$1 AND o.plant_id=$2 ORDER BY l.load_number"
     ).bind(order).bind(plant).fetch_all(&state.db).await?;
-    let compliance:Option<bool>=sqlx::query_scalar(
-        "SELECT e_invoice_required FROM invoice_compliance_declarations WHERE plant_id=$1"
-    ).bind(plant).fetch_optional(&state.db).await?;
-    Ok(Json(json!({"success":true,"order":base,"draft":draft,"buyers":buyers,
+    let compliance: Option<bool> = sqlx::query_scalar(
+        "SELECT e_invoice_required FROM invoice_compliance_declarations WHERE plant_id=$1",
+    )
+    .bind(plant)
+    .fetch_optional(&state.db)
+    .await?;
+    Ok(Json(
+        json!({"success":true,"order":base,"draft":draft,"buyers":buyers,
       "prices":prices,"grades":prices,"order_history":history,"ledger":ledger,"challans":challans,
-      "e_invoice_required":compliance})))
+      "e_invoice_required":compliance}),
+    ))
 }
 
-pub async fn buyer_upsert(State(state):State<AppState>,user:AuthUser,Path(plant):Path<Uuid>,
-    Json(input):Json<BuyerInput>)->Result<Json<Value>,AppError>{
-    require_bill(&state,&user,plant,Action::Edit).await?;
+pub async fn buyer_upsert(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(plant): Path<Uuid>,
+    Json(input): Json<BuyerInput>,
+) -> Result<Json<Value>, AppError> {
+    require_bill(&state, &user, plant, Action::Edit).await?;
     check_buyer(&input)?;
-    if let Some(customer)=input.customer_id {
-        let linked:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM orders WHERE plant_id=$1 AND customer_id=$2)")
-            .bind(plant).bind(customer).fetch_one(&state.db).await?;
-        if !linked {return Err(AppError::Forbidden("Customer is not linked to this plant".into()));}
+    if let Some(customer) = input.customer_id {
+        let linked: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM orders WHERE plant_id=$1 AND customer_id=$2)",
+        )
+        .bind(plant)
+        .bind(customer)
+        .fetch_one(&state.db)
+        .await?;
+        if !linked {
+            return Err(AppError::Forbidden(
+                "Customer is not linked to this plant".into(),
+            ));
+        }
     }
-    let id:Uuid=if let Some(id)=input.id {
+    let id: Uuid = if let Some(id) = input.id {
         sqlx::query_scalar("UPDATE invoice_buyers SET company_name=$3,gstin=$4,billing_address=$5,delivery_address=$6,            state_code=$7,phone=$8,email=$9,customer_id=$10,updated_by=$11,updated_at=NOW() WHERE id=$1 AND plant_id=$2 RETURNING id")
           .bind(id).bind(plant).bind(input.company_name.trim()).bind(&input.gstin)
           .bind(input.billing_address.trim()).bind(&input.delivery_address).bind(&input.state_code)
@@ -405,66 +441,125 @@ pub async fn buyer_upsert(State(state):State<AppState>,user:AuthUser,Path(plant)
     Ok(Json(json!({"success":true,"buyer_id":id})))
 }
 
-pub async fn save_draft(State(state):State<AppState>,user:AuthUser,Path(id):Path<Uuid>,
-    Json(input):Json<DraftInput>)->Result<Json<Value>,AppError>{
-    let (plant,order)=draft_order(&state,&user,id,Action::Edit).await?;
-    let date=NaiveDate::parse_from_str(&input.invoice_date,"%Y-%m-%d").map_err(|_|invalid("invoice date"))?;
-    if date>Utc::now().date_naive() {return Err(invalid("future invoice date"));}
-    if !limited(&input.seller_name,200) || !limited(&input.seller_address,2000) ||
-       !limited(&input.buyer_name,200) || !limited(&input.buyer_address,2000) ||
-       !two(&input.seller_state_code) || !two(&input.buyer_state_code) || !two(&input.place_of_supply) ||
-       !opt_gstin(&input.buyer_gstin,&input.buyer_state_code) ||
-       !opt_gstin(&input.seller_gstin,&input.seller_state_code) ||
-       input.note.as_ref().is_some_and(|n|n.len()>2000) ||
-       input.challan_display_reference.as_ref().is_some_and(|n|n.len()>400) {
+pub async fn save_draft(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<Uuid>,
+    Json(input): Json<DraftInput>,
+) -> Result<Json<Value>, AppError> {
+    let (plant, order) = draft_order(&state, &user, id, Action::Edit).await?;
+    let date = NaiveDate::parse_from_str(&input.invoice_date, "%Y-%m-%d")
+        .map_err(|_| invalid("invoice date"))?;
+    if date > Utc::now().date_naive() {
+        return Err(invalid("future invoice date"));
+    }
+    if !limited(&input.seller_name, 200)
+        || !limited(&input.seller_address, 2000)
+        || !limited(&input.buyer_name, 200)
+        || !limited(&input.buyer_address, 2000)
+        || !two(&input.seller_state_code)
+        || !two(&input.buyer_state_code)
+        || !two(&input.place_of_supply)
+        || !opt_gstin(&input.buyer_gstin, &input.buyer_state_code)
+        || !opt_gstin(&input.seller_gstin, &input.seller_state_code)
+        || input.note.as_ref().is_some_and(|n| n.len() > 2000)
+        || input
+            .challan_display_reference
+            .as_ref()
+            .is_some_and(|n| n.len() > 400)
+    {
         return Err(invalid("invoice identity, address or GST details"));
     }
-    if let Some(n)=&input.manual_invoice_number {
-        if !valid_num(n) {return Err(invalid("invoice number"));}
+    if let Some(n) = &input.manual_invoice_number {
+        if !valid_num(n) {
+            return Err(invalid("invoice number"));
+        }
     }
-    let _ = calculate(&input.lines,&input.seller_state_code,&input.place_of_supply)?;
-    let master:Option<(String,Option<String>)>=sqlx::query_as(
-       "SELECT legal_name,gstin FROM plant_profiles WHERE plant_id=$1"
-    ).bind(plant).fetch_optional(&state.db).await?;
-    let (master_name,master_gstin)=master.ok_or_else(||AppError::Conflict("Complete the plant billing profile before invoicing".into()))?;
-    if input.seller_gstin!=master_gstin || input.seller_gstin.is_none() {
-        return Err(AppError::Conflict("Seller GSTIN must match the verified plant billing profile".into()));
+    let _ = calculate(
+        &input.lines,
+        &input.seller_state_code,
+        &input.place_of_supply,
+    )?;
+    let master: Option<(String, Option<String>)> =
+        sqlx::query_as("SELECT legal_name,gstin FROM plant_profiles WHERE plant_id=$1")
+            .bind(plant)
+            .fetch_optional(&state.db)
+            .await?;
+    let (master_name, master_gstin) = master.ok_or_else(|| {
+        AppError::Conflict("Complete the plant billing profile before invoicing".into())
+    })?;
+    if input.seller_gstin != master_gstin || input.seller_gstin.is_none() {
+        return Err(AppError::Conflict(
+            "Seller GSTIN must match the verified plant billing profile".into(),
+        ));
     }
     // Display aliases/price corrections are allowed in draft, but tracked.
-    let nonstandard_seller=input.seller_name != master_name;
-    if nonstandard_seller && !matches!(user.role.as_str(),"owner"|"plant_owner") {
-        return Err(AppError::Forbidden("Seller identity correction requires the plant owner".into()));
+    let nonstandard_seller = input.seller_name != master_name;
+    if nonstandard_seller && !matches!(user.role.as_str(), "owner" | "plant_owner") {
+        return Err(AppError::Forbidden(
+            "Seller identity correction requires the plant owner".into(),
+        ));
     }
-    if nonstandard_seller && !input.change_reason.as_deref().is_some_and(|v|limited(v,500)) {
+    if nonstandard_seller
+        && !input
+            .change_reason
+            .as_deref()
+            .is_some_and(|v| limited(v, 500))
+    {
         return Err(invalid("seller change reason"));
     }
-    let mut tx=state.db.begin().await?;
+    let mut tx = state.db.begin().await?;
     let original:Value=sqlx::query_scalar("SELECT to_jsonb(d) FROM invoice_drafts d WHERE id=$1 AND plant_id=$2 AND order_id=$3 FOR UPDATE")
        .bind(id).bind(plant).bind(order).fetch_one(&mut *tx).await?;
-    if get_str(&original,"status")!="DRAFT" {return Err(AppError::Conflict("Issued invoice is immutable".into()));}
-    if original["version"].as_i64()!=Some(i64::from(input.version)) {
-        return Err(AppError::Conflict("Invoice draft changed elsewhere; reload it".into()));
+    if get_str(&original, "status") != "DRAFT" {
+        return Err(AppError::Conflict("Issued invoice is immutable".into()));
     }
-    if input.manual_invoice_number!=get_opt(&original,"manual_invoice_number") &&
-       !matches!(user.role.as_str(),"owner"|"plant_owner") {
-        return Err(AppError::Forbidden("Manual invoice numbers require the plant owner".into()));
+    if original["version"].as_i64() != Some(i64::from(input.version)) {
+        return Err(AppError::Conflict(
+            "Invoice draft changed elsewhere; reload it".into(),
+        ));
+    }
+    if input.manual_invoice_number != get_opt(&original, "manual_invoice_number")
+        && !matches!(user.role.as_str(), "owner" | "plant_owner")
+    {
+        return Err(AppError::Forbidden(
+            "Manual invoice numbers require the plant owner".into(),
+        ));
     }
     if input.buyer_id.is_some() {
-        let exists:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM invoice_buyers WHERE id=$1 AND plant_id=$2)")
-          .bind(input.buyer_id).bind(plant).fetch_one(&mut *tx).await?;
-        if !exists {return Err(AppError::Forbidden("Buyer does not belong to the logged-in plant".into()));}
+        let exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM invoice_buyers WHERE id=$1 AND plant_id=$2)",
+        )
+        .bind(input.buyer_id)
+        .bind(plant)
+        .fetch_one(&mut *tx)
+        .await?;
+        if !exists {
+            return Err(AppError::Forbidden(
+                "Buyer does not belong to the logged-in plant".into(),
+            ));
+        }
     }
-    let changed=serde_json::to_value(&input.lines).map_err(|_|invalid("invoice line items"))?;
-    let ref_override=input.challan_display_reference.as_deref().unwrap_or("");
-    let before=get_str(&original,"seller_name")!=input.seller_name ||
-        original["lines"]!=changed || get_str(&original,"buyer_name")!=input.buyer_name ||
-        get_str(&original,"challan_display_reference")!=ref_override;
-    if before && !input.change_reason.as_deref().is_some_and(|v|limited(v,500)) {
-        return Err(invalid("reason for invoice changes (maximum 500 characters)"));
+    let changed = serde_json::to_value(&input.lines).map_err(|_| invalid("invoice line items"))?;
+    let ref_override = input.challan_display_reference.as_deref().unwrap_or("");
+    let before = get_str(&original, "seller_name") != input.seller_name
+        || original["lines"] != changed
+        || get_str(&original, "buyer_name") != input.buyer_name
+        || get_str(&original, "challan_display_reference") != ref_override;
+    if before
+        && !input
+            .change_reason
+            .as_deref()
+            .is_some_and(|v| limited(v, 500))
+    {
+        return Err(invalid(
+            "reason for invoice changes (maximum 500 characters)",
+        ));
     }
-    let buyer_id=if input.save_buyer {
-        let c:Uuid=serde_json::from_value(original["customer_id"].clone()).map_err(|_|invalid("linked customer"))?;
-        let up:Uuid=if let Some(b)=input.buyer_id {
+    let buyer_id = if input.save_buyer {
+        let c: Uuid = serde_json::from_value(original["customer_id"].clone())
+            .map_err(|_| invalid("linked customer"))?;
+        let up: Uuid = if let Some(b) = input.buyer_id {
             sqlx::query_scalar("UPDATE invoice_buyers SET company_name=$3,gstin=$4,billing_address=$5,state_code=$6,updated_by=$7,updated_at=NOW() WHERE id=$1 AND plant_id=$2 RETURNING id")
                 .bind(b).bind(plant).bind(&input.buyer_name).bind(&input.buyer_gstin).bind(&input.buyer_address)
                 .bind(&input.buyer_state_code).bind(user.user_id).fetch_one(&mut *tx).await?
