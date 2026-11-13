@@ -81,12 +81,16 @@ pub async fn record_compliance(
     if input.acceptance != "I have reviewed e-invoicing applicability for this plant GSTIN" {
         return Err(invalid("explicit owner compliance acknowledgment"));
     }
+    // The compliance declaration and its audit evidence must be atomic:
+    // never persist a GST applicability decision without the corresponding log.
+    let mut tx = state.db.begin().await?;
     sqlx::query("INSERT INTO invoice_compliance_declarations(plant_id,e_invoice_required,confirmed_by) VALUES($1,$2,$3) \
        ON CONFLICT(plant_id) DO UPDATE SET e_invoice_required=EXCLUDED.e_invoice_required,confirmed_by=EXCLUDED.confirmed_by,confirmed_at=NOW()")
-       .bind(plant).bind(input.e_invoice_required).bind(user.user_id).execute(&state.db).await?;
+       .bind(plant).bind(input.e_invoice_required).bind(user.user_id).execute(&mut *tx).await?;
     sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'invoice_compliance_declared','plant',$2,$3)")
        .bind(user.user_id).bind(plant.to_string()).bind(json!({"e_invoice_required":input.e_invoice_required}))
-       .execute(&state.db).await?;
+       .execute(&mut *tx).await?;
+    tx.commit().await?;
     Ok(Json(json!({"success":true})))
 }
 
@@ -198,6 +202,24 @@ fn get_opt(v: &Value, key: &str) -> Option<String> {
 }
 fn parse_lines(v: &Value) -> Result<Vec<InvoiceLine>, AppError> {
     serde_json::from_value(v["lines"].clone()).map_err(|_| invalid("invoice line items"))
+}
+
+// A matching invoice amount alone is insufficient: changing quantity and rate
+// inversely can preserve the total while misrepresenting delivered concrete.
+fn require_challan_quantity(
+    lines: &[InvoiceLine],
+    prepared_qty: &BigDecimal,
+) -> Result<(), AppError> {
+    let mut invoice_qty = BigDecimal::from(0);
+    for line in lines {
+        invoice_qty += decimal(&line.quantity_m3, 100000, false)?;
+    }
+    if &invoice_qty != prepared_qty {
+        return Err(AppError::Conflict(
+            "Invoice item quantity must equal the prepared challan quantity; reconcile the approved order and challans before issue".into(),
+        ));
+    }
+    Ok(())
 }
 fn snapshot(
     d: &Value,
@@ -713,7 +735,8 @@ pub async fn issue(
     // Invoice grade must remain consistent with the fulfilled order.
     // To change a grade, first correct the approved order and production evidence.
     let recorded_grade: String = row.get("concrete_grade");
-    if parse_lines(&draft)?
+    let invoice_lines = parse_lines(&draft)?;
+    if invoice_lines
         .iter()
         .any(|line| line.grade != recorded_grade)
     {
@@ -721,6 +744,7 @@ pub async fn issue(
             "Invoice grade differs from the production order; approve and reconcile the source order first".into()
         ));
     }
+    require_challan_quantity(&invoice_lines, &prepared_qty)?;
     let ch_names: Vec<String> = ch.iter().map(|(_, n)| n.clone()).collect();
     let order_number: String = row.get("order_number");
     let delivery_address: String = row.get("delivery_address");
@@ -828,6 +852,37 @@ mod tests {
         let inter = calculate(&items, "27", "29").unwrap();
         assert_eq!(inter["igst"], "1800.00");
     }
+    #[test]
+    fn quantity_must_match_prepared_challans_even_when_invoice_total_matches() {
+        let correct = InvoiceLine {
+            grade: "M25".into(),
+            hsn: "38245010".into(),
+            quantity_m3: "10.00".into(),
+            rate_per_m3: "4000".into(),
+            gst_rate: "18".into(),
+        };
+        let manipulated = InvoiceLine {
+            quantity_m3: "5.00".into(),
+            rate_per_m3: "8000".into(),
+            ..correct.clone()
+        };
+        let expected = BigDecimal::from(10);
+        assert_eq!(
+            calculate(std::slice::from_ref(&correct), "27", "27").unwrap()["total"],
+            calculate(std::slice::from_ref(&manipulated), "27", "27").unwrap()["total"]
+        );
+        assert!(require_challan_quantity(std::slice::from_ref(&correct), &expected).is_ok());
+        assert!(matches!(
+            require_challan_quantity(&[manipulated], &expected),
+            Err(AppError::Conflict(_))
+        ));
+        let mut first = correct.clone();
+        first.quantity_m3 = "2.50".into();
+        let mut second = correct;
+        second.quantity_m3 = "7.50".into();
+        assert!(require_challan_quantity(&[first, second], &expected).is_ok());
+    }
+
     #[test]
     fn manual_invoice_numbers_are_bounded() {
         assert!(valid_num("INV/26/000001"));

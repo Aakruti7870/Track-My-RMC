@@ -28,6 +28,7 @@ fn app(db: PgPool) -> Router {
             email_api_key: None,
             email_from_address: "test@example.invalid".into(),
             otp_pepper: "owner-registration-test-pepper".repeat(5),
+            totp_keyring: trackmyrmc_backend::auth::totp_storage::TotpKeyring::for_test_fixtures(),
             otp_expiration_minutes: 5,
             otp_cooldown_seconds: 60,
             otp_max_verification_attempts: 3,

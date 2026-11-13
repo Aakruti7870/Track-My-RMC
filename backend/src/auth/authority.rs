@@ -149,7 +149,7 @@ pub async fn set_initial_password(
     })?;
     // Reserve the attempt before checking the proof. Incrementing only after a
     // failure lets parallel requests all pass the same pre-flight attempt count.
-    crate::auth::totp::verify_staff_totp_login(&state.db, user, &body.code).await?;
+    crate::auth::totp::verify_staff_totp_login(&state, user, &body.code).await?;
     let password_hash = crate::auth::password::hash_password(&body.password)?;
     let mut tx = state.db.begin().await?;
     let consumed: Option<uuid::Uuid> = sqlx::query_scalar(
@@ -293,7 +293,7 @@ pub async fn step_up(
             "Authenticator verification temporarily locked".into(),
         ));
     }
-    crate::auth::totp::verify_staff_totp_login(&state.db, authority.user_id, code).await?;
+    crate::auth::totp::verify_staff_totp_login(&state, authority.user_id, code).await?;
     sqlx::query(
         "INSERT INTO control_center_step_ups(user_id,token_hash,expires_at)
          VALUES($1,$2,NOW()+INTERVAL '5 minutes')

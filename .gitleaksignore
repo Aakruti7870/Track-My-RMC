@@ -1,0 +1,17 @@
+# Individually verified historical false positives. Each entry binds one commit, path, rule and line.
+
+# Consecutive empty KYC defaults in the deployment script.
+11c6999478f3821891d3a62fddb308d5d02a76d8:ops/aws-deploy-ec2.sh:generic-api-key:306
+19892d7f1ba833f88dbdfa00d9604c2d897bc948:ops/aws-deploy-ec2.sh:generic-api-key:305
+32b76d00e393a3c459b1c762eb8f752182f191de:ops/aws-deploy-ec2.sh:generic-api-key:309
+768583499578ecff68fc8988e526c250d42756f1:ops/aws-deploy-ec2.sh:generic-api-key:309
+
+# Public payment policy prose about data sharing.
+9f353303f559a39dc14c79874ed03bb7ed1368e4:docs/payments/RMC_PREPAID_PLAY_COMPLIANCE_AND_ROLLOUT.md:generic-api-key:11
+ad0142b7a4720860e5157c217a047ff5bd5fd29b:docs/payments/RMC_PREPAID_PLAY_COMPLIANCE_AND_ROLLOUT.md:generic-api-key:11
+
+# Deterministic synthetic challenge in an Authority PostgreSQL test.
+3c725e4948bd2a5d3c1386f550c1a4130986d33c:backend/tests/authority_web_security_tests.rs:generic-api-key:207
+
+# Public concrete-receiving checklist text.
+820e6498bc497b7469d18a3797fe9bbec09fff4e:frontend/app/customer/receiving-guide.tsx:generic-api-key:37

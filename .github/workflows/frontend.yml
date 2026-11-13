@@ -4,17 +4,6 @@ on:
   push:
     branches: [main]
   pull_request:
-    paths:
-      # Production gate requires both workflows on the same release SHA.
-      # Backend-only changes must trigger Frontend CI too.
-      - "backend/**"
-      - "frontend/**"
-      - "admin-web/**"
-      - "ops/**"
-      - "docs/security/**"
-      - ".github/workflows/frontend.yml"
-      - ".github/workflows/android-build.yml"
-      - ".github/workflows/deploy-aws-production.yml"
 
 jobs:
   typecheck:

@@ -40,6 +40,7 @@ fn state(db: PgPool) -> AppState {
             email_api_key: None,
             email_from_address: "test@example.invalid".into(),
             otp_pepper: "test-pepper".repeat(6),
+            totp_keyring: trackmyrmc_backend::auth::totp_storage::TotpKeyring::for_test_fixtures(),
             otp_expiration_minutes: 5,
             otp_cooldown_seconds: 60,
             otp_max_verification_attempts: 3,
@@ -314,7 +315,7 @@ async fn authority_password_bootstrap_requires_email_challenge_and_totp(db: PgPo
     .execute(&db)
     .await
     .unwrap();
-    let token = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF";
+    let token = hex::encode(rand::random::<[u8; 24]>());
     assert_eq!(token.len(), 48);
     let challenge_hash = hex::encode(Sha256::digest(token.as_bytes()));
     sqlx::query(

@@ -6,6 +6,7 @@ pub mod passkey;
 pub mod password;
 pub mod refresh;
 pub mod totp;
+pub mod totp_storage;
 
 pub use middleware::AuthUser;
 

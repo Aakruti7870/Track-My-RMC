@@ -271,6 +271,11 @@ systemctl restart nginx
 APP_JSON="$(aws secretsmanager get-secret-value --secret-id "$APP_SECRET" --query SecretString --output text)"
 printf '%s' "$APP_JSON" | jq -e '
   (.JWT_SECRET | type == "string" and length >= 64) and
+  (.TOTP_ENCRYPTION_ACTIVE_KEY_ID | type == "string" and test("^[a-zA-Z0-9_]{1,32}$")) and
+  (.TOTP_ENCRYPTION_KEYS | type == "string" and test("^[a-zA-Z0-9_]{1,32}=[0-9a-fA-F]{64}(,[a-zA-Z0-9_]{1,32}=[0-9a-fA-F]{64})*$")) and
+  (.TOTP_ENCRYPTION_ACTIVE_KEY_ID as $active |
+    (.TOTP_ENCRYPTION_KEYS | split(",") | map(split("=")[0])) as $ids |
+    (($ids | unique | length) == ($ids | length)) and ($ids | index($active) != null)) and
   (.OTP_PEPPER | type == "string" and length >= 32) and
   (.META_WHATSAPP_TOKEN | type == "string" and length > 0) and
   (.META_PHONE_NUMBER_ID | type == "string" and length > 0) and
@@ -406,6 +411,8 @@ PY
 
 JWT_SECRET="$(printf '%s' "$APP_JSON" | jq -r '.JWT_SECRET')"
 OTP_PEPPER="$(printf '%s' "$APP_JSON" | jq -r '.OTP_PEPPER')"
+TOTP_ENCRYPTION_ACTIVE_KEY_ID="$(printf '%s' "$APP_JSON" | jq -r '.TOTP_ENCRYPTION_ACTIVE_KEY_ID')"
+TOTP_ENCRYPTION_KEYS="$(printf '%s' "$APP_JSON" | jq -r '.TOTP_ENCRYPTION_KEYS')"
 META_TOKEN="$(printf '%s' "$APP_JSON" | jq -r '.META_WHATSAPP_TOKEN // empty')"
 META_PHONE="$(printf '%s' "$APP_JSON" | jq -r '.META_PHONE_NUMBER_ID // empty')"
 META_WABA="$(printf '%s' "$APP_JSON" | jq -r '.META_WABA_ID // empty')"
@@ -432,10 +439,10 @@ NATIVE_SUPPORT_AUTOMATION_ENABLED="$(printf '%s' "$APP_JSON" | jq -er '
 TRACKMYRMC_KYC_ENABLED="$(printf '%s' "$APP_JSON" | jq -r '.TRACKMYRMC_KYC_ENABLED // "false" | tostring')"
 TRACKMYRMC_KYC_ENV="$(printf '%s' "$APP_JSON" | jq -r '.TRACKMYRMC_KYC_ENV // "disabled"')"
 TRACKMYRMC_KYC_LIVE_APPROVED="$(printf '%s' "$APP_JSON" | jq -r '.TRACKMYRMC_KYC_LIVE_APPROVED // "false" | tostring')"
-SANDBOX_KYC_API_KEY=''
-SANDBOX_KYC_API_SECRET=''
-LIVE_KYC_API_KEY=''
-LIVE_KYC_API_SECRET=''
+SANDBOX_KYC_API_KEY=
+SANDBOX_KYC_API_SECRET=
+LIVE_KYC_API_KEY=
+LIVE_KYC_API_SECRET=
 [[ "$TRACKMYRMC_KYC_ENABLED" == 'true' || "$TRACKMYRMC_KYC_ENABLED" == 'false' ]] || { echo 'Invalid DigiLocker feature switch' >&2; exit 1; }
 [[ "$TRACKMYRMC_KYC_LIVE_APPROVED" == 'true' || "$TRACKMYRMC_KYC_LIVE_APPROVED" == 'false' ]] || { echo 'Invalid DigiLocker live approval' >&2; exit 1; }
 if [[ "$TRACKMYRMC_KYC_ENABLED" == 'true' ]]; then
@@ -617,6 +624,8 @@ PRIVILEGED_RECOVERY_ENABLED=false
 DATABASE_URL=$DATABASE_URL
 JWT_SECRET=$JWT_SECRET
 OTP_PEPPER=$OTP_PEPPER
+TOTP_ENCRYPTION_ACTIVE_KEY_ID=$TOTP_ENCRYPTION_ACTIVE_KEY_ID
+TOTP_ENCRYPTION_KEYS=$TOTP_ENCRYPTION_KEYS
 JWT_EXPIRATION_HOURS=72
 PORT=8000
 HOST=127.0.0.1

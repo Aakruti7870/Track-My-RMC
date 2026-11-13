@@ -102,8 +102,6 @@ pub async fn send_whatsapp_otp(
         ));
     }
 
-    state.otp_delivery.validate("whatsapp")?;
-
     // Check if user exists and verify role restrictions
     if let Some(user) = user_repo::find_by_phone_or_email(&state.db, &destination).await? {
         let is_review_fixture: bool = sqlx::query_scalar(
@@ -124,51 +122,7 @@ pub async fn send_whatsapp_otp(
         }
     }
 
-    // Rate limiting check
-    OtpEngine::check_rate_limit(&state.db, &destination, state.config.otp_cooldown_seconds).await?;
-
-    let (plain_otp, salt, hashed_otp) = OtpEngine::generate_secure_otp(&state.config.otp_pepper);
-
-    // Store as pending: this OTP cannot be verified until delivery is accepted.
-    let session_id = OtpEngine::create_pending_session(
-        &state.db,
-        crate::auth::otp::OtpSessionInput {
-            destination: &destination,
-            channel: "whatsapp",
-            purpose: &purpose,
-            salt: &salt,
-            hashed_otp: &hashed_otp,
-            expiration_minutes: state.config.otp_expiration_minutes,
-            max_attempts: state.config.otp_max_verification_attempts,
-        },
-    )
-    .await?;
-
-    // If delivery fails, discard the pending session and preserve the old OTP.
-    if let Err(send_error) = state
-        .otp_delivery
-        .send("whatsapp", &destination, &plain_otp, "Login")
-        .await
-    {
-        let _ = OtpEngine::discard_pending_session(&state.db, session_id).await;
-        return Err(send_error);
-    }
-
-    // Only activate the new OTP after Meta accepts the send request.
-    if let Err(activation_error) = OtpEngine::activate_pending_session(
-        &state.db,
-        session_id,
-        &destination,
-        "whatsapp",
-        &purpose,
-    )
-    .await
-    {
-        let _ = OtpEngine::discard_pending_session(&state.db, session_id).await;
-        return Err(activation_error);
-    }
-
-    Ok(())
+    OtpEngine::deliver(state, &destination, "whatsapp", &purpose, "Login").await
 }
 
 /// Verifies WhatsApp OTP and authenticates User or Driver
@@ -369,51 +323,7 @@ pub(crate) async fn deliver_email_otp(
     purpose: &str,
     portal: &str,
 ) -> Result<(), AppError> {
-    state.otp_delivery.validate("email")?;
-    // Serialize the cooldown check and pending reservation for each mailbox.
-    // Release the lock before sending through the external provider.
-    let mut tx = state.db.begin().await?;
-    sqlx::query("SELECT pg_advisory_xact_lock(92741,hashtext($1))")
-        .bind(destination)
-        .execute(&mut *tx)
-        .await?;
-    OtpEngine::check_rate_limit_on(&mut tx, destination, state.config.otp_cooldown_seconds).await?;
-
-    let (plain_otp, salt, hashed_otp) = OtpEngine::generate_secure_otp(&state.config.otp_pepper);
-
-    let session_id = OtpEngine::create_pending_session(
-        &mut *tx,
-        crate::auth::otp::OtpSessionInput {
-            destination,
-            channel: "email",
-            purpose,
-            salt: &salt,
-            hashed_otp: &hashed_otp,
-            expiration_minutes: state.config.otp_expiration_minutes,
-            max_attempts: state.config.otp_max_verification_attempts,
-        },
-    )
-    .await?;
-
-    tx.commit().await?;
-
-    if let Err(error) = state
-        .otp_delivery
-        .send("email", destination, &plain_otp, portal)
-        .await
-    {
-        let _ = OtpEngine::discard_pending_session(&state.db, session_id).await;
-        return Err(error);
-    }
-    if let Err(error) =
-        OtpEngine::activate_pending_session(&state.db, session_id, destination, "email", purpose)
-            .await
-    {
-        let _ = OtpEngine::discard_pending_session(&state.db, session_id).await;
-        return Err(error);
-    }
-
-    Ok(())
+    OtpEngine::deliver(state, destination, "email", purpose, portal).await
 }
 
 #[derive(Debug, Serialize)]
@@ -591,7 +501,7 @@ pub async fn start_staff_mfa_enrollment(
         ));
     }
     let (secret, otpauth_uri, recovery_codes) = crate::auth::totp::setup_totp_for_user(
-        &state.db,
+        state,
         user.id,
         user.email.as_deref().unwrap_or("staff"),
     )
@@ -633,7 +543,7 @@ pub async fn confirm_staff_mfa_enrollment(
             "Account is not authorized for staff enrollment.".into(),
         ));
     }
-    if let Err(err) = crate::auth::totp::verify_and_enable_totp(&state.db, user_id, code).await {
+    if let Err(err) = crate::auth::totp::verify_and_enable_totp(state, user_id, code).await {
         let _ = sqlx::query("UPDATE staff_mfa_challenges SET attempts=attempts+1 WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>NOW()").bind(&digest).execute(&state.db).await;
         return Err(err);
     }
@@ -668,9 +578,7 @@ pub async fn verify_staff_mfa(
             "Authenticator enrollment is required before login.".to_string(),
         ));
     }
-    if let Err(err) =
-        crate::auth::totp::verify_staff_totp_login(&state.db, user_id, &req.code).await
-    {
+    if let Err(err) = crate::auth::totp::verify_staff_totp_login(state, user_id, &req.code).await {
         let _ = sqlx::query("UPDATE staff_mfa_challenges SET attempts=attempts+1 WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>NOW()")
             .bind(&digest).execute(&state.db).await;
         return Err(err);

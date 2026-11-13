@@ -567,7 +567,7 @@ pub async fn admin_step_up(
         ));
     }
     // Verify the actual enrolled credential; never treat a supplied code as proof by itself.
-    verify_staff_totp_login(&state.db, auth_user.user_id, code).await?;
+    verify_staff_totp_login(&state, auth_user.user_id, code).await?;
     let token_hash = session_token_hash(&headers)?;
     sqlx::query(
         "INSERT INTO control_center_step_ups (user_id, token_hash, expires_at) VALUES ($1, $2, NOW() + INTERVAL '5 minutes') ON CONFLICT (user_id, token_hash) DO UPDATE SET expires_at = EXCLUDED.expires_at",

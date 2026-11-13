@@ -1,3 +1,4 @@
+use crate::auth::totp_storage::TotpKeyring;
 use std::env;
 
 #[derive(Clone, Debug)]
@@ -19,6 +20,7 @@ pub struct AppConfig {
     pub email_from_address: String,
 
     pub otp_pepper: String,
+    pub totp_keyring: TotpKeyring,
     pub otp_expiration_minutes: i64,
     pub otp_cooldown_seconds: i64,
     pub otp_max_verification_attempts: i32,
@@ -69,6 +71,23 @@ impl AppConfig {
             }
             Err(_) => {
                 return Err("OTP_PEPPER environment variable is required in production".to_string())
+            }
+        };
+
+        let totp_keyring = match (
+            env::var("TOTP_ENCRYPTION_ACTIVE_KEY_ID"),
+            env::var("TOTP_ENCRYPTION_KEYS"),
+        ) {
+            (Ok(active), Ok(keys)) => TotpKeyring::parse(&active, &keys)?,
+            (Err(env::VarError::NotPresent), Err(env::VarError::NotPresent))
+                if environment == "test" =>
+            {
+                TotpKeyring::for_test_fixtures()
+            }
+            _ => {
+                return Err(
+                    "TOTP_ENCRYPTION_ACTIVE_KEY_ID and TOTP_ENCRYPTION_KEYS are required".into(),
+                );
             }
         };
 
@@ -172,6 +191,7 @@ impl AppConfig {
             email_api_key,
             email_from_address,
             otp_pepper,
+            totp_keyring,
             otp_expiration_minutes,
             otp_cooldown_seconds,
             otp_max_verification_attempts,

@@ -19,10 +19,6 @@ concurrency:
 
 jobs:
   codeql:
-    # Temporary, auditable PR #190-only bypass requested for review.
-    # Does not close CodeQL findings or suppress main, schedule, manual, or other PR scans.
-    # Remove this exception before approving production release.
-    if: github.event_name != 'pull_request' || github.event.pull_request.number != 190
     name: CodeQL (${{ matrix.language }})
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -56,11 +52,6 @@ jobs:
           category: "/language:${{ matrix.language }}"
 
   secret-history:
-    # Temporary release-process exception: do not block PR/main CI on historical
-    # secret candidates. This does NOT remediate or dismiss existing findings.
-    # Preserve manual and scheduled full-history scans; CodeQL and Trivy stay active
-    # on PRs and main pushes. Restore the automatic gate after private triage.
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     name: Gitleaks (complete Git history; private results)
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -96,10 +87,11 @@ jobs:
           install -d -m 0700 "$RUNNER_TEMP/gitleaks-head"
           git archive --format=tar HEAD | tar -xf - -C "$RUNNER_TEMP/gitleaks-head"
           rc=0
-          "$RUNNER_TEMP/gitleaks" dir "$RUNNER_TEMP/gitleaks-head" \
+          (cd "$RUNNER_TEMP/gitleaks-head" &&
+            "$RUNNER_TEMP/gitleaks" dir "$RUNNER_TEMP/gitleaks-head" \
             --config "$GITHUB_WORKSPACE/.gitleaks.toml" \
             --no-banner --redact --report-format json \
-            --report-path "$RUNNER_TEMP/gitleaks-current.json" \
+            --report-path "$RUNNER_TEMP/gitleaks-current.json") \
             > "$RUNNER_TEMP/gitleaks-current.log" 2>&1 || rc=$?
           count=0
           if (( rc == 1 )); then
@@ -123,6 +115,7 @@ jobs:
           set -euo pipefail
           rc=0
           "$RUNNER_TEMP/gitleaks" git . \
+            --gitleaks-ignore-path "$GITHUB_WORKSPACE/.gitleaksignore" \
             --config "$GITHUB_WORKSPACE/.gitleaks.toml" \
             --no-banner --redact --log-opts='--all' \
             --report-format json \

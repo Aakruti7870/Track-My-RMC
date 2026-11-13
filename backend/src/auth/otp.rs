@@ -57,15 +57,57 @@ impl OtpEngine {
         hex::encode(mac.finalize().into_bytes())
     }
 
-    pub async fn check_rate_limit(
-        pool: &PgPool,
+    /// Reserve the real pending OTP under the same lock as the cooldown check.
+    /// Provider delivery runs after commit, so it never holds the database lock.
+    pub(crate) async fn deliver(
+        state: &AppState,
         destination: &str,
-        cooldown_seconds: i64,
+        channel: &str,
+        purpose: &str,
+        portal: &str,
     ) -> Result<(), AppError> {
-        Self::check_rate_limit_on(&mut *pool.acquire().await?, destination, cooldown_seconds).await
+        state.otp_delivery.validate(channel)?;
+        let (code, salt, hashed_otp) = Self::generate_secure_otp(&state.config.otp_pepper);
+        let mut tx = state.db.begin().await?;
+        sqlx::query("SELECT pg_advisory_xact_lock(92741,hashtext($1))")
+            .bind(destination)
+            .execute(&mut *tx)
+            .await?;
+        Self::check_rate_limit(&mut tx, destination, state.config.otp_cooldown_seconds).await?;
+        let session_id = Self::create_pending_session(
+            &mut *tx,
+            OtpSessionInput {
+                destination,
+                channel,
+                purpose,
+                salt: &salt,
+                hashed_otp: &hashed_otp,
+                expiration_minutes: state.config.otp_expiration_minutes,
+                max_attempts: state.config.otp_max_verification_attempts,
+            },
+        )
+        .await?;
+        tx.commit().await?;
+
+        if let Err(error) = state
+            .otp_delivery
+            .send(channel, destination, &code, portal)
+            .await
+        {
+            let _ = Self::discard_pending_session(&state.db, session_id).await;
+            return Err(error);
+        }
+        if let Err(error) =
+            Self::activate_pending_session(&state.db, session_id, destination, channel, purpose)
+                .await
+        {
+            let _ = Self::discard_pending_session(&state.db, session_id).await;
+            return Err(error);
+        }
+        Ok(())
     }
 
-    pub(crate) async fn check_rate_limit_on(
+    async fn check_rate_limit(
         connection: &mut sqlx::PgConnection,
         destination: &str,
         cooldown_seconds: i64,

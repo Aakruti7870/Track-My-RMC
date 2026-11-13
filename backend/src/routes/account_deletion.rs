@@ -159,50 +159,6 @@ async fn record_request(
     Ok(row)
 }
 
-// Reuse the same deletion-purpose OTP creation and delivery in both flows.
-async fn send_deletion_otp(
-    state: &AppState,
-    destination: &str,
-    channel: &str,
-) -> Result<(), AppError> {
-    state.otp_delivery.validate(channel)?;
-    let (otp, salt, hashed_otp) = OtpEngine::generate_secure_otp(&state.config.otp_pepper);
-    let session_id = OtpEngine::create_pending_session(
-        &state.db,
-        crate::auth::otp::OtpSessionInput {
-            destination,
-            channel,
-            purpose: DELETION_OTP_PURPOSE,
-            salt: &salt,
-            hashed_otp: &hashed_otp,
-            expiration_minutes: state.config.otp_expiration_minutes,
-            max_attempts: state.config.otp_max_verification_attempts,
-        },
-    )
-    .await?;
-
-    let delivery = state
-        .otp_delivery
-        .send(channel, destination, &otp, "Account Deletion")
-        .await;
-
-    if let Err(error) = delivery {
-        let _ = OtpEngine::discard_pending_session(&state.db, session_id).await;
-        return Err(error);
-    }
-
-    OtpEngine::activate_pending_session(
-        &state.db,
-        session_id,
-        destination,
-        channel,
-        DELETION_OTP_PURPOSE,
-    )
-    .await?;
-
-    Ok(())
-}
-
 pub async fn send_signed_in_otp(
     State(state): State<AppState>,
     auth_user: AuthUser,
@@ -214,8 +170,14 @@ pub async fn send_signed_in_otp(
     let identifier = deletion_identifier(&user.role, &user.phone, user.email.as_deref())?;
     let (destination, channel) = normalize_identifier(&identifier)?;
     // The signed-in flow reports cooldown errors instead of claiming a code was sent.
-    OtpEngine::check_rate_limit(&state.db, &destination, state.config.otp_cooldown_seconds).await?;
-    send_deletion_otp(&state, &destination, channel).await?;
+    OtpEngine::deliver(
+        &state,
+        &destination,
+        channel,
+        DELETION_OTP_PURPOSE,
+        "Account Deletion",
+    )
+    .await?;
     Ok(Json(json!({"success":true,"channel":channel})))
 }
 
@@ -246,8 +208,14 @@ pub async fn send_public_otp(
         return Ok(public_otp_response(channel));
     }
 
-    match OtpEngine::check_rate_limit(&state.db, &destination, state.config.otp_cooldown_seconds)
-        .await
+    match OtpEngine::deliver(
+        &state,
+        &destination,
+        channel,
+        DELETION_OTP_PURPOSE,
+        "Account Deletion",
+    )
+    .await
     {
         Ok(()) => {}
         Err(AppError::BadRequest(_) | AppError::Forbidden(_)) => {
@@ -256,8 +224,6 @@ pub async fn send_public_otp(
         }
         Err(error) => return Err(error),
     }
-
-    send_deletion_otp(&state, &destination, channel).await?;
 
     Ok(public_otp_response(channel))
 }

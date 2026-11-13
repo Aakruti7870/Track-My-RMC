@@ -7,15 +7,6 @@ on:
   # to main; otherwise their base branch would silently skip required CI.
   pull_request:
     branches: [ main, 'feat/**', 'integration/**' ]
-    paths:
-      - 'backend/**'
-      - 'frontend/**'
-      - 'admin-web/**'
-      - 'ops/**'
-      - 'docs/security/**'
-      - '.github/workflows/backend.yml'
-      - '.github/workflows/android-build.yml'
-      - '.github/workflows/deploy-aws-production.yml'
 
 env:
   CARGO_TERM_COLOR: always
@@ -119,6 +110,15 @@ jobs:
       - name: Verify staging template isolation
         if: success() && matrix.postgres == 18
         run: node ops/staging/verify-isolation.mjs
+      - name: Generate disposable browser test encryption key
+        if: success() && matrix.postgres == 18
+        run: |
+          key="$(openssl rand -hex 32)"
+          echo "::add-mask::$key"
+          {
+            echo 'TOTP_ENCRYPTION_ACTIVE_KEY_ID=browser_ci'
+            printf 'TOTP_ENCRYPTION_KEYS=browser_ci=%s\n' "$key"
+          } >> "$GITHUB_ENV"
       - name: Verify admin browser against Rust and PostgreSQL
         if: success() && matrix.postgres == 18
         env:

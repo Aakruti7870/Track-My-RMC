@@ -182,7 +182,7 @@ pub async fn setup_totp(
 ) -> Result<impl IntoResponse, AppError> {
     let user_label = auth_user.email.clone().unwrap_or(auth_user.phone.clone());
     let (secret, qr_uri, backup_codes) =
-        setup_totp_for_user(&state.db, auth_user.user_id, &user_label).await?;
+        setup_totp_for_user(&state, auth_user.user_id, &user_label).await?;
 
     Ok(Json(json!({
         "success": true,
@@ -203,7 +203,7 @@ pub async fn verify_totp_setup(
     auth_user: AuthUser,
     Json(payload): Json<VerifyTotpSetupRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    crate::auth::totp::verify_and_enable_totp(&state.db, auth_user.user_id, &payload.code).await?;
+    crate::auth::totp::verify_and_enable_totp(&state, auth_user.user_id, &payload.code).await?;
     Ok(Json(json!({
         "success": true,
         "message": "TOTP Authenticator successfully enabled on your account."

@@ -22,6 +22,7 @@ on:
       - "Backend CI"
       - "Frontend CI"
       - "Dependency Security Audit"
+      - "Prelaunch Static Security Scans"
     types:
       - completed
     branches:
@@ -110,7 +111,7 @@ jobs:
 
           # Display names match workflow_run; resolve immutable IDs via the API.
           # A CI workflow MUST have an actual successful push run for this main SHA.
-          for wf_name in "Backend CI" "Frontend CI" "Dependency Security Audit"; do
+          for wf_name in "Backend CI" "Frontend CI" "Dependency Security Audit" "Prelaunch Static Security Scans"; do
             echo "Checking required workflow: $wf_name"
 
             workflow_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows?per_page=100" |
@@ -141,6 +142,24 @@ jobs:
 
               echo "${wf_name} (${workflow_id}): $status"
               if [ "$status" = "completed:success" ]; then
+                run_id="$(printf '%s' "$response" | jq -er --arg sha "$RELEASE_SHA" '
+                  [.workflow_runs[] | select(.head_sha == $sha and .event == "push" and .head_branch == "main")]
+                  | sort_by(.run_number, .run_attempt) | last | .id
+                ')"
+                jobs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/jobs?per_page=100&filter=latest")"
+                case "$wf_name" in
+                  "Backend CI") expected='["Rust Check, Clippy & Test (PostgreSQL 16)","Rust Check, Clippy & Test (PostgreSQL 18)"]' ;;
+                  "Frontend CI") expected='["typecheck","Admin dashboard build"]' ;;
+                  "Dependency Security Audit") expected='["RustSec full Cargo.lock audit","npm lock and advisory audit (admin-web)","npm lock and advisory audit (frontend)"]' ;;
+                  "Prelaunch Static Security Scans") expected='["CodeQL (actions)","CodeQL (javascript-typescript)","CodeQL (rust)","Gitleaks (complete Git history; private results)","Trivy (high/critical repository misconfigurations)"]' ;;
+                esac
+                printf '%s' "$jobs" | jq -e --argjson expected "$expected" '
+                  .jobs as $jobs | all($expected[]; . as $name |
+                    [$jobs[] | select(.name == $name) | .conclusion] == ["success"])
+                ' >/dev/null || {
+                  echo "A required job is missing, skipped or unsuccessful in $wf_name."
+                  exit 1
+                }
                 passed=true
                 break
               fi

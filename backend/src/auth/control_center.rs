@@ -300,12 +300,13 @@ pub async fn recover(
     if purpose.as_deref() != Some(ADMIN_LOGIN) || !user.is_active {
         return Err(fail_admin_proof(tx, user.id).await?);
     }
-    let secret: String = sqlx::query_scalar(
+    let stored: String = sqlx::query_scalar(
         "SELECT secret_key FROM user_totp_credentials WHERE user_id=$1 AND is_enabled FOR UPDATE",
     )
     .bind(user.id)
     .fetch_one(&mut *tx)
     .await?;
+    let secret = state.config.totp_keyring.open(user.id, &stored)?;
     let normalized = body.code.trim();
     if !matches!(normalized.len(), 8 | 9)
         || !normalized
@@ -381,12 +382,13 @@ pub async fn login(
         _ => return Err(fail_admin_proof(tx, user.id).await?),
     };
     let secret = if purpose == ADMIN_LOGIN {
-        sqlx::query_scalar(
+        let stored: String = sqlx::query_scalar(
             "SELECT secret_key FROM user_totp_credentials WHERE user_id=$1 AND is_enabled FOR UPDATE",
         )
         .bind(user.id)
         .fetch_one(&mut *tx)
-        .await?
+        .await?;
+        state.config.totp_keyring.open(user.id, &stored)?
     } else {
         TotpEngine::admin_enrollment_secret(&state.config.otp_pepper, &body.challenge_token)
     };
@@ -413,10 +415,11 @@ pub async fn login(
             .iter()
             .map(|code| hash_backup_code(code, &secret))
             .collect();
+        let encrypted = state.config.totp_keyring.seal(user.id, &secret)?;
         if purpose == ADMIN_ENROLLMENT {
             sqlx::query("INSERT INTO user_totp_credentials(user_id,secret_key,is_enabled,backup_codes,last_login_totp_step)
                          VALUES($1,$2,TRUE,$3,$4)")
-                .bind(user.id).bind(&secret).bind(&hashes).bind(step).execute(&mut *tx).await?;
+                .bind(user.id).bind(&encrypted).bind(&hashes).bind(step).execute(&mut *tx).await?;
             sqlx::query("INSERT INTO control_center_access(user_id,approved,permissions) VALUES($1,TRUE,$2)")
                 .bind(user.id).bind(PRIMARY_PERMISSIONS).execute(&mut *tx).await?;
             sqlx::query("UPDATE users SET is_active=TRUE,is_verified=TRUE,hashed_password='!web-only-no-password!',
@@ -425,7 +428,7 @@ pub async fn login(
         } else {
             sqlx::query("UPDATE user_totp_credentials SET secret_key=$2,backup_codes=$3,last_login_totp_step=$4,
                          updated_at=NOW() WHERE user_id=$1 AND is_enabled")
-                .bind(user.id).bind(&secret).bind(&hashes).bind(step).execute(&mut *tx).await?;
+                .bind(user.id).bind(&encrypted).bind(&hashes).bind(step).execute(&mut *tx).await?;
         }
         let action = if purpose == ADMIN_ENROLLMENT {
             "control_center.bootstrap.first_admin"
@@ -525,7 +528,8 @@ pub async fn login_for_role(
         "SELECT u.id, u.phone, u.email, u.full_name, t.secret_key, u.hashed_password FROM users u
          JOIN control_center_access a ON a.user_id=u.id
          JOIN user_totp_credentials t ON t.user_id=u.id AND t.is_enabled=TRUE
-         WHERE LOWER(u.email)=$1 AND u.role=$2 AND u.is_active=TRUE AND a.approved=TRUE",
+         WHERE LOWER(u.email)=$1 AND u.role=$2 AND u.is_active=TRUE AND a.approved=TRUE
+         FOR UPDATE OF t",
     )
     .bind(&identifier)
     .bind(role)
@@ -545,33 +549,29 @@ pub async fn login_for_role(
     })
     .await
     .map_err(|_| AppError::InternalError("Password verification unavailable".into()))?;
-    let verified_step = identity.as_ref().filter(|_| valid_password).and_then(|i| {
-        [-1_i64, 0, 1]
-            .into_iter()
-            .map(|offset| now.timestamp() / 30 + offset)
-            .find(|step| {
-                last_step.is_none_or(|last| *step > last)
-                    && TotpEngine::compute_code(&i.4, (*step * 30) as u64)
-                        .is_ok_and(|code| code == body.code)
-            })
-    });
+    let verified_step = if let Some(identity) = identity.as_ref().filter(|_| valid_password) {
+        let secret = state.config.totp_keyring.open(identity.0, &identity.4)?;
+        TotpEngine::verified_step(&secret, &body.code)?
+            .filter(|step| last_step.is_none_or(|last| *step > last))
+    } else {
+        None
+    };
     let Some(step) = verified_step else {
         sqlx::query("INSERT INTO audit_logs (action,resource_type,metadata) VALUES ('admin.auth.failed','admin_session','{}')")
             .execute(&mut *tx).await?;
         tx.commit().await?;
         return Err(AppError::Unauthorized("Authentication failed".into()));
     };
-    let (id, phone, email, full_name, secret, _) = identity.expect("verified identity");
+    let (id, phone, email, full_name, _, _) = identity.expect("verified identity");
     // All privileged proof surfaces share the credential counter. Updating it in
     // this transaction serializes concurrent login/step-up/enrollment proofs.
     let accepted = sqlx::query(
         "UPDATE user_totp_credentials SET last_login_totp_step=$2
-         WHERE user_id=$1 AND is_enabled AND secret_key=$3
+         WHERE user_id=$1 AND is_enabled
            AND (last_login_totp_step IS NULL OR last_login_totp_step<$2)",
     )
     .bind(id)
     .bind(step)
-    .bind(&secret)
     .execute(&mut *tx)
     .await?;
     if accepted.rows_affected() != 1 {
@@ -694,7 +694,7 @@ pub(crate) async fn rotate_password(
             "Current credentials are invalid".into(),
         ));
     }
-    crate::auth::totp::verify_staff_totp_login(&state.db, user_id, &body.code).await?;
+    crate::auth::totp::verify_staff_totp_login(state, user_id, &body.code).await?;
     let replacement = crate::auth::password::hash_password(&body.new_password)?;
     let mut tx = state.db.begin().await?;
     let updated = sqlx::query(
