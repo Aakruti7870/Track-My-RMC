@@ -2707,12 +2707,13 @@ async fn parallel_first_whatsapp_requests_preserve_customer_registration(db: PgP
     let delivery = Arc::new(MemoryDelivery::default());
     state.otp_delivery = delivery.clone();
     let app = build_app_router(state);
-    let phone = "12025550176";
+    let phone = "919876500176";
+    let local_phone = "9876500176";
     let send = "/api/auth/otp/whatsapp/send";
 
     let (first, second) = tokio::join!(
         call(&app, send, Some(json!({"phone":format!("+{phone}")})), None),
-        call(&app, send, Some(json!({"phone":phone})), None),
+        call(&app, send, Some(json!({"phone":local_phone})), None),
     );
     let mut results = [first.0, second.0];
     results.sort();
@@ -2729,11 +2730,16 @@ async fn parallel_first_whatsapp_requests_preserve_customer_registration(db: PgP
     let (status, auth) = call(
         &app,
         "/api/auth/otp/whatsapp/verify",
-        Some(json!({"phone":phone,"otp":delivery.take_code(phone)})),
+        Some(json!({"phone":local_phone,"otp":delivery.take_code(phone)})),
         None,
     )
     .await;
-    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "registration result: {}",
+        auth["message"]
+    );
     assert_eq!(auth["role"], "customer");
     assert_eq!(
         call(&app, "/api/me", None, auth["token"].as_str()).await.0,

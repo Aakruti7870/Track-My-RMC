@@ -1432,3 +1432,67 @@ async fn unavailable_external_providers_cannot_fabricate_kyc_or_paid_subscriptio
     let counts:(i64,i64)=sqlx::query_as("SELECT (SELECT COUNT(*) FROM plant_plan_payments),(SELECT COUNT(*) FROM plant_plan_subscriptions)").fetch_one(&pool).await.unwrap();
     assert_eq!(counts, (0, 0));
 }
+
+#[sqlx::test]
+async fn invoice_declaration_and_audit_commit_or_roll_back_together(pool: PgPool) {
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use tower::ServiceExt;
+    use trackmyrmc_backend::{auth::jwt::generate_token, routes::build_app_router};
+
+    let (owner, order, _, _) = fixture(&pool).await;
+    sqlx::query("UPDATE users SET role='owner' WHERE id=$1")
+        .bind(owner)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let plant: Uuid = sqlx::query_scalar("SELECT plant_id FROM orders WHERE id=$1")
+        .bind(order)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let state = state(pool.clone());
+    let token = generate_token(owner, "owner", "test", None, &state.config.jwt_secret, 1).unwrap();
+    let app = build_app_router(state);
+    let submit = |required: bool| {
+        app.clone().oneshot(
+            Request::post(format!("/api/invoice-workspace/plants/{plant}/compliance"))
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::json!({
+                    "e_invoice_required": required,
+                    "acceptance": "I have reviewed e-invoicing applicability for this plant GSTIN",
+                }).to_string()))
+                .unwrap(),
+        )
+    };
+
+    assert_eq!(submit(true).await.unwrap().status(), StatusCode::OK);
+    sqlx::query(
+        "ALTER TABLE audit_logs ADD CONSTRAINT reject_test_invoice_audit
+         CHECK (action <> 'invoice_compliance_declared') NOT VALID",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        submit(false).await.unwrap().status(),
+        StatusCode::INTERNAL_SERVER_ERROR
+    );
+    let required: bool = sqlx::query_scalar(
+        "SELECT e_invoice_required FROM invoice_compliance_declarations WHERE plant_id=$1",
+    )
+    .bind(plant)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let audit_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM audit_logs WHERE action='invoice_compliance_declared' AND resource_id=$1",
+    )
+    .bind(plant.to_string())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(required);
+    assert_eq!(audit_count, 1);
+}
