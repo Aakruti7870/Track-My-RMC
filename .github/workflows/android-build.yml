@@ -21,6 +21,9 @@ env:
   CI: "1"
   EXPO_PUBLIC_BACKEND_URL: https://trackmyrmc.com
   EXPECTED_PLAY_UPLOAD_SHA1: "3D:5F:80:59:1C:BA:69:1B:03:28:4D:A1:74:91:38:1D:8F:A1:32:DC"
+  # Populate only after comparing against the Play Console UPLOAD certificate.
+  # The Play App Signing certificate and the AAB file checksum are not substitutes.
+  EXPECTED_PLAY_UPLOAD_SHA256: ${{ vars.TRACKMYRMC_PLAY_UPLOAD_SHA256 }}
   PACKAGE_NAME: com.trackmyrmc.concreteking
   VERSION_CODE: "95"
   VERSION_NAME: "2.0.35"
@@ -68,6 +71,10 @@ jobs:
           [ -n "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" ] || missing+=(ANDROID_KEYSTORE_PASSWORD)
           [ -n "${{ secrets.ANDROID_STORE_PASSWORD }}" ] || missing+=(ANDROID_STORE_PASSWORD)
           [ -n "${{ secrets.ANDROID_KEY_ALIAS }}" ] || missing+=(ANDROID_KEY_ALIAS)
+          if [[ ! "$EXPECTED_PLAY_UPLOAD_SHA256" =~ ^([[:xdigit:]]{2}:){31}[[:xdigit:]]{2}$ ]]; then
+            echo "Set TRACKMYRMC_PLAY_UPLOAD_SHA256 to the independently verified Google Play upload-certificate SHA-256 (colon-separated)."
+            exit 1
+          fi
           if [ ${#missing[@]} -gt 0 ]; then
             echo "Missing required signing secrets: ${missing[*]}"
             exit 1
@@ -213,8 +220,11 @@ jobs:
           set -euo pipefail
           info="$(keytool -list -v -keystore upload-keystore.jks -alias "$KEY_ALIAS" -storepass "$STORE_PASSWORD" 2>/dev/null)"
           sha1="$(printf '%s\n' "$info" | awk -F'SHA1: ' '/SHA1:/{print $2; exit}' | tr -d '\r')"
+          sha256="$(printf '%s\n' "$info" | awk -F'SHA256: ' '/SHA256:/{print $2; exit}' | tr -d '\r')"
           test "$sha1" = "$EXPECTED_PLAY_UPLOAD_SHA1"
+          test "${sha256^^}" = "${EXPECTED_PLAY_UPLOAD_SHA256^^}"
           echo "Upload certificate SHA1 verified: $sha1"
+          echo "Upload certificate SHA256 verified: $sha256"
 
       - name: Detect private-key password
         working-directory: frontend/android/app
@@ -308,8 +318,11 @@ jobs:
           aab=app/build/outputs/bundle/release/app-release.aab
           signer="$(keytool -printcert -jarfile "$aab" 2>/dev/null)"
           sha1="$(printf '%s\n' "$signer" | awk -F'SHA1: ' '/SHA1:/{print $2; exit}' | tr -d '\r')"
+          sha256="$(printf '%s\n' "$signer" | awk -F'SHA256: ' '/SHA256:/{print $2; exit}' | tr -d '\r')"
           test "$sha1" = "$EXPECTED_PLAY_UPLOAD_SHA1"
+          test "${sha256^^}" = "${EXPECTED_PLAY_UPLOAD_SHA256^^}"
           echo "Final AAB signer SHA1 verified: $sha1"
+          echo "Final AAB signer SHA256 verified: $sha256"
           echo "AAB_SHA256=$(sha256sum "$aab" | awk '{print $1}')"
 
       - name: Upload signed AAB
@@ -368,6 +381,10 @@ jobs:
           cert="$(sed -n 's/^Signer #1 certificate SHA-1 digest: //p' "$RUNNER_TEMP/apk-verify.txt" | head -n 1 | tr -d ':' | tr '[:lower:]' '[:upper:]')"
           expected="$(printf '%s' "$EXPECTED_PLAY_UPLOAD_SHA1" | tr -d ':')"
           test "$cert" = "$expected"
+          cert256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/apk-verify.txt" | head -n 1 | tr -d ':' | tr '[:lower:]' '[:upper:]')"
+          expected256="$(printf '%s' "$EXPECTED_PLAY_UPLOAD_SHA256" | tr -d ':' | tr '[:lower:]' '[:upper:]')"
+          test "$cert256" = "$expected256"
+          echo "Signed APK upload-certificate SHA256 verified"
           "$build_tools/zipalign" -c -P 16 4 "$signed"
           "$build_tools/aapt" dump badging "$signed" | grep -F "package: name='$PACKAGE_NAME' versionCode='$VERSION_CODE' versionName='$VERSION_NAME'"
           echo "Signed APK SHA256: $(sha256sum "$signed" | awk '{print $1}')"
