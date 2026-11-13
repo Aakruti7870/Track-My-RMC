@@ -3,8 +3,8 @@
 CREATE TABLE dispatch_whatsapp_marketing_first_touch (
     phone_e164 VARCHAR(16) PRIMARY KEY
         CHECK (phone_e164 ~ '^[+][1-9][0-9]{7,14}$'),
-    order_id UUID NOT NULL REFERENCES orders(id) ON DELETE RESTRICT,
-    plant_id UUID NOT NULL REFERENCES rmc_plants(id) ON DELETE RESTRICT,
+    order_id UUID REFERENCES orders(id) ON DELETE SET NULL,
+    plant_id UUID REFERENCES rmc_plants(id) ON DELETE SET NULL,
     reserved_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
