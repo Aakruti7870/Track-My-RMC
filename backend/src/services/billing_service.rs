@@ -40,7 +40,7 @@ fn validated_payment_request_id(value: Option<&str>) -> Result<&str, AppError> {
 /// Apply independently verified Cashfree order advances to the supplier's
 /// final tax invoice, exactly once. This shares the parent order lock used
 /// by manual invoice payments and must run in the invoice creation transaction.
-async fn apply_verified_rmc_prepayments(
+pub(crate) async fn apply_verified_rmc_prepayments(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     order_id: Uuid,
     invoice_id: Uuid,
@@ -177,6 +177,18 @@ pub async fn create_invoice(
         apply_verified_rmc_prepayments(&mut tx, order, *id, &total).await?;
         tx.commit().await?;
         return Ok(json!({"success":true,"id":id,"invoice_id":id,"invoice_number":number}));
+    }
+
+    // An existing draft must not be bypassed by an older installed app client.
+    let reviewed_draft: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM invoice_drafts WHERE order_id=$1)")
+            .bind(order)
+            .fetch_one(&mut *tx)
+            .await?;
+    if reviewed_draft {
+        return Err(AppError::Conflict(
+            "Open the standard invoice editor and review the draft before issuing".into(),
+        ));
     }
     let tax: BigDecimal = row.get("tax_amount");
     if total <= 0 || tax < 0 || tax > total {

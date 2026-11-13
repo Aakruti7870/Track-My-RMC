@@ -127,6 +127,9 @@ pub async fn advance(
                  JOIN transit_mixers m ON m.id=l.mixer_id JOIN users d ON d.id=l.driver_id WHERE l.id=$1
                  ON CONFLICT (load_id) DO NOTHING",
             ).bind(id).bind(format!("CH-{}",id.simple())).execute(&mut *tx).await?;
+            // Create the order-level draft atomically with the prepared challan.
+            // Financial data is NOT returned to the dispatch actor.
+            crate::routes::invoice_workflow::auto_prepare_tx(&mut tx, load.order_id, actor).await?;
             // Pre-create the notification while the challan is generated;
             // the customer is not told "dispatched" until actual dispatch.
             super::dispatch_whatsapp::prepare_in_tx(&mut tx, id).await?;

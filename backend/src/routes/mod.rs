@@ -23,6 +23,8 @@ pub mod driver_routes;
 pub mod finance_ops_routes;
 pub mod health;
 pub mod hr_routes;
+pub mod invoice_print;
+pub mod invoice_workflow;
 pub mod loads_routes;
 pub mod maps_routes;
 pub mod master_data_routes;
@@ -987,6 +989,35 @@ pub fn build_app_router(state: AppState) -> Router {
         .route(
             "/api/owner/invoices",
             get(owner_routes::list_owner_invoices),
+        )
+        // One global invoice template, plant-scoped buyer master and draft review.
+        .route(
+            "/api/invoice-workspace/orders/:order_id",
+            get(invoice_workflow::workspace),
+        )
+        .route(
+            "/api/invoice-workspace/plants/:plant_id/buyers",
+            post(invoice_workflow::buyer_upsert),
+        )
+        .route(
+            "/api/invoice-workspace/plants/:plant_id/compliance",
+            post(invoice_workflow::record_compliance),
+        )
+        .route(
+            "/api/invoice-workspace/drafts/:draft_id",
+            put(invoice_workflow::save_draft),
+        )
+        .route(
+            "/api/invoice-workspace/drafts/:draft_id/preview",
+            get(invoice_workflow::preview),
+        )
+        .route(
+            "/api/invoice-workspace/drafts/:draft_id/issue",
+            post(invoice_workflow::issue),
+        )
+        .route(
+            "/api/invoices/:invoice_id/print",
+            get(invoice_workflow::issued_document),
         )
         .route(
             "/api/owner/invoices/:invoice_id/payment",
