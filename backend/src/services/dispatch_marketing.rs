@@ -98,6 +98,11 @@ pub async fn tick(state: &AppState) -> Result<usize, AppError> {
              WHERE q.status='pending'
                AND prefs.enabled AND prefs.marketing_enabled
                AND c.opted_in AND c.marketing_opted_in
+               AND c.marketing_consent_recorded_at IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM whatsapp_marketing_opt_outs o
+                               WHERE o.phone_e164=c.phone_e164)
+               AND NOT EXISTS (SELECT 1 FROM dispatch_whatsapp_marketing_first_touch ft
+                               WHERE ft.phone_e164=c.phone_e164)
                AND utility.status IN ('accepted','sent','delivered','read')
                AND utility.accepted_at < NOW()-INTERVAL '2 minutes'
                AND l.dispatched_at > NOW()-INTERVAL '2 hours'
@@ -125,7 +130,12 @@ pub async fn tick(state: &AppState) -> Result<usize, AppError> {
              JOIN dispatch_whatsapp_plant_settings p
                ON p.plant_id=$2
              WHERE c.order_id=$1 AND c.opted_in AND c.marketing_opted_in
+               AND c.marketing_consent_recorded_at IS NOT NULL
                AND p.enabled AND p.marketing_enabled
+               AND NOT EXISTS (SELECT 1 FROM whatsapp_marketing_opt_outs o
+                               WHERE o.phone_e164=c.phone_e164)
+               AND NOT EXISTS (SELECT 1 FROM dispatch_whatsapp_marketing_first_touch ft
+                               WHERE ft.phone_e164=c.phone_e164)
                AND EXISTS(
                    SELECT 1 FROM order_loads l WHERE l.order_id=$1
                      AND l.dispatched_at > NOW()-INTERVAL '2 hours'
@@ -171,6 +181,61 @@ pub async fn tick(state: &AppState) -> Result<usize, AppError> {
                 "UPDATE dispatch_whatsapp_marketing_events
                  SET status='skipped',last_error='marketing_cooldown',
                  updated_at=NOW() WHERE order_id=$1 AND status='sending'",
+            )
+            .bind(order_id)
+            .execute(&state.db)
+            .await?;
+            continue;
+        }
+
+        // Global first-touch reservation is unique across every plant using
+        // the same TrackMyRMC sender. It is never retried blindly, even after
+        // an uncertain provider response. This is NOT an opt-in grant.
+        let first_touch: Option<(String,)> = sqlx::query_as(
+            "INSERT INTO dispatch_whatsapp_marketing_first_touch
+             (phone_e164,order_id,plant_id) VALUES($1,$2,$3)
+             ON CONFLICT(phone_e164) DO NOTHING RETURNING phone_e164",
+        )
+        .bind(&phone)
+        .bind(order_id)
+        .bind(plant_id)
+        .fetch_optional(&state.db)
+        .await?;
+        if first_touch.is_none() {
+            sqlx::query(
+                "UPDATE dispatch_whatsapp_marketing_events
+                 SET status='skipped',last_error='first_touch_already_reserved',
+                     updated_at=NOW()
+                 WHERE order_id=$1 AND status='sending'",
+            )
+            .bind(order_id)
+            .execute(&state.db)
+            .await?;
+            continue;
+        }
+        // STOP or a permissions change can occur while claiming the queue.
+        // Recheck both consents and suppression immediately before provider IO.
+        let permitted: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM dispatch_whatsapp_contacts c
+                 JOIN dispatch_whatsapp_plant_settings p ON p.plant_id=$2
+                 WHERE c.order_id=$1 AND c.phone_e164=$3
+                   AND c.opted_in AND c.marketing_opted_in
+                   AND c.marketing_consent_recorded_at IS NOT NULL
+                   AND p.enabled AND p.marketing_enabled
+                   AND NOT EXISTS(SELECT 1 FROM whatsapp_marketing_opt_outs o
+                                  WHERE o.phone_e164=c.phone_e164))",
+        )
+        .bind(order_id)
+        .bind(plant_id)
+        .bind(&phone)
+        .fetch_one(&state.db)
+        .await?;
+        if !permitted {
+            sqlx::query(
+                "UPDATE dispatch_whatsapp_marketing_events
+                 SET status='cancelled',last_error='marketing_consent_revoked',
+                     updated_at=NOW()
+                 WHERE order_id=$1 AND status='sending'",
             )
             .bind(order_id)
             .execute(&state.db)
