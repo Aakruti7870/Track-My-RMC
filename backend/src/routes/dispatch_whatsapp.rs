@@ -45,16 +45,26 @@ pub struct PlantPreferenceInput {
     pub marketing_enabled: Option<bool>,
 }
 
+#[derive(Clone, Copy)]
+struct DeliveryConsent {
+    opted_in: bool,
+    marketing_opted_in: bool,
+    explicit_marketing_action: bool,
+}
+
 async fn update_contact(
     state: &AppState,
     order_id: Uuid,
     actor_id: Uuid,
     phone: &str,
-    opted_in: bool,
-    marketing_opted_in: bool,
+    choice: DeliveryConsent,
     source: &str,
-    explicit_marketing_action: bool,
 ) -> Result<(), AppError> {
+    let DeliveryConsent {
+        opted_in,
+        marketing_opted_in,
+        explicit_marketing_action,
+    } = choice;
     let normalized = dispatch_whatsapp::normalize_recipient(phone)?;
     let mut tx = state.db.begin().await?;
     let suppressed: bool = sqlx::query_scalar(
@@ -209,10 +219,12 @@ pub async fn staff_record_contact(
         order_id,
         user.user_id,
         &input.phone,
-        input.opted_in,
-        input.marketing_opted_in,
+        DeliveryConsent {
+            opted_in: input.opted_in,
+            marketing_opted_in: input.marketing_opted_in,
+            explicit_marketing_action: false,
+        },
         &input.consent_source,
-        false,
     )
     .await?;
     Ok(Json(json!({"success": true, "opted_in": input.opted_in,
@@ -241,10 +253,12 @@ pub async fn customer_consent(
         order_id,
         user.user_id,
         &phone,
-        input.opted_in,
-        input.marketing_opted_in,
+        DeliveryConsent {
+            opted_in: input.opted_in,
+            marketing_opted_in: input.marketing_opted_in,
+            explicit_marketing_action: input.marketing_consent_action,
+        },
         "customer_app",
-        input.marketing_consent_action,
     )
     .await?;
     Ok(Json(json!({"success": true, "opted_in": input.opted_in,
@@ -515,7 +529,7 @@ pub async fn verify_meta_webhook(
 fn is_marketing_stop(raw: &str) -> bool {
     let cleaned = raw
         .trim()
-        .trim_end_matches(|c: char| matches!(c, '.' | '!' | '?'))
+        .trim_end_matches(['.', '!', '?'])
         .trim()
         .to_ascii_uppercase();
     matches!(
@@ -591,7 +605,7 @@ pub async fn receive_meta_webhook(
                     // ordinary STOP only revokes promotional WhatsApp.
                     let stop_all = text
                         .trim()
-                        .trim_end_matches(|c: char| matches!(c, '.' | '!' | '?'))
+                        .trim_end_matches(['.', '!', '?'])
                         .trim()
                         .eq_ignore_ascii_case("STOP ALL");
                     if let Some(from) = inbound["from"].as_str() {
