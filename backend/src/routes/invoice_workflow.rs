@@ -864,10 +864,10 @@ mod tests {
         };
         let expected = BigDecimal::from(10);
         assert_eq!(
-            calculate(&[correct.clone()], "27", "27").unwrap()["total"],
-            calculate(&[manipulated.clone()], "27", "27").unwrap()["total"]
+            calculate(std::slice::from_ref(&correct), "27", "27").unwrap()["total"],
+            calculate(std::slice::from_ref(&manipulated), "27", "27").unwrap()["total"]
         );
-        assert!(require_challan_quantity(&[correct.clone()], &expected).is_ok());
+        assert!(require_challan_quantity(std::slice::from_ref(&correct), &expected).is_ok());
         assert!(matches!(
             require_challan_quantity(&[manipulated], &expected),
             Err(AppError::Conflict(_))
