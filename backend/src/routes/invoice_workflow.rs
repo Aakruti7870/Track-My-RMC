@@ -202,7 +202,10 @@ fn parse_lines(v: &Value) -> Result<Vec<InvoiceLine>, AppError> {
 
 // A matching invoice amount alone is insufficient: changing quantity and rate
 // inversely can preserve the total while misrepresenting delivered concrete.
-fn require_challan_quantity(lines: &[InvoiceLine], prepared_qty: &BigDecimal) -> Result<(), AppError> {
+fn require_challan_quantity(
+    lines: &[InvoiceLine],
+    prepared_qty: &BigDecimal,
+) -> Result<(), AppError> {
     let mut invoice_qty = BigDecimal::from(0);
     for line in lines {
         invoice_qty += decimal(&line.quantity_m3, 100000, false)?;
