@@ -2,19 +2,10 @@ name: Android Signed Release AAB
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/android-build.yml"
-    tags:
-      - "android-v*"
-  # A reviewed release-workflow change on main deliberately requests a signed
-  # candidate, without granting signing secrets to pull requests. Ordinary app
-  # merges do not trigger this build. Tags and manual dispatch remain available.
 
 permissions:
   contents: read
+  actions: read
   id-token: write
 
 env:
@@ -33,6 +24,10 @@ env:
 
 jobs:
   android-build:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      vars.TRACKMYRMC_APPROVED_RELEASE_SHA != '' &&
+      vars.TRACKMYRMC_APPROVED_RELEASE_SHA == github.sha
     name: Build and verify signed release AAB
     runs-on: ubuntu-latest
     timeout-minutes: 75
@@ -40,6 +35,21 @@ jobs:
       run:
         working-directory: frontend
     steps:
+      - name: Verify approval and successful AWS deployment for the current main SHA
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq '.sha')"
+          test "$GITHUB_SHA" = "$main_sha"
+          run_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/deploy-aws-production.yml/runs?branch=main&head_sha=${GITHUB_SHA}&status=success" |
+            jq -er --arg sha "$GITHUB_SHA" '
+              [.workflow_runs[] | select(.head_sha == $sha and .head_branch == "main" and .conclusion == "success")]
+              | sort_by(.run_number, .run_attempt) | last | .id // error("No matching deployment run")
+            ')"
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/jobs?filter=latest" |
+            jq -e '[.jobs[] | select(.name == "Verify, Build and Deploy to AWS") | .conclusion] == ["success"]' >/dev/null
       - name: Checkout
         uses: actions/checkout@v4
 

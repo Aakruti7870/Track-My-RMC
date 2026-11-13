@@ -19,10 +19,6 @@ concurrency:
 
 jobs:
   codeql:
-    # Temporary, auditable PR #190-only bypass requested for review.
-    # Does not close CodeQL findings or suppress main, schedule, manual, or other PR scans.
-    # Remove this exception before approving production release.
-    if: github.event_name != 'pull_request' || github.event.pull_request.number != 190
     name: CodeQL (${{ matrix.language }})
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -56,11 +52,6 @@ jobs:
           category: "/language:${{ matrix.language }}"
 
   secret-history:
-    # Temporary release-process exception: do not block PR/main CI on historical
-    # secret candidates. This does NOT remediate or dismiss existing findings.
-    # Preserve manual and scheduled full-history scans; CodeQL and Trivy stay active
-    # on PRs and main pushes. Restore the automatic gate after private triage.
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     name: Gitleaks (complete Git history; private results)
     runs-on: ubuntu-latest
     timeout-minutes: 25
