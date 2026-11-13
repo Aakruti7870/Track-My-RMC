@@ -73,6 +73,34 @@ pub async fn tick(state: &AppState) -> Result<usize, AppError> {
     {
         return Ok(0);
     }
+    // A later order cannot qualify for a second introductory promotion.
+    // Explicitly settle its queue record instead of leaving it stuck as pending
+    // indefinitely (and inflating the Plant Owner's Pending counter).
+    sqlx::query(
+        "UPDATE dispatch_whatsapp_marketing_events m
+         SET status='skipped',last_error='first_touch_already_reserved',
+             updated_at=NOW()
+         FROM dispatch_whatsapp_contacts c
+         WHERE c.order_id=m.order_id AND m.status='pending'
+           AND EXISTS(SELECT 1 FROM dispatch_whatsapp_marketing_first_touch ft
+                      WHERE ft.phone_e164=c.phone_e164)",
+    )
+    .execute(&state.db)
+    .await?;
+    // Reconcile an opt-out written from the CRM or a customer app while a
+    // dispatch was being prepared. A STOP never cancels Utility delivery.
+    sqlx::query(
+        "UPDATE dispatch_whatsapp_marketing_events m
+         SET status='cancelled',last_error='recipient_opted_out',
+             updated_at=NOW()
+         FROM dispatch_whatsapp_contacts c
+         WHERE c.order_id=m.order_id
+           AND m.status IN ('waiting_dispatch','needs_consent','pending')
+           AND EXISTS(SELECT 1 FROM whatsapp_marketing_opt_outs o
+                      WHERE o.phone_e164=c.phone_e164)",
+    )
+    .execute(&state.db)
+    .await?;
     // A lost Meta response may still have delivered the message. Never blind-retry.
     sqlx::query(
         "UPDATE dispatch_whatsapp_marketing_events
