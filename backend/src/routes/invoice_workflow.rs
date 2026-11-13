@@ -189,6 +189,7 @@ fn snapshot(
     order_number: &str,
     challans: &[String],
     number: &str,
+    delivery_address: &str,
 ) -> Result<Value, AppError> {
     let lines = parse_lines(d)?;
     let mut totals = calculate(
@@ -200,6 +201,7 @@ fn snapshot(
         .as_object_mut()
         .ok_or_else(|| invalid("tax totals"))?;
     out.insert("invoice_number".into(), json!(number));
+    out.insert("delivery_address".into(), json!(delivery_address));
     out.insert("invoice_date".into(), d["invoice_date"].clone());
     out.insert("order_number".into(), json!(order_number));
     out.insert("challans".into(), json!(challans));
@@ -507,8 +509,8 @@ pub async fn preview(
     .bind(plant)
     .fetch_one(&state.db)
     .await?;
-    let row: (String,) =
-        sqlx::query_as("SELECT order_number FROM orders WHERE id=$1 AND plant_id=$2")
+    let row: (String,String) =
+        sqlx::query_as("SELECT o.order_number,s.address_line FROM orders o JOIN customer_sites s ON s.id=o.site_id WHERE o.id=$1 AND o.plant_id=$2")
             .bind(order)
             .bind(plant)
             .fetch_one(&state.db)
@@ -516,7 +518,7 @@ pub async fn preview(
     let challans:Vec<String>=sqlx::query_scalar(
        "SELECT c.challan_number FROM challans c JOIN order_loads l ON l.id=c.load_id         JOIN orders o ON o.id=l.order_id WHERE o.id=$1 AND o.plant_id=$2 ORDER BY l.load_number"
     ).bind(order).bind(plant).fetch_all(&state.db).await?;
-    let snap=snapshot(&draft,&row.0,&challans,"DRAFT")?;
+    let snap=snapshot(&draft,&row.0,&challans,"DRAFT",&row.1)?;
     Ok(Json(json!({"success":true,"html":super::invoice_print::render(&snap,true),"snapshot":snap})))
 }
 
@@ -525,7 +527,7 @@ pub async fn issue(State(state):State<AppState>,user:AuthUser,Path(id):Path<Uuid
     let (plant,order)=draft_order(&state,&user,id,Action::Edit).await?;
     if !input.confirmed {return Err(invalid("explicit invoice confirmation"));}
     let mut tx=state.db.begin().await?;
-    let row=sqlx::query("SELECT o.order_number,o.total_amount,o.total_quantity_m3,o.concrete_grade,o.status,o.customer_id            FROM orders o WHERE o.id=$1 AND o.plant_id=$2 FOR UPDATE")
+    let row=sqlx::query("SELECT o.order_number,o.total_amount,o.total_quantity_m3,o.concrete_grade,o.status,o.customer_id,s.address_line AS delivery_address FROM orders o JOIN customer_sites s ON s.id=o.site_id WHERE o.id=$1 AND o.plant_id=$2 FOR UPDATE OF o")
         .bind(order).bind(plant).fetch_one(&mut *tx).await?;
     let draft:Value=sqlx::query_scalar("SELECT to_jsonb(d) FROM invoice_drafts d WHERE d.id=$1 AND d.plant_id=$2 FOR UPDATE")
         .bind(id).bind(plant).fetch_one(&mut *tx).await?;
@@ -569,7 +571,8 @@ pub async fn issue(State(state):State<AppState>,user:AuthUser,Path(id):Path<Uuid
     if date>Utc::now().date_naive(){return Err(invalid("future invoice date"));}
     let ch_names:Vec<String>=ch.iter().map(|(_,n)|n.clone()).collect();
     let order_number:String=row.get("order_number");
-    let mut snap=snapshot(&draft,&order_number,&ch_names,"")?;
+    let delivery_address:String=row.get("delivery_address");
+    let mut snap=snapshot(&draft,&order_number,&ch_names,"",&delivery_address)?;
     let due=decimal(&get_str(&snap,"total"),100000000,false)?;
     let order_total:BigDecimal=row.get("total_amount");
     // Accepted order, Cashfree payment offer and invoice ledger must agree.
