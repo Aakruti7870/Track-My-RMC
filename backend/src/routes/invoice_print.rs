@@ -45,7 +45,7 @@ fn words_0_999(n: u64) -> String {
         return format!(
             "{}{}",
             TENS[(n / 10) as usize],
-            if n % 10 > 0 {
+            if !n.is_multiple_of(10) {
                 format!(" {}", ONES[(n % 10) as usize])
             } else {
                 String::new()
@@ -55,7 +55,7 @@ fn words_0_999(n: u64) -> String {
     format!(
         "{} Hundred{}",
         ONES[(n / 100) as usize],
-        if n % 100 > 0 {
+        if !n.is_multiple_of(100) {
             format!(" {}", words_0_999(n % 100))
         } else {
             String::new()
