@@ -3,6 +3,7 @@ pub mod admin_campaign;
 pub mod admin_governance;
 pub mod admin_routes;
 pub mod admin_whatsapp;
+pub mod admin_whatsapp_media;
 pub mod assistant_routes;
 pub mod auth_routes;
 pub mod authority_governance;
@@ -79,6 +80,12 @@ pub fn build_app_router(state: AppState) -> Router {
         .route(
             "/api/control-center/whatsapp/chats/:phone",
             get(admin_whatsapp::messages),
+        )
+        // Media access requires the same dedicated Central Admin Web-MFA
+        // session as the inbox. Never expose a Meta URL or bearer token.
+        .route(
+            "/api/control-center/whatsapp/media/:message_id",
+            get(admin_whatsapp_media::download),
         )
         .route(
             "/api/control-center/whatsapp/chats/:phone/read",
