@@ -613,71 +613,123 @@ pub async fn preview(
     let challans:Vec<String>=sqlx::query_scalar(
        "SELECT c.challan_number FROM challans c JOIN order_loads l ON l.id=c.load_id         JOIN orders o ON o.id=l.order_id WHERE o.id=$1 AND o.plant_id=$2 ORDER BY l.load_number"
     ).bind(order).bind(plant).fetch_all(&state.db).await?;
-    let snap=snapshot(&draft,&row.0,&challans,"DRAFT",&row.1)?;
-    Ok(Json(json!({"success":true,"html":super::invoice_print::render(&snap,true),"snapshot":snap})))
+    let snap = snapshot(&draft, &row.0, &challans, "DRAFT", &row.1)?;
+    Ok(Json(
+        json!({"success":true,"html":super::invoice_print::render(&snap,true),"snapshot":snap}),
+    ))
 }
 
-pub async fn issue(State(state):State<AppState>,user:AuthUser,Path(id):Path<Uuid>,
-    Json(input):Json<IssueInput>)->Result<Json<Value>,AppError>{
-    let (plant,order)=draft_order(&state,&user,id,Action::Edit).await?;
-    if !input.confirmed {return Err(invalid("explicit invoice confirmation"));}
-    let mut tx=state.db.begin().await?;
+pub async fn issue(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<Uuid>,
+    Json(input): Json<IssueInput>,
+) -> Result<Json<Value>, AppError> {
+    let (plant, order) = draft_order(&state, &user, id, Action::Edit).await?;
+    if !input.confirmed {
+        return Err(invalid("explicit invoice confirmation"));
+    }
+    let mut tx = state.db.begin().await?;
     let row=sqlx::query("SELECT o.order_number,o.total_amount,o.total_quantity_m3,o.concrete_grade,o.status,o.customer_id,s.address_line AS delivery_address FROM orders o JOIN customer_sites s ON s.id=o.site_id WHERE o.id=$1 AND o.plant_id=$2 FOR UPDATE OF o")
         .bind(order).bind(plant).fetch_one(&mut *tx).await?;
-    let draft:Value=sqlx::query_scalar("SELECT to_jsonb(d) FROM invoice_drafts d WHERE d.id=$1 AND d.plant_id=$2 FOR UPDATE")
-        .bind(id).bind(plant).fetch_one(&mut *tx).await?;
-    if get_str(&draft,"status")=="ISSUED" {
-        return Err(AppError::Conflict("Invoice was already issued; use the existing invoice record".into()));
+    let draft: Value = sqlx::query_scalar(
+        "SELECT to_jsonb(d) FROM invoice_drafts d WHERE d.id=$1 AND d.plant_id=$2 FOR UPDATE",
+    )
+    .bind(id)
+    .bind(plant)
+    .fetch_one(&mut *tx)
+    .await?;
+    if get_str(&draft, "status") == "ISSUED" {
+        return Err(AppError::Conflict(
+            "Invoice was already issued; use the existing invoice record".into(),
+        ));
     }
-    if draft["version"].as_i64()!=Some(i64::from(input.version)) {
-        return Err(AppError::Conflict("Invoice changed; reload before issuing".into()));
+    if draft["version"].as_i64() != Some(i64::from(input.version)) {
+        return Err(AppError::Conflict(
+            "Invoice changed; reload before issuing".into(),
+        ));
     }
-    let order_status:String=row.get("status");
-    if matches!(order_status.as_str(),"cancelled"|"rejected"|"draft") {
-        return Err(AppError::Conflict("Cancelled, rejected or unapproved orders cannot be invoiced".into()));
+    let order_status: String = row.get("status");
+    if matches!(order_status.as_str(), "cancelled" | "rejected" | "draft") {
+        return Err(AppError::Conflict(
+            "Cancelled, rejected or unapproved orders cannot be invoiced".into(),
+        ));
     }
-    let compliance:Option<bool>=sqlx::query_scalar(
-        "SELECT e_invoice_required FROM invoice_compliance_declarations WHERE plant_id=$1"
-    ).bind(plant).fetch_optional(&mut *tx).await?;
+    let compliance: Option<bool> = sqlx::query_scalar(
+        "SELECT e_invoice_required FROM invoice_compliance_declarations WHERE plant_id=$1",
+    )
+    .bind(plant)
+    .fetch_optional(&mut *tx)
+    .await?;
     match compliance {
         None => return Err(AppError::Conflict("Plant owner must confirm GST e-invoicing applicability before issue".into())),
         Some(true) => return Err(AppError::Conflict("IRN/QR registration is required; this invoice module must not issue without a validated IRP integration".into())),
         Some(false) => {}
     }
-    let already:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM plant_invoices WHERE order_id=$1)")
-       .bind(order).fetch_one(&mut *tx).await?;
-    if already {return Err(AppError::Conflict("Order is already invoiced".into()));}
-    let (ch,prepared_qty,active)=collect_challans(&mut tx,order).await?;
-    if active==0 || ch.len() as i64 !=active || prepared_qty!=row.get::<BigDecimal,_>("total_quantity_m3") {
+    let already: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM plant_invoices WHERE order_id=$1)")
+            .bind(order)
+            .fetch_one(&mut *tx)
+            .await?;
+    if already {
+        return Err(AppError::Conflict("Order is already invoiced".into()));
+    }
+    let (ch, prepared_qty, active) = collect_challans(&mut tx, order).await?;
+    if active == 0
+        || ch.len() as i64 != active
+        || prepared_qty != row.get::<BigDecimal, _>("total_quantity_m3")
+    {
         return Err(AppError::Conflict("All active loads must have matching prepared challans before issuing this order-level invoice".into()));
     }
-    let issuer_gstin:Option<String>=sqlx::query_scalar("SELECT gstin FROM plant_profiles WHERE plant_id=$1")
-        .bind(plant).fetch_optional(&mut *tx).await?.flatten();
-    if issuer_gstin.is_none() || get_opt(&draft,"seller_gstin")!=issuer_gstin ||
-       !valid_gstin(&get_str(&draft,"seller_gstin"),&get_str(&draft,"seller_state_code")) {
-        return Err(AppError::Conflict("Seller GST identity is not verified against the plant profile".into()));
+    let issuer_gstin: Option<String> =
+        sqlx::query_scalar("SELECT gstin FROM plant_profiles WHERE plant_id=$1")
+            .bind(plant)
+            .fetch_optional(&mut *tx)
+            .await?
+            .flatten();
+    if issuer_gstin.is_none()
+        || get_opt(&draft, "seller_gstin") != issuer_gstin
+        || !valid_gstin(
+            &get_str(&draft, "seller_gstin"),
+            &get_str(&draft, "seller_state_code"),
+        )
+    {
+        return Err(AppError::Conflict(
+            "Seller GST identity is not verified against the plant profile".into(),
+        ));
     }
-    if !two(&get_str(&draft,"buyer_state_code")) ||
-       !opt_gstin(&get_opt(&draft,"buyer_gstin"),&get_str(&draft,"buyer_state_code")) ||
-       get_str(&draft,"buyer_name").trim().is_empty() || get_str(&draft,"buyer_address").trim().is_empty() {
+    if !two(&get_str(&draft, "buyer_state_code"))
+        || !opt_gstin(
+            &get_opt(&draft, "buyer_gstin"),
+            &get_str(&draft, "buyer_state_code"),
+        )
+        || get_str(&draft, "buyer_name").trim().is_empty()
+        || get_str(&draft, "buyer_address").trim().is_empty()
+    {
         return Err(invalid("buyer identity"));
     }
-    let date=NaiveDate::parse_from_str(&get_str(&draft,"invoice_date"),"%Y-%m-%d").map_err(|_|invalid("date"))?;
-    if date>Utc::now().date_naive(){return Err(invalid("future invoice date"));}
+    let date = NaiveDate::parse_from_str(&get_str(&draft, "invoice_date"), "%Y-%m-%d")
+        .map_err(|_| invalid("date"))?;
+    if date > Utc::now().date_naive() {
+        return Err(invalid("future invoice date"));
+    }
     // Invoice grade must remain consistent with the fulfilled order.
     // To change a grade, first correct the approved order and production evidence.
-    let recorded_grade:String=row.get("concrete_grade");
-    if parse_lines(&draft)?.iter().any(|line|line.grade!=recorded_grade) {
+    let recorded_grade: String = row.get("concrete_grade");
+    if parse_lines(&draft)?
+        .iter()
+        .any(|line| line.grade != recorded_grade)
+    {
         return Err(AppError::Conflict(
             "Invoice grade differs from the production order; approve and reconcile the source order first".into()
         ));
     }
-    let ch_names:Vec<String>=ch.iter().map(|(_,n)|n.clone()).collect();
-    let order_number:String=row.get("order_number");
-    let delivery_address:String=row.get("delivery_address");
-    let mut snap=snapshot(&draft,&order_number,&ch_names,"",&delivery_address)?;
-    let due=decimal(&get_str(&snap,"total"),100000000,false)?;
-    let order_total:BigDecimal=row.get("total_amount");
+    let ch_names: Vec<String> = ch.iter().map(|(_, n)| n.clone()).collect();
+    let order_number: String = row.get("order_number");
+    let delivery_address: String = row.get("delivery_address");
+    let mut snap = snapshot(&draft, &order_number, &ch_names, "", &delivery_address)?;
+    let due = decimal(&get_str(&snap, "total"), 100000000, false)?;
+    let order_total: BigDecimal = row.get("total_amount");
     // Accepted order, Cashfree payment offer and invoice ledger must agree.
     // Commercial changes remain editable as drafts until the order is amended
     // with customer consent by the approved commercial workflow.
@@ -700,7 +752,12 @@ pub async fn issue(State(state):State<AppState>,user:AuthUser,Path(id):Path<Uuid
           .bind(plant).bind(fy as i16).fetch_optional(&mut *tx).await?
           .ok_or_else(||AppError::Conflict("Invoice number series exhausted".into()))?;
         let slug = plant.simple().to_string();
-        format!("I{}{:02}{:06}", slug[..6].to_ascii_uppercase(), fy % 100, seq)
+        format!(
+            "I{}{:02}{:06}",
+            slug[..6].to_ascii_uppercase(),
+            fy % 100,
+            seq
+        )
     };
     if !valid_num(&number) {
         return Err(invalid("generated invoice number"));
