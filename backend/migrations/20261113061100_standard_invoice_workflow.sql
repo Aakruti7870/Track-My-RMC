@@ -94,3 +94,12 @@ $$;
 CREATE TRIGGER invoice_challan_links_immutable
 BEFORE UPDATE OR DELETE ON invoice_challan_links
 FOR EACH ROW EXECUTE FUNCTION block_issued_invoice_challan_mutation();
+
+-- The platform cannot infer an RMC business's e-invoicing eligibility.
+-- Final invoices require owner-recorded applicability before issuance.
+CREATE TABLE invoice_compliance_declarations (
+    plant_id UUID PRIMARY KEY REFERENCES rmc_plants(id),
+    e_invoice_required BOOLEAN NOT NULL,
+    confirmed_by UUID NOT NULL REFERENCES users(id),
+    confirmed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
