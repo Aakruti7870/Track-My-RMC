@@ -501,7 +501,7 @@ pub async fn start_staff_mfa_enrollment(
         ));
     }
     let (secret, otpauth_uri, recovery_codes) = crate::auth::totp::setup_totp_for_user(
-        &state.db,
+        state,
         user.id,
         user.email.as_deref().unwrap_or("staff"),
     )
@@ -543,7 +543,7 @@ pub async fn confirm_staff_mfa_enrollment(
             "Account is not authorized for staff enrollment.".into(),
         ));
     }
-    if let Err(err) = crate::auth::totp::verify_and_enable_totp(&state.db, user_id, code).await {
+    if let Err(err) = crate::auth::totp::verify_and_enable_totp(state, user_id, code).await {
         let _ = sqlx::query("UPDATE staff_mfa_challenges SET attempts=attempts+1 WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>NOW()").bind(&digest).execute(&state.db).await;
         return Err(err);
     }
@@ -578,9 +578,7 @@ pub async fn verify_staff_mfa(
             "Authenticator enrollment is required before login.".to_string(),
         ));
     }
-    if let Err(err) =
-        crate::auth::totp::verify_staff_totp_login(&state.db, user_id, &req.code).await
-    {
+    if let Err(err) = crate::auth::totp::verify_staff_totp_login(state, user_id, &req.code).await {
         let _ = sqlx::query("UPDATE staff_mfa_challenges SET attempts=attempts+1 WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>NOW()")
             .bind(&digest).execute(&state.db).await;
         return Err(err);

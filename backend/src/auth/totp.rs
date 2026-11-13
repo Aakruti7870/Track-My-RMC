@@ -1,9 +1,9 @@
-use crate::error::AppError;
+use crate::{error::AppError, state::AppState};
 use hmac::{Hmac, Mac};
 use rand::{distributions::Alphanumeric, Rng};
 use sha1::Sha1;
 use sha2::{Digest, Sha256};
-use sqlx::{FromRow, PgPool};
+use sqlx::FromRow;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
@@ -11,13 +11,11 @@ type HmacSha1 = Hmac<Sha1>;
 
 const BASE32_ALPHABET: &[u8; 32] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
-#[derive(Debug, FromRow)]
-pub struct UserTotpRecord {
-    pub id: Uuid,
-    pub user_id: Uuid,
-    pub secret_key: String,
-    pub is_enabled: bool,
-    pub backup_codes: Vec<String>,
+#[derive(FromRow)]
+struct UserTotpRecord {
+    secret_key: String,
+    is_enabled: bool,
+    backup_codes: Vec<String>,
 }
 
 pub struct TotpEngine;
@@ -135,6 +133,10 @@ impl TotpEngine {
         result
     }
 
+    pub(crate) fn valid_legacy_secret(secret: &str) -> bool {
+        Self::base32_decode(secret).is_some_and(|decoded| !decoded.is_empty())
+    }
+
     /// Simple Base32 decoder
     fn base32_decode(encoded: &str) -> Option<Vec<u8>> {
         let clean = encoded.replace([' ', '-'], "").to_uppercase();
@@ -161,7 +163,7 @@ impl TotpEngine {
 }
 
 pub async fn setup_totp_for_user(
-    pool: &PgPool,
+    state: &AppState,
     user_id: Uuid,
     user_email: &str,
 ) -> Result<(String, String, Vec<String>), AppError> {
@@ -173,7 +175,8 @@ pub async fn setup_totp_for_user(
         .map(|code| hash_backup_code(code, &secret))
         .collect();
 
-    sqlx::query(
+    let encrypted = state.config.totp_keyring.seal(user_id, &secret)?;
+    let inserted = sqlx::query(
         r#"
         INSERT INTO user_totp_credentials (user_id, secret_key, is_enabled, backup_codes, updated_at)
         VALUES ($1, $2, FALSE, $3, NOW())
@@ -181,18 +184,12 @@ pub async fn setup_totp_for_user(
         "#,
     )
     .bind(user_id)
-    .bind(&secret)
+    .bind(encrypted)
     .bind(&hashed_backup_codes)
-    .execute(pool)
+    .execute(&state.db)
     .await?;
 
-    let stored_secret: Option<String> =
-        sqlx::query_scalar("SELECT secret_key FROM user_totp_credentials WHERE user_id = $1")
-            .bind(user_id)
-            .fetch_optional(pool)
-            .await?;
-
-    if stored_secret.as_deref() != Some(secret.as_str()) {
+    if inserted.rows_affected() != 1 {
         return Err(AppError::Conflict(
             "Authenticator setup already exists. Do not reset it through this endpoint."
                 .to_string(),
@@ -203,23 +200,24 @@ pub async fn setup_totp_for_user(
 }
 
 pub async fn verify_and_enable_totp(
-    pool: &PgPool,
+    state: &AppState,
     user_id: Uuid,
     submitted_code: &str,
 ) -> Result<(), AppError> {
     let rec = sqlx::query_as::<_, UserTotpRecord>(
         r#"
-        SELECT id, user_id, secret_key, is_enabled, backup_codes
+        SELECT secret_key, is_enabled, backup_codes
         FROM user_totp_credentials
         WHERE user_id = $1
         "#,
     )
     .bind(user_id)
-    .fetch_optional(pool)
+    .fetch_optional(&state.db)
     .await?
     .ok_or_else(|| AppError::NotFound("TOTP setup not initialized".to_string()))?;
 
-    let step = TotpEngine::verified_step(&rec.secret_key, submitted_code)?.ok_or_else(|| {
+    let secret = state.config.totp_keyring.open(user_id, &rec.secret_key)?;
+    let step = TotpEngine::verified_step(&secret, submitted_code)?.ok_or_else(|| {
         AppError::Unauthorized("Invalid authenticator code. Check your device time sync.".into())
     })?;
 
@@ -233,7 +231,7 @@ pub async fn verify_and_enable_totp(
     .bind(user_id)
     .bind(step)
     .bind(&rec.secret_key)
-    .execute(pool)
+    .execute(&state.db)
     .await?;
     if updated.rows_affected() != 1 {
         return Err(AppError::Conflict(
@@ -246,31 +244,31 @@ pub async fn verify_and_enable_totp(
 
 /// Verifies an enabled TOTP credential for passwordless/second-factor login.
 pub async fn verify_totp_login(
-    pool: &PgPool,
+    state: &AppState,
     user_id: Uuid,
     submitted_code: &str,
 ) -> Result<(), AppError> {
-    verify_login(pool, user_id, submitted_code, false).await
+    verify_login(state, user_id, submitted_code, false).await
 }
 
 pub async fn verify_staff_totp_login(
-    pool: &PgPool,
+    state: &AppState,
     user_id: Uuid,
     submitted_code: &str,
 ) -> Result<(), AppError> {
-    verify_login(pool, user_id, submitted_code, true).await
+    verify_login(state, user_id, submitted_code, true).await
 }
 
 async fn verify_login(
-    pool: &PgPool,
+    state: &AppState,
     user_id: Uuid,
     submitted_code: &str,
     prevent_replay: bool,
 ) -> Result<(), AppError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = state.db.begin().await?;
     let rec = sqlx::query_as::<_, UserTotpRecord>(
         r#"
-        SELECT id, user_id, secret_key, is_enabled, backup_codes
+        SELECT secret_key, is_enabled, backup_codes
         FROM user_totp_credentials
         WHERE user_id = $1 FOR UPDATE
         "#,
@@ -286,7 +284,8 @@ async fn verify_login(
         ));
     }
 
-    if let Some(step) = TotpEngine::verified_step(&rec.secret_key, submitted_code)? {
+    let secret = state.config.totp_keyring.open(user_id, &rec.secret_key)?;
+    if let Some(step) = TotpEngine::verified_step(&secret, submitted_code)? {
         if prevent_replay {
             let accepted=sqlx::query("UPDATE user_totp_credentials SET last_login_totp_step=$2 WHERE user_id=$1 AND (last_login_totp_step IS NULL OR last_login_totp_step<$2)").bind(user_id).bind(step).execute(&mut *tx).await?;
             if accepted.rows_affected() != 1 {
@@ -305,7 +304,7 @@ async fn verify_login(
         .filter(|c| c.is_ascii_alphanumeric())
         .collect::<String>()
         .to_uppercase();
-    let attempted_hash = hash_backup_code(&normalized, &rec.secret_key);
+    let attempted_hash = hash_backup_code(&normalized, &secret);
 
     if rec
         .backup_codes

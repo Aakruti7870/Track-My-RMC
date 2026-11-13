@@ -56,6 +56,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         e
     })?;
 
+    config
+        .totp_keyring
+        .migrate_credentials(&pool)
+        .await
+        .map_err(|_| {
+            std::io::Error::other(
+                "TOTP credential migration failed; check legacy rows and the configured keyring",
+            )
+        })?;
+
     let state = AppState::new(pool, config.clone());
 
     // Fail-closed by default: enable only after rollout validation.

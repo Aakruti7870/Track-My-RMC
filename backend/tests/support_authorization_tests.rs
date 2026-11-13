@@ -39,6 +39,7 @@ fn state(db: PgPool) -> AppState {
             email_api_key: None,
             email_from_address: "test@example.invalid".into(),
             otp_pepper: "isolated-test".repeat(5),
+            totp_keyring: trackmyrmc_backend::auth::totp_storage::TotpKeyring::for_test_fixtures(),
             otp_expiration_minutes: 5,
             otp_cooldown_seconds: 60,
             otp_max_verification_attempts: 3,
