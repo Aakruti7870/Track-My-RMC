@@ -113,30 +113,31 @@ fn preview(message: &Value) -> (&str, String) {
         _ => ("other", "[Unsupported WhatsApp message type]".into()),
     }
 }
-pub async fn ingest_verified_message(
+pub(crate) async fn ingest_verified_message(
     state: &AppState,
+    tx: &mut sqlx::PgConnection,
     recipient_id: &str,
     message: &Value,
-) -> Result<(), AppError> {
+) -> Result<bool, AppError> {
     if configured_sender(state)? != recipient_id {
-        return Ok(());
+        return Ok(false);
     }
     let Some(id) = message["id"].as_str().filter(|s| valid_message_id(s)) else {
-        return Ok(());
+        return Ok(false);
     };
     let Some(from) = message["from"].as_str().filter(|s| valid_phone(s)) else {
-        return Ok(());
+        return Ok(false);
     };
     let (kind, body) = preview(message);
     let received_at = provider_message_time(message);
-    sqlx::query(
+    let inserted = sqlx::query(
         "INSERT INTO admin_whatsapp_messages
           (provider_message_id,sender_phone_id,customer_phone,direction,kind,body,status,received_at)
          VALUES ($1,$2,$3,'IN',$4,$5,'received',$6)
          ON CONFLICT (provider_message_id) DO NOTHING"
     ).bind(id).bind(recipient_id).bind(from).bind(kind).bind(body)
-        .bind(received_at).execute(&state.db).await?;
-    Ok(())
+        .bind(received_at).execute(tx).await?;
+    Ok(inserted.rows_affected() == 1)
 }
 pub async fn mark_verified_status(
     state: &AppState,

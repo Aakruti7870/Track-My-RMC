@@ -539,6 +539,120 @@ fn is_marketing_stop(raw: &str) -> bool {
     )
 }
 
+// Store the provider message ID and apply its effects in the same transaction.
+// A retried delivery after an error can reattempt both, while a completed
+// delivery cannot reapply STOP to a later consent decision.
+async fn process_verified_inbound(
+    state: &AppState,
+    sender_id: &str,
+    inbound: &Value,
+) -> Result<(), AppError> {
+    let mut tx = state.db.begin().await?;
+    if !crate::routes::admin_whatsapp::ingest_verified_message(state, &mut tx, sender_id, inbound)
+        .await?
+    {
+        return Ok(());
+    }
+    let text = inbound["text"]["body"].as_str().unwrap_or("");
+    let phone = inbound["from"]
+        .as_str()
+        .filter(|_| is_marketing_stop(text))
+        .and_then(|from| dispatch_whatsapp::normalize_recipient(from).ok());
+    if let Some(phone) = phone {
+        let stop_all = text
+            .trim()
+            .trim_end_matches(['.', '!', '?'])
+            .trim()
+            .eq_ignore_ascii_case("STOP ALL");
+        // Durable global suppression prevents later orders,
+        // another plant, or the CRM from resending to STOP.
+        sqlx::query(
+            "INSERT INTO whatsapp_marketing_opt_outs
+             (phone_e164,source) VALUES($1,'whatsapp_stop')
+             ON CONFLICT(phone_e164) DO UPDATE
+             SET opted_out_at=NOW(),source='whatsapp_stop',
+                 updated_at=NOW()",
+        )
+        .bind(&phone)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "UPDATE dispatch_whatsapp_marketing_events SET
+                status='cancelled',last_error='recipient_opted_out',
+                updated_at=NOW()
+             WHERE order_id IN (
+                 SELECT order_id FROM dispatch_whatsapp_contacts
+                 WHERE phone_e164=$1
+             ) AND status IN (
+                 'waiting_dispatch','needs_consent','pending'
+             )",
+        )
+        .bind(&phone)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "UPDATE dispatch_whatsapp_contacts
+             SET marketing_opted_in=FALSE,
+                 marketing_consent_recorded_at=NULL,updated_at=NOW()
+             WHERE phone_e164=$1",
+        )
+        .bind(&phone)
+        .execute(&mut *tx)
+        .await?;
+        if stop_all {
+            sqlx::query(
+                "UPDATE dispatch_whatsapp_events
+                 SET status='cancelled',
+                     last_error='recipient_opted_out_all',
+                     updated_at=NOW()
+                 WHERE order_id IN (
+                   SELECT order_id FROM dispatch_whatsapp_contacts
+                   WHERE phone_e164=$1
+                 ) AND status IN ('waiting_dispatch','needs_consent','pending')",
+            )
+            .bind(&phone)
+            .execute(&mut *tx)
+            .await?;
+            sqlx::query(
+                "UPDATE dispatch_whatsapp_contacts
+                 SET opted_in=FALSE,updated_at=NOW()
+                 WHERE phone_e164=$1",
+            )
+            .bind(&phone)
+            .execute(&mut *tx)
+            .await?;
+        }
+        // STOP also revokes the central CRM marketing consent,
+        // regardless of which source originally recorded it.
+        sqlx::query(
+            "UPDATE admin_marketing_contacts SET
+                 consent_status='OPTED_OUT',
+                 consent_evidence='WhatsApp STOP request',
+                 consent_recorded_at=NULL, updated_at=NOW()
+             WHERE phone_e164=$1",
+        )
+        .bind(&phone)
+        .execute(&mut *tx)
+        .await?;
+        // No queued central CRM message may outlive a
+        // customer STOP event. In-flight provider sends are
+        // marked uncertain and require independent review.
+        sqlx::query(
+            "UPDATE admin_marketing_deliveries SET
+              status='cancelled',updated_at=NOW()
+             WHERE contact_id IN (
+               SELECT id FROM admin_marketing_contacts
+               WHERE phone_e164=$1
+             ) AND status='pending'",
+        )
+        .bind(&phone)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+    Ok(())
+}
+
 /// Verify Meta's signed payload; never trust a provider status from an open endpoint.
 pub async fn receive_meta_webhook(
     State(state): State<AppState>,
@@ -546,7 +660,9 @@ pub async fn receive_meta_webhook(
     body: Bytes,
 ) -> Result<impl IntoResponse, AppError> {
     let secret = std::env::var("META_APP_SECRET")
-        .map_err(|_| AppError::Unauthorized("Provider signature unavailable".into()))?;
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| AppError::Unauthorized("Provider signature unavailable".into()))?;
     let supplied = headers
         .get("x-hub-signature-256")
         .and_then(|value| value.to_str().ok())
@@ -590,116 +706,7 @@ pub async fn receive_meta_webhook(
                 continue;
             }
             for inbound in change["value"]["messages"].as_array().into_iter().flatten() {
-                crate::routes::admin_whatsapp::ingest_verified_message(
-                    &state,
-                    sender_id.unwrap_or_default(),
-                    inbound,
-                )
-                .await?;
-            }
-            // Explicit recipient STOP on the verified sender cancels all pending
-            // marketing for that number across all tenant plants.
-            for inbound in change["value"]["messages"].as_array().into_iter().flatten() {
-                let text = inbound["text"]["body"].as_str().unwrap_or("");
-                if is_marketing_stop(text) {
-                    // STOP ALL explicitly revokes delivery WhatsApp updates too;
-                    // ordinary STOP only revokes promotional WhatsApp.
-                    let stop_all = text
-                        .trim()
-                        .trim_end_matches(['.', '!', '?'])
-                        .trim()
-                        .eq_ignore_ascii_case("STOP ALL");
-                    if let Some(from) = inbound["from"].as_str() {
-                        if let Ok(phone) = dispatch_whatsapp::normalize_recipient(from) {
-                            let mut tx = state.db.begin().await?;
-                            // Durable global suppression prevents later orders,
-                            // another plant, or the CRM from resending to STOP.
-                            sqlx::query(
-                                "INSERT INTO whatsapp_marketing_opt_outs
-                                 (phone_e164,source) VALUES($1,'whatsapp_stop')
-                                 ON CONFLICT(phone_e164) DO UPDATE
-                                 SET opted_out_at=NOW(),source='whatsapp_stop',
-                                     updated_at=NOW()",
-                            )
-                            .bind(&phone)
-                            .execute(&mut *tx)
-                            .await?;
-                            sqlx::query(
-                                "UPDATE dispatch_whatsapp_marketing_events SET
-                                    status='cancelled',last_error='recipient_opted_out',
-                                    updated_at=NOW()
-                                 WHERE order_id IN (
-                                     SELECT order_id FROM dispatch_whatsapp_contacts
-                                     WHERE phone_e164=$1
-                                 ) AND status IN (
-                                     'waiting_dispatch','needs_consent','pending'
-                                 )",
-                            )
-                            .bind(&phone)
-                            .execute(&mut *tx)
-                            .await?;
-                            sqlx::query(
-                                "UPDATE dispatch_whatsapp_contacts
-                                 SET marketing_opted_in=FALSE,
-                                     marketing_consent_recorded_at=NULL,updated_at=NOW()
-                                 WHERE phone_e164=$1",
-                            )
-                            .bind(&phone)
-                            .execute(&mut *tx)
-                            .await?;
-                            if stop_all {
-                                sqlx::query(
-                                    "UPDATE dispatch_whatsapp_events
-                                     SET status='cancelled',
-                                         last_error='recipient_opted_out_all',
-                                         updated_at=NOW()
-                                     WHERE order_id IN (
-                                       SELECT order_id FROM dispatch_whatsapp_contacts
-                                       WHERE phone_e164=$1
-                                     ) AND status IN ('waiting_dispatch','needs_consent','pending')",
-                                )
-                                .bind(&phone)
-                                .execute(&mut *tx)
-                                .await?;
-                                sqlx::query(
-                                    "UPDATE dispatch_whatsapp_contacts
-                                     SET opted_in=FALSE,updated_at=NOW()
-                                     WHERE phone_e164=$1",
-                                )
-                                .bind(&phone)
-                                .execute(&mut *tx)
-                                .await?;
-                            }
-                            // STOP also revokes the central CRM marketing consent,
-                            // regardless of which source originally recorded it.
-                            sqlx::query(
-                                "UPDATE admin_marketing_contacts SET
-                                     consent_status='OPTED_OUT',
-                                     consent_evidence='WhatsApp STOP request',
-                                     consent_recorded_at=NULL, updated_at=NOW()
-                                 WHERE phone_e164=$1",
-                            )
-                            .bind(&phone)
-                            .execute(&mut *tx)
-                            .await?;
-                            // No queued central CRM message may outlive a
-                            // customer STOP event. In-flight provider sends are
-                            // marked uncertain and require independent review.
-                            sqlx::query(
-                                "UPDATE admin_marketing_deliveries SET
-                                  status='cancelled',updated_at=NOW()
-                                 WHERE contact_id IN (
-                                   SELECT id FROM admin_marketing_contacts
-                                   WHERE phone_e164=$1
-                                 ) AND status='pending'",
-                            )
-                            .bind(&phone)
-                            .execute(&mut *tx)
-                            .await?;
-                            tx.commit().await?;
-                        }
-                    }
-                }
+                process_verified_inbound(&state, sender_id.unwrap_or_default(), inbound).await?;
             }
             for notification in change["value"]["statuses"].as_array().into_iter().flatten() {
                 if let (Some(id), Some(status)) =
@@ -722,6 +729,101 @@ pub async fn receive_meta_webhook(
 #[cfg(test)]
 mod marketing_stop_tests {
     use super::is_marketing_stop;
+
+    use crate::{config::AppConfig, state::AppState};
+    use sqlx::PgPool;
+
+    fn state(db: PgPool) -> AppState {
+        AppState::new(
+            db,
+            AppConfig {
+                database_url: String::new(),
+                jwt_secret: "isolated-auth-test".repeat(8),
+                jwt_expiration_hours: 1,
+                port: 8000,
+                host: "127.0.0.1".into(),
+                cors_allowed_origins: vec![],
+                environment: "test".into(),
+                meta_whatsapp_token: None,
+                meta_whatsapp_phone_number_id: Some("12345".into()),
+                meta_whatsapp_waba_id: None,
+                meta_graph_api_version: "v26.0".into(),
+                email_api_key: None,
+                email_from_address: "test@example.invalid".into(),
+                otp_pepper: "isolated-auth-test".repeat(5),
+                totp_keyring: crate::auth::totp_storage::TotpKeyring::for_test_fixtures(),
+                otp_expiration_minutes: 5,
+                otp_cooldown_seconds: 0,
+                otp_max_verification_attempts: 3,
+                play_signing_sha256: None,
+                play_review_access_code: None,
+                google_places_api_key: None,
+            },
+        )
+    }
+
+    #[sqlx::test]
+    async fn verified_stop_is_atomic_and_provider_retries_are_idempotent(db: PgPool) {
+        let state = state(db.clone());
+        let phone = "+12025550101";
+        let message_id = "wamid.synthetic-stop";
+        let message = serde_json::json!({
+            "id": message_id,
+            "from": "12025550101",
+            "type": "text",
+            "text": {"body": "STOP"}
+        });
+        sqlx::query(
+            "ALTER TABLE whatsapp_marketing_opt_outs ADD CONSTRAINT test_reject_stop CHECK (false)",
+        )
+        .execute(&db)
+        .await
+        .unwrap();
+        assert!(super::process_verified_inbound(&state, "12345", &message)
+            .await
+            .is_err());
+        let inbox_count = || async {
+            sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM admin_whatsapp_messages WHERE provider_message_id=$1",
+            )
+            .bind(message_id)
+            .fetch_one(&db)
+            .await
+            .unwrap()
+        };
+        assert_eq!(inbox_count().await, 0);
+        sqlx::query("ALTER TABLE whatsapp_marketing_opt_outs DROP CONSTRAINT test_reject_stop")
+            .execute(&db)
+            .await
+            .unwrap();
+
+        super::process_verified_inbound(&state, "12345", &message)
+            .await
+            .unwrap();
+        assert_eq!(inbox_count().await, 1);
+        let count = || async {
+            sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM whatsapp_marketing_opt_outs WHERE phone_e164=$1",
+            )
+            .bind(phone)
+            .fetch_one(&db)
+            .await
+            .unwrap()
+        };
+        assert_eq!(count().await, 1);
+
+        // Simulate a later explicit re-consent and a provider retry of the old event.
+        sqlx::query("DELETE FROM whatsapp_marketing_opt_outs WHERE phone_e164=$1")
+            .bind(phone)
+            .execute(&db)
+            .await
+            .unwrap();
+        super::process_verified_inbound(&state, "12345", &message)
+            .await
+            .unwrap();
+        assert_eq!(count().await, 0);
+        assert_eq!(inbox_count().await, 1);
+    }
 
     #[test]
     fn unambiguous_stop_commands_revoke_marketing() {
