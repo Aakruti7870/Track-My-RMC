@@ -74,13 +74,17 @@ jobs:
 
       - name: Verify required signing secrets
         shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
           set -euo pipefail
           missing=()
-          [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ] || missing+=(ANDROID_KEYSTORE_BASE64)
-          [ -n "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" ] || missing+=(ANDROID_KEYSTORE_PASSWORD)
-          [ -n "${{ secrets.ANDROID_STORE_PASSWORD }}" ] || missing+=(ANDROID_STORE_PASSWORD)
-          [ -n "${{ secrets.ANDROID_KEY_ALIAS }}" ] || missing+=(ANDROID_KEY_ALIAS)
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_STORE_PASSWORD ANDROID_KEY_ALIAS; do
+            [ -n "${!name}" ] || missing+=("$name")
+          done
           if [[ ! "$EXPECTED_PLAY_UPLOAD_SHA256" =~ ^([[:xdigit:]]{2}:){31}[[:xdigit:]]{2}$ ]]; then
             echo "Set TRACKMYRMC_PLAY_UPLOAD_SHA256 to the independently verified Google Play upload-certificate SHA-256 (colon-separated)."
             exit 1

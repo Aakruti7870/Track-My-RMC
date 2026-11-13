@@ -171,7 +171,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             {
                 return Err("Invalid synthetic authenticator format".into());
             }
-            sqlx::query("INSERT INTO user_totp_credentials(user_id,secret_key,is_enabled) VALUES($1,$2,TRUE)").bind(id).bind(secret).execute(&mut *tx).await?;
+            let encrypted = config.totp_keyring.seal(id, secret)?;
+            sqlx::query("INSERT INTO user_totp_credentials(user_id,secret_key,is_enabled) VALUES($1,$2,TRUE)")
+                .bind(id).bind(encrypted).execute(&mut *tx).await?;
         } else {
             approved.insert(phone);
         }

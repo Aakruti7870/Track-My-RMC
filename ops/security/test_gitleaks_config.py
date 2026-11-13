@@ -17,6 +17,19 @@ class GitleaksConfigTests(unittest.TestCase):
                 self.assertEqual(allow["regexTarget"], "line")
                 self.assertTrue(allow["paths"] and allow["regexes"])
                 self.assertTrue(all(s.startswith("'''") is False for s in allow["regexes"]))
+    def test_history_exceptions_are_specific_findings(self):
+        entries = [
+            line for line in (ROOT / ".gitleaksignore").read_text().splitlines()
+            if line and not line.startswith("#")
+        ]
+        self.assertEqual(len(entries), 8)
+        self.assertEqual(len(set(entries)), len(entries))
+        for fingerprint in entries:
+            self.assertRegex(fingerprint, r"^[a-f0-9]{40}:[^:*?]+:generic-api-key:[1-9][0-9]*$")
+        source = (ROOT / ".github/workflows/prelaunch-security.yml").read_text()
+        self.assertEqual(source.count("--gitleaks-ignore-path"), 1)
+        self.assertIn('cd "$RUNNER_TEMP/gitleaks-head"', source)
+
     def test_scans_use_config(self):
         source=(ROOT / ".github/workflows/prelaunch-security.yml").read_text()
         self.assertEqual(source.count('--config "$GITHUB_WORKSPACE/.gitleaks.toml"'), 2)

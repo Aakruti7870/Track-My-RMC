@@ -64,7 +64,7 @@ impl TotpKeyring {
         ring
     }
 
-    pub(crate) fn seal(&self, user_id: Uuid, secret: &str) -> Result<String, AppError> {
+    pub fn seal(&self, user_id: Uuid, secret: &str) -> Result<String, AppError> {
         let mut nonce = [0; NONCE_LEN];
         OsRng
             .try_fill_bytes(&mut nonce)
@@ -124,6 +124,24 @@ impl TotpKeyring {
         sqlx::query("SELECT pg_advisory_xact_lock(92742,1)")
             .execute(&mut *tx)
             .await?;
+        let constraint_exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM pg_constraint
+             WHERE conrelid = 'user_totp_credentials'::regclass
+               AND conname = 'user_totp_secret_encrypted')",
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        if !constraint_exists {
+            // Existing rows are upgraded below. New or changed rows must already
+            // use the encrypted format, including writes from older binaries.
+            sqlx::query(
+                "ALTER TABLE user_totp_credentials ADD CONSTRAINT user_totp_secret_encrypted
+                 CHECK (secret_key ~ '^tmrmc-totp-v1:[A-Za-z0-9_]{1,32}:[A-Za-z0-9_-]{39,}$')
+                 NOT VALID",
+            )
+            .execute(&mut *tx)
+            .await?;
+        }
         let rows: Vec<(Uuid, String)> = sqlx::query_as(
             "SELECT user_id,secret_key FROM user_totp_credentials ORDER BY user_id FOR UPDATE",
         )
@@ -148,6 +166,13 @@ impl TotpKeyring {
                 .bind(encrypted)
                 .execute(&mut *tx)
                 .await?;
+        }
+        if !constraint_exists {
+            sqlx::query(
+                "ALTER TABLE user_totp_credentials VALIDATE CONSTRAINT user_totp_secret_encrypted",
+            )
+            .execute(&mut *tx)
+            .await?;
         }
         tx.commit().await?;
         Ok(())
@@ -229,6 +254,22 @@ mod tests {
             assert_eq!(old.open(user, &row.0).unwrap(), seed);
             row.0
         };
+
+        let rejected =
+            sqlx::query("UPDATE user_totp_credentials SET secret_key=$2 WHERE user_id=$1")
+                .bind(user)
+                .bind(&seed)
+                .execute(&db)
+                .await
+                .unwrap_err();
+        assert_eq!(
+            rejected
+                .as_database_error()
+                .and_then(|e| e.code())
+                .as_deref(),
+            Some("23514")
+        );
+        assert_eq!(load().await.0, old_ciphertext);
 
         let new_only = TotpKeyring::parse("second", &second).unwrap();
         assert!(new_only.migrate_credentials(&db).await.is_err());

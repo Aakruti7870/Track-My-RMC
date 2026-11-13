@@ -439,10 +439,10 @@ NATIVE_SUPPORT_AUTOMATION_ENABLED="$(printf '%s' "$APP_JSON" | jq -er '
 TRACKMYRMC_KYC_ENABLED="$(printf '%s' "$APP_JSON" | jq -r '.TRACKMYRMC_KYC_ENABLED // "false" | tostring')"
 TRACKMYRMC_KYC_ENV="$(printf '%s' "$APP_JSON" | jq -r '.TRACKMYRMC_KYC_ENV // "disabled"')"
 TRACKMYRMC_KYC_LIVE_APPROVED="$(printf '%s' "$APP_JSON" | jq -r '.TRACKMYRMC_KYC_LIVE_APPROVED // "false" | tostring')"
-SANDBOX_KYC_API_KEY=''
-SANDBOX_KYC_API_SECRET=''
-LIVE_KYC_API_KEY=''
-LIVE_KYC_API_SECRET=''
+SANDBOX_KYC_API_KEY=
+SANDBOX_KYC_API_SECRET=
+LIVE_KYC_API_KEY=
+LIVE_KYC_API_SECRET=
 [[ "$TRACKMYRMC_KYC_ENABLED" == 'true' || "$TRACKMYRMC_KYC_ENABLED" == 'false' ]] || { echo 'Invalid DigiLocker feature switch' >&2; exit 1; }
 [[ "$TRACKMYRMC_KYC_LIVE_APPROVED" == 'true' || "$TRACKMYRMC_KYC_LIVE_APPROVED" == 'false' ]] || { echo 'Invalid DigiLocker live approval' >&2; exit 1; }
 if [[ "$TRACKMYRMC_KYC_ENABLED" == 'true' ]]; then

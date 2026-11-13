@@ -34,7 +34,7 @@ const CHECKS = [
   ["seal", "Seal / delivery identification checked where applicable"],
   ["time", "Arrival and unloading times recorded"],
   ["visual", "Concrete visually observed before discharge"],
-  ["access", "Safe access, pump/discharge area and workforce ready"],
+  ["access", "Safe approach, clear pump and discharge area, and crew ready"],
 ] as const;
 const today = () => new Date().toISOString().slice(0, 10);
 
