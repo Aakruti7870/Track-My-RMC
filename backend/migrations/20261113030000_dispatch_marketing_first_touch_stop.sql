@@ -27,3 +27,30 @@ COMMENT ON TABLE dispatch_whatsapp_marketing_first_touch IS
     'Exactly one automatic first-dispatch app promotion attempt per E.164 phone across all plants. Not authorization to send without independent opt-in.';
 COMMENT ON TABLE whatsapp_marketing_opt_outs IS
     'Durable WhatsApp marketing STOP/opt-out suppression for dispatch-linked and Admin CRM campaigns; order Utility messages unaffected.';
+
+-- Preserve historical attempts: adding the ledger must not send a second
+-- "first" promotion to a number previously reached by the old worker.
+INSERT INTO dispatch_whatsapp_marketing_first_touch
+    (phone_e164,order_id,plant_id,reserved_at)
+SELECT DISTINCT ON (c.phone_e164)
+    c.phone_e164,m.order_id,m.plant_id,COALESCE(m.attempted_at,m.created_at)
+FROM dispatch_whatsapp_marketing_events m
+JOIN dispatch_whatsapp_contacts c ON c.order_id=m.order_id
+WHERE m.attempts > 0
+  AND m.status IN ('sending','accepted','sent','delivered','read','failed','uncertain')
+ORDER BY c.phone_e164,COALESCE(m.attempted_at,m.created_at),m.order_id
+ON CONFLICT(phone_e164) DO NOTHING;
+
+-- Existing CRM opt-outs and explicit STOP cancellation records remain honored
+-- immediately after upgrading the schema.
+INSERT INTO whatsapp_marketing_opt_outs(phone_e164,source)
+SELECT DISTINCT c.phone_e164,'admin_consent'
+FROM admin_marketing_contacts c WHERE c.consent_status='OPTED_OUT'
+ON CONFLICT(phone_e164) DO NOTHING;
+
+INSERT INTO whatsapp_marketing_opt_outs(phone_e164,source)
+SELECT DISTINCT c.phone_e164,'whatsapp_stop'
+FROM dispatch_whatsapp_contacts c
+JOIN dispatch_whatsapp_marketing_events e ON e.order_id=c.order_id
+WHERE e.last_error='recipient_opted_out'
+ON CONFLICT(phone_e164) DO NOTHING;
