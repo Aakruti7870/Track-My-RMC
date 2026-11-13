@@ -129,6 +129,37 @@ pub async fn consent(
         ));
     }
     if body.status == "OPTED_OUT" {
+        // One opt-out applies to all TrackMyRMC WhatsApp marketing, including
+        // the separate automatic first-dispatch promotional worker.
+        sqlx::query(
+            "INSERT INTO whatsapp_marketing_opt_outs(phone_e164,source)
+             VALUES($1,'admin_consent')
+             ON CONFLICT(phone_e164) DO UPDATE SET
+               opted_out_at=NOW(),source='admin_consent',updated_at=NOW()",
+        )
+        .bind(&phone)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "UPDATE dispatch_whatsapp_contacts
+             SET marketing_opted_in=FALSE,marketing_consent_recorded_at=NULL,
+                 updated_at=NOW() WHERE phone_e164=$1",
+        )
+        .bind(&phone)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "UPDATE dispatch_whatsapp_marketing_events SET
+               status='cancelled',last_error='recipient_opted_out',
+               updated_at=NOW()
+             WHERE order_id IN (
+               SELECT order_id FROM dispatch_whatsapp_contacts
+               WHERE phone_e164=$1
+             ) AND status IN ('waiting_dispatch','needs_consent','pending')",
+        )
+        .bind(&phone)
+        .execute(&mut *tx)
+        .await?;
         sqlx::query(
             "UPDATE admin_marketing_deliveries SET status='cancelled',updated_at=NOW()
              WHERE contact_id=(SELECT id FROM admin_marketing_contacts WHERE phone_e164=$1)
@@ -137,6 +168,13 @@ pub async fn consent(
         .bind(&phone)
         .execute(&mut *tx)
         .await?;
+    } else {
+        // A separate, auditable, positive opt-in with consent evidence can
+        // supersede a prior STOP. A CSV import or campaign launch cannot.
+        sqlx::query("DELETE FROM whatsapp_marketing_opt_outs WHERE phone_e164=$1")
+            .bind(&phone)
+            .execute(&mut *tx)
+            .await?;
     }
     sqlx::query(
         "INSERT INTO audit_logs(user_id,action,resource_type,metadata)
@@ -310,6 +348,8 @@ pub async fn launch(
        JOIN admin_marketing_memberships m ON m.segment_id=d.segment_id
        JOIN admin_marketing_contacts c ON c.id=m.contact_id
        WHERE d.id=$1 AND c.consent_status='OPTED_IN'
+         AND NOT EXISTS(SELECT 1 FROM whatsapp_marketing_opt_outs o
+                        WHERE o.phone_e164=c.phone_e164)
          AND c.consent_evidence IS NOT NULL AND length(btrim(c.consent_evidence))>=12
          AND c.consent_recorded_at IS NOT NULL
        ON CONFLICT(campaign_id,contact_id) DO NOTHING",
@@ -452,6 +492,8 @@ pub async fn tick(state: &AppState) -> Result<usize, AppError> {
          JOIN admin_marketing_campaign_drafts k ON k.id=d.campaign_id
          WHERE d.status='pending' AND k.status='SENDING'
           AND c.consent_status='OPTED_IN' AND c.consent_recorded_at IS NOT NULL
+          AND NOT EXISTS(SELECT 1 FROM whatsapp_marketing_opt_outs o
+                         WHERE o.phone_e164=c.phone_e164)
          ORDER BY d.created_at,d.id LIMIT 1 FOR UPDATE OF d SKIP LOCKED",
         )
         .fetch_optional(&mut *tx)
@@ -474,6 +516,8 @@ pub async fn tick(state: &AppState) -> Result<usize, AppError> {
          JOIN admin_marketing_contacts c ON c.id=d.contact_id
          JOIN admin_marketing_campaign_drafts k ON k.id=d.campaign_id
          WHERE d.id=$1 AND k.status='SENDING' AND c.consent_status='OPTED_IN'
+           AND NOT EXISTS(SELECT 1 FROM whatsapp_marketing_opt_outs o
+                          WHERE o.phone_e164=c.phone_e164)
            AND c.consent_evidence IS NOT NULL AND length(btrim(c.consent_evidence))>=12
            AND c.consent_recorded_at IS NOT NULL)",
         )
