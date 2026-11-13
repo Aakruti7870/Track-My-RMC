@@ -81,12 +81,16 @@ pub async fn record_compliance(
     if input.acceptance != "I have reviewed e-invoicing applicability for this plant GSTIN" {
         return Err(invalid("explicit owner compliance acknowledgment"));
     }
+    // The compliance declaration and its audit evidence must be atomic:
+    // never persist a GST applicability decision without the corresponding log.
+    let mut tx = state.db.begin().await?;
     sqlx::query("INSERT INTO invoice_compliance_declarations(plant_id,e_invoice_required,confirmed_by) VALUES($1,$2,$3) \
        ON CONFLICT(plant_id) DO UPDATE SET e_invoice_required=EXCLUDED.e_invoice_required,confirmed_by=EXCLUDED.confirmed_by,confirmed_at=NOW()")
-       .bind(plant).bind(input.e_invoice_required).bind(user.user_id).execute(&state.db).await?;
+       .bind(plant).bind(input.e_invoice_required).bind(user.user_id).execute(&mut *tx).await?;
     sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'invoice_compliance_declared','plant',$2,$3)")
        .bind(user.user_id).bind(plant.to_string()).bind(json!({"e_invoice_required":input.e_invoice_required}))
-       .execute(&state.db).await?;
+       .execute(&mut *tx).await?;
+    tx.commit().await?;
     Ok(Json(json!({"success":true})))
 }
 
