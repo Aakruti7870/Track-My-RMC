@@ -73,7 +73,8 @@ async fn update_contact(
     .bind(&normalized)
     .fetch_one(&mut *tx)
     .await?;
-    if suppressed && marketing_opted_in && !(explicit_marketing_action && source == "customer_app") {
+    if suppressed && marketing_opted_in && !(explicit_marketing_action && source == "customer_app")
+    {
         return Err(AppError::Forbidden(
             "Customer opted out of promotions; customer must explicitly re-enable them".into(),
         ));
