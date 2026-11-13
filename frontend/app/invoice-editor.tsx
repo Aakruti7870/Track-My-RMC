@@ -36,14 +36,14 @@ type Order = { order_id: string; order_number: string; plant_id: string; custome
 type Workspace = {
   order: Order; draft: Draft | null; buyers: Buyer[]; prices: Price[];
   challans: { id: string; challan_number: string; quantity_m3: string; status: string }[];
-  order_history: History[]; ledger: Ledger[];
+  order_history: History[]; ledger: Ledger[]; e_invoice_required?: boolean | null;
 };
 const rupees=(value: string | number) => "₹" + Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const emptyToNull=(value: string | null | undefined) => value?.trim() || null;
 
 export default function InvoiceEditor() {
   const { orderId, invoiceId } = useLocalSearchParams<{ orderId?: string; invoiceId?: string }>();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const { colors } = useTheme();
   const router = useRouter();
   const toast = useToast();
@@ -60,6 +60,7 @@ export default function InvoiceEditor() {
   const [html, setHtml] = useState("");
   const [previewVisible, setPreviewVisible] = useState(false);
   const [pending, setPending] = useState(false);
+  const [printScale, setPrintScale] = useState(100);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -156,12 +157,26 @@ export default function InvoiceEditor() {
     Alert.alert("Issue tax invoice?", "This creates an immutable financial document. Check all fields and the buyer before continuing.",
       [{text:"Review",style:"cancel"},{text:"Issue Invoice",onPress:()=>{void issue();}}]);
   };
+  const documentHtml = html.replace("</head>",
+    `<style>@media print { article { transform:scale(${printScale/100}); transform-origin:top left; } }</style></head>`);
+  const declareCompliance=async(required:boolean)=>{
+    if(!token || !workspace) return;
+    setPending(true);
+    try{
+      await apiPost(`/invoice-workspace/plants/${workspace.order.plant_id}/compliance`,token,{
+        e_invoice_required:required,acceptance:"I have reviewed e-invoicing applicability for this plant GSTIN",
+      });
+      toast(required?"E-invoicing required: IRP registration must be integrated":"Owner declaration recorded","success");
+      await refresh();
+    }catch(e:unknown){toast(apiErrorDetail(e,"Declaration failed"),"error");}
+    finally{setPending(false);}
+  };
   const openWebPrint = () => {
     if (Platform.OS !== "web" || !html) return;
     // Print documents are only opened from an explicit user tap.
     const win=window.open("", "_blank");
     if (!win) return toast("Allow popups to open the print document","error");
-    win.document.open(); win.document.write(html); win.document.close();
+    win.document.open(); win.document.write(documentHtml); win.document.close();
   };
 
   const field = (label: string, key: keyof Draft, max = 200, keyboardType?: "numeric" | "default") => (
@@ -199,7 +214,24 @@ export default function InvoiceEditor() {
             <AppText variant="caption">Accepted order total: {rupees(workspace.order.order_total)} · {workspace.order.status}</AppText>
           </Card> : null}
 
-          {issuedId ? <Card style={{gap:spacing.md}}>
+          {workspace && !issuedId ? <Card style={{gap:spacing.sm}}>
+            <AppText variant="heading">GST E-Invoicing Eligibility</AppText>
+            <AppText variant="caption">Only the plant owner may declare whether statutory IRN/QR registration is required. A PDF is not an IRP-registered invoice.</AppText>
+            <AppText style={{color:workspace.e_invoice_required===false?colors.success:colors.warning}}>
+              {workspace.e_invoice_required === null || workspace.e_invoice_required === undefined
+                ? "Eligibility not confirmed; invoice issuance is blocked"
+                : workspace.e_invoice_required ? "IRN/QR registration required; issuance is blocked" : "Owner confirmed e-invoicing not applicable"}
+            </AppText>
+            {["owner","plant_owner"].includes(user?.role||"") ? <>
+              <Button label="Declare: E-invoicing NOT required" variant="outline" disabled={pending} onPress={()=>{
+                Alert.alert("Confirm business eligibility","Confirm only after checking GST turnover, registration and applicable exemptions.",[
+                  {text:"Cancel",style:"cancel"},{text:"I confirm",onPress:()=>{void declareCompliance(false);}},
+                ]);
+              }}/>
+              <Button label="Declare: E-invoicing IS required" variant="outline" disabled={pending} onPress={()=>{void declareCompliance(true);}}/>
+            </> : null}
+          </Card>:null}
+          {issuedId ? <Card style={{gap:spacing.md}}> 
             <AppText variant="heading">Issued Tax Invoice</AppText>
             <AppText variant="caption">Financial details are locked after issuance. The document remains available in Billing & Ledger.</AppText>
             <Button label="Preview Issued Invoice" onPress={()=>{void preview();}} loading={pending}/>
@@ -299,7 +331,8 @@ export default function InvoiceEditor() {
                 <Ionicons name={confirmed?"checkbox":"square-outline"} size={23} color={colors.brand}/>
                 <AppText style={{flex:1}}>I verified buyer, taxes, challans and the approved order total; issue the final tax invoice.</AppText>
               </Pressable>
-              <Button label="Issue Final Tax Invoice" onPress={confirmIssue} disabled={!confirmed||pending} loading={pending}/>
+              <Button label="Issue Final Tax Invoice" onPress={confirmIssue}
+                disabled={!confirmed||pending||workspace?.e_invoice_required!==false} loading={pending}/>
             </Card>
           </> : !issuedId ? <Card><AppText>Prepare the order's challan before opening an invoice draft.</AppText></Card> : null}
 
@@ -332,10 +365,15 @@ export default function InvoiceEditor() {
               <AppText variant="caption">Standard A4 layout · Fit-to-page print CSS</AppText></View>
             {Platform.OS==="web" ? <Button label="Print / PDF" size="sm" fullWidth={false} onPress={openWebPrint}/> : null}
           </View>
+          <View style={{flexDirection:"row",gap:spacing.sm,justifyContent:"center",padding:spacing.sm}}>
+            {[100,90,80].map(n=><Pressable key={n} accessibilityRole="button" onPress={()=>setPrintScale(n)}
+              style={{padding:spacing.sm,borderRadius:radius.sm,borderWidth:1,borderColor:n===printScale?colors.brand:colors.border}}>
+              <AppText>{n}%</AppText></Pressable>)}
+          </View>
           {Platform.OS==="web" ? <View style={{flex:1,padding:spacing.lg}}>
-            <iframe title="Invoice Preview" srcDoc={html} sandbox="allow-modals" style={{width:"100%",height:"100%",border:0}}/>
+            <iframe title="Invoice Preview" srcDoc={documentHtml} sandbox="allow-modals" style={{width:"100%",height:"100%",border:0}}/>
           </View> :
-            <WebView originWhitelist={["about:blank"]} source={{html}} javaScriptEnabled={false}
+            <WebView originWhitelist={["about:blank"]} source={{html:documentHtml}} javaScriptEnabled={false}
               style={{flex:1}} />}
           {Platform.OS!=="web" ? <AppText variant="caption" style={{textAlign:"center",padding:spacing.md}}>
             Native printing requires a supported device print service; the preview does not transmit customer data to external sites.
