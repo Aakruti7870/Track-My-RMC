@@ -33,6 +33,10 @@ pub struct CustomerConsentInput {
     pub opted_in: bool,
     #[serde(default)]
     pub marketing_opted_in: bool,
+    // Only the separate, customer-initiated promotions button may withdraw a
+    // previous STOP suppression. A routine delivery-toggle request cannot.
+    #[serde(default)]
+    pub marketing_consent_action: bool,
 }
 
 #[derive(Deserialize)]
@@ -49,9 +53,29 @@ async fn update_contact(
     opted_in: bool,
     marketing_opted_in: bool,
     source: &str,
+    explicit_marketing_renewal: bool,
 ) -> Result<(), AppError> {
     let normalized = dispatch_whatsapp::normalize_recipient(phone)?;
     let mut tx = state.db.begin().await?;
+    let suppressed: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM whatsapp_marketing_opt_outs WHERE phone_e164=$1)",
+    )
+    .bind(&normalized)
+    .fetch_one(&mut *tx)
+    .await?;
+    if suppressed && marketing_opted_in && !explicit_marketing_renewal {
+        return Err(AppError::Forbidden(
+            "Customer opted out of promotions; customer must explicitly re-enable them".into(),
+        ));
+    }
+    if explicit_marketing_renewal && source == "customer_app" && marketing_opted_in {
+        // Explicit positive action in the customer's authenticated order UI.
+        // Do not silently reinstate central CRM promotional consent.
+        sqlx::query("DELETE FROM whatsapp_marketing_opt_outs WHERE phone_e164=$1")
+            .bind(&normalized)
+            .execute(&mut *tx)
+            .await?;
+    }
     sqlx::query(
         "INSERT INTO dispatch_whatsapp_contacts
            (order_id,phone_e164,opted_in,marketing_opted_in,
@@ -135,6 +159,7 @@ pub async fn staff_record_contact(
         input.opted_in,
         input.marketing_opted_in,
         &input.consent_source,
+        false,
     )
     .await?;
     Ok(Json(json!({"success": true, "opted_in": input.opted_in,
@@ -166,9 +191,11 @@ pub async fn customer_consent(
         input.opted_in,
         input.marketing_opted_in,
         "customer_app",
+        input.marketing_consent_action && input.marketing_opted_in,
     )
     .await?;
-    Ok(Json(json!({"success": true, "opted_in": input.opted_in})))
+    Ok(Json(json!({"success": true, "opted_in": input.opted_in,
+        "marketing_opted_in": input.marketing_opted_in})))
 }
 
 pub async fn get_customer_consent(
@@ -424,6 +451,20 @@ pub async fn verify_meta_webhook(
 }
 
 /// Verify Meta's signed payload; never trust a provider status from an open endpoint.
+// Opt-out commands are intentionally narrow. A casual mention of "stop"
+// must not revoke consent; punctuation and casing do not affect explicit STOP.
+fn is_marketing_stop(raw: &str) -> bool {
+    let cleaned = raw
+        .trim()
+        .trim_end_matches(|c: char| matches!(c, '.' | '!' | '?'))
+        .trim()
+        .to_ascii_uppercase();
+    matches!(
+        cleaned.as_str(),
+        "STOP" | "STOP ALL" | "UNSUBSCRIBE" | "OPT OUT" | "STOP PROMOTIONS"
+    )
+}
+
 pub async fn receive_meta_webhook(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -484,15 +525,23 @@ pub async fn receive_meta_webhook(
             // Explicit recipient STOP on the verified sender cancels all pending
             // marketing for that number across all tenant plants.
             for inbound in change["value"]["messages"].as_array().into_iter().flatten() {
-                let text = inbound["text"]["body"]
-                    .as_str()
-                    .unwrap_or("")
-                    .trim()
-                    .to_ascii_uppercase();
-                if matches!(text.as_str(), "STOP" | "UNSUBSCRIBE" | "OPT OUT") {
+                let text = inbound["text"]["body"].as_str().unwrap_or("");
+                if is_marketing_stop(text) {
                     if let Some(from) = inbound["from"].as_str() {
                         if let Ok(phone) = dispatch_whatsapp::normalize_recipient(from) {
                             let mut tx = state.db.begin().await?;
+                            // Durable global suppression prevents later orders,
+                            // another plant, or the CRM from resending to STOP.
+                            sqlx::query(
+                                "INSERT INTO whatsapp_marketing_opt_outs
+                                 (phone_e164,source) VALUES($1,'whatsapp_stop')
+                                 ON CONFLICT(phone_e164) DO UPDATE
+                                 SET opted_out_at=NOW(),source='whatsapp_stop',
+                                     updated_at=NOW()",
+                            )
+                            .bind(&phone)
+                            .execute(&mut *tx)
+                            .await?;
                             sqlx::query(
                                 "UPDATE dispatch_whatsapp_marketing_events SET
                                     status='cancelled',last_error='recipient_opted_out',
@@ -525,7 +574,7 @@ pub async fn receive_meta_webhook(
                                      consent_recorded_at=NULL, updated_at=NOW()
                                  WHERE phone_e164=$1",
                             )
-                            .bind(format!("+{phone}"))
+                            .bind(&phone)
                             .execute(&mut *tx)
                             .await?;
                             // No queued central CRM message may outlive a
@@ -539,7 +588,7 @@ pub async fn receive_meta_webhook(
                                    WHERE phone_e164=$1
                                  ) AND status='pending'",
                             )
-                            .bind(format!("+{phone}"))
+                            .bind(&phone)
                             .execute(&mut *tx)
                             .await?;
                             tx.commit().await?;
