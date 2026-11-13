@@ -18,7 +18,7 @@ import { Input } from "@/src/components/ui/Input";
 import { EmptyView, ErrorView } from "@/src/components/StateViews";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 
-type Invoice = { id: string; invoice_number: string; order_number: string; customer_name: string; grade: string; quantity: number; total: number; paid: number; balance: number; status: string };
+type Invoice = { has_print_document?: boolean; id: string; invoice_number: string; order_number: string; customer_name: string; grade: string; quantity: number; total: number; paid: number; balance: number; status: string };
 type Data = { invoices: Invoice[]; summary: { billed: number; received: number; outstanding: number } };
 
 const money = (n: number) => "₹" + (n || 0).toLocaleString("en-IN");
@@ -65,7 +65,12 @@ export default function Billing() {
         <ErrorView message={error} onRetry={reload} />
       ) : (
         <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg }} showsVerticalScrollIndicator={false}>
-          <View style={{ flexDirection: "row", gap: spacing.sm }}>
+          <Card style={{ gap: spacing.sm }}>
+            <AppText variant="heading">Standard Tax Invoice</AppText>
+            <AppText variant="caption">Prepare a challan first. Then select Review / Generate Tax Invoice from that order to prefill the buyer, concrete, prices and ledger.</AppText>
+            <Button label="Open Orders to Generate Invoice" variant="outline" onPress={() => router.push("/owner/orders")} />
+          </Card>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
             {[["Billed", data?.summary.billed, colors.onSurface], ["Received", data?.summary.received, colors.success], ["Outstanding", data?.summary.outstanding, colors.warning]].map(([l, v, c]: any) => (
               <View key={l} style={[styles.kpi, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
                 <AppText style={{ fontFamily: fonts.displayBold, fontSize: fontSize.lg, color: c }}>{money(v || 0)}</AppText>
@@ -95,6 +100,10 @@ export default function Billing() {
                   <AppText variant="caption" color={colors.success}>Paid {money(inv.paid)}</AppText>
                   <AppText variant="caption" color={inv.balance > 0 ? colors.warning : colors.success}>Balance {money(inv.balance)}</AppText>
                 </View>
+                {inv.has_print_document ? (
+                  <Button label="Preview / Print Tax Invoice" variant="outline"
+                    onPress={() => router.push({pathname:"/invoice-editor",params:{invoiceId:inv.id}})} />
+                ) : null}
                 {inv.balance > 0 ? (
                   payFor === inv.id ? (
                     <View style={{ gap: spacing.sm }}>
@@ -120,6 +129,6 @@ export default function Billing() {
 const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth },
   iconBtn: { width: 40, height: 40, borderRadius: radius.md, alignItems: "center", justifyContent: "center", borderWidth: 1 },
-  kpi: { flex: 1, alignItems: "center", gap: 2, paddingVertical: spacing.md, borderRadius: radius.md, borderWidth: 1 },
+  kpi: { flexGrow: 1, flexBasis: 108, minWidth: 100, alignItems: "center", gap: 2, paddingVertical: spacing.md, borderRadius: radius.md, borderWidth: 1 },
   rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
 });
