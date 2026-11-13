@@ -153,8 +153,12 @@ export default function InvoiceEditor() {
   };
   const confirmIssue = () => {
     if (!confirmed) return toast("Confirm buyer, challans and the accepted order amount first", "error");
-    if (Platform.OS === "web") { void issue(); return; }
-    Alert.alert("Issue tax invoice?", "This creates an immutable financial document. Check all fields and the buyer before continuing.",
+    const warning = "This creates an immutable financial document. Check all fields and the buyer before continuing.";
+    if (Platform.OS === "web") {
+      if (window.confirm(`Issue tax invoice?\n\n${warning}`)) void issue();
+      return;
+    }
+    Alert.alert("Issue tax invoice?", warning,
       [{text:"Review",style:"cancel"},{text:"Issue Invoice",onPress:()=>{void issue();}}]);
   };
   const documentHtml = html.replace("</head>",
@@ -170,6 +174,16 @@ export default function InvoiceEditor() {
       await refresh();
     }catch(e:unknown){toast(apiErrorDetail(e,"Declaration failed"),"error");}
     finally{setPending(false);}
+  };
+  const confirmNoEInvoiceRequired = () => {
+    const warning = "Confirm only after checking GST turnover, registration and applicable exemptions.";
+    if (Platform.OS === "web") {
+      if (window.confirm(`Confirm business eligibility\n\n${warning}`)) void declareCompliance(false);
+      return;
+    }
+    Alert.alert("Confirm business eligibility", warning, [
+      {text:"Cancel",style:"cancel"},{text:"I confirm",onPress:()=>{void declareCompliance(false);}},
+    ]);
   };
   const openWebPrint = () => {
     if (Platform.OS !== "web" || !html) return;
@@ -223,11 +237,7 @@ export default function InvoiceEditor() {
                 : workspace.e_invoice_required ? "IRN/QR registration required; issuance is blocked" : "Owner confirmed e-invoicing not applicable"}
             </AppText>
             {["owner","plant_owner"].includes(user?.role||"") ? <>
-              <Button label="Declare: E-invoicing NOT required" variant="outline" disabled={pending} onPress={()=>{
-                Alert.alert("Confirm business eligibility","Confirm only after checking GST turnover, registration and applicable exemptions.",[
-                  {text:"Cancel",style:"cancel"},{text:"I confirm",onPress:()=>{void declareCompliance(false);}},
-                ]);
-              }}/>
+              <Button label="Declare: E-invoicing NOT required" variant="outline" disabled={pending} onPress={confirmNoEInvoiceRequired}/>
               <Button label="Declare: E-invoicing IS required" variant="outline" disabled={pending} onPress={()=>{void declareCompliance(true);}}/>
             </> : null}
           </Card>:null}
