@@ -59,6 +59,27 @@ pub struct DraftInput {
 }
 #[derive(Debug, Deserialize)]
 pub struct IssueInput { pub version: i32, pub confirmed: bool }
+#[derive(Debug, Deserialize)]
+pub struct ComplianceInput {
+    pub e_invoice_required: bool,
+    pub acceptance: String,
+}
+pub async fn record_compliance(State(state):State<AppState>,user:AuthUser,Path(plant):Path<Uuid>,
+    Json(input):Json<ComplianceInput>)->Result<Json<Value>,AppError>{
+    check_role(&user,&["owner","plant_owner"])?;
+    require_bill(&state,&user,plant,Action::Edit).await?;
+    if input.acceptance != "I have reviewed e-invoicing applicability for this plant GSTIN" {
+        return Err(invalid("explicit owner compliance acknowledgment"));
+    }
+    sqlx::query("INSERT INTO invoice_compliance_declarations(plant_id,e_invoice_required,confirmed_by) VALUES($1,$2,$3) \
+       ON CONFLICT(plant_id) DO UPDATE SET e_invoice_required=EXCLUDED.e_invoice_required,confirmed_by=EXCLUDED.confirmed_by,confirmed_at=NOW()")
+       .bind(plant).bind(input.e_invoice_required).bind(user.user_id).execute(&state.db).await?;
+    sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'invoice_compliance_declared','plant',$2,$3)")
+       .bind(user.user_id).bind(plant.to_string()).bind(json!({"e_invoice_required":input.e_invoice_required}))
+       .execute(&state.db).await?;
+    Ok(Json(json!({"success":true})))
+}
+
 
 fn invalid(field: &str) -> AppError { AppError::BadRequest(format!("Invalid or missing {field}")) }
 fn limited(value: &str, max: usize) -> bool { !value.trim().is_empty() && value.len() <= max }
@@ -242,8 +263,12 @@ pub async fn workspace(State(state):State<AppState>,user:AuthUser,Path(order):Pa
     let challans:Vec<Value>=sqlx::query_scalar(
       "SELECT jsonb_build_object('id',c.id,'challan_number',c.challan_number,'quantity_m3',c.quantity_m3::TEXT,'status',l.status)        FROM challans c JOIN order_loads l ON l.id=c.load_id JOIN orders o ON o.id=l.order_id        WHERE o.id=$1 AND o.plant_id=$2 ORDER BY l.load_number"
     ).bind(order).bind(plant).fetch_all(&state.db).await?;
+    let compliance:Option<bool>=sqlx::query_scalar(
+        "SELECT e_invoice_required FROM invoice_compliance_declarations WHERE plant_id=$1"
+    ).bind(plant).fetch_optional(&state.db).await?;
     Ok(Json(json!({"success":true,"order":base,"draft":draft,"buyers":buyers,
-      "prices":prices,"grades":prices,"order_history":history,"ledger":ledger,"challans":challans})))
+      "prices":prices,"grades":prices,"order_history":history,"ledger":ledger,"challans":challans,
+      "e_invoice_required":compliance})))
 }
 
 pub async fn buyer_upsert(State(state):State<AppState>,user:AuthUser,Path(plant):Path<Uuid>,
@@ -292,7 +317,7 @@ pub async fn save_draft(State(state):State<AppState>,user:AuthUser,Path(id):Path
     let master:Option<(String,Option<String>)>=sqlx::query_as(
        "SELECT legal_name,gstin FROM plant_profiles WHERE plant_id=$1"
     ).bind(plant).fetch_optional(&state.db).await?;
-    let (master_name,master_gstin)=master.ok_or_else(||AppError::Conflict("Complete the verified plant billing profile before invoicing".into()))?;
+    let (master_name,master_gstin)=master.ok_or_else(||AppError::Conflict("Complete the plant billing profile before invoicing".into()))?;
     if input.seller_gstin!=master_gstin || input.seller_gstin.is_none() {
         return Err(AppError::Conflict("Seller GSTIN must match the verified plant billing profile".into()));
     }
@@ -325,8 +350,8 @@ pub async fn save_draft(State(state):State<AppState>,user:AuthUser,Path(id):Path
     let before=get_str(&original,"seller_name")!=input.seller_name ||
         original["lines"]!=changed || get_str(&original,"buyer_name")!=input.buyer_name ||
         get_str(&original,"challan_display_reference")!=ref_override;
-    if before && input.change_reason.as_deref().is_some_and(|v|v.len()>500) {
-        return Err(invalid("change reason length"));
+    if before && !input.change_reason.as_deref().is_some_and(|v|limited(v,500)) {
+        return Err(invalid("reason for invoice changes (maximum 500 characters)"));
     }
     let buyer_id=if input.save_buyer {
         let c:Uuid=serde_json::from_value(original["customer_id"].clone()).map_err(|_|invalid("linked customer"))?;
@@ -386,6 +411,18 @@ pub async fn issue(State(state):State<AppState>,user:AuthUser,Path(id):Path<Uuid
     }
     if draft["version"].as_i64()!=Some(i64::from(input.version)) {
         return Err(AppError::Conflict("Invoice changed; reload before issuing".into()));
+    }
+    let order_status:String=row.get("status");
+    if matches!(order_status.as_str(),"cancelled"|"rejected"|"draft") {
+        return Err(AppError::Conflict("Cancelled, rejected or unapproved orders cannot be invoiced".into()));
+    }
+    let compliance:Option<bool>=sqlx::query_scalar(
+        "SELECT e_invoice_required FROM invoice_compliance_declarations WHERE plant_id=$1"
+    ).bind(plant).fetch_optional(&mut *tx).await?;
+    match compliance {
+        None => return Err(AppError::Conflict("Plant owner must confirm GST e-invoicing applicability before issue".into())),
+        Some(true) => return Err(AppError::Conflict("IRN/QR registration is required; this invoice module must not issue without a validated IRP integration".into())),
+        Some(false) => {}
     }
     let already:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM plant_invoices WHERE order_id=$1)")
        .bind(order).fetch_one(&mut *tx).await?;
