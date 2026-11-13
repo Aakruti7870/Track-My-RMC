@@ -93,7 +93,7 @@ export default function OwnerOperations() {
   const selectedRule = (rules?.rules ?? []).find(rule => rule.key === selectedRuleKey);
   const dispatchUrl = plantId ? `/owner/plants/${encodeURIComponent(plantId)}/dispatch-whatsapp` : null;
   const { data: whatsappSettings, refetch: refreshWhatsappSettings } =
-    useGet<{ enabled: boolean; marketing_enabled: boolean;
+    useGet<{ enabled: boolean; marketing_enabled: boolean; preference_exists: boolean;
       worker_enabled: boolean; marketing_worker_enabled: boolean;
       template_configured: boolean; marketing_template_configured: boolean;
       summary: { pending: number; needs_consent: number; needs_review: number; delivered: number };
@@ -186,7 +186,13 @@ export default function OwnerOperations() {
             <Pressable accessibilityRole="switch"
               accessibilityState={{ checked: whatsappSettings?.enabled || false, disabled: updatingWhatsapp || !plantId }}
               disabled={updatingWhatsapp || !plantId}
-              onPress={() => void updateWhatsapp(!whatsappSettings?.enabled, Boolean(whatsappSettings?.marketing_enabled))}
+              onPress={() => {
+                const willEnable = !whatsappSettings?.enabled;
+                // First plant setup: prepare the consent-only first-dispatch
+                // promotion automatically. A later owner opt-out is retained.
+                const allowFirstTouch = willEnable && !whatsappSettings?.preference_exists;
+                void updateWhatsapp(willEnable, allowFirstTouch || Boolean(whatsappSettings?.marketing_enabled));
+              }}
               style={{ backgroundColor: whatsappSettings?.enabled ? p.accent : p.glass,
                 borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9 }}>
               <AppText style={{ color: whatsappSettings?.enabled ? "#FFFFFF" : p.text, fontWeight: "700" }}>
@@ -208,7 +214,7 @@ export default function OwnerOperations() {
             <View style={{ flex: 1 }}>
               <AppText style={{ color: p.text, fontWeight: "700", fontSize: 14 }}>Optional App Promotion</AppText>
               <AppText style={{ color: p.muted, fontSize: 12 }}>
-                Separate Meta Marketing template, explicit opt-in, at most once per customer every 30 days.
+                TrackMyRMC first-dispatch introduction is enabled when a plant first activates dispatch alerts. Sends once per number only after separate customer opt-in; STOP cancels marketing. Turn OFF here anytime.
               </AppText>
             </View>
             <Pressable accessibilityRole="switch"
@@ -224,7 +230,7 @@ export default function OwnerOperations() {
             </Pressable>
           </View>
           <AppText style={{ color: p.muted, fontSize: 12 }}>
-            Marketing worker: {whatsappSettings?.marketing_worker_enabled ? "Enabled" : "Not activated"} ·
+            First-time promotion worker: {whatsappSettings?.marketing_worker_enabled ? "Enabled" : "Not activated"} ·
             Template: {whatsappSettings?.marketing_template_configured ? "Configured" : "Pending"}
           </AppText>
           {whatsappSettings?.marketing_summary ? (
