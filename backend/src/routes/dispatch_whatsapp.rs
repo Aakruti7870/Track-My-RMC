@@ -234,6 +234,12 @@ pub async fn get_owner_preference(
     .bind(plant_id)
     .fetch_one(&state.db)
     .await?;
+    let preference_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM dispatch_whatsapp_plant_settings WHERE plant_id=$1)",
+    )
+    .bind(plant_id)
+    .fetch_one(&state.db)
+    .await?;
     let marketing_enabled: bool = sqlx::query_scalar(
         "SELECT COALESCE((SELECT marketing_enabled
          FROM dispatch_whatsapp_plant_settings WHERE plant_id=$1),FALSE)",
@@ -268,6 +274,7 @@ pub async fn get_owner_preference(
     .await?;
     Ok(Json(json!({
         "enabled": enabled,
+        "preference_exists": preference_exists,
         "marketing_enabled": marketing_enabled,
         "marketing_worker_enabled": std::env::var("DISPATCH_WHATSAPP_MARKETING_ENABLED")
             .ok().as_deref() == Some("true"),
@@ -612,4 +619,33 @@ pub async fn receive_meta_webhook(
         }
     }
     Ok(StatusCode::OK)
+}
+
+#[cfg(test)]
+mod marketing_stop_tests {
+    use super::is_marketing_stop;
+
+    #[test]
+    fn unambiguous_stop_commands_revoke_marketing() {
+        for yes in ["STOP", "Stop!", "stop", " stop ", "UNSUBSCRIBE", "OPT OUT", "STOP ALL", "stop promotions"] {
+            assert!(is_marketing_stop(yes), "{yes}");
+        }
+        for no in ["", "STOPPER", "please stop by the office", "STOP LOSS", "START"] {
+            assert!(!is_marketing_stop(no), "{no}");
+        }
+    }
+
+    #[test]
+    fn routine_customer_delivery_request_cannot_mark_marketing_reconsent() {
+        let plain = serde_json::json!({"opted_in":true,"marketing_opted_in":true});
+        let input: super::CustomerConsentInput = serde_json::from_value(plain).unwrap();
+        assert!(!input.marketing_consent_action);
+        let positive = serde_json::json!({
+            "opted_in":true,
+            "marketing_opted_in":true,
+            "marketing_consent_action":true
+        });
+        let input: super::CustomerConsentInput = serde_json::from_value(positive).unwrap();
+        assert!(input.marketing_consent_action);
+    }
 }
