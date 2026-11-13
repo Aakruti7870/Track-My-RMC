@@ -144,14 +144,17 @@ export function OwnerProductionBilling({
         </Card>
       ) : null}
 
-      {status === "DELIVERED" ? (
+      {["PRODUCTION_COMPLETE", "DISPATCHED", "EN_ROUTE", "AT_SITE", "UNLOADING", "POD_PENDING", "DELIVERED"].includes(status) ? (
         <View style={{ gap: spacing.sm }}>
           <AppText variant="heading">Billing</AppText>
           {invoiceNumber ? (
             <Button label={`View Billing (${invoiceNumber})`} onPress={() => router.push("/owner/billing")} icon={<Ionicons name="wallet-outline" size={18} color={colors.onBrand} />} />
           ) : (
-            <Button label="Generate Invoice" loading={busy} onPress={() => call(`/owner/orders/${orderId}/invoice`, {}, "Invoice generated")} icon={<Ionicons name="receipt-outline" size={18} color={colors.onBrand} />} />
+            <Button label="Review / Generate Tax Invoice" loading={busy}
+              onPress={() => router.push({pathname:"/invoice-editor",params:{orderId}})}
+              icon={<Ionicons name="receipt-outline" size={18} color={colors.onBrand} />} />
           )}
+          <AppText variant="caption">A prepared challan creates an editable draft. Confirm and issue from the standard invoice editor.</AppText>
         </View>
       ) : null}
     </View>
