@@ -457,7 +457,6 @@ pub async fn verify_meta_webhook(
     Ok((StatusCode::OK, challenge))
 }
 
-/// Verify Meta's signed payload; never trust a provider status from an open endpoint.
 // Opt-out commands are intentionally narrow. A casual mention of "stop"
 // must not revoke consent; punctuation and casing do not affect explicit STOP.
 fn is_marketing_stop(raw: &str) -> bool {
@@ -472,6 +471,7 @@ fn is_marketing_stop(raw: &str) -> bool {
     )
 }
 
+/// Verify Meta's signed payload; never trust a provider status from an open endpoint.
 pub async fn receive_meta_webhook(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -536,7 +536,11 @@ pub async fn receive_meta_webhook(
                 if is_marketing_stop(text) {
                     // STOP ALL explicitly revokes delivery WhatsApp updates too;
                     // ordinary STOP only revokes promotional WhatsApp.
-                    let stop_all = text.trim().trim_end_matches(|c: char| matches!(c, '.' | '!' | '?')).trim().eq_ignore_ascii_case("STOP ALL");
+                    let stop_all = text
+                        .trim()
+                        .trim_end_matches(|c: char| matches!(c, '.' | '!' | '?'))
+                        .trim()
+                        .eq_ignore_ascii_case("STOP ALL");
                     if let Some(from) = inbound["from"].as_str() {
                         if let Ok(phone) = dispatch_whatsapp::normalize_recipient(from) {
                             let mut tx = state.db.begin().await?;
@@ -653,10 +657,25 @@ mod marketing_stop_tests {
 
     #[test]
     fn unambiguous_stop_commands_revoke_marketing() {
-        for yes in ["STOP", "Stop!", "stop", " stop ", "UNSUBSCRIBE", "OPT OUT", "STOP ALL", "stop promotions"] {
+        for yes in [
+            "STOP",
+            "Stop!",
+            "stop",
+            " stop ",
+            "UNSUBSCRIBE",
+            "OPT OUT",
+            "STOP ALL",
+            "stop promotions",
+        ] {
             assert!(is_marketing_stop(yes), "{yes}");
         }
-        for no in ["", "STOPPER", "please stop by the office", "STOP LOSS", "START"] {
+        for no in [
+            "",
+            "STOPPER",
+            "please stop by the office",
+            "STOP LOSS",
+            "START",
+        ] {
             assert!(!is_marketing_stop(no), "{no}");
         }
     }
