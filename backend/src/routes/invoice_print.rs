@@ -62,6 +62,21 @@ fn words_0_999(n: u64) -> String {
         }
     )
 }
+fn state_name(code: &str) -> &'static str {
+    match code {
+        "01"=>"Jammu and Kashmir","02"=>"Himachal Pradesh","03"=>"Punjab","04"=>"Chandigarh",
+        "05"=>"Uttarakhand","06"=>"Haryana","07"=>"Delhi","08"=>"Rajasthan","09"=>"Uttar Pradesh",
+        "10"=>"Bihar","11"=>"Sikkim","12"=>"Arunachal Pradesh","13"=>"Nagaland","14"=>"Manipur",
+        "15"=>"Mizoram","16"=>"Tripura","17"=>"Meghalaya","18"=>"Assam","19"=>"West Bengal",
+        "20"=>"Jharkhand","21"=>"Odisha","22"=>"Chhattisgarh","23"=>"Madhya Pradesh",
+        "24"=>"Gujarat","25"=>"Daman and Diu","26"=>"Dadra and Nagar Haveli and Daman and Diu",
+        "27"=>"Maharashtra","28"=>"Andhra Pradesh (old code)","29"=>"Karnataka","30"=>"Goa",
+        "31"=>"Lakshadweep","32"=>"Kerala","33"=>"Tamil Nadu","34"=>"Puducherry",
+        "35"=>"Andaman and Nicobar Islands","36"=>"Telangana","37"=>"Andhra Pradesh",
+        "38"=>"Ladakh","97"=>"Other Territory","99"=>"Centre Jurisdiction",
+        _=>"Unspecified State",
+    }
+}
 fn inr_words(total: &str) -> String {
     let mut split = total.split('.');
     let raw = split.next().unwrap_or("0").parse::<u64>().unwrap_or(0);
@@ -168,10 +183,10 @@ pub fn render(v: &Value, draft: bool) -> String {
     <div class="screen-actions"><button onclick="window.print()">Print / Save as PDF</button></div>
     <article>{banner}<h1>TAX INVOICE</h1>
     <section class="details">
-      <div class="seller"><strong>{seller_name}</strong><p>{seller_address}</p><p><b>GSTIN:</b> {seller_gstin} &nbsp; <b>State Code:</b> {seller_state}</p></div>
+      <div class="seller"><strong>{seller_name}</strong><p>{seller_address}</p><p><b>GSTIN:</b> {seller_gstin} &nbsp; <b>State:</b> {seller_state_name} ({seller_state})</p></div>
       <div><div class="label">Invoice No.</div><b>{number}</b><p><span class="label">Dated:</span> {invoice_date}</p><p><span class="label">Order Ref:</span> {order_number}</p></div>
-      <div><div class="label">Buyer (Bill To)</div><b>{buyer_name}</b><p>{buyer_address}</p><p><b>GSTIN:</b> {buyer_gstin} &nbsp; <b>State Code:</b> {buyer_state}</p></div>
-      <div><div class="label">Dispatch / Challan References</div><p>{challans}</p><p><b>Displayed Reference:</b> {display_reference}</p><p><b>Place of Supply:</b> {pos}</p></div>
+      <div><div class="label">Buyer (Bill To)</div><b>{buyer_name}</b><p>{buyer_address}</p><p><b>GSTIN:</b> {buyer_gstin} &nbsp; <b>State:</b> {buyer_state_name} ({buyer_state})</p></div>
+      <div><div class="label">Dispatch / Challan References</div><p>{challans}</p><p><b>Delivery Address:</b> {delivery_address}</p><p><b>Displayed Reference:</b> {display_reference}</p><p><b>Place of Supply:</b> {pos_name} ({pos})</p><p><b>Reverse Charge:</b> No</p></div>
     </section>
     <table class="items"><thead><tr><th style="width:5%">No.</th><th style="width:30%">Description</th><th style="width:13%">HSN</th><th style="width:10%">Qty m³</th><th style="width:11%">Rate ₹</th><th style="width:8%">GST %</th><th style="width:11%">Taxable ₹</th><th style="width:12%">Total ₹</th></tr></thead><tbody>{items}</tbody></table>
     <table class="totals"><tbody>
@@ -200,6 +215,7 @@ pub fn render(v: &Value, draft: bool) -> String {
         challans = challans,
         display_reference = esc(s(v, "challan_display_reference")),
         pos = esc(s(v, "place_of_supply")),
+      pos_name=esc(state_name(s(v,"place_of_supply"))),delivery_address=esc(s(v,"delivery_address")),
         items = items,
         subtotal = esc(s(v, "subtotal")),
         cgst = esc(s(v, "cgst")),
