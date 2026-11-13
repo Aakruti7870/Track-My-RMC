@@ -90,11 +90,11 @@ export default function OrderDetail() {
   const { data: whatsappConsent, refetch: refreshWhatsappConsent } =
     useGet<{ opted_in: boolean; marketing_opted_in: boolean }>(whatsappPath);
 
-  const saveWhatsappConsent = async (opted_in: boolean, marketing_opted_in: boolean) => {
+  const saveWhatsappConsent = async (opted_in: boolean, marketing_opted_in: boolean, marketing_consent_action = false) => {
     if (!token || !id) return;
     setWhatsappBusy(true);
     try {
-      await apiPost(`/customer/orders/${id}/dispatch-whatsapp-consent`, token, { opted_in, marketing_opted_in });
+      await apiPost(`/customer/orders/${id}/dispatch-whatsapp-consent`, token, { opted_in, marketing_opted_in, marketing_consent_action });
       toast("WhatsApp preferences saved", "success");
       await refreshWhatsappConsent();
     } catch {
@@ -259,16 +259,18 @@ export default function OrderDetail() {
                 loading={whatsappBusy}
                 onPress={() => void saveWhatsappConsent(!whatsappConsent?.opted_in, Boolean(whatsappConsent?.marketing_opted_in))}
               />
-              <AppText variant="heading">App Promotions (optional)</AppText>
+              <AppText variant="heading">One-time TrackMyRMC introduction (optional)</AppText>
               <AppText variant="caption">
-                Separately agree to occasional WhatsApp information about TrackMyRMC,
-                concrete ordering and pump booking. You can disable this anytime.
+                Choose Allow to receive one promotional WhatsApp introduction to
+                TrackMyRMC features after your first eligible concrete dispatch.
+                This is separate from order alerts. Reply STOP to stop marketing
+                or disable this preference here anytime. Nothing is sent without your permission.
               </AppText>
               <Button
-                label={whatsappConsent?.marketing_opted_in ? "Disable App Promotions" : "Allow App Promotions"}
+                label={whatsappConsent?.marketing_opted_in ? "Stop TrackMyRMC Promotions" : "Allow One-Time App Introduction"}
                 variant="outline"
                 loading={whatsappBusy}
-                onPress={() => void saveWhatsappConsent(Boolean(whatsappConsent?.opted_in), !whatsappConsent?.marketing_opted_in)}
+                onPress={() => void saveWhatsappConsent(Boolean(whatsappConsent?.opted_in), !whatsappConsent?.marketing_opted_in, true)}
               />
             </Card>
           ) : null}
