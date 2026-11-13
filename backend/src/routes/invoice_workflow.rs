@@ -664,6 +664,14 @@ pub async fn issue(State(state):State<AppState>,user:AuthUser,Path(id):Path<Uuid
     }
     let date=NaiveDate::parse_from_str(&get_str(&draft,"invoice_date"),"%Y-%m-%d").map_err(|_|invalid("date"))?;
     if date>Utc::now().date_naive(){return Err(invalid("future invoice date"));}
+    // Invoice grade must remain consistent with the fulfilled order.
+    // To change a grade, first correct the approved order and production evidence.
+    let recorded_grade:String=row.get("concrete_grade");
+    if parse_lines(&draft)?.iter().any(|line|line.grade!=recorded_grade) {
+        return Err(AppError::Conflict(
+            "Invoice grade differs from the production order; approve and reconcile the source order first".into()
+        ));
+    }
     let ch_names:Vec<String>=ch.iter().map(|(_,n)|n.clone()).collect();
     let order_number:String=row.get("order_number");
     let delivery_address:String=row.get("delivery_address");
