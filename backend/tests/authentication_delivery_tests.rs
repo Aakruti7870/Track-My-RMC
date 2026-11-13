@@ -2698,3 +2698,44 @@ async fn primary_central_admin_email_enrollment_login_and_recovery_are_role_boun
     .unwrap();
     assert_eq!(session_lengths, vec![3600; 3]);
 }
+
+#[sqlx::test]
+async fn parallel_first_whatsapp_requests_preserve_customer_registration(db: PgPool) {
+    let mut state = state(db.clone());
+    Arc::make_mut(&mut state.config).otp_cooldown_seconds = 60;
+    let delivery = Arc::new(MemoryDelivery::default());
+    state.otp_delivery = delivery.clone();
+    let app = build_app_router(state);
+    let phone = "12025550176";
+    let send = "/api/auth/otp/whatsapp/send";
+
+    let (first, second) = tokio::join!(
+        call(&app, send, Some(json!({"phone":format!("+{phone}")})), None),
+        call(&app, send, Some(json!({"phone":phone})), None),
+    );
+    let mut results = [first.0, second.0];
+    results.sort();
+    assert_eq!(results, [StatusCode::OK, StatusCode::BAD_REQUEST]);
+    assert_eq!(delivery.messages.lock().unwrap().len(), 1);
+
+    let account_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE phone=$1")
+        .bind(phone)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(account_count, 0);
+
+    let (status, auth) = call(
+        &app,
+        "/api/auth/otp/whatsapp/verify",
+        Some(json!({"phone":phone,"otp":delivery.take_code(phone)})),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(auth["role"], "customer");
+    assert_eq!(
+        call(&app, "/api/me", None, auth["token"].as_str()).await.0,
+        StatusCode::OK
+    );
+}
