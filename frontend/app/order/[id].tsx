@@ -263,8 +263,9 @@ export default function OrderDetail() {
               <AppText variant="caption">
                 Choose Allow to receive one promotional WhatsApp introduction to
                 TrackMyRMC features after your first eligible concrete dispatch.
-                This is separate from order alerts. Reply STOP to stop marketing
-                or disable this preference here anytime. Nothing is sent without your permission.
+                This is separate from order alerts and requires WhatsApp Delivery Updates to be enabled above.
+                Reply STOP to stop marketing or disable this preference here anytime.
+                Nothing is sent without your permission.
               </AppText>
               <Button
                 label={whatsappConsent?.marketing_opted_in ? "Stop TrackMyRMC Promotions" : "Allow One-Time App Introduction"}
