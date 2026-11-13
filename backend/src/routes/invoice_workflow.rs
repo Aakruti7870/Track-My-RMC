@@ -597,7 +597,7 @@ pub async fn issue(State(state):State<AppState>,user:AuthUser,Path(id):Path<Uuid
           .bind(plant).bind(fy as i16).fetch_optional(&mut *tx).await?
           .ok_or_else(||AppError::Conflict("Invoice number series exhausted".into()))?;
         let slug = plant.simple().to_string();
-        format!("I{}{:02}{:06}", &slug[..6], fy % 100, seq)
+        format!("I{}{:02}{:06}", slug[..6].to_ascii_uppercase(), fy % 100, seq)
     };
     if !valid_num(&number) {
         return Err(invalid("generated invoice number"));
