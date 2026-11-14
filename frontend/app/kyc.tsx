@@ -293,8 +293,8 @@ export default function KycScreen() {
               <Button testID="kyc-cta" label={ctaLabel} onPress={onCta} loading={submitting || (status === "PENDING" && refreshing)} />
             )}
 
-            {!providerUnavailable && status === "IN_PROGRESS" && !data?.refresh_failed ? (
-              <Button testID="kyc-restart" label="Start a New DigiLocker Attempt" variant="outline" onPress={startKyc} loading={submitting} />
+            {!providerUnavailable && status === "IN_PROGRESS" ? (
+              <Button testID="kyc-restart" label="Restart DigiLocker (replaces this attempt)" variant="outline" onPress={startKyc} loading={submitting} />
             ) : null}
             {status === "REVIEW_NEEDED" ? <Button label="Contact Support" variant="outline" onPress={() => router.push("/support")} /> : null}
           </>
