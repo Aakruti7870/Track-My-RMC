@@ -180,7 +180,10 @@ impl Provider {
         {
             tracing::warn!(
                 kyc_stage = stage,
-                provider_code = body.get("code").and_then(|value| value.as_i64()).unwrap_or_default(),
+                provider_code = body
+                    .get("code")
+                    .and_then(|value| value.as_i64())
+                    .unwrap_or_default(),
                 "digilocker_provider_invalid_response"
             );
             return Err(AppError::Conflict(
