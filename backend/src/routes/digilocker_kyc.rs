@@ -143,8 +143,15 @@ impl Provider {
             api_secret,
         })
     }
-    async fn read(response: reqwest::Response) -> Result<Value, AppError> {
+    async fn read(response: reqwest::Response, stage: &'static str) -> Result<Value, AppError> {
         if !response.status().is_success() {
+            // Only a fixed operation label and HTTP code are recorded. Never log
+            // provider JSON, URLs, access tokens, identity data or credentials.
+            tracing::warn!(
+                kyc_stage = stage,
+                provider_http_status = response.status().as_u16(),
+                "digilocker_provider_http_failure"
+            );
             return Err(AppError::Conflict(
                 "DigiLocker provider request failed".into(),
             ));
@@ -171,6 +178,14 @@ impl Provider {
         if body.get("code").and_then(Value::as_i64) != Some(200)
             || !body.get("data").is_some_and(Value::is_object)
         {
+            tracing::warn!(
+                kyc_stage = stage,
+                provider_code = body
+                    .get("code")
+                    .and_then(|value| value.as_i64())
+                    .unwrap_or_default(),
+                "digilocker_provider_invalid_response"
+            );
             return Err(AppError::Conflict(
                 "DigiLocker provider returned an error".into(),
             ));
@@ -185,8 +200,15 @@ impl Provider {
             .header("x-api-secret", &self.api_secret)
             .send()
             .await
-            .map_err(|_| AppError::Conflict("DigiLocker authentication unavailable".into()))?;
-        let body = Self::read(res).await?;
+            .map_err(|_| {
+                tracing::warn!(
+                    kyc_stage = "AUTHENTICATE",
+                    error_kind = "transport",
+                    "digilocker_provider_transport_failure"
+                );
+                AppError::Conflict("DigiLocker authentication unavailable".into())
+            })?;
+        let body = Self::read(res, "AUTHENTICATE").await?;
         body.pointer("/data/access_token")
             .and_then(Value::as_str)
             .filter(|v| !v.is_empty() && v.len() < 8192)
@@ -203,19 +225,62 @@ impl Provider {
             .json(&payload)
             .send()
             .await
-            .map_err(|_| AppError::Conflict("DigiLocker provider unavailable".into()))?;
-        Self::read(res).await
+            .map_err(|_| {
+                tracing::warn!(
+                    kyc_stage = "SESSION_INIT",
+                    error_kind = "transport",
+                    "digilocker_provider_transport_failure"
+                );
+                AppError::Conflict("DigiLocker provider unavailable".into())
+            })?;
+        Self::read(res, "SESSION_INIT").await
     }
     async fn get(&self, token: &str, path: &str) -> Result<Value, AppError> {
-        let res = self
-            .client
-            .get(provider_url(self.host, path))
-            .header("Authorization", token)
-            .header("x-api-key", &self.api_key)
-            .send()
-            .await
-            .map_err(|_| AppError::Conflict("DigiLocker provider unavailable".into()))?;
-        Self::read(res).await
+        // These are read-only provider checks. A single bounded retry handles
+        // temporary gateway/throttling responses after DigiLocker redirects.
+        // The outer status handler caps the entire refresh to less than the
+        // frontend's request timeout.
+        for attempt in 0..2 {
+            let res = self
+                .client
+                .get(provider_url(self.host, path))
+                .header("Authorization", token)
+                .header("x-api-key", &self.api_key)
+                .send()
+                .await
+                .map_err(|_| {
+                    tracing::warn!(
+                        kyc_stage = provider_get_stage(path),
+                        error_kind = "transport",
+                        "digilocker_provider_transport_failure"
+                    );
+                    AppError::Conflict("DigiLocker provider unavailable".into())
+                })?;
+            if attempt == 0 && matches!(res.status().as_u16(), 429 | 502 | 503 | 504) {
+                tracing::warn!(
+                    kyc_stage = provider_get_stage(path),
+                    provider_http_status = res.status().as_u16(),
+                    "digilocker_provider_transient_retry"
+                );
+                tokio::time::sleep(StdDuration::from_millis(750)).await;
+                continue;
+            }
+            return Self::read(res, provider_get_stage(path)).await;
+        }
+        Err(AppError::Conflict("DigiLocker provider unavailable".into()))
+    }
+}
+
+/// Fixed-label diagnostics; never log the provider URL, session ID or response body.
+fn provider_get_stage(path: &str) -> &'static str {
+    if path.ends_with("/status") {
+        "SESSION_STATUS"
+    } else if path.ends_with("/documents/aadhaar") {
+        "AADHAAR_DOCUMENT"
+    } else if path.ends_with("/user/profile") {
+        "IDENTITY_PROFILE"
+    } else {
+        "PROVIDER_GET"
     }
 }
 
@@ -269,6 +334,19 @@ fn profile_matches(account_name: &str, account_phone: &str, data: &Value) -> boo
         && normalized_mobile(phone).is_some()
         && normalized_mobile(phone) == normalized_mobile(account_phone)
 }
+/// Consented UIDAI Aadhaar evidence must be an issuer-identified document;
+/// provider authentication or an e-Aadhaar profile flag alone is insufficient.
+fn uidai_aadhaar_consented(document: &Value) -> bool {
+    document
+        .pointer("/data/files")
+        .and_then(Value::as_array)
+        .is_some_and(|files| {
+            files.iter().any(|file| {
+                file.pointer("/metadata/issuer_id").and_then(Value::as_str) == Some("in.gov.uidai")
+            })
+        })
+}
+
 fn provider_completed(s: &str) -> bool {
     matches!(
         s,
@@ -747,11 +825,14 @@ pub async fn status(
     }
     let Some(provider_id) = latest.get::<Option<Uuid>, _>("provider_session_id") else {
         return Ok(Json(
-            json!({"status":"IN_PROGRESS","provider":provider.label,"refresh_failed":true}),
+            json!({"status":"IN_PROGRESS","provider":provider.label,"refresh_failed":true,
+                   "refresh_stage":"SESSION_INIT","retry_after_seconds":8}),
         ));
     };
-    let refresh = async {
+    let mut refresh_stage = "AUTHENTICATE";
+    let refresh = tokio::time::timeout(StdDuration::from_secs(25), async {
         let token = provider.access_token().await?;
+        refresh_stage = "SESSION_STATUS";
         let body = provider.get(&token, &format!("/kyc/digilocker/sessions/{provider_id}/status")).await?;
         let value = body.pointer("/data/status").and_then(Value::as_str).unwrap_or("").to_ascii_lowercase();
         if provider_rejected(&value) {
@@ -767,13 +848,12 @@ pub async fn status(
         }
         // Consent must cover an actual UIDAI-issued Aadhaar document, not just profile access.
         // Inspect provider document metadata only; never fetch or persist the presigned file.
+        refresh_stage = "AADHAAR_DOCUMENT";
         let document = provider.get(&token, &format!("/kyc/digilocker/sessions/{provider_id}/documents/aadhaar")).await?;
-        let aadhaar_consented = document.pointer("/data/files").and_then(Value::as_array)
-            .is_some_and(|files| files.iter().any(|file|
-                file.pointer("/metadata/issuer_id").and_then(Value::as_str) == Some("in.gov.uidai")));
-        if !aadhaar_consented {
+        if !uidai_aadhaar_consented(&document) {
             return Err(AppError::Conflict("Consented Aadhaar document was not confirmed".into()));
         }
+        refresh_stage = "IDENTITY_PROFILE";
         let profile = provider.get(&token, &format!("/kyc/digilocker/sessions/{provider_id}/user/profile")).await?;
         let data = &profile["data"];
         if !profile_matches(&account.get::<String,_>("full_name"), &account.get::<String,_>("phone"), data) {
@@ -786,6 +866,7 @@ pub async fn status(
             return Ok("REVIEW_NEEDED");
         }
         let name = data.get("name").and_then(Value::as_str).unwrap_or("");
+        refresh_stage = "FINALIZE";
         let mut tx = state.db.begin().await?;
         let changed = reserve_completed_consent(&mut tx, id, user.user_id).await?;
         // Only the winning status request may transition the profile. A second
@@ -838,11 +919,15 @@ pub async fn status(
             .execute(&mut *tx).await?;
         }
         tx.commit().await?;
-        Ok(effective_result)
-    }.await;
+        Ok::<&'static str, AppError>(effective_result)
+    }).await;
     match refresh {
-        Ok(status) => Ok(Json(json!({"status":status,"provider":provider.label}))),
-        Err(_) => {
+        Ok(Ok(status)) => Ok(Json(json!({"status":status,"provider":provider.label}))),
+        Ok(Err(_)) | Err(_) => {
+            // This is deliberately not a rejection: the provider may have
+            // accepted consent while evidence retrieval was still pending.
+            // Emit only a fixed stage label, never the request/response or PII.
+            tracing::warn!(kyc_stage = refresh_stage, "digilocker_refresh_failed");
             let status = completed_consent_status_after_race(
                 &state.db,
                 user.user_id,
@@ -851,7 +936,8 @@ pub async fn status(
             )
             .await?;
             Ok(Json(
-                json!({"status":status,"provider":provider.label,"refresh_failed":true}),
+                json!({"status":status,"provider":provider.label,"refresh_failed":true,
+                       "refresh_stage":refresh_stage,"retry_after_seconds":8}),
             ))
         }
     }
@@ -1335,5 +1421,118 @@ mod tests {
         assert!(provider_completed("consent_received"));
         assert!(!provider_completed("created"));
         assert!(!provider_completed("pending"));
+    }
+
+    #[test]
+    fn live_provider_contract_keeps_consent_and_diagnostics_fail_closed() {
+        let status = json!({"code":200,"data":{"status":"succeeded"}});
+        let document = json!({"code":200,"data":{"files":[{"metadata":{"issuer_id":"in.gov.uidai","description":"Aadhaar"}}]}});
+        let wrong_document =
+            json!({"code":200,"data":{"files":[{"metadata":{"issuer_id":"in.gov.other"}}]}});
+        assert!(provider_completed(
+            status
+                .pointer("/data/status")
+                .and_then(Value::as_str)
+                .unwrap()
+        ));
+        assert!(uidai_aadhaar_consented(&document));
+        assert!(!uidai_aadhaar_consented(&wrong_document));
+        assert!(!uidai_aadhaar_consented(&json!({"code":200,"data":{}})));
+        assert_eq!(
+            provider_get_stage("/kyc/digilocker/sessions/id/status"),
+            "SESSION_STATUS"
+        );
+        assert_eq!(
+            provider_get_stage("/kyc/digilocker/sessions/id/documents/aadhaar"),
+            "AADHAAR_DOCUMENT"
+        );
+        assert_eq!(
+            provider_get_stage("/kyc/digilocker/sessions/id/user/profile"),
+            "IDENTITY_PROFILE"
+        );
+        assert_eq!(provider_get_stage("/unexpected"), "PROVIDER_GET");
+    }
+
+    #[sqlx::test]
+    async fn completed_live_evidence_atomically_approves_customer_and_survives_status_recheck(
+        db: sqlx::PgPool,
+    ) {
+        let phone = format!("91{:010}", Uuid::new_v4().as_u128() % 10_000_000_000);
+        let customer: Uuid = sqlx::query_scalar(
+            "INSERT INTO users(phone,hashed_password,full_name,role) VALUES($1,'test-only','Consented Customer','customer') RETURNING id",
+        )
+        .bind(&phone)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        sqlx::query("INSERT INTO user_profiles(user_id,kyc_status) VALUES($1,'unverified')")
+            .bind(customer)
+            .execute(&db)
+            .await
+            .unwrap();
+        let provider_id = Uuid::new_v4();
+        let session: Uuid = sqlx::query_scalar(
+            "INSERT INTO customer_digilocker_sessions(user_id,provider_environment,provider_session_id,status,expires_at)
+             VALUES($1,'live',$2,'IN_PROGRESS',NOW()+INTERVAL '20 minutes') RETURNING id",
+        )
+        .bind(customer).bind(provider_id).fetch_one(&db).await.unwrap();
+        let provider_status = json!({"code":200,"data":{"status":"succeeded"}});
+        let document =
+            json!({"code":200,"data":{"files":[{"metadata":{"issuer_id":"in.gov.uidai"}}]}});
+        let profile = json!({"name":"Consented Customer","mobile":phone,"eaadhaar":true});
+        assert!(provider_completed(
+            provider_status
+                .pointer("/data/status")
+                .and_then(Value::as_str)
+                .unwrap()
+        ));
+        assert!(uidai_aadhaar_consented(&document));
+        assert!(profile_matches("Consented Customer", &phone, &profile));
+
+        let mut tx = db.begin().await.unwrap();
+        assert_eq!(
+            reserve_completed_consent(&mut tx, session, customer)
+                .await
+                .unwrap(),
+            1
+        );
+        assert!(
+            consent_still_authorized(&mut tx, customer, session, &profile)
+                .await
+                .unwrap()
+        );
+        assert!(
+            complete_consent_profile_transition(&mut tx, customer, "Consented Customer", true)
+                .await
+                .unwrap()
+        );
+        auto_approve_live_consent(&mut tx, customer, provider_id)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata)
+          VALUES($1,'kyc.digilocker.consent_verified','customer',$2,$3)")
+            .bind(customer).bind(customer.to_string())
+            .bind(json!({"provider":"live_digilocker","session_id":provider_id.to_string(),"result":"auto_verified"}))
+            .execute(&mut *tx).await.unwrap();
+        tx.commit().await.unwrap();
+        assert!(sqlx::query_scalar::<_, bool>(LIVE_APPROVAL_SQL)
+            .bind(customer)
+            .fetch_one(&db)
+            .await
+            .unwrap());
+        assert_eq!(
+            completed_consent_status_after_race(&db, customer, session, "live")
+                .await
+                .unwrap(),
+            "VERIFIED"
+        );
+        let saved: (String, Option<String>) =
+            sqlx::query_as("SELECT kyc_status,verified_name FROM user_profiles WHERE user_id=$1")
+                .bind(customer)
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        assert_eq!(saved.0, "verified");
+        assert_eq!(saved.1.as_deref(), Some("Consented Customer"));
     }
 }

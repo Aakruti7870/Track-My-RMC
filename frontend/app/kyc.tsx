@@ -19,7 +19,7 @@ import { markKycReturnPending, saveKycDestination, takeKycDestination } from "@/
 
 const STATE_META: Record<string, { icon: keyof typeof Ionicons.glyphMap; title: string; body: string; tone: "success" | "warning" | "error" | "info" }> = {
   VERIFIED: { icon: "shield-checkmark", title: "KYC Verified", body: "You can place orders using the app.", tone: "success" },
-  IN_PROGRESS: { icon: "phone-portrait-outline", title: "Complete DigiLocker", body: "Finish consent in DigiLocker. If you cancelled or closed it, you can safely restart the verification.", tone: "warning" },
+  IN_PROGRESS: { icon: "phone-portrait-outline", title: "Complete DigiLocker", body: "After giving consent in DigiLocker, use Check Verification to confirm without repeating OTP.", tone: "warning" },
   PENDING: { icon: "hourglass-outline", title: "Confirmation pending", body: "TrackMyRMC is checking the completed identity evidence. You do not need to submit another verification.", tone: "warning" },
   REJECTED: { icon: "close-circle", title: "Verification rejected", body: "Something didn't match. Please retry.", tone: "error" },
   REVIEW_NEEDED: { icon: "alert-circle-outline", title: "Identity details did not match", body: "Your DigiLocker name or mobile did not match this account. Retry, or contact support for help.", tone: "warning" },
@@ -37,6 +37,8 @@ type KycStatusResponse = {
   status: string;
   provider?: string;
   refresh_failed?: boolean;
+  refresh_stage?: "AUTHENTICATE" | "SESSION_STATUS" | "AADHAAR_DOCUMENT" | "IDENTITY_PROFILE" | "FINALIZE" | "SESSION_INIT";
+  retry_after_seconds?: number;
 };
 
 export default function KycScreen() {
@@ -97,11 +99,14 @@ export default function KycScreen() {
     const poll = async () => {
       if (cancelled || attempts++ >= 30) return;
       await refetch();
-      if (!cancelled) timer = setTimeout(poll, 2500);
+      // Provider evidence can lag behind the browser return. Failed reads
+      // back off rather than causing a burst of provider requests and 429s.
+      const delay = data?.refresh_failed ? Math.max(8000, (data.retry_after_seconds ?? 8) * 1000) : 3500;
+      if (!cancelled) timer = setTimeout(poll, delay);
     };
     timer = setTimeout(poll, 800);
     return () => { cancelled = true; if (timer) clearTimeout(timer); };
-  }, [token, active, data?.status, data?.provider, returningFromProvider, refetch]);
+  }, [token, active, data?.status, data?.provider, data?.refresh_failed, data?.retry_after_seconds, returningFromProvider, refetch]);
 
   // Refresh /me until the actual authenticated profile contains both the
   // effective VERIFIED status and a verified name. AuthContext intentionally
@@ -196,7 +201,7 @@ export default function KycScreen() {
     status === "NOT_STARTED"
       ? "Continue with DigiLocker"
       : status === "IN_PROGRESS"
-      ? "Restart DigiLocker"
+      ? "Check Verification"
       : status === "PENDING"
       ? "Check Verification"
       : status === "VERIFIED"
@@ -206,7 +211,7 @@ export default function KycScreen() {
   const onCta =
     status === "VERIFIED"
       ? () => router.back()
-      : status === "PENDING"
+      : status === "PENDING" || status === "IN_PROGRESS"
       ? refreshStatus
       : startKyc;
 
@@ -255,7 +260,7 @@ export default function KycScreen() {
               <Card style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, borderColor: colors.warning + "66" }}>
                 <Ionicons name="warning-outline" size={18} color={colors.warning} />
                 <AppText variant="caption" style={{ flex: 1 }}>
-                  DigiLocker status could not be refreshed right now. Your KYC is not rejected. You can safely restart DigiLocker.
+                  DigiLocker confirmation is temporarily unavailable{data.refresh_stage ? ` (step: ${data.refresh_stage.replace(/_/g, " ").toLowerCase()})` : ""}. Your KYC has not been rejected. Check Verification again; do not restart DigiLocker while your consent is being processed.
                 </AppText>
               </Card>
             ) : null}
@@ -289,7 +294,7 @@ export default function KycScreen() {
             )}
 
             {!providerUnavailable && status === "IN_PROGRESS" ? (
-              <Button testID="kyc-refresh" label="Refresh Status" variant="outline" onPress={refreshStatus} loading={refreshing} />
+              <Button testID="kyc-restart" label="Restart DigiLocker (replaces this attempt)" variant="outline" onPress={startKyc} loading={submitting} />
             ) : null}
             {status === "REVIEW_NEEDED" ? <Button label="Contact Support" variant="outline" onPress={() => router.push("/support")} /> : null}
           </>
