@@ -581,7 +581,10 @@ pub async fn place_with_preview(
 
 #[cfg(test)]
 mod central_order_intake_tests {
-    use super::intake_permits_direct_order;
+    use super::{intake_permits_direct_order, require_order_kyc_for_invoice};
+    use crate::error::AppError;
+    use uuid::Uuid;
+
     #[test]
     fn only_direct_allows_submitted_orders() {
         assert!(intake_permits_direct_order("DIRECT", false));
@@ -589,5 +592,72 @@ mod central_order_intake_tests {
             assert!(!intake_permits_direct_order(mode, false));
             assert!(intake_permits_direct_order(mode, true));
         }
+    }
+
+    #[sqlx::test]
+    async fn invoice_policy_blocks_unverified_pending_but_allows_delivered_order(db: sqlx::PgPool) {
+        let customer: Uuid = sqlx::query_scalar(
+            "INSERT INTO users(phone,hashed_password,full_name,role) VALUES($1,'unused','Policy Customer','customer') RETURNING id",
+        )
+        .bind(format!("91{:010}", Uuid::new_v4().as_u128() % 10_000_000_000))
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        let plant: Uuid = sqlx::query_scalar(
+            "INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,address_line,city,state,pincode,contact_phone) VALUES($1,'Policy Plant',$2,0,0,'Test','Test','Test','0','0') RETURNING id",
+        )
+        .bind(customer)
+        .bind(format!("POL{}", &Uuid::new_v4().simple().to_string()[..8]))
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        let site: Uuid = sqlx::query_scalar(
+            "INSERT INTO customer_sites(customer_id,name,address_line,city,state,pincode) VALUES($1,'Site','Address','Test','Test','0') RETURNING id",
+        )
+        .bind(customer)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        let order: Uuid = sqlx::query_scalar(
+            "INSERT INTO orders(order_number,customer_id,plant_id,site_id,concrete_grade,total_quantity_m3,delivery_date,delivery_time_slot,total_amount,status,kyc_guard_required) VALUES($1,$2,$3,$4,'M25',6,CURRENT_DATE,'AM',100,'pending',TRUE) RETURNING id",
+        )
+        .bind(format!("POL-{}", Uuid::new_v4().simple()))
+        .bind(customer)
+        .bind(plant)
+        .bind(site)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+
+        let mut tx = db.begin().await.unwrap();
+        assert!(matches!(
+            require_order_kyc_for_invoice(&mut tx, order).await,
+            Err(AppError::Forbidden(_))
+        ));
+        tx.rollback().await.unwrap();
+
+        // Physical delivery is already complete; issuing a required invoice
+        // cannot be prevented by a subsequent KYC revocation.
+        sqlx::query("UPDATE orders SET status='delivered' WHERE id=$1")
+            .bind(order)
+            .execute(&db)
+            .await
+            .unwrap();
+        let mut tx = db.begin().await.unwrap();
+        require_order_kyc_for_invoice(&mut tx, order)
+            .await
+            .unwrap();
+        tx.rollback().await.unwrap();
+
+        sqlx::query("UPDATE orders SET status='confirmed' WHERE id=$1")
+            .bind(order)
+            .execute(&db)
+            .await
+            .unwrap();
+        let mut tx = db.begin().await.unwrap();
+        assert!(matches!(
+            require_order_kyc_for_invoice(&mut tx, order).await,
+            Err(AppError::Forbidden(_))
+        ));
     }
 }
