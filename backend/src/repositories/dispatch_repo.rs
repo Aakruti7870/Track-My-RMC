@@ -262,7 +262,12 @@ pub async fn record_pod(
             .fetch_optional(&mut *tx)
             .await?
             .ok_or_else(|| AppError::NotFound("Assigned trip not found".to_string()))?;
-    crate::services::customer_order::require_order_kyc(&mut tx, order_id).await?;
+    // POD is evidence of concrete already dispatched to the site, not approval
+    // for a new commercial or fulfillment commitment. Revoking a customer's
+    // KYC must stop new production/dispatch, but cannot erase the driver's
+    // ability to record an already-in-transit delivery or free the mixer.
+    // The parent/load status, driver and uploaded photo remain strictly checked
+    // below, inside the same database transaction.
     let parent_status: String =
         sqlx::query_scalar("SELECT status FROM orders WHERE id = $1 FOR UPDATE")
             .bind(order_id)
