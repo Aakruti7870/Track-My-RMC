@@ -2662,7 +2662,9 @@ async fn provisional_requires_verified_review_and_is_converted_at_most_once(db: 
             }
         )
         .await,
-        Err(trackmyrmc_backend::error::AppError::Forbidden(_))
+        // A planned load cannot file POD; after dispatch, immutable delivery
+        // evidence remains recordable even if the customer's KYC is revoked.
+        Err(trackmyrmc_backend::error::AppError::Conflict(_))
     ));
     sqlx::query("UPDATE user_profiles SET kyc_status='verified' WHERE user_id=$1")
         .bind(customer)
