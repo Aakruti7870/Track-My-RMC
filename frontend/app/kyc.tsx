@@ -49,6 +49,7 @@ export default function KycScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [active, setActive] = useState(AppState.currentState !== "background");
   const [returningFromProvider, setReturningFromProvider] = useState(returned === "1");
+  const [profileSynced, setProfileSynced] = useState(false);
 
   useEffect(() => {
     if (returned === "1") setReturningFromProvider(true);
@@ -65,7 +66,12 @@ export default function KycScreen() {
   // The callback URL cannot attest identity. Poll this authenticated endpoint
   // after returning to the app, without overlapping requests or endless retries.
   useEffect(() => {
-    if (!token || !active || data?.status !== "IN_PROGRESS" || data?.provider === "unavailable") return;
+    // A concurrent server-side poll can briefly return PENDING while the
+    // successful Live consent is being committed. Keep checking on app return,
+    // but limit retries so genuine review-pending Test sessions do not loop.
+    const confirming = data?.status === "IN_PROGRESS"
+      || (returningFromProvider && data?.status === "PENDING");
+    if (!token || !active || !confirming || data?.provider === "unavailable") return;
     let cancelled = false;
     let attempts = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -76,7 +82,7 @@ export default function KycScreen() {
     };
     timer = setTimeout(poll, 800);
     return () => { cancelled = true; if (timer) clearTimeout(timer); };
-  }, [token, active, data?.status, data?.provider, refetch]);
+  }, [token, active, data?.status, data?.provider, returningFromProvider, refetch]);
 
   // Once the backend confirms KYC is VERIFIED, refresh the authenticated
   // profile so the DigiLocker-verified name and unlocked ordering appear
@@ -86,13 +92,25 @@ export default function KycScreen() {
     if (data?.status === "VERIFIED" && !syncedRef.current) {
       syncedRef.current = true;
       void refreshMe().then(() => {
-        if (returningFromProvider) router.replace("/customer");
-      }).catch(() => { syncedRef.current = false; });
+        setProfileSynced(true);
+      }).catch(() => {
+        syncedRef.current = false;
+      });
     }
     if (data?.status && data.status !== "VERIFIED") {
       syncedRef.current = false;
+      setProfileSynced(false);
     }
-  }, [data?.status, refreshMe, returningFromProvider, router]);
+  }, [data?.status, refreshMe]);
+
+  // Make navigation independent of the timing of the provider-return link:
+  // verification and the 'returned' route flag can arrive in either order.
+  // Do not open Customer Home before /me reflects the verified identity.
+  useEffect(() => {
+    if (data?.status === "VERIFIED" && profileSynced && returningFromProvider) {
+      router.replace("/customer");
+    }
+  }, [data?.status, profileSynced, returningFromProvider, router]);
 
   const status = data?.status || "NOT_STARTED";
   const providerUnavailable = data?.provider === "unavailable" && status !== "VERIFIED";
