@@ -26,9 +26,15 @@ CREATE TABLE customer_provisional_requests (
 );
 CREATE INDEX idx_provisional_plant ON customer_provisional_requests(plant_id,created_at DESC);
 
--- Preserve legacy orders while binding all newly submitted customer orders
--- to a current KYC check at later commercial and fulfillment transitions.
+-- Every unfinished existing order must be rechecked before a NEW commercial
+-- or dispatch commitment. Historical terminal records remain unchanged.
+-- An already-dispatched load can still record immutable POD evidence, and a
+-- delivered order can still be invoiced/settled, even after KYC revocation.
+-- Default FALSE protects legacy test fixtures; all production order-creation
+-- paths explicitly set TRUE and in-flight rows are backfilled during migration.
 ALTER TABLE orders ADD COLUMN kyc_guard_required BOOLEAN NOT NULL DEFAULT FALSE;
+UPDATE orders SET kyc_guard_required = TRUE
+WHERE status NOT IN ('cancelled','rejected','delivered','completed');
 
 -- Bind each new consent attempt to the latest privileged decision visible at start.
 ALTER TABLE customer_digilocker_sessions ADD COLUMN review_baseline_id BIGINT NOT NULL DEFAULT 0;
