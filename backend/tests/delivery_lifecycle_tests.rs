@@ -491,6 +491,59 @@ async fn multi_load_pod_reconciles_parent_and_prevents_overwrite(pool: PgPool) {
         .is_err());
 }
 
+#[sqlx::test]
+async fn in_transit_delivery_evidence_survives_customer_kyc_revocation(pool: PgPool) {
+    // A guarded order that loses KYC after dispatch must stop new production,
+    // but its existing driver must still record delivered concrete accurately.
+    let (driver, order, first, second) = fixture(&pool).await;
+    sqlx::query("UPDATE order_loads SET status='cancelled' WHERE id=$1")
+        .bind(second)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "UPDATE orders SET kyc_guard_required=TRUE,total_quantity_m3=6,status='dispatched' WHERE id=$1",
+    )
+    .bind(order)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // The fixture customer has no valid KYC profile: this models revocation
+    // after dispatch, without an external provider or real user account.
+    advance(&pool, first, driver, TripAction::Start)
+        .await
+        .unwrap();
+    advance(&pool, first, driver, TripAction::Arrive)
+        .await
+        .unwrap();
+    advance(&pool, first, driver, TripAction::Unload)
+        .await
+        .unwrap();
+    let pod = dispatch_repo::record_pod(
+        &pool,
+        dispatch_repo::PodEvidence {
+            load_id: first,
+            driver_id: driver,
+            receiver_name: "Receiver",
+            receiver_phone: "",
+            signature_url: Some("signature"),
+            photo_url: Some("trackmyrmc/pod/test.jpg"),
+            notes: None,
+            delivered_quantity: 6.0,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(pod.load_id, first);
+    let status: String = sqlx::query_scalar("SELECT status FROM orders WHERE id=$1")
+        .bind(order)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(status, "delivered");
+}
+
 #[test]
 fn mobile_pod_contract_deserializes() {
     let payload = serde_json::json!({"receiver_name":"Receiver", "delivered_quantity":6.0,
