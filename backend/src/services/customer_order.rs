@@ -612,7 +612,7 @@ mod central_order_intake_tests {
         .await
         .unwrap();
         let site: Uuid = sqlx::query_scalar(
-            "INSERT INTO customer_sites(customer_id,name,address_line,city,state,pincode) VALUES($1,'Site','Address','Test','Test','0') RETURNING id",
+            "INSERT INTO customer_sites(customer_id,name,address_line,city,state,pincode,contact_person,contact_phone) VALUES($1,'Site','Address','Test','Test','0','Site Contact','9876543210') RETURNING id",
         )
         .bind(customer)
         .fetch_one(&db)
@@ -644,9 +644,7 @@ mod central_order_intake_tests {
             .await
             .unwrap();
         let mut tx = db.begin().await.unwrap();
-        require_order_kyc_for_invoice(&mut tx, order)
-            .await
-            .unwrap();
+        require_order_kyc_for_invoice(&mut tx, order).await.unwrap();
         tx.rollback().await.unwrap();
 
         sqlx::query("UPDATE orders SET status='confirmed' WHERE id=$1")
