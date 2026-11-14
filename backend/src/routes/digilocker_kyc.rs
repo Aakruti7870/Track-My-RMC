@@ -147,7 +147,11 @@ impl Provider {
         if !response.status().is_success() {
             // Only a fixed operation label and HTTP code are recorded. Never log
             // provider JSON, URLs, access tokens, identity data or credentials.
-            tracing::warn!(kyc_stage = stage, provider_http_status = response.status().as_u16(), "digilocker_provider_http_failure");
+            tracing::warn!(
+                kyc_stage = stage,
+                provider_http_status = response.status().as_u16(),
+                "digilocker_provider_http_failure"
+            );
             return Err(AppError::Conflict(
                 "DigiLocker provider request failed".into(),
             ));
@@ -174,7 +178,11 @@ impl Provider {
         if body.get("code").and_then(Value::as_i64) != Some(200)
             || !body.get("data").is_some_and(Value::is_object)
         {
-            tracing::warn!(kyc_stage = stage, provider_code = body.get("code").and_then(Value::as_i64).unwrap_or_default(), "digilocker_provider_invalid_response");
+            tracing::warn!(
+                kyc_stage = stage,
+                provider_code = body.get("code").and_then(Value::as_i64).unwrap_or_default(),
+                "digilocker_provider_invalid_response"
+            );
             return Err(AppError::Conflict(
                 "DigiLocker provider returned an error".into(),
             ));
@@ -190,7 +198,11 @@ impl Provider {
             .send()
             .await
             .map_err(|_| {
-                tracing::warn!(kyc_stage = "AUTHENTICATE", error_kind = "transport", "digilocker_provider_transport_failure");
+                tracing::warn!(
+                    kyc_stage = "AUTHENTICATE",
+                    error_kind = "transport",
+                    "digilocker_provider_transport_failure"
+                );
                 AppError::Conflict("DigiLocker authentication unavailable".into())
             })?;
         let body = Self::read(res, "AUTHENTICATE").await?;
@@ -211,7 +223,11 @@ impl Provider {
             .send()
             .await
             .map_err(|_| {
-                tracing::warn!(kyc_stage = "SESSION_INIT", error_kind = "transport", "digilocker_provider_transport_failure");
+                tracing::warn!(
+                    kyc_stage = "SESSION_INIT",
+                    error_kind = "transport",
+                    "digilocker_provider_transport_failure"
+                );
                 AppError::Conflict("DigiLocker provider unavailable".into())
             })?;
         Self::read(res, "SESSION_INIT").await
@@ -225,7 +241,11 @@ impl Provider {
             .send()
             .await
             .map_err(|_| {
-                tracing::warn!(kyc_stage = provider_get_stage(path), error_kind = "transport", "digilocker_provider_transport_failure");
+                tracing::warn!(
+                    kyc_stage = provider_get_stage(path),
+                    error_kind = "transport",
+                    "digilocker_provider_transport_failure"
+                );
                 AppError::Conflict("DigiLocker provider unavailable".into())
             })?;
         Self::read(res, provider_get_stage(path)).await
@@ -295,6 +315,21 @@ fn profile_matches(account_name: &str, account_phone: &str, data: &Value) -> boo
         && normalized_mobile(phone).is_some()
         && normalized_mobile(phone) == normalized_mobile(account_phone)
 }
+/// Consented UIDAI Aadhaar evidence must be an issuer-identified document;
+/// provider authentication or an e-Aadhaar profile flag alone is insufficient.
+fn uidai_aadhaar_consented(document: &Value) -> bool {
+    document
+        .pointer("/data/files")
+        .and_then(Value::as_array)
+        .is_some_and(|files| {
+            files.iter().any(|file| {
+                file.pointer("/metadata/issuer_id")
+                    .and_then(Value::as_str)
+                    == Some("in.gov.uidai")
+            })
+        })
+}
+
 fn provider_completed(s: &str) -> bool {
     matches!(
         s,
@@ -798,10 +833,7 @@ pub async fn status(
         // Inspect provider document metadata only; never fetch or persist the presigned file.
         refresh_stage = "AADHAAR_DOCUMENT";
         let document = provider.get(&token, &format!("/kyc/digilocker/sessions/{provider_id}/documents/aadhaar")).await?;
-        let aadhaar_consented = document.pointer("/data/files").and_then(Value::as_array)
-            .is_some_and(|files| files.iter().any(|file|
-                file.pointer("/metadata/issuer_id").and_then(Value::as_str) == Some("in.gov.uidai")));
-        if !aadhaar_consented {
+        if !uidai_aadhaar_consented(&document) {
             return Err(AppError::Conflict("Consented Aadhaar document was not confirmed".into()));
         }
         refresh_stage = "IDENTITY_PROFILE";
