@@ -9,7 +9,7 @@ import { Card } from "@/src/components/ui/Card";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { spacing } from "@/src/theme/tokens";
 
-const APP_KYC_URL = "trackmyrmc://kyc";
+const APP_KYC_URL = "trackmyrmc://kyc/return";
 
 export default function KycReturnScreen() {
   const router = useRouter();
@@ -18,7 +18,7 @@ export default function KycReturnScreen() {
 
   useEffect(() => {
     if (Platform.OS === "web") return;
-    const timer = setTimeout(() => router.replace("/kyc"), 250);
+    const timer = setTimeout(() => router.replace("/kyc?returned=1"), 250);
     return () => clearTimeout(timer);
   }, [router]);
 
@@ -26,7 +26,7 @@ export default function KycReturnScreen() {
     try {
       await Linking.openURL(APP_KYC_URL);
     } catch {
-      router.replace("/kyc");
+      router.replace("/kyc?returned=1");
     }
   };
 
@@ -37,13 +37,13 @@ export default function KycReturnScreen() {
           <AppText variant="caption" color={colors.brand}>DIGILOCKER RETURN</AppText>
           <AppText variant="title">Returned from DigiLocker</AppText>
           <AppText variant="bodyMuted">
-            TrackMyRMC will confirm the DigiLocker session directly with the provider. Returning here does not mean verification is complete. Refresh your KYC status to continue.
+            TrackMyRMC is checking your DigiLocker confirmation. A successful identity match completes Live KYC automatically.
           </AppText>
         </View>
         {Platform.OS === "web" ? (
           <>
             <Button label="Open TrackMyRMC App" onPress={openApp} />
-            <Button label="Continue on Web" variant="outline" onPress={() => router.replace("/kyc")} />
+            <Button label="Continue on Web" variant="outline" onPress={() => router.replace("/kyc?returned=1")} />
           </>
         ) : (
           <AppText variant="caption">Returning to your KYC screen…</AppText>
