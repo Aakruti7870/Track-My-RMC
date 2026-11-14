@@ -13,6 +13,7 @@ import { useToast } from "@/src/components/ui/Toast";
 import { useGet } from "@/src/hooks/useApi";
 import { AppText } from "@/src/components/ui/AppText";
 import { Button } from "@/src/components/ui/Button";
+import { Card } from "@/src/components/ui/Card";
 import { Input } from "@/src/components/ui/Input";
 import { PlantData } from "@/src/components/PlantCard";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
@@ -64,7 +65,7 @@ export default function NewOrder() {
   const [time, setTime] = useState<string | null>(params.deliveryTime || "10:00");
   const [siteName, setSiteName] = useState(params.siteName || "");
   const [address, setAddress] = useState(params.siteAddress || "");
-  const [contact, setContact] = useState(user?.name || "");
+  const [contact, setContact] = useState(user?.verified_name || user?.name || "");
   const [mobile, setMobile] = useState(user?.phone || "");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState<null | "order" | "draft">(null);
@@ -110,6 +111,7 @@ export default function NewOrder() {
   const selectedPlant = plants.find((p) => p.id === plantId) || null;
   const grades = selectedPlant?.grades || [];
   const kycOk = user?.kyc_status?.toUpperCase() === "VERIFIED";
+  const verifiedCustomerName = kycOk ? user?.verified_name?.trim() : null;
 
   const submit = async (draft: boolean) => {
     setError(null);
@@ -416,6 +418,13 @@ export default function NewOrder() {
 
         <Section title="6. Site & Contact" subtitle="Where the concrete should arrive and who will receive it">
           <View style={{ gap: spacing.md }}>
+            {verifiedCustomerName ? (
+              <Card testID="neworder-verified-customer" style={{ gap: 4, borderColor: colors.success + "55" }}>
+                <AppText variant="caption">DigiLocker-verified customer</AppText>
+                <AppText variant="heading">{verifiedCustomerName}</AppText>
+                <AppText variant="caption">The verified account identity is read-only. The delivery-site contact below can be different.</AppText>
+              </Card>
+            ) : null}
             <Input testID="neworder-site" label="Site name" value={siteName} onChangeText={setSiteName} placeholder="e.g. Skyline Towers" autoCapitalize="words" />
             <View>
               <Input testID="neworder-address" label="Delivery address" value={address} onChangeText={(t) => { setAddress(t); setCoords(null); }} placeholder="Search or type full site address" autoCapitalize="sentences" />

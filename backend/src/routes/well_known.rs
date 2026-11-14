@@ -46,8 +46,16 @@ pub async fn kyc_return() -> Html<&'static str> {
 <body style="font-family:system-ui;background:#101112;color:#fff;display:grid;place-items:center;min-height:100vh;margin:0">
 <main style="text-align:center;padding:24px">
 <h1>DigiLocker return</h1>
-<p>Return to TrackMyRMC and tap Refresh Status. Your identity is only verified after the provider confirms consent and an authorized reviewer approves it.</p>
-<a href="trackmyrmc://kyc" style="color:#dfff62">Open TrackMyRMC</a>
+<p>Returning to TrackMyRMC to confirm your DigiLocker consent securely. Verification completes only after the server checks the provider's identity evidence.</p>
+<a href="trackmyrmc://kyc/return" style="color:#dfff62">Open TrackMyRMC</a>
+<p style="font-size:14px;color:#b4b4b4">If the app does not open automatically, tap the link above.</p>
+<script>
+(function () {
+  if (/Android|iPhone|iPad/i.test(navigator.userAgent)) {
+    window.setTimeout(function () { window.location.href = 'trackmyrmc://kyc/return'; }, 120);
+  }
+})();
+</script>
 </main>
 </body>
 </html>"#,

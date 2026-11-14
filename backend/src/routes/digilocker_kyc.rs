@@ -1,5 +1,5 @@
-//! Sandbox.co.in DigiLocker integration. Test environment only and disabled by default.
-//! Callback is a browser trampoline, never an identity-verification source of truth.
+//! Sandbox.co.in DigiLocker integration for approved Test/Live environments.
+//! Browser return is navigation only; server-confirmed consent and identity evidence are authoritative.
 use crate::{
     auth::{middleware::check_role, AuthUser},
     error::AppError,
@@ -55,11 +55,10 @@ pub(crate) async fn effective_customer_kyc_status(
     Ok(if approved { "verified" } else { "unverified" }.to_owned())
 }
 
-/// A live consent session is not sufficient by itself: an independent privileged
-/// reviewer must have approved THAT environment after the consent was verified.
-/// Only the latest customer KYC review counts, so reset/rejection invalidate the
-/// earlier approval even if the user profile was later restored incorrectly.
-/// Legacy review audit events without provider_environment are deliberately denied.
+/// Live KYC must have a fresh environment-matched decision backed by verified
+/// DigiLocker consent. The audited server-side auto-approval and authorized manual
+/// review share this guard; an ensuing reviewer revocation always takes precedence.
+/// Legacy approvals or records missing live evidence are deliberately denied.
 pub(crate) const LIVE_APPROVAL_SQL: &str = r#"
 SELECT EXISTS (
     SELECT 1
@@ -70,10 +69,13 @@ SELECT EXISTS (
         FROM audit_logs last_review
         WHERE last_review.resource_type='customer'
           AND last_review.resource_id=$1::text
-          AND last_review.action IN ('authority.kyc.review','control_center.kyc.review')
+          AND last_review.action IN ('authority.kyc.review','control_center.kyc.review','kyc.digilocker.auto_verified')
         ORDER BY last_review.id DESC LIMIT 1
     )
       AND a.metadata->>'provider_environment'='live'
+      AND (a.action <> 'kyc.digilocker.auto_verified'
+           OR (a.metadata->>'provider_verified'='true'
+               AND a.metadata->>'session_id'=d.provider_session_id::text))
       AND (a.metadata->>'status'='verified'
            OR a.metadata->>'kyc_status'='verified')
       AND d.provider_environment='live'
@@ -389,6 +391,164 @@ pub async fn start(State(state): State<AppState>, user: AuthUser) -> Result<Json
     }
 }
 
+// A verified Live DigiLocker session can become VERIFIED without a second
+// human review. This must be called only after the provider's completed status,
+// UIDAI issuer metadata and exact signed-in customer name/mobile were checked,
+// or when upgrading an older session with that same server-side audit evidence.
+async fn auto_approve_live_consent(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    customer_id: Uuid,
+    provider_session_id: Uuid,
+) -> Result<(), AppError> {
+    let updated = sqlx::query(
+        "UPDATE user_profiles SET kyc_status='verified',updated_at=NOW()
+         WHERE user_id=$1 AND kyc_status='pending'
+           AND NULLIF(BTRIM(verified_name),'') IS NOT NULL",
+    )
+    .bind(customer_id)
+    .execute(&mut **tx)
+    .await?
+    .rows_affected();
+    if updated != 1 {
+        return Err(AppError::Conflict(
+            "Live KYC status changed; refresh before approval".into(),
+        ));
+    }
+    // The server, not the browser, writes this action. The session and live
+    // environment must match LIVE_APPROVAL_SQL; no Aadhaar number is recorded.
+    sqlx::query(
+        "INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata)
+         VALUES($1,'kyc.digilocker.auto_verified','customer',$2,$3)",
+    )
+    .bind(customer_id)
+    .bind(customer_id.to_string())
+    .bind(json!({
+        "status":"verified", "provider_environment":"live",
+        "provider_verified":true, "source":"server_verified_digilocker",
+        "session_id":provider_session_id.to_string()
+    }))
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+/// Upgrade a customer's older PENDING Live consent only if the exact session
+/// already has a server-generated, post-verification audit event. No callback
+/// parameters or browser input are accepted, and reviewer decisions after
+/// that event prevent automatic promotion.
+async fn promote_prior_live_consent(
+    db: &sqlx::PgPool,
+    customer_id: Uuid,
+    session_row_id: Uuid,
+    provider_session_id: Uuid,
+) -> Result<bool, AppError> {
+    let mut tx = db.begin().await?;
+    let account = sqlx::query(
+        "SELECT u.full_name,p.verified_name,p.kyc_status
+         FROM users u JOIN user_profiles p ON p.user_id=u.id
+         WHERE u.id=$1 AND u.role='customer' AND u.is_active FOR UPDATE OF p",
+    )
+    .bind(customer_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some(account) = account else {
+        return Ok(false);
+    };
+    let status: String = account.get("kyc_status");
+    let name: Option<String> = account.get("verified_name");
+    let full_name: String = account.get("full_name");
+    if !status.eq_ignore_ascii_case("pending")
+        || name.as_deref().is_none_or(|n| {
+            comparable_name(n).is_empty() || comparable_name(n) != comparable_name(&full_name)
+        })
+    {
+        return Ok(false);
+    }
+    let proven: bool = sqlx::query_scalar(
+        r#"SELECT EXISTS(
+            SELECT 1 FROM customer_digilocker_sessions d
+            JOIN audit_logs a ON a.user_id=d.user_id
+              AND a.resource_type='customer'
+              AND a.resource_id=d.user_id::text
+              AND a.action='kyc.digilocker.consent_verified'
+              AND a.metadata->>'provider'='live_digilocker'
+              AND a.metadata->>'session_id'=d.provider_session_id::text
+              AND a.metadata->>'result'='pending_authority_review'
+              AND a.created_at>=d.verified_at
+            WHERE d.id=$2 AND d.user_id=$1 AND d.provider_environment='live'
+              AND d.provider_session_id=$3 AND d.status='PENDING'
+              AND d.verified_at IS NOT NULL
+              AND NOT EXISTS(
+                  SELECT 1 FROM audit_logs rev
+                  WHERE rev.resource_type='customer'
+                    AND rev.resource_id=d.user_id::text
+                    AND rev.action IN ('authority.kyc.review','control_center.kyc.review')
+                    AND rev.id>a.id
+              )
+        )"#,
+    )
+    .bind(customer_id)
+    .bind(session_row_id)
+    .bind(provider_session_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    if !proven {
+        return Ok(false);
+    }
+    auto_approve_live_consent(&mut tx, customer_id, provider_session_id).await?;
+    tx.commit().await?;
+    Ok(true)
+}
+
+/// A second status poll may lose the IN_PROGRESS -> PENDING compare-and-set
+/// after another request has already completed the same provider consent.
+/// Never return the stale local PENDING default: read the committed customer
+/// profile and enforce the Live approval audit before reporting VERIFIED.
+async fn completed_consent_status_after_race(
+    db: &sqlx::PgPool,
+    customer_id: Uuid,
+    session_row_id: Uuid,
+    environment: &str,
+) -> Result<&'static str, AppError> {
+    let current = sqlx::query(
+        "SELECT d.status AS session_status,COALESCE(p.kyc_status,'unverified') AS profile_status
+         FROM customer_digilocker_sessions d
+         JOIN user_profiles p ON p.user_id=d.user_id
+         WHERE d.id=$1 AND d.user_id=$2 AND d.provider_environment=$3",
+    )
+    .bind(session_row_id)
+    .bind(customer_id)
+    .bind(environment)
+    .fetch_optional(db)
+    .await?;
+    let Some(current) = current else {
+        return Ok("REQUIRES_REVERIFICATION");
+    };
+    let stored: String = current.get("profile_status");
+    let current_status = display_status(&stored);
+    if current_status == "VERIFIED" && environment == "live" {
+        let approved: bool = sqlx::query_scalar(LIVE_APPROVAL_SQL)
+            .bind(customer_id)
+            .fetch_one(db)
+            .await?;
+        return Ok(if approved {
+            "VERIFIED"
+        } else {
+            "REQUIRES_REVERIFICATION"
+        });
+    }
+    if current_status != "NOT_STARTED" {
+        return Ok(current_status);
+    }
+    let session: String = current.get("session_status");
+    Ok(if session == "PENDING" {
+        // A reviewer reset may have invalidated this older pending session.
+        "NOT_STARTED"
+    } else {
+        session_status(&session)
+    })
+}
+
 /// An asynchronously completed second consent must not undo a concurrently
 /// committed independent reviewer approval. Lock the profile before checking
 /// its CURRENT status and current live evidence, not the stale status read
@@ -495,7 +655,15 @@ pub async fn status(
     let id: Uuid = latest.get("id");
     let previous: String = latest.get("status");
     if previous != "IN_PROGRESS" {
-        // Authority rejection/reset takes precedence over a former consent session.
+        if previous == "PENDING" && effective_status == "PENDING" && provider.environment == "live"
+        {
+            if let Some(provider_id) = latest.get::<Option<Uuid>, _>("provider_session_id") {
+                if promote_prior_live_consent(&state.db, user.user_id, id, provider_id).await? {
+                    return Ok(Json(json!({"status":"VERIFIED","provider":provider.label})));
+                }
+            }
+        }
+        // Explicit rejection/reset takes precedence over a former consent session.
         let profile_state = effective_status;
         let status = if profile_state != "NOT_STARTED" {
             profile_state
@@ -554,6 +722,20 @@ pub async fn status(
             "UPDATE customer_digilocker_sessions SET status='PENDING',verified_at=NOW(),updated_at=NOW()
              WHERE id=$1 AND user_id=$2 AND status='IN_PROGRESS'"
         ).bind(id).bind(user.user_id).execute(&mut *tx).await?.rows_affected();
+        // Only the winning status request may transition the profile. A second
+        // authenticated poll can observe a completed provider session while its
+        // compare-and-set loses to the first transaction. Re-read committed
+        // evidence instead of returning a stale PENDING response to the app.
+        if changed == 0 {
+            tx.rollback().await?;
+            return completed_consent_status_after_race(
+                &state.db,
+                user.user_id,
+                id,
+                provider.environment,
+            )
+            .await;
+        }
         let mut effective_result = "PENDING";
         if changed == 1 {
             // Re-read and lock the CURRENT approval before any profile mutation.
@@ -568,6 +750,9 @@ pub async fn status(
             .await?;
             if !reopened {
                 effective_result = "VERIFIED";
+            } else if provider.environment == "live" {
+                auto_approve_live_consent(&mut tx, user.user_id, provider_id).await?;
+                effective_result = "VERIFIED";
             }
             sqlx::query(
                 "INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata)
@@ -575,7 +760,7 @@ pub async fn status(
             ).bind(user.user_id).bind(user.user_id.to_string())
             .bind(json!({"provider":provider.label,
                          "session_id":provider_id.to_string(),
-                         "result":if reopened {"pending_authority_review"} else {"already_approved"}}))
+                         "result":if !reopened {"already_approved"} else if provider.environment == "live" {"auto_verified"} else {"pending_authority_review"}}))
             .execute(&mut *tx).await?;
         }
         tx.commit().await?;
@@ -759,6 +944,193 @@ mod tests {
         .await
         .unwrap();
         assert!(!approved().fetch_one(&db).await.unwrap());
+    }
+
+    #[sqlx::test]
+    async fn server_issued_live_approval_requires_matching_session_and_respects_revocation(
+        db: sqlx::PgPool,
+    ) {
+        let customer: Uuid = sqlx::query_scalar(
+            "INSERT INTO users(phone,hashed_password,full_name,role)
+             VALUES($1,'test-only','Verified Customer','customer') RETURNING id",
+        )
+        .bind(format!(
+            "auto{}",
+            &Uuid::new_v4().simple().to_string()[..12]
+        ))
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        sqlx::query("INSERT INTO user_profiles(user_id,kyc_status,verified_name) VALUES($1,'pending','Verified Customer')")
+            .bind(customer).execute(&db).await.unwrap();
+        let provider_session_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO customer_digilocker_sessions(user_id,provider_environment,provider_session_id,status,verified_at)
+             VALUES($1,'live',$2,'PENDING',NOW()-INTERVAL '1 minute')",
+        ).bind(customer).bind(provider_session_id).execute(&db).await.unwrap();
+        let mut tx = db.begin().await.unwrap();
+        auto_approve_live_consent(&mut tx, customer, provider_session_id)
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        assert!(sqlx::query_scalar::<_, bool>(LIVE_APPROVAL_SQL)
+            .bind(customer)
+            .fetch_one(&db)
+            .await
+            .unwrap());
+
+        sqlx::query(
+            "INSERT INTO audit_logs(action,resource_type,resource_id,metadata)
+                     VALUES('authority.kyc.review','customer',$1,$2)",
+        )
+        .bind(customer.to_string())
+        .bind(json!({"kyc_status":"unverified","provider_environment":null}))
+        .execute(&db)
+        .await
+        .unwrap();
+        assert!(!sqlx::query_scalar::<_, bool>(LIVE_APPROVAL_SQL)
+            .bind(customer)
+            .fetch_one(&db)
+            .await
+            .unwrap());
+    }
+
+    #[sqlx::test]
+    async fn previous_pending_live_consent_needs_its_original_server_audit(db: sqlx::PgPool) {
+        let customer: Uuid = sqlx::query_scalar(
+            "INSERT INTO users(phone,hashed_password,full_name,role)
+             VALUES($1,'test-only','Consent Customer','customer') RETURNING id",
+        )
+        .bind(format!(
+            "prior{}",
+            &Uuid::new_v4().simple().to_string()[..12]
+        ))
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        sqlx::query("INSERT INTO user_profiles(user_id,kyc_status,verified_name) VALUES($1,'pending','Consent Customer')")
+            .bind(customer).execute(&db).await.unwrap();
+        let provider_id = Uuid::new_v4();
+        let session_id: Uuid = sqlx::query_scalar(
+            "INSERT INTO customer_digilocker_sessions(user_id,provider_environment,provider_session_id,status,verified_at)
+             VALUES($1,'live',$2,'PENDING',NOW()-INTERVAL '1 minute') RETURNING id",
+        ).bind(customer).bind(provider_id).fetch_one(&db).await.unwrap();
+        assert!(
+            !promote_prior_live_consent(&db, customer, session_id, provider_id)
+                .await
+                .unwrap()
+        );
+        sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata)
+                     VALUES($1,'kyc.digilocker.consent_verified','customer',$2,$3)")
+            .bind(customer).bind(customer.to_string())
+            .bind(json!({"provider":"live_digilocker","session_id":provider_id.to_string(),"result":"pending_authority_review"}))
+            .execute(&db).await.unwrap();
+        assert!(
+            promote_prior_live_consent(&db, customer, session_id, provider_id)
+                .await
+                .unwrap()
+        );
+        assert!(sqlx::query_scalar::<_, bool>(LIVE_APPROVAL_SQL)
+            .bind(customer)
+            .fetch_one(&db)
+            .await
+            .unwrap());
+        assert!(
+            !promote_prior_live_consent(&db, customer, session_id, provider_id)
+                .await
+                .unwrap()
+        );
+    }
+
+    #[sqlx::test]
+    async fn overlapping_completed_consent_poll_rechecks_authoritative_live_approval(
+        db: sqlx::PgPool,
+    ) {
+        let customer: Uuid = sqlx::query_scalar(
+            "INSERT INTO users(phone,hashed_password,full_name,role)
+             VALUES($1,'test-only','Race Customer','customer') RETURNING id",
+        )
+        .bind(format!(
+            "race{}",
+            &Uuid::new_v4().simple().to_string()[..12]
+        ))
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO user_profiles(user_id,kyc_status,verified_name)
+             VALUES($1,'pending','Race Customer')",
+        )
+        .bind(customer)
+        .execute(&db)
+        .await
+        .unwrap();
+        let provider_id = Uuid::new_v4();
+        let session_id: Uuid = sqlx::query_scalar(
+            "INSERT INTO customer_digilocker_sessions(
+                 user_id,provider_environment,provider_session_id,status,verified_at
+             ) VALUES($1,'live',$2,'IN_PROGRESS',NULL) RETURNING id",
+        )
+        .bind(customer)
+        .bind(provider_id)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+
+        // The first poll wins the database compare-and-set and audits the
+        // automatic approval in the same transaction.
+        let mut winning = db.begin().await.unwrap();
+        let changed = sqlx::query(
+            "UPDATE customer_digilocker_sessions
+             SET status='PENDING',verified_at=NOW(),updated_at=NOW()
+             WHERE id=$1 AND status='IN_PROGRESS'",
+        )
+        .bind(session_id)
+        .execute(&mut *winning)
+        .await
+        .unwrap()
+        .rows_affected();
+        assert_eq!(changed, 1);
+        auto_approve_live_consent(&mut winning, customer, provider_id)
+            .await
+            .unwrap();
+        winning.commit().await.unwrap();
+
+        // The second request sees no IN_PROGRESS row. Its response must
+        // reflect the committed VERIFIED state, not an old PENDING default.
+        let lost = sqlx::query(
+            "UPDATE customer_digilocker_sessions SET status='PENDING'
+             WHERE id=$1 AND status='IN_PROGRESS'",
+        )
+        .bind(session_id)
+        .execute(&db)
+        .await
+        .unwrap()
+        .rows_affected();
+        assert_eq!(lost, 0);
+        assert_eq!(
+            completed_consent_status_after_race(&db, customer, session_id, "live")
+                .await
+                .unwrap(),
+            "VERIFIED"
+        );
+        // A subsequent privileged revocation must never be masked by the
+        // completed DigiLocker session.
+        sqlx::query(
+            "INSERT INTO audit_logs(action,resource_type,resource_id,metadata)
+             VALUES('authority.kyc.review','customer',$1,$2)",
+        )
+        .bind(customer.to_string())
+        .bind(json!({"kyc_status":"unverified","provider_environment":null}))
+        .execute(&db)
+        .await
+        .unwrap();
+        assert_eq!(
+            completed_consent_status_after_race(&db, customer, session_id, "live")
+                .await
+                .unwrap(),
+            "REQUIRES_REVERIFICATION"
+        );
     }
 
     #[test]

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { AppState, Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -19,7 +19,7 @@ import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 const STATE_META: Record<string, { icon: keyof typeof Ionicons.glyphMap; title: string; body: string; tone: "success" | "warning" | "error" | "info" }> = {
   VERIFIED: { icon: "shield-checkmark", title: "KYC Verified", body: "You can place orders using the app.", tone: "success" },
   IN_PROGRESS: { icon: "phone-portrait-outline", title: "Complete DigiLocker", body: "Finish consent in DigiLocker. If you cancelled or closed it, you can safely restart the verification.", tone: "warning" },
-  PENDING: { icon: "hourglass-outline", title: "Authority review pending", body: "DigiLocker identity matched. Approval by an authorized reviewer is pending.", tone: "warning" },
+  PENDING: { icon: "hourglass-outline", title: "Confirmation pending", body: "TrackMyRMC is checking the completed identity evidence. You do not need to submit another verification.", tone: "warning" },
   REJECTED: { icon: "close-circle", title: "Verification rejected", body: "Something didn't match. Please retry.", tone: "error" },
   REQUIRES_REVERIFICATION: { icon: "refresh", title: "Re-verification required", body: "Please start DigiLocker again to continue.", tone: "warning" },
   NOT_STARTED: { icon: "id-card-outline", title: "Verify your identity", body: "Complete KYC to unlock live concrete ordering.", tone: "info" },
@@ -28,7 +28,7 @@ const STATE_META: Record<string, { icon: keyof typeof Ionicons.glyphMap; title: 
 const STEPS = [
   "Verify your identity via DigiLocker / approved KYC",
   "We confirm your details against government records",
-  "Wait for authorized review before placing live orders",
+  "Successful Live DigiLocker confirmation unlocks ordering automatically",
 ];
 
 type KycStatusResponse = {
@@ -40,33 +40,93 @@ type KycStatusResponse = {
 export default function KycScreen() {
   const { colors, scheme } = useTheme();
   const router = useRouter();
+  const { returned } = useLocalSearchParams<{ returned?: string }>();
   const toast = useToast();
   const insets = useSafeAreaInsets();
-  const { token, refreshMe } = useAuth();
+  const { token, user, refreshMe } = useAuth();
   const { data, loading, error, refetch } = useGet<KycStatusResponse>("/customer/kyc");
   const [submitting, setSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [active, setActive] = useState(AppState.currentState !== "background");
+  const [returningFromProvider, setReturningFromProvider] = useState(returned === "1");
+  // A resolved refreshMe() promise does not prove /me succeeded: transient
+  // failures are handled within AuthContext. Verify the actual profile state.
+  const profileSynced = user?.kyc_status?.toUpperCase() === "VERIFIED"
+    && Boolean(user?.verified_name?.trim());
+
+  useEffect(() => {
+    if (returned === "1") setReturningFromProvider(true);
+  }, [returned]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (next) => {
-      if (next === "active") refetch();
+      setActive(next === "active");
+      if (next === "active") void refetch();
     });
     return () => subscription.remove();
   }, [refetch]);
 
-  // Once the backend confirms KYC is VERIFIED, refresh the authenticated
-  // profile so the DigiLocker-verified name and unlocked ordering appear
-  // everywhere without a manual reload. Runs once per verification.
-  const syncedRef = React.useRef(false);
+  // The callback URL cannot attest identity. Poll this authenticated endpoint
+  // after returning to the app, without overlapping requests or endless retries.
   useEffect(() => {
-    if (data?.status === "VERIFIED" && !syncedRef.current) {
-      syncedRef.current = true;
-      void refreshMe();
+    // A concurrent server-side poll can briefly return PENDING while the
+    // successful Live consent is being committed. Keep checking on app return,
+    // but limit retries so genuine review-pending Test sessions do not loop.
+    const confirming = data?.status === "IN_PROGRESS"
+      || (returningFromProvider && data?.status === "PENDING");
+    if (!token || !active || !confirming || data?.provider === "unavailable") return;
+    let cancelled = false;
+    let attempts = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      if (cancelled || attempts++ >= 30) return;
+      await refetch();
+      if (!cancelled) timer = setTimeout(poll, 2500);
+    };
+    timer = setTimeout(poll, 800);
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+  }, [token, active, data?.status, data?.provider, returningFromProvider, refetch]);
+
+  // Refresh /me until the actual authenticated profile contains both the
+  // effective VERIFIED status and a verified name. AuthContext intentionally
+  // suppresses transient refresh errors, so promise settlement is not proof.
+  // Cap retries to avoid an endless loop when the profile cannot be loaded.
+  const profileRefreshAttempts = React.useRef(0);
+  useEffect(() => {
+    if (data?.status !== "VERIFIED") {
+      profileRefreshAttempts.current = 0;
+      return;
     }
-    if (data?.status && data.status !== "VERIFIED") {
-      syncedRef.current = false;
+    if (!token || profileSynced) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const syncProfile = async () => {
+      if (cancelled || profileRefreshAttempts.current >= 8) return;
+      profileRefreshAttempts.current += 1;
+      try {
+        await refreshMe();
+      } catch {
+        // Remain on KYC until an authenticated /me refresh really succeeds.
+      }
+      if (!cancelled && profileRefreshAttempts.current < 8) {
+        timer = setTimeout(() => { void syncProfile(); }, 2500);
+      }
+    };
+    void syncProfile();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [data?.status, token, profileSynced, refreshMe]);
+
+  // Make navigation independent of the timing of the provider-return link:
+  // verification and the 'returned' route flag can arrive in either order.
+  // Do not open Customer Home before /me reflects the verified identity.
+  useEffect(() => {
+    if (data?.status === "VERIFIED" && profileSynced && returningFromProvider) {
+      router.replace("/customer");
     }
-  }, [data?.status, refreshMe]);
+  }, [data?.status, profileSynced, returningFromProvider, router]);
 
   const status = data?.status || "NOT_STARTED";
   const providerUnavailable = data?.provider === "unavailable" && status !== "VERIFIED";
@@ -82,9 +142,8 @@ export default function KycScreen() {
         throw { detail: "DigiLocker did not return a secure authorization link" };
       }
       toast("Opening DigiLocker securely", "success");
+      setReturningFromProvider(true);
       await Linking.openURL(result.authorization_url);
-      await refreshMe();
-      await refetch();
     } catch (e: any) {
       toast(e.detail || "Could not start KYC", "error");
     } finally {
@@ -107,7 +166,7 @@ export default function KycScreen() {
       : status === "IN_PROGRESS"
       ? "Restart DigiLocker"
       : status === "PENDING"
-      ? "Refresh Status"
+      ? "Check Verification"
       : status === "VERIFIED"
       ? "Back to Home"
       : "Retry DigiLocker";

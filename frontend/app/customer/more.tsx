@@ -32,6 +32,7 @@ export default function CustomerMore() {
   const insets = useSafeAreaInsets();
   const kycVerified = user?.kyc_status === "VERIFIED";
   const mobile = user?.phone || user?.mobile;
+  const verifiedName = kycVerified ? user?.verified_name?.trim() : null;
   const customerModules = modulesForRole(user?.role);
   const moreModules = CUSTOMER_MORE_KEYS.flatMap(key => customerModules.filter(module => module.key === key));
 
@@ -61,11 +62,11 @@ export default function CustomerMore() {
         <Card style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
           <View style={[styles.avatar, { backgroundColor: colors.brand }]}>
             <AppText style={{ fontFamily: fonts.displayBold, fontSize: fontSize.xl, color: colors.onBrand }}>
-              {(user?.name || "C").charAt(0).toUpperCase()}
+              {(verifiedName || user?.name || "C").charAt(0).toUpperCase()}
             </AppText>
           </View>
           <View style={{ flex: 1, gap: 4 }}>
-            <AppText variant="heading" numberOfLines={1}>{user?.name}</AppText>
+            <AppText variant="heading" numberOfLines={1}>{verifiedName || user?.name}</AppText>
             <AppText variant="caption">{user?.phone || user?.email}</AppText>
             <View style={{ flexDirection: "row", gap: spacing.xs }}>
               <Badge label={user?.role_label || "Customer"} color={colors.brand} />
@@ -79,8 +80,8 @@ export default function CustomerMore() {
           <Card style={{ gap: spacing.lg }}>
             <View style={{ gap: 4 }}>
               <AppText variant="caption">Name</AppText>
-              <AppText variant="heading">{kycVerified && user?.name ? user.name : "Complete DigiLocker KYC"}</AppText>
-              {kycVerified && user?.name ? <Badge label="KYC VERIFIED" status="VERIFIED" /> : null}
+              <AppText variant="heading">{verifiedName || (kycVerified ? "Verified name unavailable" : "Complete DigiLocker KYC")}</AppText>
+              {verifiedName ? <Badge label="DIGILOCKER VERIFIED" status="VERIFIED" /> : null}
             </View>
             <View style={{ gap: 4 }}>
               <AppText variant="caption">Mobile number</AppText>

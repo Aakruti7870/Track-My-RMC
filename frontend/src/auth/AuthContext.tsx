@@ -44,6 +44,7 @@ export type Me = {
   plant_id: string | null;
   status: string;
   kyc_status: string;
+  verified_name?: string | null;
   mfa_enabled?: boolean;
   mfa_configured?: boolean;
   passkey_enabled?: boolean;

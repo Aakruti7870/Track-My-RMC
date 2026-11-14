@@ -83,6 +83,7 @@ pub async fn get_me(
         "plant_id":plant_id,
         "status":"active",
         "kyc_status":if user_resp.kyc_status.eq_ignore_ascii_case("unverified") {"NOT_STARTED".to_string()} else {user_resp.kyc_status.to_uppercase()},
+        "verified_name":if user_resp.role == "customer" && user_resp.kyc_status.eq_ignore_ascii_case("verified") {user_resp.verified_name.clone()} else {None},
         "mfa_enabled":mfa_enabled,
         "mfa_configured":!review_fixture,
         "passkey_enabled":false,
