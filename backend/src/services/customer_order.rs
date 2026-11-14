@@ -99,6 +99,26 @@ pub(crate) async fn require_order_kyc(
     Ok(())
 }
 
+/// Invoicing delivered concrete records an existing obligation; it does not
+/// authorize another dispatch or new customer order. A subsequent KYC
+/// revocation must not make legally required delivery invoicing impossible.
+/// Before final delivery, the normal current-identity guard still applies.
+pub(crate) async fn require_order_kyc_for_invoice(
+    conn: &mut PgConnection,
+    order_id: Uuid,
+) -> Result<(), AppError> {
+    let already_delivered: bool =
+        sqlx::query_scalar("SELECT status IN ('delivered','completed') FROM orders WHERE id=$1")
+            .bind(order_id)
+            .fetch_optional(&mut *conn)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Order not found".into()))?;
+    if already_delivered {
+        return Ok(());
+    }
+    require_order_kyc(conn, order_id).await
+}
+
 pub(crate) async fn require_load_kyc(
     conn: &mut PgConnection,
     load_id: Uuid,
