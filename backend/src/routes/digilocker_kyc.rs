@@ -391,11 +391,10 @@ pub async fn start(State(state): State<AppState>, user: AuthUser) -> Result<Json
     }
 }
 
-
- // A verified Live DigiLocker session can become VERIFIED without a second
- // human review. This must be called only after the provider's completed status,
- // UIDAI issuer metadata and exact signed-in customer name/mobile were checked,
- // or when upgrading an older session with that same server-side audit evidence.
+// A verified Live DigiLocker session can become VERIFIED without a second
+// human review. This must be called only after the provider's completed status,
+// UIDAI issuer metadata and exact signed-in customer name/mobile were checked,
+// or when upgrading an older session with that same server-side audit evidence.
 async fn auto_approve_live_consent(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     customer_id: Uuid,
@@ -411,7 +410,9 @@ async fn auto_approve_live_consent(
     .await?
     .rows_affected();
     if updated != 1 {
-        return Err(AppError::Conflict("Live KYC status changed; refresh before approval".into()));
+        return Err(AppError::Conflict(
+            "Live KYC status changed; refresh before approval".into(),
+        ));
     }
     // The server, not the browser, writes this action. The session and live
     // environment must match LIVE_APPROVAL_SQL; no Aadhaar number is recorded.
@@ -450,12 +451,16 @@ async fn promote_prior_live_consent(
     .bind(customer_id)
     .fetch_optional(&mut *tx)
     .await?;
-    let Some(account) = account else { return Ok(false) };
+    let Some(account) = account else {
+        return Ok(false);
+    };
     let status: String = account.get("kyc_status");
     let name: Option<String> = account.get("verified_name");
     let full_name: String = account.get("full_name");
     if !status.eq_ignore_ascii_case("pending")
-        || name.as_deref().is_none_or(|n| comparable_name(n).is_empty() || comparable_name(n) != comparable_name(&full_name))
+        || name.as_deref().is_none_or(|n| {
+            comparable_name(n).is_empty() || comparable_name(n) != comparable_name(&full_name)
+        })
     {
         return Ok(false);
     }
@@ -487,7 +492,9 @@ async fn promote_prior_live_consent(
     .bind(provider_session_id)
     .fetch_one(&mut *tx)
     .await?;
-    if !proven { return Ok(false) }
+    if !proven {
+        return Ok(false);
+    }
     auto_approve_live_consent(&mut tx, customer_id, provider_session_id).await?;
     tx.commit().await?;
     Ok(true)
@@ -599,7 +606,8 @@ pub async fn status(
     let id: Uuid = latest.get("id");
     let previous: String = latest.get("status");
     if previous != "IN_PROGRESS" {
-        if previous == "PENDING" && effective_status == "PENDING" && provider.environment == "live" {
+        if previous == "PENDING" && effective_status == "PENDING" && provider.environment == "live"
+        {
             if let Some(provider_id) = latest.get::<Option<Uuid>, _>("provider_session_id") {
                 if promote_prior_live_consent(&state.db, user.user_id, id, provider_id).await? {
                     return Ok(Json(json!({"status":"VERIFIED","provider":provider.label})));
@@ -875,14 +883,21 @@ mod tests {
         assert!(!approved().fetch_one(&db).await.unwrap());
     }
 
-
     #[sqlx::test]
-    async fn server_issued_live_approval_requires_matching_session_and_respects_revocation(db: sqlx::PgPool) {
+    async fn server_issued_live_approval_requires_matching_session_and_respects_revocation(
+        db: sqlx::PgPool,
+    ) {
         let customer: Uuid = sqlx::query_scalar(
             "INSERT INTO users(phone,hashed_password,full_name,role)
              VALUES($1,'test-only','Verified Customer','customer') RETURNING id",
-        ).bind(format!("auto{}", &Uuid::new_v4().simple().to_string()[..12]))
-         .fetch_one(&db).await.unwrap();
+        )
+        .bind(format!(
+            "auto{}",
+            &Uuid::new_v4().simple().to_string()[..12]
+        ))
+        .fetch_one(&db)
+        .await
+        .unwrap();
         sqlx::query("INSERT INTO user_profiles(user_id,kyc_status,verified_name) VALUES($1,'pending','Verified Customer')")
             .bind(customer).execute(&db).await.unwrap();
         let provider_session_id = Uuid::new_v4();
@@ -891,16 +906,30 @@ mod tests {
              VALUES($1,'live',$2,'PENDING',NOW()-INTERVAL '1 minute')",
         ).bind(customer).bind(provider_session_id).execute(&db).await.unwrap();
         let mut tx = db.begin().await.unwrap();
-        auto_approve_live_consent(&mut tx, customer, provider_session_id).await.unwrap();
+        auto_approve_live_consent(&mut tx, customer, provider_session_id)
+            .await
+            .unwrap();
         tx.commit().await.unwrap();
-        assert!(sqlx::query_scalar::<_,bool>(LIVE_APPROVAL_SQL).bind(customer).fetch_one(&db).await.unwrap());
+        assert!(sqlx::query_scalar::<_, bool>(LIVE_APPROVAL_SQL)
+            .bind(customer)
+            .fetch_one(&db)
+            .await
+            .unwrap());
 
-        sqlx::query("INSERT INTO audit_logs(action,resource_type,resource_id,metadata)
-                     VALUES('authority.kyc.review','customer',$1,$2)")
-            .bind(customer.to_string())
-            .bind(json!({"kyc_status":"unverified","provider_environment":null}))
-            .execute(&db).await.unwrap();
-        assert!(!sqlx::query_scalar::<_,bool>(LIVE_APPROVAL_SQL).bind(customer).fetch_one(&db).await.unwrap());
+        sqlx::query(
+            "INSERT INTO audit_logs(action,resource_type,resource_id,metadata)
+                     VALUES('authority.kyc.review','customer',$1,$2)",
+        )
+        .bind(customer.to_string())
+        .bind(json!({"kyc_status":"unverified","provider_environment":null}))
+        .execute(&db)
+        .await
+        .unwrap();
+        assert!(!sqlx::query_scalar::<_, bool>(LIVE_APPROVAL_SQL)
+            .bind(customer)
+            .fetch_one(&db)
+            .await
+            .unwrap());
     }
 
     #[sqlx::test]
@@ -908,8 +937,14 @@ mod tests {
         let customer: Uuid = sqlx::query_scalar(
             "INSERT INTO users(phone,hashed_password,full_name,role)
              VALUES($1,'test-only','Consent Customer','customer') RETURNING id",
-        ).bind(format!("prior{}", &Uuid::new_v4().simple().to_string()[..12]))
-         .fetch_one(&db).await.unwrap();
+        )
+        .bind(format!(
+            "prior{}",
+            &Uuid::new_v4().simple().to_string()[..12]
+        ))
+        .fetch_one(&db)
+        .await
+        .unwrap();
         sqlx::query("INSERT INTO user_profiles(user_id,kyc_status,verified_name) VALUES($1,'pending','Consent Customer')")
             .bind(customer).execute(&db).await.unwrap();
         let provider_id = Uuid::new_v4();
@@ -917,15 +952,31 @@ mod tests {
             "INSERT INTO customer_digilocker_sessions(user_id,provider_environment,provider_session_id,status,verified_at)
              VALUES($1,'live',$2,'PENDING',NOW()-INTERVAL '1 minute') RETURNING id",
         ).bind(customer).bind(provider_id).fetch_one(&db).await.unwrap();
-        assert!(!promote_prior_live_consent(&db,customer,session_id,provider_id).await.unwrap());
+        assert!(
+            !promote_prior_live_consent(&db, customer, session_id, provider_id)
+                .await
+                .unwrap()
+        );
         sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata)
                      VALUES($1,'kyc.digilocker.consent_verified','customer',$2,$3)")
             .bind(customer).bind(customer.to_string())
             .bind(json!({"provider":"live_digilocker","session_id":provider_id.to_string(),"result":"pending_authority_review"}))
             .execute(&db).await.unwrap();
-        assert!(promote_prior_live_consent(&db,customer,session_id,provider_id).await.unwrap());
-        assert!(sqlx::query_scalar::<_,bool>(LIVE_APPROVAL_SQL).bind(customer).fetch_one(&db).await.unwrap());
-        assert!(!promote_prior_live_consent(&db,customer,session_id,provider_id).await.unwrap());
+        assert!(
+            promote_prior_live_consent(&db, customer, session_id, provider_id)
+                .await
+                .unwrap()
+        );
+        assert!(sqlx::query_scalar::<_, bool>(LIVE_APPROVAL_SQL)
+            .bind(customer)
+            .fetch_one(&db)
+            .await
+            .unwrap());
+        assert!(
+            !promote_prior_live_consent(&db, customer, session_id, provider_id)
+                .await
+                .unwrap()
+        );
     }
 
     #[test]
