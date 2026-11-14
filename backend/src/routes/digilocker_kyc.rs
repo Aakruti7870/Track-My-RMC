@@ -1405,4 +1405,71 @@ mod tests {
         assert!(!provider_completed("created"));
         assert!(!provider_completed("pending"));
     }
+
+    #[test]
+    fn live_provider_contract_keeps_consent_and_diagnostics_fail_closed() {
+        let status = json!({"code":200,"data":{"status":"succeeded"}});
+        let document = json!({"code":200,"data":{"files":[{"metadata":{"issuer_id":"in.gov.uidai","description":"Aadhaar"}}]}});
+        let wrong_document = json!({"code":200,"data":{"files":[{"metadata":{"issuer_id":"in.gov.other"}}]}});
+        assert!(provider_completed(
+            status.pointer("/data/status").and_then(Value::as_str).unwrap()
+        ));
+        assert!(uidai_aadhaar_consented(&document));
+        assert!(!uidai_aadhaar_consented(&wrong_document));
+        assert!(!uidai_aadhaar_consented(&json!({"code":200,"data":{}})));
+        assert_eq!(provider_get_stage("/kyc/digilocker/sessions/id/status"), "SESSION_STATUS");
+        assert_eq!(provider_get_stage("/kyc/digilocker/sessions/id/documents/aadhaar"), "AADHAAR_DOCUMENT");
+        assert_eq!(provider_get_stage("/kyc/digilocker/sessions/id/user/profile"), "IDENTITY_PROFILE");
+        assert_eq!(provider_get_stage("/unexpected"), "PROVIDER_GET");
+    }
+
+    #[sqlx::test]
+    async fn completed_live_evidence_atomically_approves_customer_and_survives_status_recheck(
+        db: sqlx::PgPool,
+    ) {
+        let phone = format!("91{:010}", Uuid::new_v4().as_u128() % 10_000_000_000);
+        let customer: Uuid = sqlx::query_scalar(
+            "INSERT INTO users(phone,hashed_password,full_name,role) VALUES($1,'test-only','Consented Customer','customer') RETURNING id",
+        )
+        .bind(&phone)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        sqlx::query("INSERT INTO user_profiles(user_id,kyc_status) VALUES($1,'unverified')")
+            .bind(customer).execute(&db).await.unwrap();
+        let provider_id = Uuid::new_v4();
+        let session: Uuid = sqlx::query_scalar(
+            "INSERT INTO customer_digilocker_sessions(user_id,provider_environment,provider_session_id,status,expires_at)
+             VALUES($1,'live',$2,'IN_PROGRESS',NOW()+INTERVAL '20 minutes') RETURNING id",
+        )
+        .bind(customer).bind(provider_id).fetch_one(&db).await.unwrap();
+        let provider_status = json!({"code":200,"data":{"status":"succeeded"}});
+        let document = json!({"code":200,"data":{"files":[{"metadata":{"issuer_id":"in.gov.uidai"}}]}});
+        let profile = json!({"name":"Consented Customer","mobile":phone,"eaadhaar":true});
+        assert!(provider_completed(
+            provider_status.pointer("/data/status").and_then(Value::as_str).unwrap()
+        ));
+        assert!(uidai_aadhaar_consented(&document));
+        assert!(profile_matches("Consented Customer", &phone, &profile));
+
+        let mut tx = db.begin().await.unwrap();
+        assert_eq!(reserve_completed_consent(&mut tx, session, customer).await.unwrap(), 1);
+        assert!(consent_still_authorized(&mut tx, customer, session, &profile).await.unwrap());
+        assert!(complete_consent_profile_transition(&mut tx, customer, "Consented Customer", true).await.unwrap());
+        auto_approve_live_consent(&mut tx, customer, provider_id).await.unwrap();
+        sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata)
+          VALUES($1,'kyc.digilocker.consent_verified','customer',$2,$3)")
+            .bind(customer).bind(customer.to_string())
+            .bind(json!({"provider":"live_digilocker","session_id":provider_id.to_string(),"result":"auto_verified"}))
+            .execute(&mut *tx).await.unwrap();
+        tx.commit().await.unwrap();
+        assert!(sqlx::query_scalar::<_,bool>(LIVE_APPROVAL_SQL)
+            .bind(customer).fetch_one(&db).await.unwrap());
+        assert_eq!(completed_consent_status_after_race(&db, customer, session, "live").await.unwrap(), "VERIFIED");
+        let saved: (String, Option<String>) = sqlx::query_as(
+            "SELECT kyc_status,verified_name FROM user_profiles WHERE user_id=$1",
+        ).bind(customer).fetch_one(&db).await.unwrap();
+        assert_eq!(saved.0, "verified");
+        assert_eq!(saved.1.as_deref(), Some("Consented Customer"));
+    }
 }
