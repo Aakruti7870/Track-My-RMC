@@ -14,6 +14,10 @@ struct Validated {
     name: String,
     phone: String,
     site_id: Option<Uuid>,
+    site_name: String,
+    site_address: String,
+    site_contact: String,
+    site_mobile: String,
     total: BigDecimal,
     tax: BigDecimal,
     pricing: Value,
@@ -264,13 +268,33 @@ async fn validate(
         ));
     }
     let mut coordinates = req.lat.zip(req.lng);
+    let mut site_name = req
+        .site_name
+        .as_deref()
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let mut site_address = req
+        .site_address
+        .as_deref()
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let mut site_contact = req.contact_person.as_deref().unwrap_or(&name).to_string();
+    let mut site_mobile = req.contact_mobile.as_deref().unwrap_or(&phone).to_string();
     if let Some(id) = req.site_id {
-        let site: Option<(Option<f64>,Option<f64>)> = sqlx::query_as("SELECT latitude,longitude FROM customer_sites WHERE id=$1 AND customer_id=$2 FOR SHARE")
-            .bind(id).bind(customer).fetch_optional(&mut *conn).await?;
-        let (lat, lng) = site.ok_or_else(|| {
+        let site = sqlx::query("SELECT latitude,longitude,name,address_line,contact_person,contact_phone FROM customer_sites WHERE id=$1 AND customer_id=$2 FOR SHARE")
+            .bind(id).bind(customer).fetch_optional(&mut *conn).await?
+            .ok_or_else(|| {
             AppError::Forbidden("Saved site does not belong to this customer".into())
         })?;
+        let lat: Option<f64> = site.get("latitude");
+        let lng: Option<f64> = site.get("longitude");
         coordinates = lat.zip(lng);
+        site_name = site.get("name");
+        site_address = site.get("address_line");
+        site_contact = site.get("contact_person");
+        site_mobile = site.get("contact_phone");
     }
     let zero = BigDecimal::from(0);
     let (total, tax, pricing) = if let Some(quote) = req.quotation_id {
@@ -402,6 +426,10 @@ async fn validate(
         name,
         phone,
         site_id: req.site_id,
+        site_name,
+        site_address,
+        site_contact,
+        site_mobile,
         total,
         tax,
         pricing,
@@ -416,7 +444,7 @@ pub async fn preview(
     let mut tx = state.db.begin().await?;
     let validated = validate(&mut tx, customer, req).await?;
     Ok(
-        json!({"grade":req.concrete_grade,"quantity":req.quantity_m3,"delivery_date":req.delivery_date,"site_name":req.site_name,"site_id":req.site_id,"total_amount":validated.total,"tax_amount":validated.tax,"pricing":validated.pricing}),
+        json!({"grade":req.concrete_grade,"quantity":req.quantity_m3,"delivery_date":req.delivery_date,"delivery_time":req.delivery_time_slot,"pump_required":req.pump_required.unwrap_or(false),"notes":req.special_instructions,"payment_preference":req.preferred_payment_mode,"site_name":validated.site_name,"site_address":validated.site_address,"site_contact":validated.site_contact,"site_mobile":validated.site_mobile,"site_id":req.site_id,"total_amount":validated.total,"tax_amount":validated.tax,"pricing":validated.pricing}),
     )
 }
 
@@ -483,9 +511,13 @@ pub async fn place_with_preview(
         p["total_amount"] != json!(validated.total)
             || p["tax_amount"] != json!(validated.tax)
             || p["pricing"] != validated.pricing
+            || p["site_name"] != json!(validated.site_name)
+            || p["site_address"] != json!(validated.site_address)
+            || p["site_contact"] != json!(validated.site_contact)
+            || p["site_mobile"] != json!(validated.site_mobile)
     }) {
         return Err(AppError::Conflict(
-            "Pricing changed; prepare and review the order again".into(),
+            "Pricing or site details changed; prepare and review the order again".into(),
         ));
     }
     let site = if let Some(id) = validated.site_id {

@@ -2758,3 +2758,47 @@ async fn expired_provisional_request_is_not_visible_to_plant_or_convertible(db: 
         0
     );
 }
+
+#[sqlx::test]
+async fn prepared_order_uses_owned_site_details_and_detects_later_site_edits(db: PgPool) {
+    let (_, app, customer, plant, token) = fixture(&db).await;
+    let site: Uuid = sqlx::query_scalar("INSERT INTO customer_sites(customer_id,name,address_line,city,state,pincode,contact_person,contact_phone) VALUES($1,'Actual site','Actual address','','','','Site contact','9876543210') RETURNING id")
+        .bind(customer).fetch_one(&db).await.unwrap();
+    let mut req = order(plant, "review-site-details");
+    req["site_id"] = json!(site);
+    let (status, intent) = call(
+        &app,
+        "/api/assistant/orders/prepare",
+        Some(json!({"order":req})),
+        &token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(intent["summary"]["site_name"], "Actual site");
+    assert_eq!(intent["summary"]["site_address"], "Actual address");
+    assert_eq!(intent["summary"]["site_contact"], "Site contact");
+    sqlx::query("UPDATE customer_sites SET address_line='Changed after review' WHERE id=$1")
+        .bind(site)
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        call(
+            &app,
+            "/api/assistant/orders/confirm",
+            Some(json!({"intent_token":intent["intent_token"],"confirmed":true})),
+            &token
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM orders WHERE customer_id=$1")
+            .bind(customer)
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+        0
+    );
+}
