@@ -43,13 +43,16 @@ export default function KycScreen() {
   const { returned } = useLocalSearchParams<{ returned?: string }>();
   const toast = useToast();
   const insets = useSafeAreaInsets();
-  const { token, refreshMe } = useAuth();
+  const { token, user, refreshMe } = useAuth();
   const { data, loading, error, refetch } = useGet<KycStatusResponse>("/customer/kyc");
   const [submitting, setSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [active, setActive] = useState(AppState.currentState !== "background");
   const [returningFromProvider, setReturningFromProvider] = useState(returned === "1");
-  const [profileSynced, setProfileSynced] = useState(false);
+  // A resolved refreshMe() promise does not prove /me succeeded: transient
+  // failures are handled within AuthContext. Verify the actual profile state.
+  const profileSynced = user?.kyc_status?.toUpperCase() === "VERIFIED"
+    && Boolean(user?.verified_name?.trim());
 
   useEffect(() => {
     if (returned === "1") setReturningFromProvider(true);
@@ -84,24 +87,37 @@ export default function KycScreen() {
     return () => { cancelled = true; if (timer) clearTimeout(timer); };
   }, [token, active, data?.status, data?.provider, returningFromProvider, refetch]);
 
-  // Once the backend confirms KYC is VERIFIED, refresh the authenticated
-  // profile so the DigiLocker-verified name and unlocked ordering appear
-  // everywhere without a manual reload. Runs once per verification.
-  const syncedRef = React.useRef(false);
+  // Refresh /me until the actual authenticated profile contains both the
+  // effective VERIFIED status and a verified name. AuthContext intentionally
+  // suppresses transient refresh errors, so promise settlement is not proof.
+  // Cap retries to avoid an endless loop when the profile cannot be loaded.
+  const profileRefreshAttempts = React.useRef(0);
   useEffect(() => {
-    if (data?.status === "VERIFIED" && !syncedRef.current) {
-      syncedRef.current = true;
-      void refreshMe().then(() => {
-        setProfileSynced(true);
-      }).catch(() => {
-        syncedRef.current = false;
-      });
+    if (data?.status !== "VERIFIED") {
+      profileRefreshAttempts.current = 0;
+      return;
     }
-    if (data?.status && data.status !== "VERIFIED") {
-      syncedRef.current = false;
-      setProfileSynced(false);
-    }
-  }, [data?.status, refreshMe]);
+    if (!token || profileSynced) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const syncProfile = async () => {
+      if (cancelled || profileRefreshAttempts.current >= 8) return;
+      profileRefreshAttempts.current += 1;
+      try {
+        await refreshMe();
+      } catch {
+        // Remain on KYC until an authenticated /me refresh really succeeds.
+      }
+      if (!cancelled && profileRefreshAttempts.current < 8) {
+        timer = setTimeout(() => { void syncProfile(); }, 2500);
+      }
+    };
+    void syncProfile();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [data?.status, token, profileSynced, refreshMe]);
 
   // Make navigation independent of the timing of the provider-return link:
   // verification and the 'returned' route flag can arrive in either order.
