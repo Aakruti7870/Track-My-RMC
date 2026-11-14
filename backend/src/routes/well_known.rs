@@ -46,7 +46,21 @@ pub async fn kyc_return() -> Html<&'static str> {
 <p>Returning to TrackMyRMC to confirm your DigiLocker consent securely. Verification completes only after the server checks the provider's identity evidence.</p>
 <p><a href="trackmyrmc://kyc/return" style="color:#dfff62">Open TrackMyRMC App</a></p>
 <p><a href="/kyc?returned=1" style="color:#dfff62">Continue in Browser</a></p>
-<p style="font-size:14px;color:#b4b4b4">If the app is not installed, continue in your browser.</p>
+<p style="font-size:14px;color:#b4b4b4">If the app does not open, tap the link above or continue in your browser.</p>
+<script>
+(function () {
+  // Verified Android App Links normally open the app before this page loads.
+  // A mobile browser that keeps the HTTPS callback still gets one best-effort
+  // deep-link attempt; manual App and Web links remain usable if it is blocked.
+  if (/Android|iPhone|iPad/i.test(navigator.userAgent)) {
+    window.setTimeout(function () {
+      if (document.visibilityState !== 'hidden') {
+        window.location.href = 'trackmyrmc://kyc/return';
+      }
+    }, 300);
+  }
+})();
+</script>
 </main>
 </body>
 </html>"#,
@@ -56,6 +70,16 @@ pub async fn kyc_return() -> Html<&'static str> {
 #[cfg(test)]
 mod tests {
     use crate::config::normalize_sha256_fingerprint;
+
+    #[tokio::test]
+    async fn kyc_return_keeps_automatic_deep_link_and_manual_fallbacks() {
+        let html = super::kyc_return().await.0;
+        assert!(html.contains("window.setTimeout"));
+        assert!(html.contains("document.visibilityState"));
+        assert!(html.contains("trackmyrmc://kyc/return"));
+        assert!(html.contains("/kyc?returned=1"));
+        assert!(!html.contains("access_token"));
+    }
 
     #[test]
     fn app_signing_fingerprint_normalizes_for_asset_links() {
