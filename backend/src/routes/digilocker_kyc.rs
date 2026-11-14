@@ -332,7 +332,8 @@ pub async fn start(State(state): State<AppState>, user: AuthUser) -> Result<Json
         .await?;
     }
     let id: Uuid = sqlx::query_scalar(
-        "INSERT INTO customer_digilocker_sessions(user_id,provider_environment) VALUES($1,$2) RETURNING id",
+        "INSERT INTO customer_digilocker_sessions(user_id,provider_environment,review_baseline_id)
+         VALUES($1,$2,(SELECT COALESCE(MAX(id),0) FROM audit_logs WHERE resource_type='customer' AND resource_id=$1::text AND action IN ('authority.kyc.review','control_center.kyc.review'))) RETURNING id",
     )
     .bind(user.user_id)
     .bind(provider.environment)
@@ -549,6 +550,42 @@ async fn completed_consent_status_after_race(
     })
 }
 
+// Recheck the authenticated account and privileged decisions after provider
+// I/O while holding the same profile lock used by reviewers. A callback or a
+// stale pre-network account snapshot can never override a later revocation.
+async fn consent_still_authorized(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    customer_id: Uuid,
+    session_id: Uuid,
+    provider_profile: &Value,
+) -> Result<bool, AppError> {
+    let account = sqlx::query("SELECT full_name,COALESCE(phone,'') AS phone,is_active,role FROM users WHERE id=$1 FOR UPDATE")
+        .bind(customer_id).fetch_optional(&mut **tx).await?;
+    let Some(account) = account else {
+        return Ok(false);
+    };
+    let profile = sqlx::query_scalar::<_, Uuid>(
+        "SELECT user_id FROM user_profiles WHERE user_id=$1 FOR UPDATE",
+    )
+    .bind(customer_id)
+    .fetch_optional(&mut **tx)
+    .await?;
+    if profile.is_none()
+        || !account.get::<bool, _>("is_active")
+        || account.get::<String, _>("role") != "customer"
+        || !profile_matches(
+            &account.get::<String, _>("full_name"),
+            &account.get::<String, _>("phone"),
+            provider_profile,
+        )
+    {
+        return Ok(false);
+    }
+    let decision: Option<String> = sqlx::query_scalar("SELECT COALESCE(a.metadata->>'status',a.metadata->>'kyc_status','') FROM customer_digilocker_sessions d JOIN audit_logs a ON a.resource_type='customer' AND a.resource_id=d.user_id::text AND a.action IN ('authority.kyc.review','control_center.kyc.review') AND a.id>d.review_baseline_id WHERE d.id=$1 AND d.user_id=$2 ORDER BY a.id DESC LIMIT 1")
+        .bind(session_id).bind(customer_id).fetch_optional(&mut **tx).await?;
+    Ok(decision.is_none_or(|status| status.eq_ignore_ascii_case("verified")))
+}
+
 /// An asynchronously completed second consent must not undo a concurrently
 /// committed independent reviewer approval. Lock the profile before checking
 /// its CURRENT status and current live evidence, not the stale status read
@@ -639,7 +676,7 @@ pub async fn status(
         return Ok(Json(json!({"status":"VERIFIED","provider":provider.label})));
     }
     let latest = sqlx::query(
-        "SELECT id,provider_session_id,status,expires_at
+        "SELECT id,provider_session_id,status,expires_at,failure_reason
          FROM customer_digilocker_sessions WHERE user_id=$1 AND provider_environment=$2
          ORDER BY created_at DESC LIMIT 1",
     )
@@ -669,6 +706,11 @@ pub async fn status(
             profile_state
         } else if previous == "PENDING" {
             "NOT_STARTED"
+        } else if previous == "REJECTED"
+            && latest.get::<Option<String>, _>("failure_reason").as_deref()
+                == Some("identity_mismatch")
+        {
+            "REVIEW_NEEDED"
         } else {
             session_status(&previous)
         };
@@ -712,9 +754,9 @@ pub async fn status(
         let data = &profile["data"];
         if !profile_matches(&account.get::<String,_>("full_name"), &account.get::<String,_>("phone"), data) {
             // Identity mismatches are not auto-approved or written as verified_name.
-            sqlx::query("UPDATE customer_digilocker_sessions SET status='REJECTED',updated_at=NOW() WHERE id=$1 AND status='IN_PROGRESS'")
+            sqlx::query("UPDATE customer_digilocker_sessions SET status='REJECTED',failure_reason='identity_mismatch',updated_at=NOW() WHERE id=$1 AND status='IN_PROGRESS'")
                 .bind(id).execute(&state.db).await?;
-            return Ok("REQUIRES_REVERIFICATION");
+            return Ok("REVIEW_NEEDED");
         }
         let name = data.get("name").and_then(Value::as_str).unwrap_or("");
         let mut tx = state.db.begin().await?;
@@ -735,6 +777,12 @@ pub async fn status(
                 provider.environment,
             )
             .await;
+        }
+        if !consent_still_authorized(&mut tx, user.user_id, id, data).await? {
+            sqlx::query("UPDATE customer_digilocker_sessions SET status='REJECTED',verified_at=NULL,updated_at=NOW() WHERE id=$1 AND user_id=$2")
+                .bind(id).bind(user.user_id).execute(&mut *tx).await?;
+            tx.commit().await?;
+            return completed_consent_status_after_race(&state.db, user.user_id, id, provider.environment).await;
         }
         let mut effective_result = "PENDING";
         if changed == 1 {
@@ -776,6 +824,53 @@ pub async fn status(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[sqlx::test]
+    async fn consent_cannot_override_a_newer_revocation_or_changed_identity(db: sqlx::PgPool) {
+        let customer: Uuid = sqlx::query_scalar("INSERT INTO users(phone,hashed_password,full_name,role) VALUES($1,'unused','Test Customer','customer') RETURNING id")
+            .bind(format!("91{:010}", Uuid::new_v4().as_u128() % 10_000_000_000)).fetch_one(&db).await.unwrap();
+        sqlx::query("INSERT INTO user_profiles(user_id,kyc_status) VALUES($1,'unverified')")
+            .bind(customer)
+            .execute(&db)
+            .await
+            .unwrap();
+        let phone: String = sqlx::query_scalar("SELECT phone FROM users WHERE id=$1")
+            .bind(customer)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        let session: Uuid = sqlx::query_scalar("INSERT INTO customer_digilocker_sessions(user_id,provider_environment,status) VALUES($1,'live','IN_PROGRESS') RETURNING id")
+            .bind(customer).fetch_one(&db).await.unwrap();
+        let profile = json!({"name":"Test Customer","mobile":phone,"eaadhaar":true});
+        let mut tx = db.begin().await.unwrap();
+        assert!(
+            consent_still_authorized(&mut tx, customer, session, &profile)
+                .await
+                .unwrap()
+        );
+        tx.rollback().await.unwrap();
+        sqlx::query("INSERT INTO audit_logs(action,resource_type,resource_id,metadata) VALUES('control_center.kyc.review','customer',$1,$2)")
+            .bind(customer.to_string()).bind(json!({"status":"unverified"})).execute(&db).await.unwrap();
+        let mut tx = db.begin().await.unwrap();
+        assert!(
+            !consent_still_authorized(&mut tx, customer, session, &profile)
+                .await
+                .unwrap()
+        );
+        tx.rollback().await.unwrap();
+        sqlx::query("UPDATE customer_digilocker_sessions SET review_baseline_id=(SELECT MAX(id) FROM audit_logs WHERE resource_id=$2::text AND action='control_center.kyc.review') WHERE id=$1")
+            .bind(session).bind(customer).execute(&db).await.unwrap();
+        let mut tx = db.begin().await.unwrap();
+        assert!(!consent_still_authorized(
+            &mut tx,
+            customer,
+            session,
+            &json!({"name":"Someone Else","mobile":phone,"eaadhaar":true})
+        )
+        .await
+        .unwrap());
+        tx.rollback().await.unwrap();
+    }
 
     #[test]
     fn provider_status_document_and_profile_requests_use_the_selected_host() {

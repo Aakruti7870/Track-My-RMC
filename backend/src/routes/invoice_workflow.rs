@@ -649,6 +649,7 @@ pub async fn issue(
         return Err(invalid("explicit invoice confirmation"));
     }
     let mut tx = state.db.begin().await?;
+    crate::services::customer_order::require_order_kyc(&mut tx, order).await?;
     let row=sqlx::query("SELECT o.order_number,o.total_amount,o.total_quantity_m3,o.concrete_grade,o.status,o.customer_id,s.address_line AS delivery_address FROM orders o JOIN customer_sites s ON s.id=o.site_id WHERE o.id=$1 AND o.plant_id=$2 FOR UPDATE OF o")
         .bind(order).bind(plant).fetch_one(&mut *tx).await?;
     let draft: Value = sqlx::query_scalar(

@@ -44,6 +44,69 @@ fn intake_permits_direct_order(mode: &str, save_draft: bool) -> bool {
     save_draft || mode == "DIRECT"
 }
 
+/// Recheck newly submitted customer orders before restricted downstream actions.
+/// Pre-migration legacy orders are deliberately unaffected.
+pub(crate) async fn require_order_kyc(
+    conn: &mut PgConnection,
+    order_id: Uuid,
+) -> Result<(), AppError> {
+    let customer: Option<Uuid> =
+        sqlx::query_scalar("SELECT customer_id FROM orders WHERE id=$1 AND kyc_guard_required")
+            .bind(order_id)
+            .fetch_optional(&mut *conn)
+            .await?;
+    let Some(customer) = customer else {
+        return Ok(());
+    };
+    let row = sqlx::query("SELECT u.is_active,u.role,u.full_name,COALESCE(u.phone,'') AS phone,p.kyc_status,p.verified_name FROM users u JOIN user_profiles p ON p.user_id=u.id WHERE u.id=$1 FOR UPDATE OF u,p")
+        .bind(customer).fetch_optional(&mut *conn).await?;
+    let Some(row) = row else {
+        return Err(AppError::Forbidden("KYC_REQUIRED".into()));
+    };
+    let normalized = |s: &str| {
+        s.split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_lowercase()
+    };
+    let name: String = row.get("full_name");
+    let verified_name: Option<String> = row.get("verified_name");
+    if !row.get::<bool, _>("is_active")
+        || row.get::<String, _>("role") != "customer"
+        || !row
+            .get::<String, _>("kyc_status")
+            .eq_ignore_ascii_case("verified")
+        || row.get::<String, _>("phone").trim().is_empty()
+        || verified_name
+            .as_deref()
+            .is_none_or(|v| normalized(v).is_empty() || normalized(v) != normalized(&name))
+    {
+        return Err(AppError::Forbidden("KYC_REQUIRED".into()));
+    }
+    if crate::routes::digilocker_kyc::live_approval_required() {
+        let approved: bool = sqlx::query_scalar(crate::routes::digilocker_kyc::LIVE_APPROVAL_SQL)
+            .bind(customer)
+            .fetch_one(&mut *conn)
+            .await?;
+        if !approved {
+            return Err(AppError::Forbidden("KYC_REQUIRED".into()));
+        }
+    }
+    Ok(())
+}
+
+pub(crate) async fn require_load_kyc(
+    conn: &mut PgConnection,
+    load_id: Uuid,
+) -> Result<(), AppError> {
+    let order: Uuid = sqlx::query_scalar("SELECT order_id FROM order_loads WHERE id=$1")
+        .bind(load_id)
+        .fetch_optional(&mut *conn)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Load not found".into()))?;
+    require_order_kyc(conn, order).await
+}
+
 async fn validate(
     conn: &mut PgConnection,
     customer: Uuid,
@@ -114,6 +177,14 @@ async fn validate(
             "Provide both valid site coordinates or neither".into(),
         ));
     }
+    // Serialize order authorization with reviewer revocation of the profile.
+    // Whichever transaction obtains this row lock first determines the result.
+    if !req.save_draft {
+        sqlx::query("SELECT user_id FROM user_profiles WHERE user_id=$1 FOR UPDATE")
+            .bind(customer)
+            .fetch_optional(&mut *conn)
+            .await?;
+    }
     let user = sqlx::query("SELECT u.full_name,COALESCE(u.phone,'') AS phone,u.role,u.is_active,p.kyc_status,p.verified_name FROM users u LEFT JOIN user_profiles p ON p.user_id=u.id WHERE u.id=$1")
         .bind(customer).fetch_one(&mut *conn).await?;
     if !user.get::<bool, _>("is_active") || user.get::<String, _>("role") != "customer" {
@@ -151,6 +222,20 @@ async fn validate(
         }
         if phone.trim().is_empty() {
             return Err(AppError::Conflict("VERIFIED_MOBILE_REQUIRED".into()));
+        }
+    }
+    if let Some(id) = req.provisional_request_id {
+        if req.save_draft {
+            return Err(AppError::BadRequest(
+                "A provisional request cannot be submitted as an order draft".into(),
+            ));
+        }
+        let permitted: Option<Uuid> = sqlx::query_scalar("SELECT id FROM customer_provisional_requests WHERE id=$1 AND customer_id=$2 AND plant_id=$3 AND status='PENDING_KYC' AND expires_at>NOW() FOR UPDATE")
+            .bind(id).bind(customer).bind(req.plant_id).fetch_optional(&mut *conn).await?;
+        if permitted.is_none() {
+            return Err(AppError::Conflict(
+                "Provisional request is unavailable or expired".into(),
+            ));
         }
     }
     let plant = sqlx::query(
@@ -349,6 +434,11 @@ pub async fn place_with_preview(
     req: CreateOrderRequest,
     expected: Option<Value>,
 ) -> Result<Order, AppError> {
+    if req.provisional_request_id.is_some() && expected.is_none() {
+        return Err(AppError::Conflict(
+            "Review and confirm the current order summary first".into(),
+        ));
+    }
     if req
         .idempotency_key
         .as_ref()
@@ -406,13 +496,17 @@ pub async fn place_with_preview(
             .bind(req.lat).bind(req.lng).bind(req.contact_person.as_deref().unwrap_or(&validated.name)).bind(req.contact_mobile.as_deref().unwrap_or(&validated.phone))
             .fetch_one(&mut *tx).await?
     };
-    let order=sqlx::query_as::<_,Order>("INSERT INTO orders(order_number,customer_id,plant_id,site_id,concrete_grade,total_quantity_m3,delivery_date,delivery_time_slot,pump_required,special_instructions,total_amount,tax_amount,status,idempotency_key,request_payload,quotation_id,pricing_snapshot,delivery_mode,preferred_payment_mode) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *")
+    let order=sqlx::query_as::<_,Order>("INSERT INTO orders(order_number,customer_id,plant_id,site_id,concrete_grade,total_quantity_m3,delivery_date,delivery_time_slot,pump_required,special_instructions,total_amount,tax_amount,status,idempotency_key,request_payload,quotation_id,pricing_snapshot,delivery_mode,preferred_payment_mode,kyc_guard_required) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *")
         .bind(format!("RMC-{}",Uuid::new_v4().simple())).bind(customer).bind(req.plant_id).bind(site).bind(&req.concrete_grade)
         .bind(req.quantity_m3.to_string().parse::<BigDecimal>().map_err(|_|AppError::BadRequest("Invalid quantity".into()))?)
         .bind(req.delivery_date).bind(req.delivery_time_slot.as_deref().unwrap_or("")).bind(req.pump_required.unwrap_or(false)).bind(&req.special_instructions)
-        .bind(validated.total).bind(validated.tax).bind(if req.save_draft {"draft"} else {"pending"}).bind(&req.idempotency_key).bind(&payload).bind(req.quotation_id).bind(&validated.pricing)
-        .bind(req.delivery_mode.as_deref().unwrap_or("DELIVERY")).bind(&req.preferred_payment_mode).fetch_one(&mut *tx).await?;
-    if let Some(quote) = req.quotation_id {
+        .bind(validated.total).bind(validated.tax).bind(if req.save_draft {"draft"} else {"pending"}).bind(&req.idempotency_key).bind(&payload).bind(if req.save_draft { None } else { req.quotation_id }).bind(&validated.pricing)
+        .bind(req.delivery_mode.as_deref().unwrap_or("DELIVERY")).bind(&req.preferred_payment_mode).bind(!req.save_draft).fetch_one(&mut *tx).await?;
+    if let Some(id) = req.provisional_request_id {
+        sqlx::query("UPDATE customer_provisional_requests SET status='CONVERTED',order_id=$2,updated_at=NOW() WHERE id=$1")
+            .bind(id).bind(order.id).execute(&mut *tx).await?;
+    }
+    if let Some(quote) = req.quotation_id.filter(|_| !req.save_draft) {
         sqlx::query(
             "UPDATE plant_quotations SET status='ORDER_CREATED',updated_at=NOW() WHERE id=$1",
         )

@@ -107,6 +107,7 @@ pub async fn offer(
     check_role(&actor, &["owner", "plant_owner", "admin"])?;
     super::loads_routes::ensure_order_access(&state, &actor, order_id, false).await?;
     let mut tx = state.db.begin().await?;
+    crate::services::customer_order::require_order_kyc(&mut tx, order_id).await?;
     let order = sqlx::query(
         "SELECT status,preferred_payment_mode,total_amount,customer_id,order_number,delivery_date FROM orders WHERE id=$1 FOR UPDATE",
     )
@@ -231,6 +232,20 @@ pub async fn accept(
 ) -> Result<Json<Value>, AppError> {
     check_role(&actor, &["customer"])?;
     let mut tx = state.db.begin().await?;
+    let owner: Option<Uuid> = sqlx::query_scalar("SELECT customer_id FROM orders WHERE id=$1")
+        .bind(order_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+    match owner {
+        None => return Err(AppError::NotFound("Payment offer not found".into())),
+        Some(id) if id != actor.user_id => {
+            return Err(AppError::Forbidden(
+                "Order belongs to another customer".into(),
+            ))
+        }
+        Some(_) => {}
+    }
+    crate::services::customer_order::require_order_kyc(&mut tx, order_id).await?;
     let row = sqlx::query(
         "SELECT o.customer_id,o.plant_id,o.order_number,o.status AS order_status,o.total_amount,p.total_amount AS offer_total_amount,p.mode,p.advance_amount, \
                 p.status AS offer_status,p.expires_at,p.version \

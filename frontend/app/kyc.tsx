@@ -15,12 +15,14 @@ import { Card } from "@/src/components/ui/Card";
 import { Button } from "@/src/components/ui/Button";
 import { Skeleton } from "@/src/components/ui/Skeleton";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
+import { markKycReturnPending, saveKycDestination, takeKycDestination } from "@/src/kyc/returnContext";
 
 const STATE_META: Record<string, { icon: keyof typeof Ionicons.glyphMap; title: string; body: string; tone: "success" | "warning" | "error" | "info" }> = {
   VERIFIED: { icon: "shield-checkmark", title: "KYC Verified", body: "You can place orders using the app.", tone: "success" },
   IN_PROGRESS: { icon: "phone-portrait-outline", title: "Complete DigiLocker", body: "Finish consent in DigiLocker. If you cancelled or closed it, you can safely restart the verification.", tone: "warning" },
   PENDING: { icon: "hourglass-outline", title: "Confirmation pending", body: "TrackMyRMC is checking the completed identity evidence. You do not need to submit another verification.", tone: "warning" },
   REJECTED: { icon: "close-circle", title: "Verification rejected", body: "Something didn't match. Please retry.", tone: "error" },
+  REVIEW_NEEDED: { icon: "alert-circle-outline", title: "Identity details did not match", body: "Your DigiLocker name or mobile did not match this account. Retry, or contact support for help.", tone: "warning" },
   REQUIRES_REVERIFICATION: { icon: "refresh", title: "Re-verification required", body: "Please start DigiLocker again to continue.", tone: "warning" },
   NOT_STARTED: { icon: "id-card-outline", title: "Verify your identity", body: "Complete KYC to unlock live concrete ordering.", tone: "info" },
 };
@@ -40,10 +42,10 @@ type KycStatusResponse = {
 export default function KycScreen() {
   const { colors, scheme } = useTheme();
   const router = useRouter();
-  const { returned } = useLocalSearchParams<{ returned?: string }>();
+  const { returned, draftId, origin } = useLocalSearchParams<{ returned?: string; draftId?: string; origin?: string }>();
   const toast = useToast();
   const insets = useSafeAreaInsets();
-  const { token, user, refreshMe } = useAuth();
+  const { hydrating, token, user, refreshMe } = useAuth();
   const { data, loading, error, refetch } = useGet<KycStatusResponse>("/customer/kyc");
   const [submitting, setSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -53,6 +55,20 @@ export default function KycScreen() {
   // failures are handled within AuthContext. Verify the actual profile state.
   const profileSynced = user?.kyc_status?.toUpperCase() === "VERIFIED"
     && Boolean(user?.verified_name?.trim());
+
+  useEffect(() => {
+    if (hydrating) return;
+    let cancelled = false;
+    if (!token || !user) {
+      void (async () => {
+        if (returned === "1") await markKycReturnPending();
+        if (!cancelled) router.replace("/login");
+      })();
+    } else if (user.role !== "customer") {
+      router.replace("/role-home");
+    }
+    return () => { cancelled = true; };
+  }, [hydrating, token, user, returned, router]);
 
   useEffect(() => {
     if (returned === "1") setReturningFromProvider(true);
@@ -122,11 +138,21 @@ export default function KycScreen() {
   // Make navigation independent of the timing of the provider-return link:
   // verification and the 'returned' route flag can arrive in either order.
   // Do not open Customer Home before /me reflects the verified identity.
+  const navigating = React.useRef(false);
   useEffect(() => {
-    if (data?.status === "VERIFIED" && profileSynced && returningFromProvider) {
-      router.replace("/customer");
-    }
-  }, [data?.status, profileSynced, returningFromProvider, router]);
+    if (data?.status !== "VERIFIED" || !profileSynced || !returningFromProvider || !user || navigating.current) return;
+    navigating.current = true;
+    void (async () => {
+      const destination = await takeKycDestination(user.id);
+      if (destination.kind === "order" && destination.draftId) {
+        router.replace({ pathname: "/new-order", params: { draftId: destination.draftId } });
+      } else if (destination.kind === "profile") {
+        router.replace("/customer/more");
+      } else {
+        router.replace("/customer");
+      }
+    })();
+  }, [data?.status, profileSynced, returningFromProvider, user, router]);
 
   const status = data?.status || "NOT_STARTED";
   const providerUnavailable = data?.provider === "unavailable" && status !== "VERIFIED";
@@ -135,8 +161,14 @@ export default function KycScreen() {
 
   const startKyc = async () => {
     if (!token || providerUnavailable) return;
+    if (!user || user.role !== "customer") return;
     setSubmitting(true);
     try {
+      const destination = draftId ? { kind: "order" as const, draftId }
+        : origin === "profile" ? { kind: "profile" as const } : { kind: "home" as const };
+      if (!(await saveKycDestination(user.id, destination))) {
+        throw { detail: "Could not save the return location. Please try again." };
+      }
       const result = await apiPost<{ status: string; authorization_url: string }>("/customer/kyc/start", token);
       if (!result.authorization_url?.startsWith("https://")) {
         throw { detail: "DigiLocker did not return a secure authorization link" };
@@ -259,6 +291,7 @@ export default function KycScreen() {
             {!providerUnavailable && status === "IN_PROGRESS" ? (
               <Button testID="kyc-refresh" label="Refresh Status" variant="outline" onPress={refreshStatus} loading={refreshing} />
             ) : null}
+            {status === "REVIEW_NEEDED" ? <Button label="Contact Support" variant="outline" onPress={() => router.push("/support")} /> : null}
           </>
         )}
       </ScrollView>

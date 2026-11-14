@@ -1,9 +1,10 @@
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import { FlatList, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 
 import { useTheme } from "@/src/theme/ThemeProvider";
+import { useAuth } from "@/src/auth/AuthContext";
 import { ThemedScreen } from "@/src/components/ThemedScreen";
 import { useGet } from "@/src/hooks/useApi";
 import { AppText } from "@/src/components/ui/AppText";
@@ -26,11 +27,15 @@ export default function CustomerOrders() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { user } = useAuth();
   const [active, setActive] = useState("all");
   const { data, loading, error, refetch, reload } = useGet<{ orders: OrderData[] }>("/customer/orders");
+  const drafts = useGet<{ drafts: { id: string; form: { site_name: string; grade: string | null; quantity: string }; provisional_status?: string | null; plant_response?: string | null }[] }>("/customer/order-drafts");
+  useFocusEffect(useCallback(() => { void refetch(); void drafts.refetch(); }, [refetch, drafts.refetch]));
 
   const filter = FILTERS.find((f) => f.key === active)!;
   const filtered = (data?.orders || []).filter((order) => filter.match(order.status.toUpperCase()));
+  const visibleDrafts = active === "all" || active === "pending" ? drafts.data?.drafts || [] : [];
 
   return (
     <ThemedScreen>
@@ -92,8 +97,20 @@ export default function CustomerOrders() {
           keyExtractor={(o) => o.id}
           contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120, gap: spacing.md, flexGrow: 1 }}
           showsVerticalScrollIndicator={false}
-          onRefresh={refetch}
+          onRefresh={() => { void refetch(); void drafts.refetch(); }}
           refreshing={false}
+          ListHeaderComponent={visibleDrafts.length || drafts.error ? <View style={{ gap: spacing.sm }}>
+            <AppText variant="heading">Saved Drafts</AppText>
+            {drafts.error ? <AppText variant="caption">Could not load saved drafts. Pull to refresh.</AppText> : null}
+            {visibleDrafts.map((draft) => <Pressable key={draft.id} accessibilityRole="button"
+              onPress={() => router.push({ pathname: "/new-order", params: { draftId: draft.id } })}
+              style={{ borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, backgroundColor: colors.surfaceSecondary, padding: spacing.md, gap: spacing.xs }}>
+              <AppText variant="heading">{draft.form.site_name || "Untitled order draft"}</AppText>
+              <AppText variant="caption">{draft.provisional_status === "PENDING_KYC" ? (user?.kyc_status?.toUpperCase() === "VERIFIED" ? "AWAITING CUSTOMER CONFIRMATION" : "PROVISIONAL · PENDING KYC") : draft.provisional_status || "DRAFT"} · {draft.form.grade || "Grade not selected"} · {draft.form.quantity || "Quantity not set"} m³</AppText>
+              {draft.plant_response ? <AppText variant="caption">Plant response: {draft.plant_response}</AppText> : null}
+              <AppText variant="caption" color={colors.brand}>Review details</AppText>
+            </Pressable>)}
+          </View> : null}
           renderItem={({ item }) => (
             <OrderCard
               order={item}
@@ -101,7 +118,7 @@ export default function CustomerOrders() {
             />
           )}
           ListEmptyComponent={
-            <EmptyView
+            visibleDrafts.length ? null : <EmptyView
               icon="cube-outline"
               title="No orders here"
               subtitle={active === "all" ? "You haven't placed any orders yet" : "No orders in this status"}

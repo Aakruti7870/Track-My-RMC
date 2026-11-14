@@ -68,6 +68,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let state = AppState::new(pool, config.clone());
 
+    // Internal-only reminder; disabled until explicitly configured for rollout.
+    if std::env::var("TRACKMYRMC_PROVISIONAL_REMINDERS_ENABLED").as_deref() == Ok("true") {
+        let reminder_db = state.db.clone();
+        let hours = std::env::var("TRACKMYRMC_PROVISIONAL_REMINDER_HOURS")
+            .ok()
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(24)
+            .clamp(1, 720);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
+            loop {
+                interval.tick().await;
+                if let Err(error) =
+                    trackmyrmc_backend::services::provisional_reminders::tick(&reminder_db, hours)
+                        .await
+                {
+                    tracing::error!(error = ?error, "Provisional request reminder tick failed");
+                }
+            }
+        });
+    }
+
     // Fail-closed by default: enable only after rollout validation.
     // Row-level PostgreSQL locks allow multiple Tokio workers safely.
     if std::env::var("NATIVE_AUTOMATION_WORKER_ENABLED")

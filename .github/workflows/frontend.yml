@@ -46,6 +46,8 @@ jobs:
         run: npm run test:maps
       - name: KYC provider availability guard
         run: npm run check:kyc-availability
+      - name: KYC return context isolation and expiry
+        run: node --test scripts/test-kyc-return-context.cjs
       - name: Customer header foreground location regressions
         run: node --test scripts/test-header-location.cjs
       - name: Verify isolated Google Play reviewer MFA routing

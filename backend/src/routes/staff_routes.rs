@@ -735,6 +735,7 @@ pub async fn start_production(
 
     super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
     let mut tx = state.db.begin().await?;
+    crate::services::customer_order::require_order_kyc(&mut tx, order_id).await?;
     let current: String = sqlx::query_scalar("SELECT status FROM orders WHERE id=$1 FOR UPDATE")
         .bind(order_id)
         .fetch_one(&mut *tx)
@@ -803,6 +804,7 @@ pub async fn complete_production(
 
     super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
     let mut tx = state.db.begin().await?;
+    crate::services::customer_order::require_order_kyc(&mut tx, order_id).await?;
     let current: String = sqlx::query_scalar("SELECT status FROM orders WHERE id=$1 FOR UPDATE")
         .bind(order_id)
         .fetch_one(&mut *tx)

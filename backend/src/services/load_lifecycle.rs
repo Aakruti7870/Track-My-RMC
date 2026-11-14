@@ -37,6 +37,9 @@ pub async fn advance(
         _ => return Err(AppError::BadRequest("Unsupported load action".into())),
     };
     let mut tx = pool.begin().await?;
+    if action != "cancel" {
+        crate::services::customer_order::require_load_kyc(&mut tx, id).await?;
+    }
     let (load, plant, parent) = lock(&mut tx, id).await?;
     if load.status == target {
         tx.commit().await?;

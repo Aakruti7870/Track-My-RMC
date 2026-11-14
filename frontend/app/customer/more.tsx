@@ -92,7 +92,7 @@ export default function CustomerMore() {
               <AppText variant="caption">Email ID</AppText>
               <AppText variant="heading">{user?.email || "Not added"}</AppText>
             </View>
-            <Pressable onPress={() => router.push("/kyc")} style={[styles.kycAction, { borderColor: colors.brand }]}>
+            <Pressable onPress={() => router.push("/kyc?origin=profile")} style={[styles.kycAction, { borderColor: colors.brand }]}>
               <AppText style={{ color: colors.brand, fontFamily: fonts.semibold }}>
                 {kycVerified ? "Manage KYC" : "Complete KYC"}
               </AppText>

@@ -277,6 +277,7 @@ pub async fn approve_order(
 
     super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
     let mut tx = state.db.begin().await?;
+    crate::services::customer_order::require_order_kyc(&mut tx, order_id).await?;
     let (current, preference): (String, Option<String>) =
         sqlx::query_as("SELECT status,preferred_payment_mode FROM orders WHERE id=$1 FOR UPDATE")
             .bind(order_id)

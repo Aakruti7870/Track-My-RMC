@@ -11,6 +11,7 @@ pub mod business_routes;
 pub mod cashfree_rmc_prepaid;
 pub mod cashfree_sandbox;
 pub mod control_center_routes;
+pub mod customer_order_drafts;
 pub mod customer_routes;
 pub mod customer_services;
 pub mod digilocker_kyc;
@@ -42,6 +43,7 @@ pub mod plant_plans_routes;
 pub mod plant_profile;
 pub mod plant_staff_manager;
 pub mod play_review;
+pub mod provisional_requests;
 pub mod rmc_rfq_leads;
 pub mod staff_collections;
 pub mod staff_lifecycle;
@@ -589,6 +591,26 @@ pub fn build_app_router(state: AppState) -> Router {
         .route(
             "/api/customer/orders",
             get(customer_routes::list_orders).post(customer_routes::place_order),
+        )
+        .route(
+            "/api/customer/order-drafts",
+            get(customer_order_drafts::list).post(customer_order_drafts::save),
+        )
+        .route(
+            "/api/customer/order-drafts/:id",
+            get(customer_order_drafts::get_one).delete(customer_order_drafts::remove),
+        )
+        .route(
+            "/api/customer/order-drafts/:id/provisional",
+            post(provisional_requests::submit),
+        )
+        .route(
+            "/api/owner/provisional-requests",
+            get(provisional_requests::owner_list),
+        )
+        .route(
+            "/api/owner/provisional-requests/:id/respond",
+            post(provisional_requests::respond),
         )
         .route(
             "/api/customer/orders/:id",

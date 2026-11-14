@@ -42,6 +42,7 @@ pub async fn record(
     let payload =
         serde_json::to_value(&input).map_err(|_| AppError::BadRequest("Invalid batch".into()))?;
     let mut tx = pool.begin().await?;
+    crate::services::customer_order::require_order_kyc(&mut tx, order).await?;
     // The parent serializes batch totals, idempotency and dispatch allocation for this order.
     let row=sqlx::query("SELECT plant_id,concrete_grade,status,total_quantity_m3::DOUBLE PRECISION required FROM orders WHERE id=$1 FOR UPDATE")
  .bind(order).fetch_optional(&mut *tx).await?.ok_or_else(||AppError::NotFound("Order not found".into()))?;

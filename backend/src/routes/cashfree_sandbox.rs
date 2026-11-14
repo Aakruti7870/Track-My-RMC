@@ -185,7 +185,7 @@ pub async fn checkout(
     if !["PLAN", "INVOICE"].contains(&kind.as_str()) {
         return Err(AppError::BadRequest("Unsupported payment kind".into()));
     }
-    let (plant, invoice, sku, duration, payable) = if kind == "PLAN" {
+    let (plant, invoice, sku, duration, payable, guarded_order) = if kind == "PLAN" {
         check_role(&user, &["owner", "plant_owner"])?;
         // Hard gate: catalog is empty until reviewed and approved; no hard-coded UI quote can charge.
         if env::var("CASHFREE_PLAN_PRICES_APPROVED").ok().as_deref() != Some("true") {
@@ -226,6 +226,7 @@ pub async fn checkout(
             Some(sku),
             Some(price.get::<i32, _>("duration_days")),
             price.get::<BigDecimal, _>("price_inr"),
+            None,
         )
     } else {
         check_role(&user, &["customer"])?;
@@ -233,7 +234,7 @@ pub async fn checkout(
             .invoice_id
             .ok_or_else(|| AppError::BadRequest("invoice_id is required".into()))?;
         let row = sqlx::query(
-            "SELECT i.plant_id,i.customer_id,i.total_amount,COALESCE((SELECT SUM(p.amount) FROM plant_payments p WHERE p.invoice_id=i.id),0) AS already_paid FROM plant_invoices i WHERE i.id=$1",
+            "SELECT i.plant_id,i.customer_id,i.order_id,i.total_amount,COALESCE((SELECT SUM(p.amount) FROM plant_payments p WHERE p.invoice_id=i.id),0) AS already_paid FROM plant_invoices i WHERE i.id=$1",
         ).bind(invoice).fetch_optional(&state.db).await?
             .ok_or_else(|| AppError::NotFound("Invoice not found".into()))?;
         if row.get::<Uuid, _>("customer_id") != user.user_id {
@@ -249,10 +250,14 @@ pub async fn checkout(
             None,
             None,
             remaining,
+            row.get::<Option<Uuid>, _>("order_id"),
         )
     };
     let a = amount(&payable)?;
     let mut tx = state.db.begin().await?;
+    if let Some(order) = guarded_order {
+        crate::services::customer_order::require_order_kyc(&mut tx, order).await?;
+    }
     // One stable provider order ID and idempotency key per authenticated payer.
     let new_id = Uuid::new_v4();
     let order_id = format!("trmc_{}", new_id.simple());
