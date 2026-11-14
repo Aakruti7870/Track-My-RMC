@@ -87,16 +87,28 @@ pub async fn create_order_load(
     let quantity = bigdecimal::BigDecimal::from_f64(payload.quantity_m3)
         .ok_or_else(|| AppError::BadRequest("Invalid quantity".into()))?;
     let mut tx = state.db.begin().await?;
-    let (status, total): (String, bigdecimal::BigDecimal) =
-        sqlx::query_as("SELECT status,total_quantity_m3 FROM orders WHERE id=$1 FOR UPDATE")
-            .bind(order_id)
-            .fetch_one(&mut *tx)
-            .await?;
+    crate::services::customer_order::require_order_kyc(&mut tx, order_id).await?;
+    let (status, total, guarded): (String, bigdecimal::BigDecimal, bool) = sqlx::query_as(
+        "SELECT status,total_quantity_m3,kyc_guard_required FROM orders WHERE id=$1 FOR UPDATE",
+    )
+    .bind(order_id)
+    .fetch_one(&mut *tx)
+    .await?;
     if matches!(
         status.as_str(),
-        "cancelled" | "rejected" | "delivered" | "completed"
+        "draft" | "cancelled" | "rejected" | "delivered" | "completed"
     ) {
         return Err(AppError::Conflict("Order cannot accept new loads".into()));
+    }
+    if guarded
+        && !matches!(
+            status.as_str(),
+            "confirmed" | "scheduled" | "in_production" | "produced" | "dispatched" | "in_transit"
+        )
+    {
+        return Err(AppError::Conflict(
+            "Plant acceptance is required before load planning".into(),
+        ));
     }
     let allocated: bigdecimal::BigDecimal = sqlx::query_scalar("SELECT COALESCE(SUM(quantity_m3),0) FROM order_loads WHERE order_id=$1 AND status<>'cancelled'")
         .bind(order_id).fetch_one(&mut *tx).await?;
@@ -169,6 +181,7 @@ pub async fn assign_load_mixer_driver(
         .driver_id
         .ok_or_else(|| AppError::BadRequest("Driver is required".into()))?;
     let mut tx = state.db.begin().await?;
+    crate::services::customer_order::require_load_kyc(&mut tx, load_id).await?;
     let (plant,status,quantity):(Uuid,String,bigdecimal::BigDecimal)=sqlx::query_as(
         "SELECT o.plant_id,l.status,l.quantity_m3 FROM order_loads l JOIN orders o ON o.id=l.order_id WHERE l.id=$1 FOR UPDATE OF o,l",
     ).bind(load_id).fetch_one(&mut *tx).await?;
@@ -330,8 +343,10 @@ pub async fn issue_gate_pass(
         super::staff_module_permissions::Action::Edit,
     )
     .await?;
+    let mut tx = state.db.begin().await?;
+    crate::services::customer_order::require_load_kyc(&mut tx, payload.load_id).await?;
     let eligible: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM order_loads l JOIN challans c ON c.load_id=l.id WHERE l.id=$1 AND l.status='ready_to_dispatch')")
-        .bind(payload.load_id).fetch_one(&state.db).await?;
+        .bind(payload.load_id).fetch_one(&mut *tx).await?;
     if !eligible {
         return Err(AppError::Conflict(
             "Prepare the load and challan before issuing a gate pass".into(),
@@ -350,8 +365,9 @@ pub async fn issue_gate_pass(
     .bind(&pass_number)
     .bind(&payload.security_name)
     .bind(&payload.remarks)
-    .fetch_one(&state.db)
+    .fetch_one(&mut *tx)
     .await?;
+    tx.commit().await?;
 
     Ok(Json(json!({
         "success": true,

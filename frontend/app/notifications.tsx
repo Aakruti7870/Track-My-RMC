@@ -51,9 +51,15 @@ export default function Notifications() {
     await apiPost("/notifications/read-all", token!);
     refetch();
   };
-  const openOne = async (id: string) => {
-    await apiPost(`/notifications/${id}/read`, token!);
-    refetch();
+  const openOne = async (id: string, event: string, read: boolean) => {
+    if (!read) {
+      await apiPost(`/notifications/${id}/read`, token!);
+      void refetch();
+    }
+    if (["provisional_request", "provisional_response", "provisional_reminder"].includes(event)) {
+      if (user?.role === "customer") router.push("/customer/orders");
+      else if (user?.role === "owner" || user?.role === "plant_owner") router.push("/owner/provisional-requests");
+    }
   };
 
   const enableDeviceNotifications = async () => {
@@ -121,7 +127,7 @@ export default function Notifications() {
           </Card>
         ) : (
           data?.items.map((n) => (
-            <Pressable key={n.id} testID={`notif-${n.id}`} onPress={() => !n.read && openOne(n.id)}>
+            <Pressable key={n.id} testID={`notif-${n.id}`} onPress={() => void openOne(n.id, n.event, n.read)}>
               <Card style={{ flexDirection: "row", gap: spacing.md, opacity: n.read ? 0.6 : 1 }}>
                 <View style={[styles.icon, { backgroundColor: colors.brandSoft }]}>
                   <Ionicons name={ICONS[n.event] || "notifications-outline"} size={18} color={colors.onBrandSoft} />

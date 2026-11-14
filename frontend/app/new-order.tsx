@@ -6,7 +6,7 @@ import { StatusBar } from "expo-status-bar";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { apiGet, apiPost } from "@/src/api/client";
+import { apiDelete, apiGet, apiPost } from "@/src/api/client";
 import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { useToast } from "@/src/components/ui/Toast";
@@ -19,6 +19,13 @@ import { PlantData } from "@/src/components/PlantCard";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 
 const TIME_SLOTS = ["06:00", "08:00", "10:00", "12:00", "14:00", "16:00"];
+type DraftForm = {
+  plant_id: string | null; grade: string | null; quantity: string; date: string; time: string | null;
+  site_name: string; address: string; contact: string; mobile: string; notes: string;
+  payment_mode: string | null; quotation_id: string | null; site_id: string | null;
+  lat: number | null; lng: number | null; pump_required: boolean;
+};
+type SavedDraft = { id: string; form: DraftForm; updated_at: string; provisional_id?: string | null; provisional_order_id?: string | null; provisional_status?: string | null; plant_response?: string | null };
 const PAYMENT_MODES = [
   { value: "FULL_ADVANCE", label: "100% Advance", desc: "Pay in full after plant acceptance" },
   { value: "PARTIAL_ADVANCE", label: "Partial Advance", desc: "Plant confirms the exact deposit and balance terms" },
@@ -51,12 +58,25 @@ export default function NewOrder() {
   const router = useRouter();
   const toast = useToast();
   const insets = useSafeAreaInsets();
-  const { token, user } = useAuth();
-  const params = useLocalSearchParams<{ assistant?: string; plantId?: string; quantity?: string; grade?: string; quotationId?: string; siteId?: string; siteName?: string; siteAddress?: string; deliveryDate?: string; deliveryTime?: string }>();
+  const { hydrating, token, user } = useAuth();
+  const formOwner = useRef<string | null>(user?.id || null);
+  if (!formOwner.current && user?.id) formOwner.current = user.id;
+  const params = useLocalSearchParams<{ assistant?: string; draftId?: string; plantId?: string; quantity?: string; grade?: string; quotationId?: string; siteId?: string; siteName?: string; siteAddress?: string; deliveryDate?: string; deliveryTime?: string }>();
   const { data: plantsData } = useGet<{ plants: PlantData[] }>("/customer/plants");
+  const { data: savedDraft, loading: loadingDraft, error: draftError } = useGet<SavedDraft>(
+    params.draftId ? `/customer/order-drafts/${encodeURIComponent(params.draftId)}` : null,
+  );
 
   const days = useMemo(() => nextDays(7), []);
-  const quotationLocked = Boolean(params.quotationId);
+  const [draftId, setDraftId] = useState<string | null>(params.draftId || null);
+  const [provisionalId, setProvisionalId] = useState<string | null>(null);
+  const [provisionalStatus, setProvisionalStatus] = useState<string | null>(null);
+  const [provisionalOrderId, setProvisionalOrderId] = useState<string | null>(null);
+  const [plantResponse, setPlantResponse] = useState<string | null>(null);
+  const [draftReady, setDraftReady] = useState(!params.draftId);
+  const [quotationId, setQuotationId] = useState<string | null>(params.quotationId || null);
+  const [siteId, setSiteId] = useState<string | null>(params.siteId || null);
+  const quotationLocked = Boolean(quotationId);
   const [plantId, setPlantId] = useState<string | null>(params.plantId || null);
   const [grade, setGrade] = useState<string | null>(params.grade || null);
   const [paymentMode, setPaymentMode] = useState<string | null>(null);
@@ -68,7 +88,8 @@ export default function NewOrder() {
   const [contact, setContact] = useState(user?.verified_name || user?.name || "");
   const [mobile, setMobile] = useState(user?.phone || "");
   const [notes, setNotes] = useState("");
-  const [submitting, setSubmitting] = useState<null | "order" | "draft">(null);
+  const [pumpRequired, setPumpRequired] = useState(false);
+  const [submitting, setSubmitting] = useState<null | "order" | "draft" | "kyc" | "provisional">(null);
   const [error, setError] = useState<string | null>(null);
   const assistantMode = params.assistant === "1";
   const orderRequest = useRef<{ signature: string; key: string } | null>(null);
@@ -78,6 +99,35 @@ export default function NewOrder() {
   const [suggestions, setSuggestions] = useState<{ place_id: string; text: string }[]>([]);
   const sessionToken = useMemo(() => `rmc-${Date.now()}`, []);
   const pickedRef = useRef(false);
+  const restoredDraft = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (hydrating) return;
+    if (!token || !user) router.replace("/login");
+    else if (user.role !== "customer") router.replace("/role-home");
+    else if (formOwner.current !== user.id) router.replace("/customer");
+  }, [hydrating, token, user, router]);
+
+  useEffect(() => {
+    if (!savedDraft || restoredDraft.current === savedDraft.id) return;
+    const f = savedDraft.form;
+    restoredDraft.current = savedDraft.id;
+    setDraftId(savedDraft.id); setPlantId(f.plant_id); setGrade(f.grade); setQuantity(f.quantity);
+    setDate(f.date); setTime(f.time); setSiteName(f.site_name); setAddress(f.address);
+    setContact(f.contact); setMobile(f.mobile); setNotes(f.notes); setPaymentMode(f.payment_mode);
+    setQuotationId(f.quotation_id); setSiteId(f.site_id); setPumpRequired(f.pump_required);
+    setProvisionalId(savedDraft.provisional_id || null); setProvisionalStatus(savedDraft.provisional_status || null);
+    setProvisionalOrderId(savedDraft.provisional_order_id || null);
+    setPlantResponse(savedDraft.plant_response || null);
+    setCoords(f.lat != null && f.lng != null ? { lat: f.lat, lng: f.lng } : null);
+    setDraftReady(true);
+  }, [savedDraft]);
+
+  // A reviewed summary is tied to the exact form used to prepare it.
+  useEffect(() => {
+    setPrepared(null);
+  }, [plantId, grade, quantity, date, time, siteName, address, contact, mobile, notes,
+    paymentMode, quotationId, siteId, pumpRequired, coords?.lat, coords?.lng]);
 
   useEffect(() => {
     if (pickedRef.current) { pickedRef.current = false; return; }
@@ -100,6 +150,7 @@ export default function NewOrder() {
       const p = await apiGet<{ address: string; lat: number; lng: number }>(`/maps/place/${place_id}?session_token=${sessionToken}`, token!);
       pickedRef.current = true;
       setAddress(p.address);
+      setSiteId(null);
       setCoords({ lat: p.lat, lng: p.lng });
       setSuggestions([]);
     } catch {
@@ -113,24 +164,82 @@ export default function NewOrder() {
   const kycOk = user?.kyc_status?.toUpperCase() === "VERIFIED";
   const verifiedCustomerName = kycOk ? user?.verified_name?.trim() : null;
 
-  const submit = async (draft: boolean) => {
+  const saveDraft = async (copy = false) => {
+    if (!token || !user || user.role !== "customer") throw { detail: "Sign in as a customer to save this draft" };
+    if (params.draftId && (loadingDraft || draftError || !savedDraft || !draftReady)) throw { detail: "The saved draft could not be loaded" };
+    const form: DraftForm = {
+      plant_id: plantId, grade, quantity, date, time, site_name: siteName, address, contact, mobile, notes,
+      payment_mode: paymentMode, quotation_id: quotationId, site_id: siteId,
+      lat: coords?.lat ?? null, lng: coords?.lng ?? null, pump_required: pumpRequired,
+    };
+    const result = await apiPost<{ id: string }>("/customer/order-drafts", token, { id: copy ? null : draftId, form });
+    if (!copy) setDraftId(result.id);
+    return result.id;
+  };
+
+  const copyExpiredRequest = async () => {
+    if (submitting) return;
+    setSubmitting("draft"); setError(null);
+    try {
+      const id = await saveDraft(true);
+      router.push({ pathname: "/new-order", params: { draftId: id } });
+    } catch (e: any) { setError(e.detail || "Could not copy this request"); }
+    finally { setSubmitting(null); }
+  };
+
+  const startKycFromOrder = async () => {
+    if (submitting) return;
     setError(null);
+    setSubmitting("kyc");
+    try {
+      const id = await saveDraft();
+      router.push({ pathname: "/kyc", params: { draftId: id } });
+    } catch (e: any) {
+      setError(e.detail || "Could not save your draft before verification");
+    } finally { setSubmitting(null); }
+  };
+
+  const sendProvisional = async () => {
+    if (submitting || !token) return;
+    setError(null); setSubmitting("provisional");
+    try {
+      const id = await saveDraft();
+      await apiPost(`/customer/order-drafts/${id}/provisional`, token, {});
+      toast("Provisional request sent. It is not an accepted order.", "success");
+      router.replace("/customer/orders");
+    } catch (e: any) { setError(e.detail || "Could not send the provisional request"); }
+    finally { setSubmitting(null); }
+  };
+
+  const submit = async (draft: boolean) => {
+    if (submitting) return;
+    setError(null);
+    if (draft) {
+      setSubmitting("draft");
+      try {
+        await saveDraft();
+        toast("Draft saved", "success");
+        router.replace("/customer/orders");
+      } catch (e: any) { setError(e.detail || "Could not save draft"); }
+      finally { setSubmitting(null); }
+      return;
+    }
+    if (!kycOk) return startKycFromOrder();
+    if (provisionalId && provisionalStatus !== "PENDING_KYC") return setError("This provisional request is no longer available. Start a new order.");
     if (!plantId) return setError("Choose a plant");
-    if (!draft && !paymentMode) return setError("Choose a preferred payment mode");
+    if (!paymentMode) return setError("Choose a preferred payment mode");
     if (!grade) return setError("Select a concrete grade");
-    if (!quantity || Number(quantity) <= 0) return setError("Enter a valid quantity");
+    if (!quantity || !Number.isFinite(Number(quantity)) || Number(quantity) <= 0) return setError("Enter a valid quantity");
     if (!siteName.trim()) return setError("Enter the site name");
     if (!address.trim()) return setError("Enter the delivery address");
-    if (!draft && !kycOk) {
-      toast("Complete KYC to place an order", "info");
-      return router.push("/kyc");
-    }
-    setSubmitting(draft ? "draft" : "order");
+    setSubmitting("order");
     try {
+      const savedId = await saveDraft();
       const order = {
         plant_id: plantId,
-        quotation_id: params.quotationId || null,
-        site_id: params.siteId || null,
+        quotation_id: quotationId,
+        ...(provisionalId ? { provisional_request_id: provisionalId } : {}),
+        site_id: siteId,
         grade,
         quantity: Number(quantity),
         site_name: siteName.trim(),
@@ -142,26 +251,27 @@ export default function NewOrder() {
         contact_person: contact.trim() || null,
         contact_mobile: mobile.trim() || null,
         notes: notes.trim() || null,
-        save_draft: draft,
+        pump_required: pumpRequired,
+        save_draft: false,
         preferred_payment_mode: paymentMode,
       };
       const signature = JSON.stringify(order);
       if (orderRequest.current?.signature !== signature) {
-        orderRequest.current = { signature, key: `customer-order-${Date.now()}-${Math.random().toString(36).slice(2)}` };
+        orderRequest.current = { signature, key: `customer-order-draft-${savedId}` };
       }
       const request = { ...order, idempotency_key: orderRequest.current!.key };
-      if (assistantMode && !draft) {
+      if (assistantMode || provisionalId) {
         const intent = await apiPost<{ intent_token: string; summary: Record<string, unknown> }>("/assistant/orders/prepare", token!, { order: request });
         setPrepared(intent);
         return;
       }
       const res: any = await apiPost("/customer/orders", token!, request);
-      toast(draft ? "Draft saved" : "Order request submitted. No payment is required yet.", "success");
+      await apiDelete(`/customer/order-drafts/${savedId}`, token!).catch(() => undefined);
+      toast("Order request submitted. No payment is required yet.", "success");
       router.replace(`/order/${res.id}` as any);
     } catch (e: any) {
       if (e.detail === "KYC_REQUIRED") {
-        toast("Complete KYC to place an order", "info");
-        router.push("/kyc");
+        setError("Your KYC status has changed. Save the draft and complete verification before submitting.");
       } else {
         setError(e.detail || "Could not place order");
       }
@@ -179,14 +289,18 @@ export default function NewOrder() {
         intent_token: prepared.intent_token,
         confirmed: true,
       });
+      if (draftId) await apiDelete(`/customer/order-drafts/${draftId}`, token!).catch(() => undefined);
       toast(`Order ${res.order_number || "created"}`, "success");
       router.replace(`/order/${res.id}` as never);
     } catch (e: any) {
+      setPrepared(null);
       setError(e.detail || "Could not confirm order");
     } finally {
       setSubmitting(null);
     }
   };
+
+  if (hydrating || !token || !user || user.role !== "customer" || formOwner.current !== user.id) return null;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
@@ -231,7 +345,7 @@ export default function NewOrder() {
             accessibilityRole="button"
             accessibilityLabel="Complete KYC"
             accessibilityHint="Opens identity verification"
-            onPress={() => router.push("/kyc")}
+            onPress={startKycFromOrder}
             style={({ pressed }) => [styles.infoBanner, { backgroundColor: colors.warning + "12", borderColor: colors.warning + "44", opacity: pressed ? 0.86 : 1 }]}
           >
             <View style={[styles.bannerIcon, { backgroundColor: colors.warning + "16" }]}>
@@ -244,6 +358,14 @@ export default function NewOrder() {
             <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceTertiary} />
           </Pressable>
         ) : null}
+
+        {provisionalId ? <Card style={{ gap: spacing.sm, borderColor: colors.warning + "66" }}>
+          <AppText variant="heading">{provisionalStatus === "PENDING_KYC" ? (kycOk ? "Awaiting your confirmation" : "Provisional request · KYC pending") : `Request ${provisionalStatus || "unavailable"}`}</AppText>
+          <AppText variant="caption">The plant has the original nonbinding request. Any edits below will be reviewed again when you prepare the order.</AppText>
+          {plantResponse ? <AppText variant="body">Plant response: {plantResponse}</AppText> : null}
+          {provisionalStatus === "CONVERTED" && provisionalOrderId ? <Button label="Open Submitted Order" onPress={() => router.replace({ pathname: "/order/[id]", params: { id: provisionalOrderId } })} /> : null}
+          {provisionalStatus === "EXPIRED" ? <Button label="Copy to a New Draft" variant="outline" onPress={copyExpiredRequest} loading={submitting === "draft"} disabled={Boolean(submitting)} /> : null}
+        </Card> : null}
 
         <Section title="1. Choose Plant" subtitle={quotationLocked ? "Locked by quotation" : "Select the verified plant supplying this order"}>
           <View style={{ gap: spacing.sm }}>
@@ -416,6 +538,16 @@ export default function NewOrder() {
           </View>
         </Section>
 
+        <Section title="Pump requirement" subtitle="Tell the plant whether a pump is required">
+          <View style={styles.chips}>
+            {[false, true].map((value) => <Pressable key={String(value)} accessibilityRole="radio"
+              accessibilityState={{ selected: pumpRequired === value }} onPress={() => setPumpRequired(value)}
+              style={[styles.chip, { backgroundColor: pumpRequired === value ? colors.brand : colors.surfaceSecondary, borderColor: colors.border }]}>
+              <AppText style={{ color: pumpRequired === value ? colors.onBrand : colors.onSurface }}>Pump {value ? "required" : "not required"}</AppText>
+            </Pressable>)}
+          </View>
+        </Section>
+
         <Section title="6. Site & Contact" subtitle="Where the concrete should arrive and who will receive it">
           <View style={{ gap: spacing.md }}>
             {verifiedCustomerName ? (
@@ -425,9 +557,9 @@ export default function NewOrder() {
                 <AppText variant="caption">The verified account identity is read-only. The delivery-site contact below can be different.</AppText>
               </Card>
             ) : null}
-            <Input testID="neworder-site" label="Site name" value={siteName} onChangeText={setSiteName} placeholder="e.g. Skyline Towers" autoCapitalize="words" />
+            <Input testID="neworder-site" label="Site name" value={siteName} onChangeText={(v) => { setSiteName(v); setSiteId(null); }} placeholder="e.g. Skyline Towers" autoCapitalize="words" />
             <View>
-              <Input testID="neworder-address" label="Delivery address" value={address} onChangeText={(t) => { setAddress(t); setCoords(null); }} placeholder="Search or type full site address" autoCapitalize="sentences" />
+              <Input testID="neworder-address" label="Delivery address" value={address} onChangeText={(t) => { setAddress(t); setCoords(null); setSiteId(null); }} placeholder="Search or type full site address" autoCapitalize="sentences" />
               {suggestions.length > 0 ? (
                 <View style={[styles.suggestBox, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
                   {suggestions.map((s) => (
@@ -453,33 +585,40 @@ export default function NewOrder() {
                 </View>
               ) : null}
             </View>
-            <Input testID="neworder-contact" label="Contact person" value={contact} onChangeText={setContact} placeholder="Name at site" autoCapitalize="words" />
-            <Input testID="neworder-mobile" label="Contact mobile" value={mobile} onChangeText={setMobile} placeholder="+91…" keyboardType="phone-pad" />
+            <Input testID="neworder-contact" label="Contact person" value={contact} onChangeText={(v) => { setContact(v); setSiteId(null); }} placeholder="Name at site" autoCapitalize="words" />
+            <Input testID="neworder-mobile" label="Contact mobile" value={mobile} onChangeText={(v) => { setMobile(v); setSiteId(null); }} placeholder="+91…" keyboardType="phone-pad" />
             <Input testID="neworder-notes" label="Notes (optional)" value={notes} onChangeText={setNotes} placeholder="e.g. Pump required" autoCapitalize="sentences" />
           </View>
         </Section>
 
-        {error ? (
+        {error || draftError ? (
           <View accessibilityRole="alert" style={[styles.infoBanner, { backgroundColor: colors.error + "12", borderColor: colors.error + "44" }]}>
             <View style={[styles.bannerIcon, { backgroundColor: colors.error + "12" }]}>
               <Ionicons name="close-circle-outline" size={18} color={colors.error} />
             </View>
-            <AppText variant="caption" color={colors.error} style={{ flex: 1 }}>{error}</AppText>
+            <AppText variant="caption" color={colors.error} style={{ flex: 1 }}>{error || draftError}</AppText>
           </View>
         ) : null}
 
         {prepared ? <View testID="assistant-order-summary" style={[styles.submitPanel, { backgroundColor: colors.brandSoft, borderColor: colors.brand }]}>
           <AppText variant="heading">Review order summary</AppText>
-          <AppText variant="caption">This order has not yet been placed. Confirm only after reviewing these details.</AppText>
-          {Object.entries(prepared.summary).map(([key, value]) => value == null ? null : <AppText key={key} variant="caption">{key.replace(/_/g, " ")}: {String(value)}</AppText>)}
+          <AppText variant="caption">This order has not yet been placed. Confirm only after reviewing the current price and details.</AppText>
+          {Object.entries(prepared.summary).map(([key, value]) => {
+            if (value == null) return null;
+            if (key === "pricing" && typeof value === "object") return Object.entries(value as Record<string, unknown>)
+              .filter(([field]) => !["rate_card_id", "quotation_id", "source"].includes(field))
+              .map(([field, amount]) => <AppText key={field} variant="caption">{field.replace(/_/g, " ")}: {String(amount)}</AppText>);
+            return <AppText key={key} variant="caption">{key.replace(/_/g, " ")}: {String(value)}</AppText>;
+          })}
           <Button testID="assistant-confirm-order" label="Confirm Order" onPress={confirmAssistantOrder} loading={submitting === "order"} disabled={Boolean(submitting)} />
         </View> : <View style={[styles.submitPanel, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
           <View style={{ gap: 3 }}>
             <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base }}>Ready to continue?</AppText>
             <AppText variant="caption">Submitting sends an order request for plant review. No payment will be collected now.</AppText>
           </View>
-          <Button testID="neworder-place" label={assistantMode ? "Prepare Order" : "Submit Order Request"} onPress={() => submit(false)} loading={submitting === "order"} disabled={submitting === "draft"} icon={<Ionicons name="checkmark-circle-outline" size={18} color={colors.onBrand} />} />
-          {!assistantMode ? <Button testID="neworder-draft" label="Save Draft" variant="outline" onPress={() => submit(true)} loading={submitting === "draft"} disabled={submitting === "order"} /> : null}
+          <Button testID="neworder-place" label={!kycOk ? "Complete KYC Now" : provisionalId ? "Review Current Order" : assistantMode ? "Prepare Order" : "Submit Order Request"} onPress={() => submit(false)} loading={submitting === "order" || submitting === "kyc"} disabled={Boolean(submitting) || loadingDraft || Boolean(draftError) || !draftReady || Boolean(provisionalId && provisionalStatus !== "PENDING_KYC")} icon={<Ionicons name="checkmark-circle-outline" size={18} color={colors.onBrand} />} />
+          {!kycOk && !provisionalId && !assistantMode ? <Button testID="neworder-provisional" label="Send Request & Complete KYC Later" variant="outline" onPress={sendProvisional} loading={submitting === "provisional"} disabled={Boolean(submitting) || loadingDraft || Boolean(draftError) || !draftReady} /> : null}
+          {!assistantMode ? <Button testID="neworder-draft" label="Save Draft" variant="outline" onPress={() => submit(true)} loading={submitting === "draft"} disabled={Boolean(submitting) || loadingDraft || Boolean(draftError) || !draftReady} /> : null}
         </View>}
       </KeyboardAwareScrollView>
     </View>

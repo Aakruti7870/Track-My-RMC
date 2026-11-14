@@ -18,6 +18,7 @@ import * as Linking from "expo-linking";
 import { useAuth } from "@/src/auth/AuthContext";
 import { roleRouteFor } from "@/src/auth/roleRoutes";
 import { loginPhone } from "@/src/auth/phone";
+import { shouldResumeKycAfterLogin } from "@/src/kyc/returnContext";
 import { OtpOrbitVerification, OtpVisualState } from "@/src/components/auth/OtpOrbitVerification";
 import { AppText } from "@/src/components/ui/AppText";
 import { Button } from "@/src/components/ui/Button";
@@ -139,7 +140,11 @@ export default function LoginScreen() {
       router.replace("/mfa-setup" as any);
       return;
     }
-    router.replace(roleRouteFor(me.role) as any);
+    if (me.role === "customer" && await shouldResumeKycAfterLogin(me.id)) {
+      router.replace("/kyc?returned=1");
+    } else {
+      router.replace(roleRouteFor(me.role) as any);
+    }
   };
 
   const failOtp = async (message: string) => {

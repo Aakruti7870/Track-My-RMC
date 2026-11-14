@@ -60,6 +60,8 @@ pub struct CreateOrderRequest {
     pub special_instructions: Option<String>,
     pub estimated_rate_per_m3: Option<f64>,
     pub quotation_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provisional_request_id: Option<Uuid>,
     pub site_name: Option<String>,
     pub site_address: Option<String>,
     pub lat: Option<f64>,

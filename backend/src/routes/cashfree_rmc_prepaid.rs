@@ -223,6 +223,16 @@ pub async fn checkout(
     let keys = configured()?;
     validate_key(&input.idempotency_key)?;
     let mut tx = state.db.begin().await?;
+    let owns_order: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM orders WHERE id=$1 AND customer_id=$2)")
+            .bind(order_id)
+            .bind(user.user_id)
+            .fetch_one(&mut *tx)
+            .await?;
+    if !owns_order {
+        return Err(AppError::NotFound("Order not found".into()));
+    }
+    crate::services::customer_order::require_order_kyc(&mut tx, order_id).await?;
     // An order row lock serializes concurrent checkouts and changes to the
     // accepted commercial offer. Do not trust any client-provided amount.
     let row=sqlx::query(
@@ -370,7 +380,7 @@ async fn reconcile(
     keys: &(String, String),
 ) -> Result<Value, AppError> {
     let initial = sqlx::query(
-        "SELECT gateway_order_id,amount,vendor_id FROM cashfree_rmc_prepaid_intents WHERE id=$1",
+        "SELECT gateway_order_id,amount,vendor_id,order_id FROM cashfree_rmc_prepaid_intents WHERE id=$1",
     )
     .bind(intent_id)
     .fetch_one(&state.db)
@@ -401,6 +411,13 @@ async fn reconcile(
         String::new()
     };
     let mut tx = state.db.begin().await?;
+    let initial_order: Uuid = initial.get("order_id");
+    let kyc_eligible =
+        match crate::services::customer_order::require_order_kyc(&mut tx, initial_order).await {
+            Ok(()) => true,
+            Err(AppError::Forbidden(_)) => false,
+            Err(error) => return Err(error),
+        };
     let row=sqlx::query(
         "SELECT i.order_id,i.plant_id,i.offer_version,i.payment_mode,i.status,i.amount,i.vendor_id, \
                 o.status AS order_status,o.total_amount, \
@@ -422,7 +439,8 @@ async fn reconcile(
     let vendor_active:bool=sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM plant_cashfree_vendor_accounts WHERE plant_id=$1 AND cashfree_vendor_id=$2 AND status='ACTIVE' AND provider_environment='sandbox')"
     ).bind(row.get::<Uuid,_>("plant_id")).bind(&vendor).fetch_one(&mut *tx).await?;
-    let eligible = status == "PENDING"
+    let eligible = kyc_eligible
+        && status == "PENDING"
         && vendor_active
         && row.get::<String, _>("order_status") == "pending"
         && row.get::<String, _>("offer_status") == "AWAITING_PAYMENT"

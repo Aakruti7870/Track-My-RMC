@@ -407,7 +407,7 @@ pub async fn get_customer_home(
         .bind(auth_user.user_id)
         .fetch_all(&state.db)
         .await?;
-    let query=format!("{} WHERE o.customer_id=$1 AND lower(o.status) NOT IN('delivered','cancelled','rejected') ORDER BY CASE WHEN EXISTS(SELECT 1 FROM order_loads l WHERE l.order_id=o.id AND lower(l.status) IN('dispatched','en_route','arrived','pouring')) THEN 0 ELSE 1 END,o.delivery_date,o.created_at,o.id LIMIT 1",order_service::MOBILE_ORDER_SELECT);
+    let query=format!("{} WHERE o.customer_id=$1 AND lower(o.status) NOT IN('draft','delivered','cancelled','rejected') ORDER BY CASE WHEN EXISTS(SELECT 1 FROM order_loads l WHERE l.order_id=o.id AND lower(l.status) IN('dispatched','en_route','arrived','pouring')) THEN 0 ELSE 1 END,o.delivery_date,o.created_at,o.id LIMIT 1",order_service::MOBILE_ORDER_SELECT);
     let active: Option<serde_json::Value> = sqlx::query_scalar(&query)
         .bind(auth_user.user_id)
         .fetch_optional(&state.db)

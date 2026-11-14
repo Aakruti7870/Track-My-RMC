@@ -14,6 +14,10 @@ struct Validated {
     name: String,
     phone: String,
     site_id: Option<Uuid>,
+    site_name: String,
+    site_address: String,
+    site_contact: String,
+    site_mobile: String,
     total: BigDecimal,
     tax: BigDecimal,
     pricing: Value,
@@ -42,6 +46,89 @@ fn intake_permits_direct_order(mode: &str, save_draft: bool) -> bool {
     // Inactive and unverified plants are denied separately before this check.
     // Drafts remain editable offline; no notification, payment or order is submitted.
     save_draft || mode == "DIRECT"
+}
+
+/// Recheck newly submitted customer orders before restricted downstream actions.
+/// Pre-migration legacy orders are deliberately unaffected.
+pub(crate) async fn require_order_kyc(
+    conn: &mut PgConnection,
+    order_id: Uuid,
+) -> Result<(), AppError> {
+    let customer: Option<Uuid> =
+        sqlx::query_scalar("SELECT customer_id FROM orders WHERE id=$1 AND kyc_guard_required")
+            .bind(order_id)
+            .fetch_optional(&mut *conn)
+            .await?;
+    let Some(customer) = customer else {
+        return Ok(());
+    };
+    let row = sqlx::query("SELECT u.is_active,u.role,u.full_name,COALESCE(u.phone,'') AS phone,p.kyc_status,p.verified_name FROM users u JOIN user_profiles p ON p.user_id=u.id WHERE u.id=$1 FOR UPDATE OF u,p")
+        .bind(customer).fetch_optional(&mut *conn).await?;
+    let Some(row) = row else {
+        return Err(AppError::Forbidden("KYC_REQUIRED".into()));
+    };
+    let normalized = |s: &str| {
+        s.split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_lowercase()
+    };
+    let name: String = row.get("full_name");
+    let verified_name: Option<String> = row.get("verified_name");
+    if !row.get::<bool, _>("is_active")
+        || row.get::<String, _>("role") != "customer"
+        || !row
+            .get::<String, _>("kyc_status")
+            .eq_ignore_ascii_case("verified")
+        || row.get::<String, _>("phone").trim().is_empty()
+        || verified_name
+            .as_deref()
+            .is_none_or(|v| normalized(v).is_empty() || normalized(v) != normalized(&name))
+    {
+        return Err(AppError::Forbidden("KYC_REQUIRED".into()));
+    }
+    if crate::routes::digilocker_kyc::live_approval_required() {
+        let approved: bool = sqlx::query_scalar(crate::routes::digilocker_kyc::LIVE_APPROVAL_SQL)
+            .bind(customer)
+            .fetch_one(&mut *conn)
+            .await?;
+        if !approved {
+            return Err(AppError::Forbidden("KYC_REQUIRED".into()));
+        }
+    }
+    Ok(())
+}
+
+/// Invoicing delivered concrete records an existing obligation; it does not
+/// authorize another dispatch or new customer order. A subsequent KYC
+/// revocation must not make legally required delivery invoicing impossible.
+/// Before final delivery, the normal current-identity guard still applies.
+pub(crate) async fn require_order_kyc_for_invoice(
+    conn: &mut PgConnection,
+    order_id: Uuid,
+) -> Result<(), AppError> {
+    let already_delivered: bool =
+        sqlx::query_scalar("SELECT status IN ('delivered','completed') FROM orders WHERE id=$1")
+            .bind(order_id)
+            .fetch_optional(&mut *conn)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Order not found".into()))?;
+    if already_delivered {
+        return Ok(());
+    }
+    require_order_kyc(conn, order_id).await
+}
+
+pub(crate) async fn require_load_kyc(
+    conn: &mut PgConnection,
+    load_id: Uuid,
+) -> Result<(), AppError> {
+    let order: Uuid = sqlx::query_scalar("SELECT order_id FROM order_loads WHERE id=$1")
+        .bind(load_id)
+        .fetch_optional(&mut *conn)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Load not found".into()))?;
+    require_order_kyc(conn, order).await
 }
 
 async fn validate(
@@ -114,6 +201,14 @@ async fn validate(
             "Provide both valid site coordinates or neither".into(),
         ));
     }
+    // Serialize order authorization with reviewer revocation of the profile.
+    // Whichever transaction obtains this row lock first determines the result.
+    if !req.save_draft {
+        sqlx::query("SELECT user_id FROM user_profiles WHERE user_id=$1 FOR UPDATE")
+            .bind(customer)
+            .fetch_optional(&mut *conn)
+            .await?;
+    }
     let user = sqlx::query("SELECT u.full_name,COALESCE(u.phone,'') AS phone,u.role,u.is_active,p.kyc_status,p.verified_name FROM users u LEFT JOIN user_profiles p ON p.user_id=u.id WHERE u.id=$1")
         .bind(customer).fetch_one(&mut *conn).await?;
     if !user.get::<bool, _>("is_active") || user.get::<String, _>("role") != "customer" {
@@ -153,6 +248,20 @@ async fn validate(
             return Err(AppError::Conflict("VERIFIED_MOBILE_REQUIRED".into()));
         }
     }
+    if let Some(id) = req.provisional_request_id {
+        if req.save_draft {
+            return Err(AppError::BadRequest(
+                "A provisional request cannot be submitted as an order draft".into(),
+            ));
+        }
+        let permitted: Option<Uuid> = sqlx::query_scalar("SELECT id FROM customer_provisional_requests WHERE id=$1 AND customer_id=$2 AND plant_id=$3 AND status='PENDING_KYC' AND expires_at>NOW() FOR UPDATE")
+            .bind(id).bind(customer).bind(req.plant_id).fetch_optional(&mut *conn).await?;
+        if permitted.is_none() {
+            return Err(AppError::Conflict(
+                "Provisional request is unavailable or expired".into(),
+            ));
+        }
+    }
     let plant = sqlx::query(
         "SELECT owner_id,is_active,latitude,longitude,EXISTS(SELECT 1 FROM plant_listing_requests r WHERE r.plant_id=rmc_plants.id AND r.status='APPROVED') AS verified,
           COALESCE((SELECT order_intake_mode FROM plant_admin_controls WHERE plant_id=rmc_plants.id),'DIRECT') AS intake_mode
@@ -179,13 +288,33 @@ async fn validate(
         ));
     }
     let mut coordinates = req.lat.zip(req.lng);
+    let mut site_name = req
+        .site_name
+        .as_deref()
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let mut site_address = req
+        .site_address
+        .as_deref()
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let mut site_contact = req.contact_person.as_deref().unwrap_or(&name).to_string();
+    let mut site_mobile = req.contact_mobile.as_deref().unwrap_or(&phone).to_string();
     if let Some(id) = req.site_id {
-        let site: Option<(Option<f64>,Option<f64>)> = sqlx::query_as("SELECT latitude,longitude FROM customer_sites WHERE id=$1 AND customer_id=$2 FOR SHARE")
-            .bind(id).bind(customer).fetch_optional(&mut *conn).await?;
-        let (lat, lng) = site.ok_or_else(|| {
+        let site = sqlx::query("SELECT latitude,longitude,name,address_line,contact_person,contact_phone FROM customer_sites WHERE id=$1 AND customer_id=$2 FOR SHARE")
+            .bind(id).bind(customer).fetch_optional(&mut *conn).await?
+            .ok_or_else(|| {
             AppError::Forbidden("Saved site does not belong to this customer".into())
         })?;
+        let lat: Option<f64> = site.get("latitude");
+        let lng: Option<f64> = site.get("longitude");
         coordinates = lat.zip(lng);
+        site_name = site.get("name");
+        site_address = site.get("address_line");
+        site_contact = site.get("contact_person");
+        site_mobile = site.get("contact_phone");
     }
     let zero = BigDecimal::from(0);
     let (total, tax, pricing) = if let Some(quote) = req.quotation_id {
@@ -317,6 +446,10 @@ async fn validate(
         name,
         phone,
         site_id: req.site_id,
+        site_name,
+        site_address,
+        site_contact,
+        site_mobile,
         total,
         tax,
         pricing,
@@ -331,7 +464,7 @@ pub async fn preview(
     let mut tx = state.db.begin().await?;
     let validated = validate(&mut tx, customer, req).await?;
     Ok(
-        json!({"grade":req.concrete_grade,"quantity":req.quantity_m3,"delivery_date":req.delivery_date,"site_name":req.site_name,"site_id":req.site_id,"total_amount":validated.total,"tax_amount":validated.tax,"pricing":validated.pricing}),
+        json!({"grade":req.concrete_grade,"quantity":req.quantity_m3,"delivery_date":req.delivery_date,"delivery_time":req.delivery_time_slot,"pump_required":req.pump_required.unwrap_or(false),"notes":req.special_instructions,"payment_preference":req.preferred_payment_mode,"site_name":validated.site_name,"site_address":validated.site_address,"site_contact":validated.site_contact,"site_mobile":validated.site_mobile,"site_id":req.site_id,"total_amount":validated.total,"tax_amount":validated.tax,"pricing":validated.pricing}),
     )
 }
 
@@ -349,6 +482,11 @@ pub async fn place_with_preview(
     req: CreateOrderRequest,
     expected: Option<Value>,
 ) -> Result<Order, AppError> {
+    if req.provisional_request_id.is_some() && expected.is_none() {
+        return Err(AppError::Conflict(
+            "Review and confirm the current order summary first".into(),
+        ));
+    }
     if req
         .idempotency_key
         .as_ref()
@@ -393,9 +531,13 @@ pub async fn place_with_preview(
         p["total_amount"] != json!(validated.total)
             || p["tax_amount"] != json!(validated.tax)
             || p["pricing"] != validated.pricing
+            || p["site_name"] != json!(validated.site_name)
+            || p["site_address"] != json!(validated.site_address)
+            || p["site_contact"] != json!(validated.site_contact)
+            || p["site_mobile"] != json!(validated.site_mobile)
     }) {
         return Err(AppError::Conflict(
-            "Pricing changed; prepare and review the order again".into(),
+            "Pricing or site details changed; prepare and review the order again".into(),
         ));
     }
     let site = if let Some(id) = validated.site_id {
@@ -406,13 +548,17 @@ pub async fn place_with_preview(
             .bind(req.lat).bind(req.lng).bind(req.contact_person.as_deref().unwrap_or(&validated.name)).bind(req.contact_mobile.as_deref().unwrap_or(&validated.phone))
             .fetch_one(&mut *tx).await?
     };
-    let order=sqlx::query_as::<_,Order>("INSERT INTO orders(order_number,customer_id,plant_id,site_id,concrete_grade,total_quantity_m3,delivery_date,delivery_time_slot,pump_required,special_instructions,total_amount,tax_amount,status,idempotency_key,request_payload,quotation_id,pricing_snapshot,delivery_mode,preferred_payment_mode) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *")
+    let order=sqlx::query_as::<_,Order>("INSERT INTO orders(order_number,customer_id,plant_id,site_id,concrete_grade,total_quantity_m3,delivery_date,delivery_time_slot,pump_required,special_instructions,total_amount,tax_amount,status,idempotency_key,request_payload,quotation_id,pricing_snapshot,delivery_mode,preferred_payment_mode,kyc_guard_required) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *")
         .bind(format!("RMC-{}",Uuid::new_v4().simple())).bind(customer).bind(req.plant_id).bind(site).bind(&req.concrete_grade)
         .bind(req.quantity_m3.to_string().parse::<BigDecimal>().map_err(|_|AppError::BadRequest("Invalid quantity".into()))?)
         .bind(req.delivery_date).bind(req.delivery_time_slot.as_deref().unwrap_or("")).bind(req.pump_required.unwrap_or(false)).bind(&req.special_instructions)
-        .bind(validated.total).bind(validated.tax).bind(if req.save_draft {"draft"} else {"pending"}).bind(&req.idempotency_key).bind(&payload).bind(req.quotation_id).bind(&validated.pricing)
-        .bind(req.delivery_mode.as_deref().unwrap_or("DELIVERY")).bind(&req.preferred_payment_mode).fetch_one(&mut *tx).await?;
-    if let Some(quote) = req.quotation_id {
+        .bind(validated.total).bind(validated.tax).bind(if req.save_draft {"draft"} else {"pending"}).bind(&req.idempotency_key).bind(&payload).bind(if req.save_draft { None } else { req.quotation_id }).bind(&validated.pricing)
+        .bind(req.delivery_mode.as_deref().unwrap_or("DELIVERY")).bind(&req.preferred_payment_mode).bind(!req.save_draft).fetch_one(&mut *tx).await?;
+    if let Some(id) = req.provisional_request_id {
+        sqlx::query("UPDATE customer_provisional_requests SET status='CONVERTED',order_id=$2,updated_at=NOW() WHERE id=$1")
+            .bind(id).bind(order.id).execute(&mut *tx).await?;
+    }
+    if let Some(quote) = req.quotation_id.filter(|_| !req.save_draft) {
         sqlx::query(
             "UPDATE plant_quotations SET status='ORDER_CREATED',updated_at=NOW() WHERE id=$1",
         )
@@ -435,7 +581,10 @@ pub async fn place_with_preview(
 
 #[cfg(test)]
 mod central_order_intake_tests {
-    use super::intake_permits_direct_order;
+    use super::{intake_permits_direct_order, require_order_kyc_for_invoice};
+    use crate::error::AppError;
+    use uuid::Uuid;
+
     #[test]
     fn only_direct_allows_submitted_orders() {
         assert!(intake_permits_direct_order("DIRECT", false));
@@ -443,5 +592,70 @@ mod central_order_intake_tests {
             assert!(!intake_permits_direct_order(mode, false));
             assert!(intake_permits_direct_order(mode, true));
         }
+    }
+
+    #[sqlx::test]
+    async fn invoice_policy_blocks_unverified_pending_but_allows_delivered_order(db: sqlx::PgPool) {
+        let customer: Uuid = sqlx::query_scalar(
+            "INSERT INTO users(phone,hashed_password,full_name,role) VALUES($1,'unused','Policy Customer','customer') RETURNING id",
+        )
+        .bind(format!("91{:010}", Uuid::new_v4().as_u128() % 10_000_000_000))
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        let plant: Uuid = sqlx::query_scalar(
+            "INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,address_line,city,state,pincode,contact_phone) VALUES($1,'Policy Plant',$2,0,0,'Test','Test','Test','0','0') RETURNING id",
+        )
+        .bind(customer)
+        .bind(format!("POL{}", &Uuid::new_v4().simple().to_string()[..8]))
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        let site: Uuid = sqlx::query_scalar(
+            "INSERT INTO customer_sites(customer_id,name,address_line,city,state,pincode,contact_person,contact_phone) VALUES($1,'Site','Address','Test','Test','0','Site Contact','9876543210') RETURNING id",
+        )
+        .bind(customer)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        let order: Uuid = sqlx::query_scalar(
+            "INSERT INTO orders(order_number,customer_id,plant_id,site_id,concrete_grade,total_quantity_m3,delivery_date,delivery_time_slot,total_amount,status,kyc_guard_required) VALUES($1,$2,$3,$4,'M25',6,CURRENT_DATE,'AM',100,'pending',TRUE) RETURNING id",
+        )
+        .bind(format!("POL-{}", Uuid::new_v4().simple()))
+        .bind(customer)
+        .bind(plant)
+        .bind(site)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+
+        let mut tx = db.begin().await.unwrap();
+        assert!(matches!(
+            require_order_kyc_for_invoice(&mut tx, order).await,
+            Err(AppError::Forbidden(_))
+        ));
+        tx.rollback().await.unwrap();
+
+        // Physical delivery is already complete; issuing a required invoice
+        // cannot be prevented by a subsequent KYC revocation.
+        sqlx::query("UPDATE orders SET status='delivered' WHERE id=$1")
+            .bind(order)
+            .execute(&db)
+            .await
+            .unwrap();
+        let mut tx = db.begin().await.unwrap();
+        require_order_kyc_for_invoice(&mut tx, order).await.unwrap();
+        tx.rollback().await.unwrap();
+
+        sqlx::query("UPDATE orders SET status='confirmed' WHERE id=$1")
+            .bind(order)
+            .execute(&db)
+            .await
+            .unwrap();
+        let mut tx = db.begin().await.unwrap();
+        assert!(matches!(
+            require_order_kyc_for_invoice(&mut tx, order).await,
+            Err(AppError::Forbidden(_))
+        ));
     }
 }

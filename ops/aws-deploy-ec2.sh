@@ -434,6 +434,10 @@ NATIVE_SUPPORT_AUTOMATION_ENABLED="$(printf '%s' "$APP_JSON" | jq -er '
   (.NATIVE_SUPPORT_AUTOMATION_ENABLED // false)
   | if type == "boolean" then tostring else error("Invalid native support automation flag") end
 ')"
+# Provisional requests expire even if the optional in-app reminder worker is off.
+TRACKMYRMC_PROVISIONAL_REMINDERS_ENABLED="$(printf '%s' "$APP_JSON" | jq -er '(.TRACKMYRMC_PROVISIONAL_REMINDERS_ENABLED // false) | if type == "boolean" then tostring else error("Invalid provisional reminder flag") end')"
+TRACKMYRMC_PROVISIONAL_TTL_HOURS="$(printf '%s' "$APP_JSON" | jq -er '(.TRACKMYRMC_PROVISIONAL_TTL_HOURS // 168) | if type == "number" and floor == . and . >= 24 and . <= 720 then tostring else error("Invalid provisional expiry") end')"
+TRACKMYRMC_PROVISIONAL_REMINDER_HOURS="$(printf '%s' "$APP_JSON" | jq -er '(.TRACKMYRMC_PROVISIONAL_REMINDER_HOURS // 24) | if type == "number" and floor == . and . >= 1 and . <= 720 then tostring else error("Invalid provisional reminder interval") end')"
 # DigiLocker activation is opt-in, environment-scoped and uses different
 # credentials for Test versus Live. Generic KYC_API_KEY values are NOT fallback.
 TRACKMYRMC_KYC_ENABLED="$(printf '%s' "$APP_JSON" | jq -r '.TRACKMYRMC_KYC_ENABLED // "false" | tostring')"
@@ -654,6 +658,9 @@ PLAY_REVIEW_ACCESS_CODE=$PLAY_REVIEW_ACCESS_CODE
 GOOGLE_PLACES_API_KEY=$GOOGLE_PLACES_API_KEY
 NATIVE_AUTOMATION_WORKER_ENABLED=$NATIVE_AUTOMATION_WORKER_ENABLED
 NATIVE_SUPPORT_AUTOMATION_ENABLED=$NATIVE_SUPPORT_AUTOMATION_ENABLED
+TRACKMYRMC_PROVISIONAL_TTL_HOURS=$TRACKMYRMC_PROVISIONAL_TTL_HOURS
+TRACKMYRMC_PROVISIONAL_REMINDERS_ENABLED=$TRACKMYRMC_PROVISIONAL_REMINDERS_ENABLED
+TRACKMYRMC_PROVISIONAL_REMINDER_HOURS=$TRACKMYRMC_PROVISIONAL_REMINDER_HOURS
 TRACKMYRMC_KYC_ENABLED=$TRACKMYRMC_KYC_ENABLED
 TRACKMYRMC_KYC_ENV=$TRACKMYRMC_KYC_ENV
 TRACKMYRMC_KYC_LIVE_APPROVED=$TRACKMYRMC_KYC_LIVE_APPROVED

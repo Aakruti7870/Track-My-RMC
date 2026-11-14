@@ -46,6 +46,10 @@ export default function OwnerOrders() {
   const inputStyle = { color: p.text, borderWidth: 1, borderColor: p.border, backgroundColor: p.glass, padding: 12, borderRadius: 12, fontSize: 13 };
   return <OwnerFrame title="Orders" subtitle="Manage all plant orders, quotations and deliveries">
     <View style={{ paddingHorizontal: 16, gap: 12, paddingBottom: 12 }}>
+      <Pressable accessibilityRole="button" onPress={() => router.push("/owner/provisional-requests")}
+        style={{ padding: 12, borderWidth: 1, borderColor: p.border, borderRadius: 12, backgroundColor: p.glass }}>
+        <AppText style={{ color: p.accent }}>View nonbinding provisional requests</AppText>
+      </Pressable>
       <OwnerGlass style={{ flexDirection: "row", padding: 3 }}>
         {SEGMENTS.map(segment => { const selected = segment.key === active && !filters.status; return <Pressable testID={`owner-filter-${segment.key}`} key={segment.key} accessibilityRole="tab" accessibilityState={{ selected }} aria-selected={selected} onPress={() => { setFilters(previous => ({ ...previous, status: "" })); setPage(0); router.setParams({ status: segment.key }); }} style={{ flex: 1, minHeight: 61, borderRadius: 14, backgroundColor: selected ? p.accent : "transparent", alignItems: "center", justifyContent: "center", gap: 5 }}><Ionicons name={segment.icon} color={selected ? "#FFFFFF" : p.text} size={19} /><AppText style={{ fontSize: 10, color: selected ? "#FFFFFF" : p.text }}>{segment.label}</AppText></Pressable>; })}
       </OwnerGlass>

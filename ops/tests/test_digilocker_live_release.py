@@ -49,7 +49,8 @@ class DigiLockerLiveSafety(unittest.TestCase):
         s = self.read("backend/src/routes/digilocker_kyc.rs")
         self.assertIn("DEFAULT 'sandbox'", m)
         self.assertIn("CHECK (provider_environment IN ('sandbox', 'live'))", m)
-        self.assertIn("INSERT INTO customer_digilocker_sessions(user_id,provider_environment)", s)
+        self.assertIn("INSERT INTO customer_digilocker_sessions(user_id,provider_environment,review_baseline_id)", s)
+        self.assertIn("consent_still_authorized", s)
         self.assertIn("provider_environment=$2", s)
         self.assertIn(".bind(provider.environment)", s)
 

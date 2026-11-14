@@ -8,7 +8,6 @@ description = "Production-ready Rust/Axum/PostgreSQL backend for TrackMyRMC (Twi
 [dependencies]
 axum = { version = "0.7", features = ["macros", "multipart", "ws"] }
 tokio = { version = "=1.54.1", features = ["full"] }
-tower = { version = "0.4", features = ["util"] }
 tower-http = { version = "0.5", features = ["cors", "trace", "compression-full", "timeout"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -41,6 +40,7 @@ base64 = "0.22"
 hex = "0.4"
 
 [dev-dependencies]
+tower = { version = "0.4", features = ["util"] }
 reqwest = { version = "0.12", features = ["json"] }
 
 # SQLx 0.8.6 pins optional SQLite to vulnerable libsqlite3-sys 0.30.x.

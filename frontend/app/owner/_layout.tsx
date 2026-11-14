@@ -29,6 +29,7 @@ export default function OwnerLayout() {
         <Tabs.Screen key={t.name} name={t.name} />
       ))}
       <Tabs.Screen name="dispatches" options={{ href: null }} />
+      <Tabs.Screen name="provisional-requests" options={{ href: null }} />
     </Tabs>
   );
 }

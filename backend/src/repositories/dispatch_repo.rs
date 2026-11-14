@@ -51,8 +51,10 @@ pub async fn assign_order_load(
 
     let mut tx = pool.begin().await?;
 
-    let order: (Uuid, String, bigdecimal::BigDecimal) = sqlx::query_as(
-        "SELECT plant_id, status, total_quantity_m3 FROM orders WHERE id = $1 FOR UPDATE",
+    crate::services::customer_order::require_order_kyc(&mut tx, order_id).await?;
+
+    let order: (Uuid, String, bigdecimal::BigDecimal, bool) = sqlx::query_as(
+        "SELECT plant_id, status, total_quantity_m3,kyc_guard_required FROM orders WHERE id = $1 FOR UPDATE",
     )
     .bind(order_id)
     .fetch_optional(&mut *tx)
@@ -66,7 +68,7 @@ pub async fn assign_order_load(
             .bind(order_id)
             .fetch_one(&mut *tx)
             .await?;
-    if preference.is_some()
+    if (preference.is_some() || order.3)
         && !matches!(
             order.1.as_str(),
             "confirmed" | "scheduled" | "in_production" | "produced" | "dispatched" | "in_transit"
@@ -76,7 +78,10 @@ pub async fn assign_order_load(
             "Order commercial terms/payment have not been confirmed".into(),
         ));
     }
-    if matches!(order.1.as_str(), "cancelled" | "completed" | "delivered") {
+    if matches!(
+        order.1.as_str(),
+        "draft" | "rejected" | "cancelled" | "completed" | "delivered"
+    ) {
         return Err(AppError::BadRequest(
             "Order cannot accept another load in its current state".to_string(),
         ));
@@ -257,6 +262,12 @@ pub async fn record_pod(
             .fetch_optional(&mut *tx)
             .await?
             .ok_or_else(|| AppError::NotFound("Assigned trip not found".to_string()))?;
+    // POD is evidence of concrete already dispatched to the site, not approval
+    // for a new commercial or fulfillment commitment. Revoking a customer's
+    // KYC must stop new production/dispatch, but cannot erase the driver's
+    // ability to record an already-in-transit delivery or free the mixer.
+    // The parent/load status, driver and uploaded photo remain strictly checked
+    // below, inside the same database transaction.
     let parent_status: String =
         sqlx::query_scalar("SELECT status FROM orders WHERE id = $1 FOR UPDATE")
             .bind(order_id)

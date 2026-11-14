@@ -421,6 +421,29 @@ async fn orders_enforce_kyc_site_ownership_rate_validity_and_draft_boundary(db: 
         .0,
         StatusCode::CONFLICT
     );
+    let draft_id = draft["id"].as_str().unwrap();
+    assert_eq!(
+        call(
+            &app,
+            &format!("/api/loads/orders/{draft_id}"),
+            Some(json!({"quantity_m3": 1})),
+            &owner_token,
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        call(
+            &app,
+            "/api/dispatcher/loads/assign",
+            Some(json!({"order_id":draft_id,"load_number":1,"mixer_id":Uuid::new_v4(),"driver_id":Uuid::new_v4(),"quantity_m3":1})),
+            &owner_token,
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
     sqlx::query("UPDATE user_profiles SET kyc_status='verified' WHERE user_id=$1")
         .bind(customer)
         .execute(&db)
@@ -958,6 +981,22 @@ async fn customer_rfq_owner_response_acceptance_and_order_use_exact_shared_contr
     let mut payload = order(plant, "rfq-linked-order-request");
     payload["quotation_id"] = json!(quote);
     payload["site_id"] = requests["requests"][0]["site_id"].clone();
+    let mut draft = payload.clone();
+    draft["save_draft"] = json!(true);
+    draft["idempotency_key"] = json!("rfq-draft-does-not-consume");
+    assert_eq!(
+        call(&app, "/api/customer/orders", Some(draft), &token)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let quote_status: String =
+        sqlx::query_scalar("SELECT status FROM plant_quotations WHERE id=$1")
+            .bind(quote.parse::<Uuid>().unwrap())
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert_eq!(quote_status, "ACCEPTED");
     let (status, order) = call(&app, "/api/customer/orders", Some(payload), &token).await;
     assert_eq!(status, StatusCode::OK);
     let total: BigDecimal = sqlx::query_scalar("SELECT total_amount FROM orders WHERE id=$1")
@@ -2278,4 +2317,490 @@ async fn exact_google_place_hold_blocks_unregistered_leads_and_linked_registered
         .unwrap()
         .iter()
         .any(|p| p["id"] == plant.to_string()));
+}
+
+#[sqlx::test]
+async fn editable_draft_is_customer_scoped_and_has_no_order_side_effects(db: PgPool) {
+    let (state, app, customer, _plant, token) = fixture(&db).await;
+    sqlx::query("UPDATE user_profiles SET kyc_status='unverified' WHERE user_id=$1")
+        .bind(customer)
+        .execute(&db)
+        .await
+        .unwrap();
+    let form = json!({"plant_id":null,"grade":null,"quantity":"6","date":"2026-12-01","time":"10:00","site_name":"Unfinished","address":"","contact":"Contact","mobile":"","notes":"","payment_mode":null,"quotation_id":null,"site_id":null,"lat":null,"lng":null,"pump_required":true});
+    let (status, created) = call(
+        &app,
+        "/api/customer/order-drafts",
+        Some(json!({"form":form})),
+        &token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let id = created["id"].as_str().unwrap();
+    let (status, restored) = call(
+        &app,
+        &format!("/api/customer/order-drafts/{id}"),
+        None,
+        &token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(restored["form"]["pump_required"], true);
+    assert_eq!(restored["form"]["site_name"], "Unfinished");
+    let foreign = identity(&db, "customer").await;
+    let foreign_token =
+        generate_token(foreign, "customer", "", None, &state.config.jwt_secret, 1).unwrap();
+    assert_eq!(
+        call(
+            &app,
+            &format!("/api/customer/order-drafts/{id}"),
+            None,
+            &foreign_token
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        call(
+            &app,
+            "/api/customer/order-drafts",
+            Some(json!({"id":id,"form":restored["form"]})),
+            &foreign_token
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM orders WHERE customer_id=$1")
+            .bind(customer)
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM notifications WHERE user_id=$1")
+            .bind(customer)
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+        0
+    );
+}
+
+#[sqlx::test]
+async fn provisional_requires_verified_review_and_is_converted_at_most_once(db: PgPool) {
+    let (state, app, customer, plant, token) = fixture(&db).await;
+    sqlx::query("UPDATE user_profiles SET kyc_status='unverified' WHERE user_id=$1")
+        .bind(customer)
+        .execute(&db)
+        .await
+        .unwrap();
+    let date = (chrono::Utc::now().date_naive() + chrono::Duration::days(1)).to_string();
+    let form = json!({"plant_id":plant.to_string(),"grade":"M25","quantity":"6","date":date,"time":"10:00","site_name":"Site","address":"Manual address","contact":"Site Contact","mobile":"9876543210","notes":"","payment_mode":"ON_DELIVERY","quotation_id":null,"site_id":null,"lat":null,"lng":null,"pump_required":true});
+    let (_, draft) = call(
+        &app,
+        "/api/customer/order-drafts",
+        Some(json!({"form":form})),
+        &token,
+    )
+    .await;
+    let draft_id = draft["id"].as_str().unwrap();
+    let path = format!("/api/customer/order-drafts/{draft_id}/provisional");
+    let (a, b) = tokio::join!(
+        call(&app, &path, Some(json!({})), &token),
+        call(&app, &path, Some(json!({})), &token)
+    );
+    assert_eq!(a.0, StatusCode::OK);
+    assert_eq!(b.0, StatusCode::OK);
+    assert_eq!(a.1["id"], b.1["id"]);
+    let provisional = a.1["id"].as_str().unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM orders WHERE customer_id=$1")
+            .bind(customer)
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT count(*) FROM notifications WHERE notification_type='provisional_request'"
+        )
+        .fetch_one(&db)
+        .await
+        .unwrap(),
+        2
+    );
+    sqlx::query(
+        "UPDATE customer_provisional_requests SET created_at=NOW()-INTERVAL '2 hours' WHERE id=$1",
+    )
+    .bind(provisional.parse::<Uuid>().unwrap())
+    .execute(&db)
+    .await
+    .unwrap();
+    assert_eq!(
+        trackmyrmc_backend::services::provisional_reminders::tick(&db, 1)
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        trackmyrmc_backend::services::provisional_reminders::tick(&db, 1)
+            .await
+            .unwrap(),
+        0
+    );
+    let owner: Uuid = sqlx::query_scalar("SELECT owner_id FROM rmc_plants WHERE id=$1")
+        .bind(plant)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    let owner_token =
+        generate_token(owner, "owner", "", None, &state.config.jwt_secret, 1).unwrap();
+    let other = identity(&db, "owner").await;
+    let other_token =
+        generate_token(other, "owner", "", None, &state.config.jwt_secret, 1).unwrap();
+    let (_, rows) = call(&app, "/api/owner/provisional-requests", None, &owner_token).await;
+    assert_eq!(rows["requests"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        call(
+            &app,
+            &format!("/api/owner/provisional-requests/{provisional}/respond"),
+            Some(json!({"message":"Please ask for a current quote"})),
+            &other_token
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        call(
+            &app,
+            &format!("/api/owner/provisional-requests/{provisional}/respond"),
+            Some(json!({"message":"Please ask for a current quote"})),
+            &owner_token
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let mut req = order(plant, "provisional-order-confirmation");
+    req["provisional_request_id"] = json!(provisional);
+    assert_eq!(
+        call(&app, "/api/customer/orders", Some(req.clone()), &token)
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        call(
+            &app,
+            "/api/assistant/orders/prepare",
+            Some(json!({"order":req})),
+            &token
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        call(
+            &app,
+            &format!("/api/loads/orders/{provisional}"),
+            Some(json!({"quantity_m3":1})),
+            &owner_token
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    sqlx::query("UPDATE user_profiles SET kyc_status='verified' WHERE user_id=$1")
+        .bind(customer)
+        .execute(&db)
+        .await
+        .unwrap();
+    let (_, revocation_intent) = call(
+        &app,
+        "/api/assistant/orders/prepare",
+        Some(json!({"order":req})),
+        &token,
+    )
+    .await;
+    sqlx::query("UPDATE user_profiles SET kyc_status='unverified' WHERE user_id=$1")
+        .bind(customer)
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        call(
+            &app,
+            "/api/assistant/orders/confirm",
+            Some(json!({"intent_token":revocation_intent["intent_token"],"confirmed":true})),
+            &token
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    sqlx::query("UPDATE user_profiles SET kyc_status='verified' WHERE user_id=$1")
+        .bind(customer)
+        .execute(&db)
+        .await
+        .unwrap();
+    let (status, first) = call(
+        &app,
+        "/api/assistant/orders/prepare",
+        Some(json!({"order":req})),
+        &token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    sqlx::query("UPDATE plant_rate_cards SET rate_per_m3=6000 WHERE plant_id=$1 AND grade='M25'")
+        .bind(plant)
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        call(
+            &app,
+            "/api/assistant/orders/confirm",
+            Some(json!({"intent_token":first["intent_token"],"confirmed":true})),
+            &token
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    let (_, second) = call(
+        &app,
+        "/api/assistant/orders/prepare",
+        Some(json!({"order":req})),
+        &token,
+    )
+    .await;
+    let confirmation = json!({"intent_token":second["intent_token"],"confirmed":true});
+    let (status, placed) = call(
+        &app,
+        "/api/assistant/orders/confirm",
+        Some(confirmation.clone()),
+        &token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(placed["order"]["status"], "pending");
+    let (_, repeated) = call(
+        &app,
+        "/api/assistant/orders/confirm",
+        Some(confirmation),
+        &token,
+    )
+    .await;
+    assert_eq!(placed["id"], repeated["id"]);
+    let order_id = placed["id"].as_str().unwrap();
+    let (_, recovered) = call(
+        &app,
+        &format!("/api/customer/order-drafts/{draft_id}"),
+        None,
+        &token,
+    )
+    .await;
+    assert_eq!(recovered["provisional_status"], "CONVERTED");
+    assert_eq!(recovered["provisional_order_id"], order_id);
+    assert_eq!(
+        call(
+            &app,
+            &format!("/api/loads/orders/{order_id}"),
+            Some(json!({"quantity_m3":1})),
+            &owner_token
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    let driver = identity(&db, "driver").await;
+    let load: Uuid = sqlx::query_scalar("INSERT INTO order_loads(order_id,load_number,quantity_m3,status,driver_id) VALUES($1,1,1,'planned',$2) RETURNING id")
+        .bind(order_id.parse::<Uuid>().unwrap()).bind(driver).fetch_one(&db).await.unwrap();
+    sqlx::query("UPDATE user_profiles SET kyc_status='unverified' WHERE user_id=$1")
+        .bind(customer)
+        .execute(&db)
+        .await
+        .unwrap();
+    for path in [
+        format!("/api/owner/orders/{order_id}/approve"),
+        format!("/api/owner/orders/{order_id}/payment-offer"),
+        format!("/api/loads/orders/{order_id}"),
+    ] {
+        let body = if path.contains("/loads/orders/") {
+            json!({"quantity_m3":1})
+        } else {
+            json!({})
+        };
+        assert_eq!(
+            call(&app, &path, Some(body), &owner_token).await.0,
+            StatusCode::FORBIDDEN
+        );
+    }
+    assert!(matches!(
+        trackmyrmc_backend::services::load_lifecycle::advance(&db, load, owner, "prepare").await,
+        Err(trackmyrmc_backend::error::AppError::Forbidden(_))
+    ));
+    assert!(matches!(
+        trackmyrmc_backend::repositories::dispatch_repo::record_pod(
+            &db,
+            trackmyrmc_backend::repositories::dispatch_repo::PodEvidence {
+                load_id: load,
+                driver_id: driver,
+                receiver_name: "Receiver",
+                receiver_phone: "9876543210",
+                signature_url: None,
+                photo_url: None,
+                notes: None,
+                delivered_quantity: 1.0
+            }
+        )
+        .await,
+        // A planned load cannot file POD; after dispatch, immutable delivery
+        // evidence remains recordable even if the customer's KYC is revoked.
+        Err(trackmyrmc_backend::error::AppError::Conflict(_))
+    ));
+    sqlx::query("UPDATE user_profiles SET kyc_status='verified' WHERE user_id=$1")
+        .bind(customer)
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM orders WHERE customer_id=$1")
+            .bind(customer)
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, String>(
+            "SELECT status FROM customer_provisional_requests WHERE id=$1"
+        )
+        .bind(provisional.parse::<Uuid>().unwrap())
+        .fetch_one(&db)
+        .await
+        .unwrap(),
+        "CONVERTED"
+    );
+}
+
+#[sqlx::test]
+async fn expired_provisional_request_is_not_visible_to_plant_or_convertible(db: PgPool) {
+    let (state, app, customer, plant, token) = fixture(&db).await;
+    let date = (chrono::Utc::now().date_naive() + chrono::Duration::days(1)).to_string();
+    let form = json!({"plant_id":plant.to_string(),"grade":"M25","quantity":"6","date":date,"time":"10:00","site_name":"Site","address":"Address","contact":"Contact","mobile":"9876543210","notes":"","payment_mode":null,"quotation_id":null,"site_id":null,"lat":null,"lng":null,"pump_required":false});
+    let (_, draft) = call(
+        &app,
+        "/api/customer/order-drafts",
+        Some(json!({"form":form})),
+        &token,
+    )
+    .await;
+    let id = draft["id"].as_str().unwrap();
+    let outsider = identity(&db, "customer").await;
+    let outsider_token =
+        generate_token(outsider, "customer", "", None, &state.config.jwt_secret, 1).unwrap();
+    let path = format!("/api/customer/order-drafts/{id}/provisional");
+    assert_eq!(
+        call(&app, &path, Some(json!({})), &outsider_token).await.0,
+        StatusCode::NOT_FOUND
+    );
+    let (_, submitted) = call(&app, &path, Some(json!({})), &token).await;
+    let request = submitted["id"].as_str().unwrap();
+    sqlx::query(
+        "UPDATE customer_provisional_requests SET expires_at=NOW()-INTERVAL '1 second' WHERE id=$1",
+    )
+    .bind(request.parse::<Uuid>().unwrap())
+    .execute(&db)
+    .await
+    .unwrap();
+    let (_, restored) = call(
+        &app,
+        &format!("/api/customer/order-drafts/{id}"),
+        None,
+        &token,
+    )
+    .await;
+    assert_eq!(restored["provisional_status"], "EXPIRED");
+    let owner: Uuid = sqlx::query_scalar("SELECT owner_id FROM rmc_plants WHERE id=$1")
+        .bind(plant)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    let owner_token =
+        generate_token(owner, "owner", "", None, &state.config.jwt_secret, 1).unwrap();
+    let (_, listed) = call(&app, "/api/owner/provisional-requests", None, &owner_token).await;
+    assert_eq!(listed["requests"].as_array().unwrap().len(), 0);
+    let mut req = order(plant, "expired-provisional-test");
+    req["provisional_request_id"] = json!(request);
+    assert_eq!(
+        call(
+            &app,
+            "/api/assistant/orders/prepare",
+            Some(json!({"order":req})),
+            &token
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM orders WHERE customer_id=$1")
+            .bind(customer)
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+        0
+    );
+}
+
+#[sqlx::test]
+async fn prepared_order_uses_owned_site_details_and_detects_later_site_edits(db: PgPool) {
+    let (_, app, customer, plant, token) = fixture(&db).await;
+    let site: Uuid = sqlx::query_scalar("INSERT INTO customer_sites(customer_id,name,address_line,city,state,pincode,contact_person,contact_phone) VALUES($1,'Actual site','Actual address','','','','Site contact','9876543210') RETURNING id")
+        .bind(customer).fetch_one(&db).await.unwrap();
+    let mut req = order(plant, "review-site-details");
+    req["site_id"] = json!(site);
+    let (status, intent) = call(
+        &app,
+        "/api/assistant/orders/prepare",
+        Some(json!({"order":req})),
+        &token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(intent["summary"]["site_name"], "Actual site");
+    assert_eq!(intent["summary"]["site_address"], "Actual address");
+    assert_eq!(intent["summary"]["site_contact"], "Site contact");
+    sqlx::query("UPDATE customer_sites SET address_line='Changed after review' WHERE id=$1")
+        .bind(site)
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        call(
+            &app,
+            "/api/assistant/orders/confirm",
+            Some(json!({"intent_token":intent["intent_token"],"confirmed":true})),
+            &token
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM orders WHERE customer_id=$1")
+            .bind(customer)
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+        0
+    );
 }

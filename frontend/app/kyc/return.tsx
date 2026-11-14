@@ -8,6 +8,8 @@ import { Button } from "@/src/components/ui/Button";
 import { Card } from "@/src/components/ui/Card";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { spacing } from "@/src/theme/tokens";
+import { useAuth } from "@/src/auth/AuthContext";
+import { markKycReturnPending } from "@/src/kyc/returnContext";
 
 const APP_KYC_URL = "trackmyrmc://kyc/return";
 
@@ -15,12 +17,23 @@ export default function KycReturnScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const { hydrating, token, user } = useAuth();
 
   useEffect(() => {
-    if (Platform.OS === "web") return;
-    const timer = setTimeout(() => router.replace("/kyc?returned=1"), 250);
-    return () => clearTimeout(timer);
-  }, [router]);
+    if (Platform.OS === "web" || hydrating) return;
+    let cancelled = false;
+    void (async () => {
+      if (!token || !user) {
+        await markKycReturnPending();
+        if (!cancelled) router.replace("/login");
+      } else if (user.role === "customer") {
+        router.replace("/kyc?returned=1");
+      } else {
+        router.replace("/role-home");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [hydrating, token, user, router]);
 
   const openApp = async () => {
     try {
