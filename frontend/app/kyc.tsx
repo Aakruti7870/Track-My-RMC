@@ -19,7 +19,7 @@ import { markKycReturnPending, saveKycDestination, takeKycDestination } from "@/
 
 const STATE_META: Record<string, { icon: keyof typeof Ionicons.glyphMap; title: string; body: string; tone: "success" | "warning" | "error" | "info" }> = {
   VERIFIED: { icon: "shield-checkmark", title: "KYC Verified", body: "You can place orders using the app.", tone: "success" },
-  IN_PROGRESS: { icon: "phone-portrait-outline", title: "Complete DigiLocker", body: "Finish consent in DigiLocker. If you cancelled or closed it, you can safely restart the verification.", tone: "warning" },
+  IN_PROGRESS: { icon: "phone-portrait-outline", title: "Complete DigiLocker", body: "After giving consent in DigiLocker, use Check Verification to confirm without repeating OTP.", tone: "warning" },
   PENDING: { icon: "hourglass-outline", title: "Confirmation pending", body: "TrackMyRMC is checking the completed identity evidence. You do not need to submit another verification.", tone: "warning" },
   REJECTED: { icon: "close-circle", title: "Verification rejected", body: "Something didn't match. Please retry.", tone: "error" },
   REVIEW_NEEDED: { icon: "alert-circle-outline", title: "Identity details did not match", body: "Your DigiLocker name or mobile did not match this account. Retry, or contact support for help.", tone: "warning" },
@@ -293,7 +293,7 @@ export default function KycScreen() {
               <Button testID="kyc-cta" label={ctaLabel} onPress={onCta} loading={submitting || (status === "PENDING" && refreshing)} />
             )}
 
-            {!providerUnavailable && status === "IN_PROGRESS" ? (
+            {!providerUnavailable && status === "IN_PROGRESS" && !data?.refresh_failed ? (
               <Button testID="kyc-restart" label="Start a New DigiLocker Attempt" variant="outline" onPress={startKyc} loading={submitting} />
             ) : null}
             {status === "REVIEW_NEEDED" ? <Button label="Contact Support" variant="outline" onPress={() => router.push("/support")} /> : null}
