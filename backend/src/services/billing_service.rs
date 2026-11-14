@@ -154,7 +154,7 @@ pub async fn create_invoice(
     staff_module_permissions::require_order(state, user, order, "billing_ledger", Action::Edit)
         .await?;
     let mut tx = state.db.begin().await?;
-    crate::services::customer_order::require_order_kyc(&mut tx, order).await?;
+    crate::services::customer_order::require_order_kyc_for_invoice(&mut tx, order).await?;
     let row=sqlx::query("SELECT plant_id,customer_id,status,total_amount,tax_amount FROM orders WHERE id=$1 FOR UPDATE").bind(order).fetch_one(&mut *tx).await?;
     let status: String = row.get("status");
     if !matches!(status.as_str(), "delivered" | "completed") {
