@@ -30,7 +30,7 @@ export default function CustomerOrders() {
   const { user } = useAuth();
   const [active, setActive] = useState("all");
   const { data, loading, error, refetch, reload } = useGet<{ orders: OrderData[] }>("/customer/orders");
-  const drafts = useGet<{ drafts: { id: string; form: { site_name: string; grade: string | null; quantity: string }; provisional_status?: string | null; plant_response?: string | null }[] }>("/customer/order-drafts");
+  const drafts = useGet<{ drafts: { id: string; form: { site_name: string; grade: string | null; quantity: string }; provisional_status?: string | null; provisional_order_id?: string | null; plant_response?: string | null }[] }>("/customer/order-drafts");
   useFocusEffect(useCallback(() => { void refetch(); void drafts.refetch(); }, [refetch, drafts.refetch]));
 
   const filter = FILTERS.find((f) => f.key === active)!;
@@ -103,10 +103,12 @@ export default function CustomerOrders() {
             <AppText variant="heading">Saved Drafts</AppText>
             {drafts.error ? <AppText variant="caption">Could not load saved drafts. Pull to refresh.</AppText> : null}
             {visibleDrafts.map((draft) => <Pressable key={draft.id} accessibilityRole="button"
-              onPress={() => router.push({ pathname: "/new-order", params: { draftId: draft.id } })}
+              onPress={() => draft.provisional_status === "CONVERTED" && draft.provisional_order_id
+                ? router.push({ pathname: "/order/[id]", params: { id: draft.provisional_order_id } })
+                : router.push({ pathname: "/new-order", params: { draftId: draft.id } })}
               style={{ borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, backgroundColor: colors.surfaceSecondary, padding: spacing.md, gap: spacing.xs }}>
               <AppText variant="heading">{draft.form.site_name || "Untitled order draft"}</AppText>
-              <AppText variant="caption">{draft.provisional_status === "PENDING_KYC" ? (user?.kyc_status?.toUpperCase() === "VERIFIED" ? "AWAITING CUSTOMER CONFIRMATION" : "PROVISIONAL · PENDING KYC") : draft.provisional_status || "DRAFT"} · {draft.form.grade || "Grade not selected"} · {draft.form.quantity || "Quantity not set"} m³</AppText>
+              <AppText variant="caption">{draft.provisional_status === "PENDING_KYC" ? (user?.kyc_status?.toUpperCase() === "VERIFIED" ? "AWAITING CUSTOMER CONFIRMATION" : "PROVISIONAL · PENDING KYC") : draft.provisional_status === "CONVERTED" ? "ORDER SUBMITTED" : draft.provisional_status || "DRAFT"} · {draft.form.grade || "Grade not selected"} · {draft.form.quantity || "Quantity not set"} m³</AppText>
               {draft.plant_response ? <AppText variant="caption">Plant response: {draft.plant_response}</AppText> : null}
               <AppText variant="caption" color={colors.brand}>Review details</AppText>
             </Pressable>)}

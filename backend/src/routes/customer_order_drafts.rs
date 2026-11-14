@@ -120,7 +120,7 @@ pub async fn save(
 
 pub async fn list(State(state): State<AppState>, user: AuthUser) -> Result<Json<Value>, AppError> {
     active_customer(&state, &user).await?;
-    let drafts: Vec<Value> = sqlx::query_scalar("SELECT jsonb_build_object('id',d.id,'form',d.form,'updated_at',d.updated_at,'provisional_id',p.id,'provisional_status',CASE WHEN p.status='PENDING_KYC' AND p.expires_at<=NOW() THEN 'EXPIRED' ELSE p.status END,'plant_response',p.plant_response) FROM customer_order_drafts d LEFT JOIN customer_provisional_requests p ON p.draft_id=d.id AND p.customer_id=d.customer_id WHERE d.customer_id=$1 ORDER BY d.updated_at DESC LIMIT 100")
+    let drafts: Vec<Value> = sqlx::query_scalar("SELECT jsonb_build_object('id',d.id,'form',d.form,'updated_at',d.updated_at,'provisional_id',p.id,'provisional_order_id',p.order_id,'provisional_status',CASE WHEN p.status='PENDING_KYC' AND p.expires_at<=NOW() THEN 'EXPIRED' ELSE p.status END,'plant_response',p.plant_response) FROM customer_order_drafts d LEFT JOIN customer_provisional_requests p ON p.draft_id=d.id AND p.customer_id=d.customer_id WHERE d.customer_id=$1 ORDER BY d.updated_at DESC LIMIT 100")
         .bind(user.user_id).fetch_all(&state.db).await?;
     Ok(Json(json!({"drafts":drafts})))
 }
@@ -131,7 +131,7 @@ pub async fn get_one(
     Path(id): Path<Uuid>,
 ) -> Result<Json<Value>, AppError> {
     active_customer(&state, &user).await?;
-    let draft: Value = sqlx::query_scalar("SELECT jsonb_build_object('id',d.id,'form',d.form,'updated_at',d.updated_at,'provisional_id',p.id,'provisional_status',CASE WHEN p.status='PENDING_KYC' AND p.expires_at<=NOW() THEN 'EXPIRED' ELSE p.status END,'plant_response',p.plant_response) FROM customer_order_drafts d LEFT JOIN customer_provisional_requests p ON p.draft_id=d.id AND p.customer_id=d.customer_id WHERE d.id=$1 AND d.customer_id=$2")
+    let draft: Value = sqlx::query_scalar("SELECT jsonb_build_object('id',d.id,'form',d.form,'updated_at',d.updated_at,'provisional_id',p.id,'provisional_order_id',p.order_id,'provisional_status',CASE WHEN p.status='PENDING_KYC' AND p.expires_at<=NOW() THEN 'EXPIRED' ELSE p.status END,'plant_response',p.plant_response) FROM customer_order_drafts d LEFT JOIN customer_provisional_requests p ON p.draft_id=d.id AND p.customer_id=d.customer_id WHERE d.id=$1 AND d.customer_id=$2")
         .bind(id).bind(user.user_id).fetch_optional(&state.db).await?
         .ok_or_else(|| AppError::NotFound("Draft not found".into()))?;
     Ok(Json(draft))

@@ -2600,6 +2600,15 @@ async fn provisional_requires_verified_review_and_is_converted_at_most_once(db: 
     .await;
     assert_eq!(placed["id"], repeated["id"]);
     let order_id = placed["id"].as_str().unwrap();
+    let (_, recovered) = call(
+        &app,
+        &format!("/api/customer/order-drafts/{draft_id}"),
+        None,
+        &token,
+    )
+    .await;
+    assert_eq!(recovered["provisional_status"], "CONVERTED");
+    assert_eq!(recovered["provisional_order_id"], order_id);
     assert_eq!(
         call(
             &app,

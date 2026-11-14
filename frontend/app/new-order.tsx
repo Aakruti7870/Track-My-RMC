@@ -25,7 +25,7 @@ type DraftForm = {
   payment_mode: string | null; quotation_id: string | null; site_id: string | null;
   lat: number | null; lng: number | null; pump_required: boolean;
 };
-type SavedDraft = { id: string; form: DraftForm; updated_at: string; provisional_id?: string | null; provisional_status?: string | null; plant_response?: string | null };
+type SavedDraft = { id: string; form: DraftForm; updated_at: string; provisional_id?: string | null; provisional_order_id?: string | null; provisional_status?: string | null; plant_response?: string | null };
 const PAYMENT_MODES = [
   { value: "FULL_ADVANCE", label: "100% Advance", desc: "Pay in full after plant acceptance" },
   { value: "PARTIAL_ADVANCE", label: "Partial Advance", desc: "Plant confirms the exact deposit and balance terms" },
@@ -71,6 +71,7 @@ export default function NewOrder() {
   const [draftId, setDraftId] = useState<string | null>(params.draftId || null);
   const [provisionalId, setProvisionalId] = useState<string | null>(null);
   const [provisionalStatus, setProvisionalStatus] = useState<string | null>(null);
+  const [provisionalOrderId, setProvisionalOrderId] = useState<string | null>(null);
   const [plantResponse, setPlantResponse] = useState<string | null>(null);
   const [draftReady, setDraftReady] = useState(!params.draftId);
   const [quotationId, setQuotationId] = useState<string | null>(params.quotationId || null);
@@ -116,6 +117,7 @@ export default function NewOrder() {
     setContact(f.contact); setMobile(f.mobile); setNotes(f.notes); setPaymentMode(f.payment_mode);
     setQuotationId(f.quotation_id); setSiteId(f.site_id); setPumpRequired(f.pump_required);
     setProvisionalId(savedDraft.provisional_id || null); setProvisionalStatus(savedDraft.provisional_status || null);
+    setProvisionalOrderId(savedDraft.provisional_order_id || null);
     setPlantResponse(savedDraft.plant_response || null);
     setCoords(f.lat != null && f.lng != null ? { lat: f.lat, lng: f.lng } : null);
     setDraftReady(true);
@@ -162,7 +164,7 @@ export default function NewOrder() {
   const kycOk = user?.kyc_status?.toUpperCase() === "VERIFIED";
   const verifiedCustomerName = kycOk ? user?.verified_name?.trim() : null;
 
-  const saveDraft = async () => {
+  const saveDraft = async (copy = false) => {
     if (!token || !user || user.role !== "customer") throw { detail: "Sign in as a customer to save this draft" };
     if (params.draftId && (loadingDraft || draftError || !savedDraft || !draftReady)) throw { detail: "The saved draft could not be loaded" };
     const form: DraftForm = {
@@ -170,9 +172,19 @@ export default function NewOrder() {
       payment_mode: paymentMode, quotation_id: quotationId, site_id: siteId,
       lat: coords?.lat ?? null, lng: coords?.lng ?? null, pump_required: pumpRequired,
     };
-    const result = await apiPost<{ id: string }>("/customer/order-drafts", token, { id: draftId, form });
-    setDraftId(result.id);
+    const result = await apiPost<{ id: string }>("/customer/order-drafts", token, { id: copy ? null : draftId, form });
+    if (!copy) setDraftId(result.id);
     return result.id;
+  };
+
+  const copyExpiredRequest = async () => {
+    if (submitting) return;
+    setSubmitting("draft"); setError(null);
+    try {
+      const id = await saveDraft(true);
+      router.push({ pathname: "/new-order", params: { draftId: id } });
+    } catch (e: any) { setError(e.detail || "Could not copy this request"); }
+    finally { setSubmitting(null); }
   };
 
   const startKycFromOrder = async () => {
@@ -351,6 +363,8 @@ export default function NewOrder() {
           <AppText variant="heading">{provisionalStatus === "PENDING_KYC" ? (kycOk ? "Awaiting your confirmation" : "Provisional request · KYC pending") : `Request ${provisionalStatus || "unavailable"}`}</AppText>
           <AppText variant="caption">The plant has the original nonbinding request. Any edits below will be reviewed again when you prepare the order.</AppText>
           {plantResponse ? <AppText variant="body">Plant response: {plantResponse}</AppText> : null}
+          {provisionalStatus === "CONVERTED" && provisionalOrderId ? <Button label="Open Submitted Order" onPress={() => router.replace({ pathname: "/order/[id]", params: { id: provisionalOrderId } })} /> : null}
+          {provisionalStatus === "EXPIRED" ? <Button label="Copy to a New Draft" variant="outline" onPress={copyExpiredRequest} loading={submitting === "draft"} disabled={Boolean(submitting)} /> : null}
         </Card> : null}
 
         <Section title="1. Choose Plant" subtitle={quotationLocked ? "Locked by quotation" : "Select the verified plant supplying this order"}>
@@ -602,7 +616,7 @@ export default function NewOrder() {
             <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base }}>Ready to continue?</AppText>
             <AppText variant="caption">Submitting sends an order request for plant review. No payment will be collected now.</AppText>
           </View>
-          <Button testID="neworder-place" label={!kycOk ? "Complete KYC Now" : provisionalId ? "Review Current Order" : assistantMode ? "Prepare Order" : "Submit Order Request"} onPress={() => submit(false)} loading={submitting === "order" || submitting === "kyc"} disabled={Boolean(submitting) || loadingDraft || Boolean(draftError) || !draftReady} icon={<Ionicons name="checkmark-circle-outline" size={18} color={colors.onBrand} />} />
+          <Button testID="neworder-place" label={!kycOk ? "Complete KYC Now" : provisionalId ? "Review Current Order" : assistantMode ? "Prepare Order" : "Submit Order Request"} onPress={() => submit(false)} loading={submitting === "order" || submitting === "kyc"} disabled={Boolean(submitting) || loadingDraft || Boolean(draftError) || !draftReady || Boolean(provisionalId && provisionalStatus !== "PENDING_KYC")} icon={<Ionicons name="checkmark-circle-outline" size={18} color={colors.onBrand} />} />
           {!kycOk && !provisionalId && !assistantMode ? <Button testID="neworder-provisional" label="Send Request & Complete KYC Later" variant="outline" onPress={sendProvisional} loading={submitting === "provisional"} disabled={Boolean(submitting) || loadingDraft || Boolean(draftError) || !draftReady} /> : null}
           {!assistantMode ? <Button testID="neworder-draft" label="Save Draft" variant="outline" onPress={() => submit(true)} loading={submitting === "draft"} disabled={Boolean(submitting) || loadingDraft || Boolean(draftError) || !draftReady} /> : null}
         </View>}

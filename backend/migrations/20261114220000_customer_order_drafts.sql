@@ -34,8 +34,5 @@ ALTER TABLE orders ADD COLUMN kyc_guard_required BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE customer_digilocker_sessions ADD COLUMN review_baseline_id BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE customer_digilocker_sessions ADD COLUMN failure_reason TEXT
     CHECK (failure_reason IS NULL OR failure_reason IN ('identity_mismatch'));
-UPDATE customer_digilocker_sessions d
-SET review_baseline_id=COALESCE((SELECT MAX(a.id) FROM audit_logs a
-  WHERE a.resource_type='customer' AND a.resource_id=d.user_id::text
-    AND a.action IN ('authority.kyc.review','control_center.kyc.review')
-    AND a.created_at < d.created_at),0);
+-- Existing in-progress sessions keep baseline zero and fail closed if the
+-- latest historical review was adverse; a fresh attempt captures a new baseline.
