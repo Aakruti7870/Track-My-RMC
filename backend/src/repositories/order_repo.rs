@@ -40,9 +40,9 @@ pub async fn create_order(pool: &PgPool, input: NewOrder<'_>) -> Result<Order, A
         INSERT INTO orders (
             order_number, customer_id, plant_id, site_id, concrete_grade,
             total_quantity_m3, delivery_date, delivery_time_slot, pump_required,
-            special_instructions, total_amount, tax_amount, status, payment_status
+            special_instructions, total_amount, tax_amount, status, payment_status, kyc_guard_required
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending', 'unpaid')
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending', 'unpaid', TRUE)
         RETURNING id, order_number, customer_id, plant_id, site_id, concrete_grade,
                   total_quantity_m3, delivery_date, delivery_time_slot, pump_required,
                   special_instructions, total_amount, tax_amount, status, payment_status, preferred_payment_mode,
