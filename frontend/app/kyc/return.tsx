@@ -20,7 +20,10 @@ export default function KycReturnScreen() {
   const { hydrating, token, user } = useAuth();
 
   useEffect(() => {
-    if (Platform.OS === "web" || hydrating) return;
+    // On web, DigiLocker sends the customer back to this HTTPS route.
+    // Automatically resume the authenticated KYC status check instead of
+    // requiring another button click. The callback itself never verifies KYC.
+    if (hydrating) return;
     let cancelled = false;
     void (async () => {
       if (!token || !user) {
