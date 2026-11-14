@@ -233,22 +233,38 @@ impl Provider {
         Self::read(res, "SESSION_INIT").await
     }
     async fn get(&self, token: &str, path: &str) -> Result<Value, AppError> {
-        let res = self
-            .client
-            .get(provider_url(self.host, path))
-            .header("Authorization", token)
-            .header("x-api-key", &self.api_key)
-            .send()
-            .await
-            .map_err(|_| {
+        // These are read-only provider checks. A single bounded retry handles
+        // temporary gateway/throttling responses after DigiLocker redirects.
+        // The outer status handler caps the entire refresh to less than the
+        // frontend's request timeout.
+        for attempt in 0..2 {
+            let res = self
+                .client
+                .get(provider_url(self.host, path))
+                .header("Authorization", token)
+                .header("x-api-key", &self.api_key)
+                .send()
+                .await
+                .map_err(|_| {
+                    tracing::warn!(
+                        kyc_stage = provider_get_stage(path),
+                        error_kind = "transport",
+                        "digilocker_provider_transport_failure"
+                    );
+                    AppError::Conflict("DigiLocker provider unavailable".into())
+                })?;
+            if attempt == 0 && matches!(res.status().as_u16(), 429 | 502 | 503 | 504) {
                 tracing::warn!(
                     kyc_stage = provider_get_stage(path),
-                    error_kind = "transport",
-                    "digilocker_provider_transport_failure"
+                    provider_http_status = res.status().as_u16(),
+                    "digilocker_provider_transient_retry"
                 );
-                AppError::Conflict("DigiLocker provider unavailable".into())
-            })?;
-        Self::read(res, provider_get_stage(path)).await
+                tokio::time::sleep(StdDuration::from_millis(750)).await;
+                continue;
+            }
+            return Self::read(res, provider_get_stage(path)).await;
+        }
+        Err(AppError::Conflict("DigiLocker provider unavailable".into()))
     }
 }
 
@@ -813,7 +829,7 @@ pub async fn status(
         ));
     };
     let mut refresh_stage = "AUTHENTICATE";
-    let refresh = async {
+    let refresh = tokio::time::timeout(StdDuration::from_secs(25), async {
         let token = provider.access_token().await?;
         refresh_stage = "SESSION_STATUS";
         let body = provider.get(&token, &format!("/kyc/digilocker/sessions/{provider_id}/status")).await?;
@@ -902,11 +918,11 @@ pub async fn status(
             .execute(&mut *tx).await?;
         }
         tx.commit().await?;
-        Ok(effective_result)
-    }.await;
+        Ok::<&'static str, AppError>(effective_result)
+    }).await;
     match refresh {
-        Ok(status) => Ok(Json(json!({"status":status,"provider":provider.label}))),
-        Err(_) => {
+        Ok(Ok(status)) => Ok(Json(json!({"status":status,"provider":provider.label}))),
+        Ok(Err(_)) | Err(_) => {
             // This is deliberately not a rejection: the provider may have
             // accepted consent while evidence retrieval was still pending.
             // Emit only a fixed stage label, never the request/response or PII.
