@@ -8,6 +8,7 @@ import { useAuth } from "@/src/auth/AuthContext";
 import { ThemedScreen } from "@/src/components/ThemedScreen";
 import { useGet } from "@/src/hooks/useApi";
 import { AppText } from "@/src/components/ui/AppText";
+import { Button } from "@/src/components/ui/Button";
 import { Skeleton } from "@/src/components/ui/Skeleton";
 import { OrderCard, OrderData } from "@/src/components/OrderCard";
 import { EmptyView, ErrorView } from "@/src/components/StateViews";
@@ -58,6 +59,9 @@ export default function CustomerOrders() {
             return (
               <Pressable
                 testID={`filter-${item.key}`}
+                accessibilityRole="button"
+                accessibilityLabel={`Show ${item.label} orders`}
+                accessibilityState={{ selected }}
                 onPress={() => setActive(item.key)}
                 style={[
                   styles.chip,
@@ -120,11 +124,19 @@ export default function CustomerOrders() {
             />
           )}
           ListEmptyComponent={
-            visibleDrafts.length ? null : <EmptyView
-              icon="cube-outline"
-              title="No orders here"
-              subtitle={active === "all" ? "You haven't placed any orders yet" : "No orders in this status"}
-            />
+            visibleDrafts.length ? null : (
+              <View testID="orders-empty-next-action" style={{ gap: spacing.lg, alignItems: "stretch" }}>
+                <EmptyView
+                  icon="cube-outline"
+                  title={active === "all" ? "Ready for your first pour?" : "No orders in this status"}
+                  subtitle={active === "all" ? "You can build and save an order request before completing KYC." : "Try a different status to find your orders."}
+                />
+                <Button
+                  label={active === "all" ? "Start an Order Request" : "View All Orders"}
+                  onPress={() => active === "all" ? router.push("/new-order") : setActive("all")}
+                />
+              </View>
+            )
           }
         />
       )}
@@ -137,7 +149,7 @@ const styles = StyleSheet.create({
   titleRow: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.md },
   chipRow: { maxHeight: 56, marginBottom: spacing.sm },
   chip: {
-    height: 36,
+    minHeight: 48,
     flexShrink: 0,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.pill,
