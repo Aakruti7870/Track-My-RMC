@@ -33,6 +33,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  if(mode!=='demo'){home.recent_orders=[order];home.active_order=mode==='delivered'?null:order;}
  const tracking={active:mode==='live',status:order.status,active_loads:mode==='live'?[{id:'load-a',status:'en_route',tm_number:'ASSIGNED-MIXER',location:{lat:19.1,lng:73.1,at:new Date(Date.now()-1000).toISOString()}}]:[],destination:{lat:19.2,lng:73.2}};
  const plants=[{id:'fixture-plant',name:'Panvel Ready-Mix Concrete and Infrastructure Supply',address:'Industrial Estate, Panvel',status:'active',verified:true,order_enabled:true,grades:['M30'],distance_km:4.2}];
+ const linkedPlant={...plants[0],id:'fixture-plant-off-page',name:'Registered Linked Concrete'};
  if (path.endsWith('/customer/plants/search')) {
    await route.fulfill({json:{plants,page:1,has_more:false}});return;
  }
@@ -40,12 +41,19 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    await route.fulfill({json:{lat:19.1,lng:73.1,label:'Panvel'}});return;
  }
  if (path.endsWith('/customer/plants/google-nearby')) {
-   await route.fulfill({json:{places:[{place_id:'ChIJ_review_fixture',name:'Independent Concrete',address:'Panvel',lat:19.11,lng:73.11,distance_km:2}],source:'google_places',attribution:'Google Maps',radius_km:50}});return;
+   const google={place_id:'ChIJ_review_fixture',name:'Independent Concrete',address:'Panvel',lat:19.11,lng:73.11,distance_km:2,verified:false,order_enabled:false};
+   await route.fulfill({json:{places:[
+     google,
+     {...google,place_id:'ChIJ_linked_fixture',name:linkedPlant.name,verified:true,order_enabled:true,
+       registered_plant:{id:linkedPlant.id,order_intake_mode:'DIRECT'}},
+     {...google,place_id:'ChIJ_rfq_fixture',name:'Quotation-only Concrete',verified:true,
+       registered_plant:{id:'fixture-rfq-only',order_intake_mode:'RFQ_ONLY'}},
+   ],source:'google_places',attribution:'Google Maps',radius_km:50}});return;
  }
  if (path.endsWith('/maps/autocomplete')) {
    await route.fulfill({json:{predictions:[]}});return;
  }
- await route.fulfill({json:path.endsWith('/tracking')?tracking:path.endsWith('/customer/service-enquiries')?{enquiries:[]}:path.endsWith('/customer/plants')?{plants}:path.endsWith('/customer/orders')?{orders:[]}:path.endsWith('/customer/order-drafts')?{drafts:[]}:path.endsWith('/permission-consent')?{consent:{version:1,location_choice:'manual',notification_choice:'manual'}}:path.endsWith('/me')?me:path.endsWith('/customer/home')?home:{}});
+ await route.fulfill({json:path.endsWith('/tracking')?tracking:path.endsWith('/customer/service-enquiries')?{enquiries:[]}:path.endsWith('/customer/plants')?{plants:[...plants,linkedPlant]}:path.endsWith('/customer/orders')?{orders:[]}:path.endsWith('/customer/order-drafts')?{drafts:[]}:path.endsWith('/permission-consent')?{consent:{version:1,location_choice:'manual',notification_choice:'manual'}}:path.endsWith('/me')?me:path.endsWith('/customer/home')?home:{}});
  });
  page.on('pageerror',e=>console.error(e.message));
  await page.goto('http://127.0.0.1:8765/customer/');
@@ -270,6 +278,14 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      await page.goBack();
      await page.getByTestId('plants-filter-toggle').click();
      await page.getByTestId('plants-filter-state').fill('Maharashtra');
+     const linked=page.getByTestId('nearby-plant-fixture-plant-off-page');
+     await linked.getByText('TrackMyRMC verified',{exact:true}).waitFor();
+     const quotationOnly=page.getByTestId('nearby-plant-fixture-rfq-only');
+     assert.equal(await quotationOnly.getByTestId('nearby-place-order').getAttribute('aria-disabled'), 'true');
+     assert.equal(await quotationOnly.getByRole('button',{name:'Request Quotation',exact:true}).isEnabled(), true);
+     await linked.getByTestId('nearby-place-order').click();
+     await page.waitForURL('**/new-order?plantId=fixture-plant-off-page');
+     await page.goBack();
      const googlePlant=page.getByTestId('nearby-plant-google:ChIJ_review_fixture');
      await googlePlant.getByRole('button',{name:'Plant Profile',exact:true}).click();
      await page.getByRole('button',{name:'Close details',exact:true}).waitFor();

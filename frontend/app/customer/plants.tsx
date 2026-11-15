@@ -302,33 +302,33 @@ export default function CustomerPlants() {
     return ranked;
   }, [ranked]);
 
-  // Google-sourced data remains separate from the app's approved, order-enabled directory.
-  const googleEntries = useMemo(() => {
+  const googleListings = useMemo<PlantData[]>(() => {
     const registered = data?.plants || [];
-    return (googleNearby?.places || []).filter((place) => {
-      return !registered.some((plant) => plant.google_place_id === place.place_id
-        || (plant.name.trim().toLowerCase() === place.name.trim().toLowerCase()
-          && validLatLng(plant) && distanceKm({lat:plant.lat!,lng:plant.lng!},place) < 0.15));
-    });
+    return (googleNearby?.places || []).filter(place => !registered.some(plant =>
+      plant.google_place_id === place.place_id || (place.registered_plant
+        ? plant.id === place.registered_plant.id
+        : plant.name.trim().toLowerCase() === place.name.trim().toLowerCase()
+          && validLatLng(plant) && distanceKm({lat:plant.lat!,lng:plant.lng!},place) < 0.15),
+    )).map(place => ({
+      id: place.registered_plant?.id ?? `google:${place.place_id}`,
+      google_place_id: place.place_id,
+      name: place.name,
+      city: "",
+      address: place.address,
+      lat: place.lat,
+      lng: place.lng,
+      grades: [],
+      contact_phone: "",
+      service_area_km: 0,
+      status: place.registered_plant ? "active" : "google_listing",
+      verified: Boolean(place.verified),
+      order_enabled: Boolean(place.order_enabled),
+      order_intake_mode: place.registered_plant?.order_intake_mode,
+      distance_km: place.distance_km,
+    }));
   }, [googleNearby, data]);
 
-  const googleMapPlants = useMemo<PlantData[]>(() => googleEntries.map(place => ({
-    id: `google:${place.place_id}`,
-    name: place.name,
-    city: "",
-    address: place.address,
-    lat: place.lat,
-    lng: place.lng,
-    grades: [],
-    contact_phone: "",
-    service_area_km: 0,
-    status: "google_listing",
-    verified: false,
-    order_enabled: false,
-    distance_km: place.distance_km,
-  })), [googleEntries]);
-
-  const mappedPlants = useMemo(() => [...filtered, ...googleMapPlants], [filtered, googleMapPlants]);
+  const mappedPlants = useMemo(() => [...filtered, ...googleListings], [filtered, googleListings]);
   const openGooglePlace = useCallback((place: GoogleNearbyPlant) => {
     const fallback = `https://www.google.com/maps/search/?api=1&query=${place.lat}%2C${place.lng}&query_place_id=${encodeURIComponent(place.place_id)}`;
     void Linking.openURL(place.google_maps_uri || fallback);
@@ -382,12 +382,7 @@ export default function CustomerPlants() {
               <View style={[styles.mapShell, { borderColor: colors.isDark ? "rgba(255,154,61,0.36)" : colors.border, shadowColor: colors.isDark ? "#FF9A3D" : colors.shadow, shadowOpacity: colors.isDark ? 0.14 : 0.04 }]}>
                 <PlantMap plants={mappedPlants} userLocation={userLocation} selectedPlantId={selectedPlantId} onSelectPlant={(plant) => {
                   setSelectedPlantId(plant.id);
-                  if (plant.id.startsWith("google:")) {
-                    const listing = googleMapPlants.find((entry) => entry.id === plant.id);
-                    if (listing) setDetails(listing);
-                  } else {
-                    setDetails(plant);
-                  }
+                  setDetails(plant);
                 }} onRegionChange={coords => { if (!userLocation || distanceKm(userLocation,coords)>1) { manualLocation.current=true;setUserLocation(coords); setPage(1); } }} />
               </View>
 
@@ -450,7 +445,7 @@ export default function CustomerPlants() {
                     </AppText>
                   </View>
                   <AppText variant="caption">
-                    Google Maps results within {Math.min(filters.radius_km,50)} km of the selected location. TrackMyRMC reviews order requests for these listings.
+                    Google Maps results within {Math.min(filters.radius_km,50)} km of the selected location.
                   </AppText>
                   {googleLoading ? <ActivityIndicator accessibilityLabel="Finding live Google Places listings" color={colors.brand} /> : null}
                   {googleError ? (
@@ -459,14 +454,12 @@ export default function CustomerPlants() {
                       <Button label="Retry Google Places search" variant="outline" onPress={refreshGoogle} />
                     </View>
                   ) : null}
-                  {!googleLoading && !googleError && googleNearby && !googleEntries.length ? (
+                  {!googleLoading && !googleError && googleNearby && !googleListings.length ? (
                     <AppText variant="caption">No matching RMC businesses found on Google Maps in this radius. Try moving the map or increasing the radius.</AppText>
                   ) : null}
-                  {googleEntries.map((place) => {
-                    const listing = googleMapPlants.find((plant) => plant.id === `google:${place.place_id}`);
-                    if (!listing) return null;
+                  {googleListings.map((listing) => {
                     return (
-                      <View key={place.place_id} testID="google-places-plant">
+                      <View key={listing.id} testID="google-places-plant">
                         <NearbyPlantCard
                           plant={listing}
                           onQuotation={() => openSupplierRequest(listing, false)}
@@ -549,7 +542,7 @@ export default function CustomerPlants() {
             <>
               <DetailLine label="Distance from selected site" value={details.distance_km != null ? `${details.distance_km.toFixed(1)} km` : "Not available"} />
               <Button label="View on Google Maps" variant="outline" onPress={()=>{
-                const place=googleEntries.find(entry=>`google:${entry.place_id}` === details.id);
+                const place=googleNearby?.places.find(entry=>entry.place_id === details.google_place_id);
                 if (place) openGooglePlace(place);
               }} />
             </>
