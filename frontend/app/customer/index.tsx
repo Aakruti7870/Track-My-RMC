@@ -242,7 +242,6 @@ export default function CustomerHome() {
           <>
             {/* Existing carousel and its five images remain unchanged. */}
             <View style={[styles.homeAboveFold, { gap: homeSize.sectionGap }]}>
-              <HomeCarousel style={{ width: Math.min(viewportWidth, 720), borderRadius: 0, borderWidth: 0 }} />
               <CustomerNextAction
                 activeOrder={data.active_order}
                 hasOrderHistory={data.recent_orders.length > 0}
@@ -252,6 +251,7 @@ export default function CustomerHome() {
                 onViewOrders={() => router.push("/customer/orders")}
                 onVerifyIdentity={() => router.push("/kyc")}
               />
+              <HomeCarousel style={{ width: Math.min(viewportWidth, 720), borderRadius: 0, borderWidth: 0 }} />
               {quickActions}
               <View style={styles.groupCard}><KycBanner status={data.kyc_status} /></View>
               {planningTools}
