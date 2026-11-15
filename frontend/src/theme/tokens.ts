@@ -266,7 +266,8 @@ export function statusColor(colors: ThemeColors, status?: string) {
     return operationalStatus("critical", colors.isDark);
   if (["PENDING", "NEW", "OPEN", "DRAFT", "PARTIAL", "UNPAID", "LOW_STOCK",
        "RESPONDING", "ACKNOWLEDGED", "CONTACTED", "NEEDS_REVIEW",
-       "REQUIRES_REVERIFICATION", "WAITING", "REORDER", "WARNING"].includes(s))
+       "REQUIRES_REVERIFICATION", "REVIEW_NEEDED", "DOCUMENT_NOT_SHARED",
+       "DOCUMENT_UNAVAILABLE", "IN_PROGRESS", "WAITING", "REORDER", "WARNING"].includes(s))
     return operationalStatus("warning", colors.isDark);
   if (["QUOTED", "PRODUCTION_COMPLETE", "DISPATCHED", "EN_ROUTE", "AT_SITE",
        "UNLOADING", "IN_PRODUCTION", "LOADING", "READY_TO_DISPATCH", "TM_ASSIGNED",
