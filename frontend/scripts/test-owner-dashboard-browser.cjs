@@ -121,7 +121,7 @@ fs.mkdirSync(out, { recursive: true });
         await form.getByRole('button', { name: /Required delivery date/ }).click();
         await page.getByRole('button', { name: /^20\d\d-\d\d-\d\d$/ }).last().click();
         await form.getByRole('button', { name: 'Submit Enquiry' }).click();
-        await page.getByText('Fixture retry', { exact: true }).waitFor();
+        await page.getByText('The service is temporarily unavailable. Please try again.', { exact: true }).waitFor();
         await form.getByRole('button', { name: 'Submit Enquiry' }).click();
         await page.getByTestId('supplier-enquiry-success').waitFor();
         assert.deepEqual(supplierRequests[0], supplierRequests[1], 'Retry reuses the submitted payload and request key');
