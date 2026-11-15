@@ -147,9 +147,7 @@ impl Provider {
         })
     }
     async fn read(response: reqwest::Response, stage: &'static str) -> Result<Value, AppError> {
-        if stage == "AADHAAR_DOCUMENT"
-            && response.status() == reqwest::StatusCode::FORBIDDEN
-        {
+        if stage == "AADHAAR_DOCUMENT" && response.status() == reqwest::StatusCode::FORBIDDEN {
             // Sandbox may include an error code in its 403 response. Log only a
             // numeric category, never bodies, session IDs, URLs or identity data.
             let code = response
@@ -388,8 +386,7 @@ fn has_aadhaar_consent(status: &Value) -> bool {
                         .and_then(Value::as_str)
                 });
                 kind.is_some_and(|value| {
-                    value.eq_ignore_ascii_case("aadhaar")
-                        || value.eq_ignore_ascii_case("adhar")
+                    value.eq_ignore_ascii_case("aadhaar") || value.eq_ignore_ascii_case("adhar")
                 })
             })
         })
@@ -1003,13 +1000,12 @@ pub async fn status(
         // Terminal for this attempt, not for the customer. This avoids a
         // repeated document GET/403 loop while retaining the original evidence.
         Ok(Err(AppError::Conflict(reason)))
-            if refresh_stage == "AADHAAR_DOCUMENT"
-                && reason == "DIGILOCKER_DOCUMENT_FORBIDDEN" =>
+            if refresh_stage == "AADHAAR_DOCUMENT" && reason == "DIGILOCKER_DOCUMENT_FORBIDDEN" =>
         {
             let changed = sqlx::query(
                 "UPDATE customer_digilocker_sessions
                  SET status='FAILED',failure_reason='document_access_denied',updated_at=NOW()
-                 WHERE id=$1 AND user_id=$2 AND status='IN_PROGRESS'"
+                 WHERE id=$1 AND user_id=$2 AND status='IN_PROGRESS'",
             )
             .bind(id)
             .bind(user.user_id)
@@ -1057,14 +1053,30 @@ mod tests {
 
     #[test]
     fn consent_requires_explicit_aadhaar_in_successful_provider_metadata() {
-        assert!(has_aadhaar_consent(&json!({"data":{"documents_consented":["aadhaar"]}})));
-        assert!(has_aadhaar_consent(&json!({"data":{"documents_consented":["ADHAR"]}})));
-        assert!(has_aadhaar_consent(&json!({"data":{"documents_consented":[{"doc_type":"aadhaar"}]}})));
-        assert!(!has_aadhaar_consent(&json!({"data":{"documents_consented":[]}})));
-        assert!(!has_aadhaar_consent(&json!({"data":{"documents_consented":["pan"]}})));
-        assert!(!has_aadhaar_consent(&json!({"data":{"documents_consented":"aadhaar"}})));
-        assert!(!has_aadhaar_consent(&json!({"data":{"status":"succeeded"}})));
-        assert!(!has_aadhaar_consent(&json!({"data":{"documents_consented":[{"doc_type":"aadhaar.extra"}]}})));
+        assert!(has_aadhaar_consent(
+            &json!({"data":{"documents_consented":["aadhaar"]}})
+        ));
+        assert!(has_aadhaar_consent(
+            &json!({"data":{"documents_consented":["ADHAR"]}})
+        ));
+        assert!(has_aadhaar_consent(
+            &json!({"data":{"documents_consented":[{"doc_type":"aadhaar"}]}})
+        ));
+        assert!(!has_aadhaar_consent(
+            &json!({"data":{"documents_consented":[]}})
+        ));
+        assert!(!has_aadhaar_consent(
+            &json!({"data":{"documents_consented":["pan"]}})
+        ));
+        assert!(!has_aadhaar_consent(
+            &json!({"data":{"documents_consented":"aadhaar"}})
+        ));
+        assert!(!has_aadhaar_consent(
+            &json!({"data":{"status":"succeeded"}})
+        ));
+        assert!(!has_aadhaar_consent(
+            &json!({"data":{"documents_consented":[{"doc_type":"aadhaar.extra"}]}})
+        ));
     }
 
     #[sqlx::test]
@@ -1073,33 +1085,57 @@ mod tests {
             "INSERT INTO users(phone,hashed_password,full_name,role)
              VALUES($1,'unused','DigiLocker Restricted Customer','customer') RETURNING id",
         )
-        .bind(format!("91{:010}", Uuid::new_v4().as_u128() % 10_000_000_000))
-        .fetch_one(&db).await.unwrap();
+        .bind(format!(
+            "91{:010}",
+            Uuid::new_v4().as_u128() % 10_000_000_000
+        ))
+        .fetch_one(&db)
+        .await
+        .unwrap();
         sqlx::query("INSERT INTO user_profiles(user_id,kyc_status) VALUES($1,'unverified')")
-            .bind(customer).execute(&db).await.unwrap();
+            .bind(customer)
+            .execute(&db)
+            .await
+            .unwrap();
         let id: Uuid = sqlx::query_scalar(
             "INSERT INTO customer_digilocker_sessions(user_id,provider_environment,status)
              VALUES($1,'live','IN_PROGRESS') RETURNING id",
         )
-        .bind(customer).fetch_one(&db).await.unwrap();
+        .bind(customer)
+        .fetch_one(&db)
+        .await
+        .unwrap();
         let changed = sqlx::query(
             "UPDATE customer_digilocker_sessions
              SET status='FAILED',failure_reason='document_access_denied'
              WHERE id=$1 AND user_id=$2 AND status='IN_PROGRESS'",
         )
-        .bind(id).bind(customer).execute(&db).await.unwrap().rows_affected();
+        .bind(id)
+        .bind(customer)
+        .execute(&db)
+        .await
+        .unwrap()
+        .rows_affected();
         assert_eq!(changed, 1);
         assert_eq!(
             sqlx::query_scalar::<_, String>(
                 "SELECT kyc_status FROM user_profiles WHERE user_id=$1"
-            ).bind(customer).fetch_one(&db).await.unwrap(),
+            )
+            .bind(customer)
+            .fetch_one(&db)
+            .await
+            .unwrap(),
             "unverified"
         );
         assert_eq!(
             sqlx::query_scalar::<_, i64>(
                 "SELECT COUNT(*) FROM customer_digilocker_sessions
                  WHERE id=$1 AND status='IN_PROGRESS'"
-            ).bind(id).fetch_one(&db).await.unwrap(),
+            )
+            .bind(id)
+            .fetch_one(&db)
+            .await
+            .unwrap(),
             0
         );
     }
