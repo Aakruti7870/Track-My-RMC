@@ -6,7 +6,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import Svg, { Defs, LinearGradient as SvgGradient, RadialGradient, Rect, Stop } from "react-native-svg";
+import Svg, { Defs, LinearGradient as SvgGradient, Rect, Stop } from "react-native-svg";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -59,6 +59,7 @@ export default function LoginScreen() {
   const toast = useToast();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
+  const [phoneFocused, setPhoneFocused] = useState(false);
   const {
     hydrating,
     token,
@@ -471,13 +472,16 @@ export default function LoginScreen() {
             <AppText variant="heading" center>Welcome back</AppText>
             <AppText variant="bodyMuted" center>Secure access to Track My RMC</AppText>
           </View>
-          <View style={[styles.phoneInputWrap, { borderColor: error ? colors.error : look.fieldOutline, backgroundColor: look.field }]}>
+          <View style={[styles.phoneInputWrap, { borderColor: error ? colors.error : phoneFocused ? colors.accentText : look.fieldOutline, backgroundColor: look.field }]}>
             <View style={[styles.prefix, { borderRightColor: look.fieldDivider, backgroundColor: look.prefix }]}><AppText style={styles.prefixText} color={look.prefixText}>{mobile.startsWith("+") ? "INTL" : "+91"}</AppText></View>
             <TextInput
               testID="login-mobile-input"
               value={mobile}
               onChangeText={(text) => { setMobile((text.trimStart().startsWith("+") ? "+" : "") + text.replace(/\D/g, "").slice(0, 15)); setError(null); }}
               accessibilityLabel="WhatsApp mobile number"
+              aria-invalid={Boolean(error)}
+              onFocus={() => setPhoneFocused(true)}
+              onBlur={() => setPhoneFocused(false)}
               placeholder="10 Digit WhatsApp Number"
               placeholderTextColor={look.placeholder}
               keyboardType="phone-pad"
@@ -622,6 +626,10 @@ export default function LoginScreen() {
           }]}>
             <LinearGradient pointerEvents="none" colors={look.card} style={styles.sheetFill}
               start={{ x: 0, y: 0 }} end={{ x: 0.9, y: 1 }} />
+            <View pointerEvents="none" style={styles.cardHighlight}>
+              <LinearGradient colors={[look.gleam + (colors.isDark ? "55" : "47"), look.gleam + "00"]}
+                start={{ x: 0.08, y: 0 }} end={{ x: 0.56, y: 1 }} style={StyleSheet.absoluteFill} />
+            </View>
             <Svg width="100%" height="100%" pointerEvents="none" style={StyleSheet.absoluteFill} aria-hidden accessible={false}>
               <Defs>
                 <SvgGradient id="loginCardRim" x1="0%" y1="0%" x2="25%" y2="100%">
@@ -630,12 +638,8 @@ export default function LoginScreen() {
                   <Stop offset="0.60" stopColor={look.rim[2]} />
                   <Stop offset="1" stopColor={look.rim[3]} />
                 </SvgGradient>
-                <RadialGradient id="loginCardGleam" cx="9%" cy="0%" rx="24%" ry="8%">
-                  <Stop offset="0" stopColor={look.gleam} stopOpacity={colors.isDark ? 0.5 : 0.28} />
-                  <Stop offset="1" stopColor={look.gleam} stopOpacity={0} />
-                </RadialGradient>
               </Defs>
-              <Rect width="100%" height="100%" rx={28} fill="url(#loginCardGleam)" stroke="url(#loginCardRim)" strokeWidth={1.5} />
+              <Rect width="100%" height="100%" rx={28} fill="none" stroke="url(#loginCardRim)" strokeWidth={1.5} />
             </Svg>
 
             <View accessibilityRole="tablist" style={[styles.segmented, { backgroundColor: look.rail, borderColor: look.railOutline }]}>
@@ -655,8 +659,10 @@ export default function LoginScreen() {
                           style={styles.segmentFill} />
                       </LinearGradient>
                     ) : null}
-                    <VectorSymbol name={icon} size={18} color={selected ? look.selectedIcon : look.inactiveIcon} />
-                    <AppText style={styles.segmentLabel} color={selected ? look.selectedText : look.inactive}>{label}</AppText>
+                    <View style={styles.segmentContent} pointerEvents="none">
+                      <VectorSymbol name={icon} size={18} color={selected ? look.selectedIcon : look.inactiveIcon} />
+                      <AppText style={styles.segmentLabel} color={selected ? look.selectedText : look.inactive}>{label}</AppText>
+                    </View>
                   </Pressable>
                 );
               })}
@@ -777,6 +783,8 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     paddingHorizontal: spacing.sm,
   },
+  cardHighlight: { position: "absolute", top: 1, left: 1, right: 1, height: 28, borderTopLeftRadius: 27, borderTopRightRadius: 27, overflow: "hidden" },
+  segmentContent: { zIndex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.xs },
   segmentFill: { ...StyleSheet.absoluteFillObject, top: 1, right: 1, bottom: 1, left: 1, borderRadius: 13 },
   segmentLabel: { fontFamily: fonts.semibold, fontSize: fontSize.sm, letterSpacing: 0.2 },
   formGap: { gap: spacing.md },
