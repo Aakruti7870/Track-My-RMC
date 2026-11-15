@@ -147,7 +147,7 @@ export const materialSymbolNames = {
   "profile": "person",
   "project-site-hub": "construction",
   "proof-of-delivery": "assignment_turned_in",
-  "pump-rental": "construction",
+  "pump-rental": "precision_manufacturing",
   "purchases": "shopping_cart",
   "quality-register": "fact_check",
   "quotation-requests": "request_quote",

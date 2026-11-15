@@ -68,7 +68,7 @@ export function SupportWidgetBridge() {
   if (!showPublicLoginHelp && !showCustomerSupport) return null;
 
   if (showCustomerSupport) {
-    const anchorBottom = Math.max(insets.bottom + 104, 120);
+    const anchorBottom = insets.bottom + 80;
     const panelWidth = compactPanelWidth(viewportWidth);
     const availableHeight = Math.max(190, viewportHeight - anchorBottom - 16);
     const panelMaxHeight = Math.min(400, Math.max(260, viewportHeight * 0.42), availableHeight);
@@ -271,29 +271,25 @@ export function SupportWidgetBridge() {
             </ScrollView>
           ) : null}
 
-          <View pointerEvents="box-none" style={styles.customerLauncher}>
-            <Pressable
-              testID="customer-support-widget"
-              accessibilityRole="button"
-              accessibilityLabel="Open TrackMyRMC Support"
-              accessibilityHint="Expands a compact support card without leaving this screen"
-              accessibilityState={{ expanded: customerHelpOpen }}
-              onPress={() => setCustomerHelpOpen((value) => !value)}
-              style={({ pressed }) => [
-                styles.supportButton,
-                {
-                  backgroundColor: colors.surfaceSecondary,
-                  borderColor: colors.brand,
-                  opacity: pressed ? 0.84 : 1,
-                },
-              ]}
-            >
-              <Image source={SUPPORT_AGENT_MASCOT} style={styles.supportMascot} resizeMode="contain" accessible={false} />
-            </Pressable>
-            <View pointerEvents="none" style={[styles.customerBadge, { backgroundColor: colors.brand }]}> 
-              <AppText style={[styles.badgeText, { color: colors.onBrand }]}>May I Help you?</AppText>
-            </View>
-          </View>
+          <Pressable
+            testID="customer-support-widget"
+            accessibilityRole="button"
+            accessibilityLabel="Open TrackMyRMC Support"
+            accessibilityHint="Expands a compact support card without leaving this screen"
+            accessibilityState={{ expanded: customerHelpOpen }}
+            onPress={() => setCustomerHelpOpen((value) => !value)}
+            style={({ pressed }) => [
+              styles.supportButton,
+              styles.customerButton,
+              {
+                backgroundColor: colors.surfaceSecondary,
+                borderColor: colors.borderStrong,
+                opacity: pressed ? 0.84 : 1,
+              },
+            ]}
+          >
+            <VectorSymbol name="support" />
+          </Pressable>
         </View>
       </View>
     );
@@ -460,7 +456,6 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     gap: spacing.sm,
   },
-  customerLauncher: { alignItems: "center" },
   publicAnchor: {
     position: "absolute",
     right: spacing.sm,
@@ -483,16 +478,14 @@ const styles = StyleSheet.create({
     elevation: 7,
   },
   supportMascot: { width: 48, height: 48 },
-  customerBadge: {
-    minHeight: 24,
-    minWidth: 54,
-    marginTop: -5,
-    paddingHorizontal: 8,
-    borderRadius: radius.pill,
-    alignItems: "center",
-    justifyContent: "center",
+  customerButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
+    shadowOpacity: 0.08,
+    elevation: 2,
   },
-  badgeText: { fontFamily: fonts.semibold, fontSize: 10 },
   supportPanel: {
     borderWidth: 1,
     borderRadius: radius.xl,
