@@ -27,7 +27,7 @@ import { ErrorView } from "@/src/components/StateViews";
 import { requestNearbyPlantsLocationConsent } from "@/src/location/BackgroundLocationConsent";
 import { distanceKm, LatLng, validLatLng } from "@/src/maps/geo";
 import { EMPTY_PLANT_GEO, cleanPlantGeo, hasPlantGeoFilters, isValidPlantGeo, plantGeoLocationLabel, PlantGeoFilters } from "@/src/domain/plantGeoFilters";
-import { control, fonts, radius, spacing } from "@/src/theme/tokens";
+import { control, fonts, homeArtwork, radius, spacing } from "@/src/theme/tokens";
 
 type NearbyLocationStatus = "ok" | "denied" | "services-disabled" | "timeout" | "unavailable";
 type NearbyLocationResult = { status: NearbyLocationStatus; coords: LatLng | null; fromCache?: boolean; canAskAgain?: boolean };
@@ -548,7 +548,7 @@ export default function CustomerPlants() {
             </>
           ) : (
             <>
-              <Button label="Open Plant Profile" variant="outline" onPress={()=>{const id=details.id;setDetails(null);router.push({pathname:"/plant-profile",params:{plantId:id}});}} />
+              <Button label="Open Plant Profile" variant="successTint" onPress={()=>{const id=details.id;setDetails(null);router.push({pathname:"/plant-profile",params:{plantId:id}});}} />
             </>
           )}
           {plantOrderRoute(details) === "review" ? <AppText variant="caption">TrackMyRMC will review your order request.</AppText> : null}
@@ -596,7 +596,7 @@ function NearbyPlantCard({ plant, onDetails, onQuotation, onOrder, onSelect }: {
           label="Place Order" onPress={onOrder} disabled={orderRoute === "unavailable"} style={styles.plantAction} />
         <Button size="sm" variant="outline" fullWidth={false} label="Request Quotation"
           onPress={onQuotation} style={styles.plantAction} />
-        <Button size="sm" variant="ghost" fullWidth={false} label="Plant Profile" onPress={onDetails}
+        <Button size="sm" variant="successTint" fullWidth={false} label="Plant Profile" onPress={onDetails}
           style={styles.plantAction} />
       </View>
       {orderRoute === "review" ? <AppText variant="caption" color={colors.onSurfaceTertiary}>TrackMyRMC will review your order request.</AppText> : null}
@@ -660,9 +660,9 @@ function LocationBanner({ status, locating, onEnable, onRetry }: {
         accessibilityRole="button"
         accessibilityLabel={c.label}
         onPress={c.onPress}
-        style={({ pressed }) => [styles.locationBannerBtn, { backgroundColor: colors.brand, opacity: pressed ? 0.75 : 1 }]}
+        style={({ pressed }) => [styles.locationBannerBtn, { backgroundColor: c.label === "Enable Location" ? homeArtwork.positiveAction : colors.brand, opacity: pressed ? 0.75 : 1 }]}
       >
-        <AppText style={{ fontFamily: fonts.semibold, fontSize: 12, color: colors.onBrand }}>{c.label}</AppText>
+        <AppText style={{ fontFamily: fonts.semibold, fontSize: 12, color: c.label === "Enable Location" ? "#FFFFFF" : colors.onBrand }}>{c.label}</AppText>
       </Pressable>
     </View>
   );

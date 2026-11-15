@@ -309,8 +309,9 @@ export function BackgroundLocationConsentProvider() {
             <Button
               testID="bg-location-allow"
               label={allowLabel}
+              variant="success"
               onPress={() => settle(true)}
-              icon={<Ionicons name="shield-checkmark-outline" size={18} color={colors.onBrand} />}
+              icon={<Ionicons name="shield-checkmark-outline" size={18} color="#FFFFFF" />}
             />
             <Button
               testID="bg-location-deny"

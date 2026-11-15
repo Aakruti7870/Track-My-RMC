@@ -77,7 +77,10 @@ assert.match(nav, /<VectorSymbol name=\{symbol\} color=\{ink\} \/>/);
 assert.ok(nav.includes('{leftRoutes.map(renderTab)}') && nav.includes('{rightRoutes.map(renderTab)}'), "Two symmetric side groups must flank New Order");
 assert.ok(!nav.includes("styles.iconWrap"), "Navigation icon plates must be absent");
 const kyc = read("src/components/KycBanner.tsx");
-assert.match(kyc, /<VectorSymbol name=\{cfg.symbol\} size=\{size.kycSymbol\} color=\{tone\}/);
+assert.match(kyc, /<VectorSymbol name="kyc-verified" size=\{size.kycSymbol\} color=\{tone\}/);
+assert.match(kyc, /<IdentityVerificationSymbol size=\{size.kycSymbol \+ 6\}/);
+const verificationSymbol = read("src/components/vector-symbols/IdentityVerificationSymbol.tsx");
+assert.match(verificationSymbol, /fill=\{homeArtwork.kycIconFill\} stroke="#FFFFFF"/);
 const header = read("src/components/customer/CustomerHomeHeader.tsx");
 for (const expected of ['name="chevron-down" size={size.headerChevron}', 'name="notifications-outline" size={size.headerBell}']) {
   assert.ok(header.includes(expected), `Header symbol missing responsive dimension: ${expected}`);

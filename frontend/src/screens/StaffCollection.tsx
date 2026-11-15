@@ -55,7 +55,7 @@ export type StaffItem = {
 type CreateDef = { label: string; path: string; form: "material" | "vehicle" };
 type CollectionData = { title: string; empty: string; items: StaffItem[]; create?: CreateDef };
 
-function ItemRow({ item, onAction, onPress, symbol }: { item: StaffItem; onAction: (i: StaffItem, a: StaffAction) => void; onPress?: () => void; symbol?: VectorSymbolName }) {
+function ItemRow({ item, onAction, onPress, symbol, orderStatus }: { orderStatus: boolean; item: StaffItem; onAction: (i: StaffItem, a: StaffAction) => void; onPress?: () => void; symbol?: VectorSymbolName }) {
   const { colors } = useTheme();
   const rowContent = (
     <>
@@ -66,7 +66,7 @@ function ItemRow({ item, onAction, onPress, symbol }: { item: StaffItem; onActio
         {item.secondary ? <AppText variant="caption" numberOfLines={1}>{item.secondary}</AppText> : null}
         {item.meta ? <AppText style={{ fontFamily: fonts.regular, fontSize: 11, color: colors.onSurfaceTertiary }} numberOfLines={1}>{item.meta}</AppText> : null}
       </View>
-      {item.badge ? <Badge label={item.badge} status={item.badge_status || item.badge} /> : null}
+      {item.badge ? <Badge label={item.badge} status={item.badge_status || item.badge} orderStatus={orderStatus} /> : null}
       {onPress ? <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceTertiary} /> : null}
     </>
   );
@@ -240,7 +240,7 @@ export function StaffCollection({ kind, embedded = false, limit, onItemPress }: 
 
             return (
               <View key={it.id} style={i < items.length - 1 && { borderBottomColor: colors.divider, borderBottomWidth: StyleSheet.hairlineWidth }}>
-                <ItemRow item={it} onAction={onAction} onPress={itemPress}
+                <ItemRow item={it} onAction={onAction} onPress={itemPress} orderStatus={["orders", "dispatch", "production"].includes(kind)}
                   symbol={kind === "incidents"
                     ? (it.badge?.toUpperCase() === "RESOLVED" ? "success"
                       : it.badge?.toUpperCase() === "OPEN" ? "emergency-sos" : "incident-register")

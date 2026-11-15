@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import './admin-theme.css';
+import { orderStatusColor } from '../../frontend/src/domain/order';
 import { Bell, Building2, ClipboardCheck, Factory, Megaphone, ShieldCheck, Workflow, MessageCircle, LayoutDashboard, BarChart3, Eye, Users, UserRoundPlus, UserCog, Database, Grid2X2, LogOut, Settings, ChevronRight, ArrowLeft, Check, KeyRound, Mail, LockKeyhole, Moon, Sun, UserRound } from 'lucide-react';
 import { AuthenticatorQr } from './AuthenticatorQr';
 import { PlantVisibility } from './PlantVisibility';
@@ -2248,7 +2249,9 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                   <tbody>{records.map((row,index)=><tr key={String(row.id||index)}>{Object.entries(row).map(([key,value])=><td key={key} style={{padding:8,borderTop:'1px solid var(--tm-border)'}}>
                     {workspace==='plant_order_requests' && key==='google_place_id' && typeof value==='string'
                       ? <a style={{color:'var(--tm-selected-ink)'}} href={'https://www.google.com/maps/search/?api=1&query=RMC%20plant&query_place_id='+encodeURIComponent(value)} target="_blank" rel="noreferrer">View on Google Maps</a>
-                      : value===null?'—':typeof value==='object'?JSON.stringify(value):String(value)}
+                      : workspace === 'orders' && key === 'status' && typeof value === 'string'
+                        ? <strong style={{color:orderStatusColor(value, isDark)}}>{value}</strong>
+                        : value===null?'—':typeof value==='object'?JSON.stringify(value):String(value)}
                   </td>)}</tr>)}</tbody>
                 </table></div>
                 {supportWorkspace}

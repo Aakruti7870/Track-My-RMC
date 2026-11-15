@@ -11,7 +11,7 @@ export const OwnerOrderCard = React.memo(function OwnerOrderCard({ order }: { or
   const p = useOwnerPalette();
   const router = useRouter();
   const status = order.status.toUpperCase();
-  const tone = ["REJECTED", "CANCELLED"].includes(status) ? (p.dark ? "#FFA49D" : "#AB3029") : status === "PENDING" ? (p.dark ? "#FFD28E" : "#9B4900") : ["DELIVERED", "DISPATCHED", "EN_ROUTE"].includes(status) ? (p.dark ? "#80E6B2" : "#167445") : (p.dark ? "#92CBFF" : "#1F609E");
+  const tone = orderStatusColor(status, p.dark) ?? p.muted;
   return <Pressable testID={`order-card-${order.order_number}`} accessibilityRole="button" accessibilityLabel={`Order ${order.order_number}, ${LABELS[status] ?? status.replace(/_/g, " ")}, ${order.customer_name ?? ""}, ${order.site_name}`} onPress={() => router.push({ pathname: "/order/[id]", params: { id: order.id } })}>
     <OwnerGlass style={{ padding: 13, gap: 8 }}>
       <View style={{ flexDirection: "row", gap: 9, alignItems: "center" }}>
@@ -29,3 +29,4 @@ export const OwnerOrderCard = React.memo(function OwnerOrderCard({ order }: { or
     </OwnerGlass>
   </Pressable>;
 });
+import { orderStatusColor } from "@/src/domain/order";

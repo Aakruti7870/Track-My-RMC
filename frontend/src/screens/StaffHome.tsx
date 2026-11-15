@@ -108,13 +108,16 @@ export function StaffHome() {
   const primaryAllowed = grants?.permissions.some(g => g.key === workspace.key && g.view) === true;
   const refresh = () => { refetch(); refreshGrants(); refreshWorkday(); };
   const modules = visibleStaffModules(staffModulesForScope(user?.role, "home"), grants?.permissions);
+  const quickModules = modules.slice(0, 4);
   const roleTools = STAFF_MODULE_GROUPS.map(category => {
     const entries = modules.filter(module => module.group === category);
-    return <HomeModuleSection key={category} id={category.toLowerCase()} title={category} modules={entries.slice(0, 4)}
+    const remaining = entries.filter(module => !quickModules.includes(module));
+    return <HomeModuleSection key={category} id={category.toLowerCase()} title={category} modules={remaining.slice(0, 4)}
       seeAll={entries.length > 2 ? { pathname: "/role-modules", params: { category } } : undefined} />;
   });
   const shortcuts = (
     <View style={styles.topCards}>
+      <HomeModuleSection id="quick-access" title="Quick Access" modules={quickModules} homeShortcut />
       {data ? (
         <Pressable
           testID="staff-home-summary" accessibilityRole="button" accessibilityLabel={"Open " + data.primary.title}

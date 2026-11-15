@@ -9,34 +9,37 @@ const frontend = path.resolve(__dirname, "..");
 const screen = fs.readFileSync(path.join(frontend, "src/screens/LoginScreen.tsx"), "utf8");
 
 const assets = [
-  ["HERO_LIGHT", "TrackMyRMC_Login_Top_Banner_light.webp"],
-  ["HERO_DARK", "TrackMyRMC_Login_Top_Banner_Dark.webp"],
+  ["HERO_LIGHT", "TrackMyRMC_Login_Top_Banner_light.webp", 1227],
+  ["HERO_DARK", "TrackMyRMC_Login_Top_Banner_Dark.webp", 1229],
 ];
 
 describe("optimized login banner assets and non-cropping layout", () => {
-  for (const [variable, filename] of assets) {
-    it(`bundles the original-resolution 1920x1080 WebP for ${variable}`, () => {
+  for (const [variable, filename, width] of assets) {
+    it(`bundles the reference crop as a lossless WebP for ${variable}`, () => {
       const requirePath = `../../assets/images/${filename}`;
       assert.ok(screen.includes(`const ${variable} = require("${requirePath}");`));
       const compressedPath = path.join(frontend, "assets/images", filename);
       const originalPath = compressedPath.replace(/\.webp$/, ".png");
-      assert.deepEqual(dimensions(compressedPath), { width: 1920, height: 1080 });
-      assert.deepEqual(dimensions(originalPath), { width: 1920, height: 1080 });
+      assert.deepEqual(dimensions(compressedPath), { width, height: 615 });
+      assert.deepEqual(dimensions(originalPath), { width, height: 615 });
+      assert.ok(fs.readFileSync(compressedPath).includes(Buffer.from("VP8L")), "WebP must preserve the decoded reference pixels");
       assert.ok(fs.statSync(compressedPath).size < fs.statSync(originalPath).size, "WebP must be smaller than original PNG");
     });
   }
 
-  it("selects the matching theme without cropping the 16:9 banner", () => {
+  it("selects the matching theme without cropping the original hero crop", () => {
     assert.ok(screen.includes("colors.isDark ? HERO_DARK : HERO_LIGHT"));
     assert.ok(screen.includes('contentFit="contain"'));
-    assert.match(screen, /hero:\s*\{[\s\S]*?width:\s*"100%"[\s\S]*?maxWidth:\s*760[\s\S]*?aspectRatio:\s*16\s*\/\s*9/);
+    assert.match(screen, /aspectRatio: heroAspect/);
+    assert.match(screen, /heroAspect = \(colors\.isDark \? 1229 : 1227\) \/ 615/);
     assert.match(screen, /heroImage:\s*\{\s*width:\s*"100%",\s*height:\s*"100%"/);
   });
 
-  it("retains current login card width, overlap and existing options", () => {
-    assert.match(screen, /loginShell:\s*\{\s*width:\s*"92%",\s*maxWidth:\s*470,\s*marginTop:\s*-24/);
-    assert.ok(screen.includes('testID="login-user-tab"'));
-    assert.ok(screen.includes('testID="login-plant-tab"'));
+  it("retains login card width, hero seam, and existing options", () => {
+    assert.match(screen, /loginShell:\s*\{\s*width:\s*"92%",\s*maxWidth:\s*470,\s*marginTop:\s*-16/);
+    assert.ok(screen.includes('testID={`login-${key}-tab`}'));
+    assert.match(screen, /key: "user".*label: "USER LOGIN"/);
+    assert.match(screen, /key: "plant".*label: "PLANT STAFF"/);
     assert.ok(screen.includes('testID="login-review-access"'));
   });
   it("links the Plant Staff work email to the new Plant Owner registration form", () => {

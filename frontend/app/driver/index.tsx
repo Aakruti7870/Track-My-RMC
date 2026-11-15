@@ -47,9 +47,13 @@ export default function DriverHome() {
           ? "Start your shift"
           : "Attendance";
   const attendanceLabel = data?.checked_in ? "On Duty" : shiftComplete ? "Shift Done" : attendanceKnown ? "Check In" : "Attendance";
-  const driverTools = modulesForRole(user?.role).filter(module => module.key === "shift-roster" || module.key === "workforce");
+  const driverModules = modulesForRole(user?.role);
+  const shortcutKeys = ["driver-trips", "driver-attendance", "shift-roster", "my-payslip"];
+  const quickModules = shortcutKeys.flatMap(key => driverModules.filter(module => module.key === key));
+  const driverTools = driverModules.filter(module => module.key === "workforce");
   const plantCards = <View style={styles.plantCards}>
     <PlantHomeHero label="Driver" testID="driver-home-plant-banner" />
+    <HomeModuleSection id="driver-quick-access" title="Quick Access" modules={quickModules} homeShortcut testIDPrefix="driver-shortcut-" />
     <PlantHomeActions />
   </View>;
 
@@ -135,7 +139,7 @@ export default function DriverHome() {
                   <Card style={{ gap: spacing.md }}>
                     <View style={styles.rowBetween}>
                       <AppText style={{ fontFamily: fonts.bold, fontSize: fontSize.lg, color: colors.onSurface }}>{data.active_trip.order_number}</AppText>
-                      <Badge label={data.active_trip.status.replace(/_/g, " ")} status={data.active_trip.status} />
+                      <Badge label={data.active_trip.status.replace(/_/g, " ")} status={data.active_trip.status} orderStatus />
                     </View>
                     <AppText variant="caption">{data.active_trip.grade} · {data.active_trip.quantity} m³ · {data.active_trip.tm_number}</AppText>
                     <View style={styles.siteRow}>

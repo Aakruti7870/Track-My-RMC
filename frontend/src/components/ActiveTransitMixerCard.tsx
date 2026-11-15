@@ -12,6 +12,7 @@ import { customerHomeSizes, fonts } from "@/src/theme/tokens";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { DEMO_TRACKING_CARD as demo, trackingCardStrings as t, dialable, freshGPS, selectedLoad, validPoint, type HomeTracking } from "@/src/tracking/homeTracking";
 
+import { orderStatusColor } from "@/src/domain/order";
 export function ActiveTransitMixerCard({ order, onNewOrder, onRefreshHome }: {
   order: Order | null; onNewOrder: () => void; onRefreshHome: () => Promise<void>;
 }) {
@@ -57,7 +58,7 @@ export function ActiveTransitMixerCard({ order, onNewOrder, onRefreshHome }: {
           <AppText numberOfLines={1} style={[styles.title, { fontSize: size.headerSize }]}>{order?.order_number || demo.title}</AppText>
           {order ? <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceTertiary} accessible={false} aria-hidden /> : null}
         </Pressable>
-        <AppText style={[styles.status, { color: colors.accentText, fontSize: Math.max(11, size.serviceLabel) }]}>● {order ? order.status.replace(/_/g, " ") : demo.status}</AppText>
+        <AppText style={[styles.status, { color: orderStatusColor(order?.status ?? demo.status, colors.isDark) ?? colors.accentText, fontSize: Math.max(11, size.serviceLabel) }]}>● {order ? order.status.replace(/_/g, " ") : demo.status}</AppText>
         <AppText style={[styles.grade, { fontSize: Math.max(13, size.serviceLabel) }]}>{order ? `${order.grade} Grade · ${order.quantity} m³` : "M-25 Grade · 6 m³"}</AppText>
         <View style={styles.site}><Ionicons name="location-outline" size={16} color={colors.onSurfaceSecondary} /><AppText numberOfLines={2} style={{ flex: 1, fontSize: 12, lineHeight: 17 }}>{order?.site_name || demo.siteName}</AppText></View>
         <View style={[styles.metrics, { borderTopColor: colors.border }]}>

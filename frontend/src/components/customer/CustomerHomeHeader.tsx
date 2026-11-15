@@ -198,7 +198,7 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
           </View>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.sheetContent}>
             <AppText>Use your location once, or search for a city or locality.</AppText>
-            <Button label="Refresh current location" disabled={locationBusy} onPress={() => void lookup()} />
+            <Button label="Refresh current location" variant="success" disabled={locationBusy} onPress={() => void lookup()} />
             <Input label="City, locality or PIN code" testID="header-manual-location" value={manual} onChangeText={setManual} maxLength={200} editable={!locationBusy} />
             <Button label="Use selected location" disabled={locationBusy || manual.trim().length < 3} onPress={() => void lookup(manual.trim())} />
             {locationBusy ? <ActivityIndicator accessibilityLabel="Finding location" color={colors.brand} /> : null}

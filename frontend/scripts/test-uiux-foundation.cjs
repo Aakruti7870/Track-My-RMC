@@ -6,8 +6,8 @@ const read = name => fs.readFileSync(path.join(__dirname, "..", name), "utf8");
 
 test("brand stays orange/graphite with readable theme surfaces", () => {
   const tokens = read("src/theme/tokens.ts");
-  assert.match(tokens, /orange: "#FF6A00"/);
-  assert.match(tokens, /graphite: "#0E1116"/);
+  assert.match(tokens, /orange: "#FF7800"/);
+  assert.match(tokens, /graphite: "#07080D"/);
   for (const status of ["DOCUMENT_NOT_SHARED", "DOCUMENT_UNAVAILABLE", "REVIEW_NEEDED", "IN_PROGRESS"]) {
     assert.ok(tokens.includes('"' + status + '"'), status + " must be color-coded");
   }

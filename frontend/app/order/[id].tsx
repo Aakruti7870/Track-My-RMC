@@ -5,6 +5,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { orderStatusColor } from "@/src/domain/order";
 import { apiGet, apiPost } from "@/src/api/client";
 import { cashfreeCheckout } from "@/src/payments/cashfree";
 import { fileSource } from "@/src/api/upload";
@@ -238,7 +239,7 @@ export default function OrderDetail() {
             <View style={styles.rowBetween}>
               <View>
                 <AppText variant="caption">Current status</AppText>
-                <AppText style={{ fontFamily: fonts.displayBold, fontSize: fontSize["2xl"], color: colors.onSurface }}>
+                <AppText style={{ fontFamily: fonts.displayBold, fontSize: fontSize["2xl"], color: orderStatusColor(o.status, colors.isDark) ?? colors.onSurface }}>
                   {o.status.replace(/_/g, " ")}
                 </AppText>
               </View>
@@ -299,7 +300,7 @@ export default function OrderDetail() {
                 <Card key={l.id} style={{ gap: 4 }}>
                   <View style={styles.rowBetween}>
                     <AppText style={{ fontFamily: fonts.semibold, color: colors.onSurface }}>{l.load_code || "Load"} · {l.quantity_m3} m³</AppText>
-                    <Badge label={(l.status || "").replace(/_/g, " ")} status={l.status} />
+                    <Badge label={(l.status || "").replace(/_/g, " ")} status={l.status} orderStatus />
                   </View>
                   {(l.tm_number || l.driver_name) ? <AppText variant="caption">{[l.tm_number, l.driver_name].filter(Boolean).join(" · ")}</AppText> : null}
                   {l.challan_number ? <AppText variant="caption">Challan {l.challan_number}{l.gate_pass_number ? ` · Gate ${l.gate_pass_number}` : ""}</AppText> : null}

@@ -70,7 +70,7 @@ for (const role of staff.STAFF_ROLES) {
   }
 }
 assert(read("src/screens/StaffHome.tsx").includes('staffModulesForScope(user?.role, "home")'));
-assert(read("src/screens/StaffHome.tsx").includes("entries.slice(0, 4)"));
+assert(read("src/screens/StaffHome.tsx").includes("remaining.slice(0, 4)"));
 assert(read("app/role-modules.tsx").includes('scope="home" category={group}'));
 assert(read("src/screens/StaffMore.tsx").includes('scope="more"'));
 assert(read("src/screens/StaffModuleDirectory.tsx").includes('"/staff/module-permissions"'));

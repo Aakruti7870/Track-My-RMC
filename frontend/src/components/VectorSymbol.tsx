@@ -13,10 +13,11 @@ type Props = {
   size?: number;
   color?: string;
   outline?: boolean;
+  outlineBackdrop?: string;
 };
 
 /** The surrounding control or status text supplies the accessible name. */
-export function VectorSymbol({ name, size = 24, color, outline = false }: Props) {
+export function VectorSymbol({ name, size = 24, color, outline = false, outlineBackdrop }: Props) {
   const { colors } = useTheme();
   const ink = color ?? colors.onSurfaceTertiary;
   const outlinePath = outline ? (homeShortcutPaths as Partial<Record<VectorSymbolName, string>>)[name] : undefined;
@@ -24,6 +25,7 @@ export function VectorSymbol({ name, size = 24, color, outline = false }: Props)
   if (outlinePath) {
     return <Svg width={size} height={size} viewBox="0 0 24 24" aria-hidden accessible={false}
       importantForAccessibility="no-hide-descendants">
+      {outlineBackdrop ? <Path d={outlinePath} fill="none" stroke={outlineBackdrop} strokeWidth={3.4} strokeLinecap="round" strokeLinejoin="round" /> : null}
       <Path d={outlinePath} fill="none" stroke={ink} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
     </Svg>;
   }
@@ -37,6 +39,8 @@ export function VectorSymbol({ name, size = 24, color, outline = false }: Props)
       accessible={false}
       importantForAccessibility="no-hide-descendants"
     >
+      {outlineBackdrop ? <Path d={materialSymbolPaths[materialSymbolNames[name]]} fill="none"
+        stroke={outlineBackdrop} strokeWidth={70} strokeLinejoin="round" /> : null}
       <Path d={materialSymbolPaths[materialSymbolNames[name]]} fill={ink} />
     </Svg>
   );

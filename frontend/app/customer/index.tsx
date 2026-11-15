@@ -1,5 +1,6 @@
 import React, { useRef, useState } from "react";
 import { Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -19,7 +20,7 @@ import type { OrderData } from "@/src/components/OrderCard";
 import { useGet } from "@/src/hooks/useApi";
 import { enquiryRoute, materialPreview, moreMaterials, morePlanning, planningPreview, type HomeLink } from "@/src/navigation/customerHome";
 import { screenOverflow } from "@/src/theme/sceneBackground";
-import { customerHomeSizes, fonts } from "@/src/theme/tokens";
+import { customerHomeSizes, fonts, homeArtwork } from "@/src/theme/tokens";
 import { useTheme } from "@/src/theme/ThemeProvider";
 
 type HomeData = { kyc_status: string; active_order: OrderData | null; recent_orders: OrderData[] };
@@ -43,9 +44,9 @@ export default function CustomerHome() {
   const directoryTrigger = useRef<View | null>(null);
   const planningTrigger = useRef<View>(null);
   const materialsTrigger = useRef<View>(null);
-  const cardWidth = Math.min(Math.max(0, width - 24), 620);
+  const cardWidth = Math.min(Math.max(0, width - 24), 839);
   const tileWidth = (cardWidth - 20) / fontScale >= 250 ? "24%" : "49%";
-  const heading = [styles.heading, { fontSize: size.headerSize, lineHeight: size.headerLine }];
+  const heading = [styles.heading, { color: colors.onSurface, fontSize: size.headerSize, lineHeight: size.headerLine }];
   const panel = [styles.panel, { backgroundColor: colors.surfaceSecondary, borderColor: colors.divider }];
   const order = data?.active_order;
 
@@ -80,18 +81,18 @@ export default function CustomerHome() {
   }) {
     const material = kind === "material";
     const iconSize = kind === "quick" ? size.quickSymbol : material ? size.serviceSymbol : size.toolSymbol;
-    const labelSize = material ? size.serviceLabel : kind === "quick" ? Math.max(13, size.toolLabel) : size.toolLabel;
+    const labelSize = material ? size.serviceLabel : kind === "quick" ? size.quickLabel : size.toolLabel;
     return (
       <Pressable key={id} testID={id}
         ref={seeAll === "planning" ? planningTrigger : seeAll === "materials" ? materialsTrigger : undefined}
         accessibilityRole="button" accessibilityLabel={seeAll === "planning" ? "See all planning tools" : seeAll ? "See all materials and services" : label}
         onPress={onPress}
         style={({ pressed }) => [styles.tile, {
-          width: tileWidth, minHeight: kind === "quick" ? 90 : material ? 70 : 82,
+          width: tileWidth, minHeight: kind === "quick" ? size.quickTile : material ? 70 : 82,
           opacity: pressed ? 0.72 : 1,
         }, material && { backgroundColor: colors.surfaceSecondary, borderColor: colors.divider, borderWidth: 1, borderRadius: 10 }]}>
-        <IconTile symbol={symbol} size={iconSize} height={45} homeShortcut={kind === "quick"} />
-        <AppText center style={[styles.label, { fontSize: labelSize, lineHeight: Math.max(16, labelSize + 3) }]}>{label}</AppText>
+        <IconTile symbol={symbol} size={iconSize} width={kind === "quick" ? size.quickIconBox : 44} homeShortcut={kind === "quick"} />
+        <AppText center style={[styles.label, { color: colors.onSurfaceSecondary, fontSize: labelSize, lineHeight: Math.max(16, labelSize + 3) }]}>{label}</AppText>
       </Pressable>
     );
   }
@@ -105,25 +106,29 @@ export default function CustomerHome() {
 
   return (
     <ThemedScreen>
-      <View style={[styles.root, { backgroundColor: colors.surface }]}>
+      <View style={styles.root}>
+        <LinearGradient pointerEvents="none" style={StyleSheet.absoluteFill}
+          colors={colors.isDark ? ["#090A0F", "#07080D", "#06070C"] : ["#E9E4DE", "#ECE7E1", "#F4F1EC"]} />
         <CustomerHomeHeader onRefreshHome={refetch} />
         <HomeScroll testID="customer-home-scroll"
-          backgroundColor={colors.surface} gap={size.sectionGap} paddingHorizontal={12} paddingTop={10}
+          backgroundColor={colors.canvas} gap={size.sectionGap} paddingHorizontal={12} paddingTop={10}
           contentContainerStyle={{ paddingBottom: size.sectionGap + insets.bottom }}
           refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={colors.accentText} />}
           lead={<HomeCarousel style={styles.carousel} />}
           shortcuts={<View testID="home-quick-actions" style={panel}>
-            <AppText accessibilityRole="header" style={heading}>Quick Actions</AppText>
+            <AppText accessibilityRole="header" style={heading}>Quick Access</AppText>
             <View style={styles.grid}>
               {ACTIONS.map(action => tile({ id: "action-" + action.key, label: action.label,
                 symbol: action.symbol, kind: "quick", onPress: () => openAction(action.key) }))}
             </View>
             <Pressable testID="home-bulk-quote" accessibilityRole="button"
               onPress={() => router.push(enquiryRoute("bulk"))}
-              style={({ pressed }) => [styles.bulk, { backgroundColor: colors.surfaceTertiary, opacity: pressed ? 0.72 : 1 }]}>
-              <IconTile symbol="quotation-requests" width={34} size={22} homeShortcut />
-              <AppText style={styles.bulkLabel}>Concrete in bulk? Get our best rate for your project.</AppText>
-              <Ionicons name="chevron-forward" size={18} color={colors.accentText} accessible={false} aria-hidden />
+              style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}>
+              <LinearGradient colors={homeArtwork.bulkSurface} style={styles.bulk} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }}>
+                <IconTile symbol="quotation-requests" width={34} size={22} bulk />
+                <AppText style={styles.bulkLabel}>Concrete in bulk? Get our best rate for your project.</AppText>
+                <Ionicons name="chevron-forward" size={18} color="#FFF0E2" accessible={false} aria-hidden />
+              </LinearGradient>
             </Pressable>
           </View>}>
           <View style={styles.group}><KycBanner status={data?.kyc_status ?? user?.kyc_status ?? "NOT_STARTED"} /></View>
@@ -180,15 +185,15 @@ export default function CustomerHome() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, overflow: screenOverflow },
-  carousel: { maxWidth: 620, borderRadius: 10 },
-  group: { width: "100%", maxWidth: 620, alignSelf: "center" },
-  panel: { width: "100%", maxWidth: 620, alignSelf: "center", padding: 9, borderRadius: 10, borderWidth: 1, gap: 8 },
+  carousel: { maxWidth: 839, borderRadius: 10 },
+  group: { width: "100%", maxWidth: 839, alignSelf: "center" },
+  panel: { width: "100%", maxWidth: 839, alignSelf: "center", padding: 9, borderRadius: 10, borderWidth: 1, gap: 8 },
   heading: { fontFamily: fonts.bold, paddingHorizontal: 5 },
   grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: 6 },
   tile: { minWidth: 0, alignItems: "center", paddingHorizontal: 2, paddingVertical: 3, gap: 4 },
   label: { fontFamily: fonts.medium, width: "100%" },
   bulk: { minHeight: 49, borderRadius: 8, padding: 8, flexDirection: "row", gap: 8, alignItems: "center" },
-  bulkLabel: { flex: 1, minWidth: 0, fontSize: 14, lineHeight: 19 },
+  bulkLabel: { flex: 1, minWidth: 0, fontFamily: fonts.semibold, color: "#FFF0E2", fontSize: 14, lineHeight: 19 },
   flexCopy: { flex: 1, minWidth: 0 },
   overlay: { flex: 1, justifyContent: "flex-end" },
   sheet: { alignSelf: "center", width: "100%", maxWidth: 560, maxHeight: "85%", borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 14 },

@@ -66,6 +66,7 @@ fs.mkdirSync(out, { recursive: true });
         await page.getByTestId('staff-home-hero-banner').waitFor();
         await page.getByTestId('plant-home-supplier-enquiry').waitFor();
         const fixed = page.getByTestId('staff-home-scroll-fixed');
+        await fixed.getByRole('heading', { name: 'Quick Access', exact: true }).waitFor();
         await fixed.getByTestId('staff-home-summary').waitFor();
         await fixed.getByTestId('plant-home-supplier-enquiry').waitFor();
         const scroll = page.getByTestId('staff-home-scroll');
@@ -73,13 +74,17 @@ fs.mkdirSync(out, { recursive: true });
         assert.equal(await profile.count(), 1, 'Staff profile remains in the scroll area');
         if (width === 390) {
           await page.setViewportSize({ width, height: 760 });
-          await fixed.getByTestId('plant-home-supplier-enquiry').waitFor();
+          // At smaller heights the shortcut block can become sticky after the hero scrolls.
+          await page.getByTestId('staff-home-scroll-shortcuts').getByTestId('plant-home-supplier-enquiry').waitFor();
+          await scroll.evaluate(node => {
+            if (node.contains(document.querySelector('[data-testid="staff-home-scroll-shortcuts"]'))) node.scrollTop = 180;
+          });
           const movement = await scroll.evaluate(node => {
             const profile = node.querySelector('[data-testid="plant-home-profile"]');
             const supplier = document.querySelector('[data-testid="plant-home-supplier-enquiry"]');
             const profileTop = profile.getBoundingClientRect().top;
             const supplierTop = supplier.getBoundingClientRect().top;
-            node.scrollTop = 100;
+            node.scrollTop += 75;
             return { offset: node.scrollTop, profile: profile.getBoundingClientRect().top - profileTop,
               supplier: supplier.getBoundingClientRect().top - supplierTop };
           });
@@ -89,7 +94,7 @@ fs.mkdirSync(out, { recursive: true });
           await scroll.evaluate(node => { node.scrollTop = 0; });
         }
         const surface = await summary.evaluate(el => getComputedStyle(el).backgroundColor);
-        assert.equal(surface, 'rgb(255, 255, 255)', 'Staff summary copy sits on opaque white');
+        assert.equal(surface, 'rgb(250, 249, 245)', 'Staff summary copy sits on opaque ivory');
         await page.waitForFunction(() => document.querySelector('[data-testid="tab-home"]')?.getAttribute('aria-selected') === 'true');
         await page.waitForFunction(() => document.querySelector('[data-testid^="home-modules-"] [data-testid^="role-module-"]'));
         const homeCards = page.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])');

@@ -26,13 +26,13 @@ export function HomeSectionHeader({ title, seeAll, testID }: { title: string; se
   );
 }
 
-export function HomeModuleSection({ id, title, modules, seeAll, testIDPrefix = "role-module-" }: {
-  id: string; title: string; modules: readonly RoleModule[]; seeAll?: Href; testIDPrefix?: string;
+export function HomeModuleSection({ id, title, modules, seeAll, homeShortcut = false, testIDPrefix = "role-module-" }: {
+  id: string; title: string; modules: readonly RoleModule[]; seeAll?: Href; homeShortcut?: boolean; testIDPrefix?: string;
 }) {
   const { colors } = useTheme();
   const router = useRouter();
   const { width, fontScale } = useWindowDimensions();
-  const compact = (width - 32) / fontScale < 350;
+  const compact = (width - 32) / fontScale < (homeShortcut ? 250 : 350);
   if (!modules.length) return null;
   return (
     <View testID={`home-modules-${id}`} style={[styles.section, { backgroundColor: colors.surfaceSecondary, borderColor: colors.divider }]}>
@@ -43,7 +43,7 @@ export function HomeModuleSection({ id, title, modules, seeAll, testIDPrefix = "
             accessibilityLabel={module.label} accessibilityHint={module.description}
             onPress={() => router.push(module.route)}
             style={({ pressed }) => [styles.tile, { width: compact ? "48%" : "23.5%", opacity: pressed ? 0.74 : 1 }]}>
-            {module.symbol ? <IconTile symbol={module.symbol} /> : <IconTile icon={module.icon} />}
+            {module.symbol ? <IconTile symbol={module.symbol} homeShortcut={homeShortcut} /> : <IconTile icon={module.icon} homeShortcut={homeShortcut} />}
             <AppText center style={styles.label}>{module.label}</AppText>
           </Pressable>
         ))}

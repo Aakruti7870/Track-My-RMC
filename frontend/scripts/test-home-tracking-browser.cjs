@@ -58,7 +58,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  page.on('pageerror',e=>console.error(e.message));
  await page.goto('http://127.0.0.1:8765/customer/');
  await page.getByTestId('action-new').waitFor({timeout:30000});
- await page.getByText('KYC verified', { exact: true }).first().waitFor();
+ await page.getByText('KYC Verified', { exact: true }).first().waitFor();
  const actualVectorSize = async (testId) => page.getByTestId(testId).locator('svg').first()
    .evaluate(node => [Math.round(node.getBoundingClientRect().width), Math.round(node.getBoundingClientRect().height)]);
  const fixed = page.getByTestId('customer-home-scroll-fixed');
@@ -83,8 +83,9 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  assert.equal(await page.getByTestId('customer-home-scroll').getByTestId('kyc-banner').count(), 1);
  const bulk = page.getByTestId('home-bulk-quote');
  assert((await bulk.boundingBox()).height >= 49);
+ await page.getByTestId('home-quick-actions').getByRole('heading', { name: 'Quick Access', exact: true }).waitFor();
  await bulk.getByText('Concrete in bulk? Get our best rate for your project.', { exact: true }).waitFor();
- await page.getByTestId('kyc-banner').getByText('KYC verified', { exact: true }).waitFor();
+ await page.getByTestId('kyc-banner').getByText('KYC Verified', { exact: true }).waitFor();
  const planning = page.getByTestId('customer-module-grid');
  const materials = page.getByTestId('home-other-services');
  assert.equal(await planning.getByRole('button').count(), 8);
@@ -204,12 +205,18 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      await page.evaluate(value=>localStorage.setItem('tmrmc_theme_mode',JSON.stringify(value)),theme);
      await page.goto('http://127.0.0.1:8765/customer/');
      await page.getByTestId('home-planning-see-all').waitFor();
-     const secondaryTile=theme==='light'?'rgb(74, 85, 104)':'rgb(57, 68, 84)';
-     const shortcutTile=theme==='light'?'rgb(220, 232, 244)':'rgb(41, 70, 95)';
+     const secondaryTile=theme==='light'?'rgb(240, 237, 230)':'rgb(26, 26, 26)';
+     const shortcutTile=theme==='light'?'rgb(250, 249, 245)':'rgb(18, 18, 18)';
      for (const id of ['action-new','home-pump-rental','service-cement']) {
        const background=await page.getByTestId(id).locator('svg').first().evaluate(el=>getComputedStyle(el.parentElement).backgroundColor);
        assert.equal(background,id==='action-new'?shortcutTile:secondaryTile,`${id} uses its ${theme} icon shade`);
      }
+     const quickPaint = await page.getByTestId('action-new').locator('svg').first().evaluate(el => {
+       const box = el.parentElement;
+       return { fill: getComputedStyle(box.firstElementChild).backgroundColor, rim: getComputedStyle(box.parentElement).backgroundImage };
+     });
+     assert.equal(quickPaint.fill, 'rgba(255, 120, 0, 0.5)');
+     assert.match(quickPaint.rim, /rgb\(157, 105, 48\).*rgb\(129, 85, 48\)/);
      const clipped=await page.evaluate(()=>{
        const labels=[...document.querySelectorAll('[data-testid^="action-"],[data-testid^="customer-module-"],[data-testid^="service-"],[data-testid="home-pump-rental"],[data-testid="home-order-request"],[role="tab"]')]
          .filter(el=>el.matches('[role="button"],[role="tab"]'))
@@ -293,7 +300,9 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      assert.equal(await plant.getByRole('button',{name:/^Show .* on map$/}).count(),1);
      const order=plant.getByTestId('nearby-place-order');
      const ink=await order.getByText('Place Order').evaluate(el=>getComputedStyle(el).color);
-     assert.equal(ink,'rgb(14, 17, 22)');
+     assert.equal(ink,theme==='light'?'rgb(10, 9, 7)':'rgb(18, 18, 18)');
+     const profile = plant.getByRole('button',{name:'Plant Profile',exact:true});
+     assert.equal(await profile.evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(34, 197, 94, 0.2)');
      const target=await order.boundingBox();
      assert(target.height>=44 && target.width<180,theme+' narrow plant primary action must be compact');
      await order.click();
@@ -309,7 +318,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      const calendar=page.getByTestId('rfq-date-calendar');
      await calendar.waitFor();
      const surface=await calendar.evaluate(el=>getComputedStyle(el).backgroundColor);
-     assert.equal(surface,theme==='light'?'rgb(255, 255, 255)':'rgb(32, 38, 46)');
+     assert.equal(surface,theme==='light'?'rgb(252, 251, 247)':'rgb(28, 28, 28)');
      await calendar.getByRole('button',{name:'Next month',exact:true}).click();
      await calendar.getByRole('button',{name:'Close Calendar',exact:true}).click();
      await calendar.waitFor({state:'hidden'});

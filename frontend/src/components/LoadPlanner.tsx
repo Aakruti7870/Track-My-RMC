@@ -158,7 +158,7 @@ export function LoadPlanner({ orderId, resourceBase, onChanged }: Props) {
               <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: colors.onSurface }}>{load.load_code}</AppText>
               <AppText variant="caption">{load.quantity_m3} m³{load.delivered_quantity ? ` · Delivered ${load.delivered_quantity} m³` : ""}</AppText>
             </View>
-            <Badge label={load.status.replace(/_/g, " ")} status={load.status} />
+            <Badge label={load.status.replace(/_/g, " ")} status={load.status} orderStatus />
           </View>
 
           {(load.tm_number || load.driver_name) ? (
