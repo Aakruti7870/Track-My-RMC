@@ -112,7 +112,7 @@ export default function DispatchOrder() {
           <Card style={{ gap: spacing.sm }} testID="staff-dispatch-whatsapp-contact">
             <AppText variant="heading">WhatsApp Dispatch Contact</AppText>
             <AppText variant="caption">
-              Record the customer's explicit permission for delivery updates.
+              Record the customer&apos;s explicit permission for delivery updates.
               Delivery messages require customer permission. App promotions require a separate
               opt-in; never assume consent from a concrete purchase.
             </AppText>
