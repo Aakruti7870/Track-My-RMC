@@ -615,7 +615,7 @@ export function BusinessModule({ kind }: { kind: string }) {
             <AppText variant="label">Permissions for the next Manager appointment</AppText>
             {(["can_manage_staff","can_manage_permissions","can_manage_fleet","can_manage_drivers"] as const).map(key=><Pressable key={key} accessibilityRole="checkbox" accessibilityState={{checked:managerPolicy[key]}}
               onPress={()=>setManagerPolicy(old=>({...old,[key]:!old[key]}))}><AppText>{managerPolicy[key]?"☑":"☐"} {key.replace(/_/g," ")}</AppText></Pressable>)}
-            <AppText variant="caption">Permission delegation is limited to the Manager's currently approved module grants.</AppText>
+            <AppText variant="caption">Permission delegation is limited to the Manager&apos;s currently approved module grants.</AppText>
           </> : null}
         </Card> : null}
 
