@@ -1,3 +1,4 @@
+import { screenOverflow } from "@/src/theme/sceneBackground";
 import React from "react";
 import { Image, Pressable, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -25,7 +26,7 @@ export function OwnerHeader() { return <OperationalHomeTopBar />; }
 export function OwnerFrame({ children, title, subtitle }: { children: React.ReactNode; title?: string; subtitle?: string }) {
   const p = useOwnerPalette();
   const insets = useSafeAreaInsets();
-  return <View style={{ flex: 1, backgroundColor: p.canvas }}>
+  return <View style={{ flex: 1, backgroundColor: p.canvas, overflow: screenOverflow }}>
     {/* Metro registers bundled image assets through static require calls. */}
     <Image source={p.dark ? require("../../assets/images/Background Dark Theme.webp") : require("../../assets/images/Background Light Theme.webp")} resizeMode="cover" style={[StyleSheet.absoluteFill, { width: "100%", height: "100%", opacity: 0.15 }]} />
     <View style={[ui.container, { paddingTop: insets.top }]}>

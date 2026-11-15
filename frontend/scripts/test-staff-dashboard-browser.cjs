@@ -15,6 +15,7 @@ fs.mkdirSync(out, { recursive: true });
   const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'],
     ...(process.env.OWNER_CHROMIUM_PATH ? { executablePath: process.env.OWNER_CHROMIUM_PATH } : {}) });
   try {
+    let categoryChecks = 0;
     for (const role of roles) {
       for (const width of [320, 390, 768]) {
         const context = await browser.newContext({ viewport: { width, height: 920 } });
@@ -66,7 +67,7 @@ fs.mkdirSync(out, { recursive: true });
         const surface = await summary.evaluate(el => getComputedStyle(el).backgroundColor);
         assert.equal(surface, 'rgb(255, 255, 255)', 'Staff summary copy sits on opaque white');
         await page.waitForFunction(() => document.querySelector('[data-testid="tab-home"]')?.getAttribute('aria-selected') === 'true');
-        await page.waitForFunction(() => !document.body.innerText.includes('Checking staff permissions…'));
+        await page.waitForFunction(() => document.querySelector('[data-testid^="home-modules-"] [data-testid^="role-module-"]'));
         const homeCards = page.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])');
         const homeKeys = await homeCards.evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid')));
         assert(homeKeys.length > 0, role + ' Home must expose permission-approved operational cards');
@@ -76,12 +77,30 @@ fs.mkdirSync(out, { recursive: true });
         let homeSizes = await homeCards.evaluateAll(nodes => nodes.map(node => ({
           width: node.getBoundingClientRect().width, height: node.getBoundingClientRect().height,
         })));
-        // Compact staff tiles intentionally use 112dp minimum; preserve readable labels and width constraints.
-        assert(homeSizes.every(box => box.width >= 125 && box.width <= 240 && box.height >= 112 && box.height <= 165),
+        assert(homeSizes.every(box => box.width >= 72 && box.width <= 240 && box.height >= 76 && box.height <= 140),
           role + ' oversize or clipped Home card at ' + width + 'px: ' + JSON.stringify(homeSizes));
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
           role + ' Home horizontal overflow at ' + width);
         if (width === 390) await page.screenshot({ path: out + '/' + role + '-home-390.png', fullPage: true });
+        const sections = await page.locator('[data-testid^="home-modules-"]').evaluateAll(nodes =>
+          nodes.map(node => node.querySelectorAll('[data-testid^="role-module-"]').length));
+        assert(sections.every(count => count > 0 && count <= 4), role + ' renders too many Home shortcuts');
+        const seeAll = page.locator('[data-testid^="home-modules-"] [data-testid^="home-see-all-"]');
+        if (await seeAll.count()) {
+          categoryChecks += 1;
+          const label = await seeAll.first().getAttribute('aria-label');
+          const category = label.replace('See all ', '');
+          await seeAll.first().click();
+          await page.getByRole('heading', { name: category, exact: true }).waitFor();
+          await page.waitForFunction(() => !document.body.innerText.includes('Checking staff permissions…'));
+          const full = page.getByTestId('role-modules-page');
+          assert((await full.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])').count()) > 4);
+          const search = full.getByTestId('staff-module-search');
+          await search.fill('no-module-matches-this-test');
+          await full.getByText('No modules match this filter or your current access.').waitFor();
+          await page.getByTestId('role-modules-back').click();
+          await summary.waitFor();
+        }
         await page.getByTestId('tab-more').click();
         await page.waitForFunction(() => document.querySelector('[data-testid="tab-more"]')?.getAttribute('aria-selected') === 'true');
         await page.getByTestId('staff-module-search').waitFor();
@@ -114,5 +133,6 @@ fs.mkdirSync(out, { recursive: true });
         console.log('PASS staff: ' + role + ' ' + width + 'px — unique Home/More, responsive layout');
       }
     }
+    assert(categoryChecks > 0, 'Staff fixtures must exercise a category with more than four permitted tools');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

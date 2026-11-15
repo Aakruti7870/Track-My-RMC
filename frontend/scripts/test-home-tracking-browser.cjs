@@ -20,7 +20,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  const order={id:'isolated-order',order_number:'CUSTOMER-ORDER',status:mode==='pending'?'PENDING':mode==='delivered'?'DELIVERED':'DISPATCHED',grade:'M30',quantity:8,site_name:'Actual project'};
  if(mode!=='demo'){home.recent_orders=[order];home.active_order=mode==='delivered'?null:order;}
  const tracking={active:mode==='live',status:order.status,active_loads:mode==='live'?[{id:'load-a',status:'en_route',tm_number:'ASSIGNED-MIXER',location:{lat:19.1,lng:73.1,at:new Date(Date.now()-1000).toISOString()}}]:[],destination:{lat:19.2,lng:73.2}};
- await route.fulfill({json:path.endsWith('/customer/plants/search')?{plants:[{id:'fixture-plant',name:'Panvel Ready-Mix Concrete and Infrastructure Supply',address:'Industrial Estate, Panvel',status:'active',verified:true,order_enabled:true,grades:['M30'],distance_km:4.2}],page:1,has_more:false}:path.endsWith('/tracking')?tracking:path.endsWith('/permission-consent')?{consent:{version:1,location_choice:'manual',notification_choice:'manual'}}:path.endsWith('/me')?me:path.endsWith('/customer/home')?home:{}});
+ await route.fulfill({json:path.endsWith('/customer/plants/search')?{plants:[{id:'fixture-plant',name:'Panvel Ready-Mix Concrete and Infrastructure Supply',address:'Industrial Estate, Panvel',status:'active',verified:true,order_enabled:true,grades:['M30'],distance_km:4.2}],page:1,has_more:false}:path.endsWith('/tracking')?tracking:path.endsWith('/customer/service-enquiries')?{enquiries:[]}:path.endsWith('/customer/plants')?{plants:[]}:path.endsWith('/permission-consent')?{consent:{version:1,location_choice:'manual',notification_choice:'manual'}}:path.endsWith('/me')?me:path.endsWith('/customer/home')?home:{}});
  });
  page.on('pageerror',e=>console.error(e.message));
  await page.goto('http://127.0.0.1:8765/customer/');
@@ -208,13 +208,17 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  if(!(centers[0]<centers[1]&&centers[1]<mid&&mid<centers[2]&&centers[2]<centers[3]))throw Error('Tab ordering around center icon');
  if(Math.abs((mid-centers[1])-(centers[2]-mid))>4 || Math.abs((mid-centers[0])-(centers[3]-mid))>4)throw Error('Tab spacing is not symmetric');
  const card=page.getByTestId('demo-tracking-card'); try { await card.waitFor({timeout:30000}); } catch(e) { await page.screenshot({path:`tracking-previews/failure-${width}.png`,fullPage:true}); console.error(await page.locator('body').innerText()); throw e; }
- await card.evaluate(el=>el.scrollIntoView({block:'start'}));
+ await page.getByTestId('customer-home-scroll').evaluate((scroll) => {
+   const card = scroll.querySelector('[data-testid="demo-tracking-card"]');
+   scroll.scrollTo(0, scroll.scrollTop + card.getBoundingClientRect().top - scroll.getBoundingClientRect().top);
+ });
  const b=await card.boundingBox();
  assert.equal(Math.round((await page.getByTestId('customer-home-header').boundingBox()).y), Math.round(homeHeader.y));
  assert.equal(Math.round((await page.getByTestId('app-tab-bar').boundingBox()).y), Math.round(tabBar.y));
  if(await page.getByTestId('demo-tracking-map').count())throw Error('The home tracking map should be collapsed initially');
  await card.getByTestId('home-toggle-tracking-map').click();
  const m=await page.getByTestId('demo-tracking-map').boundingBox();
+ assert.equal(Math.round((await page.getByTestId('customer-home-header').boundingBox()).y), Math.round(homeHeader.y));
  if(!m||Math.abs(m.width/m.height-2)>0.05)throw Error('map ratio');
  if(b.x<0||b.x+b.width>width+1)throw Error('overflow');
  for(const text of ['Place Your First order','M-25 Grade · 6 m³','Project site 1','Print Challan','Track TM','Call Driver','Call Plant'])if(!await card.getByText(text,{exact:true}).count())throw Error(text);

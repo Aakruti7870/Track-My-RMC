@@ -3,6 +3,7 @@ import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDime
 import { useRouter } from "expo-router";
 import { useAuth } from "@/src/auth/AuthContext";
 import { useGet } from "@/src/hooks/useApi";
+import { HomeModuleSection, HomeSectionHeader } from "@/src/components/HomeModuleSection";
 import { AppText } from "@/src/components/ui/AppText";
 import { Skeleton } from "@/src/components/ui/Skeleton";
 import { ErrorView } from "@/src/components/StateViews";
@@ -10,8 +11,7 @@ import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymb
 import { fonts } from "@/src/theme/tokens";
 import { modulesForRole } from "@/src/navigation/moduleCatalog";
 import { operationalStatus, type OperationalStatus } from "@/src/theme/tokens";
-import { HOME_KEYS, DRIVER_MODULE, ownerDestination } from "@/src/owner/modules";
-import { OwnerCommercial } from "@/src/owner/OwnerCommercial";
+import { HOME_KEYS, DRIVER_MODULE, ownerDestination, OWNER_HOME_COMMERCIAL, OWNER_HOME_WORKFORCE, ownerModules } from "@/src/owner/modules";
 import { OwnerInsights } from "@/src/owner/OwnerInsights";
 import { OwnerFrame, OwnerGlass, OwnerModuleRow, ui, useOwnerBottomSpace, useOwnerPalette } from "@/src/owner/OwnerUI";
 
@@ -89,7 +89,7 @@ export default function OwnerHome() {
         </Pressable>; })}
       </View>
 
-      <AppText style={[ui.section, { color: p.text }]}>Quick Access</AppText>
+      <HomeSectionHeader title="Quick Access" seeAll="/owner/operations" testID="home-see-all-owner-operations" />
       <View style={styles.modules}>
         {modules.map((module, i) => <Pressable testID={`owner-shortcut-${module.key}`} key={module.key}
           accessibilityRole="button" accessibilityLabel={module.key === "business-staff" ? "Workforce" : module.label}
@@ -111,8 +111,10 @@ export default function OwnerHome() {
       </View>
       <OwnerInsights expanded={insightsExpanded} />
 
-      <AppText style={[ui.section, { color: p.text }]}>Commercial</AppText>
-      <OwnerCommercial />
+      <HomeModuleSection id="owner-commercial" title="Commercial" modules={ownerModules(OWNER_HOME_COMMERCIAL)}
+        seeAll={{ pathname: "/role-modules", params: { category: "Commercial" } }} />
+      <HomeModuleSection id="owner-workforce" title="Workforce" modules={ownerModules(OWNER_HOME_WORKFORCE)}
+        seeAll={{ pathname: "/role-modules", params: { category: "Workforce" } }} />
 
       <AppText style={[ui.section, { color: p.text }]}>Driver Management</AppText>
       <OwnerModuleRow module={DRIVER_MODULE} compact />

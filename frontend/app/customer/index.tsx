@@ -1,3 +1,4 @@
+import { screenOverflow } from "@/src/theme/sceneBackground";
 import React from "react";
 import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -243,7 +244,7 @@ export default function CustomerHome() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
+  root: { flex: 1, overflow: screenOverflow },
   scrollContent: { paddingHorizontal: 16, paddingTop: 10, alignSelf: "center", width: "100%" },
   carousel: { maxWidth: 620, borderRadius: radius.md },
   groupCard: { width: "100%", maxWidth: 620, alignSelf: "center", paddingHorizontal: 0, paddingVertical: 0, gap: 0 },

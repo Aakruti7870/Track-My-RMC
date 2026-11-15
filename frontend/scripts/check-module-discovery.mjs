@@ -186,7 +186,7 @@ assert.ok(read("app/driver/index.tsx").includes("<OperationalHomeTopBar") &&
   !read("app/driver/index.tsx").includes("<RoleModuleDirectory") &&
   read("app/driver/more.tsx").includes('<RoleModuleDirectory role={user?.role}'),
   "Driver Home removes duplicate module tiles; More retains the role-aware directory.");
-for (const file of ["src/screens/StaffHome.tsx", "src/screens/StaffMore.tsx"]) {
+for (const file of ["app/role-modules.tsx", "src/screens/StaffMore.tsx"]) {
   assert.ok(read(file).includes("<StaffModuleDirectory"),
     `Staff module catalog not connected through staff-only directory: ${file}`);
 }

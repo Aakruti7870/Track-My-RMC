@@ -45,8 +45,9 @@ fs.mkdirSync(out, { recursive: true });
           assert.equal(card, summary, 'Owner KPI cards share the matte surface');
           assert.equal(await page.locator('[data-testid^="owner-shortcut-"]').count(), 5);
           assert.equal(await page.locator('[data-testid^="owner-metric-"]').count(), 8);
-          assert.equal(await page.getByTestId('owner-commercial-grid').locator(':scope > *').count(), 12, '12 commercial tiles hold 13 separately accessible modules');
-          assert.equal(await page.getByTestId('role-module-payroll-closure').count(), 1);
+          assert.equal(await page.getByTestId('home-modules-owner-commercial').locator('[data-testid^="role-module-"]').count(), 4);
+          assert.equal(await page.getByTestId('home-modules-owner-workforce').locator('[data-testid^="role-module-"]').count(), 4);
+          assert.equal(await page.getByTestId('role-module-payroll-closure').count(), 0);
           assert.equal(await page.getByTestId('role-module-owner-drivers').count(), 1);
         }
         if (name === 'operations') assert.equal(await page.getByTestId('owner-operations-module-directory').locator('[data-testid^="role-module-"]').count(), 8);
@@ -78,7 +79,20 @@ fs.mkdirSync(out, { recursive: true });
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `Horizontal overflow at ${width}`);
         await page.screenshot({ path: `${out}/${scheme}-${width}-${name}.png`, animations: 'disabled' });
       }
-      assert.equal(visibleModuleKeys.size, 30, '30 owner cards plus Plant Attendance metric and Notifications bell form 32 unique destinations');
+      assert.equal(visibleModuleKeys.size, 25, 'Owner Home exposes compact previews alongside the existing Operations and More destinations');
+      await go('/owner');
+      for (const [category, key, count] of [['Commercial','owner-commercial',7],['Workforce','owner-workforce',9]]) {
+        await page.getByTestId('home-see-all-' + key).click();
+        await page.getByRole('heading', { name: category, exact: true }).waitFor();
+        const directory = page.getByTestId('role-modules-page');
+        assert.equal(await directory.locator('[data-testid^="role-module-"]').count(), count);
+        if (category === 'Workforce') {
+          await directory.getByTestId('role-module-payroll-closure').waitFor();
+          await directory.getByTestId('role-module-business-attendance').waitFor();
+        }
+        await page.getByTestId('role-modules-back').click();
+        await page.getByTestId('owner-home-summary').waitFor();
+      }
       await go('/owner');
       const homeUrl = page.url();
       await page.getByTestId('tab-quick-actions').click();
@@ -127,7 +141,7 @@ fs.mkdirSync(out, { recursive: true });
       await page.getByText('The service is temporarily unavailable. Please try again.', { exact: true }).waitFor();
       assert.deepEqual(errors, []);
       await context.close();
-      console.log(`PASS owner: ${scheme} ${width}px — 8 metrics, 5 Quick tiles, 12 Commercial cards/13 destinations, unique tabs and top-only theme`);
+      console.log(`PASS owner: ${scheme} ${width}px — 8 metrics, 5 Quick tiles, compact Commercial/Workforce cards, full directories and top-only theme`);
     }
 
     // Compact Native Automation regression: four tiles per row at mobile and tablet widths.

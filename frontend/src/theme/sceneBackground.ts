@@ -1,6 +1,9 @@
 import { Platform, type ViewStyle } from "react-native";
 import type { ThemeColors } from "@/src/theme/tokens";
 
+// On the web, clip scroll-view descendants without creating a second scroll box.
+export const screenOverflow = Platform.OS === "web" ? ("clip" as ViewStyle["overflow"]) : "hidden";
+
 /**
  * Navigation scene backgrounds must be fully opaque. Translucent navigation
  * scenes reveal other mounted routes (the Home carousel behind Plants/Orders).

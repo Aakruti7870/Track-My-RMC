@@ -1,7 +1,10 @@
+import { screenOverflow } from "@/src/theme/sceneBackground";
 import React from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { HomeModuleSection, HomeSectionHeader } from "@/src/components/HomeModuleSection";
+import { modulesForRole } from "@/src/navigation/moduleCatalog";
 import { OperationalHomeTopBar } from "@/src/components/OperationalHomeTopBar";
 
 import { useAuth } from "@/src/auth/AuthContext";
@@ -43,17 +46,16 @@ export default function DriverHome() {
           ? "Start your shift"
           : "Attendance";
   const attendanceLabel = data?.checked_in ? "On Duty" : shiftComplete ? "Shift Done" : attendanceKnown ? "Check In" : "Attendance";
-  const attendanceIcon: keyof typeof Ionicons.glyphMap = data?.checked_in ? "checkmark-circle" : shiftComplete ? "checkmark-done" : "time-outline";
-  const attendanceColor = data?.checked_in || shiftComplete
-    ? operationalStatus("success", colors.isDark) : operationalStatus("warning", colors.isDark);
+  const driverTools = modulesForRole(user?.role).filter(module => module.key === "shift-roster" || module.key === "workforce");
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.surface }}>
+    <View style={{ flex: 1, backgroundColor: colors.surface, overflow: screenOverflow }}>
       <OperationalHomeTopBar />
       {error && !data ? (
         <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}><ErrorView message={error} onRetry={reload} /></ScrollView>
       ) : (
         <ScrollView
+          testID="driver-home-scroll"
           contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120, gap: spacing.lg }}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={false} onRefresh={() => { void refetch(); void refetchAttendance(); }} tintColor={colors.brand} />}
@@ -117,7 +119,7 @@ export default function DriverHome() {
               ) : null}
 
 
-              <AppText variant="heading">Current Trip</AppText>
+              <HomeSectionHeader title="Current Trip" seeAll="/driver/trips" testID="home-see-all-driver-trips" />
               {data.active_trip ? (
                 <Pressable testID="active-trip-card" onPress={() => router.push(`/trip/${data.active_trip!.id}` as any)}>
                   <Card style={{ gap: spacing.md }}>
@@ -142,6 +144,8 @@ export default function DriverHome() {
                   <AppText variant="bodyMuted">No active trip. Enjoy the break!</AppText>
                 </Card>
               )}
+              <HomeModuleSection id="driver-workforce" title="Workforce" modules={driverTools}
+                seeAll={{ pathname: "/role-modules", params: { category: "Workforce" } }} />
             </>
           ) : null}
         </ScrollView>
