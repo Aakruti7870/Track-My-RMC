@@ -135,7 +135,7 @@ export function Button({
           icon
         )}
         <Text
-          numberOfLines={1}
+          maxFontSizeMultiplier={1.6}
           style={[
             styles.label,
             size === "lg" ? styles.largeLabel : size === "sm" ? styles.smallLabel : null,
@@ -151,6 +151,7 @@ export function Button({
 
 const styles = StyleSheet.create({
   base: {
+    minWidth: 0,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
@@ -161,18 +162,23 @@ const styles = StyleSheet.create({
     minHeight: control.buttonHeightLarge,
     borderRadius: radius.lg,
     paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.sm,
   },
   medium: {
     minHeight: control.buttonHeight,
     borderRadius: radius.md,
     paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.sm,
   },
   small: {
     minHeight: control.buttonHeightSmall,
     paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
     borderRadius: radius.sm,
   },
   content: {
+    minWidth: 0,
+    maxWidth: "100%",
     minHeight: 24,
     flexDirection: "row",
     alignItems: "center",
@@ -180,6 +186,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   label: {
+    flexShrink: 1,
+    textAlign: "center",
     fontFamily: fonts.semibold,
     fontSize: fontSize.base,
     lineHeight: 20,
