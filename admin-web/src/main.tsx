@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import './admin-theme.css';
-import { Bell, Building2, ClipboardCheck, Factory, Megaphone, ShieldCheck, Workflow, MessageCircle, LayoutDashboard, BarChart3, Eye, Users, UserRoundPlus, UserCog, Database, Grid2X2, LogOut, Settings, ChevronRight, ArrowLeft, KeyRound, Mail, LockKeyhole, Moon, Sun } from 'lucide-react';
+import { Bell, Building2, ClipboardCheck, Factory, Megaphone, ShieldCheck, Workflow, MessageCircle, LayoutDashboard, BarChart3, Eye, Users, UserRoundPlus, UserCog, Database, Grid2X2, LogOut, Settings, ChevronRight, ArrowLeft, KeyRound, Mail, LockKeyhole } from 'lucide-react';
 import { AuthenticatorQr } from './AuthenticatorQr';
 import { PlantVisibility } from './PlantVisibility';
 import { WhatsAppChats } from './WhatsAppChats';
@@ -132,9 +132,8 @@ const ADMIN_MENU = [
   {page:'diagnostics',label:'AI Command',caption:'Database connectivity check',icon:Database,permissions:['ai.diagnose']},
   {page:'capabilities',label:'Capabilities',caption:'Authorized feature permissions',icon:Grid2X2,permissions:[]},
   {page:'sessions',label:'Logout All Sessions',caption:'Revoke my Super Admin sessions',icon:LogOut,permissions:[]},
-  {page:'settings',label:'Settings',caption:'Account, session and appearance',icon:Settings,permissions:[]},
+  {page:'settings',label:'Settings',caption:'Portal appearance',icon:Settings,permissions:[]},
 ] as const;
-const DASHBOARD_SHORTCUTS: AdminScreen[] = ['approvals','plants','visibility','chats','marketing','automation','overview'];
 const ADMIN_SECURITY_SCREENS: AdminScreen[]=['reviewer','admin-access','unowned','assign-owner','diagnostics','capabilities','sessions'];
 const CENTRAL_STEP: Partial<Record<Stage, { label: string; step: number }>> = {
   'central-login': {label:'Use your approved administrator email.',step:1},
@@ -1224,7 +1223,6 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
 
   const visibleMenu=ADMIN_MENU.filter(item=>item.permissions.every(permission=>permissions.includes(permission)));
   const centralStep = CENTRAL_STEP[stage];
-  const dashboardShortcuts = DASHBOARD_SHORTCUTS.flatMap(page => visibleMenu.filter(item => item.page === page));
   const activeWorkspace = visibleMenu.find(item=>item.page===adminScreen);
   useEffect(()=>{
     if (stage==='authenticated' && user?.role==='central_admin' && !activeWorkspace) {
@@ -1237,14 +1235,14 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
     minHeight: '100vh', padding: stage === 'authenticated' ? '20px clamp(10px, 3vw, 38px)' : '24px clamp(12px, 4vw, 20px)',
     boxSizing: 'border-box',
     fontFamily: 'Jakarta-Regular, "Plus Jakarta Sans", system-ui, sans-serif',
-    background: 'var(--tm-canvas)',
-    color: 'var(--tm-text)', display: 'flex', justifyContent: 'center',
+    background: '#0E1116',
+    color: '#F4F6FA', display: 'flex', justifyContent: 'center',
     alignItems: stage === 'authenticated' ? 'flex-start' : 'center',
   };
   const panelStyle: React.CSSProperties = {
-    width: '100%', maxWidth: stage === 'authenticated' ? 1800 : 520,
+    width: '100%', maxWidth: stage === 'authenticated' ? 1800 : 600,
     boxSizing: 'border-box', padding: stage === 'authenticated' ? 'clamp(14px, 3vw, 30px)' : 28,
-    borderRadius: 18, border: '1px solid var(--tm-border)', background: 'var(--tm-panel)',
+    borderRadius: 18, border: '1px solid #1D232D', background: 'rgba(26,31,38,0.94)',
     boxShadow: '0 24px 80px rgba(0,0,0,0.3)',
   };
   const inputStyle: React.CSSProperties = {
@@ -1288,12 +1286,12 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                         style={{...buttonStyle,width:'auto',background:'var(--tm-raised)',color:'var(--tm-text)',marginTop:0}}
                         onClick={()=>void openSupportCase(String(row.id))}>Open {String(row.subject||row.id)}</button>)}
                     </div>
-                    {supportCase && <div style={{borderTop:'1px solid var(--tm-border)',paddingTop:12,marginTop:12,display:'grid',gap:8}}>
+                    {supportCase && <div style={{borderTop:'1px solid #1D232D',paddingTop:12,marginTop:12,display:'grid',gap:8}}>
                       <strong>{String(supportCase.case_number||'Support case')} · {String(supportCase.status||'')}</strong>
                       <p>{String(supportCase.subject||'')}</p>
                       <div style={{maxHeight:360,overflowY:'auto',display:'grid',gap:7}}>
                         {((supportCase.messages||[]) as Array<Record<string,unknown>>).map((entry,i)=>
-                          <div key={String(entry.id||i)} style={{background:'var(--tm-raised)',borderRadius:8,padding:10,fontSize:13}}>
+                          <div key={String(entry.id||i)} style={{background:'#1D232D',borderRadius:8,padding:10,fontSize:13}}>
                             <strong>{entry.internal?'Internal note':'Conversation'}</strong><div>{String(entry.message||'')}</div>
                           </div>)}
                       </div>
@@ -1329,11 +1327,6 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
             </h1>
             {centralStep && <p>{centralStep.label}</p>}
           </div>
-          {stage !== 'authenticated' && <button type="button" className="tm-theme-switch"
-            aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
-            onClick={()=>setAppearance(isDark ? 'light' : 'dark')}>
-            {isDark ? <Sun size={19} aria-hidden="true"/> : <Moon size={19} aria-hidden="true"/>}
-          </button>}
         </header>
 
         {centralStep && stage !== 'central-recovery-codes' && <ol className="tm-signin-steps" aria-label="Sign-in progress">
@@ -1346,8 +1339,8 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
           {error ? <><button type="button" style={buttonStyle} onClick={()=>{setError('');setSessionCheck(value=>value+1);}}>Retry session check</button><button className="tm-auth-back" type="button" onClick={()=>{setError('');setStage('central-login');}}>Go to sign in</button></>
             : <p role="status">Checking your session…</p>}
         </div>}
-        {error && <div role="alert" className="tm-feedback tm-feedback-error">{error}</div>}
-        {notice && <div role="status" className="tm-feedback tm-feedback-success">{notice}</div>}
+        {error && <div role="alert" style={{ padding: 12, borderRadius: 8, background: '#35191B', border: '1px solid #E53E3E', color: '#FDECEC', margin: '16px 0' }}>{error}</div>}
+        {notice && <div role="status" style={{ padding: 12, borderRadius: 8, background: '#12251A', border: '1px solid #276749', color: '#E6F4EA', margin: '16px 0' }}>{notice}</div>}
 
         {stage === 'central-login' && (
           <>
@@ -1517,6 +1510,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
         {stage === 'authenticated' && user && (
           <div className={'tm-workspace '+(user.role==='central_admin'?'tm-workspace-central':'tm-workspace-authority')}>
             {user.role==='central_admin'&&<aside className="tm-sidebar" aria-label="Super Admin sidebar">
+              <div className="tm-sidebar-brand"><img src={import.meta.env.BASE_URL+'trackmyrmc-logo.png'} alt="TrackMyRMC official logo"/></div>
               <nav aria-label="Control Center sections">
                 {visibleMenu.map(item=><button key={item.page} type="button"
                   className={'tm-sidebar-link '+(adminScreen===item.page?'is-current':'')}
@@ -1527,26 +1521,20 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
               </nav>
               <button type="button" className="tm-sidebar-logout" disabled={busy} onClick={()=>void logout()}><LogOut size={17}/> Sign out</button>
             </aside>}
-            <div className="tm-workspace-content">
+            <div className={'tm-workspace-content tm-view-'+adminScreen}>
             {user.role==='central_admin' && <header className="tm-workspace-heading">
-              <div>
-                {adminScreen!=='dashboard' && <button type="button" className="tm-auth-back" onClick={()=>navigateAdmin('dashboard')}>
-                  <ArrowLeft size={16} aria-hidden="true"/>Back to dashboard
-                </button>}
-                <h2 tabIndex={-1} ref={workspaceHeading}>{activeWorkspace?.label || 'Control Center'}</h2>
-              </div>
-              <button type="button" onClick={()=>setShowAdminNotices(value=>!value)}
-                className="tm-dashboard-notices" aria-expanded={showAdminNotices}
-                aria-label="Review admin notifications">
-                <Bell size={17} aria-hidden="true"/> Notifications {adminUnread>0?'('+adminUnread+')':''}
-              </button>
+              {adminScreen!=='dashboard' && <button type="button" className="tm-auth-back" onClick={()=>navigateAdmin('dashboard')}>
+                <ArrowLeft size={16} aria-hidden="true"/>Back to dashboard
+              </button>}
+              <h2 tabIndex={-1} ref={workspaceHeading}>{activeWorkspace?.label || 'Control Center'}</h2>
             </header>}
-            {user.role !== 'central_admin' && <dl className="tm-account-details">
-              <div><dt>Signed in as</dt><dd>{user.full_name || user.email || user.phone || 'Staff user'}</dd></div>
-              <div><dt>Role</dt><dd>{user.role}</dd></div>
-            </dl>}
+            <div className="tm-identity-strip" style={{ marginTop: 20, padding: 16, border: '1px solid #1D232D', borderRadius: 10, background: '#1D232D',
+              display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,220px),1fr))',gap:8 }}>
+              <p style={{ margin: '0 0 8px' }}><strong>Signed in as</strong> {user.full_name || user.email || user.phone || 'Staff user'}</p>
+              <p style={{ margin: '0 0 8px' }}><strong>Role</strong> {user.role}</p>
+            </div>
             {user.role === 'authority' && (
-              <details style={{marginTop:14,padding:14,border:'1px solid var(--tm-border)',borderRadius:10}}>
+              <details style={{marginTop:14,padding:14,border:'1px solid #1D232D',borderRadius:10}}>
                 <summary style={{cursor:'pointer',fontWeight:700}}>Account security · Change password</summary>
                 <p style={{fontSize:12,color:'var(--tm-muted)'}}>Requires your current password, authenticator and audit reason. Every session will be revoked.</p>
                 <form onSubmit={rotateWebPassword}>
@@ -1570,16 +1558,24 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                 </form>
               </details>
             )}
-            {user.role!=='central_admin'&&<div className="tm-health-strip" style={{ marginTop: 14, padding: 16, border: '1px solid var(--tm-border)', borderRadius: 10 }}>
+            {!(user.role==='central_admin'&&adminScreen==='dashboard')&&<div className="tm-health-strip" style={{ marginTop: 14, padding: 16, border: '1px solid #1D232D', borderRadius: 10 }}>
               <h2 style={{ marginTop: 0, fontSize: 18 }}>Service health</h2>
               <p><strong>API:</strong> {health?.status || 'Unavailable'}</p>
               <p><strong>Database:</strong> {health?.database || 'Not confirmed'}</p>
               <p><strong>Environment:</strong> {health?.environment || 'Unknown'}</p>
               <p style={{ color: 'var(--tm-muted)', fontSize: 12 }}>Service availability must be verified live. Privileged actions require recent authenticator verification.</p>
             </div>}
-            {user.role === 'central_admin' && (showAdminNotices || adminScreen==='dashboard') && (
-              <section className="tm-central-nav" aria-label="Central Admin dashboard and notifications">
-                {showAdminNotices && <section aria-label="Admin notifications" style={{border:'1px solid rgba(255,154,61,0.24)',borderRadius:10,padding:12,marginTop:10,background:'var(--tm-raised)'}}>
+            {user.role === 'central_admin' && (
+              <section className="tm-central-nav" aria-label="Central Admin quick navigation" style={{marginTop:16}}>
+                <div className="tm-dashboard-heading">
+                  {adminScreen==='dashboard' && <h3>Operations overview</h3>}
+                  <button type="button" onClick={()=>setShowAdminNotices(value=>!value)}
+                    className="tm-dashboard-notices" aria-expanded={showAdminNotices}
+                    aria-label="Review admin notifications">
+                    <Bell size={17} aria-hidden="true"/> Notifications {adminUnread>0?'('+adminUnread+')':''}
+                  </button>
+                </div>
+                {showAdminNotices && <section aria-label="Admin notifications" style={{border:'1px solid rgba(255,154,61,0.24)',borderRadius:10,padding:12,marginTop:10,background:'#1D232D'}}>
                   <div style={{display:'flex',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}>
                     <strong>Approval and enquiry notifications</strong>
                     <div style={{display:'flex',gap:8}}>
@@ -1588,7 +1584,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                     </div>
                   </div>
                   {adminNoticeError && <p role="alert">{adminNoticeError}</p>}
-                  {adminNotices.map(item=><article key={item.id} style={{padding:'9px 0',borderBottom:'1px solid var(--tm-border)'}}>
+                  {adminNotices.map(item=><article key={item.id} style={{padding:'9px 0',borderBottom:'1px solid #1D232D'}}>
                     <div style={{display:'flex',gap:8,alignItems:'center'}}><strong style={{fontSize:13}}>{item.title}</strong>{!item.read&&<span style={{fontSize:11,color:'var(--tm-success-text)'}}>New</span>}</div>
                     <p style={{fontSize:12,color:'var(--tm-muted)',margin:'4px 0'}}>{item.body}</p>
                     {(['plant_onboarding','plant_owner_registration','plant_order_review','rmc_rfq_lead','plant_profile','kyc'].includes(item.event)) && (
@@ -1609,7 +1605,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                     </button>}
                   </div>
                   <div className="tm-module-grid" aria-label="Dashboard module cards">
-                    {dashboardShortcuts.map(item=><button type="button" key={item.page}
+                    {visibleMenu.filter(item=>item.page!=='dashboard'&&item.page!=='settings').map(item=><button type="button" key={item.page}
                         className="tm-module-card" onClick={()=>navigateAdmin(item.page)}
                         aria-label={'Open '+item.label}>
                         <span className="tm-module-icon" aria-hidden="true"><item.icon size={20} strokeWidth={1.5}/></span>
@@ -1620,26 +1616,41 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                 </>}
               </section>
             )}
+            {user.role==='central_admin'&&adminScreen==='dashboard'&&<aside className="tm-dashboard-aside" aria-label="Dashboard activity and status">
+              <section className="tm-aside-panel"><h2>Notifications</h2>
+                {adminNotices.slice(0,4).map(item=><div key={item.id} className="tm-aside-notice"><strong>{item.title}</strong><small>{item.body}</small></div>)}
+                {!adminNotices.length&&<p>No notifications recorded or available.</p>}
+                <button type="button" onClick={()=>{navigateAdmin('approvals');setShowAdminNotices(true)}}>Open Approval Queue</button>
+              </section>
+              <section className="tm-aside-panel"><h2>System status</h2>
+                <div className="tm-status-line"><span>API</span><strong>{health?.status||'Not verified'}</strong></div>
+                <div className="tm-status-line"><span>PostgreSQL</span><strong>{health?.database||'Not confirmed'}</strong></div>
+                <div className="tm-status-line"><span>Environment</span><strong>{health?.environment||'Unknown'}</strong></div>
+                <div className="tm-status-line"><span>Meta WhatsApp</span><strong>Requires live check</strong></div>
+                <div className="tm-status-line"><span>Resend OTP</span><strong>Requires live check</strong></div>
+              </section>
+            </aside>}
             {user.role === 'central_admin' && adminScreen==='overview' && permissions.includes('system.view') && (
-              <section id="platform-overview" aria-label="Platform overview" style={{ marginTop: 14, padding: 16, border: '1px solid var(--tm-border)', borderRadius: 10 }}>
+              <section id="platform-overview" aria-label="Platform overview" style={{ marginTop: 14, padding: 16, border: '1px solid #1D232D', borderRadius: 10 }}>
                 <h2 style={{ marginTop: 0, fontSize: 18 }}>Live platform overview</h2>
-                {adminOverviewError && <p role="alert" style={{ color: 'var(--tm-error-text)' }}>Unable to load overview: {adminOverviewError}</p>}
+                {adminOverviewError && <p role="alert" style={{ color: '#FDECEC' }}>Unable to load overview: {adminOverviewError}</p>}
                 {!adminOverviewError && adminKpis.length === 0 && <p style={{ color: 'var(--tm-muted)' }}>No overview data available.</p>}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(175px, 1fr))', gap: 10 }}>
                   {adminKpis.map((item) => (
-                    <div key={item.label} style={{ padding: 12, border: '1px solid rgba(255,154,61,0.24)', borderRadius: 8, background: 'var(--tm-raised)' }}>
+                    <div key={item.label} style={{ padding: 12, border: '1px solid rgba(255,154,61,0.24)', borderRadius: 8, background: '#1D232D' }}>
                       <div style={{ color: 'var(--tm-muted)', fontSize: 12 }}>{item.label}</div>
                       <strong style={{ fontSize: 22 }}>{String(item.value)}</strong>
                     </div>
                   ))}
                 </div>
+                <p style={{ color: 'var(--tm-muted)', fontSize: 12 }}>Read-only statistics from the Rust API. This is not the complete reference Control Center.</p>
               </section>
             )}
             {user.role === 'central_admin' && adminScreen==='visibility' && permissions.includes('plant.view') && permissions.includes('user.view') && permissions.includes('plant_owners.manage') && (
               <PlantVisibility />
             )}
             {user.role === 'central_admin' && adminScreen==='plants' && permissions.includes('plant.view') && permissions.includes('user.view') && (
-              <section id="plant-master" aria-label="Central Admin Plant Master" style={{marginTop:18,padding:14,border:'1px solid var(--tm-border)',borderRadius:12}}>
+              <section id="plant-master" aria-label="Central Admin Plant Master" style={{marginTop:18,padding:14,border:'1px solid #1D232D',borderRadius:12}}>
                 <div style={{display:'flex',alignItems:'center',gap:10}}>
                   <Factory size={24} aria-hidden="true"/>
                   <div>
@@ -1675,7 +1686,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                   {!masterLoading&&!masterError&&<>
                     <p style={{fontSize:12,color:'var(--tm-muted)'}}>{masterTotal} matching registered plants · Showing {masterItems.length} on this page</p>
                     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(235px,1fr))',gap:9}}>
-                      {masterItems.map(item=><article key={item.id} style={{border:'1px solid rgba(255,154,61,0.24)',background:'var(--tm-raised)',borderRadius:9,padding:12}}>
+                      {masterItems.map(item=><article key={item.id} style={{border:'1px solid rgba(255,154,61,0.24)',background:'#1D232D',borderRadius:9,padding:12}}>
                         <strong>{item.name}</strong>
                         <p style={{fontSize:12,color:'var(--tm-muted)',margin:'6px 0'}}>{item.code} · {item.city}, {item.state}</p>
                         <p style={{fontSize:12,margin:'6px 0'}}>{item.onboarding_approved?'Onboarding approved':item.active?'Approval not confirmed':'Inactive'} · {item.staff_count} active staff</p>
@@ -1690,13 +1701,13 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                     </div>
                   </>}
                   {masterDetailError&&<p role="alert">{masterDetailError}</p>}
-                  {masterDetail&&<section aria-label="Selected plant details" style={{border:'1px solid var(--tm-control-outline)',background:'var(--tm-raised)',borderRadius:10,padding:14,marginTop:14}}>
+                  {masterDetail&&<section aria-label="Selected plant details" style={{border:'1px solid #6B7380',background:'#1D232D',borderRadius:10,padding:14,marginTop:14}}>
                     <h3 style={{margin:'0 0 6px',fontSize:17}}>{masterDetail.plant.name} · Plant record</h3>
                     <p style={{fontSize:12,color:'var(--tm-muted)'}}>{masterDetail.plant.address}, {masterDetail.plant.city}, {masterDetail.plant.state} {masterDetail.plant.pincode||''}</p>
                     <p style={{fontSize:13}}><strong>Owner:</strong> {masterDetail.plant.owner_name} · {masterDetail.plant.owner_email||'No email'}</p>
                     <p style={{fontSize:12}}><strong>Status:</strong> {masterDetail.plant.onboarding_approved?'Onboarding approved':'Onboarding approval not confirmed'} · {masterDetail.plant.active?'Active':'Inactive'}</p>
 
-                    <div style={{marginTop:14,padding:12,border:'1px solid rgba(255,154,61,0.24)',borderRadius:10,background:'var(--tm-secondary)'}}>
+                    <div style={{marginTop:14,padding:12,border:'1px solid rgba(255,154,61,0.24)',borderRadius:10,background:'#14181F'}}>
                       <h4 style={{margin:'0 0 5px'}}>Verification & order intake</h4>
                       <p style={{fontSize:12,color:'var(--tm-muted)',margin:'0 0 8px'}}>
                         Separate onboarding, document publication, TMRMC Verified review, and direct-order authorization.
@@ -1765,7 +1776,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                     <p style={{fontSize:12,color:'var(--tm-muted)'}}>Staff invitations and role-slot replacements remain under existing Plant Owner / authorized Manager workflows. No privileged bypass is introduced here.</p>
                     <button type="button" onClick={()=>setMasterDetail(null)} style={{...buttonStyle,background:'var(--tm-raised)',color:'var(--tm-text)'}}>Close plant record</button>
                   </section>}
-                  <section aria-label="Google Places discovery" style={{borderTop:'1px solid var(--tm-border)',marginTop:18,paddingTop:14}}>
+                  <section aria-label="Google Places discovery" style={{borderTop:'1px solid #1D232D',marginTop:18,paddingTop:14}}>
                     <h3 style={{fontSize:16,margin:'0 0 4px'}}>Discover Google-listed RMC plants</h3>
                     <p style={{fontSize:12,color:'var(--tm-muted)'}}>Read-only live search. A Google listing is not verified ownership, onboarding, or an eligible recipient for marketing.</p>
                     <form onSubmit={searchGooglePlaces} style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'end'}}>
@@ -1795,7 +1806,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
 
             {user.role === 'central_admin' && adminScreen==='marketing' && permissions.includes('support.manage') && (
               <section id="marketing-center" aria-label="Marketing CRM and broadcast drafts"
-                style={{marginTop:18,padding:14,border:'1px solid var(--tm-border)',borderRadius:12}}>
+                style={{marginTop:18,padding:14,border:'1px solid #1D232D',borderRadius:12}}>
                 <div style={{display:'flex',gap:10,alignItems:'center'}}>
                   <Megaphone size={22} aria-hidden="true"/>
                   <div>
@@ -1811,7 +1822,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                   {showMarketing?'Refresh Marketing Center':'Open Marketing CRM'}
                 </button>
                 {showMarketing&&<>
-                  {marketingError&&<p role="alert" style={{color:'var(--tm-error-text)'}}>{marketingError}</p>}
+                  {marketingError&&<p role="alert" style={{color:'#FDECEC'}}>{marketingError}</p>}
                   {marketingBusy&&<p role="status">Updating marketing workspace…</p>}
                   {marketing&&<>
                     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(115px,1fr))',gap:8,marginTop:12}}>
@@ -1821,7 +1832,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                         ['Consent unverified',marketing.contacts.unverified],
                         ['Opted out',marketing.contacts.opted_out]
                       ] as const).map(([key,value])=><div key={key}
-                        style={{border:'1px solid rgba(255,154,61,0.24)',borderRadius:9,padding:10,background:'var(--tm-raised)'}}>
+                        style={{border:'1px solid rgba(255,154,61,0.24)',borderRadius:9,padding:10,background:'#1D232D'}}>
                         <div style={{fontSize:11,color:'var(--tm-muted)'}}>{key}</div>
                         <strong style={{fontSize:20}}>{value}</strong>
                       </div>)}
@@ -1870,7 +1881,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:9}}>
                         {marketing.segments.map(channel=><article key={channel.id}
                           style={{padding:12,borderRadius:9,border:'1px solid '+(marketingSegment===channel.id?'#FF9A3D':'rgba(255,154,61,0.24)'),
-                            background:marketingSegment===channel.id?'var(--tm-selected-surface)':'var(--tm-raised)'}}>
+                            background:marketingSegment===channel.id?'#1D232D':'#1D232D'}}>
                           <strong style={{fontSize:14}}>{channel.name}</strong>
                           <p style={{fontSize:12,color:'var(--tm-muted)',margin:'6px 0'}}>
                             {channel.members} / 1,000 contacts
@@ -1974,7 +1985,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                     <h3 style={{fontSize:16,marginBottom:6}}>5. Campaign approval and launch</h3>
                     <p style={{fontSize:12,color:'var(--tm-muted)'}}>Template approval checks Meta live status; campaign launch requires a separate operator confirmation, fresh MFA, consent records and a production release switch.</p>
                     {marketing.campaigns.map(draft=><article key={draft.id}
-                      style={{borderTop:'1px solid var(--tm-border)',padding:'9px 0',fontSize:13}}>
+                      style={{borderTop:'1px solid #1D232D',padding:'9px 0',fontSize:13}}>
                       <strong>{draft.name}</strong> · {draft.segment}
                       <div style={{color:'var(--tm-muted)',fontSize:12}}>Template {draft.template} · {draft.status}</div>
                       <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
@@ -1999,7 +2010,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
             )}
 
             {user.role === 'central_admin' && adminScreen==='automation' && permissions.includes('system.view') && (
-              <section id="automation-governance" aria-label="Native automation governance" style={{marginTop:18,padding:14,border:'1px solid var(--tm-border)',borderRadius:10}}>
+              <section id="automation-governance" aria-label="Native automation governance" style={{marginTop:18,padding:14,border:'1px solid #1D232D',borderRadius:10}}>
                 <h2 style={{marginTop:0,fontSize:19}}>Native Automation Center</h2>
                 <p style={{fontSize:12,color:'var(--tm-muted)'}}>TrackMyRMC-owned Rust workflows. Central policy is separate from each Plant Owner's activation.</p>
                 <button type="button" disabled={busy} onClick={()=>void loadNativeAutomation()} style={buttonStyle}>
@@ -2058,7 +2069,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                   {permissions.includes('audit.view') && <div style={{marginTop:14}}>
                     <h3>Recent execution history</h3>
                     <p style={{fontSize:12,color:'var(--tm-muted)'}}>Global governance shows status only, without private plant or order details.</p>
-                    {automationJobs.slice(0,12).map(job=><div key={job.id} style={{borderTop:'1px solid var(--tm-border)',padding:'8px 0'}}>
+                    {automationJobs.slice(0,12).map(job=><div key={job.id} style={{borderTop:'1px solid #1D232D',padding:'8px 0'}}>
                       <div style={{fontSize:12}}>{job.template_key} · {job.status} · {job.attempts} attempts</div>
                       {job.status==='DEAD_LETTER' && permissions.includes('automation.manage') &&
                         <button type="button" disabled={busy} onClick={()=>void retryNativeAutomationJob(job.id)}
@@ -2071,7 +2082,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
             )}
 
             {user.role === 'central_admin' && adminScreen==='governance' && permissions.includes('admin_access.manage') && (
-              <section id="authority-governance" aria-label="Authority governance" style={{marginTop:18,padding:16,border:'1px solid var(--tm-border)',borderRadius:12}}>
+              <section id="authority-governance" aria-label="Authority governance" style={{marginTop:18,padding:16,border:'1px solid #1D232D',borderRadius:12}}>
                 <h2 style={{margin:'0 0 6px',fontSize:19}}>Authority Access Governance</h2>
                 <p style={{fontSize:13,color:'var(--tm-muted)',lineHeight:1.5}}>
                   Issue or revoke separate web-only Authority identities. Delegation never grants Central Admin,
@@ -2082,7 +2093,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                 </button>
                 {showAuthorityAccounts && <>
                   <div style={{display:'grid',gap:9,margin:'12px 0'}}>
-                    {authorityAccounts.map(account=><article key={account.id} style={{border:'1px solid rgba(255,154,61,0.24)',borderRadius:10,padding:12,background:'var(--tm-raised)'}}>
+                    {authorityAccounts.map(account=><article key={account.id} style={{border:'1px solid rgba(255,154,61,0.24)',borderRadius:10,padding:12,background:'#1D232D'}}>
                       <strong>{account.full_name}</strong><div style={{fontSize:13,color:'var(--tm-muted)'}}>{account.email}</div>
                       <div style={{fontSize:12,marginTop:5}}>{account.enabled?'Approved':'Disabled'} · MFA {account.mfa_enrolled?'enrolled':'not enrolled'} · {account.permissions.join(', ')||'No grants'}</div>
                       <button type="button" disabled={busy} onClick={()=>{
@@ -2145,7 +2156,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                       <p>Pending submission · Revision {String(item.revision||'—')}</p>
                       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:8}}>
                         {Object.entries(data).filter(([key])=>!key.endsWith('_document')).map(([key,value])=>
-                          <div key={key} style={{padding:8,background:'var(--tm-raised)',borderRadius:6}}>
+                          <div key={key} style={{padding:8,background:'#1D232D',borderRadius:6}}>
                             <small style={{color:'var(--tm-muted)'}}>{key.replace(/_/g,' ')}</small><div>{String(value)}</div>
                           </div>)}
                       </div>
@@ -2211,7 +2222,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                 {workspaceFeedback}
                 <div style={{overflowX:'auto'}}><table style={{width:'100%',fontSize:13,borderCollapse:'collapse'}}>
                   <thead><tr>{Object.keys(records[0]||{}).map(key=><th key={key} style={{textAlign:'left',padding:8}}>{key.replace(/_/g,' ')}</th>)}</tr></thead>
-                  <tbody>{records.map((row,index)=><tr key={String(row.id||index)}>{Object.entries(row).map(([key,value])=><td key={key} style={{padding:8,borderTop:'1px solid var(--tm-border)'}}>
+                  <tbody>{records.map((row,index)=><tr key={String(row.id||index)}>{Object.entries(row).map(([key,value])=><td key={key} style={{padding:8,borderTop:'1px solid #1D232D'}}>
                     {workspace==='plant_order_requests' && key==='google_place_id' && typeof value==='string'
                       ? <a style={{color:'var(--tm-selected-ink)'}} href={'https://www.google.com/maps/search/?api=1&query=RMC%20plant&query_place_id='+encodeURIComponent(value)} target="_blank" rel="noreferrer">View on Google Maps</a>
                       : value===null?'—':typeof value==='object'?JSON.stringify(value):String(value)}
@@ -2223,7 +2234,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                     <h3 style={{fontSize:16}}>Service Enquiry Follow-up</h3>
                     <label>Required audit reason<input maxLength={500} minLength={10} value={serviceReason} onChange={e=>setServiceReason(e.target.value)} style={inputStyle} disabled={busy}/></label>
                     <label>Fresh authenticator code<input type="password" maxLength={6} value={serviceStepUp} onChange={e=>setServiceStepUp(e.target.value)} style={inputStyle} disabled={busy}/></label>
-                    {records.map(row=><div key={String(row.id)} style={{padding:10,border:'1px solid var(--tm-border)',borderRadius:8}}>
+                    {records.map(row=><div key={String(row.id)} style={{padding:10,border:'1px solid #1D232D',borderRadius:8}}>
                       <strong>{String(row.service_type||'Service')} · {String(row.status||'NEW')}</strong>
                       <div style={{display:'flex',gap:7,flexWrap:'wrap'}}>
                         {['CONTACTED','QUOTED','CLOSED'].filter(x=>x!==row.status).map(status=>
@@ -2268,7 +2279,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                   {records.filter(row=>row.status === 'PENDING_SUPPLIER').map(row=>{
                     const id=String(row.id || '');
                     const place=String(row.google_place_id || '');
-                    return <div key={id} style={{border:'1px solid rgba(255,154,61,0.24)',borderRadius:12,padding:14,background:'var(--tm-canvas)',display:'grid',gap:8}}>
+                    return <div key={id} style={{border:'1px solid rgba(255,154,61,0.24)',borderRadius:12,padding:14,background:'#0E1116',display:'grid',gap:8}}>
                       <strong>{String(row.customer_name || 'Customer')} · {String(row.grade || 'RMC')} · {String(row.quantity_m3 || '')} m³</strong>
                       <span>Current outreach: {String(row.outreach_status || 'NOT_CONTACTED')}</span>
                       {place && <button type="button" disabled={busy}
@@ -2302,32 +2313,14 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
             {user.role === 'central_admin' && adminScreen==='chats' && permissions.includes('support.manage') && (
               <WhatsAppChats onUnreadChange={setChatUnread}/>
             )}
-            {user.role==='central_admin'&&adminScreen==='settings'&&<div className="tm-settings-grid">
-              <section className="tm-settings-panel" aria-labelledby="admin-account-heading">
-                <h3 id="admin-account-heading">Account and session</h3>
-                <dl className="tm-account-details">
-                  <div><dt>Signed in as</dt><dd>{user.full_name || user.email || user.phone || 'Central Admin'}</dd></div>
-                  <div><dt>Role</dt><dd>{user.role}</dd></div>
-                  <div><dt>Session</dt><dd>Dedicated one-hour web authenticator session</dd></div>
-                </dl>
-              </section>
-              <section className="tm-settings-panel" aria-labelledby="admin-appearance-heading">
-                <h3 id="admin-appearance-heading">Appearance</h3>
-                <div className="tm-appearance-actions" role="group" aria-label="Appearance preference">
-                  {(['dark','light','system'] as const).map(mode=><button type="button" key={mode}
-                    aria-pressed={appearance===mode} className={appearance===mode?'selected':''}
-                    onClick={()=>setAppearance(mode)}>{mode==='dark'?'Dark':mode==='light'?'Light':'System'}</button>)}
-                </div>
-              </section>
-              <section className="tm-settings-panel" aria-labelledby="admin-health-heading">
-                <h3 id="admin-health-heading">Service health</h3>
-                <dl className="tm-account-details">
-                  <div><dt>API</dt><dd>{health?.status || 'Unavailable'}</dd></div>
-                  <div><dt>Database</dt><dd>{health?.database || 'Not confirmed'}</dd></div>
-                  <div><dt>Environment</dt><dd>{health?.environment || 'Unknown'}</dd></div>
-                </dl>
-              </section>
-            </div>}
+            {user.role==='central_admin'&&adminScreen==='settings'&&<section className="tm-settings-panel" aria-label="Admin portal settings">
+              <h2>Control Center Appearance</h2>
+              <div className="tm-appearance-actions" role="group" aria-label="Appearance preference">
+                {(['dark','light','system'] as const).map(mode=><button type="button" key={mode}
+                  aria-pressed={appearance===mode} className={appearance===mode?'selected':''}
+                  onClick={()=>setAppearance(mode)}>{mode==='dark'?'Dark':mode==='light'?'Light':'System'}</button>)}
+              </div>
+            </section>}
             {user.role === 'central_admin' && adminScreen==='overview' && permissions.includes('support.manage') && (
               <section aria-label="WhatsApp Chat KPIs" style={{marginTop:15,padding:14,border:'1px solid rgba(255,154,61,0.24)',borderRadius:10}}>
                 <h2 style={{fontSize:17,marginTop:0}}>WhatsApp Customer Inbox</h2>
@@ -2342,7 +2335,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
               </section>
             )}
             {user.role === 'authority' && (
-              <section aria-label="Delegated Authority Operations" style={{marginTop:18,padding:16,border:'1px solid var(--tm-border)',borderRadius:12}}>
+              <section aria-label="Delegated Authority Operations" style={{marginTop:18,padding:16,border:'1px solid #1D232D',borderRadius:12}}>
                 <h2 style={{margin:'0 0 8px',fontSize:20}}>Authority Operations</h2>
                 <p style={{fontSize:13,color:'var(--tm-muted)',lineHeight:1.55}}>
                   Centrally delegated service operations only. Platform policy, financial mutations,
@@ -2365,13 +2358,13 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                 {workspace && <>
                   <h3 style={{margin:'18px 0 6px',fontSize:16,textTransform:'capitalize'}}>{workspace.replace(/_/g,' ')}</h3>
                   <p style={{fontSize:12,color:'var(--tm-muted)'}}>Current permission-scoped records. This view cannot broadcast to customers or suppliers.</p>
-                  <div style={{overflowX:'auto',border:'1px solid var(--tm-border)',borderRadius:8}}>
+                  <div style={{overflowX:'auto',border:'1px solid #1D232D',borderRadius:8}}>
                     <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
                       <thead><tr>{Object.keys(records[0]||{}).map(key=>
                         <th key={key} scope="col" style={{textAlign:'left',padding:9,borderBottom:'1px solid rgba(255,154,61,0.24)'}}>{key.replace(/_/g,' ')}</th>)}</tr></thead>
                       <tbody>{records.map((row,index)=><tr key={String(row.id||row.customer_id||index)}>
                         {Object.entries(row).map(([key,value])=>
-                          <td key={key} style={{padding:9,borderTop:'1px solid var(--tm-border)'}}>{value===null?'—':typeof value==='object'?JSON.stringify(value):String(value)}</td>)}
+                          <td key={key} style={{padding:9,borderTop:'1px solid #1D232D'}}>{value===null?'—':typeof value==='object'?JSON.stringify(value):String(value)}</td>)}
                       </tr>)}</tbody>
                     </table>
                   </div>
@@ -2388,7 +2381,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                         <textarea maxLength={500} rows={2} value={authorityReviewReason}
                           onChange={e=>setAuthorityReviewReason(e.target.value)} style={inputStyle} disabled={busy}/>
                       </label>
-                      {records.map(row=><div key={String(row.customer_id)} style={{borderTop:'1px solid var(--tm-border)',padding:'10px 0'}}>
+                      {records.map(row=><div key={String(row.customer_id)} style={{borderTop:'1px solid #1D232D',padding:'10px 0'}}>
                         <strong>{String(row.customer||'Customer')}</strong>
                         <p style={{fontSize:12}}>Verified name: {String(row.verified_name||'Missing')} · Provider evidence: {row.evidence_verified?'Confirmed':'Not confirmed'}</p>
                         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
