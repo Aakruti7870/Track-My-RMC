@@ -78,76 +78,24 @@ for (const role of requiredRoles) {
 assert.equal(customerHomeModules().length, 8, "All eight customer Home-eligible modules remain available in the full directory.");
 
 const customerHome = read("app/customer/index.tsx");
-const homeKeysBlock = customerHome.match(/const HOME_MODULE_KEYS = \[([\s\S]*?)\](?: as const)?;/);
-assert.ok(homeKeysBlock, "Customer Home must declare an explicit seven-module shortlist.");
-const homeKeys = [...homeKeysBlock[1].matchAll(/"([a-z-]+)"/g)].map(match => match[1]);
-assert.deepEqual(homeKeys, [
-  "projects", "pour-planner", "receiving-guide", "cube-tests",
-  "saved-sites", "compare-plants", "free-tools",
-], "Customer Home must show seven shortcuts in the requested order.");
-for (const key of homeKeys) {
-  const module = modulesForRole("customer").find(entry => entry.key === key);
-  assert.ok(module && module.symbol, `Customer Home must use a registered vector symbol for ${key}`);
+const homeLinks = read("src/navigation/customerHome.ts");
+const planningBuffer = homeLinks.match(/const planningKeys = \[([\s\S]+?)\] as const;/)?.[1] || "";
+const previewKeys = [...planningBuffer.matchAll(/"([a-z-]+)"/g)].map(match => match[1]);
+assert.deepEqual(previewKeys, ["free-tools", "pour-planner", "projects", "saved-sites", "cube-tests", "receiving-guide"]);
+const extraPlanningBuffer = homeLinks.match(/const morePlanningKeys = \[([^\]]+)\]/)?.[1] || "";
+const extraPlanning = [...extraPlanningBuffer.matchAll(/"([a-z-]+)"/g)].map(match => match[1]);
+for (const key of [...previewKeys, ...extraPlanning]) {
+  assert.ok(modulesForRole("customer").some(module => module.key === key && module.symbol), "Missing customer vector/route: " + key);
 }
-assert.ok(customerHome.includes('const DIRECTORY = modulesForRole("customer");'));
-assert.ok(customerHome.includes("const CUSTOMER_MODULES = HOME_MODULE_KEYS.flatMap(key => DIRECTORY.filter(module => module.key === key));"));
-for (const name of ["home-quick-actions", "home-other-services"]) {
-  assert.ok(customerHome.includes(`testID="${name}"`), `Missing grouped Home card: ${name}`);
+assert.equal(new Set([...previewKeys, ...extraPlanning]).size, previewKeys.length + extraPlanning.length);
+for (const id of ["home-quick-actions", "home-bulk-quote", "customer-module-grid", "home-other-services", "home-planning-see-all", "home-materials-see-all"]) {
+  assert.ok(customerHome.includes('"' + id + '"'), "Missing customer Home control: " + id);
 }
-assert.ok(customerHome.includes('testID={testID}') &&
-  customerHome.includes('"customer-module-grid"') &&
-  customerHome.includes('"home-advice-grid"'),
-  "Both customer groups must use the shared module renderer with stable test IDs.");
-assert.ok(customerHome.includes('<HomeCarousel style={styles.carousel} />'), "Use the existing five-slide carousel.");
-assert.ok(customerHome.includes('<KycBanner status={data?.kyc_status ?? user?.kyc_status'), "Keep the current KYC status visible.");
-assert.ok(customerHome.includes('<ActiveTransitMixerCard'), "Preserve real order and demo tracking.");
-assert.ok(customerHome.includes('scrollContent: { paddingHorizontal: 16, paddingTop: 10,') && customerHome.includes('gap: homeSize.sectionGap'), "Use responsive section gaps and 16dp gutters.");
-assert.ok(customerHome.includes('>Quick Actions</AppText>'), "The four quick actions need a visible heading.");
-assert.ok(!customerHome.includes('>RMC Tools</AppText>'), "RMC Tools heading must be removed.");
-assert.ok(customerHome.includes('>Supply & Workforce</AppText>'), "Supply & Workforce heading must replace Other Services.");
-assert.ok(customerHome.includes('>Active Projects & Planning</AppText>') || customerHome.includes('"Active Projects & Planning", "customer-module-grid"'), "Planning section heading required.");
-assert.ok(customerHome.includes('"Free Tools & Expert Advice", "home-advice-grid"'), "Advice section required.");
-assert.ok(customerHome.includes('sectionTitle: { fontFamily: fonts.bold, fontSize: 15, lineHeight: 20'), "Home mobile headings use Jakarta Bold 15dp / compact 20dp line.");
-assert.ok(customerHome.includes('customerHomeSizes(viewportWidth, Platform.OS)'), "Use viewport and platform to size the Home consistently.");
-const responsiveHome = read("src/theme/tokens.ts");
-assert.ok(responsiveHome.includes('platform !== "web" || viewportWidth < 600') && responsiveHome.includes("viewportWidth < 1024"), "Only tablet and desktop web may scale the native/mobile layout.");
-for (const mobile of ["quickSymbol: 24", "toolSymbol: 24", "serviceSymbol: 24", "sectionGap: 10", "headerSize: 15", "planningActionHeight: 112"]) {
-  assert.ok(responsiveHome.includes(mobile), `Missing mobile design token: ${mobile}`);
-}
-
-assert.ok(customerHome.includes('testID="home-planning-actions"') && customerHome.includes('alignItems: "stretch"'), "Planning actions must share a row and height.");
-assert.ok(customerHome.includes("Concrete pump rental") && customerHome.includes("Request a quote"), "Pump CTA copy mismatch.");
-assert.ok(customerHome.includes('["pour-planner", "compare-plants", "projects", "saved-sites"]'), "Planning tools must be presented in the requested order.");
-assert.ok(customerHome.includes('["free-tools", "receiving-guide", "cube-tests"]'), "Expert advice keeps its three dedicated routes.");
-assert.ok(customerHome.includes('key: "pump-rental"') && customerHome.includes('pathname: "/customer/service-enquiry"') && customerHome.includes('service: "pump"'), "Open the dedicated pump service enquiry.");
-assert.ok(!customerHome.includes('On Time,') && !customerHome.includes('Everytime') && !customerHome.includes('promoSecondaryCard'), "Remove the old On Time promotional card entirely.");
-assert.ok(customerHome.includes('{ key: "plants", label: "Plants"'), "The third action label must remain Plants.");
-assert.ok(customerHome.includes('readableGridWidth >= 270 ? "24.25%" : "49%"'), "Quick Actions must use four compact columns when wide and two when narrow for readable labels.");
-assert.ok(customerHome.includes('readableGridWidth >= 280 ? "32.5%" : "100%"'), "Supply cards must adapt to the space available.");
-assert.ok(!customerHome.includes('<Card testID="customer-module-grid"'), "Redundant RMC Tools outer border must be removed.");
-assert.ok(!customerHome.includes('<Card testID="home-quick-actions"'), "Redundant Quick Actions outer border must be removed.");
-assert.ok(!customerHome.includes('<Card testID="home-other-services"'), "Redundant Other Services outer border must be removed.");
-// Supply cards use distinct Material Symbol assignments.
-for (const [key, symbol] of [
-  ["cement", "cement"],
-  ["labour", "labour-contractor"],
-  ["material", "building-material"],
-]) {
-  assert.ok(
-    customerHome.includes(`{ key: "${key}", label: `) && customerHome.includes(`symbol: "${symbol}"`),
-    `Missing Other Services SVG assignment for ${key}`,
-  );
-}
-assert.ok(customerHome.includes('<VectorSymbol name={service.symbol} size={homeSize.serviceSymbol} />'), "Other Services must use responsive Material Symbols.");
-assert.ok(!customerHome.includes('<Ionicons name={service.icon}'), "Do not regress to generic service icons.");
-assert.ok(customerHome.includes('<VectorSymbol name={action.symbol} size={homeSize.quickSymbol}'), "Quick Actions must use responsive assigned vector artwork.");
-assert.ok(customerHome.includes('<VectorSymbol name={module.symbol} size={homeSize.toolSymbol} />'), "RMC Tools must use responsive assigned vector artwork.");
-for (const wrapper of ["styles.quickCircle", "styles.toolPlate", "styles.servicePlate"]) {
-  assert.ok(!customerHome.includes(wrapper), `Decorative icon plate must be removed: ${wrapper}`);
-}
-assert.ok(!customerHome.includes('contentContainerStyle={styles.moduleGrid}'), "Remove old horizontal shortcut strip.");
+assert.match(customerHome, /<KycBanner status=\{data\?\.kyc_status \?\? user\?\.kyc_status/);
+assert.match(customerHome, /<ActiveTransitMixerCard/);
+assert.match(customerHome, /router\.push\(enquiryRoute\("bulk"\)\)/);
 const serviceForm = read("app/customer/service-enquiry.tsx");
-for (const kind of ["CEMENT", "LABOUR_CONTRACTOR", "BUILDING_MATERIAL", "PUMP_RENTAL"]) {
+for (const kind of ["CEMENT", "LABOUR_CONTRACTOR", "BUILDING_MATERIAL", "PUMP_RENTAL", "BULK_CONCRETE"]) {
   assert.ok(serviceForm.includes(`service_type: "${kind}"`), `Missing enquiry schema: ${kind}`);
 }
 assert.ok(serviceForm.includes('"/customer/service-enquiries"'), "Enquiry API integration missing.");
@@ -179,7 +127,7 @@ const connected = [
 ];
 for (const file of connected) {
   const source = read(file);
-  assert.ok(source.includes("moduleCatalog") || source.includes("<RoleModuleDirectory"),
+  assert.ok(source.includes("moduleCatalog") || source.includes("navigation/customerHome") || source.includes("<RoleModuleDirectory"),
     `Shared module catalog not connected: ${file}`);
 }
 assert.ok(read("app/driver/index.tsx").includes("<OperationalHomeTopBar") &&

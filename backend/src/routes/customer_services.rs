@@ -45,6 +45,14 @@ pub enum NewServiceEnquiry {
         mobile_number: String,
         delivery_date: NaiveDate,
     },
+    BulkConcrete {
+        customer_name: String,
+        contact_number: String,
+        location: String,
+        required_date: NaiveDate,
+        grade: String,
+        quantity_m3: f64,
+    },
     PumpRental {
         customer_name: String,
         contact_number: String,
@@ -100,6 +108,26 @@ fn positive_number(value: f64, label: &str, maximum: f64) -> Result<f64, AppErro
         )));
     }
     Ok(value)
+}
+
+fn bulk_concrete_details(grade: &str, quantity_m3: f64) -> Result<Value, AppError> {
+    let grade = field(grade, "Concrete grade", 2, 12)?;
+    let grade = crate::services::customer_order::canonical_grade(&grade);
+    if ![
+        "M10", "M15", "M20", "M25", "M30", "M35", "M40", "M45", "M50", "M55", "M60",
+    ]
+    .contains(&grade.as_str())
+    {
+        return Err(AppError::BadRequest("Unsupported concrete grade".into()));
+    }
+    let quantity_m3 = positive_number(quantity_m3, "Quantity (m³)", 10_000.0)?;
+    let hundredths = quantity_m3 * 100.0;
+    if quantity_m3 < 0.01 || (hundredths.round() - hundredths).abs() > 0.00001 {
+        return Err(AppError::BadRequest(
+            "Quantity must be 0.01–10,000 m³ with up to two decimal places".into(),
+        ));
+    }
+    Ok(json!({"grade": grade, "quantity_m3": quantity_m3}))
 }
 
 pub async fn create(
@@ -162,6 +190,21 @@ pub async fn create(
                     "expected_price_per_sq_ft": positive_number(expected_price_per_sq_ft, "Expected rate", 10_000_000.0)?}),
             )
         }
+        NewServiceEnquiry::BulkConcrete {
+            customer_name,
+            contact_number,
+            location,
+            required_date,
+            grade,
+            quantity_m3,
+        } => (
+            "BULK_CONCRETE",
+            field(&customer_name, "Customer name", 2, 150)?,
+            phone(&contact_number)?,
+            field(&location, "Delivery address", 3, 500)?,
+            valid_date(required_date)?,
+            bulk_concrete_details(&grade, quantity_m3)?,
+        ),
         NewServiceEnquiry::PumpRental {
             customer_name,
             contact_number,
@@ -187,13 +230,17 @@ pub async fn create(
             mobile_number,
             delivery_date,
         } => {
-            const MATERIALS: [&str; 6] = [
+            const MATERIALS: [&str; 10] = [
                 "10 MM",
                 "20 MM",
                 "40 MM",
                 "Crushed Sand",
                 "Gujrat Washed Sand",
                 "Cement Bag",
+                "Bricks",
+                "Steel",
+                "Office Cabin",
+                "Shuttering Material",
             ];
             if !MATERIALS.contains(&material_type.as_str()) {
                 return Err(AppError::BadRequest(
@@ -325,6 +372,18 @@ pub async fn update_status(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn validates_bulk_concrete_grade_and_quantity() {
+        assert_eq!(
+            bulk_concrete_details("M-30", 125.25).unwrap(),
+            json!({"grade": "M30", "quantity_m3": 125.25})
+        );
+        assert!(bulk_concrete_details("M99", 125.25).is_err());
+        for quantity in [0.0, 0.001, 1.001, 10_000.01, f64::NAN] {
+            assert!(bulk_concrete_details("M30", quantity).is_err());
+        }
+    }
+
     #[test]
     fn validate_phones_and_fields() {
         assert!(phone("+919876543210").is_ok());

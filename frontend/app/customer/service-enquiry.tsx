@@ -19,28 +19,39 @@ import { fonts, spacing } from "@/src/theme/tokens";
 import { Badge } from "@/src/components/ui/Badge";
 import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
 
-type Service = "cement" | "labour" | "material" | "pump";
+type Service = "cement" | "labour" | "material" | "pump" | "bulk";
 type FormKey =
   | "customer_name" | "contact_number" | "cement_brand" | "required_bags"
   | "location" | "required_date" | "work_name" | "duration_days"
   | "work_start_date" | "total_sq_ft" | "expected_price_per_sq_ft"
   | "material_type" | "contact_person_name" | "mobile_number" | "delivery_date"
-  | "pump_type" | "estimated_hours";
+  | "pump_type" | "estimated_hours" | "grade" | "quantity_m3";
 
-const MATERIALS = ["10 MM", "20 MM", "40 MM", "Crushed Sand", "Gujrat Washed Sand", "Cement Bag"] as const;
+const SAND_OPTIONS = ["Crushed Sand", "Gujrat Washed Sand"] as const;
+const MATERIAL_CATEGORIES = {
+  sand: { title: "Sand Enquiry", symbol: "stock-register", options: SAND_OPTIONS },
+  bricks: { title: "Bricks Enquiry", symbol: "building-material", options: ["Bricks"] },
+  steel: { title: "Steel Enquiry", symbol: "material-receipts", options: ["Steel"] },
+  "office-cabin": { title: "Office Cabin Enquiry", symbol: "store-dashboard", options: ["Office Cabin"] },
+  shuttering: { title: "Shuttering Material Enquiry", symbol: "material-inventory", options: ["Shuttering Material"] },
+} as const;
+const MATERIALS = ["10 MM", "20 MM", "40 MM", ...SAND_OPTIONS, "Cement Bag",
+  ...Object.values(MATERIAL_CATEGORIES).flatMap(category => [...category.options])] as const;
+const GRADES = ["M10", "M15", "M20", "M25", "M30", "M35", "M40", "M45", "M50", "M55", "M60"] as const;
 const TITLES: Record<Service, string> = {
   cement: "Cement Enquiry",
   labour: "Labour Contractor Enquiry",
   material: "Building Material Enquiry",
   pump: "Concrete Pump Rental Enquiry",
+  bulk: "Bulk Concrete Enquiry",
 };
 const TYPES: Record<Service, string> = {
-  cement: "CEMENT", labour: "LABOUR_CONTRACTOR", material: "BUILDING_MATERIAL", pump: "PUMP_RENTAL",
+  cement: "CEMENT", labour: "LABOUR_CONTRACTOR", material: "BUILDING_MATERIAL", pump: "PUMP_RENTAL", bulk: "BULK_CONCRETE",
 };
 const ENQUIRY_SYMBOLS: Record<Service, VectorSymbolName> = {
-  cement: "cement", labour: "labour-contractor", material: "building-material", pump: "pump-rental",
+  cement: "cement", labour: "labour-contractor", material: "building-material", pump: "pump-rental", bulk: "quotation-requests",
 };
-type Enquiry = { id: string; service_type: string; status: string; created_at: string; required_date: string };
+type Enquiry = { id: string; service_type: string; status: string; required_date: string; details?: { material_type?: string } };
 type EnquiryResponse = { enquiries: Enquiry[] };
 
 function validDate(value: string): boolean {
@@ -57,8 +68,17 @@ function validPhone(value: string): boolean {
 }
 
 export default function ServiceEnquiryScreen() {
-  const { service } = useLocalSearchParams<{ service?: string }>();
-  const selected: Service = service === "labour" || service === "material" || service === "pump" ? service : "cement";
+  const { service, material } = useLocalSearchParams<{ service?: string; material?: string }>();
+  const selected: Service = service === "labour" || service === "material" || service === "pump" || service === "bulk"
+    ? service : "cement";
+  const categoryKey = selected === "material" ? (Object.keys(MATERIAL_CATEGORIES) as (keyof typeof MATERIAL_CATEGORIES)[])
+    .find(key => key === material) : undefined;
+  return <EnquiryForm key={selected + ":" + (categoryKey ?? "")} selected={selected} categoryKey={categoryKey} />;
+}
+
+function EnquiryForm({ selected, categoryKey }: { selected: Service; categoryKey?: keyof typeof MATERIAL_CATEGORIES }) {
+  const category = categoryKey ? MATERIAL_CATEGORIES[categoryKey] : undefined;
+  const materialOptions: readonly string[] = category?.options ?? MATERIALS;
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { token, user } = useAuth();
@@ -68,10 +88,11 @@ export default function ServiceEnquiryScreen() {
     customer_name: user?.name || "", contact_number: user?.phone || "",
     cement_brand: "", required_bags: "", location: "", required_date: "",
     work_name: "", duration_days: "", work_start_date: "", total_sq_ft: "",
-    expected_price_per_sq_ft: "", material_type: "", contact_person_name: user?.name || "",
-    mobile_number: user?.phone || "", delivery_date: "", pump_type: "", estimated_hours: "",
+    expected_price_per_sq_ft: "", material_type: materialOptions.length === 1 ? materialOptions[0] : "",
+    contact_person_name: user?.name || "", mobile_number: user?.phone || "", delivery_date: "",
+    pump_type: "", estimated_hours: "", grade: "", quantity_m3: "",
   });
-  const [showMaterials, setShowMaterials] = useState(false);
+  const [showChoices, setShowChoices] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const inFlight = useRef(false);
   const inputs = useRef<Partial<Record<FormKey, TextInput | null>>>({});
@@ -79,13 +100,17 @@ export default function ServiceEnquiryScreen() {
   const [successId, setSuccessId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const history = useGet<EnquiryResponse>("/customer/service-enquiries");
+  const recent = (history.data?.enquiries ?? []).filter(item => {
+    if (item.service_type !== TYPES[selected]) return false;
+    return !category || !!item.details?.material_type && materialOptions.includes(item.details.material_type);
+  }).slice(0, 5);
 
   const set = (key: FormKey) => (value: string) => {
     setFields(previous => ({ ...previous, [key]: value }));
     setMessage(null);
     setFieldErrors(old => old[key] ? { ...old, [key]: undefined } : old);
   };
-  const field = (key: FormKey, label: string, extra?: { keyboardType?: "numeric" | "phone-pad" | "default"; placeholder?: string }) => (
+  const field = (key: FormKey, label: string, extra?: { keyboardType?: "numeric" | "decimal-pad" | "phone-pad" | "default"; placeholder?: string }) => (
     <Input
       testID={`enquiry-${key}`}
       label={label}
@@ -101,12 +126,30 @@ export default function ServiceEnquiryScreen() {
   );
   const date = (key: FormKey, label: string) => <DateField label={label} required date={fields[key]} error={fieldErrors[key]} onChange={set(key)} />;
 
+  const choices = (key: "grade" | "material_type", label: string, options: readonly string[]) => (
+    <View style={{ gap: spacing.xs }}>
+      <AppText variant="label">{label} *</AppText>
+      {options.length === 1 ? <AppText>{options[0]}</AppText> : (
+        <>
+          <Button testID={key === "grade" ? "bulk-grade-dropdown" : "material-type-dropdown"}
+            label={fields[key] || "Choose " + label.toLowerCase()} variant="outline" expanded={showChoices}
+            onPress={() => setShowChoices(open => !open)} />
+          {showChoices ? <View accessibilityRole="radiogroup" accessibilityLabel={label} style={{ gap: spacing.xs }}>
+            {options.map(option => <RadioChoice key={option} label={option} checked={fields[key] === option}
+              onPress={() => { set(key)(option); setShowChoices(false); }} />)}
+          </View> : null}
+        </>
+      )}
+      {fieldErrors[key] ? <AppText accessibilityLiveRegion="polite" color={colors.error}>{fieldErrors[key]}</AppText> : null}
+    </View>
+  );
+
   const submit = async () => {
     if (!token || inFlight.current || successId) return;
     const invalid: Partial<Record<FormKey, string>> = {};
     let payload: Record<string, string | number>;
     const location = fields.location.trim();
-    if (selected === "cement" || selected === "pump") {
+    if (selected === "cement" || selected === "pump" || selected === "bulk") {
       if (fields.customer_name.trim().length < 2) invalid.customer_name = "Enter your name.";
       if (!validPhone(fields.contact_number)) invalid.contact_number = "Enter a valid contact number.";
     }
@@ -147,8 +190,20 @@ export default function ServiceEnquiryScreen() {
         contact_number: fields.contact_number.trim(), location, required_date: fields.required_date,
         pump_type: fields.pump_type.trim(), estimated_hours: hours,
       };
+    } else if (selected === "bulk") {
+      const quantity = Number(fields.quantity_m3.trim());
+      if (!GRADES.some(grade => grade === fields.grade)) invalid.grade = "Choose a concrete grade.";
+      if (!/^\d+(\.\d{1,2})?$/.test(fields.quantity_m3.trim()) || !Number.isFinite(quantity) || quantity <= 0 || quantity > 10000) {
+        invalid.quantity_m3 = "Enter 0.01–10,000 m³ with up to two decimal places.";
+      }
+      if (location.length < 3) invalid.location = "Enter a delivery address.";
+      if (!validDate(fields.required_date)) invalid.required_date = "Choose today or a future date.";
+      payload = {
+        service_type: "BULK_CONCRETE", customer_name: fields.customer_name.trim(), contact_number: fields.contact_number.trim(),
+        location, required_date: fields.required_date, grade: fields.grade, quantity_m3: quantity,
+      };
     } else {
-      if (!MATERIALS.some(item => item === fields.material_type)) invalid.material_type = "Choose a material.";
+      if (!materialOptions.includes(fields.material_type)) invalid.material_type = "Choose a material.";
       if (location.length < 3) invalid.location = "Enter a delivery address.";
       if (fields.contact_person_name.trim().length < 2) invalid.contact_person_name = "Enter the contact name.";
       if (!validPhone(fields.mobile_number)) invalid.mobile_number = "Enter a valid mobile number.";
@@ -189,9 +244,9 @@ export default function ServiceEnquiryScreen() {
         <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => router.canGoBack() ? router.back() : router.replace("/customer")} style={styles.back}>
           <Ionicons name="arrow-back" size={24} color={colors.onSurface} />
         </Pressable>
-        <VectorSymbol name={ENQUIRY_SYMBOLS[selected]} size={24} />
+        <VectorSymbol name={category?.symbol ?? ENQUIRY_SYMBOLS[selected]} size={24} />
         <View style={{ flex: 1 }}>
-          <AppText style={[styles.heading, { color: colors.onSurface }]}>{TITLES[selected]}</AppText>
+          <AppText style={[styles.heading, { color: colors.onSurface }]}>{category?.title ?? TITLES[selected]}</AppText>
           <AppText variant="caption">Request a call or quotation. No payment required.</AppText>
         </View>
       </View>
@@ -235,16 +290,18 @@ export default function ServiceEnquiryScreen() {
                 {date("required_date", "Required Date")}
                 <AppText variant="caption">Availability and quotation require manual supplier confirmation. This is not a confirmed booking.</AppText>
               </>
+            ) : selected === "bulk" ? (
+              <>
+                {field("customer_name", "Customer Name")}
+                {field("contact_number", "Contact Number", { keyboardType: "phone-pad" })}
+                {choices("grade", "Concrete grade", GRADES)}
+                {field("quantity_m3", "Required Quantity (m³)", { keyboardType: "decimal-pad" })}
+                {field("location", "Delivery Address")}
+                {date("required_date", "Required Date")}
+              </>
             ) : (
               <>
-                <AppText variant="label">Material Type *</AppText>
-                <Button testID="material-type-dropdown" label={fields.material_type || "Select Material Type"}
-                  variant="outline" expanded={showMaterials} onPress={() => setShowMaterials(open => !open)} />
-                {fieldErrors.material_type ? <AppText accessibilityLiveRegion="polite" color={colors.error}>{fieldErrors.material_type}</AppText> : null}
-                {showMaterials ? <View accessibilityRole="radiogroup" accessibilityLabel="Material type" style={{ gap: spacing.xs }}>
-                  {MATERIALS.map(item => <RadioChoice key={item} label={item} checked={fields.material_type === item}
-                    onPress={() => { set("material_type")(item); setShowMaterials(false); }} />)}
-                </View> : null}
+                {choices("material_type", "Material type", materialOptions)}
                 {field("location", "Location / Delivery Address")}
                 {field("contact_person_name", "Contact Person Name")}
                 {field("mobile_number", "Mobile Number", { keyboardType: "phone-pad" })}
@@ -259,16 +316,16 @@ export default function ServiceEnquiryScreen() {
 
         <Card style={{ gap: spacing.sm }}>
           <AppText variant="heading">My Recent Enquiries</AppText>
-          {history.data?.enquiries.filter(item => item.service_type === TYPES[selected]).slice(0, 5).map(item => (
+          {recent.map(item => (
             <View key={item.id} style={[styles.historyRow, { borderBottomColor: colors.border }]}>
               <View style={{ flex: 1 }}>
-                <AppText style={{ fontFamily: fonts.semibold }}>{item.service_type.replace(/_/g, " ")}</AppText>
+                <AppText style={{ fontFamily: fonts.semibold }}>{item.details?.material_type ?? TITLES[selected]}</AppText>
                 <AppText variant="caption">Requested: {item.required_date}</AppText>
               </View>
               <Badge label={item.status} status={item.status} size="sm" />
             </View>
           ))}
-          {history.data && !history.data.enquiries.some(item => item.service_type === TYPES[selected]) ? <AppText variant="caption">No previous enquiries for this service.</AppText> : null}
+          {history.data && !recent.length ? <AppText variant="caption">No previous enquiries for this service.</AppText> : null}
           {history.error ? <AppText style={{ color: colors.error }}>Could not load enquiry history.</AppText> : null}
         </Card>
       </ScrollView>
