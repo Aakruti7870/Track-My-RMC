@@ -1,3 +1,4 @@
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import React, { useMemo, useState } from "react";
 import { Modal, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -113,7 +114,7 @@ export default function OwnerQuotationRequests() {
           {item.status === "DECLINED" ? <AppText variant="caption" color={colors.error}>Reason: {item.decline_reason}</AppText> : null}
           {item.status === "REQUESTED" ? <View style={styles.actions}><View style={{ flex: 1 }}><Button label="Decline" variant="outline" onPress={() => openResponse(item, "DECLINE")} /></View><View style={{ flex: 1 }}><Button label="Prepare Quote" onPress={() => openResponse(item, "QUOTE")} /></View></View> : null}
         </Card>)}
-        {data && rows.length === 0 ? <Card style={styles.empty}><Ionicons name="document-text-outline" size={30} color={colors.onSurfaceTertiary} /><AppText variant="heading">No requests in this filter</AppText></Card> : null}
+        {data && rows.length === 0 ? <Card style={styles.empty}><VectorSymbol name="quotation-requests" size={30} color={colors.onSurfaceTertiary} /><AppText variant="heading">No requests in this filter</AppText></Card> : null}
 
         <View style={styles.between}><AppText variant="heading">Customer Decisions</AppText><Badge label={String(quotes.data?.quotations.length || 0)} color={colors.success} /></View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>

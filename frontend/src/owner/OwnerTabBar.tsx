@@ -4,7 +4,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppText } from "@/src/components/ui/AppText";
-import { type VectorSymbolName } from "@/src/components/VectorSymbol";
+import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
+import { tabVectorSymbol } from "@/src/navigation/vectorSymbolAssignments";
 import { IconTile } from "@/src/components/IconTile";
 import type { TabDef } from "@/src/components/GlassTabBar";
 import { OwnerGlass, useOwnerPalette } from "./OwnerUI";
@@ -22,18 +23,19 @@ export function OwnerTabBar({ state, navigation, tabs }: Props) {
   function tabItem(tab: TabDef) {
     const route = state.routes.find(route => route.name === tab.name); if (!route) return null;
     const selected = state.routes[state.index]?.key === route.key;
-    return <Pressable key={tab.name} testID={`tab-${tab.label.toLowerCase()}`} accessibilityRole="tab" accessibilityLabel={`${tab.label} tab`} accessibilityState={{ selected }} aria-selected={selected} onPress={() => { const event = navigation.emit({ type: "tabPress", target: route.key, canPreventDefault: true }); if (!event.defaultPrevented) navigation.navigate(tab.name); }} style={{ flex: 1, minWidth: 0, minHeight: 65, alignItems: "center", justifyContent: "center", gap: 4 }}><Ionicons name={selected ? tab.active : tab.icon} size={30} color={selected ? p.accent : p.muted} /><AppText numberOfLines={1} style={{ fontSize: 10, color: selected ? p.accent : p.muted }}>{tab.label}</AppText></Pressable>;
+    const symbol = tabVectorSymbol(tab.label, "plant_owner");
+    return <Pressable key={tab.name} testID={`tab-${tab.label.toLowerCase()}`} accessibilityRole="tab" accessibilityLabel={`${tab.label} tab`} accessibilityState={{ selected }} aria-selected={selected} onPress={() => { const event = navigation.emit({ type: "tabPress", target: route.key, canPreventDefault: true }); if (!event.defaultPrevented) navigation.navigate(tab.name); }} style={{ flex: 1, minWidth: 0, minHeight: 65, alignItems: "center", justifyContent: "center", gap: 4 }}>{symbol ? <VectorSymbol name={symbol} size={30} color={selected ? p.accent : p.muted} active={selected} /> : <Ionicons name={selected ? tab.active : tab.icon} size={30} color={selected ? p.accent : p.muted} />}<AppText numberOfLines={1} style={{ fontSize: 10, color: selected ? p.accent : p.muted }}>{tab.label}</AppText></Pressable>;
   }
   return <>
     <View pointerEvents="box-none" style={{ position: "absolute", left: 0, right: 0, bottom: 0 }}><OwnerGlass style={{ width: "100%", maxWidth: 820, alignSelf: "center", borderBottomLeftRadius: 0, borderBottomRightRadius: 0, borderTopLeftRadius: 26, borderTopRightRadius: 26, paddingBottom: Platform.OS === "web" ? 8 : Math.max(insets.bottom, 8), paddingTop: 3, flexDirection: "row", alignItems: "center" }}>
       {tabs.slice(0, 2).map(tabItem)}
-      <View style={{ width: 66, alignItems: "center", gap: 3, marginTop: -16 }}><Pressable testID="tab-quick-actions" accessibilityRole="button" accessibilityLabel="Open quick actions" onPress={() => setOpen(true)} style={({ pressed }) => ({ width: 56, height: 56, borderRadius: 28, backgroundColor: pressed ? p.pressed : p.accent, borderWidth: 3, borderColor: p.border, alignItems: "center", justifyContent: "center", elevation: 0 })}><Ionicons name="add" size={28} color="#14181F" /></Pressable><AppText style={{ fontSize: 10, color: p.accent }}>Quick</AppText></View>
+      <View style={{ width: 66, alignItems: "center", gap: 3, marginTop: -16 }}><Pressable testID="tab-quick-actions" accessibilityRole="button" accessibilityLabel="Open quick access" onPress={() => setOpen(true)} style={({ pressed }) => ({ width: 56, height: 56, borderRadius: 28, backgroundColor: pressed ? p.pressed : p.accent, borderWidth: 3, borderColor: p.border, alignItems: "center", justifyContent: "center", elevation: 0 })}><Ionicons name="add" size={28} color="#14181F" /></Pressable><AppText style={{ fontSize: 10, color: p.accent }}>Quick</AppText></View>
       {tabs.slice(2).map(tabItem)}
     </OwnerGlass></View>
     <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}><View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.48)" }}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Dismiss quick actions" onPress={() => setOpen(false)} style={{ flex: 1 }} />
+      <Pressable accessibilityRole="button" accessibilityLabel="Dismiss quick access" onPress={() => setOpen(false)} style={{ flex: 1 }} />
       <OwnerGlass style={{ maxWidth: 600, width: "100%", maxHeight: "85%", alignSelf: "center", paddingBottom: insets.bottom + 16, paddingHorizontal: 18, paddingTop: 18, backgroundColor: p.canvas }}>
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}><AppText variant="heading">Quick Actions</AppText><Pressable accessibilityRole="button" accessibilityLabel="Close quick actions" onPress={() => setOpen(false)} style={{ padding: 12 }}><Ionicons name="close" size={25} color={p.text} /></Pressable></View>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}><AppText variant="heading">Quick Access</AppText><Pressable accessibilityRole="button" accessibilityLabel="Close quick access" onPress={() => setOpen(false)} style={{ padding: 12 }}><Ionicons name="close" size={25} color={p.text} /></Pressable></View>
         <ScrollView contentContainerStyle={{ gap: 8 }}>{ACTIONS.map(action => <Pressable key={action.label} accessibilityRole="button" accessibilityLabel={action.label} onPress={() => { setOpen(false); router.push(action.route); }}><OwnerGlass style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 15 }}><IconTile symbol={action.symbol} /><AppText style={{ flex: 1, fontSize: 13, color: p.text }}>{action.label}</AppText><Ionicons name="chevron-forward" size={17} color={p.muted} /></OwnerGlass></Pressable>)}</ScrollView>
       </OwnerGlass>
     </View></Modal>

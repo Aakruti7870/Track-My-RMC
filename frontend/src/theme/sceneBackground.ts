@@ -9,7 +9,7 @@ export const screenOverflow = Platform.OS === "web" ? ("clip" as ViewStyle["over
  * scenes reveal other mounted routes (the Home carousel behind Plants/Orders).
  */
 export function getThemedCanvasColor(colors: ThemeColors): string {
-  return colors.isDark ? "#0E1116" : "#F7F8F9";
+  return colors.canvas;
 }
 
 export function getThemedSceneStyle(colors: ThemeColors): ViewStyle {
@@ -26,7 +26,7 @@ export function getThemedSceneStyle(colors: ThemeColors): ViewStyle {
   const source = asset as string | { uri?: string; default?: { uri?: string } };
   const uri = typeof source === "string" ? source : source?.uri ?? source?.default?.uri;
   if (!uri) return { backgroundColor };
-  const veil = colors.isDark ? "rgba(14,17,22,0.85)" : "rgba(247,248,249,0.85)";
+  const veil = colors.isDark ? "rgba(7,8,13,0.85)" : "rgba(233,228,222,0.85)";
   return {
     backgroundColor,
     backgroundImage: `linear-gradient(${veil}, ${veil}), url("${uri}")`,

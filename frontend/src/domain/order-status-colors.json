@@ -1,0 +1,67 @@
+{
+  "pending": {
+    "aliases": [
+      "PENDING",
+      "PENDING_APPROVAL",
+      "PENDING_KYC",
+      "PENDING_SUPPLIER"
+    ],
+    "light": "#B91C1C",
+    "dark": "#FF7777"
+  },
+  "accepted": {
+    "aliases": [
+      "ACCEPTED",
+      "APPROVED",
+      "CONFIRMED",
+      "SCHEDULED"
+    ],
+    "light": "#1D4ED8",
+    "dark": "#93C5FD"
+  },
+  "preparing": {
+    "aliases": [
+      "PREPARING",
+      "IN_PRODUCTION",
+      "PRODUCED",
+      "PRODUCTION_COMPLETE",
+      "LOADING",
+      "READY_TO_DISPATCH",
+      "TM_ASSIGNED",
+      "DRIVER_ASSIGNED",
+      "ASSIGNED"
+    ],
+    "light": "#785800",
+    "dark": "#FACC15"
+  },
+  "dispatched": {
+    "aliases": [
+      "DISPATCHED",
+      "IN_TRANSIT",
+      "EN_ROUTE",
+      "AT_SITE",
+      "POURING",
+      "UNLOADING",
+      "POD_PENDING"
+    ],
+    "light": "#166534",
+    "dark": "#4ADE80"
+  },
+  "delivered": {
+    "aliases": [
+      "DELIVERED",
+      "COMPLETED"
+    ],
+    "light": "#9A3E08",
+    "dark": "#FFAA5C"
+  },
+  "cancelled": {
+    "aliases": [
+      "CANCELLED",
+      "REJECTED",
+      "FAILED"
+    ],
+    "light": "#B91C1C",
+    "dark": "#FF7777"
+  }
+}

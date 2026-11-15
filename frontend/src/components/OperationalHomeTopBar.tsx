@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import * as Location from "expo-location";
@@ -106,14 +107,14 @@ export function OperationalHomeTopBar() {
       </Pressable>
       <Pressable onPress={() => void refreshLocation()} accessibilityRole="button" accessibilityLabel="Current location, refresh"
         style={styles.location}>
-        <Ionicons name="location-outline" size={17} color={colors.brand} />
+        <VectorSymbol name="gps-live-location" size={17} color={colors.brand} />
         <AppText numberOfLines={1} style={{ fontFamily: fonts.semibold, fontSize: 12, color: colors.onSurface, flexShrink: 1 }}>
           {busy ? "Locating…" : location}
         </AppText>
       </Pressable>
       <Pressable testID="operational-notifications" accessibilityRole="button" accessibilityLabel={`Notifications, ${unread} unread`}
         onPress={() => router.push("/notifications")} style={styles.target}>
-        <Ionicons name="notifications-outline" size={22} color={colors.onSurface} />
+        <VectorSymbol name="notifications" size={22} color={colors.onSurface} />
         {unread > 0 ? <View style={[styles.dot, { backgroundColor: colors.brand }]} /> : null}
       </Pressable>
       <Pressable testID="operational-theme" accessibilityRole="button" accessibilityLabel="Switch light or dark mode"

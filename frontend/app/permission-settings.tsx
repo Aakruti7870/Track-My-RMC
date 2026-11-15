@@ -50,7 +50,7 @@ function PermissionCard({
       ) : blocked ? (
         <Button label="Open Android settings" variant="outline" disabled={busy} onPress={onSettings} />
       ) : (
-        <Button label={buttonLabel} disabled={busy} onPress={onRequest} />
+        <Button label={buttonLabel} variant={icon === "location-outline" ? "success" : "primary"} disabled={busy} onPress={onRequest} />
       )}
     </Card>
   );

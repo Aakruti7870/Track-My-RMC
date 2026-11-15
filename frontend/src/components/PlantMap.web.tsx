@@ -111,7 +111,7 @@ export function PlantMap({ plants, userLocation, selectedPlantId, onSelectPlant,
       style: { position: "absolute", inset: 0, width: "100%", height: "100%" },
     })}
     {!api || error ? <View accessibilityRole={error ? "alert" : undefined}
-      style={{ position: "absolute", inset: 0, padding: 16, backgroundColor: colors.isDark ? "#1A1F26" : "#F6F8FA", justifyContent: "center", gap: 12 }}>
+      style={{ position: "absolute", inset: 0, padding: 16, backgroundColor: colors.surfaceSecondary, justifyContent: "center", gap: 12 }}>
       <AppText>{error || "Loading Google Maps…"}</AppText>
       {error ? <Pressable accessibilityRole="button" onPress={() => setAttempt(value => value + 1)}>
         <AppText style={{ color: colors.brand }}>Try map again</AppText>

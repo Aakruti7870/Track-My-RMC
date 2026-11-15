@@ -55,12 +55,12 @@ export function QuickActionHub({ visible, onClose, tabs, role, navigation }: Pro
           <View style={[styles.handle, { backgroundColor: colors.borderStrong }]} />
           <View style={styles.headingRow}>
             <View style={styles.headingCopy}>
-              <AppText variant="sectionTitle">Quick Actions</AppText>
+              <AppText variant="sectionTitle">Quick Access</AppText>
             </View>
             <Pressable
               onPress={onClose}
               accessibilityRole="button"
-              accessibilityLabel="Close quick actions"
+              accessibilityLabel="Close quick access"
               hitSlop={6}
               style={({ pressed }) => [
                 styles.closeButton,

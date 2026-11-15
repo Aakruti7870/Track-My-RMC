@@ -27,7 +27,7 @@ import { ErrorView } from "@/src/components/StateViews";
 import { requestNearbyPlantsLocationConsent } from "@/src/location/BackgroundLocationConsent";
 import { distanceKm, LatLng, validLatLng } from "@/src/maps/geo";
 import { EMPTY_PLANT_GEO, cleanPlantGeo, hasPlantGeoFilters, isValidPlantGeo, plantGeoLocationLabel, PlantGeoFilters } from "@/src/domain/plantGeoFilters";
-import { control, fonts, radius, spacing } from "@/src/theme/tokens";
+import { control, fonts, homeArtwork, radius, spacing } from "@/src/theme/tokens";
 
 type NearbyLocationStatus = "ok" | "denied" | "services-disabled" | "timeout" | "unavailable";
 type NearbyLocationResult = { status: NearbyLocationStatus; coords: LatLng | null; fromCache?: boolean; canAskAgain?: boolean };
@@ -396,7 +396,7 @@ export default function CustomerPlants() {
                   {q ? <Pressable onPress={()=>{setQ("");setPage(1);setFilters(current=>({...current,q:""}));}} accessibilityLabel="Clear search"><Ionicons name="close" size={20} color={colors.onSurfaceTertiary} /></Pressable> : null}
                 </View>
                 <Pressable testID="plants-filter-toggle" accessibilityLabel={showFilters ? "Hide location filters" : "Location filters"} onPress={()=>setShowFilters(v=>!v)} style={[styles.orangeFilter,{backgroundColor:colors.brand,borderColor:colors.isDark ? "#FF9A3D" : colors.brand}]} accessibilityRole="button">
-                  <VectorSymbol name="filter" size={20} color="#14181F" /><AppText style={styles.orangeFilterText}>Filters</AppText>
+                  <VectorSymbol name="filter" size={20} color={colors.onBrand} /><AppText color={colors.onBrand} style={styles.orangeFilterText}>Filters</AppText>
                 </Pressable>
               </View>
               {showFilters ? <Card testID="plants-geo-filters" style={{gap:12}}>
@@ -526,7 +526,7 @@ export default function CustomerPlants() {
         />
       )}
       <Modal visible={!!details} animationType="slide" onRequestClose={() => setDetails(null)}>
-        <ScrollView contentContainerStyle={{padding:24,paddingTop:56,gap:16,backgroundColor:colors.isDark ? "#0E1116" : "#F7F8F9",flexGrow:1}}>
+        <ScrollView contentContainerStyle={{padding:24,paddingTop:56,gap:16,backgroundColor:colors.canvas,flexGrow:1}}>
           {details ? <><AppText variant="title">{"Plant Profile"}</AppText><AppText style={{color:colors.accentText}}>{details.name}</AppText><AppText>{details.address}</AppText>
           {details.status === "google_listing" ? (
             <AppText accessibilityLabel="Google Maps" style={{fontSize:14,color:colors.onSurfaceTertiary}}>
@@ -548,7 +548,7 @@ export default function CustomerPlants() {
             </>
           ) : (
             <>
-              <Button label="Open Plant Profile" variant="outline" onPress={()=>{const id=details.id;setDetails(null);router.push({pathname:"/plant-profile",params:{plantId:id}});}} />
+              <Button label="Open Plant Profile" variant="successTint" onPress={()=>{const id=details.id;setDetails(null);router.push({pathname:"/plant-profile",params:{plantId:id}});}} />
             </>
           )}
           {plantOrderRoute(details) === "review" ? <AppText variant="caption">TrackMyRMC will review your order request.</AppText> : null}
@@ -596,7 +596,7 @@ function NearbyPlantCard({ plant, onDetails, onQuotation, onOrder, onSelect }: {
           label="Place Order" onPress={onOrder} disabled={orderRoute === "unavailable"} style={styles.plantAction} />
         <Button size="sm" variant="outline" fullWidth={false} label="Request Quotation"
           onPress={onQuotation} style={styles.plantAction} />
-        <Button size="sm" variant="ghost" fullWidth={false} label="Plant Profile" onPress={onDetails}
+        <Button size="sm" variant="successTint" fullWidth={false} label="Plant Profile" onPress={onDetails}
           style={styles.plantAction} />
       </View>
       {orderRoute === "review" ? <AppText variant="caption" color={colors.onSurfaceTertiary}>TrackMyRMC will review your order request.</AppText> : null}
@@ -660,9 +660,9 @@ function LocationBanner({ status, locating, onEnable, onRetry }: {
         accessibilityRole="button"
         accessibilityLabel={c.label}
         onPress={c.onPress}
-        style={({ pressed }) => [styles.locationBannerBtn, { backgroundColor: colors.brand, opacity: pressed ? 0.75 : 1 }]}
+        style={({ pressed }) => [styles.locationBannerBtn, { backgroundColor: c.label === "Enable Location" ? homeArtwork.positiveAction : colors.brand, opacity: pressed ? 0.75 : 1 }]}
       >
-        <AppText style={{ fontFamily: fonts.semibold, fontSize: 12, color: colors.onBrand }}>{c.label}</AppText>
+        <AppText style={{ fontFamily: fonts.semibold, fontSize: 12, color: c.label === "Enable Location" ? "#FFFFFF" : colors.onBrand }}>{c.label}</AppText>
       </Pressable>
     </View>
   );
@@ -675,9 +675,9 @@ const styles = StyleSheet.create({
   mapPillText:{color:"#1E293B",fontFamily:fonts.bold,fontSize:13},
   searchRow:{flexDirection:"row",gap:10,alignItems:"center"},
   geoFilterField:{flexGrow:1,flexBasis:"45%",minWidth:130,gap:5},
-  geoFilterInput:{minHeight:44,borderWidth:1,borderColor:"#E2E8F0",backgroundColor:"#FFFFFF",borderRadius:10,paddingHorizontal:10,fontFamily:fonts.medium,fontSize:13,color:"#1E293B"},
+  geoFilterInput:{minHeight:44,borderWidth:1,borderRadius:10,paddingHorizontal:10,fontFamily:fonts.medium,fontSize:13},
   orangeFilter:{borderRadius:12,minHeight:46,paddingHorizontal:14,flexDirection:"row",alignItems:"center",justifyContent:"center",gap:6,borderWidth:1},
-  orangeFilterText:{fontFamily:fonts.semibold,fontSize:14,color:"#14181F"},
+  orangeFilterText:{fontFamily:fonts.semibold,fontSize:14},
   plantCard: { gap: spacing.md },
   plantTopRow: { minHeight: 48, flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
   plantTitleGroup: { minWidth: 0, flex: 1, gap: spacing.xs },

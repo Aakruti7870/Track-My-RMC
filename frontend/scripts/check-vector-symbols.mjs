@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
@@ -13,15 +13,37 @@ async function importTypescript(relative) {
   return import(`data:text/javascript;base64,${Buffer.from(outputText).toString("base64")}`);
 }
 
-const legacyAssets = readdirSync(path.join(root, "assets/images/SVG Vector Symbol"))
-  .filter(filename => filename.endsWith(".svg"))
-  .map(filename => filename.slice(0, -4));
+const renderer = read("src/components/VectorSymbol.tsx");
+const trackIcons = JSON.parse(read("src/components/vector-symbols/track-icons.json"));
+const aliases = Object.fromEntries([...renderer.matchAll(/^  "([a-z-]+)": "([a-z-]+)",$/gm)].map(([, key, value]) => [key, value]));
+assert.equal(Object.keys(trackIcons).length, 88);
+for (const [name, icon] of Object.entries(trackIcons)) {
+  assert.ok(icon.full.length && icon.compact.length, `Missing master or compact artwork for ${name}`);
+  for (const shapes of Object.values(icon)) checkShapes(shapes);
+}
+function checkShapes(shapes) {
+  for (const [tag, attributes, children] of shapes) {
+    assert.ok(["path", "circle", "g", "line", "rect"].includes(tag), `Unexpected SVG element: ${tag}`);
+    for (const [key, value] of Object.entries(attributes)) {
+      if (key === "stroke" || key === "fill") assert.ok(["none", "currentColor"].includes(value));
+      if (key === "d") assert.match(value, /^[Mm][0-9.,+ eEMmLlHhVvCcSsQqTtAaZz-]+$/);
+    }
+    if (children) checkShapes(children);
+  }
+}
+for (const [alias, name] of Object.entries(aliases)) {
+  assert.ok(Object.hasOwn(trackIcons, name), `Unknown symbol ${name} for ${alias}`);
+}
+for (const name of ["home", "orders", "plants", "more"]) {
+  assert.ok(trackIcons[name].active?.length, `Missing active symbol for ${name}`);
+}
+for (const name of ["avatar-shield", "browser-shield", "compact-lock"]) {
+  assert.ok(trackIcons["restricted-access"][name]?.length, `Missing restricted access variation: ${name}`);
+}
 const { materialSymbolNames, materialSymbolPaths } = await importTypescript(
   "src/components/vector-symbols/materialSymbols.ts",
 );
-for (const name of legacyAssets) {
-  assert.ok(Object.hasOwn(materialSymbolNames, name), `Missing replacement for ${name}`);
-}
+const supported = new Set([...Object.keys(trackIcons), ...Object.keys(aliases), ...Object.keys(materialSymbolNames)]);
 for (const [name, icon] of Object.entries(materialSymbolNames)) {
   assert.ok(Object.hasOwn(materialSymbolPaths, icon), `Unknown Material Symbol ${icon} for ${name}`);
 }
@@ -38,7 +60,7 @@ let mapped = 0;
 for (const m of MODULE_CATALOG) {
   if (m.symbol) {
     mapped++;
-    assert.ok(Object.hasOwn(materialSymbolNames, m.symbol), `Unknown SVG ${m.symbol} for module ${m.key}`);
+    assert.ok(supported.has(m.symbol), `Unknown SVG ${m.symbol} for module ${m.key}`);
   } else {
     assert.equal(m.key, "account-deletion", "No unsuitable substitute SVGs for destructive account deletion");
     assert.equal(m.icon, "trash-outline");
@@ -47,7 +69,7 @@ for (const m of MODULE_CATALOG) {
 assert.equal(mapped, 61, "All non-destructive mobile modules retain a registered SVG");
 const tabs = read("src/navigation/vectorSymbolAssignments.ts");
 for (const [, key] of tabs.matchAll(/(?:"[^"]+":\s*|return\s+)"([a-z0-9-]+)"/g)) {
-  assert.ok(Object.hasOwn(materialSymbolNames, key), `Tab references an unregistered SVG: ${key}`);
+  assert.ok(supported.has(key), `Tab references an unregistered SVG: ${key}`);
 }
 const integrationFiles = [
   "src/components/RoleModuleDirectory.tsx",
@@ -59,30 +81,34 @@ const integrationFiles = [
 for (const filename of integrationFiles) {
   assert.match(read(filename), /<(?:VectorSymbol|IconTile\b[^>]*\bsymbol=)/, `SVG not rendered by ${filename}`);
 }
-const renderer = read("src/components/VectorSymbol.tsx");
-assert.match(renderer, /viewBox="0 -960 960 960"/);
-assert.match(renderer, /<Path d=\{materialSymbolPaths\[materialSymbolNames\[name\]\]\} fill=/);
+assert.match(renderer, /track-icons\.json/);
+assert.match(renderer, /"0 0 64 64" : "0 -960 960 960"/);
+assert.match(renderer, /<Path d=\{materialSymbolPaths\[fallback\]\} fill=/);
 assert.match(renderer, /\baria-hidden\b/);
-assert.doesNotMatch(renderer, /SvgXml|[Gg]radient|warmAccent/);
+assert.doesNotMatch(renderer, /SvgXml|dangerouslySetInnerHTML/);
 
 const home = read("src/navigation/customerHome.ts");
-const homeIcons = [materialSymbolNames["new-order"], materialSymbolNames["live-order-tracking"],
-  materialSymbolNames["nearby-rmc-plants"], materialSymbolNames["my-orders"],
-  materialSymbolNames.cement, materialSymbolNames["labour-contractor"], materialSymbolNames["building-material"]];
-assert.equal(new Set(homeIcons).size, homeIcons.length, "Order actions and service categories need distinct symbols");
+const homeIcons = ["new-order", "live-order-tracking", "nearby-rmc-plants", "my-orders", "cement", "labour-contractor", "building-material"];
+const geometries = homeIcons.map(name => JSON.stringify(trackIcons[name]?.full ?? materialSymbolPaths[materialSymbolNames[name]]));
+assert.ok(geometries.every(Boolean));
+assert.equal(new Set(geometries).size, homeIcons.length, "Order actions and service categories need distinct symbols");
 assert.match(home, /key: "pump-rental"[^\n]*symbol: "pump-rental"/);
 
 const nav = read("src/components/GlassTabBar.tsx");
-assert.match(nav, /<VectorSymbol name=\{symbol\} color=\{ink\} \/>/);
+assert.match(nav, /<VectorSymbol name=\{symbol\} color=\{ink\} active=\{focused\} \/>/);
 assert.ok(nav.includes('{leftRoutes.map(renderTab)}') && nav.includes('{rightRoutes.map(renderTab)}'), "Two symmetric side groups must flank New Order");
 assert.ok(!nav.includes("styles.iconWrap"), "Navigation icon plates must be absent");
 const kyc = read("src/components/KycBanner.tsx");
-assert.match(kyc, /<VectorSymbol name=\{cfg.symbol\} size=\{size.kycSymbol\} color=\{tone\}/);
+assert.match(kyc, /<VectorSymbol name="kyc-verified" size=\{size.kycSymbol\} color=\{tone\}/);
+assert.match(kyc, /<IdentityVerificationSymbol size=\{size.kycSymbol \+ 6\}/);
+const verificationSymbol = read("src/components/vector-symbols/IdentityVerificationSymbol.tsx");
+assert.match(verificationSymbol, /backgroundColor: homeArtwork.kycIconFill/);
+assert.match(verificationSymbol, /name="restricted-access" variant="browser-shield"[\s\S]*color="#FFFFFF"/);
 const header = read("src/components/customer/CustomerHomeHeader.tsx");
-for (const expected of ['name="chevron-down" size={size.headerChevron}', 'name="notifications-outline" size={size.headerBell}']) {
+for (const expected of ['name="chevron-down" size={size.headerChevron}', 'name="notifications" size={size.headerBell}']) {
   assert.ok(header.includes(expected), `Header symbol missing responsive dimension: ${expected}`);
 }
 assert.ok(!header.includes('header-qr-disabled') && !header.includes('testID="header-kyc"') && !header.includes('header-location-refresh'), "Deprecated QR, shield, and refresh controls must not appear in the header");
 assert.equal((header.match(/name="chevron-down"/g) || []).length, 1, "Exactly one location dropdown chevron must remain");
 assert.ok(header.includes('testID="header-location-chevron"') && header.includes('onPress={() => setSheet("location")}'), "Left chevron must open the existing selector");
-console.log(`PASS: ${legacyAssets.length} former artwork assignments have replacements, ${Object.keys(materialSymbolPaths).length} licensed Material Symbols and ${mapped}/${MODULE_CATALOG.length} mapped role modules`);
+console.log(`PASS: ${Object.keys(trackIcons).length} supplied vectors, ${Object.keys(materialSymbolPaths).length} licensed Material Symbols and ${mapped}/${MODULE_CATALOG.length} mapped role modules`);

@@ -4,11 +4,11 @@ import { fonts, palette, type ThemeColors } from "./tokens";
 
 export function createPaperTheme(colors: ThemeColors, reduceMotion: boolean): MD3Theme {
   const base = colors.isDark ? MD3DarkTheme : MD3LightTheme;
-  const surface = colors.isDark ? palette.graphiteSoft : palette.paper;
-  const raised = colors.isDark ? palette.graphiteRaised : palette.mist;
-  const background = colors.isDark ? palette.graphite : palette.warmWhite;
-  const accent = colors.isDark ? palette.orange : colors.accentText;
-  const onAccent = colors.isDark ? palette.graphite : palette.paper;
+  const surface = colors.surfaceSecondary;
+  const raised = colors.surfaceTertiary;
+  const background = colors.canvas;
+  const accent = colors.isDark ? colors.brand : colors.accentText;
+  const onAccent = colors.isDark ? colors.onBrand : colors.surfaceElevated;
   const paperFonts = { ...base.fonts };
 
   for (const variant of Object.keys(paperFonts) as (keyof typeof paperFonts)[]) {
@@ -32,8 +32,8 @@ export function createPaperTheme(colors: ThemeColors, reduceMotion: boolean): MD
       ...base.colors,
       primary: accent,
       onPrimary: onAccent,
-      primaryContainer: colors.isDark ? palette.orangeSoftDark : palette.orangeSoftStrong,
-      onPrimaryContainer: colors.isDark ? "#FFB47D" : "#743000",
+      primaryContainer: colors.brandSoft,
+      onPrimaryContainer: colors.onBrandSoft,
       secondary: colors.onSurfaceTertiary,
       onSecondary: surface,
       secondaryContainer: raised,

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, AppState, Modal, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useIsFocused } from "@react-navigation/native";
@@ -178,7 +179,7 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
           <AppText numberOfLines={1} ellipsizeMode="tail" style={[styles.locationText, { fontSize: size.locationSize, lineHeight: size.locationLine, color: colors.onSurface }]}>{locationBusy ? "Locating…" : label}</AppText>
         </Pressable>
         <Pressable testID="notifications-bell" accessibilityRole="button" accessibilityLabel={unread ? `${feed!.unread} unread notifications` : "Notifications"} onPress={() => router.push("/notifications")} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(44, size.headerTarget) }]}>
-          <Ionicons name="notifications-outline" size={size.headerBell} color={colors.onSurface} />
+          <VectorSymbol name="notifications" size={size.headerBell} color={colors.onSurface} />
           {unread ? <View testID="header-unread-dot" style={[styles.dot, { backgroundColor: colors.verified, borderColor: surface }]} /> : null}
         </Pressable>
         <Pressable testID="header-theme" accessibilityRole="button" accessibilityLabel="Switch light or dark mode"
@@ -198,7 +199,7 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
           </View>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.sheetContent}>
             <AppText>Use your location once, or search for a city or locality.</AppText>
-            <Button label="Refresh current location" disabled={locationBusy} onPress={() => void lookup()} />
+            <Button label="Refresh current location" variant="success" disabled={locationBusy} onPress={() => void lookup()} />
             <Input label="City, locality or PIN code" testID="header-manual-location" value={manual} onChangeText={setManual} maxLength={200} editable={!locationBusy} />
             <Button label="Use selected location" disabled={locationBusy || manual.trim().length < 3} onPress={() => void lookup(manual.trim())} />
             {locationBusy ? <ActivityIndicator accessibilityLabel="Finding location" color={colors.brand} /> : null}

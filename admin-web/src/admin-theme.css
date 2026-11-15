@@ -4,19 +4,21 @@ body { margin: 0; }
 
 .tm-admin-root {
   color-scheme: dark;
-  --tm-canvas: #0E1116;
-  --tm-panel: #1A1F26;
-  --tm-raised: #1D232D;
-  --tm-text: #F4F6FA;
-  --tm-muted: #B7C2D2;
-  --tm-border: #353F4D;
-  --tm-control-outline: #8793A2;
-  --tm-orange-action: #FF8A00;
-  --tm-on-action: #0E1116;
+  --tm-canvas: #07080D;
+  --tm-panel: #121212;
+  --tm-raised: #1A1A1A;
+  --tm-text: #FEFEFE;
+  --tm-muted: #A0A0A0;
+  --tm-border: #404040;
+  --tm-control-outline: #707070;
+  --tm-login-rim: #616161;
+  --tm-login-edge: #D0A56E;
+  --tm-orange-action: #FF7800;
+  --tm-on-action: #07080D;
   --tm-selected-ink: #FFB16A;
-  --tm-selected-surface: #2A251F;
+  --tm-selected-surface: #432A10;
   --tm-focus: #FFB47D;
-  --tm-icon-tile: #394454;
+  --tm-icon-tile: #262626;
   --tm-warning-text: #FBBF24;
   --tm-success-text: #72D59B;
   --tm-error-text: #FF9997;
@@ -36,17 +38,20 @@ body { margin: 0; }
 }
 .tm-admin-root.tm-light {
   color-scheme: light;
-  --tm-canvas: #F7F6F2;
-  --tm-panel: #FFFFFF;
-  --tm-raised: #F1F3F5;
-  --tm-text: #14181F;
-  --tm-muted: #536177;
-  --tm-border: #D9DEE5;
-  --tm-control-outline: #687384;
-  --tm-selected-ink: #873B05;
-  --tm-selected-surface: #F8EFE8;
+  --tm-canvas: #E9E4DE;
+  --tm-panel: #FAF9F5;
+  --tm-raised: #F0EDE6;
+  --tm-text: #0A0907;
+  --tm-muted: #504D47;
+  --tm-border: #C9C4BE;
+  --tm-control-outline: #827C74;
+  --tm-login-rim: #FEFDF9;
+  --tm-login-edge: #BCA07B;
+  --tm-orange-action: #FF8201;
+  --tm-selected-ink: #5D3719;
+  --tm-selected-surface: #FDE9D0;
   --tm-focus: #A43D00;
-  --tm-icon-tile: #4A5568;
+  --tm-icon-tile: #EAE7E0;
   --tm-warning-text: #92400E;
   --tm-success-text: #276749;
   --tm-error-text: #9B2C2C;
@@ -80,9 +85,10 @@ body { margin: 0; }
 .tm-login-shell {
   width: min(100%, 500px);
   padding: clamp(16px, 5vw, 32px);
-  background: var(--tm-panel);
-  border: 1px solid var(--tm-border);
+  border: 1px solid transparent;
   border-radius: 20px;
+  background: linear-gradient(145deg, var(--tm-raised), var(--tm-panel) 55%) padding-box,
+    linear-gradient(115deg, var(--tm-login-edge), var(--tm-login-rim) 36%, var(--tm-border)) border-box;
   box-shadow: 0 16px 48px #0000001f;
 }
 .tm-login-toolbar { display: flex; justify-content: flex-end; }

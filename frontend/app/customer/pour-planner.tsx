@@ -1,3 +1,4 @@
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import React, { useMemo, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, Share, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -100,7 +101,7 @@ export default function CustomerPourPlanner() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
       <View style={{ height: insets.top }} />
-      <View style={[styles.header, { backgroundColor: colors.surfaceSecondary, borderBottomColor: colors.divider }]}><Pressable onPress={() => router.back()}><Ionicons name="arrow-back" size={24} color={colors.onSurface} /></Pressable><View style={{ flex: 1 }}><AppText style={[styles.headerTitle, { color: colors.onSurface }]}>Concrete Pour Planner</AppText><AppText style={[styles.headerSub, { color: colors.onSurfaceSecondary }]}>Plan mixer loads and site arrival intervals</AppText></View><Ionicons name="time-outline" size={26} color={colors.brand} /></View>
+      <View style={[styles.header, { backgroundColor: colors.surfaceSecondary, borderBottomColor: colors.divider }]}><Pressable onPress={() => router.back()}><Ionicons name="arrow-back" size={24} color={colors.onSurface} /></Pressable><View style={{ flex: 1 }}><AppText style={[styles.headerTitle, { color: colors.onSurface }]}>Concrete Pour Planner</AppText><AppText style={[styles.headerSub, { color: colors.onSurfaceSecondary }]}>Plan mixer loads and site arrival intervals</AppText></View><VectorSymbol name="concrete-pour-planner" size={26} color={colors.brand} /></View>
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 110, gap: spacing.lg }} refreshControl={<RefreshControl refreshing={false} onRefresh={() => { sites.refetch(); plans.refetch(); }} tintColor={colors.brand} />} keyboardShouldPersistTaps="handled">
         <Card style={{ gap: spacing.md }}>
           <AppText variant="heading">Pour requirement</AppText>
@@ -131,7 +132,7 @@ export default function CustomerPourPlanner() {
         <View style={styles.between}><AppText variant="heading">Saved Pour Plans</AppText><Badge label={String(plans.data?.plans.length || 0)} color={colors.brand} /></View>
         {plans.loading && !plans.data ? <Skeleton height={150} /> : null}
         {plans.data?.plans.map((plan) => <Card key={plan.id} style={{ gap: spacing.sm }}><View style={styles.between}><View style={{ flex: 1 }}><AppText variant="heading">{plan.site_name}</AppText><AppText variant="caption">{plan.pour_date} · {plan.start_time} · {plan.discharge_mode.toLowerCase()}</AppText></View><Badge label={plan.status} status={plan.status} /></View><View style={[styles.summary, { backgroundColor: colors.surfaceTertiary }]}><AppText style={{ fontFamily: fonts.displayBold }}>{plan.grade} · {plan.total_quantity_m3} m³</AppText><AppText variant="caption">{plan.loads_count} loads · {plan.mixer_capacity_m3} m³ mixer · {plan.unload_minutes} min interval</AppText></View><View style={styles.actions}><View style={{ flex: 1 }}><Button label="Compare" variant="outline" onPress={() => router.push({ pathname: "/customer/compare-plants", params: { siteId: plan.site_id, grade: plan.grade, quantity: String(plan.total_quantity_m3) } } as any)} /></View><View style={{ flex: 1 }}><Button label="Create Order" onPress={() => router.push({ pathname: "/new-order", params: { siteId: plan.site_id, siteName: plan.site_name, siteAddress: plan.site_address, grade: plan.grade, quantity: String(plan.total_quantity_m3), deliveryDate: plan.pour_date, deliveryTime: plan.start_time } } as any)} /></View></View><View style={styles.actions}><View style={{ flex: 1 }}><Button label="Delete" variant="outline" onPress={() => remove(plan.id)} /></View><View style={{ flex: 1 }}><Button label="Share" variant="outline" onPress={() => share(plan)} /></View></View></Card>)}
-        {plans.data && plans.data.plans.length === 0 ? <Card style={styles.empty}><Ionicons name="time-outline" size={32} color={colors.onSurfaceTertiary} /><AppText variant="heading">No saved pour plans</AppText><AppText variant="caption">Your saved mixer timeline will appear here.</AppText></Card> : null}
+        {plans.data && plans.data.plans.length === 0 ? <Card style={styles.empty}><VectorSymbol name="concrete-pour-planner" size={32} color={colors.onSurfaceTertiary} /><AppText variant="heading">No saved pour plans</AppText><AppText variant="caption">Your saved mixer timeline will appear here.</AppText></Card> : null}
       </ScrollView>
     </View>
   );

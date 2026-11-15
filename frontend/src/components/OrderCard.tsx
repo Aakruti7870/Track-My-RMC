@@ -51,7 +51,7 @@ export function OrderCard({ order, onPress }: { order: Order; onPress?: () => vo
             <AppText variant="caption" numberOfLines={1}>{order.plant_name}</AppText>
           </View>
           <View style={styles.headerStatus}>
-            <Badge label={order.status.replace(/_/g, " ")} status={order.status} size="sm" />
+            <Badge label={order.status.replace(/_/g, " ")} status={order.status} size="sm" orderStatus />
             {interactive ? <Ionicons name="chevron-forward" size={16} color={colors.onSurfaceTertiary} /> : null}
           </View>
         </View>

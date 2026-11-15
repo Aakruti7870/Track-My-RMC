@@ -48,7 +48,7 @@ fs.mkdirSync(out, { recursive: true });
         assert.equal(await page.getByText('TrackMyRMC Play Review Owner', { exact: true }).count(), 0);
         if (name === 'home') {
           const summary = await page.getByTestId('owner-home-summary').evaluate(el => getComputedStyle(el).backgroundColor);
-          assert.equal(summary, scheme === 'dark' ? 'rgb(26, 31, 38)' : 'rgb(255, 255, 255)');
+          assert.equal(summary, scheme === 'dark' ? 'rgb(18, 18, 18)' : 'rgb(250, 249, 245)');
           const card = await page.locator('[data-testid^="owner-metric-"]').first().locator(':scope > div').first()
             .evaluate(el => getComputedStyle(el).backgroundColor);
           assert.equal(card, summary, 'Owner KPI cards share the matte surface');

@@ -1,3 +1,4 @@
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import React, { useCallback, useMemo, useState } from "react";
 import { Pressable, StyleSheet, TextInput, useWindowDimensions, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -170,7 +171,7 @@ export function StaffModuleDirectory({
       {searchable ? (
         <>
           <View style={[styles.search, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-            <Ionicons name="search-outline" size={18} color={colors.onSurfaceTertiary} />
+            <VectorSymbol name="search" size={18} color={colors.onSurfaceTertiary} />
             <TextInput
               testID="staff-module-search"
               accessibilityLabel="Search your modules"

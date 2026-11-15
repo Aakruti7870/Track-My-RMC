@@ -1,3 +1,4 @@
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import React from "react";
 import { Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -37,7 +38,7 @@ export default function CustomerDocuments() {
         {rows.map((o) => (
           <Pressable key={o.id} onPress={() => router.push(`/order/${o.id}` as any)}>
             <Card style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-              <Ionicons name="document-text-outline" size={22} color={colors.brand} />
+              <VectorSymbol name="documents" size={22} color={colors.brand} />
               <View style={{ flex: 1, gap: 2 }}>
                 <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: colors.onSurface }}>{o.challan_number || o.order_number}</AppText>
                 <AppText variant="caption">{o.order_number} · {o.grade} · {o.quantity} m³</AppText>

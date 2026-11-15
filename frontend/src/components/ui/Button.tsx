@@ -11,9 +11,9 @@ import {
 import * as Haptics from "expo-haptics";
 
 import { useTheme } from "@/src/theme/ThemeProvider";
-import { control, fonts, fontSize, palette, radius, spacing } from "@/src/theme/tokens";
+import { control, fonts, fontSize, homeArtwork, palette, radius, spacing } from "@/src/theme/tokens";
 
-type Variant = "primary" | "secondary" | "outline" | "ghost" | "danger";
+type Variant = "primary" | "secondary" | "outline" | "ghost" | "danger" | "success" | "successTint";
 type Size = "lg" | "md" | "sm";
 
 type Props = {
@@ -53,35 +53,43 @@ export function Button({
   const isDisabled = Boolean(disabled || loading);
 
   const background = {
-    primary: palette.orange,
+    primary: colors.brand,
     secondary: colors.surfaceElevated,
     outline: "transparent",
     ghost: "transparent",
     danger: palette.errorDark,
+    success: homeArtwork.positiveAction,
+    successTint: homeArtwork.positiveTint,
   }[variant];
 
   const pressedBackground = {
-    primary: palette.orangeBright,
+    primary: colors.brandPressed,
     secondary: colors.surfaceTertiary,
     outline: colors.surfaceTertiary,
     ghost: colors.brandSoft,
     danger: colors.isDark ? "#C6363B" : "#C83239",
+    success: homeArtwork.positivePressed,
+    successTint: "#22C55E48",
   }[variant];
 
   const foreground = {
-    primary: palette.graphite,
+    primary: colors.onBrand,
     secondary: colors.onSurface,
     outline: colors.onSurface,
     ghost: colors.accentText,
     danger: "#FFFFFF",
+    success: "#FFFFFF",
+    successTint: colors.verified,
   }[variant];
 
   const borderColor = {
-    primary: palette.orange,
+    primary: colors.brand,
     secondary: colors.border,
     outline: colors.controlOutline,
     ghost: "transparent",
     danger: palette.errorDark,
+    success: homeArtwork.positiveAction,
+    successTint: colors.verified + "66",
   }[variant];
 
   return (
