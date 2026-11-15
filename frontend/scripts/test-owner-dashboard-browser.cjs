@@ -195,9 +195,12 @@ fs.mkdirSync(out, { recursive: true });
     {
       const page = await browser.newPage({ viewport: { width: 320, height: 900 }, reducedMotion: "reduce" });
       let plantResponse = "error";
+      let stockMutations = 0;
       await page.addInitScript(() => localStorage.setItem("tmrmc_token", JSON.stringify("isolated-inventory-fixture")));
       await page.route("**/api/**", async route => {
-        const path = new URL(route.request().url()).pathname;
+        const request = route.request();
+        const path = new URL(request.url()).pathname;
+        if (request.method() !== "GET" && path.includes("/fixture-plant/")) stockMutations += 1;
         if (path.endsWith("/me")) return route.fulfill({ json: {
           id: "inventory-owner", name: "Fixture owner", role: "plant_owner", roles: ["plant_owner"], status: "active",
         } });
@@ -235,9 +238,11 @@ fs.mkdirSync(out, { recursive: true });
       await page.getByText("Cement", { exact: true }).waitFor();
       assert.equal(await page.getByText("Sand", { exact: true }).count(), 0);
       await page.getByRole("button", { name: "Stock In", exact: true }).click();
-      await page.getByRole("textbox", { name: "Quantity" }).waitFor();
+      const quantity = page.getByRole("textbox", { name: "Quantity" });
+      await quantity.fill("2");
       await page.getByRole("button", { name: "Cancel", exact: true }).click();
-      assert.equal(await page.getByRole("textbox", { name: "Quantity" }).count(), 0);
+      await quantity.waitFor({ state: "detached" });
+      assert.equal(stockMutations, 0);
       await page.close();
       console.log("PASS owner inventory: 320px, plant retry, empty assignment, search correction and adjustment cancellation");
     }
