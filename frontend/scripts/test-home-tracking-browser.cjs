@@ -6,10 +6,10 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  const browser=await chromium.launch({headless:true,args:['--no-sandbox'],...(process.env.HEADER_CHROMIUM_PATH ? {executablePath:process.env.HEADER_CHROMIUM_PATH} : {})});
  for(const width of [320,390,768,960,1024,1440]){
   const expected=width>=1024
-    ? {quick:28,tool:28,service:28,quickTile:72,toolTile:84,serviceTile:84,quickFont:16,toolFont:14,serviceFont:15,heading:18,headingLine:24,sectionGap:16,pumpWidth:360,pumpHeight:70,pumpFirst:16,pumpSecond:18,kyc:36,kycTitle:18,location:15}
+    ? {quick:28,tool:28,service:28,quickTile:88,toolTile:84,serviceTile:84,quickFont:16,toolFont:14,serviceFont:15,heading:18,headingLine:24,sectionGap:16,actionHeight:120,kyc:36,kycTitle:18,location:15}
     : width>=600
-      ? {quick:24,tool:24,service:24,quickTile:68,toolTile:80,serviceTile:80,quickFont:15,toolFont:13,serviceFont:14,heading:16,headingLine:22,sectionGap:12,pumpWidth:300,pumpHeight:62,pumpFirst:14,pumpSecond:16,kyc:32,kycTitle:16,location:14}
-      : {quick:24,tool:24,service:24,quickTile:64,toolTile:76,serviceTile:76,quickFont:14,toolFont:12,serviceFont:12,heading:15,headingLine:20,sectionGap:10,pumpWidth:240,pumpHeight:50,pumpFirst:13,pumpSecond:15,kyc:28,kycTitle:15,location:13};
+      ? {quick:24,tool:24,service:24,quickTile:84,toolTile:80,serviceTile:80,quickFont:15,toolFont:13,serviceFont:14,heading:16,headingLine:22,sectionGap:12,actionHeight:112,kyc:32,kycTitle:16,location:14}
+      : {quick:24,tool:24,service:24,quickTile:80,toolTile:76,serviceTile:76,quickFont:14,toolFont:12,serviceFont:12,heading:15,headingLine:20,sectionGap:10,actionHeight:112,kyc:28,kycTitle:15,location:13};
  let mode='demo';
  const page=await browser.newPage({viewport:{width,height:1000}});
  await page.addInitScript(()=>localStorage.setItem('tmrmc_token',JSON.stringify('isolated-browser-fixture')));
@@ -20,7 +20,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  const order={id:'isolated-order',order_number:'CUSTOMER-ORDER',status:mode==='pending'?'PENDING':mode==='delivered'?'DELIVERED':'DISPATCHED',grade:'M30',quantity:8,site_name:'Actual project'};
  if(mode!=='demo'){home.recent_orders=[order];home.active_order=mode==='delivered'?null:order;}
  const tracking={active:mode==='live',status:order.status,active_loads:mode==='live'?[{id:'load-a',status:'en_route',tm_number:'ASSIGNED-MIXER',location:{lat:19.1,lng:73.1,at:new Date(Date.now()-1000).toISOString()}}]:[],destination:{lat:19.2,lng:73.2}};
- await route.fulfill({json:path.endsWith('/customer/plants/search')?{plants:[{id:'fixture-plant',name:'Panvel Ready-Mix Concrete and Infrastructure Supply',address:'Industrial Estate, Panvel',status:'active',verified:true,order_enabled:true,grades:['M30'],distance_km:4.2}],page:1,has_more:false}:path.endsWith('/tracking')?tracking:path.endsWith('/permission-consent')?{consent:{version:1,location_choice:'manual',notification_choice:'manual'}}:path.endsWith('/me')?me:path.endsWith('/customer/home')?home:{}});
+ await route.fulfill({json:path.endsWith('/customer/plants/search')?{plants:[{id:'fixture-plant',name:'Panvel Ready-Mix Concrete and Infrastructure Supply',address:'Industrial Estate, Panvel',status:'active',verified:true,order_enabled:true,grades:['M30'],distance_km:4.2}],page:1,has_more:false}:path.endsWith('/tracking')?tracking:path.endsWith('/customer/service-enquiries')?{enquiries:[]}:path.endsWith('/customer/plants')?{plants:[]}:path.endsWith('/permission-consent')?{consent:{version:1,location_choice:'manual',notification_choice:'manual'}}:path.endsWith('/me')?me:path.endsWith('/customer/home')?home:{}});
  });
  page.on('pageerror',e=>console.error(e.message));
  await page.goto('http://127.0.0.1:8765/customer/');
@@ -103,7 +103,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  if(kycTitleSize!==expected.kycTitle+'px')throw Error('KYC title mismatch at '+width+': '+kycTitleSize);
  const kycBox=await page.getByTestId('kyc-banner').boundingBox();
  const toolSectionBox=await page.getByTestId('customer-module-grid').boundingBox();
- const pumpSectionBox=await page.getByTestId('home-pump-rental-promo').boundingBox();
+ const actionSectionBox=await page.getByTestId('home-planning-actions').boundingBox();
  const adviceSectionBox=await page.getByTestId('home-advice-grid').boundingBox();
  const otherServicesSectionBox=await page.getByTestId('home-other-services').boundingBox();
  const trackingSectionBox=await page.getByTestId('demo-tracking-card').locator('xpath=..').boundingBox();
@@ -112,8 +112,8 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    ['carousel to quick actions',gapBetween(carouselBox,quickSectionBox)],
    ['quick actions to KYC',gapBetween(quickSectionBox,kycBox)],
    ['KYC to planning',gapBetween(kycBox,toolSectionBox)],
-   ['planning to pump rental',gapBetween(toolSectionBox,pumpSectionBox)],
-   ['pump rental to advice',gapBetween(pumpSectionBox,adviceSectionBox)],
+   ['planning to order actions',gapBetween(toolSectionBox,actionSectionBox)],
+   ['order actions to advice',gapBetween(actionSectionBox,adviceSectionBox)],
    ['advice to supply',gapBetween(adviceSectionBox,otherServicesSectionBox)],
    ['supply to tracking',gapBetween(otherServicesSectionBox,trackingSectionBox)],
    ])if(Math.abs(actual-expected.sectionGap)>1)throw Error(`${name} must be ${expected.sectionGap}dp; got ${actual}`);
@@ -124,9 +124,10 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  if(Math.max(...actionBoxes.map(box=>box.y))-Math.min(...actionBoxes.map(box=>box.y))>2)
    throw Error('All four Quick Actions must fit one row at 320dp and above');
 
- // Carousel is full-bleed at mobile widths with the original five-slide source.
- if(width<=390 && (Math.abs(carouselBox.x)>1||Math.abs(carouselBox.width-width)>1))
-   throw Error(`Mobile carousel is not full width: ${JSON.stringify(carouselBox)}`);
+ const homeHeader = await page.getByTestId('customer-home-header').boundingBox();
+ assert(Math.abs(carouselBox.y - (homeHeader.y + homeHeader.height) - 10) <= 1, 'Carousel starts under the fixed header');
+ assert(Math.abs(carouselBox.width - Math.min(width - 32, 620)) <= 1, 'Carousel shares Home gutters');
+ assert(Math.abs(carouselBox.width / carouselBox.height - 16 / 9) < 0.03, 'Carousel preserves artwork ratio');
 
  // No redundant outer borders. The responsive tools and supply sections have
  // stable test IDs, and all eight catalog actions still have a reachable tile.
@@ -165,29 +166,26 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      if(gap>12||gap<0)throw Error(`${kind} horizontal gap ${gap} outside compact bounds`);
    }
  }
- const promoCards=await page.getByTestId('home-pump-rental-promo').locator(':scope > *').all();
- if(promoCards.length!==1)throw Error('Pump CTA must be the only promotional card');
- const pump=await promoCards[0].boundingBox();
- const row=await page.getByTestId('home-pump-rental-promo').boundingBox();
- if(!pump||!row||Math.abs(pump.width-expected.pumpWidth)>1||pump.height<expected.pumpHeight-1)
-   throw Error('Pump CTA dimensions mismatch at '+width+': '+JSON.stringify({pump,row}));
- const pumpSvg=await promoCards[0].locator('svg').first().boundingBox();
- if(!pumpSvg||Math.abs(pumpSvg.width-expected.quick)>1||Math.abs(pumpSvg.height-expected.quick)>1)
-   throw Error('Pump CTA SVG size mismatch at '+width+': '+JSON.stringify(pumpSvg));
- if(Math.abs((pump.x+pump.width/2)-(row.x+row.width/2))>1)
-   throw Error('Single pump CTA must be horizontally centered');
- if(await page.getByText('On Time, Everytime').count())
-   throw Error('Removed On Time card still appears');
- if(!await page.getByRole('button',{name:'Request a concrete pump rental enquiry'}).count())throw Error('Accessible pump CTA missing');
+ const pump = page.getByTestId('home-pump-rental');
+ const request = page.getByTestId('home-order-request');
+ const [pumpBox, requestBox] = await Promise.all([pump.boundingBox(), request.boundingBox()]);
+ assert(Math.abs(pumpBox.y - requestBox.y) <= 1, 'Planning actions must share a row');
+ assert(Math.abs(pumpBox.height - requestBox.height) <= 1 && requestBox.height >= expected.actionHeight - 1,
+   'Both planning actions must match the taller card');
+ assert(Math.abs(pumpBox.width - requestBox.width) <= 1, 'Planning actions must have equal widths');
+ assert(Math.abs(requestBox.x - (pumpBox.x + pumpBox.width) - expected.sectionGap) <= 1, 'Planning actions need the responsive gutter');
+ for (const id of ['home-pump-rental', 'home-order-request']) {
+   assert.deepEqual(await actualVectorSize(id), [expected.tool, expected.tool]);
+ }
+ await pump.getByText('Concrete pump rental',{exact:true}).waitFor();
+ await pump.getByText('Request a quote',{exact:true}).waitFor();
+ await request.getByText('Start an Order Request',{exact:true}).waitFor();
+ await request.getByText('Build and save a request without completing KYC first',{exact:true}).waitFor();
+ if(await page.getByText('On Time, Everytime').count())throw Error('Removed On Time card still appears');
  for(const title of ['Quick Actions','Active Projects & Planning','Free Tools & Expert Advice','Supply & Workforce','Track My RMC']){
    const style=await page.getByText(title,{exact:true}).first().evaluate(el=>{const s=getComputedStyle(el);return {size:s.fontSize,height:s.lineHeight,family:s.fontFamily};});
    if(style.size!==expected.heading+'px'||style.height!==expected.headingLine+'px'||!style.family.toLowerCase().includes('jakarta-bold'))
      throw Error('Home heading typography regression '+title+': '+JSON.stringify(style));
- }
- for(const [title,size,family] of [['Concrete pump rental',expected.pumpFirst+'px','jakarta-medium'],['Request a quote',expected.pumpSecond+'px','jakarta-semibold']]){
-   const style=await page.getByText(title,{exact:true}).first().evaluate(el=>{const s=getComputedStyle(el);return {size:s.fontSize,family:s.fontFamily};});
-   if(style.size!==size||!style.family.toLowerCase().includes(family))
-     throw Error('Pump CTA font regression '+title+': '+JSON.stringify(style));
  }
  if(!await page.getByTestId('header-location').count())throw Error('Location header missing');
  const locationFont=await page.getByTestId('header-location').getByText('Select Location',{exact:true})
@@ -210,11 +208,17 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  if(!(centers[0]<centers[1]&&centers[1]<mid&&mid<centers[2]&&centers[2]<centers[3]))throw Error('Tab ordering around center icon');
  if(Math.abs((mid-centers[1])-(centers[2]-mid))>4 || Math.abs((mid-centers[0])-(centers[3]-mid))>4)throw Error('Tab spacing is not symmetric');
  const card=page.getByTestId('demo-tracking-card'); try { await card.waitFor({timeout:30000}); } catch(e) { await page.screenshot({path:`tracking-previews/failure-${width}.png`,fullPage:true}); console.error(await page.locator('body').innerText()); throw e; }
- await card.evaluate(el=>el.scrollIntoView({block:'start'}));
+ await page.getByTestId('customer-home-scroll').evaluate((scroll) => {
+   const card = scroll.querySelector('[data-testid="demo-tracking-card"]');
+   scroll.scrollTo(0, scroll.scrollTop + card.getBoundingClientRect().top - scroll.getBoundingClientRect().top);
+ });
  const b=await card.boundingBox();
+ assert.equal(Math.round((await page.getByTestId('customer-home-header').boundingBox()).y), Math.round(homeHeader.y));
+ assert.equal(Math.round((await page.getByTestId('app-tab-bar').boundingBox()).y), Math.round(tabBar.y));
  if(await page.getByTestId('demo-tracking-map').count())throw Error('The home tracking map should be collapsed initially');
  await card.getByTestId('home-toggle-tracking-map').click();
  const m=await page.getByTestId('demo-tracking-map').boundingBox();
+ assert.equal(Math.round((await page.getByTestId('customer-home-header').boundingBox()).y), Math.round(homeHeader.y));
  if(!m||Math.abs(m.width/m.height-2)>0.05)throw Error('map ratio');
  if(b.x<0||b.x+b.width>width+1)throw Error('overflow');
  for(const text of ['Place Your First order','M-25 Grade · 6 m³','Project site 1','Print Challan','Track TM','Call Driver','Call Plant'])if(!await card.getByText(text,{exact:true}).count())throw Error(text);
@@ -229,6 +233,8 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    const real=page.getByTestId('real-tracking-card');await real.waitFor();
    await real.getByText('CUSTOMER-ORDER',{exact:true}).waitFor();
    await real.getByText('Actual project',{exact:true}).waitFor();
+   assert.equal(await page.getByText('Current order',{exact:true}).count(),0);
+   await real.getByRole('button',{name:'View order details for CUSTOMER-ORDER'}).waitFor();
    if(await page.getByTestId('demo-tracking-map').count())throw Error('real order used demo route');
    if(state==='pending'){await real.getByTestId('home-toggle-tracking-map').click();await real.getByText('Waiting for dispatch',{exact:true}).waitFor();}
    if(state==='live'){
@@ -237,6 +243,12 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      await real.getByText(/19.10000, 73.10000/).waitFor();
    }
    if(state==='delivered')await real.getByText('DELIVERED',{exact:true}).first().waitFor();
+   if(state==='live' && width===390){
+     await real.getByTestId('home-view-order-details').click();
+     await page.waitForURL('**/order/isolated-order');
+     await page.getByTestId('order-back').waitFor();
+     await page.goBack();
+   }
  }
  if(width===320){
    mode='demo';
@@ -251,7 +263,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      await page.goto('http://127.0.0.1:8765/customer/');
      await page.getByTestId('customer-module-compare-plants').waitFor();
      const clipped=await page.evaluate(()=>{
-       const labels=[...document.querySelectorAll('[data-testid^="action-"],[data-testid^="customer-module-"],[data-testid^="service-"],[role="tab"]')]
+       const labels=[...document.querySelectorAll('[data-testid^="action-"],[data-testid^="customer-module-"],[data-testid^="service-"],[data-testid="home-pump-rental"],[data-testid="home-order-request"],[role="tab"]')]
          .filter(el=>el.matches('[role="button"],[role="tab"]'))
          .flatMap(el=>[...el.querySelectorAll('div')].filter(text=>!text.childElementCount&&text.textContent.trim()));
        for(const label of labels){
@@ -270,6 +282,14 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      await page.getByTestId('customer-support-close').click();
      await page.getByTestId('customer-support-panel').waitFor({state:'hidden'});
 
+     await page.getByTestId('home-pump-rental').click();
+     await page.waitForURL(/\/customer\/service-enquiry\/?\?service=pump/);
+     await page.getByText('Concrete Pump Rental Enquiry',{exact:true}).waitFor();
+     await page.goBack();
+     await page.getByTestId('home-order-request').click();
+     await page.waitForURL('**/new-order');
+     await page.getByTestId('neworder-draft').waitFor();
+     await page.goBack();
      await page.getByTestId('tab-new-order').click();
      await page.waitForURL('**/new-order');
      await page.goBack();

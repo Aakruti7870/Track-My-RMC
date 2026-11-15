@@ -1,8 +1,10 @@
+import { screenOverflow } from "@/src/theme/sceneBackground";
 import React, { useState } from "react";
 import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useRouter, type Href } from "expo-router";
+import { HomeModuleSection, HomeSectionHeader } from "@/src/components/HomeModuleSection";
 import { OperationalHomeTopBar } from "@/src/components/OperationalHomeTopBar";
 
 import { useAuth } from "@/src/auth/AuthContext";
@@ -16,7 +18,7 @@ import { AppText } from "@/src/components/ui/AppText";
 import { Skeleton } from "@/src/components/ui/Skeleton";
 import { ErrorView } from "@/src/components/StateViews";
 import { StaffCollection } from "@/src/screens/StaffCollection";
-import { StaffModuleDirectory } from "@/src/screens/StaffModuleDirectory";
+import { STAFF_MODULE_GROUPS, staffModulesForScope, visibleStaffModules, type StaffModuleGrant } from "@/src/screens/StaffModuleDirectory";
 import { fonts, fontSize, radius, spacing, operationalStatus, type OperationalStatus } from "@/src/theme/tokens";
 
 const PLANT_HERO_IMAGE = require("../../assets/images/Plant _Owner_All_staff_top_card.webp");
@@ -30,7 +32,7 @@ type HomeData = {
   kpis: Kpi[];
   primary: { title: string; kind: string };
 };
-const ROLE_WORKSPACE: Record<string, { tagline: string; help: string; href: string; key: string }> = {
+const ROLE_WORKSPACE: Record<string, { tagline: string; help: string; href: Href; key: string }> = {
   admin: { tagline: "Plant Operations", help: "Orders and fleet for your assigned plant", href: "/admin/orders", key: "dispatch_queue" },
   dispatcher: { tagline: "Dispatch Control", help: "Allocate loads, mixers and delivery schedules", href: "/dispatcher/dispatch", key: "dispatch_queue" },
   operator: { tagline: "Batching Operations", help: "Production queue and approved material recipes", href: "/operator/production", key: "production_queue" },
@@ -95,21 +97,31 @@ export function StaffHome() {
       setAttendanceBusy(false);
     }
   };
-  useFocusEffect(React.useCallback(() => { refreshWorkday(); }, [refreshWorkday]));
   const { data: grants, loading: grantsLoading, error: grantsError, refetch: refreshGrants } =
-    useGet<{ permissions: Array<{ key: string; view: boolean }> }>("/staff/module-permissions");
+    useGet<{ permissions: StaffModuleGrant[] }>("/staff/module-permissions");
+  useFocusEffect(React.useCallback(() => {
+    void refreshWorkday();
+    void refreshGrants();
+  }, [refreshWorkday, refreshGrants]));
   const workspace = ROLE_WORKSPACE[user?.role || ""] || ROLE_WORKSPACE.admin;
   const primaryAllowed = grants?.permissions.some(g => g.key === workspace.key && g.view) === true;
   const refresh = () => { refetch(); refreshGrants(); refreshWorkday(); };
+  const modules = visibleStaffModules(staffModulesForScope(user?.role, "home"), grants?.permissions);
+  const roleTools = STAFF_MODULE_GROUPS.map(category => {
+    const entries = modules.filter(module => module.group === category);
+    return <HomeModuleSection key={category} id={category.toLowerCase()} title={category} modules={entries.slice(0, 4)}
+      seeAll={entries.length > 2 ? { pathname: "/role-modules", params: { category } } : undefined} />;
+  });
 
   return (
-    <View style={{ flex: 1, backgroundColor: "transparent" }}>
+    <View style={{ flex: 1, backgroundColor: "transparent", overflow: screenOverflow }}>
       <OperationalHomeTopBar />
 
       {error && !data ? (
-        <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}><ErrorView message={error} onRetry={reload} /><StaffModuleDirectory role={user?.role} scope="home" title="Role tools" /></ScrollView>
+        <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}><ErrorView message={error} onRetry={reload} />{roleTools}</ScrollView>
       ) : (
         <ScrollView
+          testID="staff-home-scroll"
           contentContainerStyle={{ padding: spacing.lg, paddingBottom: 130, gap: spacing.md, width: "100%", maxWidth: 980, alignSelf: "center" }}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={refresh} tintColor={colors.brand} />}
@@ -124,7 +136,7 @@ export function StaffHome() {
               <Pressable
                 testID="staff-home-summary" accessibilityRole="button" accessibilityLabel={"Open " + data.primary.title}
                 accessibilityState={{ disabled: !primaryAllowed }} disabled={!primaryAllowed}
-                onPress={() => router.push(workspace.href as any)}
+                onPress={() => router.push(workspace.href)}
                 style={({ pressed }) => [styles.summary, {
                   backgroundColor: colors.surfaceSecondary,
                   borderColor: colors.divider,
@@ -166,18 +178,6 @@ export function StaffHome() {
                 ))}
               </View>
 
-              <View style={{ gap: spacing.sm }}>
-                <AppText variant="heading">{data.primary.title}</AppText>
-                {primaryAllowed ? <StaffCollection kind={data.primary.kind} embedded limit={5} /> : (
-                  <View style={[styles.restricted, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-                    <Ionicons name="shield-checkmark-outline" size={22} color={colors.brand} />
-                    <AppText variant="bodyMuted" style={{ flex: 1 }}>
-                      {grantsLoading ? "Checking your access…" : grantsError ?
-                        "Permissions unavailable. Pull down to retry." : "This queue is not enabled for your staff account."}
-                    </AppText>
-                  </View>
-                )}
-              </View>
               <View testID="staff-workday-card" style={[styles.workday, {
                 backgroundColor: colors.surfaceSecondary, borderColor: colors.border,
               }]}>
@@ -193,7 +193,20 @@ export function StaffHome() {
                   <Button testID="staff-home-check-out" label="Check Out" size="sm" variant="outline"
                     loading={attendanceBusy} onPress={() => { void attendanceAction("punch-out"); }} /> : null}
               </View>
-              <StaffModuleDirectory role={user?.role} scope="home" title="Role tools" />
+              {roleTools}
+              <View style={{ gap: spacing.sm }}>
+                <HomeSectionHeader title={data.primary.title} seeAll={primaryAllowed ? workspace.href : undefined}
+                  testID="home-see-all-staff-queue" />
+                {primaryAllowed ? <StaffCollection kind={data.primary.kind} embedded limit={5} /> : (
+                  <View style={[styles.restricted, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+                    <Ionicons name="shield-checkmark-outline" size={22} color={colors.brand} />
+                    <AppText variant="bodyMuted" style={{ flex: 1 }}>
+                      {grantsLoading ? "Checking your access…" : grantsError ?
+                        "Permissions unavailable. Pull down to retry." : "This queue is not enabled for your staff account."}
+                    </AppText>
+                  </View>
+                )}
+              </View>
             </>
           ) : null}
         </ScrollView>

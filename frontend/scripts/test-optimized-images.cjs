@@ -58,7 +58,7 @@ test("owner and plant staff reuse the pixel-preserving RMC plant WebP banner", (
   assert.ok(!fs.readFileSync(path.join(root, "app/owner/index.tsx"), "utf8").includes('require("../../assets/images/Mixer.png")'), "owner banner must no longer show a truck");
   const staff = fs.readFileSync(path.join(root, "src/screens/StaffHome.tsx"), "utf8");
   assert.ok(staff.includes("disabled={!primaryAllowed}"), "staff permission gate must remain unchanged");
-  assert.ok(staff.includes("onPress={() => router.push(workspace.href as any)}"), "staff navigation must remain unchanged");
+  assert.match(staff, /onPress=\{\(\) => router\.push\(workspace\.href\)\}/, "The staff banner must open its configured role workspace.");
 });
 
 test("native PNG splash and Android app icons are unchanged", () => {

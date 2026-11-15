@@ -51,15 +51,16 @@ test("home offers KYC-later request building and prioritizes next actions", () =
   const actionHandler = home.split("const onAction = ")[1]?.split("const openService = ")[0] || "";
   assert.match(actionHandler, /router\.push\("\/new-order"\)/);
   assert.doesNotMatch(actionHandler, /Complete KYC to place an order/);
-  assert.match(home, /<CustomerNextAction/);
-  const firstCard = home.indexOf("<CustomerNextAction");
+  assert.doesNotMatch(home, /CustomerNextAction/);
   const carousel = home.indexOf("<HomeCarousel");
   const shortcuts = home.indexOf("{quickActions}", carousel);
-  assert.ok(firstCard < carousel && carousel < shortcuts, "context-first home keeps carousel and shortcuts adjacent");
-  const action = read("src/components/customer/CustomerNextAction.tsx");
-  assert.match(home, /activeOrder \? \(/);
-  assert.match(action, /View order details/);
-  assert.doesNotMatch(action, /My orders|Verify identity|Start an order request/);
+  const planning = home.indexOf("{planningTools}", shortcuts);
+  const requests = home.indexOf("{planningActions}", planning);
+  assert.ok(carousel >= 0 && carousel < shortcuts && shortcuts < planning && planning < requests);
+  assert.match(home, /Build and save a request without completing KYC first/);
+  const tracking = read("src/components/ActiveTransitMixerCard.tsx");
+  assert.match(tracking, /View order details/);
+  assert.match(tracking, /pathname: "\/order\/\[id\]"/);
 });
 test("new order uses local calendar dates and a transparent final review", () => {
   const order = read("app/new-order.tsx");

@@ -69,7 +69,7 @@ const homeIcons = [materialSymbolNames["new-order"], materialSymbolNames["live-o
   materialSymbolNames["nearby-rmc-plants"], materialSymbolNames["my-orders"],
   materialSymbolNames.cement, materialSymbolNames["labour-contractor"], materialSymbolNames["building-material"]];
 assert.equal(new Set(homeIcons).size, homeIcons.length, "Order actions and service categories need distinct symbols");
-assert.match(home, /<VectorSymbol name="pump-rental" size=\{homeSize.pumpSymbol\}/);
+assert.match(home, /key: "pump-rental"[^\n]*symbol: "pump-rental"/);
 
 const nav = read("src/components/GlassTabBar.tsx");
 assert.match(nav, /<VectorSymbol name=\{symbol\} color=\{ink\} \/>/);

@@ -1,16 +1,15 @@
 import { modulesForRole, type RoleModule } from "@/src/navigation/moduleCatalog";
 
 const catalog = modulesForRole("plant_owner");
-// A destination has one visible owner placement: Home, Operations, or More.
-// Owner Quick Access has four routed shortcuts plus the local Insights toggle.
+// Owner Quick Access keeps four routed shortcuts and the local Insights toggle.
 export const HOME_KEYS = ["owner-orders", "owner-production-dispatch", "business-inventory", "business-staff"];
 export const OPERATIONS_KEYS = ["owner-orders", "owner-production-dispatch", "owner-incidents", "business-mixes", "business-inventory", "business-suppliers", "business-purchases", "business-fleet", "business-diesel", "business-reports", "owner-billing"];
-// Workforce and Commercial are consolidated into the Home grid. Keep the
-// two Payroll destinations within ONE card (two distinct controls).
 export const WORKFORCE_KEYS = ["business-payroll", "business-attendance", "workforce", "shift-roster", "my-payslip", "workforce-reports", "employee-master", "payroll-closure"];
 export const ACCOUNT_KEYS = ["account-kyc", "owner-premium", "public-plant-profile", "business-profile"];
 export const COMMERCIAL_KEYS = ["owner-billing-history", "owner-quotation-requests", "business-rates", "business-quotations", "business-expenses", "business-customers"];
-export const HOME_COMMERCIAL_KEYS = [...COMMERCIAL_KEYS, "business-payroll", "workforce", "shift-roster", "my-payslip", "workforce-reports", "employee-master", "payroll-closure"];
+export const OWNER_DIRECTORY_KEYS = { Commercial: ["owner-billing", ...COMMERCIAL_KEYS], Workforce: WORKFORCE_KEYS } as const;
+export const OWNER_HOME_COMMERCIAL = ["owner-billing-history", "owner-quotation-requests", "business-rates", "business-expenses"];
+export const OWNER_HOME_WORKFORCE = ["business-payroll", "workforce", "shift-roster", "workforce-reports"];
 
 export function ownerModules(keys: readonly string[]): RoleModule[] {
   const seen = new Set<string>();

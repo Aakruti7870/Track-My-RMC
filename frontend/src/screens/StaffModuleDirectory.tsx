@@ -10,11 +10,7 @@ import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
 import { modulesForRole, type ModuleGroup, type RoleModule } from "@/src/navigation/moduleCatalog";
 
-/**
- * Staff-only navigation surface. The shared RoleModuleDirectory remains
- * unchanged because the Driver post-login screen uses that component.
- * A visible card never authorizes an API request.
- */
+// Rust authorizes each request. This list controls discovery for staff.
 export const STAFF_ROLES = [
   "admin", "dispatcher", "operator", "supervisor", "accountant",
   "quality_engineer", "fleet_manager", "store_manager",
@@ -61,8 +57,7 @@ export const STAFF_TAB_KEYS: Readonly<Record<string, readonly string[]>> = {
   fleet_manager: ["fleet-manager-fleet", "fleet-manager-drivers"],
   store_manager: ["store-manager-stock"],
 };
-// Keep preferred Home ordering. All operational links belong on Home;
-// More is restricted to identity and personal document destinations.
+// Pick the first shortcuts in each category after applying effective grants.
 export const STAFF_HOME_KEYS: Readonly<Record<string, readonly string[]>> = {
   admin: ["business-inventory", "business-staff", "business-reports", "business-fleet", "business-attendance", "business-mixes"],
   dispatcher: ["business-inventory", "business-attendance", "business-reports", "public-plant-profile", "shift-roster", "workforce"],
@@ -101,24 +96,31 @@ export function staffModulesForScope(role: string | null | undefined, scope: Sta
 
 // Only existing functional destinations are eligible: do not turn design ideas
 // into new routes without an accompanying API, permission and data contract.
-const GROUPS: ModuleGroup[] = ["Operations", "Commercial", "Workforce", "Tools", "Account"];
-type Grant = { key: string; view: boolean };
+export const STAFF_MODULE_GROUPS: ModuleGroup[] = ["Operations", "Commercial", "Workforce", "Tools", "Account"];
+export type StaffModuleGrant = { key: string; view: boolean };
+export function visibleStaffModules(modules: RoleModule[], grants?: readonly StaffModuleGrant[]) {
+  const allowed = new Set(grants?.filter(grant => grant.view).map(grant => grant.key));
+  return modules.filter(module => {
+    const permission = STAFF_MODULE_PERMISSIONS[module.key];
+    return !permission || allowed.has(permission);
+  });
+}
 
 export function StaffModuleDirectory({
-  role, title = "Your modules", searchable = false, scope = "all",
-}: { role?: string | null; title?: string; searchable?: boolean; scope?: StaffModuleScope }) {
+  role, title = "Your modules", searchable = false, scope = "all", category,
+}: { role?: string | null; title?: string; searchable?: boolean; scope?: StaffModuleScope; category?: ModuleGroup }) {
   const router = useRouter();
   const { colors } = useTheme();
   const { token } = useAuth();
   const { width } = useWindowDimensions();
-  const [allowed, setAllowed] = useState<string[] | null>(null);
+  const [allowed, setAllowed] = useState<StaffModuleGrant[] | null>(null);
   const [permissionError, setPermissionError] = useState(false);
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState<ModuleGroup | "All">("All");
-  const validRole = !!role && STAFF_ROLES.some(value => value === role);
+  const staffRole = STAFF_ROLES.find(value => value === role);
 
   useFocusEffect(useCallback(() => {
-    if (!validRole || !token) {
+    if (!staffRole || !token) {
       setAllowed([]);
       setPermissionError(true);
       return;
@@ -126,9 +128,9 @@ export function StaffModuleDirectory({
     let active = true;
     setAllowed(null);
     setPermissionError(false);
-    apiGet<{ permissions: Grant[] }>("/staff/module-permissions", token)
+    apiGet<{ permissions: StaffModuleGrant[] }>("/staff/module-permissions", token)
       .then(result => {
-        if (active) setAllowed(result.permissions.filter(grant => grant.view).map(grant => grant.key));
+        if (active) setAllowed(result.permissions);
       })
       .catch(() => {
         if (active) {
@@ -137,23 +139,14 @@ export function StaffModuleDirectory({
         }
       });
     return () => { active = false; };
-  }, [token, validRole, role]));
+  }, [token, staffRole]));
 
-  // Every permitted work destination appears on Home. No silent eight-card
-  // cap and no operational leftovers on the account-focused More screen.
-  const scopedModules = useMemo(() => staffModulesForScope(role, scope), [role, scope]);
-  const modules = useMemo(() => scopedModules.filter(item => {
-    const key = STAFF_MODULE_PERMISSIONS[item.key];
-    if (key && !(allowed || []).includes(key)) return false;
-    if (group !== "All" && item.group !== group) return false;
-    const needle = query.trim().toLowerCase();
-    return !needle || (item.label + " " + item.description).toLowerCase().includes(needle);
-  }), [scopedModules, allowed, group, query]);
-
-  const allVisible = useMemo(() => scopedModules.filter(item => {
-    const key = STAFF_MODULE_PERMISSIONS[item.key];
-    return !key || (allowed || []).includes(key);
-  }), [scopedModules, allowed]);
+  const selectedGroup = category ?? group;
+  const allVisible = useMemo(() => visibleStaffModules(staffModulesForScope(role, scope), allowed ?? undefined)
+    .filter(module => !category || module.group === category), [role, scope, allowed, category]);
+  const needle = query.trim().toLowerCase();
+  const modules = allVisible.filter(module => (selectedGroup === "All" || module.group === selectedGroup)
+    && (!needle || (module.label + " " + module.description).toLowerCase().includes(needle)));
 
   // Tablet/desktop gets additional columns; on phones every card has enough
   // width for its label and maintains a 44pt+ touch target.
@@ -161,10 +154,10 @@ export function StaffModuleDirectory({
   const contentWidth = Math.max(0, Math.min(width, 980) - 2 * spacing.lg);
   const cardWidth = Math.max(0, (contentWidth - (cols - 1) * 9) / cols);
 
-  if (!validRole) return null;
+  if (!staffRole) return null;
   return (
     <View testID="role-module-directory" style={styles.wrapper}>
-      <View style={styles.heading}>
+      {!category ? <View style={styles.heading}>
         <View style={{ flex: 1, gap: 3 }}>
           <AppText variant="heading">{title}</AppText>
           <AppText variant="caption">{allVisible.length} available destinations · access controlled by your plant</AppText>
@@ -172,7 +165,7 @@ export function StaffModuleDirectory({
         <View style={[styles.count, { backgroundColor: colors.brandSoft }]}>
           <AppText style={{ color: colors.onBrandSoft, fontFamily: fonts.bold, fontSize: 13 }}>{allVisible.length}</AppText>
         </View>
-      </View>
+      </View> : null}
 
       {searchable ? (
         <>
@@ -191,20 +184,20 @@ export function StaffModuleDirectory({
               <Ionicons name="close-circle" size={21} color={colors.onSurfaceTertiary} />
             </Pressable> : null}
           </View>
-          <View style={styles.filters}>
-            {(["All", ...GROUPS] as const).map(g => {
+          {!category ? <View style={styles.filters}>
+            {(["All", ...STAFF_MODULE_GROUPS] as const).map(g => {
               if (g !== "All" && !allVisible.some(m => m.group === g)) return null;
               const selected = group === g;
               return (
                 <Pressable key={g} testID={"staff-group-" + g.toLowerCase()}
                   accessibilityRole="button" accessibilityState={{ selected }}
                   onPress={() => setGroup(g)}
-                  style={[styles.filter, { backgroundColor: selected ? colors.brand : colors.surfaceSecondary, borderColor: selected ? colors.brand : colors.border }]}>
-                  <AppText style={{ fontFamily: fonts.semibold, fontSize: 12, color: selected ? colors.onBrand : colors.onSurface }}>{g}</AppText>
+                  style={[styles.filter, { backgroundColor: selected ? colors.surfaceTertiary : colors.surfaceSecondary, borderColor: selected ? colors.controlOutline : colors.divider }]}>
+                  <AppText style={{ fontFamily: fonts.semibold, fontSize: 12, color: selected ? colors.accentText : colors.onSurface }}>{g}</AppText>
                 </Pressable>
               );
             })}
-          </View>
+          </View> : null}
         </>
       ) : null}
 
@@ -218,16 +211,12 @@ export function StaffModuleDirectory({
       ) : null}
 
       {allowed === null ? <AppText variant="caption">Checking staff permissions…</AppText> : null}
-      {GROUPS.map(category => {
-        if (group !== "All" && group !== category) return null;
-        const entries = modules.filter(m => m.group === category);
+      {STAFF_MODULE_GROUPS.map(moduleGroup => {
+        const entries = modules.filter(m => m.group === moduleGroup);
         if (!entries.length) return null;
         return (
-          <View key={category} style={{ gap: spacing.sm }}>
-            <View style={styles.groupTitle}>
-              <View style={[styles.groupMark, { backgroundColor: colors.brand }]} />
-              <AppText variant="label">{category}</AppText>
-            </View>
+          <View key={moduleGroup} style={{ gap: spacing.sm }}>
+            {!category ? <AppText variant="label">{moduleGroup}</AppText> : null}
             <View style={styles.grid}>
               {entries.map(module => (
                 <Pressable key={module.key} testID={"role-module-" + module.key}
@@ -268,8 +257,6 @@ const styles = StyleSheet.create({
   wrapper: { gap: spacing.md },
   heading: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   count: { minWidth: 38, minHeight: 38, alignItems: "center", justifyContent: "center", borderRadius: 14, paddingHorizontal: 8 },
-  groupTitle: { flexDirection: "row", alignItems: "center", gap: 8 },
-  groupMark: { height: 16, width: 3, borderRadius: 3 },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 9 },
   card: { minHeight: 112, maxWidth: "100%", borderWidth: 1, borderRadius: 16, padding: 7, alignItems: "center", justifyContent: "center", gap: 3 },
   iconWrap: { height: 37, alignItems: "center", justifyContent: "center" },
