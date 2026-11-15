@@ -339,6 +339,19 @@ fn attempt_status(status: &str, reason: Option<&str>) -> &'static str {
     }
 }
 
+fn effective_attempt_status(profile: &'static str, status: &str, reason: Option<&str>) -> &'static str {
+    match profile {
+        "NOT_STARTED" => attempt_status(status, reason),
+        "PENDING" => match status {
+            "STARTING" | "IN_PROGRESS" | "REJECTED" | "EXPIRED" | "FAILED" => {
+                attempt_status(status, reason)
+            }
+            _ => profile,
+        },
+        _ => profile,
+    }
+}
+
 /// Read the latest attempt for the profile without polling the provider.
 pub(crate) async fn customer_attempt_status(
     db: &sqlx::PgPool,
@@ -771,11 +784,12 @@ async fn completed_consent_status_after_race(
             "REQUIRES_REVERIFICATION"
         });
     }
-    if current_status != "NOT_STARTED" {
-        return Ok(current_status);
-    }
     let reason: Option<String> = current.get("failure_reason");
-    Ok(attempt_status(&session, reason.as_deref()))
+    Ok(effective_attempt_status(
+        current_status,
+        &session,
+        reason.as_deref(),
+    ))
 }
 
 async fn reserve_completed_consent(
@@ -1000,11 +1014,7 @@ pub async fn status(
             }
         }
         let reason: Option<String> = latest.get("failure_reason");
-        let status = if effective_status == "NOT_STARTED" {
-            attempt_status(&previous, reason.as_deref())
-        } else {
-            effective_status
-        };
+        let status = effective_attempt_status(effective_status, &previous, reason.as_deref());
         return Ok(Json(json!({"status":status,"provider":provider.label})));
     }
     let expiry: chrono::DateTime<Utc> = latest.get("expires_at");
@@ -1697,6 +1707,18 @@ mod tests {
     fn contract_normalization_and_strict_identity_match() {
         assert_eq!(display_status("verified"), "VERIFIED");
         assert_eq!(display_status("unverified"), "NOT_STARTED");
+        assert_eq!(
+            effective_attempt_status("PENDING", "FAILED", Some("aadhaar_not_consented")),
+            "DOCUMENT_NOT_SHARED"
+        );
+        assert_eq!(
+            effective_attempt_status("PENDING", "PENDING", None),
+            "PENDING"
+        );
+        assert_eq!(
+            effective_attempt_status("REJECTED", "FAILED", Some("aadhaar_not_consented")),
+            "REJECTED"
+        );
         assert_eq!(attempt_status("IN_PROGRESS", None), "IN_PROGRESS");
         assert_eq!(
             attempt_status("REJECTED", Some("identity_mismatch")),
