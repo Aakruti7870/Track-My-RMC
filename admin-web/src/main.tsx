@@ -1,13 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import './admin-theme.css';
-import { orderStatusColor } from '../../frontend/src/domain/order';
+import orderStages from '../../frontend/src/domain/order-status-colors.json';
 import { Bell, Building2, ClipboardCheck, Factory, Megaphone, ShieldCheck, Workflow, MessageCircle, LayoutDashboard, BarChart3, Eye, Users, UserRoundPlus, UserCog, Database, Grid2X2, LogOut, Settings, ChevronRight, ArrowLeft, Check, KeyRound, Mail, LockKeyhole, Moon, Sun, UserRound } from 'lucide-react';
 import { AuthenticatorQr } from './AuthenticatorQr';
 import { PlantVisibility } from './PlantVisibility';
 import { WhatsAppChats } from './WhatsAppChats';
 import { AdminSecurity } from './AdminSecurity';
 import apiClient, { markCentralSignedOut, rememberCentralSession, restoreCentralSession, setAccessToken } from './api';
+
+function orderStatusColor(status: string, dark: boolean) {
+  const normalized = status.trim().toUpperCase().replace(/[\s-]+/g, '_');
+  const stage = Object.values(orderStages).find(({ aliases }) => aliases.includes(normalized));
+  return stage?.[dark ? 'dark' : 'light'];
+}
 
 type Stage = 'checking-session' | 'central-login' | 'central-otp' | 'central-mfa' | 'central-recover' | 'central-recovery-codes' | 'authority-login' | 'authority-password' | 'email' | 'otp' | 'mfa-enroll' | 'mfa-login' | 'authenticated';
 

@@ -63,10 +63,10 @@ test("order stages share the requested colors, including persisted aliases", () 
   const ts = require("typescript");
   const { runInNewContext } = require("node:vm");
   const code = ts.transpileModule(read("src/domain/order.ts"), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS },
+    compilerOptions: { module: ts.ModuleKind.CommonJS, esModuleInterop: true },
   }).outputText;
   const exports = {};
-  runInNewContext(code, { exports });
+  runInNewContext(code, { exports, require: () => require("../src/domain/order-status-colors.json") });
   const { orderStatusColor } = exports;
   for (const dark of [false, true]) {
     for (const states of [

@@ -148,7 +148,7 @@ export function StaffHome() {
 
       <HomeScroll testID="staff-home-scroll"
         gap={spacing.md} paddingHorizontal={spacing.lg} paddingTop={spacing.lg}
-        backgroundColor={getThemedCanvasColor(colors)} tabBarOverlay={fontScale >= 1.3 ? 0 : 130}
+        backgroundColor={getThemedCanvasColor(colors)} tabBarOverlay={fontScale >= 1.3 ? 0 : 110}
         contentContainerStyle={{ paddingBottom: 130, width: "100%", maxWidth: 980, alignSelf: "center" }}
         refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={refresh} tintColor={colors.brand} />}
         lead={<View style={styles.topCards}>

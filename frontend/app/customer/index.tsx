@@ -185,7 +185,7 @@ export default function CustomerHome() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, overflow: screenOverflow },
-  carousel: { maxWidth: 839, borderRadius: 10 },
+  carousel: { maxWidth: 760, borderRadius: 10 },
   group: { width: "100%", maxWidth: 839, alignSelf: "center" },
   panel: { width: "100%", maxWidth: 839, alignSelf: "center", padding: 9, borderRadius: 10, borderWidth: 1, gap: 8 },
   heading: { fontFamily: fonts.bold, paddingHorizontal: 5 },
