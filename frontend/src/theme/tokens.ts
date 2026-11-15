@@ -181,6 +181,10 @@ export const radius = {
 };
 
 export const iconTile = { light: "#4A5568", dark: "#394454", foreground: "#FFFFFF" };
+export const homeShortcutTile = {
+  light: { background: "#DCE8F4", foreground: "#264C6A" },
+  dark: { background: "#29465F", foreground: "#C7E3FF" },
+};
 
 export const fonts = {
   display: "Jakarta-SemiBold",

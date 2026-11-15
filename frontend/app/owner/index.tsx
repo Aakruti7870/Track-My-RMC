@@ -1,9 +1,10 @@
 import React, { useState } from "react";
-import { Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
+import { Pressable, RefreshControl, StyleSheet, useWindowDimensions, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/src/auth/AuthContext";
 import { useGet } from "@/src/hooks/useApi";
 import { HomeModuleSection, HomeSectionHeader } from "@/src/components/HomeModuleSection";
+import { HomeScroll } from "@/src/components/HomeScroll";
 import { PlantHomeActions, PlantHomeHero } from "@/src/components/PlantHomeCards";
 import { AppText } from "@/src/components/ui/AppText";
 import { Skeleton } from "@/src/components/ui/Skeleton";
@@ -55,13 +56,15 @@ export default function OwnerHome() {
   };
 
   return <OwnerFrame>
-    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[ui.content, { paddingBottom: bottom, gap: 10 }]}
-      refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={refetch} tintColor={p.accent} />}>
-      <View style={styles.homeCards}>
-        <View testID="owner-home-summary" style={[styles.hero, { backgroundColor: p.panel }]}>
-          <PlantHomeHero label="Plant Owner" testID="owner-home-hero-banner" />
-        </View>
-        <View style={[styles.quickAccess, { backgroundColor: p.panel, borderColor: p.border }]}>
+    <HomeScroll testID="owner-home-scroll" paddingHorizontal={16} gap={10}
+      backgroundColor={p.canvas} tabBarOverlay={bottom}
+      contentContainerStyle={{ paddingBottom: bottom }}
+      refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={refetch} tintColor={p.accent} />}
+      lead={<View testID="owner-home-summary" style={[styles.homeCards, styles.hero, { backgroundColor: p.panel }]}>
+        <PlantHomeHero label="Plant Owner" testID="owner-home-hero-banner" />
+      </View>}
+      shortcuts={<View style={styles.homeCards}>
+        <View testID="owner-quick-access" style={[styles.quickAccess, { backgroundColor: p.panel, borderColor: p.border }]}>
           <HomeSectionHeader title="Quick Access" seeAll="/owner/operations" testID="home-see-all-owner-operations" />
           <View style={styles.modules}>
             {modules.map(module => <Pressable testID={`owner-shortcut-${module.key}`} key={module.key}
@@ -69,14 +72,14 @@ export default function OwnerHome() {
               accessibilityHint={module.description}
               onPress={() => router.push(ownerDestination(module))}
               style={({ pressed }) => [styles.shortcut, { width: shortcutWidth, opacity: pressed ? 0.74 : 1 }]}>
-              {module.symbol ? <IconTile symbol={module.symbol} height={45} /> : <IconTile icon={module.icon} height={45} />}
+              {module.symbol ? <IconTile symbol={module.symbol} height={45} homeShortcut /> : <IconTile icon={module.icon} height={45} homeShortcut />}
               <AppText center style={styles.quickLabel}>{module.key === "business-staff" ? "Workforce" : module.label}</AppText>
             </Pressable>)}
           </View>
         </View>
-        <PlantHomeActions />
-      </View>
-
+        <PlantHomeActions action="supplier-enquiry" homeShortcut />
+      </View>}>
+      <PlantHomeActions action="profile" homeShortcut />
       <AppText style={[ui.section, { color: p.text }]}>Today at a Glance</AppText>
       {error ? <ErrorView message={error} onRetry={reload} /> : null}
       <View style={styles.metrics}>
@@ -116,7 +119,7 @@ export default function OwnerHome() {
 
       <AppText style={[ui.section, { color: p.text }]}>Driver Management</AppText>
       <OwnerModuleRow module={DRIVER_MODULE} compact />
-    </ScrollView>
+    </HomeScroll>
   </OwnerFrame>;
 }
 const styles = StyleSheet.create({

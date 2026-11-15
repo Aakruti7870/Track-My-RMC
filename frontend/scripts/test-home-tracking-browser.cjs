@@ -76,7 +76,18 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    assert(next.x >= 0 && next.x + next.width <= width + 1, 'Home section exceeds viewport');
  }
  assert(Math.abs(sections[0].width / sections[0].height - 16 / 9) < 0.03, 'Carousel preserves artwork ratio');
+ const fixed = page.getByTestId('customer-home-scroll-fixed');
+ await fixed.getByTestId('home-bulk-quote').waitFor();
+ assert.equal(await fixed.getByTestId('home-promotional-carousel').count(), 1);
+ assert.equal(await page.getByTestId('customer-home-scroll').getByTestId('kyc-banner').count(), 1);
  const bulk = page.getByTestId('home-bulk-quote');
+ const bulkTop = (await bulk.boundingBox()).y;
+ const planningTop = sections[3].y;
+ await page.getByTestId('customer-home-scroll').evaluate(scroll => scroll.scrollTo(0, 100));
+ await page.waitForFunction(() => document.querySelector('[data-testid="customer-home-scroll"]').scrollTop > 0);
+ assert.equal((await bulk.boundingBox()).y, bulkTop, 'Bulk quote stays fixed while the lower dashboard scrolls');
+ assert((await page.getByTestId('customer-module-grid').boundingBox()).y < planningTop);
+ await page.getByTestId('customer-home-scroll').evaluate(scroll => scroll.scrollTo(0, 0));
  assert((await bulk.boundingBox()).height >= 49);
  await bulk.getByText('Concrete in bulk? Get our best rate for your project.', { exact: true }).waitFor();
  await page.getByTestId('kyc-banner').getByText('KYC verified', { exact: true }).waitFor();
@@ -116,6 +127,24 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    const card = scroll.querySelector('[data-testid="demo-tracking-card"]');
    scroll.scrollTo(0, scroll.scrollTop + card.getBoundingClientRect().top - scroll.getBoundingClientRect().top);
  });
+ if (width === 390) {
+   const scroll = page.getByTestId('customer-home-scroll');
+   await page.setViewportSize({ width, height: 540 });
+   await fixed.waitFor({ state: 'detached' });
+   await scroll.evaluate(node => node.scrollTo(0, 0));
+   const stickyTop = await scroll.evaluate(node => node.getBoundingClientRect().top);
+   await scroll.evaluate(node => node.scrollTo(0, 500));
+   await page.waitForFunction(top => {
+     const tile = document.querySelector('[data-testid="home-quick-actions"]');
+     return tile && Math.abs(tile.getBoundingClientRect().top - top) <= 2;
+   }, stickyTop);
+   await page.setViewportSize({ width, height: 1000 });
+   await fixed.waitFor();
+   await scroll.evaluate(node => {
+     const track = node.querySelector('[data-testid="demo-tracking-card"]');
+     node.scrollTo(0, node.scrollTop + track.getBoundingClientRect().top - node.getBoundingClientRect().top);
+   });
+ }
  const b=await card.boundingBox();
  assert.equal(Math.round((await page.getByTestId('customer-home-header').boundingBox()).y), Math.round(homeHeader.y));
  assert.equal(Math.round((await page.getByTestId('app-tab-bar').boundingBox()).y), Math.round(tabBar.y));

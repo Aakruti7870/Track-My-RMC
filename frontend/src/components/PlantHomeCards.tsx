@@ -24,7 +24,7 @@ export function PlantHomeHero({ label, testID }: { label: string; testID: string
   );
 }
 
-export function PlantHomeActions() {
+export function PlantHomeActions({ action, homeShortcut = false }: { action?: "supplier-enquiry" | "profile"; homeShortcut?: boolean } = {}) {
   const router = useRouter();
   const { colors } = useTheme();
   const actions = [
@@ -37,14 +37,14 @@ export function PlantHomeActions() {
 
   return (
     <View style={styles.actions}>
-      {actions.map(({ key, title, detail, symbol, highlight, onPress }) => (
+      {actions.filter(item => !action || item.key === action).map(({ key, title, detail, symbol, highlight, onPress }) => (
         <Pressable key={key} testID={`plant-home-${key}`} accessibilityRole="button" accessibilityLabel={title}
           accessibilityHint={detail} onPress={onPress} style={({ pressed }) => [styles.action, {
             backgroundColor: highlight ? colors.brandSoft : colors.surfaceSecondary,
             borderColor: highlight ? colors.brand : colors.divider,
             opacity: pressed ? 0.76 : 1,
           }]}>
-          <IconTile symbol={symbol} />
+          <IconTile symbol={symbol} homeShortcut={homeShortcut} />
           <View style={styles.actionCopy}>
             <AppText style={styles.actionTitle}>{title}</AppText>
             <AppText variant="caption">{detail}</AppText>

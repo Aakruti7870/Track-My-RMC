@@ -1,11 +1,12 @@
-import { screenOverflow } from "@/src/theme/sceneBackground";
+import { getThemedCanvasColor, screenOverflow } from "@/src/theme/sceneBackground";
 import React, { useState } from "react";
-import { Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
+import { Pressable, RefreshControl, StyleSheet, useWindowDimensions, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { type VectorSymbolName } from "@/src/components/VectorSymbol";
 import { IconTile } from "@/src/components/IconTile";
 import { useFocusEffect, useRouter, type Href } from "expo-router";
 import { HomeModuleSection, HomeSectionHeader } from "@/src/components/HomeModuleSection";
+import { HomeScroll } from "@/src/components/HomeScroll";
 import { OperationalHomeTopBar } from "@/src/components/OperationalHomeTopBar";
 import { PlantHomeActions, PlantHomeHero } from "@/src/components/PlantHomeCards";
 
@@ -71,7 +72,7 @@ export function StaffHome() {
   const { user, token } = useAuth();
   const toast = useToast();
   const router = useRouter();
-  const { width: viewportWidth } = useWindowDimensions();
+  const { width: viewportWidth, fontScale } = useWindowDimensions();
   const contentWidth = Math.max(0, Math.min(viewportWidth, 980) - 2 * spacing.lg);
   const kpiColumns = contentWidth >= 680 ? 4 : contentWidth >= 460 ? 3 : 2;
   const kpiWidth = (contentWidth - (kpiColumns - 1) * 10) / kpiColumns;
@@ -112,9 +113,8 @@ export function StaffHome() {
     return <HomeModuleSection key={category} id={category.toLowerCase()} title={category} modules={entries.slice(0, 4)}
       seeAll={entries.length > 2 ? { pathname: "/role-modules", params: { category } } : undefined} />;
   });
-  const topCards = (
+  const shortcuts = (
     <View style={styles.topCards}>
-      <PlantHomeHero label={data?.role_label || user?.role_label || "Plant Staff"} testID="staff-home-hero-banner" />
       {data ? (
         <Pressable
           testID="staff-home-summary" accessibilityRole="button" accessibilityLabel={"Open " + data.primary.title}
@@ -123,7 +123,7 @@ export function StaffHome() {
           style={({ pressed }) => [styles.summary, {
             backgroundColor: colors.surfaceSecondary, borderColor: colors.divider, opacity: pressed ? 0.82 : 1,
           }]}>
-          <IconTile icon="grid-outline" />
+          <IconTile symbol="plant-dashboard" homeShortcut />
           <View style={styles.summaryCopy}>
             <AppText style={styles.summaryTitle}>{data.primary.title}</AppText>
             <AppText variant="caption">{workspace.help}</AppText>
@@ -135,7 +135,7 @@ export function StaffHome() {
             accessible={false} aria-hidden />
         </Pressable>
       ) : null}
-      <PlantHomeActions />
+      <PlantHomeActions action="supplier-enquiry" homeShortcut />
     </View>
   );
 
@@ -143,83 +143,83 @@ export function StaffHome() {
     <View style={{ flex: 1, backgroundColor: "transparent", overflow: screenOverflow }}>
       <OperationalHomeTopBar />
 
-      {error && !data ? (
-        <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}>
-          {topCards}
-          <ErrorView message={error} onRetry={reload} />
-          {roleTools}
-        </ScrollView>
-      ) : (
-        <ScrollView
-          testID="staff-home-scroll"
-          contentContainerStyle={{ padding: spacing.lg, paddingBottom: 130, gap: spacing.md, width: "100%", maxWidth: 980, alignSelf: "center" }}
-          showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={refresh} tintColor={colors.brand} />}
-        >
-          {topCards}
-          {loading && !data ? (
-            <>
-              <Skeleton height={120} style={{ borderRadius: radius.lg }} />
-              <Skeleton height={200} style={{ borderRadius: radius.lg }} />
-            </>
-          ) : data ? (
-            <>
-              <View style={styles.grid}>
-                {data.kpis.map((c) => (
-                  <View key={c.label} style={[styles.kpi, { width: kpiWidth,
-                    backgroundColor: colors.surfaceSecondary,
-                    borderColor: kpiTone(c) === "neutral"
-                      ? colors.divider
-                      : operationalStatus(kpiTone(c), colors.isDark) + "60",
-                  }]}>
-                    <View style={styles.kpiIcon}>
-                      {KPI_ARTWORK[c.label] ? <IconTile symbol={KPI_ARTWORK[c.label]} width={38} /> :
-                        <IconTile icon={c.icon} width={38} />}
-                      {c.label === "Low Stock" && c.value > 0 ? <Ionicons name="alert-circle" size={16} color={operationalStatus("warning", colors.isDark)} /> : null}
-                    </View>
-                    <AppText style={{ fontFamily: fonts.displayBold, fontSize: fontSize.xl,
-                      color: kpiTone(c) === "neutral" ? colors.onSurface : operationalStatus(kpiTone(c), colors.isDark) }}>
-                      {formatValue(c)}
-                      {c.unit && c.unit !== "₹" ? <AppText style={{ fontFamily: fonts.medium, fontSize: 12, color: colors.onSurfaceTertiary }}> {c.unit}</AppText> : null}
-                    </AppText>
-                    <AppText variant="caption">{c.label}</AppText>
+      <HomeScroll testID="staff-home-scroll"
+        gap={spacing.md} paddingHorizontal={spacing.lg} paddingTop={spacing.lg}
+        backgroundColor={getThemedCanvasColor(colors)} tabBarOverlay={fontScale >= 1.3 ? 0 : 130}
+        contentContainerStyle={{ paddingBottom: 130, width: "100%", maxWidth: 980, alignSelf: "center" }}
+        refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={refresh} tintColor={colors.brand} />}
+        lead={<View style={styles.topCards}>
+          <PlantHomeHero label={data?.role_label || user?.role_label || "Plant Staff"} testID="staff-home-hero-banner" />
+        </View>}
+        shortcuts={shortcuts}>
+        <PlantHomeActions action="profile" homeShortcut />
+        {error && !data ? (
+          <>
+            <ErrorView message={error} onRetry={reload} />
+            {roleTools}
+          </>
+        ) : loading && !data ? (
+          <>
+            <Skeleton height={120} style={{ borderRadius: radius.lg }} />
+            <Skeleton height={200} style={{ borderRadius: radius.lg }} />
+          </>
+        ) : data ? (
+          <>
+            <View style={styles.grid}>
+              {data.kpis.map((c) => (
+                <View key={c.label} style={[styles.kpi, { width: kpiWidth,
+                  backgroundColor: colors.surfaceSecondary,
+                  borderColor: kpiTone(c) === "neutral"
+                    ? colors.divider
+                    : operationalStatus(kpiTone(c), colors.isDark) + "60",
+                }]}>
+                  <View style={styles.kpiIcon}>
+                    {KPI_ARTWORK[c.label] ? <IconTile symbol={KPI_ARTWORK[c.label]} width={38} /> :
+                      <IconTile icon={c.icon} width={38} />}
+                    {c.label === "Low Stock" && c.value > 0 ? <Ionicons name="alert-circle" size={16} color={operationalStatus("warning", colors.isDark)} /> : null}
                   </View>
-                ))}
-              </View>
-
-              <View testID="staff-workday-card" style={[styles.workday, {
-                backgroundColor: colors.surfaceSecondary, borderColor: colors.border,
-              }]}>
-                <View style={{ flex: 1, gap: 4 }}>
-                  <AppText variant="heading">My Workday</AppText>
-                  <AppText variant="caption">{shiftComplete ? "Shift complete" : checkedIn ? "On duty · checked in" : "Check in daily after signing in. Permission approval alone does not record attendance."}</AppText>
-                  {workdayError ? <AppText variant="caption" color={colors.error}>Attendance status unavailable. Retry from Workforce.</AppText> : null}
+                  <AppText style={{ fontFamily: fonts.displayBold, fontSize: fontSize.xl,
+                    color: kpiTone(c) === "neutral" ? colors.onSurface : operationalStatus(kpiTone(c), colors.isDark) }}>
+                    {formatValue(c)}
+                    {c.unit && c.unit !== "₹" ? <AppText style={{ fontFamily: fonts.medium, fontSize: 12, color: colors.onSurfaceTertiary }}> {c.unit}</AppText> : null}
+                  </AppText>
+                  <AppText variant="caption">{c.label}</AppText>
                 </View>
-                {!workdayError && workday && !checkedIn && !shiftComplete ?
-                  <Button testID="staff-home-check-in" label="Check In" size="sm"
-                    loading={attendanceBusy} onPress={() => { void attendanceAction("punch-in"); }} /> : null}
-                {!workdayError && workday && checkedIn ?
-                  <Button testID="staff-home-check-out" label="Check Out" size="sm" variant="outline"
-                    loading={attendanceBusy} onPress={() => { void attendanceAction("punch-out"); }} /> : null}
+              ))}
+            </View>
+
+            <View testID="staff-workday-card" style={[styles.workday, {
+              backgroundColor: colors.surfaceSecondary, borderColor: colors.border,
+            }]}>
+              <View style={{ flex: 1, gap: 4 }}>
+                <AppText variant="heading">My Workday</AppText>
+                <AppText variant="caption">{shiftComplete ? "Shift complete" : checkedIn ? "On duty · checked in" : "Check in daily after signing in. Permission approval alone does not record attendance."}</AppText>
+                {workdayError ? <AppText variant="caption" color={colors.error}>Attendance status unavailable. Retry from Workforce.</AppText> : null}
               </View>
-              {roleTools}
-              <View style={{ gap: spacing.sm }}>
-                <HomeSectionHeader title={data.primary.title} seeAll={primaryAllowed ? workspace.href : undefined}
-                  testID="home-see-all-staff-queue" />
-                {primaryAllowed ? <StaffCollection kind={data.primary.kind} embedded limit={5} /> : (
-                  <View style={[styles.restricted, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-                    <Ionicons name="shield-checkmark-outline" size={22} color={colors.brand} />
-                    <AppText variant="bodyMuted" style={{ flex: 1 }}>
-                      {grantsLoading ? "Checking your access…" : grantsError ?
-                        "Permissions unavailable. Pull down to retry." : "This queue is not enabled for your staff account."}
-                    </AppText>
-                  </View>
-                )}
-              </View>
-            </>
-          ) : null}
-        </ScrollView>
-      )}
+              {!workdayError && workday && !checkedIn && !shiftComplete ?
+                <Button testID="staff-home-check-in" label="Check In" size="sm"
+                  loading={attendanceBusy} onPress={() => { void attendanceAction("punch-in"); }} /> : null}
+              {!workdayError && workday && checkedIn ?
+                <Button testID="staff-home-check-out" label="Check Out" size="sm" variant="outline"
+                  loading={attendanceBusy} onPress={() => { void attendanceAction("punch-out"); }} /> : null}
+            </View>
+            {roleTools}
+            <View style={{ gap: spacing.sm }}>
+              <HomeSectionHeader title={data.primary.title} seeAll={primaryAllowed ? workspace.href : undefined}
+                testID="home-see-all-staff-queue" />
+              {primaryAllowed ? <StaffCollection kind={data.primary.kind} embedded limit={5} /> : (
+                <View style={[styles.restricted, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+                  <Ionicons name="shield-checkmark-outline" size={22} color={colors.brand} />
+                  <AppText variant="bodyMuted" style={{ flex: 1 }}>
+                    {grantsLoading ? "Checking your access…" : grantsError ?
+                      "Permissions unavailable. Pull down to retry." : "This queue is not enabled for your staff account."}
+                  </AppText>
+                </View>
+              )}
+            </View>
+          </>
+        ) : null}
+      </HomeScroll>
     </View>
   );
 }

@@ -59,6 +59,18 @@ fs.mkdirSync(out, { recursive: true });
           assert.equal(await page.getByTestId('role-module-payroll-closure').count(), 0);
           assert.equal(await page.getByTestId('role-module-owner-drivers').count(), 1);
           const hero = page.getByTestId('owner-home-hero-banner');
+          const fixed = page.getByTestId('owner-home-scroll-fixed');
+          await fixed.getByTestId('plant-home-supplier-enquiry').waitFor();
+          await fixed.getByTestId('owner-quick-access').waitFor();
+          const scroll = page.getByTestId('owner-home-scroll');
+          const profile = scroll.getByTestId('plant-home-profile');
+          const before = (await profile.boundingBox()).y;
+          const pinnedTop = (await fixed.boundingBox()).y;
+          await scroll.evaluate(node => node.scrollTo(0, 100));
+          await page.waitForFunction(() => document.querySelector('[data-testid="owner-home-scroll"]').scrollTop > 0);
+          assert.equal((await fixed.boundingBox()).y, pinnedTop, 'Owner Quick Access stays fixed');
+          assert((await profile.boundingBox()).y < before, 'Owner content below the enquiry scrolls');
+          await scroll.evaluate(node => node.scrollTo(0, 0));
           const order = await page.evaluate(() => {
             const supplier = document.querySelector('[data-testid="plant-home-supplier-enquiry"]');
             const profile = document.querySelector('[data-testid="plant-home-profile"]');
