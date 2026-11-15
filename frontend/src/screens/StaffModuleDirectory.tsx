@@ -238,8 +238,7 @@ export function StaffModuleDirectory({
                     styles.card, {
                       width: cardWidth,
                       backgroundColor: colors.surfaceSecondary,
-                      borderColor: colors.isDark ? "rgba(255,159,82,0.31)" : "rgba(255,255,255,0.98)",
-                      shadowColor: colors.isDark ? "#F08928" : "#7B5845",
+                      borderColor: colors.divider,
                       opacity: pressed ? 0.8 : 1,
                     },
                   ]}>
@@ -272,8 +271,7 @@ const styles = StyleSheet.create({
   groupTitle: { flexDirection: "row", alignItems: "center", gap: 8 },
   groupMark: { height: 16, width: 3, borderRadius: 3 },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 9 },
-  card: { minHeight: 112, maxWidth: "100%", borderWidth: 1, borderRadius: 16, padding: 7, alignItems: "center", justifyContent: "center", gap: 3,
-    shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.09, shadowRadius: 12, elevation: 2 },
+  card: { minHeight: 112, maxWidth: "100%", borderWidth: 1, borderRadius: 16, padding: 7, alignItems: "center", justifyContent: "center", gap: 3 },
   iconWrap: { height: 37, alignItems: "center", justifyContent: "center" },
   cardTitle: { fontFamily: fonts.semibold, fontSize: 12, textAlign: "center", lineHeight: 16 },
   cardDescription: { fontFamily: fonts.regular, fontSize: 10, textAlign: "center", lineHeight: 14 },

@@ -98,9 +98,8 @@ export function OperationalHomeTopBar() {
 
   const helpText = HELP[user?.role === "owner" ? "plant_owner" : (user?.role || "")] || "Role-specific tasks and account support.";
   const unread = notifications?.unread || 0;
-  const glass = colors.surfaceSecondary;
   return <>
-    <View testID="operational-home-top-bar" style={[styles.row, { backgroundColor: glass, borderColor: colors.border }]}>
+    <View testID="operational-home-top-bar" style={[styles.row, { backgroundColor: colors.surfaceSecondary, borderColor: colors.divider }]}>
       <Pressable testID="operational-location-refresh" accessibilityRole="button" accessibilityLabel="Refresh current location"
         onPress={() => void refreshLocation()} disabled={busy} style={styles.target}>
         <Ionicons name="chevron-down" size={23} color={colors.onSurface} />
@@ -129,7 +128,7 @@ export function OperationalHomeTopBar() {
     {!!message ? <AppText accessibilityLiveRegion="polite" style={{ paddingHorizontal: 16, color: colors.onSurfaceSecondary, fontSize: 11 }}>{message}</AppText> : null}
     <Modal transparent visible={helpOpen} animationType="fade" onRequestClose={() => setHelpOpen(false)}>
       <View style={styles.scrim}>
-        <View style={[styles.help, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View style={[styles.help, { backgroundColor: colors.surfaceElevated, borderColor: colors.divider }]}>
           <AppText variant="heading">Role Help</AppText>
           <AppText variant="bodyMuted">{helpText}</AppText>
           <Pressable accessibilityRole="button" onPress={() => { setHelpOpen(false); router.push("/support"); }} style={styles.helpAction}>

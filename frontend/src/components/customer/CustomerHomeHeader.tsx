@@ -17,7 +17,7 @@ import { useTheme } from "@/src/theme/ThemeProvider";
 import { AppText } from "@/src/components/ui/AppText";
 import { Button } from "@/src/components/ui/Button";
 import { Input } from "@/src/components/ui/Input";
-import { customerHomeSizes, fonts, glass } from "@/src/theme/tokens";
+import { customerHomeSizes, fonts } from "@/src/theme/tokens";
 
 type Sheet = "help" | "location" | null;
 type Geocode = { locality: string; formatted_address: string };
@@ -163,11 +163,10 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
   }, [focused, token, permissions.ready, permissions.locationEnabled, lookup]);
 
   const close = () => setSheet(null);
-  const glassSurface = colors.isDark ? glass.darkSurface : glass.lightSurface;
-  const glassBorder = colors.isDark ? glass.darkBorder : glass.lightBorder;
+  const surface = colors.surfaceSecondary;
   return <>
     {focused ? <StatusBar style={colors.isDark ? "light" : "dark"} /> : null}
-    <View style={[styles.safeArea, { paddingTop: insets.top, backgroundColor: glassSurface, borderColor: glassBorder, shadowColor: colors.shadow }]}>
+    <View style={[styles.safeArea, { paddingTop: insets.top, backgroundColor: surface, borderColor: colors.divider }]}>
       <View testID="customer-home-header" style={[styles.row, { minHeight: size.headerHeight }]}>
         <Pressable testID="header-location-chevron" accessibilityRole="button" accessibilityLabel="Choose location"
           accessibilityHint="Opens the location selector and refresh options"
@@ -180,7 +179,7 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
         </Pressable>
         <Pressable testID="notifications-bell" accessibilityRole="button" accessibilityLabel={unread ? `${feed!.unread} unread notifications` : "Notifications"} onPress={() => router.push("/notifications")} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(44, size.headerTarget) }]}>
           <Ionicons name="notifications-outline" size={size.headerBell} color={colors.onSurface} />
-          {unread ? <View testID="header-unread-dot" style={[styles.dot, { backgroundColor: colors.verified, borderColor: glassSurface }]} /> : null}
+          {unread ? <View testID="header-unread-dot" style={[styles.dot, { backgroundColor: colors.verified, borderColor: surface }]} /> : null}
         </Pressable>
         <Pressable testID="header-theme" accessibilityRole="button" accessibilityLabel="Switch light or dark mode"
           onPress={toggle} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(44, size.headerTarget) }]}>
@@ -192,9 +191,9 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
       </View>
     </View>
     <Modal transparent visible={sheet !== null} animationType="fade" onRequestClose={close}>
-      <View style={styles.overlay}>
+      <View style={[styles.overlay, { backgroundColor: colors.scrim }]}>
         <Pressable accessibilityRole="button" accessibilityLabel="Close dialog" onPress={close} style={StyleSheet.absoluteFill} />
-        <View accessibilityViewIsModal onAccessibilityEscape={close} style={[styles.sheet, { backgroundColor: glassSurface, borderColor: glassBorder, shadowColor: colors.shadow, paddingBottom: Math.max(insets.bottom, 16) }]}>
+        <View accessibilityViewIsModal onAccessibilityEscape={close} style={[styles.sheet, { backgroundColor: surface, borderColor: colors.divider, shadowColor: colors.shadow, paddingBottom: Math.max(insets.bottom, 16) }]}>
           <View style={styles.sheetTitle}>
             <AppText variant="heading">{sheet === "help" ? "Customer Help" : "Choose Location"}</AppText>
             <Pressable accessibilityRole="button" accessibilityLabel="Close dialog" onPress={close} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(44, size.headerTarget) }]}><Ionicons name="close" size={24} color={colors.onSurface} /></Pressable>
@@ -219,13 +218,13 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
 }
 
 const styles = StyleSheet.create({
-  safeArea: { borderWidth: 1, borderTopWidth: 0, borderBottomLeftRadius: 14, borderBottomRightRadius: 14, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.10, shadowRadius: 18, elevation: 3 },
+  safeArea: { borderBottomWidth: StyleSheet.hairlineWidth },
   row: { width: "100%", maxWidth: 1100, alignSelf: "center", minHeight: 52, paddingHorizontal: 8, flexDirection: "row", alignItems: "center" },
   target: { width: 44, minHeight: 44, flexShrink: 0, alignItems: "center", justifyContent: "center" },
   location: { flex: 1, minWidth: 0, minHeight: 44, flexDirection: "row", gap: 6, alignItems: "center", paddingHorizontal: 4 },
   locationText: { flex: 1, minWidth: 0, fontFamily: fonts.semibold, fontSize: 13, lineHeight: 18 },
   dot: { position: "absolute", top: 8, right: 9, width: 10, height: 10, borderRadius: 5, borderWidth: 1.5 },
-  overlay: { flex: 1, justifyContent: "flex-end", backgroundColor: glass.overlay },
+  overlay: { flex: 1, justifyContent: "flex-end" },
   sheet: { width: "100%", maxWidth: 560, maxHeight: "85%", alignSelf: "center", borderWidth: 1, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 16, shadowOffset: { width: 0, height: -6 }, shadowOpacity: 0.12, shadowRadius: 24, elevation: 6 },
   sheetTitle: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   sheetContent: { gap: 14, paddingBottom: 8 },

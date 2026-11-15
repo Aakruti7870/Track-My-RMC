@@ -387,7 +387,7 @@ export default function NewOrder() {
         contentContainerStyle={styles.formContent}
         showsVerticalScrollIndicator={false}
       >
-        <Card variant="glass" testID="neworder-progress" style={{ gap: spacing.sm }}>
+        <Card testID="neworder-progress" style={{ gap: spacing.sm }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", gap: spacing.sm }}>
             <AppText variant="label">Your request</AppText>
             <AppText variant="caption">{readyCount} of 6 sections ready</AppText>
@@ -663,7 +663,7 @@ export default function NewOrder() {
           </View>
         </Section>
 
-        <Card variant="glass" testID="neworder-review" style={{ gap: spacing.sm }}>
+        <Card testID="neworder-review" style={{ gap: spacing.sm }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
             <Ionicons name="receipt-outline" size={20} color={colors.brand} />
             <AppText variant="heading">Review your request</AppText>

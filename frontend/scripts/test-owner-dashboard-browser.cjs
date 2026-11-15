@@ -38,6 +38,11 @@ fs.mkdirSync(out, { recursive: true });
         assert.equal(await tab.getAttribute('aria-selected'), 'true');
         assert.equal(await page.getByText('TrackMyRMC Play Review Owner', { exact: true }).count(), 0);
         if (name === 'home') {
+          const summary = await page.getByTestId('owner-home-summary').evaluate(el => getComputedStyle(el).backgroundColor);
+          assert.equal(summary, scheme === 'dark' ? 'rgb(26, 31, 38)' : 'rgb(255, 255, 255)');
+          const card = await page.locator('[data-testid^="owner-metric-"]').first().locator(':scope > div').first()
+            .evaluate(el => getComputedStyle(el).backgroundColor);
+          assert.equal(card, summary, 'Owner KPI cards share the matte surface');
           assert.equal(await page.locator('[data-testid^="owner-shortcut-"]').count(), 5);
           assert.equal(await page.locator('[data-testid^="owner-metric-"]').count(), 8);
           assert.equal(await page.getByTestId('owner-commercial-grid').locator(':scope > *').count(), 12, '12 commercial tiles hold 13 separately accessible modules');

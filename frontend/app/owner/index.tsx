@@ -58,13 +58,12 @@ export default function OwnerHome() {
   return <OwnerFrame>
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[ui.content, { paddingBottom: bottom, gap: 10 }]}
       refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={refetch} tintColor={p.accent} />}>
-      <View testID="owner-home-summary" style={[styles.hero, { backgroundColor: p.dark ? "rgba(95,52,16,0.26)" : "rgba(255,237,209,0.62)" }]}>
-        <View style={styles.heroArt}><Image testID="owner-home-hero-banner" source={PLANT_HERO_IMAGE} resizeMode="cover" accessibilityIgnoresInvertColors style={styles.heroImage} /></View>
-        <View style={[styles.heroCopy, { backgroundColor: p.dark ? "rgba(14,17,22,0.84)" : "rgba(255,249,238,0.90)" }]}>
-          <AppText style={{ fontSize: 18, color: p.text }}>Welcome Back,</AppText>
-          <AppText numberOfLines={2} style={{ fontFamily: fonts.bold, fontSize: 25, lineHeight: 30, color: p.text }}>{name}</AppText>
-          <AppText style={{ fontSize: 11, lineHeight: 17, color: p.muted, marginTop: 5 }}>Manage your plant operations efficiently</AppText>
+      <View testID="owner-home-summary" style={[styles.hero, { backgroundColor: p.panel, borderColor: p.border }]}>
+        <View style={styles.heroCopy}>
+          <AppText style={{ fontSize: 13, color: p.muted }}>Plant operations</AppText>
+          <AppText style={{ fontFamily: fonts.semibold, fontSize: 22, lineHeight: 28, color: p.text }}>{name}</AppText>
         </View>
+        <Image testID="owner-home-hero-banner" source={PLANT_HERO_IMAGE} resizeMode="cover" accessible={false} style={styles.heroImage} />
       </View>
 
       <AppText style={[ui.section, { color: p.text }]}>Today at a Glance</AppText>
@@ -121,10 +120,9 @@ export default function OwnerHome() {
   </OwnerFrame>;
 }
 const styles = StyleSheet.create({
-  hero: { minHeight: 150, aspectRatio: 2107 / 746, borderRadius: 20, overflow: "hidden", justifyContent: "center" },
-  heroArt: { ...StyleSheet.absoluteFillObject, overflow: "hidden" },
-  heroImage: { width: "100%", height: "100%" },
-  heroCopy: { width: "50%", minWidth: 155, maxWidth: 360, padding: 13, borderRadius: 16, margin: 5 },
+  hero: { minHeight: 104, borderWidth: 1, borderRadius: 12, padding: 12, gap: 12, flexDirection: "row", alignItems: "center" },
+  heroImage: { width: 96, height: 72, borderRadius: 8 },
+  heroCopy: { flex: 1, minWidth: 0, gap: 4 },
   metrics: { flexDirection: "row", flexWrap: "wrap", gap: 9 },
   metric: { minHeight: 75, padding: 8, flexDirection: "row", gap: 6, alignItems: "center" },
   modules: { flexDirection: "row", flexWrap: "wrap", gap: 8 },

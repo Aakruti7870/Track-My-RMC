@@ -152,10 +152,14 @@ try {
       width: el.getBoundingClientRect().width,
       right: el.getBoundingClientRect().right,
       gradient: getComputedStyle(el).backgroundImage,
+      blur: getComputedStyle(el).backdropFilter,
+      surface: getComputedStyle(el).backgroundColor,
       icon: el.querySelector('svg')?.getAttribute('width'),
     }));
     assert(visual.width > 0 && visual.right <= width + 1, 'Workspace rows fit the viewport');
     assert.equal(visual.gradient, 'none', 'Workspace rows use a flat surface');
+    assert.equal(visual.blur, 'none', 'Workspace rows do not blur their backdrop');
+    assert.equal(visual.surface, 'rgb(26, 31, 38)', 'Workspace rows use opaque graphite');
     assert.equal(visual.icon, '20', 'Workspace icons use a consistent small size');
     await workspace.click();
     assert.equal(await adminNav('Plant Master').getAttribute('aria-current'), 'page');

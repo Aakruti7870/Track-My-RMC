@@ -43,11 +43,11 @@ export default function OwnerOrders() {
     if (draft.from && draft.to && draft.from > draft.to) { setValidation("Start date must be before end date."); return; }
     setFilters(draft); setPage(0); setOpen(false); setValidation("");
   }
-  const inputStyle = { color: p.text, borderWidth: 1, borderColor: p.border, backgroundColor: p.glass, padding: 12, borderRadius: 12, fontSize: 13 };
+  const inputStyle = { color: p.text, borderWidth: 1, borderColor: p.border, backgroundColor: p.panel, padding: 12, borderRadius: 12, fontSize: 13 };
   return <OwnerFrame title="Orders" subtitle="Manage all plant orders, quotations and deliveries">
     <View style={{ paddingHorizontal: 16, gap: 12, paddingBottom: 12 }}>
       <Pressable accessibilityRole="button" onPress={() => router.push("/owner/provisional-requests")}
-        style={{ padding: 12, borderWidth: 1, borderColor: p.border, borderRadius: 12, backgroundColor: p.glass }}>
+        style={{ padding: 12, borderWidth: 1, borderColor: p.border, borderRadius: 12, backgroundColor: p.panel }}>
         <AppText style={{ color: p.accent }}>View nonbinding provisional requests</AppText>
       </Pressable>
       <OwnerGlass style={{ flexDirection: "row", padding: 3 }}>
@@ -66,9 +66,9 @@ export default function OwnerOrders() {
       <AppText variant="heading">Filter orders</AppText>
       {([['from', 'Delivery date from (YYYY-MM-DD)'], ['to', 'Delivery date to (YYYY-MM-DD)'], ['grade', 'Concrete grade']] as const).map(([key, label]) => <View key={key} style={{ gap: 5 }}><AppText style={{ color: p.muted, fontSize: 12 }}>{label}</AppText><TextInput accessibilityLabel={label} value={draft[key]} onChangeText={value => setDraft(previous => ({ ...previous, [key]: value }))} style={inputStyle} /></View>)}
       <AppText style={{ color: p.muted, fontSize: 12 }}>Plant</AppText>
-      {[{ id: "", name: "All my plants" }, ...(plants?.plants ?? [])].map(plant => <Pressable key={plant.id} accessibilityRole="radio" accessibilityState={{ checked: draft.plant === plant.id }} onPress={() => setDraft(previous => ({ ...previous, plant: plant.id }))} style={{ padding: 10, borderRadius: 10, backgroundColor: draft.plant === plant.id ? p.accent : p.glass }}><AppText style={{ color: draft.plant === plant.id ? "white" : p.text, fontSize: 12 }}>{plant.name}</AppText></Pressable>)}
+      {[{ id: "", name: "All my plants" }, ...(plants?.plants ?? [])].map(plant => <Pressable key={plant.id} accessibilityRole="radio" accessibilityState={{ checked: draft.plant === plant.id }} onPress={() => setDraft(previous => ({ ...previous, plant: plant.id }))} style={{ padding: 10, borderRadius: 10, backgroundColor: draft.plant === plant.id ? p.accent : p.panel }}><AppText style={{ color: draft.plant === plant.id ? "white" : p.text, fontSize: 12 }}>{plant.name}</AppText></Pressable>)}
       <AppText style={{ color: p.muted, fontSize: 12 }}>Additional status</AppText>
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{[["", "Use selected tab"], ["cancelled", "Cancelled / Rejected"], ["draft", "Draft"]].map(([status, label]) => <Pressable key={status} accessibilityRole="radio" accessibilityState={{ checked: draft.status === status }} onPress={() => setDraft(previous => ({ ...previous, status }))} style={{ padding: 10, borderRadius: 10, backgroundColor: draft.status === status ? p.accent : p.glass }}><AppText style={{ color: draft.status === status ? "white" : p.text, fontSize: 12 }}>{label}</AppText></Pressable>)}</View>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{[["", "Use selected tab"], ["cancelled", "Cancelled / Rejected"], ["draft", "Draft"]].map(([status, label]) => <Pressable key={status} accessibilityRole="radio" accessibilityState={{ checked: draft.status === status }} onPress={() => setDraft(previous => ({ ...previous, status }))} style={{ padding: 10, borderRadius: 10, backgroundColor: draft.status === status ? p.accent : p.panel }}><AppText style={{ color: draft.status === status ? "white" : p.text, fontSize: 12 }}>{label}</AppText></Pressable>)}</View>
       {validation ? <AppText color={p.dark ? "#FF9F98" : "#B42318"}>{validation}</AppText> : null}
       <Pressable accessibilityRole="button" onPress={apply} style={{ padding: 14, backgroundColor: p.accent, borderRadius: 12 }}><AppText center color="white">Apply filters</AppText></Pressable><Pressable accessibilityRole="button" onPress={() => setOpen(false)} style={{ padding: 12 }}><AppText center color={p.text}>Close</AppText></Pressable>
     </ScrollView></OwnerGlass></View></Modal>

@@ -239,7 +239,7 @@ export default function KycScreen() {
           <Skeleton height={200} style={{ borderRadius: radius.lg }} />
         ) : (
           <>
-            <Card variant="glass" style={{ alignItems: "center", gap: spacing.md, paddingVertical: spacing.xl, borderColor: tone + "66" }}>
+            <Card style={{ alignItems: "center", gap: spacing.md, paddingVertical: spacing.xl, borderColor: tone + "66" }}>
               <View style={[styles.statusIcon, { backgroundColor: tone }]}>
                 <Ionicons name={meta.icon} size={34} color={scheme === "dark" ? "#121212" : "#FFFFFF"} />
               </View>

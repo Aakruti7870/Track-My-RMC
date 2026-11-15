@@ -79,18 +79,17 @@ export type ThemeColors = {
   disabledContent: string;
   scrim: string;
   shadow: string;
-  glassTint: string;
   isDark: boolean;
 };
 
 export const darkColors: ThemeColors = {
   surface: "rgba(14,17,22,0.52)",
   onSurface: "#FFFFFF",
-  surfaceSecondary: "rgba(26,31,38,0.96)",
+  surfaceSecondary: "#1A1F26",
   onSurfaceSecondary: "#F8FAFC",
-  surfaceTertiary: "rgba(38,45,56,0.94)",
+  surfaceTertiary: "#262D38",
   onSurfaceTertiary: "#B8C1CC",
-  surfaceElevated: "rgba(26,31,38,0.98)",
+  surfaceElevated: "#20262E",
   surfaceInverse: "#FFFFFF",
   onSurfaceInverse: "#0E1116",
   brand: "#FF8A00",
@@ -112,18 +111,17 @@ export const darkColors: ThemeColors = {
   disabledContent: "#CBD5E1",
   scrim: "rgba(3,5,8,0.66)",
   shadow: "#000000",
-  glassTint: "rgba(26,31,38,0.95)",
   isDark: true,
 };
 
 export const lightColors: ThemeColors = {
   surface: "rgba(247,248,249,0.52)",
   onSurface: "#14181F",
-  surfaceSecondary: "rgba(255,255,255,0.96)",
+  surfaceSecondary: "#FFFFFF",
   onSurfaceSecondary: "#14181F",
-  surfaceTertiary: "rgba(241,243,245,0.94)",
+  surfaceTertiary: "#F1F3F5",
   onSurfaceTertiary: "#4A5568",
-  surfaceElevated: "rgba(255,255,255,0.98)",
+  surfaceElevated: "#FFFFFF",
   surfaceInverse: "#0E1116",
   onSurfaceInverse: "#FFFFFF",
   brand: "#FF6A00",
@@ -139,24 +137,13 @@ export const lightColors: ThemeColors = {
   errorSoft: "#FDECEC",
   border: "#E2E8F0",
   borderStrong: "#CBD5E0",
-  divider: "#EDF2F7",
+  divider: "#E0E3E7",
   focusRing: "rgba(255,106,0,0.20)",
   disabledSurface: "#ECEFF1",
   disabledContent: "#929AA3",
   scrim: "rgba(14,17,22,0.45)",
   shadow: "#0E1116",
-  glassTint: "rgba(255,255,255,0.95)",
   isDark: false,
-};
-
-export const glass = {
-  lightSurface: "rgba(255,255,255,0.96)",
-  darkSurface: "rgba(26,31,38,0.96)",
-  lightBorder: "rgba(20,24,31,0.08)",
-  darkBorder: "rgba(255,154,61,0.28)",
-  lightHighlight: "rgba(255,255,255,0.98)",
-  darkHighlight: "rgba(255,255,255,0.07)",
-  overlay: "rgba(14,17,22,0.48)",
 };
 
 export const aurora = {

@@ -20,10 +20,11 @@ test("shared buttons wrap labels and preserve accessible touch targets", () => {
   assert.match(button, /minHeight: control.buttonHeightSmall/);
   assert.match(button, /accessibilityRole="button"/);
 });
-test("glass cards and badges avoid horizontal overflow", () => {
+test("matte cards and badges avoid horizontal overflow", () => {
   const card = read("src/components/ui/Card.tsx");
   const badge = read("src/components/ui/Badge.tsx");
-  assert.match(card, /"glass"/);
+  assert.match(card, /backgroundColor: colors.surfaceSecondary/);
+  assert.doesNotMatch(card, /"glass"|#[Ff]{2}9[Aa]3[Dd]/);
   assert.match(card, /minWidth: 0/);
   assert.match(badge, /maxWidth: "100%"/);
   assert.match(badge, /numberOfLines=\{2\}/);

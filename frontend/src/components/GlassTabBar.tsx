@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
-import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
@@ -36,7 +35,7 @@ type GlassTabBarProps = {
 };
 
 export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick" }: GlassTabBarProps) {
-  const { colors, scheme } = useTheme();
+  const { colors } = useTheme();
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const [hubOpen, setHubOpen] = useState(false);
@@ -89,15 +88,13 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick" }: 
   return (
     <>
       <View pointerEvents="box-none" style={[styles.wrap, { paddingBottom: Platform.OS === "web" ? 0 : insets.bottom, backgroundColor: getThemedCanvasColor(colors) }]}>
-        <BlurView
-          intensity={scheme === "dark" ? 58 : 82}
-          tint={scheme === "dark" ? "dark" : "light"}
+        <View
+          testID="app-tab-bar"
           style={[
             styles.bar,
             {
               borderColor: colors.divider,
               backgroundColor: colors.surfaceSecondary,
-              shadowColor: colors.shadow,
             },
           ]}
         >
@@ -118,7 +115,6 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick" }: 
                   backgroundColor: pressed ? colors.brandPressed : colors.brand,
                   borderColor: colors.surfaceSecondary,
                   transform: [{ scale: pressed ? 0.93 : 1 }],
-                  shadowColor: colors.shadow,
                 },
               ]}
             >
@@ -128,7 +124,7 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick" }: 
           </View>
 
           <View style={styles.tabSide}>{rightRoutes.map(renderTab)}</View>
-        </BlurView>
+        </View>
       </View>
 
       <QuickActionHub visible={hubOpen} onClose={() => setHubOpen(false)} tabs={tabs} role={user?.role} navigation={navigation} />
@@ -146,10 +142,6 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     paddingBottom: spacing.sm,
     paddingHorizontal: spacing.xs,
-    shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.10,
-    shadowRadius: 16,
-    elevation: 18,
   },
   tabSide: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "flex-end" },
   item: { flex: 1, minWidth: 0, minHeight: 58, alignItems: "center", justifyContent: "flex-end", gap: 3, paddingVertical: 2 },
@@ -164,10 +156,6 @@ const styles = StyleSheet.create({
     borderWidth: 4,
     alignItems: "center",
     justifyContent: "center",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.28,
-    shadowRadius: 14,
-    elevation: 14,
   },
   centerLabel: { marginTop: 4, fontFamily: fonts.semibold, fontSize: 11, lineHeight: 14 },
 });

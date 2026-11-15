@@ -163,7 +163,7 @@ export default function OwnerOperations() {
           {(plants?.plants ?? []).map(plant => <Pressable key={plant.id} accessibilityRole="button"
             accessibilityState={{ selected: plant.id === plantId }} onPress={() => setPlantId(plant.id)}
             style={{ paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12,
-              backgroundColor: plant.id === plantId ? p.accent : p.glass }}>
+              backgroundColor: plant.id === plantId ? p.accent : p.panel }}>
             <AppText style={{ color: plant.id === plantId ? "#FFFFFF" : p.text, fontSize: 12 }}>{plant.name}</AppText>
           </Pressable>)}
         </View> : null}
@@ -193,7 +193,7 @@ export default function OwnerOperations() {
                 const allowFirstTouch = willEnable && !whatsappSettings?.preference_exists;
                 void updateWhatsapp(willEnable, allowFirstTouch || Boolean(whatsappSettings?.marketing_enabled));
               }}
-              style={{ backgroundColor: whatsappSettings?.enabled ? p.accent : p.glass,
+              style={{ backgroundColor: whatsappSettings?.enabled ? p.accent : p.panel,
                 borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9 }}>
               <AppText style={{ color: whatsappSettings?.enabled ? "#FFFFFF" : p.text, fontWeight: "700" }}>
                 {whatsappSettings?.enabled ? "ON" : "OFF"}
@@ -222,7 +222,7 @@ export default function OwnerOperations() {
                 disabled: updatingWhatsapp || !plantId || !whatsappSettings }}
               disabled={updatingWhatsapp || !plantId || !whatsappSettings}
               onPress={() => void updateWhatsapp(Boolean(whatsappSettings?.enabled), !whatsappSettings?.marketing_enabled)}
-              style={{ backgroundColor: whatsappSettings?.marketing_enabled ? p.accent : p.glass,
+              style={{ backgroundColor: whatsappSettings?.marketing_enabled ? p.accent : p.panel,
                 borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9 }}>
               <AppText style={{ color: whatsappSettings?.marketing_enabled ? "#FFFFFF" : p.text, fontWeight: "700" }}>
                 {whatsappSettings?.marketing_enabled ? "ON" : "OFF"}

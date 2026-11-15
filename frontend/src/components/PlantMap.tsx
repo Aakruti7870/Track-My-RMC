@@ -161,7 +161,7 @@ export function PlantMap({ plants, userLocation, selectedPlantId, onSelectPlant,
         </View>
       ) : null}
 
-      <View style={[styles.badge, { backgroundColor: colors.surface + "EE", borderColor: colors.border }]} pointerEvents="none">
+      <View style={[styles.badge, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]} pointerEvents="none">
         <AppText style={{ fontFamily: fonts.semibold, fontSize: 11, color: colors.onSurface }}>
           Google Maps · {mappedPlants.length} plant{mappedPlants.length === 1 ? "" : "s"}
         </AppText>

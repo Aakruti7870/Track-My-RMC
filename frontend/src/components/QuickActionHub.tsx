@@ -1,6 +1,5 @@
 import React from "react";
 import { Modal, Pressable, StyleSheet, View } from "react-native";
-import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 
@@ -20,7 +19,7 @@ type Props = {
 };
 
 export function QuickActionHub({ visible, onClose, tabs, role, navigation }: Props) {
-  const { colors, scheme } = useTheme();
+  const { colors, reduceMotion } = useTheme();
 
   const runAction = (tab: TabDef) => {
     void Haptics.selectionAsync();
@@ -29,7 +28,7 @@ export function QuickActionHub({ visible, onClose, tabs, role, navigation }: Pro
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={visible} transparent animationType={reduceMotion ? "none" : "fade"} onRequestClose={onClose} statusBarTranslucent>
       <View style={[styles.overlay, { backgroundColor: colors.scrim }]}>
         <Pressable
           style={StyleSheet.absoluteFill}
@@ -37,14 +36,12 @@ export function QuickActionHub({ visible, onClose, tabs, role, navigation }: Pro
           accessibilityRole="button"
           accessibilityLabel="Close quick actions"
         />
-        <BlurView
-          intensity={scheme === "dark" ? 70 : 90}
-          tint={scheme === "dark" ? "dark" : "light"}
+        <View
           style={[
             styles.sheet,
             {
               backgroundColor: colors.surfaceElevated,
-              borderColor: colors.isDark ? "rgba(255,255,255,0.11)" : "rgba(17,19,21,0.09)",
+              borderColor: colors.divider,
               shadowColor: colors.shadow,
             },
           ]}
@@ -97,7 +94,7 @@ export function QuickActionHub({ visible, onClose, tabs, role, navigation }: Pro
               );
             })}
           </View>
-        </BlurView>
+        </View>
       </View>
     </Modal>
   );
@@ -118,9 +115,9 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     paddingBottom: spacing.xl,
     shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.26,
-    shadowRadius: 32,
-    elevation: 20,
+    shadowOpacity: 0.14,
+    shadowRadius: 16,
+    elevation: 6,
   },
   handle: {
     alignSelf: "center",

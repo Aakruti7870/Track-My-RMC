@@ -8,7 +8,7 @@ import { useAuth } from "@/src/auth/AuthContext";
 import { AppText } from "@/src/components/ui/AppText";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { useTheme } from "@/src/theme/ThemeProvider";
-import { fonts, radius, spacing } from "@/src/theme/tokens";
+import { fonts, spacing } from "@/src/theme/tokens";
 import { modulesForRole, type ModuleGroup } from "@/src/navigation/moduleCatalog";
 
 // Navigational discovery only. Server-side RBAC and tenant/plant checks remain
@@ -80,7 +80,7 @@ export function RoleModuleDirectory({ role, title = "Your Modules" }: {
                     styles.item,
                     {
                       backgroundColor: colors.surfaceSecondary,
-                      borderColor: colors.isDark ? "rgba(255,161,93,0.25)" : "rgba(255,255,255,0.96)",
+                      borderColor: colors.divider,
                       opacity: pressed ? 0.76 : 1,
                     },
                   ]}
@@ -104,8 +104,6 @@ const styles = StyleSheet.create({
   heading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
   cards: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   item: { width: "48%", minWidth: 142, flexGrow: 1, minHeight: 154, alignItems: "center",
-    justifyContent: "center", gap: 7, borderWidth: 1, borderRadius: 20, padding: 12,
-    shadowColor: "#AB6A3A", shadowOpacity: 0.11, shadowRadius: 12,
-    shadowOffset: { width: 0, height: 5 }, elevation: 2 },
+    justifyContent: "center", gap: 7, borderWidth: 1, borderRadius: 12, padding: 12 },
   artwork: { height: 58, alignItems: "center", justifyContent: "center" },
 });
