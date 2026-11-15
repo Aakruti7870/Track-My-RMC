@@ -80,7 +80,7 @@ export default function OwnerHome() {
           accessibilityRole="button" accessibilityLabel={`${metric.label}, ${data?.cards[metric.key] ?? "unavailable"}, ${metric.basis}`}
           onPress={() => openMetric(metric.destination)} style={{ width: metricWidth }}>
           <OwnerGlass style={[styles.metric, value > 0 && tone !== "neutral" ? { borderColor: emphasis + "70" } : null]}>
-            <VectorSymbol name={metric.symbol} size={30} warmAccent />
+            <VectorSymbol name={metric.symbol} size={30} />
             <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
               <AppText style={{ fontSize: 10, color: p.text }} numberOfLines={2}>{metric.label}</AppText>
               {loading && !data ? <Skeleton height={22} /> : <AppText style={{ fontFamily: fonts.bold, fontSize: 22, color: emphasis }}>{data?.cards[metric.key] ?? "—"}</AppText>}
@@ -96,7 +96,7 @@ export default function OwnerHome() {
           accessibilityRole="button" accessibilityLabel={module.key === "business-staff" ? "Workforce" : module.label}
           onPress={() => router.push(ownerDestination(module))} style={{ width: tileWidth }}>
           <OwnerGlass style={styles.shortcut}>
-            {module.symbol ? <VectorSymbol name={module.symbol} size={35} warmAccent /> : null}
+            {module.symbol ? <VectorSymbol name={module.symbol} size={35} /> : null}
             <AppText center numberOfLines={2} style={[styles.shortcutLabel, { color: p.text }]}>{module.key === "business-staff" ? "Workforce" : module.label}</AppText>
             <AppText center numberOfLines={2} style={[styles.shortcutCopy, { color: p.muted }]}>{SHORT_COPY[i]}</AppText>
           </OwnerGlass>
@@ -105,7 +105,7 @@ export default function OwnerHome() {
           accessibilityLabel="Plant Overview & Weekly Insights" onPress={() => setInsightsExpanded(v => !v)}
           style={{ width: tileWidth }}>
           <OwnerGlass style={[styles.shortcut, insightsExpanded && { borderColor: p.accent }]}>
-            <VectorSymbol name="production-report" size={35} warmAccent />
+            <VectorSymbol name="production-report" size={35} />
             <AppText center numberOfLines={3} style={[styles.shortcutLabel, { color: p.text }]}>Plant Overview & Weekly Insights</AppText>
           </OwnerGlass>
         </Pressable>

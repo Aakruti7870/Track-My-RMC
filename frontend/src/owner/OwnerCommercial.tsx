@@ -31,7 +31,7 @@ export function OwnerCommercial() {
         <Pressable testID="role-module-business-payroll" accessibilityRole="button"
           accessibilityLabel="Payroll records" onPress={() => router.push(ownerDestination(module))}
           style={styles.payrollMain}>
-          {module.symbol ? <VectorSymbol name={module.symbol} size={32} warmAccent /> : <Ionicons name={module.icon} size={29} color={p.accent} />}
+          {module.symbol ? <VectorSymbol name={module.symbol} size={32} /> : <Ionicons name={module.icon} size={29} color={p.accent} />}
           <AppText center numberOfLines={2} style={[styles.label, { color: p.text }]}>Payroll</AppText>
           <AppText center numberOfLines={2} style={[styles.copy, { color: p.muted }]}>Payroll records.</AppText>
         </Pressable>
@@ -47,7 +47,7 @@ export function OwnerCommercial() {
         onPress={() => router.push(ownerDestination(module))}
         style={({ pressed }) => ({ width: tileWidth, opacity: pressed ? 0.75 : 1 })}>
         <OwnerGlass style={styles.tile}>
-          {module.symbol ? <VectorSymbol name={module.symbol} size={32} warmAccent /> : <Ionicons name={module.icon} size={29} color={p.accent} />}
+          {module.symbol ? <VectorSymbol name={module.symbol} size={32} /> : <Ionicons name={module.icon} size={29} color={p.accent} />}
           <AppText center numberOfLines={2} style={[styles.label, { color: p.text }]}>{module.label}</AppText>
           <AppText center numberOfLines={2} style={[styles.copy, { color: p.muted }]}>{module.description}</AppText>
         </OwnerGlass>

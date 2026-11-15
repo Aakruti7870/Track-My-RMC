@@ -1,6 +1,5 @@
 import React from "react";
 import { StyleSheet, View, useWindowDimensions } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 
 import type { Order } from "@/src/domain/order";
 import { useTheme } from "@/src/theme/ThemeProvider";
@@ -28,14 +27,14 @@ export function CustomerNextAction({
   const { width } = useWindowDimensions();
   const active = Boolean(activeOrder);
   const title = active
-    ? "Keep your pour on track"
+    ? "Current order"
     : !kycVerified
-      ? "Plan now. Verify when ready."
+      ? "Prepare an order request"
       : hasOrderHistory
-        ? "Ready for the next pour?"
+        ? "Request your next pour"
         : "Start your first concrete order";
   const description = activeOrder
-    ? `Order ${activeOrder.order_number} · ${activeOrder.grade} · ${activeOrder.quantity} m³. Open the order to see its latest confirmed status and delivery details.`
+    ? `Order ${activeOrder.order_number} · ${activeOrder.grade} · ${activeOrder.quantity} m³. See the latest delivery details.`
     : !kycVerified
       ? "Build and save a request without completing KYC first. Verification is needed before a live order is confirmed."
       : hasOrderHistory
@@ -49,13 +48,11 @@ export function CustomerNextAction({
   const secondaryAction = active || kycVerified ? onViewOrders : onVerifyIdentity;
 
   return (
-    <Card variant="glass" testID="customer-next-action" style={[styles.card, { borderColor: colors.borderStrong }]}>
-      <View style={styles.eyebrow}>
-        <Ionicons name={active ? "navigate-circle-outline" : "flash-outline"} size={16} color={colors.brand} />
-        <AppText variant="eyebrow">{active ? "Your current order" : "Your next step"}</AppText>
+    <Card variant="muted" testID="customer-next-action" style={[styles.card, { backgroundColor: colors.surfaceSecondary }]}>
+      <View style={styles.headingRow}>
+        <AppText variant="heading" style={styles.heading}>{title}</AppText>
         {activeOrder ? <Badge status={activeOrder.status} label={activeOrder.status.replace(/_/g, " ")} size="sm" /> : null}
       </View>
-      <AppText variant="heading">{title}</AppText>
       <AppText variant="bodyMuted">{description}</AppText>
       <View style={[styles.actions, width < 375 && styles.actionsStacked]}>
         <View style={styles.actionCell}>
@@ -76,7 +73,8 @@ export function CustomerNextAction({
 
 const styles = StyleSheet.create({
   card: { width: "100%", maxWidth: 620, alignSelf: "center", gap: spacing.sm, borderRadius: radius.lg },
-  eyebrow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: spacing.sm },
+  heading: { flexShrink: 1 },
+  headingRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: spacing.sm },
   actions: { flexDirection: "row", alignItems: "stretch", gap: spacing.sm, marginTop: spacing.xs },
   actionsStacked: { flexDirection: "column" },
   actionCell: { flex: 1, minWidth: 0 },

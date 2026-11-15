@@ -182,7 +182,7 @@ export default function StaffModuleAccess() {
             {grants.map(g => (
               <OwnerGlass key={g.key} style={{ padding: 14, gap: 12 }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <VectorSymbol name={MODULE_SYMBOLS[g.key] || "settings"} size={49} warmAccent />
+                  <VectorSymbol name={MODULE_SYMBOLS[g.key] || "settings"} size={49} />
                   <AppText style={{ color: p.text, fontSize: 15, fontWeight: "700", flex: 1 }}>{g.label}</AppText>
                   {g.overridden ? <AppText style={{ color: p.accent, fontSize: 11 }}>Customized</AppText> : null}
                 </View>

@@ -140,7 +140,7 @@ export function StaffHome() {
                   </AppText> : null}
                 </View>
                 <View style={styles.heroArtwork}>
-                  <VectorSymbol name={workspace.symbol} size={38} warmAccent />
+                  <VectorSymbol name={workspace.symbol} size={38} />
                   <Ionicons name={primaryAllowed ? "arrow-forward-circle-outline" : "lock-closed-outline"} size={20} color={colors.brand} />
                 </View>
               </Pressable>
@@ -153,7 +153,7 @@ export function StaffHome() {
                       : operationalStatus(kpiTone(c), colors.isDark) + "60",
                   }]}>
                     <View style={styles.kpiIcon}>
-                      {KPI_ARTWORK[c.label] ? <VectorSymbol name={KPI_ARTWORK[c.label]} size={30} warmAccent /> :
+                      {KPI_ARTWORK[c.label] ? <VectorSymbol name={KPI_ARTWORK[c.label]} size={30} /> :
                         <Ionicons name={c.icon} size={24} color={colors.brand} />}
                       {c.label === "Low Stock" && c.value > 0 ? <Ionicons name="alert-circle" size={16} color={colors.warning} /> : null}
                     </View>

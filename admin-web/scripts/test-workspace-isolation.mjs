@@ -132,9 +132,12 @@ try {
         const appearance = await currentNav.evaluate(el => ({
           height: el.getBoundingClientRect().height,
           color: getComputedStyle(el).color,
+          background: getComputedStyle(el).backgroundColor,
+          gradient: getComputedStyle(el).backgroundImage,
         }));
         assert(appearance.height >= 48, 'Mobile Admin navigation must retain a 48px target');
-        assert.equal(appearance.color, 'rgb(14, 17, 22)', 'Selected orange navigation uses readable graphite');
+        assert.equal(appearance.gradient, 'none', 'Selected navigation uses a flat surface');
+        assert.notEqual(appearance.color, appearance.background, 'Selected navigation label must remain visible');
       }
     };
     await page.goto(origin+'/admin/');await signIn('first@example.invalid');
@@ -144,6 +147,18 @@ try {
     await adminNav('Dashboard').click();
     await page.getByLabel('Dashboard module cards').waitFor();
     assert.match(await page.locator('main').getAttribute('class')||'',/tm-dark/,'graphite theme should be the default');
+    const workspace = button('Open Plant Master');
+    const visual = await workspace.evaluate(el => ({
+      width: el.getBoundingClientRect().width,
+      right: el.getBoundingClientRect().right,
+      gradient: getComputedStyle(el).backgroundImage,
+      icon: el.querySelector('svg')?.getAttribute('width'),
+    }));
+    assert(visual.width > 0 && visual.right <= width + 1, 'Workspace rows fit the viewport');
+    assert.equal(visual.gradient, 'none', 'Workspace rows use a flat surface');
+    assert.equal(visual.icon, '20', 'Workspace icons use a consistent small size');
+    await workspace.click();
+    assert.equal(await adminNav('Plant Master').getAttribute('aria-current'), 'page');
     await adminNav('Settings').click();
     await button('Light').click();
     assert.match(await page.locator('main').getAttribute('class')||'',/tm-light/,'light theme should use warm app tokens');

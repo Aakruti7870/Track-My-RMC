@@ -365,7 +365,7 @@ export default function CustomerPlants() {
 
               <View style={styles.searchRow}>
                 <View style={[styles.searchBar,{backgroundColor:colors.surfaceSecondary,borderColor:colors.isDark ? "rgba(255,154,61,0.32)" : colors.border,shadowColor:colors.isDark ? "#FF9A3D" : colors.shadow}]}>
-                  <VectorSymbol name="search" size={29} />
+                  <VectorSymbol name="search" size={20} />
                   <TextInput testID="plants-search" value={q}
                     onChangeText={value=>{setQ(value);setPage(1);setFilters(current=>({...current,q:value}));}}
                     placeholder="Search plant by name" placeholderTextColor={colors.onSurfaceTertiary}
@@ -373,7 +373,7 @@ export default function CustomerPlants() {
                   {q ? <Pressable onPress={()=>{setQ("");setPage(1);setFilters(current=>({...current,q:""}));}} accessibilityLabel="Clear search"><Ionicons name="close" size={20} color={colors.onSurfaceTertiary} /></Pressable> : null}
                 </View>
                 <Pressable testID="plants-filter-toggle" accessibilityLabel={showFilters ? "Hide location filters" : "Location filters"} onPress={()=>setShowFilters(v=>!v)} style={[styles.orangeFilter,{backgroundColor:colors.brand,borderColor:colors.isDark ? "#FF9A3D" : colors.brand}]} accessibilityRole="button">
-                  <VectorSymbol name="filter" size={28} /><AppText style={styles.orangeFilterText}>Filters</AppText>
+                  <VectorSymbol name="filter" size={20} color="#14181F" /><AppText style={styles.orangeFilterText}>Filters</AppText>
                 </Pressable>
               </View>
               {showFilters ? <Card testID="plants-geo-filters" style={{gap:12}}>
@@ -693,7 +693,7 @@ const styles = StyleSheet.create({
   geoFilterField:{flexGrow:1,flexBasis:"45%",minWidth:130,gap:5},
   geoFilterInput:{minHeight:44,borderWidth:1,borderColor:"#E2E8F0",backgroundColor:"#FFFFFF",borderRadius:10,paddingHorizontal:10,fontFamily:fonts.medium,fontSize:13,color:"#1E293B"},
   orangeFilter:{borderRadius:12,minHeight:46,paddingHorizontal:14,flexDirection:"row",alignItems:"center",justifyContent:"center",gap:6,borderWidth:1},
-  orangeFilterText:{fontFamily:fonts.semibold,fontSize:14,color:"#FFFFFF"},
+  orangeFilterText:{fontFamily:fonts.semibold,fontSize:14,color:"#14181F"},
   screenshotCard:{borderWidth:1,borderRadius:20,padding:16,gap:12,elevation:2,shadowOffset:{width:0,height:8},shadowRadius:18},
   plantTopRow:{flexDirection:"row",alignItems:"flex-start",gap:10},
   plantGlyphPlate:{width:48,height:48,borderWidth:1,borderRadius:13,alignItems:"center",justifyContent:"center"},

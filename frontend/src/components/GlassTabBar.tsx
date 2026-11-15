@@ -50,6 +50,8 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick" }: 
     const index = state.routes.findIndex((candidate) => candidate.key === route.key);
     const focused = state.index === index;
     const symbol = tabVectorSymbol(tab.label, user?.role);
+    const selectedInk = colors.isDark ? colors.onBrandSoft : "#9C4100";
+    const ink = focused ? selectedInk : colors.onSurfaceTertiary;
 
     return (
       <Pressable
@@ -68,14 +70,14 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick" }: 
         }}
       >
         <View style={[styles.activeIndicator, { backgroundColor: focused ? colors.brand : "transparent" }]} />
-        {symbol ? <VectorSymbol name={symbol} size={35} /> : <Ionicons name={focused ? tab.active : tab.icon} size={35} color={focused ? colors.brand : colors.onSurfaceTertiary} />}
+        {symbol ? <VectorSymbol name={symbol} color={ink} /> : <Ionicons name={focused ? tab.active : tab.icon} size={24} color={ink} />}
         <AppText
           numberOfLines={1}
           style={{
             fontFamily: focused ? fonts.semibold : fonts.medium,
             fontSize: 11,
             lineHeight: 15,
-            color: focused ? colors.brand : colors.onSurfaceTertiary,
+            color: ink,
           }}
         >
           {tab.label}
@@ -93,7 +95,7 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick" }: 
           style={[
             styles.bar,
             {
-              borderColor: colors.isDark ? "rgba(255,154,61,0.26)" : "rgba(20,24,31,0.08)",
+              borderColor: colors.divider,
               backgroundColor: colors.surfaceSecondary,
               shadowColor: colors.shadow,
             },
@@ -116,13 +118,13 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick" }: 
                   backgroundColor: pressed ? colors.brandPressed : colors.brand,
                   borderColor: colors.surfaceSecondary,
                   transform: [{ scale: pressed ? 0.93 : 1 }],
-                  shadowColor: colors.brand,
+                  shadowColor: colors.shadow,
                 },
               ]}
             >
-              {centerLabel === "New" ? <VectorSymbol name="new-order" size={38} /> : <Ionicons name="add" size={29} color={colors.onBrand} />}
+              {centerLabel === "New" ? <VectorSymbol name="new-order" size={26} color="#14181F" /> : <Ionicons name="add" size={26} color="#14181F" />}
             </Pressable>
-            <AppText style={[styles.centerLabel, { color: colors.brand }]}>{centerLabel}</AppText>
+            <AppText style={[styles.centerLabel, { color: colors.onSurfaceTertiary }]}>{centerLabel}</AppText>
           </View>
 
           <View style={styles.tabSide}>{rightRoutes.map(renderTab)}</View>

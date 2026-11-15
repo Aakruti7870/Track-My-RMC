@@ -49,8 +49,8 @@ export function PlantCard({ plant, onOrder, onDetails }: { plant: Plant; onOrder
       ]}
     >
       <View style={styles.header}>
-        <View style={[styles.plantGlyph, { backgroundColor: colors.brandSoft, borderColor: colors.brand + "30" }]}>
-          <VectorSymbol name="plants" size={39} />
+        <View style={[styles.plantGlyph, { backgroundColor: colors.surfaceTertiary, borderColor: colors.divider }]}>
+          <VectorSymbol name="plants" size={28} />
         </View>
         <View style={styles.titleBlock}>
           <View style={styles.nameRow}>
@@ -60,7 +60,6 @@ export function PlantCard({ plant, onOrder, onDetails }: { plant: Plant; onOrder
             >
               {plant.name}
             </AppText>
-            <VectorSymbol name={plant.verified ? "verified-plant" : "unverified-plant"} size={25} />
           </View>
           <View style={styles.locationRow}>
             <Ionicons name="location-outline" size={14} color={colors.onSurfaceTertiary} />
@@ -76,8 +75,7 @@ export function PlantCard({ plant, onOrder, onDetails }: { plant: Plant; onOrder
         {plant.verified ? <Badge label="LISTING VERIFIED" status="VERIFIED" size="sm" /> : <Badge label="Verification pending" status="PENDING" size="sm" />}
         {plant.promoted ? (
           <View style={[styles.promotedBadge, { backgroundColor: colors.warning + "18", borderColor: colors.warning + "48" }]}>
-            <Ionicons name="sparkles" size={13} color={colors.warning} />
-            <AppText style={{ fontFamily: fonts.bold, fontSize: 10, color: colors.warning, letterSpacing: 0.5 }}>PROMOTED</AppText>
+            <AppText style={{ fontFamily: fonts.bold, fontSize: 10, color: colors.warning, letterSpacing: 0.5 }}>Promoted</AppText>
           </View>
         ) : null}
       </View>
@@ -94,7 +92,7 @@ export function PlantCard({ plant, onOrder, onDetails }: { plant: Plant; onOrder
             </View>
           ))}
           {plant.grades.length > 5 ? (
-            <View style={[styles.gradeChip, { backgroundColor: colors.brandSoft, borderColor: colors.brand + "30" }]}>
+            <View style={[styles.gradeChip, { backgroundColor: colors.surfaceTertiary, borderColor: colors.divider }]}>
               <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.sm, color: colors.brand }}>+{plant.grades.length - 5}</AppText>
             </View>
           ) : null}
@@ -121,8 +119,8 @@ export function PlantCard({ plant, onOrder, onDetails }: { plant: Plant; onOrder
             },
           ]}
         >
-          <VectorSymbol name={orderEnabled ? "order-enabled" : "pending-approval"} size={25} />
-          <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.sm, color: orderEnabled ? colors.onBrand : colors.disabledContent }}>
+          <VectorSymbol name={orderEnabled ? "order-enabled" : "pending-approval"} size={20} color={orderEnabled ? "#14181F" : colors.disabledContent} />
+          <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.sm, color: orderEnabled ? "#14181F" : colors.disabledContent }}>
             {orderEnabled ? "Order RMC" : "Unavailable"}
           </AppText>
         </Pressable>

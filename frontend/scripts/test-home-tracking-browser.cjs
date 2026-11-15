@@ -2,13 +2,13 @@ const {chromium}=require('../../admin-web/node_modules/playwright');
 const fs=require('node:fs');
 fs.mkdirSync('tracking-previews',{recursive:true});
 (async()=>{
- const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+ const browser=await chromium.launch({headless:true,args:['--no-sandbox'],...(process.env.HEADER_CHROMIUM_PATH ? {executablePath:process.env.HEADER_CHROMIUM_PATH} : {})});
  for(const width of [320,390,768,960,1024,1440]){
   const expected=width>=1024
-    ? {quick:72,tool:72,service:80,circle:76,toolPlate:76,servicePlate:84,quickTile:104,toolTile:132,serviceTile:140,quickFont:16,toolFont:14,serviceFont:15,heading:18,headingLine:24,sectionGap:16,sloganWidth:166,sloganHeight:36,pumpWidth:360,pumpHeight:70,pumpIconWidth:54,pumpIconHeight:48,pumpFirst:16,pumpSecond:18,kyc:36,kycTitle:18,location:15}
+    ? {quick:28,tool:28,service:28,quickTile:72,toolTile:84,serviceTile:84,quickFont:16,toolFont:14,serviceFont:15,heading:18,headingLine:24,sectionGap:16,pumpWidth:360,pumpHeight:70,pumpFirst:16,pumpSecond:18,kyc:36,kycTitle:18,location:15}
     : width>=600
-      ? {quick:64,tool:64,service:70,circle:68,toolPlate:68,servicePlate:74,quickTile:94,toolTile:119,serviceTile:125,quickFont:15,toolFont:13,serviceFont:14,heading:16,headingLine:22,sectionGap:12,sloganWidth:146,sloganHeight:32,pumpWidth:300,pumpHeight:62,pumpIconWidth:48,pumpIconHeight:42,pumpFirst:14,pumpSecond:16,kyc:32,kycTitle:16,location:14}
-      : {quick:52,tool:52,service:58,circle:56,toolPlate:56,servicePlate:62,quickTile:82,toolTile:101,serviceTile:103,quickFont:14,toolFont:11,serviceFont:12,heading:15,headingLine:20,sectionGap:10,sloganWidth:132,sloganHeight:28,pumpWidth:240,pumpHeight:50,pumpIconWidth:40,pumpIconHeight:35,pumpFirst:13,pumpSecond:15,kyc:28,kycTitle:15,location:13};
+      ? {quick:24,tool:24,service:24,quickTile:68,toolTile:80,serviceTile:80,quickFont:15,toolFont:13,serviceFont:14,heading:16,headingLine:22,sectionGap:12,pumpWidth:300,pumpHeight:62,pumpFirst:14,pumpSecond:16,kyc:32,kycTitle:16,location:14}
+      : {quick:24,tool:24,service:24,quickTile:64,toolTile:76,serviceTile:76,quickFont:14,toolFont:12,serviceFont:12,heading:15,headingLine:20,sectionGap:10,pumpWidth:240,pumpHeight:50,pumpFirst:13,pumpSecond:15,kyc:28,kycTitle:15,location:13};
  let mode='demo';
  const page=await browser.newPage({viewport:{width,height:1000}});
  await page.addInitScript(()=>localStorage.setItem('tmrmc_token',JSON.stringify('isolated-browser-fixture')));
@@ -50,31 +50,27 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    if(size[0]!==expected.service||size[1]!==expected.service)throw Error(`Service SVG size: ${id} ${size} at ${width}`);
  }
  const actionBoxes=await Promise.all(['action-new','action-track','action-plants','action-orders'].map(id=>page.getByTestId(id).boundingBox()));
- // Round PhonePe-style quick actions: 52dp artwork is displayed inside a
- // 56dp circular frame with the label visibly below, never clipped.
+ // Verify compact, single-ink icons with visible labels and touch targets.
  for(const [id,label] of [['action-new','New Order'],['action-track','Track Order'],['action-plants','Plants'],['action-orders','My Orders']]) {
    const action=page.getByTestId(id);
    const tile=await action.boundingBox();
    const svg=await action.locator('svg').first().boundingBox();
    const name=await action.getByText(label,{exact:true}).boundingBox();
-   const circle=await action.locator('svg').first().evaluate(node=>node.parentElement.getBoundingClientRect().toJSON());
-   if(!tile||!svg||!name||!circle)throw Error(`Missing Quick Action geometry: ${id}`);
+   const icon = action.locator('svg');
+   if(!tile||!svg||!name)throw Error(`Missing Quick Action geometry: ${id}`);
    if(tile.height<expected.quickTile-1||tile.height>expected.quickTile+30)throw Error(`Quick Action tile height mismatch: ${id} ${tile.height} at ${width}`);
-   if(Math.abs(circle.width-expected.circle)>1||Math.abs(circle.height-expected.circle)>1)throw Error(`Incorrect circular frame: ${id} at ${width}`);
-   if(svg.y<circle.y-1||name.y<svg.y+svg.height-1||name.y+name.height>tile.y+tile.height+1)
+   if(svg.y<tile.y||name.y<svg.y+svg.height-1||name.y+name.height>tile.y+tile.height+1)
      throw Error(`Quick Action SVG/label clipping: ${id}`);
+   if(await icon.getAttribute('aria-hidden')!=='true'||await icon.locator('path').count()!==1)
+     throw Error(`Quick Action must render one decorative vector path: ${id}`);
  }
  const carouselBox=await page.getByTestId('home-promotional-carousel').boundingBox();
  const quickSectionBox=await page.getByTestId('home-quick-actions').boundingBox();
- // Geometry measured from the PhonePe reference, expressed in viewport dp on web.
  if(width<=390) {
-   if(Math.abs(quickSectionBox.height-120)>(width<=340?20:7))
-     throw Error('Quick Actions section should be 120-140dp depending on label wrapping: '+quickSectionBox.height);
    const titleBox=await page.getByText('Quick Actions',{exact:true}).boundingBox();
    const bannerToSection=quickSectionBox.y-(carouselBox.y+carouselBox.height);
    if(Math.abs(bannerToSection-10)>1)
      throw Error('Carousel-to-Quick Actions section gap must be 10dp: '+bannerToSection);
-   // The 28dp header row vertically centers its 22dp title text.
    const bannerToTitle=titleBox.y-(carouselBox.y+carouselBox.height);
    if(bannerToTitle<10||bannerToTitle>18)
      throw Error('Quick Actions title must fit below the 10dp section gap: '+bannerToTitle);
@@ -84,16 +80,13 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      if(font!=='14px')throw Error('Quick Action label must be 14sp: '+id+' '+font);
    }
  }
- const slogan=await page.getByText('Built Better',{exact:true}).locator('xpath=..').boundingBox();
- if(Math.abs(slogan.width-expected.sloganWidth)>1||Math.abs(slogan.height-expected.sloganHeight)>2)
-   throw Error('Slogan geometry mismatch at '+width+': '+JSON.stringify(slogan));
- const expectedQuickHeight=expected.sloganHeight+expected.sectionGap+expected.quickTile;
- if(Math.abs(quickSectionBox.height-expectedQuickHeight)>(width<=340?20:7))
+ const expectedQuickHeight=expected.headingLine+expected.sectionGap+expected.quickTile;
+ if(quickSectionBox.height<expectedQuickHeight-1||quickSectionBox.height>expectedQuickHeight+24)
    throw Error('Quick Actions height mismatch at '+width+': '+quickSectionBox.height+' vs '+expectedQuickHeight);
  const kycIcon=await actualVectorSize('kyc-banner');
  if(kycIcon[0]!==expected.kyc||kycIcon[1]!==expected.kyc)
    throw Error('KYC symbol mismatch at '+width+': '+kycIcon);
- const kycTitleSize=await page.getByTestId('kyc-banner').getByText('KYC VERIFIED',{exact:true})
+ const kycTitleSize=await page.getByTestId('kyc-banner').getByText('KYC verified',{exact:true})
    .evaluate(el=>getComputedStyle(el).fontSize);
  if(kycTitleSize!==expected.kycTitle+'px')throw Error('KYC title mismatch at '+width+': '+kycTitleSize);
  const kycBox=await page.getByTestId('kyc-banner').boundingBox();
@@ -115,7 +108,6 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  for(const title of ['Quick Actions','Active Projects & Planning','Free Tools & Expert Advice','Supply & Workforce','Track My RMC']){
    if(!await page.getByText(title,{exact:true}).count())throw Error(`Home heading missing: ${title}`);
  }
- if(!await page.getByText('Built Better',{exact:true}).count())throw Error('Built Better slogan missing');
  if((await page.getByTestId('action-plants').innerText()).trim()!=='Plants')throw Error('Third Quick Action must be labeled Plants');
  if(Math.max(...actionBoxes.map(box=>box.y))-Math.min(...actionBoxes.map(box=>box.y))>2)
    throw Error('All four Quick Actions must fit one row at 320dp and above');
@@ -168,19 +160,19 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  if(!pump||!row||Math.abs(pump.width-expected.pumpWidth)>1||Math.abs(pump.height-expected.pumpHeight)>1)
    throw Error('Pump CTA dimensions mismatch at '+width+': '+JSON.stringify({pump,row}));
  const pumpSvg=await promoCards[0].locator('svg').first().boundingBox();
- if(!pumpSvg||Math.abs(pumpSvg.width-expected.pumpIconWidth)>1||Math.abs(pumpSvg.height-expected.pumpIconHeight)>1)
+ if(!pumpSvg||Math.abs(pumpSvg.width-expected.quick)>1||Math.abs(pumpSvg.height-expected.quick)>1)
    throw Error('Pump CTA SVG size mismatch at '+width+': '+JSON.stringify(pumpSvg));
  if(Math.abs((pump.x+pump.width/2)-(row.x+row.width/2))>1)
    throw Error('Single pump CTA must be horizontally centered');
  if(await page.getByText('On Time, Everytime').count())
    throw Error('Removed On Time card still appears');
  if(!await page.getByRole('button',{name:'Request a concrete pump rental enquiry'}).count())throw Error('Accessible pump CTA missing');
- for(const title of ['Quick Actions','Active Projects & Planning','Free Tools & Expert Advice','Supply & Workforce','Track My RMC','Built Better']){
+ for(const title of ['Quick Actions','Active Projects & Planning','Free Tools & Expert Advice','Supply & Workforce','Track My RMC']){
    const style=await page.getByText(title,{exact:true}).first().evaluate(el=>{const s=getComputedStyle(el);return {size:s.fontSize,height:s.lineHeight,family:s.fontFamily};});
    if(style.size!==expected.heading+'px'||style.height!==expected.headingLine+'px'||!style.family.toLowerCase().includes('jakarta-bold'))
      throw Error('Home heading typography regression '+title+': '+JSON.stringify(style));
  }
- for(const [title,size,family] of [['Streamline Your Pour',expected.pumpFirst+'px','jakarta-medium'],['Request a Pump Quote',expected.pumpSecond+'px','jakarta-semibold']]){
+ for(const [title,size,family] of [['Concrete pump rental',expected.pumpFirst+'px','jakarta-medium'],['Request a quote',expected.pumpSecond+'px','jakarta-semibold']]){
    const style=await page.getByText(title,{exact:true}).first().evaluate(el=>{const s=getComputedStyle(el);return {size:s.fontSize,family:s.fontFamily};});
    if(style.size!==size||!style.family.toLowerCase().includes(family))
      throw Error('Pump CTA font regression '+title+': '+JSON.stringify(style));
@@ -189,15 +181,6 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  const locationFont=await page.getByTestId('header-location').getByText('Select Location',{exact:true})
    .evaluate(el=>getComputedStyle(el).fontSize);
  if(locationFont!==expected.location+'px')throw Error('Location typography mismatch at '+width+': '+locationFont);
- for(const [id,icon,plate] of [['customer-module-projects',expected.tool,expected.toolPlate],['service-cement',expected.service,expected.servicePlate]]){
-   const dims=await page.getByTestId(id).locator('svg').first().evaluate(el=>{
-     const b=el.getBoundingClientRect(),p=el.parentElement.getBoundingClientRect();
-     return {w:b.width,h:b.height,top:b.y,plateTop:p.y,plateBottom:p.bottom,plateHeight:p.height};
-   });
-   if(Math.abs(dims.w-icon)>1||Math.abs(dims.h-icon)>1||Math.abs(dims.plateHeight-plate)>1||
-      dims.top<dims.plateTop-1||dims.top+dims.h>dims.plateBottom+1)
-     throw Error('Responsive vector plate clipped at '+width+': '+id+' '+JSON.stringify(dims));
- }
  for(const [id,label,font] of [['customer-module-projects','Project Hub',expected.toolFont],['service-cement','Cement',expected.serviceFont]]){
    const actual=await page.getByTestId(id).getByText(label,{exact:true}).evaluate(el=>getComputedStyle(el).fontSize);
    if(actual!==font+'px')throw Error('Responsive label mismatch at '+width+': '+id+' '+actual);
@@ -207,7 +190,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  // the layout gates check; CI uploads them for human visual comparison.
  await page.screenshot({path:`tracking-previews/home-layout-${width}.png`,fullPage:true});
  const tabIds=['tab-home','tab-orders','tab-plants','tab-more'];
- for(const id of tabIds){const size=await actualVectorSize(id);if(size[0]!==35||size[1]!==35)throw Error(`Tab SVG size: ${id} ${size}`);}
+ for(const id of tabIds){const size=await actualVectorSize(id);if(size[0]!==24||size[1]!==24)throw Error(`Tab SVG size: ${id} ${size}`);}
  const tabBoxes=await Promise.all(tabIds.map(id=>page.getByTestId(id).boundingBox()));
  const centerBox=await page.getByTestId('tab-quick-actions').boundingBox();
  const centers=tabBoxes.map(box=>box.x+box.width/2);

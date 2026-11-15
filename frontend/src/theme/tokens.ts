@@ -277,16 +277,14 @@ export function statusColor(colors: ThemeColors, status?: string) {
 }
 
 
-// Customer Home design sizes. The Android/iOS app and mobile web retain the
-// approved PR #152 measurements. Only wider *web* viewports use larger values.
+// Customer Home sizes shared by native and mobile web. Wider web layouts use a larger type scale.
 // React Native layout units are dp on native and CSS px on web.
 const customerHomeMobile = {
   sectionGap: 10, gridGap: 10, headerSize: 15, headerLine: 20,
-  quickSymbol: 52, quickCircle: 56, quickTile: 82, quickLabel: 14, quickLabelLine: 18, quickLabelMin: 18,
-  toolSymbol: 52, toolPlate: 56, toolTile: 101, toolLabel: 11, toolLabelLine: 13,
-  serviceSymbol: 58, servicePlate: 62, serviceTile: 103, serviceLabel: 12, serviceLabelLine: 15,
-  sloganWidth: 132, sloganHeight: 28, sloganIcon: 19,
-  pumpWidth: 240, pumpHeight: 50, pumpIconWidth: 40, pumpIconHeight: 35,
+  quickSymbol: 24, quickTile: 64, quickLabel: 14, quickLabelLine: 18, quickLabelMin: 18,
+  toolSymbol: 24, toolTile: 76, toolLabel: 12, toolLabelLine: 16,
+  serviceSymbol: 24, serviceTile: 76, serviceLabel: 12, serviceLabelLine: 15,
+  pumpWidth: 240, pumpHeight: 50, pumpSymbol: 24,
   pumpFirstSize: 13, pumpFirstLine: 16, pumpSecondSize: 15, pumpSecondLine: 18,
   pumpGap: 4, pumpPadding: 4, pumpRadius: 10,
   kycSymbol: 28, kycArrow: 25, kycArrowIcon: 17, kycTitle: 15, kycTitleLine: 20,
@@ -299,11 +297,10 @@ const customerHomeMobile = {
 const customerHomeTablet = {
   ...customerHomeMobile,
   sectionGap: 12, gridGap: 12, headerSize: 16, headerLine: 22,
-  quickSymbol: 64, quickCircle: 68, quickTile: 94, quickLabel: 15, quickLabelLine: 20, quickLabelMin: 20,
-  toolSymbol: 64, toolPlate: 68, toolTile: 119, toolLabel: 13, toolLabelLine: 16,
-  serviceSymbol: 70, servicePlate: 74, serviceTile: 125, serviceLabel: 14, serviceLabelLine: 18,
-  sloganWidth: 146, sloganHeight: 32, sloganIcon: 21,
-  pumpWidth: 300, pumpHeight: 62, pumpIconWidth: 48, pumpIconHeight: 42,
+  quickSymbol: 24, quickTile: 68, quickLabel: 15, quickLabelLine: 20, quickLabelMin: 20,
+  toolSymbol: 24, toolTile: 80, toolLabel: 13, toolLabelLine: 16,
+  serviceSymbol: 24, serviceTile: 80, serviceLabel: 14, serviceLabelLine: 18,
+  pumpWidth: 300, pumpHeight: 62, pumpSymbol: 24,
   pumpFirstSize: 14, pumpFirstLine: 18, pumpSecondSize: 16, pumpSecondLine: 20,
   pumpGap: 8, pumpPadding: 8, pumpRadius: 12,
   kycSymbol: 32, kycArrow: 28, kycArrowIcon: 19, kycTitle: 16, kycTitleLine: 22,
@@ -316,11 +313,10 @@ const customerHomeTablet = {
 const customerHomeDesktop = {
   ...customerHomeTablet,
   sectionGap: 16, gridGap: 16, headerSize: 18, headerLine: 24,
-  quickSymbol: 72, quickCircle: 76, quickTile: 104, quickLabel: 16, quickLabelLine: 20, quickLabelMin: 20,
-  toolSymbol: 72, toolPlate: 76, toolTile: 132, toolLabel: 14, toolLabelLine: 18,
-  serviceSymbol: 80, servicePlate: 84, serviceTile: 140, serviceLabel: 15, serviceLabelLine: 20,
-  sloganWidth: 166, sloganHeight: 36, sloganIcon: 23,
-  pumpWidth: 360, pumpHeight: 70, pumpIconWidth: 54, pumpIconHeight: 48,
+  quickSymbol: 28, quickTile: 72, quickLabel: 16, quickLabelLine: 20, quickLabelMin: 20,
+  toolSymbol: 28, toolTile: 84, toolLabel: 14, toolLabelLine: 18,
+  serviceSymbol: 28, serviceTile: 84, serviceLabel: 15, serviceLabelLine: 20,
+  pumpWidth: 360, pumpHeight: 70, pumpSymbol: 28,
   pumpFirstSize: 16, pumpFirstLine: 20, pumpSecondSize: 18, pumpSecondLine: 22,
   pumpGap: 10, pumpPadding: 10, pumpRadius: 14,
   kycSymbol: 36, kycArrow: 32, kycArrowIcon: 21, kycTitle: 18, kycTitleLine: 24,
@@ -332,7 +328,7 @@ const customerHomeDesktop = {
 
 export function customerHomeSizes(viewportWidth: number, platform: string) {
   // Breakpoints use the actual viewport width, not a device model or user agent.
-  // Native tablet apps intentionally preserve the established mobile design.
+  // Native tablets use the native sizing policy.
   if (platform !== "web" || viewportWidth < 600) return customerHomeMobile;
   if (viewportWidth < 1024) return customerHomeTablet;
   return customerHomeDesktop;

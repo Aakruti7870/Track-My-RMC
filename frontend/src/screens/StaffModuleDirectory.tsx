@@ -244,7 +244,7 @@ export function StaffModuleDirectory({
                     },
                   ]}>
                   <View style={styles.iconWrap}>
-                    {module.symbol ? <VectorSymbol name={module.symbol} size={34} warmAccent /> :
+                    {module.symbol ? <VectorSymbol name={module.symbol} size={34} /> :
                       <Ionicons name={module.icon} size={30} color={colors.brand} />}
                   </View>
                   <AppText numberOfLines={2} style={[styles.cardTitle, { color: colors.onSurface }]}>{module.label}</AppText>

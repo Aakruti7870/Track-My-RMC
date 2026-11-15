@@ -70,7 +70,7 @@ jobs:
         run: npm run check:modules
       - name: Validate unique owner/staff module placement and responsive card sizes
         run: node scripts/test-owner-staff-module-layout.cjs
-      - name: Validate every uploaded vector symbol and role assignment
+      - name: Validate Material Symbols and role assignments
         run: npm run check:vector-symbols
       - name: Enforce one font family across the Expo application
         run: npm run check:single-font

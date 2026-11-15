@@ -20,14 +20,9 @@ test("shared light/dark card surfaces preserve readability over subdued artwork"
   assert.match(read("src/theme/sceneBackground.ts"), /0\.85/);
 });
 
-test("customer Plants quick action uses an in-bounds SVG and compact label", () => {
+test("customer Plants quick action uses the Material Symbols factory glyph", () => {
   assert.match(read("app/customer/index.tsx"), /key: "plants", label: "Plants", symbol: "nearby-rmc-plants"/);
-  const master = read("assets/images/SVG Vector Symbol/nearby-rmc-plants.svg").trim();
-  assert.equal((master.match(/translate\(30 0\) scale\(0\.5\)/g) ?? []).length, 3);
-  const set = read("src/components/vector-symbols/set3.ts");
-  const entry = set.match(/^  "nearby-rmc-plants": (".*"),$/m);
-  assert.ok(entry, "embedded SVG must remain available");
-  assert.equal(JSON.parse(entry[1]), master, "embedded and master artwork must match");
+  assert.match(read("src/components/vector-symbols/materialSymbols.ts"), /"nearby-rmc-plants": "factory"/);
 });
 
 test("tab bars do not add transparent web padding below navigation", () => {

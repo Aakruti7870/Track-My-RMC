@@ -86,7 +86,7 @@ export function RoleModuleDirectory({ role, title = "Your Modules" }: {
                   ]}
                 >
                   <View style={styles.artwork}>
-                    {module.symbol ? <VectorSymbol name={module.symbol} size={52} warmAccent /> : <Ionicons name={module.icon} size={38} color={colors.brand} />}
+                    {module.symbol ? <VectorSymbol name={module.symbol} size={52} /> : <Ionicons name={module.icon} size={38} color={colors.brand} />}
                   </View>
                   <AppText style={{ fontFamily: fonts.semibold, color: colors.onSurface, fontSize: 13, textAlign: "center" }} numberOfLines={2}>{module.label}</AppText>
                   <AppText variant="caption" style={{ textAlign: "center", fontSize: 11 }} numberOfLines={2}>{module.description}</AppText>
