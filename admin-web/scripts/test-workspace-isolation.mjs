@@ -19,7 +19,7 @@ try {
   assert(ready,'Preview unavailable: '+logs);
   browser=await chromium.launch({headless:true,...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE?{executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE}:{})});
   for(const [width,blockedStorage,failedLogout] of [[390,true,true],[1440,false,false]]){
-    const context=await browser.newContext({viewport:{width,height:1000}});
+    const context=await browser.newContext({viewport:{width,height:1000},reducedMotion:'reduce'});
     if(blockedStorage)await context.addInitScript(()=>{
       Object.defineProperty(window,'sessionStorage',{get(){throw new DOMException('Storage blocked','SecurityError');}});
     });
@@ -161,6 +161,7 @@ try {
     await page.getByLabel('Dashboard module cards').waitFor();
     assert.match(await page.locator('main').getAttribute('class')||'',/tm-dark/,'graphite theme should be the default');
     const workspace = button('Open Plant Master');
+    await page.mouse.move(0, 0);
     const visual = await workspace.evaluate(el => ({
       width: el.getBoundingClientRect().width,
       right: el.getBoundingClientRect().right,
