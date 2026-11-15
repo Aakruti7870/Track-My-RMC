@@ -1266,22 +1266,22 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                     <h3 style={{fontSize:16}}>Customer Support Operations</h3>
                     <p style={{fontSize:12,color:'var(--tm-muted)'}}>Open a case to view its conversation. Replies and status changes use dedicated server-enforced permissions.</p>
                     {permissions.includes('support.reply') && (
-                      <div aria-label="Internal support follow-up alerts" style={{padding:12,margin:'8px 0',border:'1px solid rgba(255,154,61,0.24)',borderRadius:8}}>
+                      <div role="region" aria-label="Internal support follow-up alerts" style={{padding:12,margin:'8px 0',border:'1px solid rgba(255,154,61,0.24)',borderRadius:8}}>
                         <strong>Support follow-up inbox</strong>
                         <p style={{fontSize:12,color:'var(--tm-muted)'}}>Staff-only reminders. Opening an alert marks it read, but does not resolve the case or alter its SLA.</p>
                         {supportAlerts.filter(alert=>!alert.is_read).map(alert=>(
                           <button type="button" key={String(alert.id)} disabled={busy}
                             onClick={()=>void openSupportCase(String(alert.case_id),String(alert.id))}
-                            style={{...buttonStyle,width:'auto',background:'#1D232D',marginRight:8,marginTop:5}}>
+                            style={{...buttonStyle,width:'auto',background:'var(--tm-raised)',color:'var(--tm-text)',marginRight:8,marginTop:5}}>
                             Review due case · {String(alert.case_id).slice(0,8)}
                           </button>
                         ))}
-                        {supportAlertsLoaded && !supportAlerts.some(alert=>!alert.is_read) && <p style={{fontSize:12}}>No unread follow-up reminders.</p>}
+                        {supportAlertsLoaded && !supportAlerts.some(alert=>!alert.is_read) && <p aria-live="polite" style={{fontSize:12}}>No unread follow-up reminders.</p>}
                       </div>
                     )}
                     <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                       {records.map(row=><button type="button" key={String(row.id)} disabled={busy}
-                        style={{...buttonStyle,width:'auto',background:'#1D232D',marginTop:0}}
+                        style={{...buttonStyle,width:'auto',background:'var(--tm-raised)',color:'var(--tm-text)',marginTop:0}}
                         onClick={()=>void openSupportCase(String(row.id))}>Open {String(row.subject||row.id)}</button>)}
                     </div>
                     {supportCase && <div style={{borderTop:'1px solid #1D232D',paddingTop:12,marginTop:12,display:'grid',gap:8}}>
@@ -1307,7 +1307,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                           {['OPEN','IN_PROGRESS','RESOLVED','CLOSED'].filter(x=>x!==supportCase.status).map(status=>
                             <button type="button" key={status} disabled={busy||supportStepUp.length!==6}
-                              style={{...buttonStyle,width:'auto',background:'#1D232D'}} onClick={()=>void updateSupportStatus(status)}>{status.replace('_',' ')}</button>)}
+                              style={{...buttonStyle,width:'auto',background:'var(--tm-raised)',color:'var(--tm-text)'}} onClick={()=>void updateSupportStatus(status)}>{status.replace('_',' ')}</button>)}
                         </div>
                       </>}
                     </div>}
@@ -1377,7 +1377,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
             </button>
             {stage === 'central-mfa' && (
               <button type="button" disabled={busy} onClick={()=>{setMfaCode('');setError('');setStage('central-recover');}}
-                style={{...buttonStyle,background:'transparent',border:'1px solid rgba(255,154,61,0.24)'}}>Recover with a saved code</button>
+                style={{...buttonStyle,background:'transparent',color:'var(--tm-focus)',border:'1px solid rgba(255,154,61,0.24)'}}>Recover with a saved code</button>
             )}
             <button type="button" disabled={busy} onClick={stage==='central-recover' ? ()=>{setMfaCode('');setError('');setStage('central-mfa');} : restartCentralLogin}
               className="tm-auth-back"><ArrowLeft size={16} aria-hidden="true"/>{stage==='central-recover'?'Back to authenticator':'Start over'}</button>
@@ -1408,8 +1408,8 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
             <label htmlFor="authority-login-code" style={{display:'block',marginTop:18}}>Authenticator code</label>
             <input id="authority-login-code" inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" maxLength={6} value={mfaCode} onChange={e=>setMfaCode(e.target.value)} style={inputStyle} disabled={busy}/>
             <button type="submit" disabled={busy} style={buttonStyle}>Sign in with password + authenticator</button>
-            <button type="button" onClick={()=>{setAuthorityEnrollment(true);setStage('email');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid rgba(255,154,61,0.24)'}}>First sign-in: verify email and enroll authenticator</button>
-            <button type="button" onClick={()=>{setStage('central-login');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid rgba(255,154,61,0.24)'}}>Central Admin sign in</button>
+            <button type="button" onClick={()=>{setAuthorityEnrollment(true);setStage('email');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',color:'var(--tm-focus)',border:'1px solid rgba(255,154,61,0.24)'}}>First sign-in: verify email and enroll authenticator</button>
+            <button type="button" onClick={()=>{setStage('central-login');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',color:'var(--tm-focus)',border:'1px solid rgba(255,154,61,0.24)'}}>Central Admin sign in</button>
           </form>
         )}
 
@@ -1430,7 +1430,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
               maxLength={12} value={otp} onChange={(event) => setOtp(event.target.value)} style={inputStyle} disabled={busy} />
             <button type="submit" disabled={busy} style={buttonStyle}>{busy ? 'Verifying…' : 'Verify email code'}</button>
             <button type="button" disabled={busy} onClick={() => { setStage('email'); setOtp(''); setError(''); setNotice(''); }}
-              style={{ ...buttonStyle, background: 'transparent', border: '1px solid rgba(255,154,61,0.24)' }}>Use another email</button>
+              style={{ ...buttonStyle, background:'transparent',color:'var(--tm-focus)', border: '1px solid rgba(255,154,61,0.24)' }}>Use another email</button>
           </form>
         )}
 
@@ -1469,7 +1469,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
             <button type="submit" disabled={busy || (stage === 'mfa-enroll' && !recoveryCodesSaved)} style={buttonStyle}>{busy ? 'Enabling…' : 'Confirm authenticator setup'}</button>
             {stage === 'central-mfa' && (
               <button type="button" disabled={busy} onClick={restartCentralLogin}
-                style={{...buttonStyle,background:'transparent',border:'1px solid rgba(255,154,61,0.24)'}}>Start over</button>
+                style={{...buttonStyle,background:'transparent',color:'var(--tm-focus)',border:'1px solid rgba(255,154,61,0.24)'}}>Start over</button>
             )}
           </form>
         )}
@@ -1501,7 +1501,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
               value={mfaCode} onChange={(event) => setMfaCode(event.target.value)} style={inputStyle} disabled={busy} />
             <button type="submit" disabled={busy} style={buttonStyle}>{busy ? 'Verifying…' : 'Verify MFA and sign in'}</button>
             <button type="button" onClick={()=>{setStage('authority-login');setMfaCode('');setChallengeToken('');setError('');}}
-              style={{...buttonStyle,background:'transparent',border:'1px solid rgba(255,154,61,0.24)'}}>Authority enrolled? Continue to dedicated Authority sign in</button>
+              style={{...buttonStyle,background:'transparent',color:'var(--tm-focus)',border:'1px solid rgba(255,154,61,0.24)'}}>Authority enrolled? Continue to dedicated Authority sign in</button>
           </form>
         )}
 
@@ -1578,7 +1578,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                     <strong>Approval and enquiry notifications</strong>
                     <div style={{display:'flex',gap:8}}>
                       <button type="button" disabled={busy} onClick={()=>void loadAdminNotices()} style={{...buttonStyle,width:'auto',marginTop:0,padding:'7px 10px'}}>Refresh</button>
-                      <button type="button" disabled={busy||adminUnread===0} onClick={()=>void markAdminNoticesRead()} style={{...buttonStyle,width:'auto',marginTop:0,padding:'7px 10px',background:'#1D232D'}}>Mark all read</button>
+                      <button type="button" disabled={busy||adminUnread===0} onClick={()=>void markAdminNoticesRead()} style={{...buttonStyle,width:'auto',marginTop:0,padding:'7px 10px',background:'var(--tm-raised)',color:'var(--tm-text)'}}>Mark all read</button>
                     </div>
                   </div>
                   {adminNoticeError && <p role="alert">{adminNoticeError}</p>}
@@ -1756,7 +1756,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                             Save order intake
                           </button>
                           <button type="button" disabled={govBusy}
-                            onClick={()=>void savePlantGovernance('trust')} style={{...buttonStyle,width:'auto',marginTop:0,background:'#276749'}}>
+                            onClick={()=>void savePlantGovernance('trust')} style={{...buttonStyle,width:'auto',marginTop:0,background:'#276749',color:'#fff'}}>
                             Save TMRMC Verified review
                           </button>
                         </div>
@@ -1772,7 +1772,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                     </div>
                     {!masterDetail.staff.length&&<p>No staff assignments yet.</p>}
                     <p style={{fontSize:12,color:'var(--tm-muted)'}}>Staff invitations and role-slot replacements remain under existing Plant Owner / authorized Manager workflows. No privileged bypass is introduced here.</p>
-                    <button type="button" onClick={()=>setMasterDetail(null)} style={{...buttonStyle,background:'#1D232D'}}>Close plant record</button>
+                    <button type="button" onClick={()=>setMasterDetail(null)} style={{...buttonStyle,background:'var(--tm-raised)',color:'var(--tm-text)'}}>Close plant record</button>
                   </section>}
                   <section aria-label="Google Places discovery" style={{borderTop:'1px solid #1D232D',marginTop:18,paddingTop:14}}>
                     <h3 style={{fontSize:16,margin:'0 0 4px'}}>Discover Google-listed RMC plants</h3>
@@ -2039,7 +2039,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                           style={{...buttonStyle,width:'auto',marginTop:4,background:'#C05621'}}>Emergency pause</button>
                         <button type="button" disabled={busy || (template.published && !template.globally_paused)}
                           onClick={()=>void updateAutomationPolicy(template,true,false)}
-                          style={{...buttonStyle,width:'auto',marginTop:4,background:'#276749'}}>Publish and resume</button>
+                          style={{...buttonStyle,width:'auto',marginTop:4,background:'#276749',color:'#fff'}}>Publish and resume</button>
                         <button type="button" disabled={busy || (!template.published && template.globally_paused)}
                           onClick={()=>void updateAutomationPolicy(template,false,true)}
                           style={{...buttonStyle,width:'auto',marginTop:4,background:'rgba(255,154,61,0.24)'}}>Unpublish</button>
@@ -2098,7 +2098,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                         setAuthorityEmail(account.email||'');setAuthorityName(account.full_name||'');
                         setAuthorityEnabled(account.enabled);setAuthorityGrants(account.permissions);
                         setAuthorityReason('');setAuthorityAdminCode('');
-                      }} style={{...buttonStyle,width:'auto',background:'#1D232D'}}>Edit delegation</button>
+                      }} style={{...buttonStyle,width:'auto',background:'var(--tm-raised)',color:'var(--tm-text)'}}>Edit delegation</button>
                     </article>)}
                     {!authorityAccounts.length && <p>No Authority accounts provisioned. Create an approved identity below.</p>}
                   </div>
@@ -2164,9 +2164,9 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                             onClick={()=>void reviewPlantCertificate(plant,cert)}>Review {cert.toUpperCase()} evidence</button>)}
                       </div>}
                       <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:12}}>
-                        <button disabled={busy} style={{...buttonStyle,width:'auto',background:'#276749'}}
+                        <button disabled={busy} style={{...buttonStyle,width:'auto',background:'#276749',color:'#fff'}}
                           onClick={()=>void decidePlantProfile(plant,section,true)}>Approve & Publish</button>
-                        <button disabled={busy} style={{...buttonStyle,width:'auto',background:'#9B2C2C'}}
+                        <button disabled={busy} style={{...buttonStyle,width:'auto',background:'#9B2C2C',color:'#fff'}}
                           onClick={()=>void decidePlantProfile(plant,section,false)}>Reject / Request Changes</button>
                       </div>
                     </article>;
@@ -2203,7 +2203,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                       <p style={{fontSize:12,margin:'4px 0'}}>Follow-up: {String(row.status)} · Meta alert: {String(row.alert_status)}</p>
                       {row.status==='PENDING' && <button type="button" disabled={busy}
                         onClick={()=>void ownerAction('/api/control-center/plant-owner-registration/'+encodeURIComponent(id)+'/contacted',{})}
-                        style={{...buttonStyle,width:'auto',background:'#276749'}}>Mark Contacted (requires MFA and reason)</button>}
+                        style={{...buttonStyle,width:'auto',background:'#276749',color:'#fff'}}>Mark Contacted (requires MFA and reason)</button>}
                     </article>;
                   })}
                   {!registrationRequests.length && <p>No pending official email registration leads.</p>}
@@ -2234,7 +2234,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                         {['CONTACTED','QUOTED','CLOSED'].filter(x=>x!==row.status).map(status=>
                           <button key={status} type="button" disabled={busy||serviceReason.trim().length<10||serviceStepUp.length!==6}
                             onClick={()=>void updateServiceEnquiry(String(row.id),status)}
-                            style={{...buttonStyle,width:'auto',background:'#1D232D'}}>{status}</button>)}
+                            style={{...buttonStyle,width:'auto',background:'var(--tm-raised)',color:'var(--tm-text)'}}>{status}</button>)}
                       </div>
                     </div>)}
                   </section>
@@ -2253,10 +2253,10 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                     <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
                       <button type="button" disabled={busy||!row.evidence_verified||!row.verified_name||centralKycReason.length<10||centralKycCode.length!==6}
                         onClick={()=>void reviewCentralKyc(String(row.customer_id),'approve')}
-                        style={{...buttonStyle,width:'auto',background:'#276749'}}>Approve verified identity</button>
+                        style={{...buttonStyle,width:'auto',background:'#276749',color:'#fff'}}>Approve verified identity</button>
                       <button type="button" disabled={busy||centralKycReason.length<10||centralKycCode.length!==6}
                         onClick={()=>void reviewCentralKyc(String(row.customer_id),'reject')}
-                        style={{...buttonStyle,width:'auto',background:'#9B2C2C'}}>Reject</button>
+                        style={{...buttonStyle,width:'auto',background:'#9B2C2C',color:'#fff'}}>Reject</button>
                     </div>
                   </article>)}
                 </div>}
@@ -2269,7 +2269,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                   <input id="rfq-step-up" value={rfqOutreachCode} onChange={e=>setRfqOutreachCode(e.target.value)}
                     autoComplete="off" type="password" style={inputStyle} disabled={busy} />
                   <button type="button" disabled={busy} onClick={()=>void shareRmcOnboardingLink()}
-                    style={{...buttonStyle,background:'#276749'}}>Share or Copy Generic Onboarding Link</button>
+                    style={{...buttonStyle,background:'#276749',color:'#fff'}}>Share or Copy Generic Onboarding Link</button>
                   {records.filter(row=>row.status === 'PENDING_SUPPLIER').map(row=>{
                     const id=String(row.id || '');
                     const place=String(row.google_place_id || '');
@@ -2278,7 +2278,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                       <span>Current outreach: {String(row.outreach_status || 'NOT_CONTACTED')}</span>
                       {place && <button type="button" disabled={busy}
                         onClick={()=>window.open('https://www.google.com/maps/search/?api=1&query=RMC%20Plant&query_place_id='+encodeURIComponent(place),'_blank','noopener,noreferrer')}
-                        style={{...buttonStyle,marginTop:0,background:'#1D232D'}}>View Selected Supplier on Google Maps</button>}
+                        style={{...buttonStyle,marginTop:0,background:'var(--tm-raised)',color:'var(--tm-text)'}}>View Selected Supplier on Google Maps</button>}
                       <label>Internal follow-up note
                         <input value={rfqOutreachNotes[id] ?? String(row.outreach_notes || '')}
                           onChange={e=>setRfqOutreachNotes(prev=>({...prev,[id]:e.target.value}))} maxLength={1000}
@@ -2286,8 +2286,8 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                       </label>
                       <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                         <button type="button" disabled={busy} onClick={()=>void recordRfqOutreach(id,'INVITATION_SHARED')} style={{...buttonStyle,width:'auto',marginTop:0}}>Record Invite Shared</button>
-                        <button type="button" disabled={busy} onClick={()=>void recordRfqOutreach(id,'CONTACTED')} style={{...buttonStyle,width:'auto',marginTop:0,background:'#276749'}}>Mark Contacted</button>
-                        <button type="button" disabled={busy} onClick={()=>void recordRfqOutreach(id,'DECLINED')} style={{...buttonStyle,width:'auto',marginTop:0,background:'#9B2C2C'}}>Mark Declined</button>
+                        <button type="button" disabled={busy} onClick={()=>void recordRfqOutreach(id,'CONTACTED')} style={{...buttonStyle,width:'auto',marginTop:0,background:'#276749',color:'#fff'}}>Mark Contacted</button>
+                        <button type="button" disabled={busy} onClick={()=>void recordRfqOutreach(id,'DECLINED')} style={{...buttonStyle,width:'auto',marginTop:0,background:'#9B2C2C',color:'#fff'}}>Mark Declined</button>
                       </div>
                     </div>;
                   })}
@@ -2309,13 +2309,11 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
             )}
             {user.role==='central_admin'&&adminScreen==='settings'&&<section className="tm-settings-panel" aria-label="Admin portal settings">
               <h2>Control Center Appearance</h2>
-              <p>Display preference only. Authentication, permissions and session rules remain unchanged.</p>
               <div className="tm-appearance-actions" role="group" aria-label="Appearance preference">
                 {(['dark','light','system'] as const).map(mode=><button type="button" key={mode}
                   aria-pressed={appearance===mode} className={appearance===mode?'selected':''}
                   onClick={()=>setAppearance(mode)}>{mode==='dark'?'Dark':mode==='light'?'Light':'System'}</button>)}
               </div>
-              <p>The theme uses the official Customer and Plant Owner saffron, warm-white, graphite and verified green tokens.</p>
             </section>}
             {user.role === 'central_admin' && adminScreen==='overview' && permissions.includes('support.manage') && (
               <section aria-label="WhatsApp Chat KPIs" style={{marginTop:15,padding:14,border:'1px solid rgba(255,154,61,0.24)',borderRadius:10}}>
@@ -2349,7 +2347,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                     ['kyc','kyc.view','KYC Review Queue'],
                   ] as const).filter(([,permission])=>permissions.includes(permission)).map(([kind,,label])=>
                     <button key={kind} type="button" disabled={busy} onClick={()=>void loadWorkspace(kind)}
-                      style={{...buttonStyle,marginTop:0,background:workspace===kind?'#276749':'#1D232D'}}>{label}</button>)}
+                      style={{...buttonStyle,marginTop:0,background:workspace===kind?'var(--tm-selected-surface)':'var(--tm-raised)',color:workspace===kind?'var(--tm-selected-ink)':'var(--tm-text)'}}>{label}</button>)}
                 </nav>
                 {workspace && <>
                   <h3 style={{margin:'18px 0 6px',fontSize:16,textTransform:'capitalize'}}>{workspace.replace(/_/g,' ')}</h3>
@@ -2383,10 +2381,10 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                           <button type="button" disabled={busy||authorityReviewCode.length!==6||authorityReviewReason.trim().length<10||!row.evidence_verified||!row.verified_name}
                             onClick={()=>void reviewAuthorityKyc(String(row.customer_id),true)}
-                            style={{...buttonStyle,width:'auto',background:'#276749'}}>Approve KYC</button>
+                            style={{...buttonStyle,width:'auto',background:'#276749',color:'#fff'}}>Approve KYC</button>
                           <button type="button" disabled={busy||authorityReviewCode.length!==6||authorityReviewReason.trim().length<10}
                             onClick={()=>void reviewAuthorityKyc(String(row.customer_id),false)}
-                            style={{...buttonStyle,width:'auto',background:'#9B2C2C'}}>Reject KYC</button>
+                            style={{...buttonStyle,width:'auto',background:'#9B2C2C',color:'#fff'}}>Reject KYC</button>
                         </div>
                       </div>)}
                     </div>

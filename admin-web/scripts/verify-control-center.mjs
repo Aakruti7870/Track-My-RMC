@@ -38,9 +38,14 @@ async function freshCode() {
 async function verifySupport(page,role) {
   await page.getByRole('button',{name:role==='authority'?'Customer Support':'support',exact:true}).click();
   const inbox=page.getByLabel('Internal support follow-up alerts');
-  await inbox.getByRole('button',{name:/Review due case/}).waitFor();
-  await inbox.getByRole('button',{name:/Review due case/}).click();
-  await inbox.getByText('No unread follow-up reminders.',{exact:true}).waitFor();
+  const alert=inbox.getByRole('button',{name:/Review due case/});
+  await alert.waitFor();
+  const markedRead=page.waitForResponse(response =>
+    /\/staff\/alerts\/[^/]+\/read$/.test(new URL(response.url()).pathname) &&
+    response.request().method()==='POST');
+  await alert.click();
+  assert.equal((await markedRead).status(),200);
+  await alert.waitFor({state:'detached'});
   assert.equal(await page.getByLabel('Reply or note',{exact:true}).inputValue(),'','another operator/case draft must never carry over');
   assert.equal(await page.getByRole('checkbox',{name:'Internal note (not visible to customer)',exact:true}).isChecked(),false);
   const message='Synthetic '+role+' support response';
