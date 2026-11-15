@@ -23,6 +23,8 @@ const STATE_META: Record<string, { icon: keyof typeof Ionicons.glyphMap; title: 
   PENDING: { icon: "hourglass-outline", title: "Confirmation pending", body: "TrackMyRMC is checking the completed identity evidence. You do not need to submit another verification.", tone: "warning" },
   REJECTED: { icon: "close-circle", title: "Verification rejected", body: "Something didn't match. Please retry.", tone: "error" },
   REVIEW_NEEDED: { icon: "alert-circle-outline", title: "Identity details did not match", body: "Your DigiLocker name or mobile did not match this account. Retry, or contact support for help.", tone: "warning" },
+  DOCUMENT_NOT_SHARED: { icon: "document-text-outline", title: "Aadhaar not shared", body: "DigiLocker completed, but Aadhaar document consent was not confirmed. You can retry DigiLocker or contact support.", tone: "warning" },
+  DOCUMENT_UNAVAILABLE: { icon: "cloud-offline-outline", title: "DigiLocker document unavailable", body: "Your DigiLocker session completed, but the provider denied Aadhaar document retrieval. This is not an identity rejection. Retry later or contact support.", tone: "warning" },
   REQUIRES_REVERIFICATION: { icon: "refresh", title: "Re-verification required", body: "Please start DigiLocker again to continue.", tone: "warning" },
   NOT_STARTED: { icon: "id-card-outline", title: "Verify your identity", body: "Complete KYC to unlock live concrete ordering.", tone: "info" },
 };
