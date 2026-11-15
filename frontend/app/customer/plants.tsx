@@ -334,9 +334,9 @@ export default function CustomerPlants() {
     void Linking.openURL(place.google_maps_uri || fallback);
   }, []);
 
-  function openSupplierRequest(plant: PlantData, orderReview: boolean) {
-    const supplier = plant.status === "google_listing"
-      ? { googlePlaceId: plant.id.slice("google:".length) }
+  function openSupplierRequest(plant: PlantData, orderReview: boolean, googlePlaceId?: string | null) {
+    const supplier = googlePlaceId
+      ? { googlePlaceId }
       : { plantId: plant.id };
     router.push({
       pathname: "/customer/request-quotation",
@@ -354,7 +354,7 @@ export default function CustomerPlants() {
     if (destination === "direct") {
       router.push({ pathname: "/new-order", params: { plantId: plant.id } });
     } else {
-      openSupplierRequest(plant, true);
+      openSupplierRequest(plant, true, plant.status === "google_listing" ? plant.google_place_id : null);
     }
   }
 
@@ -462,7 +462,7 @@ export default function CustomerPlants() {
                       <View key={listing.id} testID="google-places-plant">
                         <NearbyPlantCard
                           plant={listing}
-                          onQuotation={() => openSupplierRequest(listing, false)}
+                          onQuotation={() => openSupplierRequest(listing, false, listing.google_place_id)}
                           onSelect={() => setSelectedPlantId(listing.id)}
                           onDetails={() => {setSelectedPlantId(listing.id);setDetails(listing);}}
                           onOrder={() => openPlantOrder(listing)}
