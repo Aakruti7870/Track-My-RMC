@@ -92,6 +92,7 @@ fs.mkdirSync(out, { recursive: true });
           assert(movement.offset > 0 && movement.profile < 0, 'Staff profile scrolls with the dashboard');
           assert.equal(movement.supplier, 0, 'Staff supplier enquiry stays fixed');
           await page.setViewportSize({ width, height: 920 });
+          await fixed.getByTestId("staff-home-summary").waitFor();
           await scroll.evaluate(node => { node.scrollTop = 0; });
         }
         const surface = await summary.evaluate(el => getComputedStyle(el).backgroundColor);
