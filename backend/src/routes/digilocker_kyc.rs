@@ -618,6 +618,19 @@ async fn auto_approve_live_consent(
     customer_id: Uuid,
     provider_session_id: Uuid,
 ) -> Result<(), AppError> {
+    // Only a Live approval adopts the consented name as the order identity.
+    sqlx::query(
+        "UPDATE users u SET full_name=p.verified_name,updated_at=NOW()
+         FROM user_profiles p
+         WHERE u.id=$1 AND p.user_id=u.id AND u.role='customer'
+           AND u.full_name=$2 AND p.needs_kyc_name AND p.kyc_status='pending'
+           AND NULLIF(BTRIM(p.verified_name),'') IS NOT NULL",
+    )
+    .bind(customer_id)
+    .bind(CUSTOMER_SIGNUP_NAME)
+    .execute(&mut **tx)
+    .await?;
+
     let updated = sqlx::query(
         "UPDATE user_profiles SET kyc_status='verified',needs_kyc_name=FALSE,updated_at=NOW()
          WHERE user_id=$1 AND kyc_status='pending'
@@ -664,7 +677,7 @@ async fn promote_prior_live_consent(
     let account = sqlx::query(
         "SELECT u.full_name,p.verified_name,p.kyc_status
          FROM users u JOIN user_profiles p ON p.user_id=u.id
-         WHERE u.id=$1 AND u.role='customer' AND u.is_active FOR UPDATE OF p",
+         WHERE u.id=$1 AND u.role='customer' AND u.is_active FOR UPDATE OF u,p",
     )
     .bind(customer_id)
     .fetch_optional(&mut *tx)
@@ -1821,8 +1834,9 @@ mod tests {
                 .unwrap(),
             "VERIFIED"
         );
-        let saved: (String, Option<String>, bool) = sqlx::query_as(
-            "SELECT kyc_status,verified_name,needs_kyc_name FROM user_profiles WHERE user_id=$1",
+        let saved: (String, Option<String>, bool, String) = sqlx::query_as(
+            "SELECT p.kyc_status,p.verified_name,p.needs_kyc_name,u.full_name
+             FROM user_profiles p JOIN users u ON u.id=p.user_id WHERE p.user_id=$1",
         )
         .bind(customer)
         .fetch_one(&db)
@@ -1831,6 +1845,7 @@ mod tests {
         assert_eq!(saved.0, "verified");
         assert_eq!(saved.1.as_deref(), Some("Consented Customer"));
         assert!(!saved.2);
+        assert_eq!(saved.3, "Consented Customer");
     }
     #[sqlx::test]
     async fn a_different_mobile_preserves_the_login_and_reports_the_terminal_attempt(
