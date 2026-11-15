@@ -1,3 +1,4 @@
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import React, { useEffect, useState } from "react";
 import { Linking, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -102,7 +103,7 @@ export default function Notifications() {
         {Platform.OS === "android" && permission && (permission !== "granted" || !optedIn) ? (
           <Card style={{ gap: spacing.sm }}>
             <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center" }}>
-              <Ionicons name="notifications-outline" size={22} color={colors.brand} />
+              <VectorSymbol name="notifications" size={22} color={colors.brand} />
               <AppText variant="heading" style={{ flex: 1 }}>Device notifications are optional</AppText>
             </View>
             <AppText variant="bodyMuted">

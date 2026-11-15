@@ -2,8 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import './admin-theme.css';
 import orderStages from '../../frontend/src/domain/order-status-colors.json';
-import { Bell, Building2, ClipboardCheck, Factory, Megaphone, ShieldCheck, Workflow, MessageCircle, LayoutDashboard, BarChart3, Eye, Users, UserRoundPlus, UserCog, Database, Grid2X2, LogOut, Settings, ChevronRight, ArrowLeft, Check, KeyRound, Mail, LockKeyhole, Moon, Sun, UserRound } from 'lucide-react';
+import { Building2, ClipboardCheck, Factory, Megaphone, ShieldCheck, Workflow, MessageCircle, LayoutDashboard, BarChart3, Eye, Users, UserRoundPlus, UserCog, Database, Grid2X2, LogOut, Settings, ChevronRight, ArrowLeft, Check, KeyRound, Mail, LockKeyhole, Moon, Sun, UserRound } from 'lucide-react';
 import { AuthenticatorQr } from './AuthenticatorQr';
+import { TrackIcon, type TrackIconName } from './TrackIcon';
 import { PlantVisibility } from './PlantVisibility';
 import { WhatsAppChats } from './WhatsAppChats';
 import { AdminSecurity } from './AdminSecurity';
@@ -142,6 +143,22 @@ const ADMIN_MENU = [
   {page:'settings',label:'Settings',caption:'Portal appearance',icon:Settings,permissions:[]},
   {page:'account',label:'Account',caption:'Identity and session',icon:UserRound,permissions:[]},
 ] as const;
+const ADMIN_VECTORS: Partial<Record<AdminScreen, TrackIconName>> = {
+  dashboard: 'admin-dashboard',
+  plants: 'plants',
+  approvals: 'pending-approval',
+  governance: 'permission-settings',
+  reviewer: 'restricted-access',
+  'admin-access': 'restricted-access',
+  'assign-owner': 'plant-staff',
+  sessions: 'logout',
+  settings: 'settings',
+  account: 'profile',
+};
+function AdminMenuIcon({ item, size }: { item: typeof ADMIN_MENU[number]; size: number }) {
+  const name = ADMIN_VECTORS[item.page];
+  return name ? <TrackIcon name={name} size={size} /> : <item.icon size={size} strokeWidth={1.5} aria-hidden="true" />;
+}
 const ADMINISTRATION_PAGES: ReadonlySet<AdminScreen> = new Set(['governance','reviewer','admin-access','diagnostics','capabilities','sessions','settings','account']);
 const ADMIN_SECURITY_SCREENS: AdminScreen[]=['reviewer','admin-access','unowned','assign-owner','diagnostics','capabilities','sessions'];
 const CENTRAL_STEP: Partial<Record<Stage, { label: string; step: number }>> = {
@@ -1537,7 +1554,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                         className={'tm-sidebar-link '+(adminScreen===item.page?'is-current':'')}
                         aria-current={adminScreen===item.page?'page':undefined}
                         onClick={()=>navigateAdmin(item.page)}>
-                        <item.icon size={18} strokeWidth={1.5} aria-hidden="true"/>
+                        <AdminMenuIcon item={item} size={18} />
                         <span>{item.label}</span>{item.page==='chats'&&chatUnread>0&&<em className="tm-unread">{chatUnread}</em>}
                       </button>
                     )}
@@ -1561,7 +1578,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                 <button type="button" onClick={()=>setShowAdminNotices(value=>!value)}
                   className="tm-workspace-button" aria-expanded={showAdminNotices}
                   aria-label="Review admin notifications" aria-description={adminUnread>0?`${adminUnread} unread`:undefined}>
-                  <Bell size={17} aria-hidden="true"/> Notifications {adminUnread>0&&<span className="tm-unread">{adminUnread}</span>}
+                  <TrackIcon name="notifications" size={17} /> Notifications {adminUnread>0&&<span className="tm-unread">{adminUnread}</span>}
                 </button>
               </div>
             </header>}
@@ -1646,7 +1663,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                       {cards.map(item=><button type="button" key={item.page}
                         className="tm-module-card" onClick={()=>navigateAdmin(item.page)}
                         aria-label={'Open '+item.label}>
-                        <span className="tm-module-icon" aria-hidden="true"><item.icon size={20} strokeWidth={1.5}/></span>
+                        <span className="tm-module-icon" aria-hidden="true"><AdminMenuIcon item={item} size={20} /></span>
                         <span className="tm-module-copy"><strong>{item.label}</strong><span className="tm-module-desc">{item.caption}</span></span>
                         <ChevronRight size={16} strokeWidth={1.5} aria-hidden="true" className="tm-module-arrow"/>
                       </button>)}

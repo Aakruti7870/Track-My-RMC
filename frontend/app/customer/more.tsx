@@ -145,7 +145,7 @@ export default function CustomerMore() {
           </View>
 
           <Pressable testID="logout-button" onPress={doLogout} style={[styles.logout, { backgroundColor: colors.isDark ? "#96352D" : "#B42318" }]}>
-            <Ionicons name="log-out-outline" size={23} color="#FFFFFF" />
+            <VectorSymbol name="logout" size={23} color="#FFFFFF" />
             <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: "#FFFFFF" }}>Sign out</AppText>
           </Pressable>
 

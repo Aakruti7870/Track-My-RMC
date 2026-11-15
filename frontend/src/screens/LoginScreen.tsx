@@ -21,6 +21,7 @@ import { roleRouteFor } from "@/src/auth/roleRoutes";
 import { loginPhone } from "@/src/auth/phone";
 import { shouldResumeKycAfterLogin } from "@/src/kyc/returnContext";
 import { OtpOrbitVerification, OtpVisualState } from "@/src/components/auth/OtpOrbitVerification";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { AppText } from "@/src/components/ui/AppText";
 import { Button } from "@/src/components/ui/Button";
 import { Input } from "@/src/components/ui/Input";
@@ -617,8 +618,8 @@ export default function LoginScreen() {
 
           <View accessibilityRole="tablist" style={[styles.segmented, { backgroundColor: look.rail, borderColor: look.railOutline }]}>
             {([
-              { key: "user", testID: "login-user-tab", icon: "person-outline", label: "USER LOGIN" },
-              { key: "plant", testID: "login-plant-tab", icon: "people-outline", label: "PLANT STAFF" },
+              { key: "user", testID: "login-user-tab", icon: "profile", label: "USER LOGIN" },
+              { key: "plant", testID: "login-plant-tab", icon: "plant-staff", label: "PLANT STAFF" },
             ] as const).map(({ key, testID, icon, label }) => {
               const selected = mode === key;
               return (
@@ -627,7 +628,7 @@ export default function LoginScreen() {
                   style={[styles.segment, selected && { borderColor: look.tabOutline }]}>
                   {selected ? <LinearGradient pointerEvents="none" colors={look.tab}
                     start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} /> : null}
-                  <Ionicons name={icon} size={18} color={selected ? look.selectedIcon : look.inactive} />
+                  <VectorSymbol name={icon} size={18} color={selected ? look.selectedIcon : look.inactive} />
                   <AppText style={styles.segmentLabel} color={selected ? look.selectedText : look.inactive}>{label}</AppText>
                 </Pressable>
               );

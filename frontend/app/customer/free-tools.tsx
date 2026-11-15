@@ -1,3 +1,4 @@
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -101,7 +102,7 @@ export default function FreeRmcTools() {
       <View style={[styles.header, { backgroundColor: colors.surfaceSecondary, borderBottomColor: colors.divider }]}>
         <Pressable testID="free-tools-back" onPress={() => router.back()}><Ionicons name="arrow-back" size={24} color={colors.onSurface} /></Pressable>
         <View style={{ flex: 1 }}><AppText style={[styles.headerTitle, { color: colors.onSurface }]}>Free RMC Tools</AppText><AppText style={[styles.headerSub, { color: colors.onSurfaceSecondary }]}>Plan your concrete requirement safely</AppText></View>
-        <Ionicons name="calculator-outline" size={26} color={colors.brand} />
+        <VectorSymbol name="free-rmc-tools" size={26} color={colors.brand} />
       </View>
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 90, gap: spacing.lg }} keyboardShouldPersistTaps="handled">

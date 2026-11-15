@@ -78,7 +78,7 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick", on
         }}
       >
         <View style={[styles.activeIndicator, { backgroundColor: focused ? colors.brand : "transparent" }]} />
-        {symbol ? <VectorSymbol name={symbol} color={ink} /> : <Ionicons name={focused ? tab.active : tab.icon} size={24} color={ink} />}
+        {symbol ? <VectorSymbol name={symbol} color={ink} active={focused} /> : <Ionicons name={focused ? tab.active : tab.icon} size={24} color={ink} />}
         <AppText
           maxFontSizeMultiplier={0}
           style={[tabLabelWrapping, {
