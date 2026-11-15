@@ -37,16 +37,16 @@ type GlassTabBarProps = {
   navigation: TabNavigation;
   tabs: TabDef[];
   centerLabel?: string;
-  toolbar?: React.ReactNode;
+  onCenterPress?: () => void;
 };
 
-export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick", toolbar }: GlassTabBarProps) {
+export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick", onCenterPress }: GlassTabBarProps) {
   const { colors } = useTheme();
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const { fontScale } = useWindowDimensions();
   const stackedTabs = fontScale >= 1.3;
-  const inFlow = stackedTabs || toolbar != null;
+  const inFlow = stackedTabs || onCenterPress != null;
   const [hubOpen, setHubOpen] = useState(false);
 
   const visibleRoutes = state.routes.filter((route) => tabs.some((tab) => tab.name === route.name));
@@ -58,7 +58,7 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick", to
     const index = state.routes.findIndex((candidate) => candidate.key === route.key);
     const focused = state.index === index;
     const symbol = tabVectorSymbol(tab.label, user?.role);
-    const selectedInk = colors.isDark ? colors.onBrandSoft : "#9C4100";
+    const selectedInk = colors.accentText;
     const ink = focused ? selectedInk : colors.onSurfaceTertiary;
 
     return (
@@ -99,7 +99,6 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick", to
   return (
     <>
       <View pointerEvents="box-none" style={[!inFlow && styles.wrap, { paddingBottom: Platform.OS === "web" ? 0 : insets.bottom, backgroundColor: getThemedCanvasColor(colors) }]}>
-        {toolbar}
         <View
           testID="app-tab-bar"
           style={[
@@ -114,12 +113,13 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick", to
 
           <View style={[styles.centerSlot, inFlow && styles.centerInFlow]}>
             <Pressable
-              testID="tab-quick-actions"
+              testID={onCenterPress ? "tab-new-order" : "tab-quick-actions"}
               accessibilityRole="button"
-              accessibilityLabel={`Open ${centerLabel.toLowerCase()} actions`}
+              accessibilityLabel={onCenterPress ? "New order" : `Open ${centerLabel.toLowerCase()} actions`}
               onPress={() => {
-                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                setHubOpen(true);
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
+                if (onCenterPress) onCenterPress();
+                else setHubOpen(true);
               }}
               style={({ pressed }) => [
                 styles.centerButton,
@@ -139,7 +139,7 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick", to
         </View>
       </View>
 
-      <QuickActionHub visible={hubOpen} onClose={() => setHubOpen(false)} tabs={tabs} role={user?.role} navigation={navigation} />
+      {!onCenterPress ? <QuickActionHub visible={hubOpen} onClose={() => setHubOpen(false)} tabs={tabs} role={user?.role} navigation={navigation} /> : null}
     </>
   );
 }

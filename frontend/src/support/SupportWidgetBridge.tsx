@@ -12,7 +12,7 @@ import { fonts, radius, spacing } from "@/src/theme/tokens";
 
 const SUPPORT_AGENT_MASCOT = require("../../assets/images/support-agent-mascot.webp");
 
-const CUSTOMER_WIDGET_PATHS = new Set(["/customer", "/customer/orders", "/customer/plants", "/customer/more"]);
+
 type CustomerSupportFlow = "order" | "tracking" | null;
 type PublicSupportFlow = "login" | "onboarding" | "delete" | null;
 type DeliveryWindow = "today" | "tomorrow" | "week";
@@ -32,13 +32,13 @@ function deliveryDateFor(window: DeliveryWindow) {
  * Global support entry point with a strict authentication boundary:
  * - before login: static login/account guidance only, no customer APIs;
  * - after login: authenticated customers get a compact Support Agent card on
- *   the four tab-shell screens, launched from a toolbar outside screen content.
+ *   Home, launched by the existing header help control.
  *
  * Quick issue choices expand inside the support sheet. Navigation only
  * occurs after a second explicit action such as Start Assisted Order or Open My Orders.
  * All overlay wrappers use box-none so only visible support controls receive touches.
  */
-export function SupportWidgetBridge({ customerTabBar = false }: { customerTabBar?: boolean } = {}) {
+export function SupportWidgetBridge({ customerHeaderTarget }: { customerHeaderTarget?: number } = {}) {
   const { hydrating, token, user } = useAuth();
   const { colors, reduceMotion } = useTheme();
   const router = useRouter();
@@ -61,9 +61,9 @@ export function SupportWidgetBridge({ customerTabBar = false }: { customerTabBar
   }, [pathname, token, user?.role]);
 
   const normalizedPath = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
-  const showPublicLoginHelp = !customerTabBar && !hydrating && !token && !user && normalizedPath === "/login";
+  const showPublicLoginHelp = customerHeaderTarget == null && !hydrating && !token && !user && normalizedPath === "/login";
   const showCustomerSupport =
-    customerTabBar && !hydrating && Boolean(token) && user?.role === "customer" && CUSTOMER_WIDGET_PATHS.has(normalizedPath);
+    customerHeaderTarget != null && !hydrating && Boolean(token) && user?.role === "customer" && normalizedPath === "/customer";
 
   if (!showPublicLoginHelp && !showCustomerSupport) return null;
 
@@ -80,22 +80,21 @@ export function SupportWidgetBridge({ customerTabBar = false }: { customerTabBar
       };
       if (orderGrade.trim()) params.grade = orderGrade.trim().toUpperCase();
       if (orderLocation.trim()) params.siteAddress = orderLocation.trim();
+      closeCustomerHelp();
       router.push({ pathname: "/new-order", params } as never);
     };
 
     return (
-      <View style={[styles.customerToolbar, { backgroundColor: colors.surfaceSecondary, borderColor: colors.divider }]}>
+      <>
         <Pressable
-          testID="customer-support-widget"
+          testID="header-help"
           accessibilityRole="button"
-          accessibilityLabel="Open TrackMyRMC Support"
-          accessibilityHint="Opens quick support without leaving this screen"
+          accessibilityLabel="Customer help"
           accessibilityState={{ expanded: customerHelpOpen }}
           onPress={() => setCustomerHelpOpen(true)}
-          style={({ pressed }) => [styles.customerButton, { opacity: pressed ? 0.76 : 1 }]}
+          style={[styles.supportHeaderButton, { width: customerHeaderTarget }]}
         >
-          <VectorSymbol name="support" />
-          <AppText variant="label" maxFontSizeMultiplier={0}>Support</AppText>
+          <VectorSymbol name="support" color={colors.onSurface} />
         </Pressable>
         <Modal visible={customerHelpOpen} transparent animationType={reduceMotion ? "none" : "fade"} onRequestClose={closeCustomerHelp}>
           <View style={[styles.customerModal, { backgroundColor: colors.scrim, paddingBottom: Math.max(spacing.lg, insets.bottom) }]}>
@@ -193,7 +192,7 @@ export function SupportWidgetBridge({ customerTabBar = false }: { customerTabBar
                               },
                             ]}
                           >
-                            <AppText style={{ fontFamily: fonts.semibold, fontSize: 11, color: selected ? colors.brand : colors.onSurface }}>
+                            <AppText style={{ fontFamily: fonts.semibold, fontSize: 11, color: selected ? colors.accentText : colors.onSurface }}>
                               {label}
                             </AppText>
                           </Pressable>
@@ -249,7 +248,7 @@ export function SupportWidgetBridge({ customerTabBar = false }: { customerTabBar
                     <Pressable
                       testID="customer-support-open-orders"
                       accessibilityRole="button"
-                      onPress={() => router.push("/customer/orders" as never)}
+                      onPress={() => { closeCustomerHelp(); router.push("/customer/orders"); }}
                       style={({ pressed }) => [styles.primaryCompactAction, { backgroundColor: colors.brand, opacity: pressed ? 0.82 : 1 }]}
                     >
                       <AppText style={[styles.primaryCompactActionText, { color: colors.onBrand }]}>Open My Orders</AppText>
@@ -263,20 +262,25 @@ export function SupportWidgetBridge({ customerTabBar = false }: { customerTabBar
                 testID="customer-support-open-center"
                 accessibilityRole="button"
                 accessibilityHint="Opens the full support center and support case history"
-                onPress={() => router.push("/support" as never)}
+                onPress={() => { closeCustomerHelp(); router.push("/support"); }}
                 style={({ pressed }) => [styles.actionSection, styles.actionRow, { borderColor: colors.border, opacity: pressed ? 0.78 : 1 }]}
               >
                 <Ionicons name="help-circle-outline" size={19} color={colors.brand} />
                 <View style={{ flex: 1 }}>
-                  <AppText variant="label">All Issues & My Support Cases</AppText>
-                  <AppText variant="caption">Open the full center only for detailed issue steps or case history.</AppText>
+                  <AppText variant="label">Customer Support</AppText>
+                  <AppText variant="caption">Open the Support Center to review issues and case history.</AppText>
                 </View>
                 <Ionicons name="open-outline" size={17} color={colors.onSurfaceTertiary} />
+              </Pressable>
+              <Pressable accessibilityRole="button" onPress={() => { closeCustomerHelp(); router.push("/account-deletion"); }}
+                style={[styles.actionSection, styles.actionRow, { borderColor: colors.divider }]}>
+                <Ionicons name="person-remove-outline" size={19} color={colors.accentText} />
+                <AppText variant="label" style={{ flex: 1 }}>Delete Account</AppText>
               </Pressable>
             </ScrollView>
           </View>
         </Modal>
-      </View>
+      </>
     );
   }
 
@@ -435,10 +439,11 @@ export function SupportWidgetBridge({ customerTabBar = false }: { customerTabBar
 }
 
 const styles = StyleSheet.create({
-  customerToolbar: {
-    alignItems: "flex-end",
-    paddingHorizontal: spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
+  supportHeaderButton: {
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
   },
   customerModal: {
     flex: 1,

@@ -57,9 +57,9 @@ test("home offers KYC-later request building and prioritizes next actions", () =
   const shortcuts = home.indexOf("{quickActions}", carousel);
   assert.ok(firstCard < carousel && carousel < shortcuts, "context-first home keeps carousel and shortcuts adjacent");
   const action = read("src/components/customer/CustomerNextAction.tsx");
-  assert.match(action, /activeOrder/);
-  assert.match(action, /Verify identity/);
-  assert.match(action, /No payment is taken/);
+  assert.match(home, /activeOrder \? \(/);
+  assert.match(action, /View order details/);
+  assert.doesNotMatch(action, /My orders|Verify identity|Start an order request/);
 });
 test("new order uses local calendar dates and a transparent final review", () => {
   const order = read("app/new-order.tsx");

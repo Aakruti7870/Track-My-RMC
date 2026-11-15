@@ -19,7 +19,7 @@ import { Button } from "@/src/components/ui/Button";
 import { Input } from "@/src/components/ui/Input";
 import { customerHomeSizes, fonts } from "@/src/theme/tokens";
 
-type Sheet = "help" | "location" | null;
+import { SupportWidgetBridge } from "@/src/support/SupportWidgetBridge";
 type Geocode = { locality: string; formatted_address: string };
 
 function IndianFlag({ size }: { size: number }) {
@@ -50,7 +50,7 @@ async function deviceCoordinates(): Promise<{ lat: number; lng: number }> {
 
 export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Promise<void> }) {
   const { token } = useAuth();
-  const { colors, scheme, toggle } = useTheme();
+  const { colors, scheme, toggle, reduceMotion } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -58,7 +58,7 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
   const focused = useIsFocused();
   const permissions = usePermissions();
   const { data: feed, error: feedError, refetch: refreshFeed } = useGet<{ unread: number }>("/notifications?limit=1");
-  const [sheet, setSheet] = useState<Sheet>(null);
+  const [sheet, setSheet] = useState<"location" | null>(null);
   const [selection, setSelection] = useState<{ token: string; label: string } | null>(null);
   const [manual, setManual] = useState("");
   const [locationBusy, setLocationBusy] = useState(false);
@@ -185,31 +185,24 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
           onPress={toggle} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(44, size.headerTarget) }]}>
           <Ionicons name={scheme === "dark" ? "sunny-outline" : "moon-outline"} size={size.headerBell} color={colors.onSurface} />
         </Pressable>
-        <Pressable testID="header-help" accessibilityRole="button" accessibilityLabel="Customer help" onPress={() => setSheet("help")} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(44, size.headerTarget) }]}>
-          <Ionicons name="help-circle-outline" size={size.headerHelp} color={colors.onSurface} />
-        </Pressable>
+        <SupportWidgetBridge customerHeaderTarget={size.headerTarget} />
       </View>
     </View>
-    <Modal transparent visible={sheet !== null} animationType="fade" onRequestClose={close}>
+    <Modal transparent visible={sheet !== null} animationType={reduceMotion ? "none" : "fade"} onRequestClose={close}>
       <View style={[styles.overlay, { backgroundColor: colors.scrim }]}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Close dialog" onPress={close} style={StyleSheet.absoluteFill} />
+        <Pressable accessible={false} aria-hidden onPress={close} style={StyleSheet.absoluteFill} />
         <View accessibilityViewIsModal onAccessibilityEscape={close} style={[styles.sheet, { backgroundColor: surface, borderColor: colors.divider, shadowColor: colors.shadow, paddingBottom: Math.max(insets.bottom, 16) }]}>
           <View style={styles.sheetTitle}>
-            <AppText variant="heading">{sheet === "help" ? "Customer Help" : "Choose Location"}</AppText>
+            <AppText variant="heading">Choose Location</AppText>
             <Pressable accessibilityRole="button" accessibilityLabel="Close dialog" onPress={close} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(44, size.headerTarget) }]}><Ionicons name="close" size={24} color={colors.onSurface} /></Pressable>
           </View>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.sheetContent}>
-            {sheet === "help" ? <>
-              <Button label="Customer Support" onPress={() => { close(); router.push("/support"); }} />
-              <Button label="Delete Account" variant="outline" onPress={() => { close(); router.push("/account-deletion"); }} />
-            </> : <>
-              <AppText>Use your location once, or search for a city or locality.</AppText>
-              <Button label="Refresh current location" disabled={locationBusy} onPress={() => void lookup()} />
-              <Input label="City, locality or PIN code" testID="header-manual-location" value={manual} onChangeText={setManual} maxLength={200} editable={!locationBusy} />
-              <Button label="Use selected location" disabled={locationBusy || manual.trim().length < 3} onPress={() => void lookup(manual.trim())} />
-              {locationBusy ? <ActivityIndicator accessibilityLabel="Finding location" color={colors.brand} /> : null}
-              {locationError ? <AppText accessibilityLiveRegion="polite" color={colors.error}>{locationError}</AppText> : null}
-            </>}
+            <AppText>Use your location once, or search for a city or locality.</AppText>
+            <Button label="Refresh current location" disabled={locationBusy} onPress={() => void lookup()} />
+            <Input label="City, locality or PIN code" testID="header-manual-location" value={manual} onChangeText={setManual} maxLength={200} editable={!locationBusy} />
+            <Button label="Use selected location" disabled={locationBusy || manual.trim().length < 3} onPress={() => void lookup(manual.trim())} />
+            {locationBusy ? <ActivityIndicator accessibilityLabel="Finding location" color={colors.brand} /> : null}
+            {locationError ? <AppText accessibilityLiveRegion="polite" color={colors.error}>{locationError}</AppText> : null}
           </ScrollView>
         </View>
       </View>

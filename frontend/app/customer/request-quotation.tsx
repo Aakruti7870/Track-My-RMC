@@ -1,24 +1,25 @@
-import React, { useEffect, useState } from "react";
-import { Modal, Pressable, ScrollView, Share, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { Pressable, ScrollView, Share, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { apiErrorDetail, apiGet, apiPost } from "@/src/api/client";
+import { apiErrorDetail, apiPost } from "@/src/api/client";
+import { getPlaceDetails, predictPlaces, type PlacePrediction } from "@/src/api/places";
 import { useAuth } from "@/src/auth/AuthContext";
 import { AppText } from "@/src/components/ui/AppText";
 import { Button } from "@/src/components/ui/Button";
 import { Card } from "@/src/components/ui/Card";
+import { DateField, localDate } from "@/src/components/ui/DateField";
+import { RadioChoice } from "@/src/components/ui/RadioChoice";
 import { Input } from "@/src/components/ui/Input";
 import { useTheme } from "@/src/theme/ThemeProvider";
-import { spacing } from "@/src/theme/tokens";
+import { layout, spacing } from "@/src/theme/tokens";
 
 const GRADES = ["M10","M15","M20","M25","M30","M35","M40","M45","M50","M55","M60"];
-type Place = { place_id: string; description: string };
-type PlaceSuggestions = { predictions: Place[] };
-type Location = { place_id: string; address: string; lat: number; lng: number };
 type CreatedLead = { id: string; status: string; message?: string; canonical_request_id?: string };
-const isoDate = (d: Date) => [d.getFullYear(), String(d.getMonth()+1).padStart(2,"0"), String(d.getDate()).padStart(2,"0")].join("-");
+type FieldName = "customerName" | "email" | "gstin" | "quantity" | "address" | "date" | "phone" | "consent";
+type FieldErrors = Partial<Record<FieldName, string>>;
 const uuid = () => {
   const raw = Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16));
   raw[12] = "4"; raw[16] = ((parseInt(raw[16],16) & 3) | 8).toString(16);
@@ -28,7 +29,7 @@ const uuid = () => {
 export default function RequestQuotation() {
   const router = useRouter();
   const { token, user } = useAuth();
-  const { colors, reduceMotion } = useTheme();
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ googlePlaceId?: string; plantId?: string; plantName?: string }>();
   const [requestKey] = useState(uuid);
@@ -39,16 +40,18 @@ export default function RequestQuotation() {
   const [quantity, setQuantity] = useState("");
   const [siteAddress, setSiteAddress] = useState("");
   const [siteCoords, setSiteCoords] = useState<{lat: number; lng: number} | null>(null);
-  const [deliveryDate, setDeliveryDate] = useState(isoDate(new Date()));
+  const [deliveryDate, setDeliveryDate] = useState(localDate());
   const [sitePhone, setSitePhone] = useState(user?.phone || "");
   const [pump, setPump] = useState(false);
   const [shareConsent, setShareConsent] = useState(false);
   const [gradeOpen, setGradeOpen] = useState(false);
-  const [dateOpen, setDateOpen] = useState(false);
-  const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
-  const [suggestions, setSuggestions] = useState<Place[]>([]);
+  const [suggestions, setSuggestions] = useState<PlacePrediction[]>([]);
   const [locationBusy, setLocationBusy] = useState(false);
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
+  const addressSelection = useRef<AbortController | null>(null);
+  const fields = useRef<Partial<Record<FieldName, TextInput | null>>>({});
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [error, setError] = useState("");
   const [result, setResult] = useState<CreatedLead | null>(null);
 
@@ -57,44 +60,77 @@ export default function RequestQuotation() {
       setSuggestions([]);
       return;
     }
-    let alive = true;
+    const controller = new AbortController();
     const timer = setTimeout(() => {
-      apiGet<PlaceSuggestions>("/maps/autocomplete?input=" + encodeURIComponent(siteAddress.trim()), token)
-        .then(data => { if (alive) setSuggestions(data.predictions || []); })
-        .catch(() => { if (alive) setSuggestions([]); });
-    }, 450);
-    return () => { alive = false; clearTimeout(timer); };
+      void predictPlaces(siteAddress.trim(), token, controller.signal)
+        .then(items => { if (!controller.signal.aborted) setSuggestions(items); })
+        .catch(() => { if (!controller.signal.aborted) setSuggestions([]); });
+    }, 350);
+    return () => { controller.abort(); clearTimeout(timer); };
   }, [siteAddress, siteCoords, token]);
 
-  const choosePlace = async (place: Place) => {
+  useEffect(() => () => addressSelection.current?.abort(), [token]);
+
+  function updateField<T>(name: FieldName, setter: (value: T) => void) {
+    return (value: T) => {
+      setter(value);
+      setFieldErrors(old => old[name] ? { ...old, [name]: undefined } : old);
+    };
+  }
+
+  function changeAddress(text: string) {
+    addressSelection.current?.abort();
+    setLocationBusy(false);
+    setSuggestions([]);
+    setSiteCoords(null);
+    updateField("address", setSiteAddress)(text);
+  }
+
+  const choosePlace = async (place: PlacePrediction) => {
     if (!token) return;
-    setLocationBusy(true); setError("");
+    addressSelection.current?.abort();
+    const controller = new AbortController();
+    addressSelection.current = controller;
+    setLocationBusy(true);
+    setError("");
     try {
-      const info = await apiGet<Location>("/maps/place/" + encodeURIComponent(place.place_id), token);
-      setSiteAddress(info.address || place.description);
+      const info = await getPlaceDetails(place.place_id, token, controller.signal);
+      if (controller.signal.aborted) return;
+      updateField("address", setSiteAddress)(info.address);
       setSiteCoords({ lat: info.lat, lng: info.lng });
       setSuggestions([]);
     } catch (e: unknown) {
-      setError(apiErrorDetail(e, "Could not retrieve map location. Enter the address manually."));
-    } finally { setLocationBusy(false); }
+      if (!controller.signal.aborted) setError(apiErrorDetail(e, "Could not retrieve map location. Enter the address manually."));
+    } finally {
+      if (!controller.signal.aborted) setLocationBusy(false);
+    }
   };
 
   const submit = async () => {
-    if (!token || busy || result) return;
-    if ((!params.googlePlaceId && !params.plantId) || (params.googlePlaceId && params.plantId)) {
-      setError("Choose a supplier from Nearby Plants first."); return;
+    if (!token || inFlight.current || result) return;
+    if (Boolean(params.googlePlaceId) === Boolean(params.plantId)) {
+      setError("Choose a supplier from Nearby Plants first.");
+      return;
     }
-    if (customerName.trim().length < 2 || siteAddress.trim().length < 5
-        || !Number.isFinite(Number(quantity)) || Number(quantity) <= 0 || Number(quantity) > 10000
-        || !/^\+?[0-9]{10,15}$/.test(sitePhone.trim())) {
-      setError("Enter customer name, quantity, full site address and valid site phone."); return;
+    const invalid: FieldErrors = {};
+    if (customerName.trim().length < 2) invalid.customerName = "Enter your name.";
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) invalid.email = "Enter a valid email address.";
+    if (gstin.trim() && !/^[A-Z0-9]{15}$/.test(gstin.trim().toUpperCase())) invalid.gstin = "GSTIN must have 15 letters or digits.";
+    if (!Number.isFinite(Number(quantity)) || Number(quantity) <= 0 || Number(quantity) > 10000) invalid.quantity = "Enter a quantity greater than 0 and up to 10,000 m³.";
+    if (siteAddress.trim().length < 5) invalid.address = "Enter the full delivery address.";
+    if (deliveryDate < localDate()) invalid.date = "Select today or a future date.";
+    if (!/^\+?[0-9]{10,15}$/.test(sitePhone.trim())) invalid.phone = "Enter a valid site contact number.";
+    if (!shareConsent) invalid.consent = "Confirm supplier-sharing permission to continue.";
+    setFieldErrors(invalid);
+    const first = (Object.keys(invalid) as FieldName[])[0];
+    if (first) {
+      setError("");
+      fields.current[first]?.focus();
+      return;
     }
-    if (deliveryDate < isoDate(new Date())) { setError("Select today or a future delivery date."); return; }
-    if (gstin.trim() && !/^[A-Z0-9]{15}$/.test(gstin.trim().toUpperCase())) {
-      setError("GSTIN must have 15 letters or digits."); return;
-    }
-    if (!shareConsent) { setError("Confirm supplier-sharing permission to continue."); return; }
-    setBusy(true); setError("");
+    inFlight.current = true;
+    setBusy(true);
+    setError("");
     try {
       const created = await apiPost<CreatedLead>("/customer/rmc-rfq-leads", token, {
         request_key: requestKey,
@@ -111,16 +147,14 @@ export default function RequestQuotation() {
       setResult(created);
     } catch (e: unknown) {
       setError(apiErrorDetail(e, "Unable to submit quotation request."));
-    } finally { setBusy(false); }
+    } finally { inFlight.current = false; setBusy(false); }
   };
 
-  const days = Array.from({length: new Date(calendarMonth.getFullYear(), calendarMonth.getMonth()+1, 0).getDate()},(_,i)=>i+1);
-  const blanks = Array.from({length: new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1).getDay()},(_,i)=>i);
   return (
     <View style={{flex:1,backgroundColor:colors.surface}}>
       <View style={{height:insets.top}}/>
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{padding:spacing.lg,paddingBottom:120,gap:spacing.md}}>
-        <Pressable onPress={()=>router.back()} style={{flexDirection:"row",alignItems:"center",gap:8,paddingVertical:8}}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{padding:spacing.lg,paddingBottom:spacing.xl,gap:spacing.md,width:"100%",maxWidth:layout.contentMax,alignSelf:"center"}}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Back to plants" onPress={() => router.canGoBack() ? router.back() : router.replace("/customer/plants")} style={{flexDirection:"row",alignItems:"center",gap:8,paddingVertical:8}}>
           <Ionicons name="arrow-back" size={22} color={colors.onSurface}/>
           <AppText variant="heading">Request RMC Quotation</AppText>
         </Pressable>
@@ -142,111 +176,53 @@ export default function RequestQuotation() {
         ) : (
           <Card style={{gap:spacing.md}}>
             <AppText variant="caption">Selected supplier: {params.plantName || "From Nearby Plants"}</AppText>
-            <Input label="Customer Name *" value={customerName} onChangeText={setCustomerName} maxLength={160}/>
-            <Input label="Email (optional)" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" maxLength={254}/>
-            <Input label="GSTIN (optional)" value={gstin} onChangeText={setGstin} autoCapitalize="characters" maxLength={15}/>
-            <AppText>Required Concrete Grade *</AppText>
-            <Pressable onPress={()=>setGradeOpen(v=>!v)} accessibilityRole="button"
-              style={{borderWidth:1,borderColor:colors.border,borderRadius:12,padding:14,flexDirection:"row",justifyContent:"space-between"}}>
-              <AppText>{grade}</AppText>
-              <Ionicons name="chevron-down" size={18} color={colors.onSurface}/>
-            </Pressable>
-            {gradeOpen ? <View style={{flexDirection:"row",flexWrap:"wrap",gap:8}}>
-              {GRADES.map(g=><Pressable key={g} onPress={()=>{setGrade(g);setGradeOpen(false);}}
-                style={{borderColor:colors.border,borderWidth:1,borderRadius:9,paddingHorizontal:13,paddingVertical:10,backgroundColor:g===grade?colors.brandSoft:colors.surfaceSecondary}}>
-                <AppText>{g}</AppText>
-              </Pressable>)}
-            </View>:null}
-            <Input label="Required Quantity (m³) *" value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad"/>
-            <Input label="Delivery Site Address *" value={siteAddress} onChangeText={v=>{setSiteAddress(v);setSiteCoords(null);}} maxLength={500} placeholder="Search a delivery address"/>
+            <Input label="Customer Name" required value={customerName} onChangeText={updateField("customerName", setCustomerName)}
+              maxLength={160} error={fieldErrors.customerName} ref={ref => { fields.current.customerName = ref; }} />
+            <Input label="Email (optional)" value={email} onChangeText={updateField("email", setEmail)}
+              keyboardType="email-address" maxLength={254} error={fieldErrors.email} ref={ref => { fields.current.email = ref; }} />
+            <Input label="GSTIN (optional)" value={gstin} onChangeText={updateField("gstin", setGstin)}
+              autoCapitalize="characters" maxLength={15} error={fieldErrors.gstin} ref={ref => { fields.current.gstin = ref; }} />
+            <AppText variant="label">Required Concrete Grade *</AppText>
+            <Button label={`Concrete grade: ${grade}`} variant="outline" onPress={() => setGradeOpen(open => !open)}
+              expanded={gradeOpen} />
+            {gradeOpen ? <View accessibilityRole="radiogroup" accessibilityLabel="Concrete grade" style={{ gap: spacing.xs }}>
+              {GRADES.map(value => <RadioChoice key={value} label={value} checked={value === grade}
+                onPress={() => { setGrade(value); setGradeOpen(false); }} />)}
+            </View> : null}
+            <Input label="Required Quantity (m³)" required value={quantity} onChangeText={updateField("quantity", setQuantity)}
+              keyboardType="decimal-pad" error={fieldErrors.quantity} ref={ref => { fields.current.quantity = ref; }} />
+            <Input label="Delivery Site Address" required value={siteAddress} onChangeText={changeAddress}
+              maxLength={500} placeholder="Search a delivery address" error={fieldErrors.address} ref={ref => { fields.current.address = ref; }} />
             {locationBusy ? <AppText variant="caption">Locating address…</AppText> : null}
             {suggestions.length ? <Card style={{gap:6}}>
-              {suggestions.slice(0,5).map(p=><Pressable key={p.place_id} onPress={()=>void choosePlace(p)} style={{padding:8}}>
+              {suggestions.slice(0,5).map(p=><Pressable key={p.place_id} accessibilityRole="button" onPress={()=>void choosePlace(p)} style={{padding:8,minHeight:48,justifyContent:"center"}}>
                 <AppText>{p.description}</AppText>
               </Pressable>)}
               <AppText variant="caption">Google Places suggestions</AppText>
             </Card>:null}
             {siteCoords ? <AppText variant="caption" color={colors.success}>Map location selected. Edit address if needed.</AppText> : null}
-            <AppText>Required Delivery Date *</AppText>
-            <Pressable onPress={()=>setDateOpen(true)} accessibilityRole="button"
-              accessibilityLabel={`Required delivery date: ${deliveryDate}`}
-              style={{borderWidth:1,borderColor:colors.border,borderRadius:12,padding:14,flexDirection:"row",alignItems:"center",gap:10}}>
-              <Ionicons name="calendar-outline" size={20} color={colors.onSurface}/>
-              <AppText>{deliveryDate}</AppText>
-            </Pressable>
-            <AppText>Concrete Pump Required *</AppText>
-            <View style={{flexDirection:"row",gap:10}}>
-              {[false,true].map(value=><Pressable key={String(value)} onPress={()=>setPump(value)}
-                style={{padding:12,paddingHorizontal:24,borderRadius:10,borderWidth:1,borderColor:colors.border,backgroundColor:pump===value?colors.brandSoft:colors.surfaceSecondary}}>
-                <AppText>{value?"Yes":"No"}</AppText>
-              </Pressable>)}
+            <DateField label="Required delivery date" required date={deliveryDate} onChange={updateField("date", setDeliveryDate)}
+              error={fieldErrors.date} calendarTestID="rfq-date-calendar" />
+            <AppText variant="label">Concrete Pump Required *</AppText>
+            <View accessibilityRole="radiogroup" accessibilityLabel="Concrete pump required" style={{ gap: spacing.xs }}>
+              <RadioChoice label="No" checked={!pump} onPress={() => setPump(false)} />
+              <RadioChoice label="Yes" checked={pump} onPress={() => setPump(true)} />
             </View>
-            <Input label="Site Contact Number *" value={sitePhone} onChangeText={setSitePhone} keyboardType="phone-pad" maxLength={16}/>
-            <Pressable onPress={()=>setShareConsent(v=>!v)} accessibilityRole="checkbox" accessibilityState={{checked:shareConsent}}
+            <Input label="Site Contact Number" required value={sitePhone} onChangeText={updateField("phone", setSitePhone)}
+              keyboardType="phone-pad" maxLength={16} error={fieldErrors.phone} ref={ref => { fields.current.phone = ref; }} />
+            <Pressable onPress={() => updateField("consent", setShareConsent)(!shareConsent)} accessibilityRole="checkbox" accessibilityState={{checked:shareConsent}}
               style={{flexDirection:"row",alignItems:"flex-start",gap:10,paddingVertical:8}}>
-              <Ionicons name={shareConsent?"checkbox":"square-outline"} size={24} color={colors.brand}/>
+              <Ionicons name={shareConsent?"checkbox":"square-outline"} size={24} color={colors.accentText}/>
               <AppText style={{flex:1}}>I agree that TrackMyRMC may share this enquiry and my contact details with the selected supplier after its verification, or use them for admin follow-up. This is not an order.</AppText>
             </Pressable>
-            {error ? <AppText color={colors.error}>{error}</AppText> : null}
-            <Button label="Submit Quotation Request" loading={busy} onPress={()=>void submit()} disabled={!token}/>
+            {fieldErrors.consent ? <AppText accessibilityLiveRegion="polite" color={colors.error}>{fieldErrors.consent}</AppText> : null}
+            {error ? <AppText accessibilityLiveRegion="polite" color={colors.error}>{error}</AppText> : null}
+            <Button label="Submit Quotation Request" loading={busy} onPress={()=>void submit()} disabled={!token || locationBusy}/>
             <AppText variant="caption">For unregistered Google-listed businesses the enquiry reaches TrackMyRMC admin first. No WhatsApp message is sent to an unverified business.</AppText>
           </Card>
         )}
       </ScrollView>
-      <Modal visible={dateOpen} transparent animationType={reduceMotion ? "none" : "fade"} onRequestClose={() => setDateOpen(false)}>
-        <View style={{ flex: 1, backgroundColor: colors.scrim, justifyContent: "center", padding: spacing.lg }}>
-          <ScrollView
-            testID="rfq-date-calendar"
-            accessibilityViewIsModal
-            onAccessibilityEscape={() => setDateOpen(false)}
-            style={{
-              flexGrow: 0, flexShrink: 1, width: "100%", maxWidth: 420, maxHeight: "100%",
-              alignSelf: "center", borderRadius: 18, borderWidth: 1, borderColor: colors.divider,
-              backgroundColor: colors.surfaceElevated,
-            }}
-            contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
-              <Pressable accessibilityRole="button" accessibilityLabel="Previous month"
-                onPress={() => setCalendarMonth(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
-                style={{ width: 44, minHeight: 44, alignItems: "center", justifyContent: "center" }}>
-                <Ionicons name="chevron-back" size={24} color={colors.onSurface} />
-              </Pressable>
-              <AppText variant="heading" center style={{ flex: 1, minWidth: 0 }}>
-                {calendarMonth.toLocaleString("en-IN", { month: "long", year: "numeric" })}
-              </AppText>
-              <Pressable accessibilityRole="button" accessibilityLabel="Next month"
-                onPress={() => setCalendarMonth(d => new Date(d.getFullYear(), d.getMonth() + 1, 1))}
-                style={{ width: 44, minHeight: 44, alignItems: "center", justifyContent: "center" }}>
-                <Ionicons name="chevron-forward" size={24} color={colors.onSurface} />
-              </Pressable>
-            </View>
-            <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
-              {["S", "M", "T", "W", "T", "F", "S"].map((weekday, index) => <AppText key={index}>{weekday}</AppText>)}
-            </View>
-            <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-              {blanks.map(index => <View key={`blank-${index}`} style={{ width: "14.28%", minHeight: 44 }} />)}
-              {days.map(day => {
-                const value = isoDate(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day));
-                const disabled = value < isoDate(new Date());
-                const selected = value === deliveryDate;
-                return (
-                  <Pressable key={day} accessibilityRole="button" accessibilityLabel={value}
-                    accessibilityState={{ disabled, selected }} disabled={disabled}
-                    onPress={() => { setDeliveryDate(value); setDateOpen(false); }}
-                    style={{
-                      width: "14.28%", minHeight: 44, alignItems: "center", justifyContent: "center",
-                      backgroundColor: selected ? colors.brandSoft : "transparent",
-                    }}>
-                    <AppText color={disabled ? colors.onSurfaceTertiary : colors.onSurface}>{day}</AppText>
-                  </Pressable>
-                );
-              })}
-            </View>
-            <Button label="Close Calendar" variant="outline" onPress={() => setDateOpen(false)} />
-          </ScrollView>
-        </View>
-      </Modal>
+
     </View>
   );
 }

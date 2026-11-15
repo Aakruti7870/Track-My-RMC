@@ -7,6 +7,7 @@ import { apiErrorDetail, apiPost, apiPut } from "@/src/api/client";
 import { useGet } from "@/src/hooks/useApi";
 import { AppText } from "@/src/components/ui/AppText";
 import { OwnerFrame, OwnerGlass, OwnerList, OwnerModuleRow, useOwnerPalette } from "@/src/owner/OwnerUI";
+import { operationalStatus } from "@/src/theme/tokens";
 import { OPERATIONS_KEYS, ownerModules } from "@/src/owner/modules";
 
 type Plant = { id: string; name: string };
@@ -158,7 +159,7 @@ export default function OwnerOperations() {
         <AppText style={{ color: p.muted, fontSize: 12, lineHeight: 18 }}>
           Your plant can enable approved internal reminders and human review tasks. All order approvals remain manual.
         </AppText>
-        {plantsError ? <AppText style={{ color: "#FCA5A5" }}>{plantsError}</AppText> : null}
+        {plantsError ? <AppText style={{ color: operationalStatus("critical", p.dark) }}>{plantsError}</AppText> : null}
         {(plants?.plants ?? []).length > 1 ? <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
           {(plants?.plants ?? []).map(plant => <Pressable key={plant.id} accessibilityRole="button"
             accessibilityState={{ selected: plant.id === plantId }} onPress={() => setPlantId(plant.id)}
@@ -168,11 +169,11 @@ export default function OwnerOperations() {
           </Pressable>)}
         </View> : null}
         {!plantId && !plantsError ? <AppText style={{ color: p.muted }}>No approved plants are available for automation.</AppText> : null}
-        {ruleError ? <AppText style={{ color: "#FCA5A5" }}>{ruleError}</AppText> : null}
-        {requestError ? <AppText accessibilityRole="alert" style={{ color: "#FCA5A5" }}>{requestError}</AppText> : null}
+        {ruleError ? <AppText style={{ color: operationalStatus("critical", p.dark) }}>{ruleError}</AppText> : null}
+        {requestError ? <AppText accessibilityRole="alert" style={{ color: operationalStatus("critical", p.dark) }}>{requestError}</AppText> : null}
         {notice ? <AppText style={{ color: p.text }}>{notice}</AppText> : null}
         {rulesLoading && !rules ? <AppText style={{ color: p.muted }}>Loading automation settings…</AppText> : null}
-        {rules && !rules.worker_enabled ? <AppText accessibilityRole="alert" style={{ color: "#F59E0B", fontSize: 12 }}>
+        {rules && !rules.worker_enabled ? <AppText accessibilityRole="alert" style={{ color: operationalStatus("warning", p.dark), fontSize: 12 }}>
           Automation engine not activated. Preferences are saved, but the background worker is currently off.
         </AppText> : null}
         <OwnerGlass style={{ padding: 12, gap: 8, borderColor: p.border }}>
@@ -340,7 +341,7 @@ export default function OwnerOperations() {
               <AppText style={{ color: p.text, fontSize: 11 }}>Refresh cases</AppText>
             </Pressable>
           </View>
-          {tasksError ? <AppText accessibilityRole="alert" style={{ color: "#FCA5A5", fontSize: 12 }}>{tasksError}</AppText> : null}
+          {tasksError ? <AppText accessibilityRole="alert" style={{ color: operationalStatus("critical", p.dark), fontSize: 12 }}>{tasksError}</AppText> : null}
           <AppText style={{ color: p.muted, fontSize: 12 }}>
             {(tasks?.tasks ?? []).filter(task => ["OPEN", "ACKNOWLEDGED"].includes(task.status)).length} unresolved review tasks
           </AppText>
@@ -361,7 +362,7 @@ export default function OwnerOperations() {
               {task.status === "ACKNOWLEDGED" ? <AppText style={{ color: p.muted, fontSize: 11 }}>
                 Acknowledged · awaiting verified operational resolution
               </AppText> : null}
-              {(task.escalation_count ?? 0) > 0 ? <AppText style={{ color: "#F59E0B", fontSize: 11 }}>
+              {(task.escalation_count ?? 0) > 0 ? <AppText style={{ color: operationalStatus("warning", p.dark), fontSize: 11 }}>
                 SLA escalated {task.escalation_count} time(s)
               </AppText> : null}
               {workspaceForTask(task.task_kind) ? <Pressable testID={`owner-automation-workspace-${task.id}`}

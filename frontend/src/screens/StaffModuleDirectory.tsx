@@ -243,11 +243,11 @@ export function StaffModuleDirectory({
                     },
                   ]}>
                   <View style={styles.iconWrap}>
-                    {module.symbol ? <VectorSymbol name={module.symbol} size={34} /> :
-                      <Ionicons name={module.icon} size={30} color={colors.brand} />}
+                    {module.symbol ? <VectorSymbol name={module.symbol} size={24} /> :
+                      <Ionicons name={module.icon} size={24} color={colors.onSurfaceTertiary} />}
                   </View>
-                  <AppText numberOfLines={2} style={[styles.cardTitle, { color: colors.onSurface }]}>{module.label}</AppText>
-                  <AppText numberOfLines={2} style={[styles.cardDescription, { color: colors.onSurfaceTertiary }]}>{module.description}</AppText>
+                  <AppText style={[styles.cardTitle, { color: colors.onSurface }]}>{module.label}</AppText>
+                  <AppText style={[styles.cardDescription, { color: colors.onSurfaceTertiary }]}>{module.description}</AppText>
                 </Pressable>
               ))}
             </View>

@@ -6,7 +6,8 @@ import { StatusBar } from "expo-status-bar";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { apiDelete, apiGet, apiPost } from "@/src/api/client";
+import { apiDelete, apiPost } from "@/src/api/client";
+import { getPlaceDetails, predictPlaces, type PlacePrediction } from "@/src/api/places";
 import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { useToast } from "@/src/components/ui/Toast";
@@ -106,8 +107,7 @@ export default function NewOrder() {
   const [prepared, setPrepared] = useState<{ intent_token: string; summary: Record<string, unknown> } | null>(null);
 
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [suggestions, setSuggestions] = useState<{ place_id: string; text: string }[]>([]);
-  const sessionToken = useMemo(() => `rmc-${Date.now()}`, []);
+  const [suggestions, setSuggestions] = useState<PlacePrediction[]>([]);
   const pickedAddress = useRef<string | null>(null);
   const placeSelection = useRef(0);
   const restoredDraft = useRef<string | null>(null);
@@ -147,10 +147,9 @@ export default function NewOrder() {
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       try {
-        const res = await apiGet<{ configured: boolean; suggestions: { place_id: string; text: string }[] }>(
-          `/maps/autocomplete?input=${encodeURIComponent(q)}&session_token=${sessionToken}`, token, controller.signal);
+        const predictions = await predictPlaces(q, token, controller.signal);
         if (!controller.signal.aborted && pickedAddress.current !== address) {
-          setSuggestions(res.configured ? res.suggestions : []);
+          setSuggestions(predictions);
         }
       } catch {
         if (!controller.signal.aborted) setSuggestions([]);
@@ -160,7 +159,7 @@ export default function NewOrder() {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [address, token, sessionToken]);
+  }, [address, token]);
 
   const changeAddress = (next: string) => {
     placeSelection.current += 1;
@@ -175,8 +174,7 @@ export default function NewOrder() {
     if (!token) return;
     const selection = ++placeSelection.current;
     try {
-      const p = await apiGet<{ address: string; lat: number; lng: number }>(
-        `/maps/place/${encodeURIComponent(placeId)}?session_token=${sessionToken}`, token);
+      const p = await getPlaceDetails(placeId, token);
       if (selection !== placeSelection.current) return;
       pickedAddress.current = p.address;
       setAddress(p.address);
@@ -614,12 +612,12 @@ export default function NewOrder() {
                       key={s.place_id}
                       testID={`suggest-${s.place_id}`}
                       accessibilityRole="button"
-                      accessibilityLabel={`Use address ${s.text}`}
+                      accessibilityLabel={`Use address ${s.description}`}
                       onPress={() => pickPlace(s.place_id)}
                       style={({ pressed }) => [styles.suggestRow, { borderBottomColor: colors.divider, backgroundColor: pressed ? colors.surfaceTertiary : "transparent" }]}
                     >
                       <Ionicons name="location-outline" size={17} color={colors.brand} />
-                      <AppText style={{ flex: 1, fontFamily: fonts.regular, fontSize: fontSize.sm, color: colors.onSurface }} numberOfLines={2}>{s.text}</AppText>
+                      <AppText style={{ flex: 1, fontFamily: fonts.regular, fontSize: fontSize.sm, color: colors.onSurface }}>{s.description}</AppText>
                       <Ionicons name="arrow-forward" size={15} color={colors.onSurfaceTertiary} />
                     </Pressable>
                   ))}

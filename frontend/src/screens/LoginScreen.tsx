@@ -474,6 +474,7 @@ export default function LoginScreen() {
               testID="login-mobile-input"
               value={mobile}
               onChangeText={(text) => { setMobile((text.trimStart().startsWith("+") ? "+" : "") + text.replace(/\D/g, "").slice(0, 15)); setError(null); }}
+              accessibilityLabel="WhatsApp mobile number"
               placeholder="10 Digit WhatsApp Number"
               placeholderTextColor={colors.onSurfaceTertiary}
               keyboardType="phone-pad"
@@ -485,10 +486,6 @@ export default function LoginScreen() {
           {sessionMessage ? <AppText testID="login-session-message" variant="caption" color={colors.error}>{sessionMessage}</AppText> : null}
           {error ? <AppText variant="caption" color={colors.error}>{error}</AppText> : null}
           <Button label="CONTINUE" onPress={handleSendUserOtp} loading={loading} disabled={!loginPhone(mobile)} icon={<Ionicons name="shield-checkmark-outline" size={19} color={colors.onBrand} />} />
-          <View style={styles.securityNote}>
-            <Ionicons name="lock-closed-outline" size={14} color={colors.onSurfaceTertiary} />
-            <AppText variant="caption" color={colors.onSurfaceTertiary}>6-digit OTP verification</AppText>
-          </View>
         </View>
       );
     }

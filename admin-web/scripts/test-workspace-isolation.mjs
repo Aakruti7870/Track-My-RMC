@@ -166,7 +166,14 @@ try {
     await adminNav('Settings').click();
     await button('Light').click();
     assert.match(await page.locator('main').getAttribute('class')||'',/tm-light/,'light theme should use warm app tokens');
-    await button('Dark').click();
+    for (const mode of ['Light','Dark']) {
+      await button(mode).click();
+      const selected=await button(mode).evaluate(el=>{
+        const {color,backgroundColor}=getComputedStyle(el);
+        return [color,backgroundColor];
+      });
+      assert.deepEqual(selected,['rgb(14, 17, 22)','rgb(255, 138, 0)'],'selected theme uses readable graphite on orange');
+    }
     await adminNav('Chats').click();
     await page.getByText('No incoming WhatsApp conversations recorded.').waitFor();
     assert.equal(await page.getByRole('button',{name:'Send WhatsApp reply'}).count(),0,'WhatsApp sending must remain gated off');

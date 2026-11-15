@@ -63,6 +63,8 @@ export type ThemeColors = {
   brand: string;
   brandPressed: string;
   onBrand: string;
+  accentText: string;
+  controlOutline: string;
   brandSoft: string;
   onBrandSoft: string;
   success: string;
@@ -95,6 +97,8 @@ export const darkColors: ThemeColors = {
   brand: "#FF8A00",
   brandPressed: "#E67500",
   onBrand: "#0E1116",
+  accentText: "#FFB47D",
+  controlOutline: "#8793A2",
   brandSoft: "rgba(255,138,0,0.18)",
   onBrandSoft: "#FF9A3D",
   success: "#38A169",
@@ -127,8 +131,10 @@ export const lightColors: ThemeColors = {
   brand: "#FF6A00",
   brandPressed: "#D65700",
   onBrand: "#0E1116",
+  accentText: "#A43D00",
+  controlOutline: "#687384",
   brandSoft: "#FFE1CC",
-  onBrandSoft: "#D65700",
+  onBrandSoft: "#873B05",
   success: "#276749",
   verified: "#276749",
   verifiedSoft: "#E6F4EA",
@@ -235,6 +241,8 @@ export const operationalPalette = {
 /** Severity is independent of brand styling and consistent between mobile roles. */
 export function operationalStatus(status: OperationalStatus, dark = false): string {
   if (status === "neutral") return dark ? "#B8C1CC" : "#4A5568";
+  if (status === "success" && !dark) return "#276749";
+  if (status === "critical" && dark) return "#FF7777";
   if (status === "approval" && dark) return operationalPalette.success;
   if (status === "warning" && !dark) return "#92400E";
   if (status === "critical" && !dark) return "#B91C1C";

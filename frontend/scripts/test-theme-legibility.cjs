@@ -25,13 +25,17 @@ test("matte light and dark surfaces keep body and secondary text readable", () =
       ["onBrand", "brand"],
       ["onBrand", "brandPressed"],
       ...["surfaceSecondary", "surfaceTertiary", "surfaceElevated"].flatMap(surface =>
-        ["onSurface", "onSurfaceTertiary", "error"].map(ink => [ink, surface])),
+        ["onSurface", "onSurfaceTertiary", "accentText", "error"].map(ink => [ink, surface])),
     ];
     for (const [foreground, background] of pairs) {
       const [low, high] = [color(background), color(foreground)].sort((a, b) => a - b);
       assert.ok((high + 0.05) / (low + 0.05) >= 4.5, `${scheme} ${foreground} on ${background} fails normal-text contrast`);
     }
-
+    const outline = color("controlOutline");
+    for (const surface of ["surfaceSecondary", "surfaceTertiary", "surfaceElevated"]) {
+      const [low, high] = [color(surface), outline].sort((a, b) => a - b);
+      assert.ok((high + 0.05) / (low + 0.05) >= 3, `${scheme} field outline on ${surface}`);
+    }
   }
 
   for (const component of ["src/components/GlassTabBar.tsx", "src/components/QuickActionHub.tsx"]) {

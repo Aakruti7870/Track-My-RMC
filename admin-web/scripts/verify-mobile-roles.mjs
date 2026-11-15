@@ -514,7 +514,7 @@ try {
       await page.getByTestId('project-hub-back').click();
       await expect(page.getByTestId('customer-module-grid')).toBeVisible();
       phase = 'support create';
-      await page.getByTestId('customer-support-widget').click();
+      await page.getByTestId('header-help').click();
       await page.getByTestId('customer-support-open-center').click();
       await page.getByTestId('support-category-GENERAL').click();
       await page.getByTestId('support-choice-other').click();

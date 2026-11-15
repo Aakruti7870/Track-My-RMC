@@ -154,10 +154,10 @@ export function StaffHome() {
                     <View style={styles.kpiIcon}>
                       {KPI_ARTWORK[c.label] ? <VectorSymbol name={KPI_ARTWORK[c.label]} size={30} /> :
                         <Ionicons name={c.icon} size={24} color={colors.brand} />}
-                      {c.label === "Low Stock" && c.value > 0 ? <Ionicons name="alert-circle" size={16} color={colors.warning} /> : null}
+                      {c.label === "Low Stock" && c.value > 0 ? <Ionicons name="alert-circle" size={16} color={operationalStatus("warning", colors.isDark)} /> : null}
                     </View>
                     <AppText style={{ fontFamily: fonts.displayBold, fontSize: fontSize.xl,
-                      color: kpiTone(c) === "neutral" ? colors.onSurface : operationalStatus(kpiTone(c), colors.isDark) }} numberOfLines={1}>
+                      color: kpiTone(c) === "neutral" ? colors.onSurface : operationalStatus(kpiTone(c), colors.isDark) }}>
                       {formatValue(c)}
                       {c.unit && c.unit !== "₹" ? <AppText style={{ fontFamily: fonts.medium, fontSize: 12, color: colors.onSurfaceTertiary }}> {c.unit}</AppText> : null}
                     </AppText>

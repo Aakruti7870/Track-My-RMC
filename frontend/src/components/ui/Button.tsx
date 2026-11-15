@@ -30,6 +30,7 @@ type Props = {
   testID?: string;
   accessibilityLabel?: string;
   accessibilityHint?: string;
+  expanded?: boolean;
 };
 
 export function Button({
@@ -46,6 +47,7 @@ export function Button({
   testID,
   accessibilityLabel,
   accessibilityHint,
+  expanded,
 }: Props) {
   const { colors } = useTheme();
   const isDisabled = Boolean(disabled || loading);
@@ -70,14 +72,14 @@ export function Button({
     primary: palette.graphite,
     secondary: colors.onSurface,
     outline: colors.onSurface,
-    ghost: colors.brand,
+    ghost: colors.accentText,
     danger: "#FFFFFF",
   }[variant];
 
   const borderColor = {
     primary: palette.orange,
     secondary: colors.border,
-    outline: colors.borderStrong,
+    outline: colors.controlOutline,
     ghost: "transparent",
     danger: palette.errorDark,
   }[variant];
@@ -88,7 +90,7 @@ export function Button({
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel || label}
       accessibilityHint={accessibilityHint}
-      accessibilityState={{ disabled: isDisabled, busy: Boolean(loading) }}
+      accessibilityState={{ disabled: isDisabled, busy: Boolean(loading), expanded }}
       hitSlop={size === "sm" ? 4 : 2}
       onPress={() => {
         if (isDisabled) return;
@@ -113,16 +115,12 @@ export function Button({
           borderColor: isDisabled ? colors.border : borderColor,
           shadowColor: variant === "primary" ? colors.brand : colors.shadow,
           shadowOpacity:
-            variant === "primary" && !isDisabled
-              ? colors.isDark
-                ? 0.26
-                : 0.16
-              : variant === "secondary" && !isDisabled
+            variant === "secondary" && !isDisabled
                 ? colors.isDark
                   ? 0.2
                   : 0.07
                 : 0,
-          elevation: variant === "primary" && !isDisabled ? 4 : variant === "secondary" ? 2 : 0,
+          elevation: variant === "secondary" && !isDisabled ? 2 : 0,
         },
         style,
       ]}
