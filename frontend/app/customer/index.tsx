@@ -8,7 +8,6 @@ import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymb
 import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { ThemedScreen } from "@/src/components/ThemedScreen";
-import { useToast } from "@/src/components/ui/Toast";
 import { useGet } from "@/src/hooks/useApi";
 import { AppText } from "@/src/components/ui/AppText";
 import { Skeleton } from "@/src/components/ui/Skeleton";
@@ -17,6 +16,7 @@ import { KycBanner } from "@/src/components/KycBanner";
 import { ErrorView } from "@/src/components/StateViews";
 import { HomeCarousel } from "@/src/components/HomeCarousel";
 import { CustomerHomeHeader } from "@/src/components/customer/CustomerHomeHeader";
+import { CustomerNextAction } from "@/src/components/customer/CustomerNextAction";
 import type { OrderData } from "@/src/components/OrderCard";
 import type { PlantData } from "@/src/components/PlantCard";
 import { customerHomeSizes, fonts, radius, spacing } from "@/src/theme/tokens";
@@ -68,7 +68,6 @@ export default function CustomerHome() {
   const fourToolColumns = quickGridWidth >= 270;
   const { user } = useAuth();
   const router = useRouter();
-  const toast = useToast();
   const { data, loading, error, refetch, reload } = useGet<HomeData>("/customer/home");
 
   const onAction = (key: ActionKey) => {
@@ -79,10 +78,8 @@ export default function CustomerHome() {
       if (data?.active_order) return router.push(`/track/${data.active_order.id}` as any);
       return router.push("/customer/orders");
     }
-    if ((data?.kyc_status ?? user?.kyc_status) !== "VERIFIED") {
-      toast("Complete KYC to place an order", "info");
-      return router.push("/kyc");
-    }
+    // New Order supports safe drafts and provisional requests before DigiLocker.
+    // The real order confirmation remains gated by the server-side KYC flow.
     return router.push("/new-order");
   };
   const openService = (service: ServiceKey) => {
@@ -246,6 +243,15 @@ export default function CustomerHome() {
             {/* Existing carousel and its five images remain unchanged. */}
             <View style={[styles.homeAboveFold, { gap: homeSize.sectionGap }]}>
               <HomeCarousel style={{ width: Math.min(viewportWidth, 720), borderRadius: 0, borderWidth: 0 }} />
+              <CustomerNextAction
+                activeOrder={data.active_order}
+                hasOrderHistory={data.recent_orders.length > 0}
+                kycVerified={(data.kyc_status || user?.kyc_status || "").toUpperCase() === "VERIFIED"}
+                onCreateOrder={() => onAction("new")}
+                onViewOrder={(id) => router.push({ pathname: "/order/[id]", params: { id } })}
+                onViewOrders={() => router.push("/customer/orders")}
+                onVerifyIdentity={() => router.push("/kyc")}
+              />
               {quickActions}
               <View style={styles.groupCard}><KycBanner status={data.kyc_status} /></View>
               {planningTools}
