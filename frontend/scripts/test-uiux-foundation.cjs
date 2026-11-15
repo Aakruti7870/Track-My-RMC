@@ -89,3 +89,69 @@ test("customer order empty state recovers instead of trapping the user", () => {
   assert.match(orders, /router\.push\("\/new-order"\)/);
   assert.match(orders, /minHeight: 48/);
 });
+
+test("Material theme pairs meet WCAG AA for normal control text in both modes", () => {
+  const ts = require("typescript");
+  const { createRequire } = require("node:module");
+  const load = (name, imports = {}) => {
+    const filename = path.join(__dirname, "..", name);
+    const output = ts.transpileModule(read(name), {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    }).outputText;
+    const module = { exports: {} };
+    const requireFromFile = createRequire(filename);
+    new Function("require", "module", "exports", output)(
+      id => imports[id] ?? requireFromFile(id), module, module.exports,
+    );
+    return module.exports;
+  };
+  const tokens = load("src/theme/tokens.ts");
+  const base = { fonts: { bodyLarge: { fontWeight: "400" }, default: {} } };
+  const { createPaperTheme } = load("src/theme/paperTheme.ts", {
+    "./tokens": tokens,
+    "react-native-paper": { MD3DarkTheme: base, MD3LightTheme: base },
+  });
+  const lum = hex => {
+    const rgb = hex.slice(1).match(/../g).map(part => parseInt(part, 16) / 255);
+    return rgb.map(v => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)
+      .reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0);
+  };
+  const contrast = (a, b) => (Math.max(lum(a), lum(b)) + 0.05) / (Math.min(lum(a), lum(b)) + 0.05);
+  for (const colors of [tokens.lightColors, tokens.darkColors]) {
+    const theme = createPaperTheme(colors, true);
+    assert.equal(theme.animation.scale, 0);
+    assert.equal(theme.fonts.bodyLarge.fontFamily, tokens.fonts.regular);
+    for (const [on, background] of [
+      ["onPrimary", "primary"], ["onPrimaryContainer", "primaryContainer"],
+      ["onSurface", "surface"], ["onSurfaceVariant", "surfaceVariant"], ["onError", "error"],
+    ]) assert.ok(contrast(theme.colors[on], theme.colors[background]) >= 4.5, on);
+  }
+  assert.ok(contrast(tokens.palette.graphite, tokens.palette.orange) >= 4.5);
+});
+
+test("Paper shares the existing theme, motion preference and root navigation", () => {
+  const root = read("app/_layout.tsx");
+  const adapter = read("src/theme/MaterialProvider.tsx");
+  assert.equal(root.match(/<MaterialProvider>/g)?.length, 1);
+  assert.ok(root.indexOf("<ThemeProvider") < root.indexOf("<MaterialProvider>"));
+  assert.match(root, /reduceMotion \? "none" : "fade"/);
+  assert.match(adapter, /createPaperTheme\(colors, reduceMotion\)/);
+  const radio = read("src/components/ui/RadioChoice.tsx");
+  assert.match(radio, /accessibilityRole="radio"/);
+  assert.match(radio, /accessibilityState=\{\{ checked, disabled \}\}/);
+  assert.match(radio, /minHeight: 56/);
+  assert.doesNotMatch(radio, /numberOfLines=/);
+});
+
+test("New Order keeps direct-order eligibility, authoritative KYC and the draft submission lock", () => {
+  const order = read("app/new-order.tsx");
+  assert.match(order, /plant\.order_enabled \?\?/);
+  assert.match(order, /plants\.filter\(acceptsOrders\)/);
+  assert.match(order, /orderEnabled\) return setError/);
+  assert.match(order, /if \(!kycOk\) return startKycFromOrder\(\)/);
+  assert.match(order, /submissionInFlight\.current = true/);
+  assert.match(order, /id: copy \? null : draftId\.current/);
+  const changes = order.slice(order.indexOf("const changeAddress"), order.indexOf("const plants ="));
+  assert.ok(changes.includes("placeSelection.current += 1"));
+  assert.ok(changes.includes("selection !== placeSelection.current"));
+});

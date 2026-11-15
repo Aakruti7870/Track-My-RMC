@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -84,6 +84,7 @@ export default function PlantOnboarding() {
   const [searching, setSearching] = useState(false);
   const [locating, setLocating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const submissionInFlight = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
 
@@ -181,6 +182,7 @@ export default function PlantOnboarding() {
   };
 
   const submit = async () => {
+    if (submissionInFlight.current) return;
     setError(null);
     if (ownerName.trim().length < 2) return setError("Enter the Plant Owner name");
     if (!validEmail(email)) return setError("Enter a valid email address");
@@ -188,6 +190,7 @@ export default function PlantOnboarding() {
     if (plantName.trim().length < 2) return setError("Enter the plant name");
     if (compactRegistration) {
       if (address.trim().length < 5) return setError("Enter the registered business address");
+      submissionInFlight.current = true;
       setSubmitting(true);
       try {
         const response = await apiPublicPost<OnboardingResponse>("/plant-owner-registration/requests", {
@@ -202,12 +205,14 @@ export default function PlantOnboarding() {
       } catch (e: any) {
         setError(e.detail || "Could not submit registration request");
       } finally {
+        submissionInFlight.current = false;
         setSubmitting(false);
       }
       return;
     }
     if (!locationMarked || lat === null || lng === null) return setError("Mark the plant location before submitting");
 
+    submissionInFlight.current = true;
     setSubmitting(true);
     try {
       const response = await apiPublicPost<OnboardingResponse>("/plant-onboarding/requests", {
@@ -225,6 +230,7 @@ export default function PlantOnboarding() {
     } catch (e: any) {
       setError(e.detail || "Could not submit onboarding request");
     } finally {
+      submissionInFlight.current = false;
       setSubmitting(false);
     }
   };

@@ -127,6 +127,15 @@ try {
       await page.getByLabel('Email verification code',{exact:true}).fill('123456');await button('Verify email code').click();
       await page.getByLabel('Authenticator code',{exact:true}).fill('123456');await button('Verify authenticator and sign in').click();
       await page.getByRole('heading',{name:'Command Center',exact:true}).waitFor();
+      if (width === 390) {
+        const currentNav = page.locator('.tm-sidebar nav [aria-current="page"]');
+        const appearance = await currentNav.evaluate(el => ({
+          height: el.getBoundingClientRect().height,
+          color: getComputedStyle(el).color,
+        }));
+        assert(appearance.height >= 48, 'Mobile Admin navigation must retain a 48px target');
+        assert.equal(appearance.color, 'rgb(14, 17, 22)', 'Selected orange navigation uses readable graphite');
+      }
     };
     await page.goto(origin+'/admin/');await signIn('first@example.invalid');
     const officialLogo=page.locator('img[alt="TrackMyRMC official logo"]').first();

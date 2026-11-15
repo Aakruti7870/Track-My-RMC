@@ -18,10 +18,9 @@ const renderIcon: IconRenderer = ({ name, color, size, direction, testID }) => (
   />
 );
 
-const settings = { icon: renderIcon };
-
 export function MaterialProvider({ children }: PropsWithChildren) {
   const { colors, reduceMotion } = useTheme();
   const theme = useMemo(() => createPaperTheme(colors, reduceMotion), [colors, reduceMotion]);
+  const settings = useMemo(() => ({ icon: renderIcon, rippleEffectEnabled: !reduceMotion }), [reduceMotion]);
   return <PaperProvider theme={theme} settings={settings}>{children}</PaperProvider>;
 }

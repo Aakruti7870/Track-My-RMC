@@ -58,7 +58,7 @@ body {margin:0;}
   background:transparent;color:var(--tm-muted);font-size:12.5px;font-weight:650;cursor:pointer;}
 .tm-sidebar-link svg {flex:none;stroke-width:1.8;}
 .tm-sidebar-link span {flex:1;}
-.tm-sidebar-link.is-current {color:#fff;background:linear-gradient(110deg,#D65700,#FF8A00);
+.tm-sidebar-link.is-current,.tm-light .tm-sidebar-link.is-current {color:#0E1116;background:linear-gradient(110deg,#FF6A00,#FF8A00);
   border-color:rgba(255,154,61,.42);box-shadow:0 3px 12px rgba(255,106,0,.18);}
 .tm-sidebar-link:not(.is-current):hover {background:rgba(255,138,0,.11);color:var(--tm-text);}
 .tm-unread {font-size:11px;font-weight:800;color:white;background:var(--tm-critical);
@@ -144,7 +144,7 @@ body {margin:0;}
   background:#F7F6F2!important;color:#14181F!important;}
 .tm-light::before {background-image:url('/admin/trackmyrmc-light.webp');opacity:.15;}
 .tm-light .tm-sidebar-link {color:#59677D;}
-.tm-light .tm-sidebar-link.is-current {color:#fff;}
+
 .tm-light .tm-workspace-content :is(h1,h2,h3,h4,small,p,label,strong) {color:#14181F!important;}
 .tm-light .tm-workspace-content :is(.tm-module-card,.tm-kpi-card,.tm-aside-panel,.tm-quick-actions button) {
   color:#14181F!important;background:rgba(255,255,255,.96)!important;}
@@ -170,7 +170,7 @@ body {margin:0;}
   .tm-sidebar {position:relative;top:0;max-height:none;padding:10px;margin-bottom:12px;}
   .tm-sidebar-brand {display:none;}
   .tm-sidebar nav {display:flex;gap:7px;overflow-x:auto;scrollbar-width:thin;padding:3px;}
-  .tm-sidebar-link {flex:none;width:auto;min-height:40px;white-space:nowrap;padding:9px 12px;}
+  .tm-sidebar-link {flex:none;width:auto;min-height:48px;white-space:nowrap;padding:9px 12px;}
   .tm-sidebar-logout {margin-top:4px;padding:10px;}
   .tm-module-grid {grid-template-columns:repeat(2,minmax(0,1fr));}
   .tm-admin-root .tm-titlebar {gap:9px;}

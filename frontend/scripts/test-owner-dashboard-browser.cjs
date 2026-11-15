@@ -192,5 +192,55 @@ fs.mkdirSync(out, { recursive: true });
       await context.close();
       console.log('PASS owner automation: ' + width + 'px, grid 4/4/2, API toggle and reminder');
     }
+    {
+      const page = await browser.newPage({ viewport: { width: 320, height: 900 }, reducedMotion: "reduce" });
+      let plantResponse = "error";
+      await page.addInitScript(() => localStorage.setItem("tmrmc_token", JSON.stringify("isolated-inventory-fixture")));
+      await page.route("**/api/**", async route => {
+        const path = new URL(route.request().url()).pathname;
+        if (path.endsWith("/me")) return route.fulfill({ json: {
+          id: "inventory-owner", name: "Fixture owner", role: "plant_owner", roles: ["plant_owner"], status: "active",
+        } });
+        if (path.endsWith("/permission-consent")) return route.fulfill({ json: {
+          consent: { version: 1, location_choice: "manual", notification_choice: "manual" },
+        } });
+        if (path.endsWith("/master/my-plants")) {
+          if (plantResponse === "error") return route.fulfill({ status: 503, json: {} });
+          return route.fulfill({ json: { plants: plantResponse === "empty" ? [] : [{ id: "fixture-plant", name: "Fixture Plant" }] } });
+        }
+        if (path.endsWith("/fixture-plant/resources")) return route.fulfill({ json: {
+          materials: ["Cement", "Sand", "Gravel", "Other"].map((name, i) => ({ id: String(i), name, stock: i + 1, reorder: 2, unit: "kg" })),
+        } });
+        if (path.endsWith("/owner/home")) return route.fulfill({ json: { plants: [], cards: {}, pending_orders: [] } });
+        return route.fulfill({ json: {} });
+      });
+
+      const openInventory = async () => {
+        await page.goto("http://127.0.0.1:8765/owner/");
+        await page.getByTestId("tab-operations").click();
+        await page.getByTestId("role-module-business-inventory").click();
+      };
+      await openInventory();
+      const retry = page.getByRole("button", { name: "Retry", exact: true });
+      await retry.waitFor();
+      plantResponse = "empty";
+      await retry.click();
+      await page.getByText("No plant is assigned to this account.", { exact: true }).waitFor();
+
+      plantResponse = "loaded";
+      await openInventory();
+      const search = page.getByRole("textbox", { name: "Search records" });
+      await search.fill("No such material");
+      await page.getByText("No records match your search.", { exact: true }).waitFor();
+      await search.fill("Cement");
+      await page.getByText("Cement", { exact: true }).waitFor();
+      assert.equal(await page.getByText("Sand", { exact: true }).count(), 0);
+      await page.getByRole("button", { name: "Stock In", exact: true }).click();
+      await page.getByRole("textbox", { name: "Quantity" }).waitFor();
+      await page.getByRole("button", { name: "Cancel", exact: true }).click();
+      assert.equal(await page.getByRole("textbox", { name: "Quantity" }).count(), 0);
+      await page.close();
+      console.log("PASS owner inventory: 320px, plant retry, empty assignment, search correction and adjustment cancellation");
+    }
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
