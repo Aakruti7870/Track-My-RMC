@@ -83,21 +83,29 @@ fs.mkdirSync(out, { recursive: true });
             return !!block.closest('[data-testid="staff-home-scroll-fixed"]')
               || getComputedStyle(block.parentElement).position === 'sticky';
           });
-          await scroll.evaluate(node => {
-            const shortcuts = node.querySelector('[data-testid="staff-home-scroll-shortcuts"]');
-            if (shortcuts) node.scrollTop = Math.max(0, shortcuts.getBoundingClientRect().top - node.getBoundingClientRect().top + 24);
-          });
-          const movement = await scroll.evaluate(node => {
-            const profile = node.querySelector('[data-testid="plant-home-profile"]');
-            const supplier = document.querySelector('[data-testid="plant-home-supplier-enquiry"]');
+          await page.waitForFunction(() => {
+            const node = document.querySelector('[data-testid="staff-home-scroll"]');
+            const profile = node?.querySelector('[data-testid="plant-home-profile"]');
+            const shortcuts = document.querySelector('[data-testid="staff-home-scroll-shortcuts"]');
+            const supplier = shortcuts?.querySelector('[data-testid="plant-home-supplier-enquiry"]');
+            if (!node || !profile || !shortcuts || !supplier) return false;
+            const sticky = node.contains(shortcuts);
+            if (sticky && getComputedStyle(shortcuts.parentElement).position !== 'sticky') return false;
+
+            // Start from a known scroll offset and sample both positions in the
+            // same browser frame so resize and scroll handlers cannot separate them.
+            node.scrollTop = 0;
+            if (sticky) {
+              const distance = shortcuts.getBoundingClientRect().top - node.getBoundingClientRect().top;
+              node.scrollTop = Math.max(0, Math.ceil(distance) + 24);
+            }
+            const offset = node.scrollTop;
             const profileTop = profile.getBoundingClientRect().top;
             const supplierTop = supplier.getBoundingClientRect().top;
-            node.scrollTop += 75;
-            return { offset: node.scrollTop, profile: profile.getBoundingClientRect().top - profileTop,
-              supplier: supplier.getBoundingClientRect().top - supplierTop };
-          });
-          assert(movement.offset > 0 && movement.profile < 0, 'Staff profile scrolls with the dashboard');
-          assert.equal(movement.supplier, 0, 'Staff supplier enquiry stays fixed');
+            node.scrollTop = offset + 75;
+            return node.scrollTop > offset && profile.getBoundingClientRect().top < profileTop
+              && Math.abs(supplier.getBoundingClientRect().top - supplierTop) <= 1;
+          }, null, { timeout: 5000 });
           await page.setViewportSize({ width, height: 920 });
           await fixed.getByTestId("staff-home-summary").waitFor();
           await scroll.evaluate(node => { node.scrollTop = 0; });
