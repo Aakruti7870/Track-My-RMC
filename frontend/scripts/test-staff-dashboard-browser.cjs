@@ -79,14 +79,14 @@ fs.mkdirSync(out, { recursive: true });
             const supplier = document.querySelector('[data-testid="plant-home-supplier-enquiry"]');
             const profileTop = profile.getBoundingClientRect().top;
             const supplierTop = supplier.getBoundingClientRect().top;
-            node.scrollTo(0, 100);
+            node.scrollTop = 100;
             return { offset: node.scrollTop, profile: profile.getBoundingClientRect().top - profileTop,
               supplier: supplier.getBoundingClientRect().top - supplierTop };
           });
           assert(movement.offset > 0 && movement.profile < 0, 'Staff profile scrolls with the dashboard');
           assert.equal(movement.supplier, 0, 'Staff supplier enquiry stays fixed');
           await page.setViewportSize({ width, height: 920 });
-          await scroll.evaluate(node => node.scrollTo(0, 0));
+          await scroll.evaluate(node => { node.scrollTop = 0; });
         }
         const surface = await summary.evaluate(el => getComputedStyle(el).backgroundColor);
         assert.equal(surface, 'rgb(255, 255, 255)', 'Staff summary copy sits on opaque white');

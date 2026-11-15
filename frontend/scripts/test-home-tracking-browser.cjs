@@ -127,18 +127,19 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      const planning = node.querySelector('[data-testid="customer-module-grid"]');
      const bulkTop = bulk.getBoundingClientRect().top;
      const planningTop = planning.getBoundingClientRect().top;
-     node.scrollTo(0, 100);
-     return { offset: node.scrollTop, bulk: bulk.getBoundingClientRect().top - bulkTop,
+     node.scrollTop = 100;
+     return { offset: node.scrollTop, viewport: node.clientHeight, content: node.scrollHeight,
+       bulk: bulk.getBoundingClientRect().top - bulkTop,
        planning: planning.getBoundingClientRect().top - planningTop };
    });
-   assert(movement.offset > 0, 'The short test viewport must make lower content overflow');
+   assert(movement.offset > 0, `The lower content (${movement.content}px) must scroll in the ${movement.viewport}px viewport`);
    assert.equal(movement.bulk, 0, 'Bulk quote stays fixed while the lower dashboard scrolls');
    assert(movement.planning < 0, 'Planning moves with the lower dashboard');
 
    await page.setViewportSize({ width, height: 540 });
    await fixed.waitFor({ state: 'detached' });
    const stickyTop = await scroll.evaluate(node => {
-     node.scrollTo(0, 500);
+     node.scrollTop = 500;
      return node.getBoundingClientRect().top;
    });
    await page.waitForFunction(top => {
@@ -150,7 +151,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  }
  await scroll.evaluate(node => {
    const track = node.querySelector('[data-testid="demo-tracking-card"]');
-   node.scrollTo(0, node.scrollTop + track.getBoundingClientRect().top - node.getBoundingClientRect().top);
+   node.scrollTop += track.getBoundingClientRect().top - node.getBoundingClientRect().top;
  });
  const b=await card.boundingBox();
  assert.equal(Math.round((await page.getByTestId('customer-home-header').boundingBox()).y), Math.round(homeHeader.y));
