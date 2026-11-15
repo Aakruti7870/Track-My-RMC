@@ -1,22 +1,25 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Pressable,
   StyleSheet,
   TextInput,
   View,
+  useWindowDimensions,
 } from "react-native";
 import Svg, { Defs, LinearGradient as SvgGradient, Rect, Stop } from "react-native-svg";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { StatusBar } from "expo-status-bar";
-import { useRouter } from "expo-router";
+import { type Href, useRouter } from "expo-router";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import * as Linking from "expo-linking";
 
-import { useAuth } from "@/src/auth/AuthContext";
+import { apiErrorDetail, type MfaEnrollmentStartResponse } from "@/src/api/client";
+import { useAuth, type Me } from "@/src/auth/AuthContext";
 import { roleRouteFor } from "@/src/auth/roleRoutes";
 import { loginPhone } from "@/src/auth/phone";
 import { shouldResumeKycAfterLogin } from "@/src/kyc/returnContext";
@@ -26,6 +29,7 @@ import { Button } from "@/src/components/ui/Button";
 import { Input } from "@/src/components/ui/Input";
 import { useToast } from "@/src/components/ui/Toast";
 import { useTheme } from "@/src/theme/ThemeProvider";
+import { SupportWidgetBridge } from "@/src/support/SupportWidgetBridge";
 import { fonts, fontSize, loginAppearance, radius, spacing } from "@/src/theme/tokens";
 
 // Theme-specific, lossless crops of the approved login artwork.
@@ -43,14 +47,24 @@ const DEMO_ROLES = [
 ];
 
 type LoginMode = "user" | "plant";
-type LoginPhase = "enter" | "user_otp" | "staff_email_otp" | "staff_totp" | "staff_recovery" | "staff_enroll";
+type LoginPhase = "enter" | "user_otp" | "staff_email_otp" | "staff_totp" | "staff_recovery" | "staff_enroll" | "staff_save_recovery";
+const RESEND_DELAY_MS = 30_000;
+const CARD_RADIUS = 28;
 
+function signedInRoute(user: Me): Href {
+  if (user.mfa_configured && !user.mfa_enabled && user.role !== "customer" && user.role !== "driver") {
+    return "/mfa-setup";
+  }
+  return roleRouteFor(user.role) as Href;
+}
 
 const validEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export default function LoginScreen() {
-  const { colors, toggle } = useTheme();
+  const { colors, toggle, reduceMotion } = useTheme();
+  const { width } = useWindowDimensions();
+  const compact = width < 360;
   const look = loginAppearance[colors.isDark ? "dark" : "light"];
   const heroSource = colors.isDark ? HERO_DARK : HERO_LIGHT;
   const router = useRouter();
@@ -70,239 +84,227 @@ export default function LoginScreen() {
     startStaffMfaEnrollment,
     confirmStaffMfaEnrollment,
     demoLogin,
+    clearStaffChallenge,
   } = useAuth();
 
   const [mode, setMode] = useState<LoginMode>("user");
   const [phase, setPhase] = useState<LoginPhase>("enter");
   const [mobile, setMobile] = useState("");
+  const [phoneFocused, setPhoneFocused] = useState(false);
   const [plantEmail, setPlantEmail] = useState("");
   const [identifier, setIdentifier] = useState("");
   const [code, setCode] = useState("");
   const [recoveryCode, setRecoveryCode] = useState("");
-  const [mfaEnrollment, setMfaEnrollment] = useState<import("@/src/api/client").MfaEnrollmentStartResponse | null>(null);
+  const [mfaEnrollment, setMfaEnrollment] = useState<MfaEnrollmentStartResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [otpVisual, setOtpVisual] = useState<OtpVisualState>("idle");
+  const [resendAt, setResendAt] = useState(0);
   const [countdown, setCountdown] = useState(0);
   const [onboardingRequired, setOnboardingRequired] = useState(false);
-  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => () => { if (timer.current) clearInterval(timer.current); }, []);
+  const requestInFlight = useRef(false);
 
   useEffect(() => {
-    if (!hydrating && token && user) {
-      if (phase !== "enter" || otpVisual === "success") return;
-      if (user.mfa_configured && !user.mfa_enabled && user.role !== "customer" && user.role !== "driver") {
-        router.replace("/mfa-setup" as any);
-      } else {
-        router.replace(roleRouteFor(user.role) as any);
-      }
+    if (!resendAt) return;
+    const updateCountdown = () => {
+      const remaining = Math.max(0, Math.ceil((resendAt - Date.now()) / 1000));
+      setCountdown(remaining);
+      if (!remaining) setResendAt(0);
+    };
+    const timer = setInterval(updateCountdown, 1000);
+    return () => clearInterval(timer);
+  }, [resendAt]);
+
+  useEffect(() => {
+    if (!hydrating && token && user && phase === "enter" && !loading && otpVisual !== "success") {
+      router.replace(signedInRoute(user));
     }
-  }, [hydrating, otpVisual, phase, router, token, user]);
+  }, [hydrating, loading, otpVisual, phase, router, token, user]);
 
-  const clearTimer = () => {
-    if (timer.current) clearInterval(timer.current);
-    timer.current = null;
+  const startCountdown = () => {
+    setCountdown(RESEND_DELAY_MS / 1000);
+    setResendAt(Date.now() + RESEND_DELAY_MS);
   };
 
-  const startCountdown = (seconds = 30) => {
-    setCountdown(seconds);
-    clearTimer();
-    timer.current = setInterval(() => {
-      setCountdown((current) => {
-        if (current <= 1) {
-          clearTimer();
-          return 0;
-        }
-        return current - 1;
-      });
-    }, 1000);
+  const clearCountdown = () => {
+    setResendAt(0);
+    setCountdown(0);
   };
 
-  const resetEntry = (nextMode: LoginMode) => {
-    setMode(nextMode);
-    setPhase("enter");
+  const changePhase = (nextPhase: LoginPhase) => {
+    setPhase(nextPhase);
     setCode("");
     setRecoveryCode("");
     setError(null);
     setOtpVisual("idle");
-    setCountdown(0);
-    setOnboardingRequired(false);
-    clearTimer();
   };
 
-  const finishLogin = async (me: Awaited<ReturnType<typeof verify>>) => {
-    setOtpVisual("success");
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    await delay(700);
+  const resetEntry = (nextMode: LoginMode) => {
+    if (requestInFlight.current) return;
+    setMode(nextMode);
+    setPhoneFocused(false);
+    clearStaffChallenge();
+    setIdentifier("");
+    setMfaEnrollment(null);
+    setOnboardingRequired(false);
+    clearCountdown();
+    changePhase("enter");
+  };
 
-    if (me.mfa_configured && !me.mfa_enabled && me.role !== "customer" && me.role !== "driver") {
-      router.replace("/mfa-setup" as any);
+  const runLoginAction = async (action: () => Promise<void>) => {
+    if (requestInFlight.current) return;
+    requestInFlight.current = true;
+    setLoading(true);
+    setError(null);
+    try {
+      await action();
+    } finally {
+      requestInFlight.current = false;
+      setLoading(false);
+    }
+  };
+
+  const finishLogin = async (me: Me) => {
+    setOtpVisual("success");
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+    if (!reduceMotion) await delay(700);
+
+    if (me.role === "customer" && await shouldResumeKycAfterLogin(me.id).catch(() => false)) {
+      router.replace("/kyc?returned=1");
       return;
     }
-    if (me.role === "customer" && await shouldResumeKycAfterLogin(me.id)) {
-      router.replace("/kyc?returned=1");
-    } else {
-      router.replace(roleRouteFor(me.role) as any);
-    }
+    router.replace(signedInRoute(me));
   };
 
-  const failOtp = async (message: string) => {
-    setError(message);
-    setOtpVisual("error");
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-    await delay(850);
+  const failOtp = (error: unknown, fallback: string) => {
+    setError(apiErrorDetail(error, fallback));
     setCode("");
-    setOtpVisual("idle");
+    setOtpVisual("error");
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => undefined);
   };
 
   const handleSendUserOtp = async () => {
-    setError(null);
     const fullNumber = loginPhone(mobile);
-    if (!fullNumber) {
-      setError("Enter a valid WhatsApp number");
-      return;
-    }
-    setLoading(true);
-    try {
-      const response = await requestOtp(fullNumber);
-      // A successful HTTP response from /auth/otp/whatsapp/send confirms the backend accepted delivery. Do not require a response.channel field: this endpoint may return an empty success body.
-      setIdentifier(fullNumber);
-      setCode("");
-      setOtpVisual("idle");
-      setPhase("user_otp");
-      startCountdown(30);
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (e: any) {
-      setError(e.detail || "Could not send OTP");
-    } finally {
-      setLoading(false);
-    }
+    if (!fullNumber || hydrating) return;
+    await runLoginAction(async () => {
+      try {
+        await requestOtp(fullNumber);
+        setIdentifier(fullNumber);
+        changePhase("user_otp");
+        startCountdown();
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+      } catch (error) {
+        setError(apiErrorDetail(error, "Could not send OTP. Try again."));
+      }
+    });
   };
 
   const handleStartPlantLogin = async () => {
-    setError(null);
-    setOnboardingRequired(false);
     const email = plantEmail.trim().toLowerCase();
-    if (!validEmail(email)) {
-      setError("Enter a valid approved email address");
-      return;
-    }
-    setLoading(true);
+    if (!validEmail(email) || hydrating) return;
+    await runLoginAction(async () => {
+      setOnboardingRequired(false);
+      try {
+        const response = await requestStaffOtp(email);
+        if (response.status === "ONBOARDING_REQUIRED") {
+          setPlantEmail(response.email || email);
+          changePhase("enter");
+          clearCountdown();
+          setOnboardingRequired(true);
+          return;
+        }
+        if (response.status !== "OTP_SENT" || response.channel !== "email") {
+          setError("Plant Staff secure login could not start");
+          return;
+        }
+        setIdentifier(email);
+        setPlantEmail(email);
+        changePhase("staff_email_otp");
+        startCountdown();
+      } catch (error) {
+        setError(apiErrorDetail(error, "Could not start Plant Staff login. Try again."));
+      }
+    });
+  };
+
+  const handleVerifyUser = async (otp: string) => {
+    if (otp.length !== 6) return;
+    await runLoginAction(async () => {
+      setOtpVisual("checking");
+      try {
+        await finishLogin(await verify(identifier, otp));
+      } catch (error) {
+        failOtp(error, "Could not verify the WhatsApp code. Try again.");
+      }
+    });
+  };
+
+  const loadEnrollment = async (challengeToken?: string) => {
     try {
-      const response = await requestStaffOtp(email);
-      if (response.status === "ONBOARDING_REQUIRED") {
-        setPlantEmail(response.email || email);
-        setOnboardingRequired(true);
-        return;
-      }
-      setIdentifier(email);
-      setPlantEmail(email);
-      setCode("");
-      setRecoveryCode("");
-      setOtpVisual("idle");
-      // Staff must complete email OTP before the challenge-bound TOTP/recovery factor.
-      // Never jump directly to an authenticator or passkey from the OTP-send step.
-      if (response.status !== "OTP_SENT" || response.channel !== "email") {
-        throw { detail: "Plant Staff secure login could not start" };
-      }
-      setPhase("staff_email_otp");
-      startCountdown(30);
-    } catch (e: any) {
-      setError(e.detail || "Could not start Plant Staff login");
-    } finally {
-      setLoading(false);
+      setMfaEnrollment(await startStaffMfaEnrollment(challengeToken));
+    } catch (error) {
+      setError(apiErrorDetail(error, "Could not load authenticator setup. Try again."));
     }
   };
 
-  const handleVerifyUser = useCallback(async (otp: string) => {
-    if (loading || otp.length !== 6) return;
-    setError(null);
-    setOtpVisual("checking");
-    setLoading(true);
-    try {
-      const me = await verify(identifier, otp);
-      await finishLogin(me);
-    } catch (e: any) {
-      await failOtp(e.detail || "Incorrect OTP. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  }, [identifier, loading, verify]);
-
-  const handleVerifyStaffEmail = useCallback(async (otp: string) => {
-    if (loading || otp.length !== 6) return;
-    setError(null);
-    setOtpVisual("checking");
-    setLoading(true);
-    try {
-      const challenge = await verifyStaff(identifier, otp);
-      clearTimer();
-      setCode("");
-      setOtpVisual("idle");
-      if (challenge.mfa_setup_required || challenge.status === "MFA_ENROLLMENT_REQUIRED") {
-        const enrollment = await startStaffMfaEnrollment(challenge.challenge_token);
-        setMfaEnrollment(enrollment);
-        setPhase("staff_enroll");
-      } else {
-        setPhase("staff_totp");
+  const handleVerifyStaffEmail = async (otp: string) => {
+    if (otp.length !== 6) return;
+    await runLoginAction(async () => {
+      setOtpVisual("checking");
+      try {
+        const challenge = await verifyStaff(identifier, otp);
+        clearCountdown();
+        if (challenge.mfa_setup_required || challenge.status === "MFA_ENROLLMENT_REQUIRED") {
+          changePhase("staff_enroll");
+          await loadEnrollment(challenge.challenge_token);
+        } else {
+          changePhase("staff_totp");
+        }
+      } catch (error) {
+        failOtp(error, "Could not verify the email code. Try again.");
       }
-    } catch (e: any) {
-      await failOtp(e.detail || "Incorrect or expired email OTP.");
-    } finally {
-      setLoading(false);
-    }
-  }, [identifier, loading, verifyStaff, clearTimer, startStaffMfaEnrollment]);
+    });
+  };
 
   const handleConfirmMfaEnrollment = async (otp: string) => {
-    if (loading || otp.length !== 6) return;
-    setLoading(true); setError(null);
-    try {
-      await confirmStaffMfaEnrollment(otp);
-      setMfaEnrollment(null);
-      setCode("");
-      setOtpVisual("idle");
-      setPhase("staff_totp");
-      toast("Authenticator enabled. Save your recovery codes, then enter the current code to finish login.", "success");
-    } catch (e: any) {
-      setError(e.detail || "Could not enable authenticator");
-    } finally { setLoading(false); }
+    if (otp.length !== 6) return;
+    await runLoginAction(async () => {
+      setOtpVisual("checking");
+      try {
+        await confirmStaffMfaEnrollment(otp);
+        changePhase("staff_save_recovery");
+      } catch (error) {
+        failOtp(error, "Could not enable the authenticator. Try again.");
+      }
+    });
   };
 
-  const handleVerifyAuthenticator = useCallback(async (otp: string) => {
-    if (loading || otp.length !== 6) return;
-    setError(null);
-    setOtpVisual("checking");
-    setLoading(true);
-    try {
-      const me = await verifyStaffAuthenticator(identifier, otp);
-      await finishLogin(me);
-    } catch (e: any) {
-      await failOtp(e.detail || "Incorrect Authenticator code.");
-    } finally {
-      setLoading(false);
-    }
-  }, [identifier, loading, verifyStaffAuthenticator]);
+  const handleVerifyAuthenticator = async (otp: string) => {
+    if (otp.length !== 6) return;
+    await runLoginAction(async () => {
+      setOtpVisual("checking");
+      try {
+        await finishLogin(await verifyStaffAuthenticator(identifier, otp));
+      } catch (error) {
+        failOtp(error, "Could not verify the authenticator code. Try again.");
+      }
+    });
+  };
 
   const handleVerifyRecovery = async () => {
-    setError(null);
-    if (recoveryCode.replace(/[^A-Z0-9]/gi, "").length < 8) {
-      setError("Enter one of your saved recovery codes");
-      return;
-    }
-    setLoading(true);
-    try {
-      const me = await verifyStaffRecovery(identifier, recoveryCode.trim());
-      router.replace(roleRouteFor(me.role) as any);
-    } catch (e: any) {
-      setError(e.detail || "Invalid or already used recovery code");
-    } finally {
-      setLoading(false);
-    }
+    if (recoveryCode.replace(/[^A-Z0-9]/gi, "").length < 8) return;
+    await runLoginAction(async () => {
+      try {
+        const me = await verifyStaffRecovery(identifier, recoveryCode.trim());
+        router.replace(signedInRoute(me));
+      } catch (error) {
+        setError(apiErrorDetail(error, "Could not verify the recovery code. Try again."));
+      }
+    });
   };
 
   const resendCurrentOtp = async () => {
-    if (countdown > 0) return;
+    if (Date.now() < resendAt || requestInFlight.current) return;
     if (phase === "user_otp") await handleSendUserOtp();
     if (phase === "staff_email_otp") await handleStartPlantLogin();
   };
@@ -316,21 +318,76 @@ export default function LoginScreen() {
   };
 
   const openOnboarding = () => {
-    router.push({ pathname: "/plant-onboarding" as any, params: { email: plantEmail.trim().toLowerCase(), mode: "owner_registration" } } as any);
+    router.push({
+      pathname: "/plant-onboarding",
+      params: { email: plantEmail.trim().toLowerCase(), mode: "owner_registration" },
+    });
   };
 
   const otpColors = {
-    surface: colors.surface,
-    surfaceSecondary: colors.surfaceSecondary,
+    surface: look.field,
+    surfaceSecondary: look.rail,
     onSurface: colors.onSurface,
     onSurfaceSecondary: colors.onSurfaceSecondary,
     onSurfaceTertiary: colors.onSurfaceTertiary,
-    border: colors.border,
-    brand: colors.brand,
+    border: look.fieldOutline,
+    brand: look.link,
     error: colors.error,
   };
 
   const maskedPhone = identifier.length >= 4 ? `•••••••• ${identifier.slice(-4)}` : "your mobile";
+
+  const editOtp = (next: string) => {
+    setCode(next);
+    setError(null);
+    setOtpVisual("idle");
+  };
+
+  const renderHeading = (icon: keyof typeof Ionicons.glyphMap, title: string, subtitle: string) => (
+    <View style={styles.headingBlock}>
+      <View style={[styles.iconBubble, { backgroundColor: look.iconSurface }]}>
+        <Ionicons name={icon} size={24} color={look.selectedIcon} />
+      </View>
+      <AppText accessibilityRole="header" variant="heading" center>{title}</AppText>
+      <AppText variant="bodyMuted" center color={colors.onSurfaceSecondary}>{subtitle}</AppText>
+    </View>
+  );
+
+  const renderChangeContact = (nextMode: LoginMode) => (
+    <Pressable accessibilityRole="button" disabled={loading} onPress={() => resetEntry(nextMode)} style={styles.stepAction}>
+      <AppText variant="label" center color={look.link}>
+        {nextMode === "user" ? "← Change mobile number" : "← Change email"}
+      </AppText>
+    </Pressable>
+  );
+
+  const renderContinue = (testID: string, label: string, valid: boolean, onPress: () => void) => {
+    const disabled = !valid || loading || hydrating;
+    const foreground = disabled ? look.disabledText : colors.onBrand;
+    return (
+      <Pressable
+        testID={testID}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityState={{ disabled, busy: loading }}
+        disabled={disabled}
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.continueButton,
+          {
+            borderColor: disabled ? look.railOutline : look.tabOutline,
+            backgroundColor: disabled ? look.disabledFill : pressed ? colors.brandPressed : colors.brand,
+          },
+        ]}
+      >
+        {disabled && <LinearGradient pointerEvents="none" colors={look.disabledGradient} style={StyleSheet.absoluteFill} />}
+        {loading
+          ? <ActivityIndicator color={foreground} />
+          : <Ionicons name="shield-checkmark-outline" size={19} color={foreground} />}
+        <AppText style={styles.continueLabel} color={foreground}>{loading ? "Sending code…" : label}</AppText>
+      </Pressable>
+    );
+  };
 
   const renderForm = () => {
     if (phase === "user_otp") {
@@ -339,7 +396,8 @@ export default function LoginScreen() {
           <OtpOrbitVerification
             testID="login-user-otp-input"
             value={code}
-            onChangeText={(next) => { setCode(next); setError(null); }}
+            onChangeText={editOtp}
+            busy={loading}
             onComplete={handleVerifyUser}
             state={otpVisual}
             title="Verify your number"
@@ -349,9 +407,7 @@ export default function LoginScreen() {
             onResend={resendCurrentOtp}
             colors={otpColors}
           />
-          <Pressable onPress={() => resetEntry("user")} hitSlop={10}>
-            <AppText variant="label" center color={colors.brand}>← Change mobile number</AppText>
-          </Pressable>
+          {renderChangeContact("user")}
         </View>
       );
     }
@@ -362,20 +418,19 @@ export default function LoginScreen() {
           <OtpOrbitVerification
             testID="login-plant-otp-input"
             value={code}
-            onChangeText={(next) => { setCode(next); setError(null); }}
+            onChangeText={editOtp}
+            busy={loading}
             onComplete={handleVerifyStaffEmail}
             state={otpVisual}
             title="Verify approved email"
-            subtitle={`Enter the 6-digit code sent to ${plantEmail}.`}
+            subtitle={`Enter the 6-digit code sent to ${identifier}.`}
             errorText={error}
             countdown={countdown}
             onResend={resendCurrentOtp}
             resendLabel="Resend email code"
             colors={otpColors}
           />
-          <Pressable onPress={() => resetEntry("plant")} hitSlop={10}>
-            <AppText variant="label" center color={colors.brand}>← Change email</AppText>
-          </Pressable>
+          {renderChangeContact("plant")}
         </View>
       );
     }
@@ -383,26 +438,51 @@ export default function LoginScreen() {
     if (phase === "staff_enroll") {
       return (
         <View style={styles.formGap}>
-          <View style={styles.headingBlock}>
-            <Ionicons name="shield-checkmark-outline" size={30} color={colors.brand} />
-            <AppText variant="heading" center>Set up Authenticator</AppText>
-            <AppText variant="bodyMuted" center>Scan this URI in your authenticator app, or enter the setup key manually.</AppText>
-            <AppText selectable>{mfaEnrollment?.manual_key || ""}</AppText>
-            <AppText selectable>{mfaEnrollment?.otpauth_uri || ""}</AppText>
-            <AppText variant="caption" center>Save these recovery codes securely:</AppText>
-            {(mfaEnrollment?.recovery_codes || []).map((item) => <AppText key={item} selectable>{item}</AppText>)}
+          {renderHeading("shield-checkmark-outline", "Set up Authenticator", "Add TrackMyRMC to your authenticator app using the setup key.")}
+          {mfaEnrollment ? (
+            <>
+              <AppText selectable center variant="label" style={styles.setupKey}>{mfaEnrollment.manual_key}</AppText>
+              <Pressable accessibilityRole="button" disabled={loading} style={styles.stepAction}
+                onPress={() => void openExternal(mfaEnrollment.otpauth_uri)}>
+                <AppText variant="label" center color={look.link}>Open authenticator app</AppText>
+              </Pressable>
+              <OtpOrbitVerification
+                testID="login-staff-enroll-input"
+                value={code}
+                onChangeText={editOtp}
+                onComplete={handleConfirmMfaEnrollment}
+                state={otpVisual}
+                busy={loading}
+                title="Confirm setup"
+                subtitle="Enter the current 6-digit code from your authenticator."
+                errorText={error}
+                colors={otpColors}
+              />
+            </>
+          ) : (
+            <>
+              {error && <AppText accessibilityLiveRegion="polite" variant="caption" color={colors.error}>{error}</AppText>}
+              <Button label="Retry setup" loading={loading} onPress={() => void runLoginAction(loadEnrollment)} />
+            </>
+          )}
+          {renderChangeContact("plant")}
+        </View>
+      );
+    }
+
+    if (phase === "staff_save_recovery") {
+      return (
+        <View style={styles.formGap}>
+          {renderHeading("key-outline", "Save your recovery codes", "Keep these one-time codes somewhere safe.")}
+          <View style={styles.recoveryCodes}>
+            {mfaEnrollment?.recovery_codes.map((item) => (
+              <AppText key={item} selectable variant="label" style={styles.setupKey}>{item}</AppText>
+            ))}
           </View>
-          <OtpOrbitVerification
-            testID="login-staff-enroll-input"
-            value={code}
-            onChangeText={(next) => { setCode(next); setError(null); }}
-            onComplete={handleConfirmMfaEnrollment}
-            state={otpVisual}
-            title="Confirm setup"
-            subtitle="Enter the current 6-digit code from your authenticator."
-            errorText={error}
-            colors={otpColors}
-          />
+          <Button label="I Saved Them — Continue" onPress={() => {
+            setMfaEnrollment(null);
+            changePhase("staff_totp");
+          }} />
         </View>
       );
     }
@@ -413,7 +493,8 @@ export default function LoginScreen() {
           <OtpOrbitVerification
             testID="login-plant-authenticator-input"
             value={code}
-            onChangeText={(next) => { setCode(next); setError(null); }}
+            onChangeText={editOtp}
+            busy={loading}
             onComplete={handleVerifyAuthenticator}
             state={otpVisual}
             title="Authenticator verification"
@@ -423,9 +504,10 @@ export default function LoginScreen() {
             successSubtitle="Authenticator verification completed."
           />
           <View style={styles.linkRow}>
-            <Pressable onPress={() => resetEntry("plant")}><AppText variant="label" color={colors.brand}>← Change email</AppText></Pressable>
-            <Pressable testID="login-use-recovery" onPress={() => { setRecoveryCode(""); setCode(""); setError(null); setPhase("staff_recovery"); }}>
-              <AppText variant="label" color={colors.brand}>Use recovery code</AppText>
+            {renderChangeContact("plant")}
+            <Pressable testID="login-use-recovery" accessibilityRole="button" disabled={loading}
+              style={styles.stepAction} onPress={() => changePhase("staff_recovery")}>
+              <AppText variant="label" color={look.link}>Use recovery code</AppText>
             </Pressable>
           </View>
         </View>
@@ -435,11 +517,7 @@ export default function LoginScreen() {
     if (phase === "staff_recovery") {
       return (
         <View style={styles.formGap}>
-          <View style={styles.headingBlock}>
-            <Ionicons name="key-outline" size={28} color={colors.brand} />
-            <AppText variant="heading" center>Recovery code</AppText>
-            <AppText variant="bodyMuted" center>Use one saved one-time recovery code.</AppText>
-          </View>
+          {renderHeading("key-outline", "Recovery code", "Use one saved one-time recovery code.")}
           <Input
             testID="login-plant-recovery-input"
             label="Recovery code"
@@ -448,11 +526,15 @@ export default function LoginScreen() {
             placeholder="ABCD-EFGH-JKLM"
             autoCapitalize="characters"
             autoCorrect={false}
+            editable={!loading}
+            onSubmitEditing={handleVerifyRecovery}
             error={error}
           />
-          <Button label="Recover & Login" onPress={handleVerifyRecovery} loading={loading} icon={<Ionicons name="key-outline" size={18} color={colors.onBrand} />} />
-          <Pressable onPress={() => { setError(null); setCode(""); setOtpVisual("idle"); setPhase("staff_totp"); }}>
-            <AppText variant="label" center color={colors.brand}>Back to Authenticator</AppText>
+          <Button label="Recover & Login" onPress={handleVerifyRecovery} loading={loading}
+            disabled={recoveryCode.replace(/[^A-Z0-9]/gi, "").length < 8}
+            icon={<Ionicons name="key-outline" size={18} color={colors.onBrand} />} />
+          <Pressable accessibilityRole="button" style={styles.stepAction} disabled={loading} onPress={() => changePhase("staff_totp")}>
+            <AppText variant="label" center color={look.link}>Back to Authenticator</AppText>
           </Pressable>
         </View>
       );
@@ -461,15 +543,12 @@ export default function LoginScreen() {
     if (mode === "user") {
       return (
         <View style={styles.formGap}>
-          <View style={styles.headingBlock}>
-            <View style={[styles.iconBubble, { backgroundColor: look.iconSurface, borderColor: look.tabOutline }]}>
-              <Ionicons name="phone-portrait-outline" size={24} color={look.selectedIcon} />
-            </View>
-            <AppText variant="heading" center>Welcome back</AppText>
-            <AppText variant="bodyMuted" center>Secure access to Track My RMC</AppText>
-          </View>
-          <View style={[styles.phoneInputWrap, { borderColor: error ? colors.error : look.fieldOutline, backgroundColor: look.field }]}>
-            <View style={[styles.prefix, { borderRightColor: colors.border, backgroundColor: look.prefix }]}><AppText style={styles.prefixText}>{mobile.startsWith("+") ? "INTL" : "+91"}</AppText></View>
+          {renderHeading("phone-portrait-outline", "Welcome back", "Secure access to Track My RMC")}
+          <View style={[
+            styles.phoneInputWrap,
+            { borderColor: error ? colors.error : phoneFocused ? look.tabOutline : look.fieldOutline, backgroundColor: look.field },
+          ]}>
+            <View style={[styles.prefix, { borderRightColor: look.fieldOutline, backgroundColor: look.prefix }]}><AppText style={styles.prefixText}>{mobile.startsWith("+") ? "INTL" : "+91"}</AppText></View>
             <TextInput
               testID="login-mobile-input"
               value={mobile}
@@ -479,26 +558,26 @@ export default function LoginScreen() {
               placeholderTextColor={look.placeholder}
               keyboardType="phone-pad"
               inputMode="tel"
-              maxLength={16}
+              autoComplete="tel"
+              editable={!loading}
+              onFocus={() => setPhoneFocused(true)}
+              onBlur={() => setPhoneFocused(false)}
+              selectionColor={look.link}
+              onSubmitEditing={handleSendUserOtp}
+              maxLength={24}
               style={[styles.phoneInput, { color: colors.onSurface }]}
             />
           </View>
           {sessionMessage ? <AppText testID="login-session-message" variant="caption" color={colors.error}>{sessionMessage}</AppText> : null}
-          {error ? <AppText variant="caption" color={colors.error}>{error}</AppText> : null}
-          <Button label="CONTINUE" onPress={handleSendUserOtp} loading={loading} disabled={!loginPhone(mobile)} icon={<Ionicons name="shield-checkmark-outline" size={19} color={loading || !loginPhone(mobile) ? colors.disabledContent : colors.onBrand} />} />
+          {error ? <AppText accessibilityLiveRegion="polite" variant="caption" color={colors.error}>{error}</AppText> : null}
+          {renderContinue("login-send-otp", "CONTINUE", Boolean(loginPhone(mobile)), handleSendUserOtp)}
         </View>
       );
     }
 
     return (
       <View style={styles.formGap}>
-        <View style={styles.headingBlock}>
-          <View style={[styles.iconBubble, { backgroundColor: look.iconSurface, borderColor: look.tabOutline }]}>
-            <Ionicons name="business-outline" size={24} color={look.selectedIcon} />
-          </View>
-          <AppText variant="heading" center>Plant Staff Secure Login</AppText>
-          <AppText variant="bodyMuted" center>Use your approved work email.</AppText>
-        </View>
+        {renderHeading("business-outline", "Plant Staff Secure Login", "Use your approved work email.")}
         <Input
           testID="login-plant-email-input"
           label="Enter Registered Work Email"
@@ -508,6 +587,9 @@ export default function LoginScreen() {
           keyboardType="email-address"
           autoCapitalize="none"
           autoCorrect={false}
+          autoComplete="email"
+          editable={!loading}
+          onSubmitEditing={handleStartPlantLogin}
           error={error}
         />
         <Pressable
@@ -516,6 +598,7 @@ export default function LoginScreen() {
           accessibilityLabel="Register As Plant Owner"
           accessibilityHint="Opens the Plant Owner registration request and prefills the email if entered"
           onPress={openOnboarding}
+          disabled={loading}
           style={({ pressed }) => [
             styles.onboardingLink,
             {
@@ -542,23 +625,7 @@ export default function LoginScreen() {
             <Ionicons name="arrow-forward" size={18} color={colors.isDark ? "#BBF7D0" : "#166534"} />
           </LinearGradient>
         </Pressable>
-        <Button testID="login-plant-send-otp" label="Continue Securely" onPress={handleStartPlantLogin} loading={loading} disabled={!validEmail(plantEmail)} icon={<Ionicons name="shield-checkmark-outline" size={18} color={colors.onBrand} />} />
-        <View style={styles.altAuthRow}>
-          <View style={[styles.altAuthCard, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-            <Ionicons name="key-outline" size={18} color={colors.brand} />
-            <View style={styles.altAuthText}>
-              <AppText variant="label">Authenticator</AppText>
-              <AppText variant="caption" color={colors.onSurfaceTertiary}>Available after approved email</AppText>
-            </View>
-          </View>
-          <View style={[styles.altAuthCard, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-            <Ionicons name="finger-print-outline" size={18} color={colors.brand} />
-            <View style={styles.altAuthText}>
-              <AppText variant="label">Passkey</AppText>
-              <AppText variant="caption" color={colors.onSurfaceTertiary}>Trusted-device verification</AppText>
-            </View>
-          </View>
-        </View>
+        {renderContinue("login-plant-send-otp", "Continue Securely", validEmail(plantEmail), handleStartPlantLogin)}
         {onboardingRequired ? (
           <View style={[styles.onboardingCard, { borderColor: `${colors.brand}55`, backgroundColor: colors.brandSoft }]}> 
             <AppText style={styles.onboardingTitle}>Welcome to TrackMyRMC</AppText>
@@ -590,29 +657,30 @@ export default function LoginScreen() {
             contentFit="contain"
             contentPosition="center"
             priority="high"
+            accessibilityLabel="Track My RMC. Secure access for concrete operations."
+            accessible
             cachePolicy="memory-disk"
             transition={0}
           />
-          <Pressable accessibilityRole="button" accessibilityLabel="Switch light or dark mode"
-            testID="login-theme-toggle" onPress={toggle} style={styles.themeButton}>
-            <Ionicons name={colors.isDark ? "sunny-outline" : "moon-outline"} size={20} color="#FFFFFF" />
-          </Pressable>
         </View>
-        <LinearGradient pointerEvents="none" colors={[look.heroJoin, colors.canvas, look.canvas]}
-          locations={colors.isDark ? [0, 0.24, 1] : [0, 0.74, 1]} style={styles.heroFade} />
+        <LinearGradient pointerEvents="none" colors={look.heroFade}
+          locations={[0, 0.8, 1]} style={styles.heroFade} />
 
-        <View testID="login-card" style={[styles.loginShell, { backgroundColor: colors.surfaceSecondary, shadowColor: colors.shadow }]}>
+        <View testID="login-card" style={[styles.loginShell, compact && styles.compactShell, { shadowColor: colors.shadow }]}>
           <LinearGradient pointerEvents="none" colors={look.card} style={styles.sheetFill}
             start={{ x: 0, y: 0 }} end={{ x: 0.9, y: 1 }} />
+          <LinearGradient pointerEvents="none" colors={look.cardHighlight} locations={[0, 0.56, 1]}
+            start={{ x: 0, y: 0 }} end={{ x: 0.34, y: 0.16 }} style={styles.sheetFill} />
           <Svg width="100%" height="100%" pointerEvents="none" style={StyleSheet.absoluteFill} aria-hidden accessible={false}>
             <Defs>
-              <SvgGradient id="loginCardRim" x1="0%" y1="0%" x2="98%" y2="55%" gradientUnits="objectBoundingBox">
+              <SvgGradient id="loginCardRim" x1="0%" y1="0%" x2="100%" y2="100%">
                 <Stop offset="0" stopColor={look.rim[0]} />
-                <Stop offset="0.3" stopColor={look.rim[1]} />
-                <Stop offset="1" stopColor={look.rim[2]} />
+                <Stop offset="0.19" stopColor={look.rim[1]} />
+                <Stop offset="0.63" stopColor={look.rim[2]} />
+                <Stop offset="1" stopColor={look.rim[1]} />
               </SvgGradient>
             </Defs>
-            <Rect width="100%" height="100%" rx={28} fill="none" stroke="url(#loginCardRim)" strokeWidth={2} />
+            <Rect width="100%" height="100%" rx={CARD_RADIUS} fill="none" stroke="url(#loginCardRim)" strokeWidth={2} />
           </Svg>
 
           <View accessibilityRole="tablist" style={[styles.segmented, { backgroundColor: look.rail, borderColor: look.railOutline }]}>
@@ -623,7 +691,8 @@ export default function LoginScreen() {
               const selected = mode === key;
               return (
                 <Pressable key={key} testID={testID}
-                  accessibilityRole="tab" accessibilityLabel={label} accessibilityState={{ selected }} aria-selected={selected} onPress={() => resetEntry(key)}
+                  accessibilityRole="tab" accessibilityLabel={label} accessibilityState={{ selected, disabled: loading }} aria-selected={selected} disabled={loading}
+                  onPress={() => { if (!selected) resetEntry(key); }}
                   style={[styles.segment, selected && { borderColor: look.tabOutline }]}>
                   {selected ? <LinearGradient pointerEvents="none" colors={look.tab}
                     start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} /> : null}
@@ -644,14 +713,13 @@ export default function LoginScreen() {
                   <Pressable
                     key={item.role}
                     disabled={loading}
-                    onPress={async () => {
+                    onPress={() => void runLoginAction(async () => {
                       try {
-                        const me = await demoLogin(item.role);
-                        router.replace(roleRouteFor(me.role) as any);
-                      } catch (e: any) {
-                        setError(e.detail || "Demo login is unavailable");
+                        await finishLogin(await demoLogin(item.role));
+                      } catch (error) {
+                        setError(apiErrorDetail(error, "Demo login is unavailable"));
                       }
-                    }}
+                    })}
                     style={[styles.demoChip, { borderColor: colors.border }]}
                   >
                     <AppText variant="caption">{item.label}</AppText>
@@ -670,8 +738,9 @@ export default function LoginScreen() {
             testID="login-review-access"
             accessibilityRole="button"
             accessibilityLabel="Google Play Reviewer Access"
+            disabled={loading}
             onPress={() => router.push("/review-access")}
-            style={[styles.reviewAccess, { backgroundColor: colors.surfaceSecondary, borderColor: colors.controlOutline }]}
+            style={[styles.reviewAccess, { backgroundColor: look.reviewerSurface, borderColor: look.fieldOutline }]}
           >
             <Ionicons name="shield-checkmark-outline" size={20} color={look.reviewer} />
             <AppText variant="caption" style={[styles.reviewAccessLabel, { color: colors.onSurface }]}>Google Play Reviewer Access</AppText>
@@ -679,22 +748,32 @@ export default function LoginScreen() {
 
           <View style={styles.legalArea}>
             <AppText variant="caption" center color={colors.onSurfaceSecondary}>
-              {"By clicking on Login, I accept the "}
+              {"By clicking on Login, I accept the\u00A0"}
               <AppText testID="login-terms-link" variant="caption" style={styles.legalLink} color={look.link}
-                onPress={() => router.push("/terms" as any)}>Terms & Conditions</AppText>
+                accessibilityRole="link" onPress={() => { if (!requestInFlight.current) router.push("/terms"); }}>Terms & Conditions</AppText>
               {" & "}
               <AppText testID="login-privacy-link" variant="caption" style={styles.legalLink} color={look.privacy}
-                onPress={() => void openExternal(PRIVACY_POLICY_URL)}>Privacy Policy</AppText>
+                accessibilityRole="link" onPress={() => { if (!requestInFlight.current) void openExternal(PRIVACY_POLICY_URL); }}>Privacy Policy</AppText>
             </AppText>
 
             <Pressable testID="login-delete-account" accessibilityRole="link" accessibilityLabel="Delete Account"
-              style={styles.deleteLink} onPress={() => void openExternal(ACCOUNT_DELETION_URL)}>
+              style={styles.deleteLink} disabled={loading} onPress={() => void openExternal(ACCOUNT_DELETION_URL)}>
               <Ionicons name="trash-outline" size={16} color={look.delete} />
               <AppText variant="caption" color={look.delete}>Delete Account</AppText>
             </Pressable>
           </View>
 
-          <AppText variant="caption" center color={colors.onSurfaceTertiary}>Powered by <AppText variant="label">Gold e Tech</AppText></AppText>
+          <AppText variant="caption" center color={colors.onSurfaceTertiary} style={styles.credit}>
+            {"Powered by\u00A0"}<AppText variant="label" color={colors.onSurface}>Gold e Tech</AppText>
+          </AppText>
+        </View>
+        <View style={[styles.utilityRow, compact && styles.compactUtilityRow]}>
+          <SupportWidgetBridge />
+          <Pressable accessibilityRole="button" accessibilityLabel="Switch light or dark mode"
+            testID="login-theme-toggle" onPress={toggle}
+            style={[styles.themeButton, { backgroundColor: look.rail, borderColor: look.railOutline }]}>
+            <Ionicons name={colors.isDark ? "sunny-outline" : "moon-outline"} size={19} color={look.inactive} />
+          </Pressable>
         </View>
       </KeyboardAwareScrollView>
     </View>
@@ -715,33 +794,36 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   loginShell: {
-    width: "92%",
-    maxWidth: 470,
-    marginTop: -16,
-    borderRadius: 28,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.lg,
-    paddingTop: spacing.lg,
-    gap: spacing.lg,
+    width: "88%",
+    maxWidth: 420,
+    marginTop: -7,
+    borderRadius: CARD_RADIUS,
+    paddingHorizontal: 17,
+    paddingBottom: 17,
+    paddingTop: 22,
+    gap: 16,
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.14,
     shadowRadius: 28,
     elevation: 8,
   },
-  heroFade: { width: "100%", maxWidth: 760, height: 36 },
-  sheetFill: { ...StyleSheet.absoluteFillObject, borderRadius: 28 },
-  themeButton: { position: "absolute", left: 10, top: 8, width: 44, height: 44, borderRadius: 22,
-    alignItems: "center", justifyContent: "center", backgroundColor: "rgba(18,18,18,0.68)" },
+  compactShell: { width: "92%", paddingHorizontal: 12 },
+  heroFade: { width: "100%", maxWidth: 760, height: 12 },
+  sheetFill: { ...StyleSheet.absoluteFillObject, borderRadius: CARD_RADIUS },
+  utilityRow: { width: "88%", maxWidth: 420, marginTop: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between", zIndex: 1 },
+  compactUtilityRow: { width: "92%" },
+  themeButton: { marginLeft: "auto", width: 44, height: 44, borderRadius: 22, borderWidth: 1,
+    alignItems: "center", justifyContent: "center" },
   segmented: {
     flexDirection: "row",
     borderWidth: 1,
     borderRadius: 18,
-    padding: 5,
-    gap: 5,
+    padding: 3,
+    gap: 3,
   },
   segment: {
     flex: 1,
-    minHeight: 48,
+    minHeight: 44,
     borderWidth: 1,
     borderColor: "transparent",
     borderRadius: 14,
@@ -750,23 +832,36 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: spacing.xs,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: 4,
   },
-  segmentLabel: { fontFamily: fonts.semibold, fontSize: fontSize.sm, letterSpacing: 0.2 },
-  formGap: { gap: spacing.md },
-  headingBlock: { alignItems: "center", gap: spacing.xs, paddingVertical: spacing.xs },
-  iconBubble: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  segmentLabel: { flexShrink: 1, textAlign: "center", fontFamily: fonts.semibold, fontSize: fontSize.sm, lineHeight: 17 },
+  formGap: { gap: 11 },
+  headingBlock: { alignItems: "center", gap: 2, paddingBottom: 5 },
+  stepAction: { minHeight: 44, justifyContent: "center", paddingHorizontal: 6 },
+  setupKey: { alignSelf: "center", textAlign: "center" },
+  recoveryCodes: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: spacing.md },
+  continueButton: {
+    minHeight: 48,
     borderWidth: 1,
+    borderRadius: 15,
+    overflow: "hidden",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: spacing.xs,
+    gap: 7,
+    paddingHorizontal: spacing.md,
+  },
+  continueLabel: { fontFamily: fonts.semibold, fontSize: fontSize.base },
+  iconBubble: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 5,
   },
   phoneInputWrap: {
-    height: 56,
-    maxHeight: 56,
+    minHeight: 48,
     borderWidth: 1,
     borderRadius: 16,
     flexDirection: "row",
@@ -775,8 +870,8 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   prefix: {
-    height: 56,
-    minWidth: 62,
+    alignSelf: "stretch",
+    minWidth: 54,
     alignItems: "center",
     justifyContent: "center",
     borderRightWidth: 1,
@@ -784,8 +879,9 @@ const styles = StyleSheet.create({
   prefixText: { fontFamily: fonts.semibold },
   phoneInput: {
     flex: 1,
-    height: 56,
-    paddingHorizontal: spacing.md,
+    minWidth: 0,
+    minHeight: 46,
+    paddingHorizontal: 10,
     fontFamily: fonts.regular,
     fontSize: fontSize.base,
   },
@@ -794,7 +890,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     gap: 6,
-    marginTop: -2,
+    marginTop: 3,
   },
   onboardingLink: {
     width: "100%",
@@ -822,26 +918,14 @@ const styles = StyleSheet.create({
     fontSize: fontSize.base,
     textAlign: "center",
   },
-  altAuthRow: { flexDirection: "row", gap: spacing.sm },
-  altAuthCard: {
-    flex: 1,
-    minHeight: 62,
-    borderWidth: 1,
-    borderRadius: 15,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  altAuthText: { flex: 1, gap: 1 },
   linkRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.md, flexWrap: "wrap" },
   onboardingCard: { borderWidth: 1, borderRadius: radius.lg, padding: spacing.md, gap: spacing.sm, alignItems: "center" },
   onboardingTitle: { fontFamily: fonts.bold, fontSize: fontSize.lg },
   demoBox: { borderWidth: 1, borderRadius: radius.lg, padding: spacing.md, gap: spacing.sm },
   demoRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, justifyContent: "center" },
   demoChip: { borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  legalArea: { gap: spacing.xs },
+  legalArea: { gap: 2, paddingTop: 2 },
+  credit: { marginTop: 2 },
   legalLink: { fontFamily: fonts.semibold, textDecorationLine: "underline" },
   deleteLink: { minHeight: 44, alignSelf: "center", paddingHorizontal: 10, flexDirection: "row",
     alignItems: "center", justifyContent: "center", gap: 5 },

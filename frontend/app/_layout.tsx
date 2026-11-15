@@ -17,7 +17,6 @@ import { AuthProvider } from "@/src/auth/AuthContext";
 import { ToastProvider } from "@/src/components/ui/Toast";
 import { PushNotificationBridge } from "@/src/notifications/PushNotificationBridge";
 import { BackgroundLocationConsentProvider } from "@/src/location/BackgroundLocationConsent";
-import { SupportWidgetBridge } from "@/src/support/SupportWidgetBridge";
 import { PermissionProvider } from "@/src/permissions/PermissionProvider";
 import { RootBackHandler } from "@/src/navigation/RootBackHandler";
 
@@ -77,7 +76,6 @@ export default function RootLayout() {
                     <PermissionProvider>
                       <RootBackHandler />
                       <ThemedNavigator />
-                      <SupportWidgetBridge />
                     </PermissionProvider>
                   </ToastProvider>
                 </AuthProvider>

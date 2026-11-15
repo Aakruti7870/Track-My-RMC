@@ -36,7 +36,7 @@ describe("optimized login banner assets and non-cropping layout", () => {
   });
 
   it("retains login card width, hero seam, and existing options", () => {
-    assert.match(screen, /loginShell:\s*\{\s*width:\s*"92%",\s*maxWidth:\s*470,\s*marginTop:\s*-16/);
+    assert.match(screen, /loginShell:\s*\{\s*width:\s*"88%",\s*maxWidth:\s*420,\s*marginTop:\s*-7/);
     assert.match(screen, /key: "user", testID: "login-user-tab".*label: "USER LOGIN"/);
     assert.match(screen, /key: "plant", testID: "login-plant-tab".*label: "PLANT STAFF"/);
     assert.ok(screen.includes('testID="login-review-access"'));
@@ -44,7 +44,7 @@ describe("optimized login banner assets and non-cropping layout", () => {
   it("links the Plant Staff work email to the new Plant Owner registration form", () => {
     const label = screen.indexOf('label="Enter Registered Work Email"');
     const link = screen.indexOf('testID="login-open-onboarding-form"');
-    const submit = screen.indexOf('testID="login-plant-send-otp"');
+    const submit = screen.indexOf('renderContinue("login-plant-send-otp"');
     assert.ok(label >= 0, "Plant Staff email label should be updated");
     assert.ok(label < link && link < submit, "Onboarding link must appear directly after the email field and before login submit");
     assert.ok(screen.includes('accessibilityRole="button"'));

@@ -4,6 +4,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  type TextInputProps,
   View,
 } from "react-native";
 
@@ -24,6 +25,8 @@ type Props = {
   editable?: boolean;
   autoCapitalize?: "none" | "sentences" | "words" | "characters";
   autoCorrect?: boolean;
+  autoComplete?: TextInputProps["autoComplete"];
+  onSubmitEditing?: TextInputProps["onSubmitEditing"];
   secureTextEntry?: boolean;
   center?: boolean;
   leftAdornment?: React.ReactNode;
@@ -45,6 +48,8 @@ export const Input = forwardRef<TextInput, Props>(function Input({
   editable = true,
   autoCapitalize = "none",
   autoCorrect = false,
+  autoComplete,
+  onSubmitEditing,
   secureTextEntry = false,
   center = false,
   leftAdornment,
@@ -96,6 +101,8 @@ export const Input = forwardRef<TextInput, Props>(function Input({
           editable={editable}
           autoCapitalize={autoCapitalize}
           autoCorrect={autoCorrect}
+          autoComplete={autoComplete}
+          onSubmitEditing={onSubmitEditing}
           secureTextEntry={secureTextEntry}
           accessibilityLabel={label || placeholder || "Input field"}
           accessibilityState={{ disabled: !editable }}

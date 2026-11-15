@@ -98,17 +98,24 @@ jobs:
         run: |
           npm ci --prefix ../admin-web
           node ../admin-web/node_modules/playwright/cli.js install --with-deps chromium
-      - name: Verify Customer Home at mobile and desktop widths
+      - name: Verify login and role dashboards at mobile and desktop widths
         run: |
           python3 -m http.server 8765 --directory dist > /tmp/home-preview-server.log 2>&1 &
           SERVER_PID=$!
           trap 'kill "$SERVER_PID"' EXIT
+          node scripts/test-login-browser.cjs
           node scripts/test-order-form-browser.cjs
           node scripts/test-home-tracking-browser.cjs
           node scripts/test-customer-header-browser.cjs
           node scripts/test-owner-dashboard-browser.cjs
           node scripts/test-staff-dashboard-browser.cjs
           node scripts/test-driver-trips-browser.cjs
+      - name: Upload login browser previews
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: login-browser-previews
+          path: frontend/login-previews/
       - name: Upload customer order form previews
         if: always()
         uses: actions/upload-artifact@v4

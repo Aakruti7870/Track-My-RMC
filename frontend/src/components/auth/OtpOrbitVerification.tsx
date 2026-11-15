@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
+import { useTheme } from "@/src/theme/ThemeProvider";
 import { AppText } from "@/src/components/ui/AppText";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 
@@ -20,6 +21,7 @@ type Props = {
   onChangeText: (value: string) => void;
   onComplete: (value: string) => void;
   state: OtpVisualState;
+  busy?: boolean;
   title: string;
   subtitle: string;
   errorText?: string | null;
@@ -72,6 +74,7 @@ export function OtpOrbitVerification({
   onChangeText,
   onComplete,
   state,
+  busy = false,
   title,
   subtitle,
   errorText,
@@ -83,6 +86,8 @@ export function OtpOrbitVerification({
   testID,
   colors,
 }: Props) {
+  const { reduceMotion } = useTheme();
+  const [availableWidth, setAvailableWidth] = useState(CANVAS_WIDTH);
   const inputRef = useRef<TextInput>(null);
   const assembly = useRef(new Animated.Value(0)).current;
   const turn = useRef(new Animated.Value(0)).current;
@@ -105,7 +110,7 @@ export function OtpOrbitVerification({
   );
 
   useEffect(() => {
-    if (state === "checking") {
+    if (state === "checking" && !reduceMotion) {
       checkingSpin.setValue(0);
       const animation = Animated.loop(
         Animated.timing(checkingSpin, {
@@ -120,7 +125,7 @@ export function OtpOrbitVerification({
     }
     checkingSpin.stopAnimation();
     return undefined;
-  }, [checkingSpin, state]);
+  }, [checkingSpin, reduceMotion, state]);
 
   useEffect(() => {
     if (state === "error") {
@@ -131,6 +136,7 @@ export function OtpOrbitVerification({
       collapse.setValue(0);
       setAnimating(false);
       shake.setValue(0);
+      if (reduceMotion) return;
       Animated.sequence([
         Animated.timing(shake, { toValue: -7, duration: 70, useNativeDriver: true }),
         Animated.timing(shake, { toValue: 7, duration: 90, useNativeDriver: true }),
@@ -138,10 +144,14 @@ export function OtpOrbitVerification({
         Animated.timing(shake, { toValue: 0, duration: 70, useNativeDriver: true }),
       ]).start();
     }
-  }, [assembly, collapse, shake, state, turn]);
+  }, [assembly, collapse, reduceMotion, shake, state, turn]);
 
   useEffect(() => {
     if (state === "success") {
+      if (reduceMotion) {
+        successScale.setValue(1);
+        return;
+      }
       successScale.setValue(0.82);
       Animated.spring(successScale, {
         toValue: 1,
@@ -151,10 +161,11 @@ export function OtpOrbitVerification({
         useNativeDriver: true,
       }).start();
     }
-  }, [state, successScale]);
+  }, [reduceMotion, state, successScale]);
 
   useEffect(() => {
-    if (state !== "idle") return;
+    if (state === "error" || value.length < OTP_LENGTH) lastCompleted.current = "";
+    if (state !== "idle" || busy) return;
 
     if (value.length < OTP_LENGTH) {
       lastCompleted.current = "";
@@ -170,6 +181,11 @@ export function OtpOrbitVerification({
     if (value.length !== OTP_LENGTH || value === lastCompleted.current || animationRef.current) return;
 
     lastCompleted.current = value;
+    if (reduceMotion) {
+      completeRef.current(value);
+      return;
+    }
+
     setAnimating(true);
     inputRef.current?.blur();
     assembly.setValue(0);
@@ -208,8 +224,10 @@ export function OtpOrbitVerification({
       animationRef.current?.stop();
       animationRef.current = null;
     };
-  }, [assembly, collapse, state, turn, value]);
+  }, [assembly, busy, collapse, reduceMotion, state, turn, value]);
 
+  const editable = !busy && !animating && (state === "idle" || state === "error");
+  const canvasScale = Math.min(1, availableWidth / CANVAS_WIDTH);
   const sanitize = (text: string) => text.replace(/\D/g, "").slice(0, OTP_LENGTH);
   const canvasRotate = turn.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
   const checkingRotate = checkingSpin.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
@@ -237,8 +255,9 @@ export function OtpOrbitVerification({
   }
 
   return (
-    <Pressable onPress={() => !animating && state === "idle" && inputRef.current?.focus()}>
+    <Pressable accessible={false} onPress={() => { if (editable) inputRef.current?.focus(); }}>
       <Animated.View
+        testID={testID ? `${testID}-card` : undefined}
         style={[
           styles.card,
           {
@@ -261,7 +280,7 @@ export function OtpOrbitVerification({
           inputMode="numeric"
           maxLength={OTP_LENGTH}
           autoFocus={autoFocus}
-          editable={state === "idle" && !animating}
+          editable={editable}
           autoComplete={Platform.OS === "android" ? "sms-otp" : "one-time-code"}
           textContentType="oneTimeCode"
           importantForAutofill="yes"
@@ -269,94 +288,108 @@ export function OtpOrbitVerification({
           accessibilityLabel="Six digit verification code"
         />
 
-        <View style={styles.canvas}>
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              styles.orbitRing,
-              {
-                borderColor: state === "error" ? `${ERROR}66` : `${colors.brand}66`,
-                opacity: Animated.multiply(orbitOpacity, collapseOpacity),
-              },
-            ]}
-          />
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              styles.hub,
-              {
-                backgroundColor: state === "error" ? ERROR : colors.brand,
-                opacity: orbitOpacity,
-              },
-            ]}
-          />
-
-          <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ rotate: canvasRotate }] }]}>
-            {digits.map((digit, index) => {
-              const row = rowPositions[index];
-              const orbit = orbitPositions[index];
-              const centerLeft = CENTER_X - SLOT / 2;
-              const centerTop = CENTER_Y - SLOT / 2;
-              const translateX = Animated.add(
-                assembly.interpolate({ inputRange: [0, 1], outputRange: [0, orbit.left - row.left] }),
-                collapse.interpolate({ inputRange: [0, 1], outputRange: [0, centerLeft - orbit.left] }),
-              );
-              const translateY = Animated.add(
-                assembly.interpolate({ inputRange: [0, 1], outputRange: [0, orbit.top - row.top] }),
-                collapse.interpolate({ inputRange: [0, 1], outputRange: [0, centerTop - orbit.top] }),
-              );
-              const slotRotate = assembly.interpolate({ inputRange: [0, 1], outputRange: ["0deg", orbit.rotate] });
-              const slotScale = collapse.interpolate({ inputRange: [0, 1], outputRange: [1, 0.32] });
-              const slotOpacity = collapse.interpolate({ inputRange: [0, 1], outputRange: [1, 0.25] });
-              const hasDigit = Boolean(digit);
-              const activeBorder = state === "error" ? ERROR : hasDigit ? colors.brand : colors.border;
-
-              return (
-                <Animated.View
-                  key={index}
-                  style={[
-                    styles.slot,
-                    {
-                      left: row.left,
-                      top: row.top,
-                      borderColor: activeBorder,
-                      backgroundColor: state === "error" ? `${ERROR}12` : colors.surface,
-                      opacity: slotOpacity,
-                      transform: [
-                        { translateX },
-                        { translateY },
-                        { rotate: slotRotate },
-                        { scale: slotScale },
-                      ],
-                    },
-                  ]}
-                >
-                  <AppText style={[styles.digit, { color: state === "error" ? ERROR : colors.onSurface }]}>{digit}</AppText>
-                </Animated.View>
-              );
-            })}
-          </Animated.View>
-
-          {state === "checking" ? (
+        <View
+          testID={testID ? `${testID}-slots` : undefined}
+          onLayout={(event) => setAvailableWidth(event.nativeEvent.layout.width)}
+          style={[styles.canvasViewport, { height: CANVAS_HEIGHT * canvasScale }]}
+          pointerEvents="none"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          aria-hidden
+        >
+          <View style={[styles.canvas, {
+            left: (availableWidth - CANVAS_WIDTH) / 2,
+            top: (CANVAS_HEIGHT * canvasScale - CANVAS_HEIGHT) / 2,
+            transform: [{ scale: canvasScale }],
+          }]}>
             <Animated.View
+              pointerEvents="none"
               style={[
-                styles.checkingDot,
+                styles.orbitRing,
                 {
-                  borderColor: `${SUCCESS}44`,
-                  borderTopColor: SUCCESS,
-                  transform: [{ rotate: checkingRotate }],
+                  borderColor: state === "error" ? `${ERROR}66` : `${colors.brand}66`,
+                  opacity: Animated.multiply(orbitOpacity, collapseOpacity),
                 },
               ]}
             />
-          ) : null}
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.hub,
+                {
+                  backgroundColor: state === "error" ? ERROR : colors.brand,
+                  opacity: orbitOpacity,
+                },
+              ]}
+            />
+
+            <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ rotate: canvasRotate }] }]}>
+              {digits.map((digit, index) => {
+                const row = rowPositions[index];
+                const orbit = orbitPositions[index];
+                const centerLeft = CENTER_X - SLOT / 2;
+                const centerTop = CENTER_Y - SLOT / 2;
+                const translateX = Animated.add(
+                  assembly.interpolate({ inputRange: [0, 1], outputRange: [0, orbit.left - row.left] }),
+                  collapse.interpolate({ inputRange: [0, 1], outputRange: [0, centerLeft - orbit.left] }),
+                );
+                const translateY = Animated.add(
+                  assembly.interpolate({ inputRange: [0, 1], outputRange: [0, orbit.top - row.top] }),
+                  collapse.interpolate({ inputRange: [0, 1], outputRange: [0, centerTop - orbit.top] }),
+                );
+                const slotRotate = assembly.interpolate({ inputRange: [0, 1], outputRange: ["0deg", orbit.rotate] });
+                const slotScale = collapse.interpolate({ inputRange: [0, 1], outputRange: [1, 0.32] });
+                const slotOpacity = collapse.interpolate({ inputRange: [0, 1], outputRange: [1, 0.25] });
+                const hasDigit = Boolean(digit);
+                const activeBorder = state === "error" ? ERROR : hasDigit ? colors.brand : colors.border;
+
+                return (
+                  <Animated.View
+                    key={index}
+                    style={[
+                      styles.slot,
+                      {
+                        left: row.left,
+                        top: row.top,
+                        borderColor: activeBorder,
+                        backgroundColor: state === "error" ? `${ERROR}12` : colors.surface,
+                        opacity: slotOpacity,
+                        transform: [
+                          { translateX },
+                          { translateY },
+                          { rotate: slotRotate },
+                          { scale: slotScale },
+                        ],
+                      },
+                    ]}
+                  >
+                    <AppText style={[styles.digit, { color: state === "error" ? ERROR : colors.onSurface }]}>{digit}</AppText>
+                  </Animated.View>
+                );
+              })}
+            </Animated.View>
+
+            {state === "checking" ? (
+              <Animated.View
+                style={[
+                  styles.checkingDot,
+                  {
+                    borderColor: `${SUCCESS}44`,
+                    borderTopColor: SUCCESS,
+                    transform: [{ rotate: checkingRotate }],
+                  },
+                ]}
+              />
+            ) : null}
+          </View>
         </View>
 
         {animating ? (
           <AppText variant="caption" center color={colors.onSurfaceTertiary}>Verifying secure code…</AppText>
         ) : null}
 
-        {state === "error" ? (
-          <AppText style={[styles.errorText, { color: ERROR }]} center>{errorText || "Incorrect OTP. Please try again."}</AppText>
+        {errorText ? (
+          <AppText accessibilityLiveRegion="polite" style={[styles.errorText, { color: colors.error }]} center>{errorText}</AppText>
         ) : null}
 
         {onResend ? (
@@ -365,7 +398,7 @@ export function OtpOrbitVerification({
             {countdown > 0 ? (
               <AppText variant="caption">Resend in {countdown}s</AppText>
             ) : (
-              <Pressable onPress={onResend} hitSlop={10} disabled={animating || state === "checking"}>
+              <Pressable accessibilityRole="button" onPress={onResend} hitSlop={10} disabled={!editable}>
                 <AppText style={[styles.resendLink, { color: colors.brand }]}>{resendLabel}</AppText>
               </Pressable>
             )}
@@ -391,7 +424,8 @@ const styles = StyleSheet.create({
   title: { fontFamily: fonts.bold, fontSize: fontSize.xl, textAlign: "center" },
   subtitle: { marginTop: spacing.sm, paddingHorizontal: spacing.sm },
   nativeInput: { position: "absolute", width: 2, height: 2, opacity: 0.01 },
-  canvas: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT, alignSelf: "center", marginTop: spacing.lg, marginBottom: spacing.xs },
+  canvasViewport: { overflow: "hidden" },
+  canvas: { position: "absolute", width: CANVAS_WIDTH, height: CANVAS_HEIGHT, flexShrink: 0 },
   orbitRing: { position: "absolute", width: 152, height: 152, left: CENTER_X - 76, top: CENTER_Y - 76, borderWidth: 1.5, borderRadius: 76, borderStyle: "dashed" },
   hub: { position: "absolute", width: 8, height: 8, left: CENTER_X - 4, top: CENTER_Y - 4, borderRadius: 4 },
   slot: { position: "absolute", width: SLOT, height: SLOT, borderWidth: 1.5, borderRadius: radius.lg, alignItems: "center", justifyContent: "center" },
