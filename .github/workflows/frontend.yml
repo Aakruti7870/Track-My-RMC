@@ -26,6 +26,8 @@ jobs:
         run: npm ci
       - name: Type Check
         run: npm run typecheck
+      - name: Lint frontend JSX and hooks
+        run: npm run lint
       - name: Shared UI, responsive controls and consent-sheet regressions
         run: node --test scripts/test-uiux-foundation.cjs
       - name: Inventory all Expo routes and shared UI patterns
