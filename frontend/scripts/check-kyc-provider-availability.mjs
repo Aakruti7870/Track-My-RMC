@@ -8,8 +8,8 @@ const kyc = fs.readFileSync(path.join("app", "kyc.tsx"), "utf8");
 const login = fs.readFileSync(path.join("src", "screens", "LoginScreen.tsx"), "utf8");
 assert(kyc.includes('data?.provider === "unavailable"'), "KYC screen must honor backend provider availability");
 assert(kyc.includes('if (!token || providerUnavailable) return;'), "KYC initiation must not call a disabled provider");
-assert(kyc.includes('testID="kyc-unavailable"'), "KYC unavailable state needs explicit feedback");
-assert(kyc.includes('testID="kyc-refresh-availability"'), "KYC unavailable state needs a safe retry");
+assert(kyc.includes('providerUnavailable ? "kyc-unavailable" : "kyc-status"'), "KYC unavailable state needs explicit feedback");
+assert(kyc.includes('id: "kyc-refresh-availability", label: "Check DigiLocker Availability", run: refreshStatus'), "KYC unavailable state needs a safe retry");
 assert(kyc.includes('!providerUnavailable && status === "IN_PROGRESS"'), "KYC must not duplicate disabled-provider actions");
 for (const file of ["TrackMyRMC_Login_Top_Banner_light.webp", "TrackMyRMC_Login_Top_Banner_Dark.webp"]) {
   assert(fs.existsSync(path.join("assets", "images", file)), `Missing login image: ${file}`);

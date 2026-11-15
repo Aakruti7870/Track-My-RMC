@@ -1,22 +1,36 @@
-import React from "react";
+import React, { useCallback } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/src/auth/AuthContext";
+import { formatAccountMobile } from "@/src/auth/phone";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { ThemedScreen } from "@/src/components/ThemedScreen";
 import { AppText } from "@/src/components/ui/AppText";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { Card } from "@/src/components/ui/Card";
 import { Badge } from "@/src/components/ui/Badge";
+import { Button } from "@/src/components/ui/Button";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 import { modulesForRole } from "@/src/navigation/moduleCatalog";
 import { usePermissions } from "@/src/permissions/PermissionProvider";
 
-// Customer More is a five-link settings/documentation menu, not the full
-// role directory. Keep the shared catalog intact for authorization and Home.
+const KYC_LABELS: Record<string, string> = {
+  VERIFIED: "KYC verified",
+  PENDING: "KYC pending",
+  IN_PROGRESS: "KYC in progress",
+  MOBILE_MISMATCH: "Mobile numbers differ",
+  REVIEW_NEEDED: "KYC needs attention",
+  PROFILE_INCOMPLETE: "KYC needs attention",
+  DOCUMENT_NOT_SHARED: "Aadhaar consent needed",
+  DOCUMENT_UNAVAILABLE: "Aadhaar unavailable",
+  REJECTED: "KYC needs attention",
+  REQUIRES_REVERIFICATION: "KYC retry needed",
+  NOT_STARTED: "KYC not started",
+};
+
 const CUSTOMER_MORE_KEYS = [
   "account-deletion",
   "customer-support",
@@ -27,12 +41,21 @@ const CUSTOMER_MORE_KEYS = [
 export default function CustomerMore() {
   const { review } = usePermissions();
   const { colors, scheme, toggle } = useTheme();
-  const { user, signOut } = useAuth();
+  const { user, signOut, refreshMe } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const kycVerified = user?.kyc_status === "VERIFIED";
-  const mobile = user?.phone || user?.mobile;
+  useFocusEffect(useCallback(() => {
+    void refreshMe();
+  }, [refreshMe]));
+
+  const accountStatus = user?.kyc_status || "NOT_STARTED";
+  const kycVerified = accountStatus === "VERIFIED";
+  const status = accountStatus === "NOT_STARTED"
+    ? user?.kyc_attempt_status || accountStatus
+    : accountStatus;
+  const mobile = formatAccountMobile(user?.phone || user?.mobile);
   const verifiedName = kycVerified ? user?.verified_name?.trim() : null;
+  const displayName = verifiedName || (user?.needs_kyc_name ? null : user?.name?.trim()) || "Customer";
   const customerModules = modulesForRole(user?.role);
   const moreModules = CUSTOMER_MORE_KEYS.flatMap(key => customerModules.filter(module => module.key === key));
 
@@ -43,107 +66,92 @@ export default function CustomerMore() {
 
   return (
     <ThemedScreen>
-    <View style={{ flex: 1, backgroundColor: colors.surface }}>
-      <View style={{ height: insets.top }} />
-      <ScrollView
-        contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120, gap: spacing.lg }}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <VectorSymbol name="settings" size={35} />
-          <AppText variant="title" style={{ flex: 1 }}>More</AppText>
-          <Pressable testID="customer-more-theme" accessibilityRole="button" accessibilityLabel="Switch light or dark mode"
-            onPress={toggle} style={styles.themeTarget}>
-            <Ionicons name={scheme === "dark" ? "sunny-outline" : "moon-outline"} size={25} color={colors.onSurface} />
-          </Pressable>
-        </View>
-        <Pressable accessibilityRole="button" onPress={review} style={{minHeight:48,justifyContent:"center"}}><View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><VectorSymbol name="permission-settings" size={33} /><AppText variant="heading">Permission settings</AppText></View></Pressable>
-
-        <Card style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-          <View style={[styles.avatar, { backgroundColor: colors.brand }]}>
-            <AppText style={{ fontFamily: fonts.displayBold, fontSize: fontSize.xl, color: colors.onBrand }}>
-              {(verifiedName || user?.name || "C").charAt(0).toUpperCase()}
-            </AppText>
-          </View>
-          <View style={{ flex: 1, gap: 4 }}>
-            <AppText variant="heading" numberOfLines={1}>{verifiedName || user?.name}</AppText>
-            <AppText variant="caption">{user?.phone || user?.email}</AppText>
-            <View style={{ flexDirection: "row", gap: spacing.xs }}>
-              <Badge label={user?.role_label || "Customer"} color={colors.brand} />
-              <Badge label={`KYC ${user?.kyc_status?.replace(/_/g, " ")}`} status={user?.kyc_status} />
-            </View>
-          </View>
-        </Card>
-
-        <View style={{ gap: spacing.sm }}>
-          <AppText variant="label">PERSONAL DETAILS</AppText>
-          <Card style={{ gap: spacing.lg }}>
-            <View style={{ gap: 4 }}>
-              <AppText variant="caption">Name</AppText>
-              <AppText variant="heading">{verifiedName || (kycVerified ? "Verified name unavailable" : "Complete DigiLocker KYC")}</AppText>
-              {verifiedName ? <Badge label="DIGILOCKER VERIFIED" status="VERIFIED" /> : null}
-            </View>
-            <View style={{ gap: 4 }}>
-              <AppText variant="caption">Mobile number</AppText>
-              <AppText variant="heading">{mobile || "Unavailable"}</AppText>
-              {mobile ? <Badge label="VERIFIED" status="VERIFIED" /> : null}
-            </View>
-            <View style={{ gap: 4 }}>
-              <AppText variant="caption">Email ID</AppText>
-              <AppText variant="heading">{user?.email || "Not added"}</AppText>
-            </View>
-            <Pressable onPress={() => router.push("/kyc?origin=profile")} style={[styles.kycAction, { borderColor: colors.brand }]}>
-              <AppText style={{ color: colors.brand, fontFamily: fonts.semibold }}>
-                {kycVerified ? "Manage KYC" : "Complete KYC"}
-              </AppText>
+      <View style={{ flex: 1, backgroundColor: colors.surface }}>
+        <View style={{ height: insets.top }} />
+        <ScrollView
+          contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120, gap: spacing.lg }}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+            <VectorSymbol name="settings" size={35} />
+            <AppText variant="title" style={{ flex: 1 }}>More</AppText>
+            <Pressable testID="customer-more-theme" accessibilityRole="button" accessibilityLabel="Switch light or dark mode"
+              onPress={toggle} style={styles.themeTarget}>
+              <Ionicons name={scheme === "dark" ? "sunny-outline" : "moon-outline"} size={25} color={colors.onSurface} />
             </Pressable>
+          </View>
+          <Pressable accessibilityRole="button" onPress={review} style={{minHeight:48,justifyContent:"center"}}><View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><VectorSymbol name="permission-settings" size={33} /><AppText variant="heading">Permission settings</AppText></View></Pressable>
+
+          <Card testID="customer-account-profile" style={{ gap: spacing.md }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+              <View style={[styles.avatar, { backgroundColor: colors.brand }]}>
+                <AppText style={{ fontFamily: fonts.displayBold, fontSize: fontSize.xl, color: colors.onBrand }}>
+                  {displayName.charAt(0).toUpperCase()}
+                </AppText>
+              </View>
+              <View style={{ flex: 1, gap: spacing.xs }}>
+                <AppText variant="heading" testID="customer-profile-name">{displayName}</AppText>
+                <AppText variant="caption" testID="customer-profile-mobile">
+                  {mobile ? `Login mobile · ${mobile}` : "Login mobile unavailable"}
+                </AppText>
+              </View>
+            </View>
+            {user?.email ? <AppText variant="caption">{`Email · ${user.email}`}</AppText> : null}
+            <Badge
+              testID="customer-profile-kyc"
+              label={KYC_LABELS[status] || "KYC needs attention"}
+              status={kycVerified || status === "NOT_STARTED" ? status : "PENDING"}
+            />
+            <Button
+              label={kycVerified ? "View KYC" : status === "NOT_STARTED" ? "Complete KYC" : "View KYC status"}
+              variant="outline"
+              onPress={() => router.push("/kyc?origin=profile")}
+            />
           </Card>
-        </View>
 
-        <View testID="role-module-directory" style={{ gap: spacing.sm }}>
-          {moreModules.map(module => (
-            <Pressable
-              key={module.key}
-              testID={`role-module-${module.key}`}
-              accessibilityRole="button"
-              accessibilityLabel={module.label}
-              onPress={() => router.push(module.route)}
-              style={({ pressed }) => [
-                styles.item,
-                {
-                  backgroundColor: colors.surfaceSecondary,
-                  borderColor: colors.border,
-                  opacity: pressed ? 0.8 : 1,
-                },
-              ]}
-            >
-              <View style={[styles.moduleIcon, { backgroundColor: colors.brandSoft }]}>
-                {module.symbol
-                  ? <VectorSymbol name={module.symbol} size={36} />
-                  : <Ionicons name={module.icon} size={19} color={colors.brand} />}
-              </View>
-              <View style={{ flex: 1, gap: 2 }}>
-                <AppText style={{ fontFamily: fonts.semibold, color: colors.onSurface }}>{module.label}</AppText>
-                <AppText variant="caption" numberOfLines={2}>{module.description}</AppText>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color={colors.onSurfaceTertiary} />
-            </Pressable>
-          ))}
-        </View>
+          <View testID="role-module-directory" style={{ gap: spacing.sm }}>
+            {moreModules.map(module => (
+              <Pressable
+                key={module.key}
+                testID={`role-module-${module.key}`}
+                accessibilityRole="button"
+                accessibilityLabel={module.label}
+                onPress={() => router.push(module.route)}
+                style={({ pressed }) => [
+                  styles.item,
+                  {
+                    backgroundColor: colors.surfaceSecondary,
+                    borderColor: colors.border,
+                    opacity: pressed ? 0.8 : 1,
+                  },
+                ]}
+              >
+                <View style={[styles.moduleIcon, { backgroundColor: colors.brandSoft }]}>
+                  {module.symbol
+                    ? <VectorSymbol name={module.symbol} size={36} />
+                    : <Ionicons name={module.icon} size={19} color={colors.brand} />}
+                </View>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <AppText style={{ fontFamily: fonts.semibold, color: colors.onSurface }}>{module.label}</AppText>
+                  <AppText variant="caption" numberOfLines={2}>{module.description}</AppText>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.onSurfaceTertiary} />
+              </Pressable>
+            ))}
+          </View>
 
-        <Card style={{ gap: 4 }}>
-          <AppText variant="label">Legal & support</AppText>
-          <AppText variant="caption">Privacy Policy, Terms of Service and official support details must use your approved business/legal content before release. No placeholder policy text is shown.</AppText>
-        </Card>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.md }}>
+            <Button label="Privacy Policy" variant="outline" fullWidth={false} onPress={() => router.push("/privacy")} />
+            <Button label="Terms of Service" variant="outline" fullWidth={false} onPress={() => router.push("/terms")} />
+          </View>
 
-        <Pressable testID="logout-button" onPress={doLogout} style={[styles.logout, { backgroundColor: colors.isDark ? "#96352D" : "#B42318" }]}>
-          <Ionicons name="log-out-outline" size={23} color="#FFFFFF" />
-          <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: "#FFFFFF" }}>Sign out</AppText>
-        </Pressable>
+          <Pressable testID="logout-button" onPress={doLogout} style={[styles.logout, { backgroundColor: colors.isDark ? "#96352D" : "#B42318" }]}>
+            <Ionicons name="log-out-outline" size={23} color="#FFFFFF" />
+            <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: "#FFFFFF" }}>Sign out</AppText>
+          </Pressable>
 
-        <AppText variant="caption" center>TrackMyRMC · 2.0.16 (74)</AppText>
-      </ScrollView>
-    </View>
+        </ScrollView>
+      </View>
     </ThemedScreen>
   );
 }
@@ -161,5 +169,4 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: radius.md,
   },
-  kycAction: { height: 44, borderRadius: radius.md, borderWidth: 1, alignItems: "center", justifyContent: "center" },
 });

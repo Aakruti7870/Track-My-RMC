@@ -45,6 +45,8 @@ export type Me = {
   status: string;
   kyc_status: string;
   verified_name?: string | null;
+  needs_kyc_name?: boolean;
+  kyc_attempt_status?: string | null;
   mfa_enabled?: boolean;
   mfa_configured?: boolean;
   passkey_enabled?: boolean;
@@ -297,7 +299,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }, []);
 
-  const refreshMe = async () => {
+  const refreshMe = useCallback(async () => {
     if (!token || signedOutLocally.current) return;
     const generation = sessionGeneration.current;
     try {
@@ -310,7 +312,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (sessionGeneration.current === generation && isApiError(error)
           && (error.status === 401 || error.status === 403)) await clearSession(error);
     }
-  };
+  }, [token, verifiedSession, clearSession]);
 
   useEffect(() => onSessionLoss((loss) => {
     if (!token || loss.token !== token || signedOutLocally.current) return;
