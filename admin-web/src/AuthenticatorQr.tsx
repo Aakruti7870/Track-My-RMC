@@ -27,7 +27,7 @@ export function AuthenticatorQr({ uri }: { uri: string }) {
   }, [uri]);
 
   if (!image) return (
-    <p role="status" style={{ color: '#fde68a' }}>
+    <p role="status" style={{ color: 'var(--tm-warning-text)' }}>
       QR code is unavailable. Use the setup key shown below.
     </p>
   );
