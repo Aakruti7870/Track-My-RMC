@@ -217,8 +217,7 @@ fs.mkdirSync(out, { recursive: true });
 
       const openInventory = async () => {
         await page.goto("http://127.0.0.1:8765/owner/");
-        await page.getByTestId("tab-operations").click();
-        await page.getByTestId("role-module-business-inventory").click();
+        await page.getByTestId("owner-shortcut-business-inventory").click();
       };
       await openInventory();
       const retry = page.getByRole("button", { name: "Retry", exact: true });
