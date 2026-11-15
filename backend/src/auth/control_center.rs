@@ -13,7 +13,12 @@ use crate::{
 use axum::{
     async_trait,
     extract::{FromRef, FromRequestParts, State},
-    http::{header::AUTHORIZATION, request::Parts, HeaderMap},
+    http::{
+        header::{AUTHORIZATION, COOKIE, ORIGIN, SET_COOKIE},
+        request::Parts,
+        HeaderMap, HeaderValue,
+    },
+    response::{IntoResponse, Response},
     Json,
 };
 use serde::Deserialize;
@@ -740,17 +745,108 @@ pub(crate) async fn rotate_password(
     Ok(Json(json!({"success":true,"session_revoked":true})))
 }
 
-pub async fn me(admin: WebAdmin) -> Json<Value> {
-    Json(
-        json!({"user":{"id":admin.user_id,"email":admin.email,"role":admin.role},"permissions":admin.permissions}),
-    )
+const ADMIN_COOKIE: &str = "__Secure-tmrmc-admin";
+const ADMIN_COOKIE_PATH: &str = "/api/admin/auth/";
+
+fn require_admin_origin(state: &AppState, headers: &HeaderMap) -> Result<(), AppError> {
+    let origin = headers.get(ORIGIN).and_then(|value| value.to_str().ok());
+    if origin.is_some_and(|origin| {
+        origin != "null"
+            && origin != "*"
+            && state
+                .config
+                .cors_allowed_origins
+                .iter()
+                .any(|allowed| allowed == origin)
+    }) {
+        return Ok(());
+    }
+    Err(AppError::Forbidden("Admin origin is not allowed".into()))
+}
+
+fn admin_cookie(token: &str, max_age: usize) -> Result<HeaderValue, AppError> {
+    HeaderValue::from_str(&format!(
+        "{ADMIN_COOKIE}={token}; Path={ADMIN_COOKIE_PATH}; HttpOnly; Secure; SameSite=Strict; Max-Age={max_age}"
+    ))
+    .map_err(|_| AppError::InternalError("Unable to set admin session cookie".into()))
+}
+
+pub(crate) fn clear_admin_cookie(response: &mut Response) -> Result<(), AppError> {
+    response
+        .headers_mut()
+        .append(SET_COOKIE, admin_cookie("", 0)?);
+    Ok(())
+}
+
+fn admin_session_profile(admin: &WebAdmin) -> Value {
+    json!({
+        "user": {"id": admin.user_id, "email": admin.email, "role": admin.role},
+        "permissions": admin.permissions
+    })
+}
+
+pub async fn remember_session(
+    State(state): State<AppState>,
+    _admin: WebAdmin,
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
+    require_admin_origin(&state, &headers)?;
+    let token = headers
+        .get(AUTHORIZATION)
+        .and_then(|header| header.to_str().ok())
+        .and_then(|header| header.strip_prefix("Bearer "))
+        .ok_or_else(|| AppError::Unauthorized("Missing bearer session".into()))?;
+    let claims = crate::auth::jwt::verify_token(token, &state.config.jwt_secret)?;
+    let now = chrono::Utc::now().timestamp() as usize;
+    let remaining = claims.exp.saturating_sub(now).min(3600);
+    if remaining == 0 {
+        return Err(AppError::Unauthorized("Admin session expired".into()));
+    }
+    let mut response = (NO_STORE, Json(json!({"success": true}))).into_response();
+    response
+        .headers_mut()
+        .append(SET_COOKIE, admin_cookie(token, remaining)?);
+    Ok(response)
+}
+
+pub async fn restore_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
+    require_admin_origin(&state, &headers)?;
+    let cookies = headers
+        .get(COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    let mut tokens = cookies.split(';').filter_map(|part| {
+        let (name, value) = part.trim().split_once('=')?;
+        (name == ADMIN_COOKIE && !value.is_empty()).then_some(value)
+    });
+    let Some(token) = tokens.next() else {
+        return Err(AppError::Unauthorized("Sign in to continue".into()));
+    };
+    if tokens.next().is_some() || token.len() > 3800 {
+        return Err(AppError::Unauthorized("Invalid admin session".into()));
+    }
+    let bearer = HeaderValue::from_str(&format!("Bearer {token}"))
+        .map_err(|_| AppError::Unauthorized("Invalid admin session".into()))?;
+    let (mut parts, _) = axum::http::Request::new(()).into_parts();
+    parts.headers.insert(AUTHORIZATION, bearer);
+    let admin = WebAdmin::from_request_parts(&mut parts, &state).await?;
+    let mut body = admin_session_profile(&admin);
+    body["token"] = json!(token);
+    Ok((NO_STORE, Json(body)).into_response())
+}
+
+pub async fn me(admin: WebAdmin) -> impl IntoResponse {
+    (NO_STORE, Json(admin_session_profile(&admin)))
 }
 
 pub async fn logout(
     State(state): State<AppState>,
     admin: WebAdmin,
     headers: HeaderMap,
-) -> Result<Json<Value>, AppError> {
+) -> Result<Response, AppError> {
     let jti = crate::auth::account_sessions::header_session_jti(
         &headers,
         &state.config.jwt_secret,
@@ -782,5 +878,7 @@ pub async fn logout(
     sqlx::query("INSERT INTO audit_logs (user_id,action,resource_type,metadata) VALUES ($1,'admin.session.logout','admin_session','{}')")
         .bind(admin.user_id).execute(&mut *tx).await?;
     tx.commit().await?;
-    Ok(Json(json!({"success":true})))
+    let mut response = (NO_STORE, Json(json!({"success":true}))).into_response();
+    clear_admin_cookie(&mut response)?;
+    Ok(response)
 }

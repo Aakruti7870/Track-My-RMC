@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import React, { useRef, useState } from "react";
+import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -9,6 +9,8 @@ import { useAuth } from "@/src/auth/AuthContext";
 import { AppText } from "@/src/components/ui/AppText";
 import { Button } from "@/src/components/ui/Button";
 import { Card } from "@/src/components/ui/Card";
+import { DateField } from "@/src/components/ui/DateField";
+import { RadioChoice } from "@/src/components/ui/RadioChoice";
 import { Input } from "@/src/components/ui/Input";
 import { useToast } from "@/src/components/ui/Toast";
 import { useGet } from "@/src/hooks/useApi";
@@ -35,8 +37,8 @@ const TITLES: Record<Service, string> = {
 const TYPES: Record<Service, string> = {
   cement: "CEMENT", labour: "LABOUR_CONTRACTOR", material: "BUILDING_MATERIAL", pump: "PUMP_RENTAL",
 };
-const ENQUIRY_SYMBOLS: Partial<Record<Service, VectorSymbolName>> = {
-  cement: "cement", labour: "labour-contractor", material: "building-material",
+const ENQUIRY_SYMBOLS: Record<Service, VectorSymbolName> = {
+  cement: "cement", labour: "labour-contractor", material: "building-material", pump: "pump-rental",
 };
 type Enquiry = { id: string; service_type: string; status: string; created_at: string; required_date: string };
 type EnquiryResponse = { enquiries: Enquiry[] };
@@ -71,6 +73,9 @@ export default function ServiceEnquiryScreen() {
   });
   const [showMaterials, setShowMaterials] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const inFlight = useRef(false);
+  const inputs = useRef<Partial<Record<FormKey, TextInput | null>>>({});
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<FormKey, string>>>({});
   const [successId, setSuccessId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const history = useGet<EnquiryResponse>("/customer/service-enquiries");
@@ -78,11 +83,15 @@ export default function ServiceEnquiryScreen() {
   const set = (key: FormKey) => (value: string) => {
     setFields(previous => ({ ...previous, [key]: value }));
     setMessage(null);
+    setFieldErrors(old => old[key] ? { ...old, [key]: undefined } : old);
   };
   const field = (key: FormKey, label: string, extra?: { keyboardType?: "numeric" | "phone-pad" | "default"; placeholder?: string }) => (
     <Input
       testID={`enquiry-${key}`}
       label={label}
+      required
+      error={fieldErrors[key]}
+      ref={input => { inputs.current[key] = input; }}
       value={fields[key]}
       onChangeText={set(key)}
       keyboardType={extra?.keyboardType}
@@ -90,20 +99,23 @@ export default function ServiceEnquiryScreen() {
       maxLength={key === "location" ? 500 : 150}
     />
   );
-  const date = (key: FormKey, label: string) => field(key, label, { placeholder: "YYYY-MM-DD" });
+  const date = (key: FormKey, label: string) => <DateField label={label} required date={fields[key]} error={fieldErrors[key]} onChange={set(key)} />;
 
   const submit = async () => {
-    if (!token || submitting) return;
+    if (!token || inFlight.current || successId) return;
+    const invalid: Partial<Record<FormKey, string>> = {};
     let payload: Record<string, string | number>;
     const location = fields.location.trim();
-    if (location.length < 3) { setMessage("Enter a valid delivery or work location."); return; }
+    if (selected === "cement" || selected === "pump") {
+      if (fields.customer_name.trim().length < 2) invalid.customer_name = "Enter your name.";
+      if (!validPhone(fields.contact_number)) invalid.contact_number = "Enter a valid contact number.";
+    }
     if (selected === "cement") {
       const bags = Number(fields.required_bags);
-      if (fields.customer_name.trim().length < 2 || !validPhone(fields.contact_number) ||
-          fields.cement_brand.trim().length < 2 || !Number.isInteger(bags) || bags < 1 || bags > 100000 ||
-          !validDate(fields.required_date)) {
-        setMessage("Complete the name, contact, brand, bag quantity and valid future date."); return;
-      }
+      if (fields.cement_brand.trim().length < 2) invalid.cement_brand = "Enter a cement brand.";
+      if (!Number.isInteger(bags) || bags < 1 || bags > 100000) invalid.required_bags = "Enter between 1 and 100,000 bags.";
+      if (location.length < 3) invalid.location = "Enter a delivery address.";
+      if (!validDate(fields.required_date)) invalid.required_date = "Choose today or a future date.";
       payload = {
         service_type: "CEMENT", customer_name: fields.customer_name.trim(),
         contact_number: fields.contact_number.trim(), cement_brand: fields.cement_brand.trim(),
@@ -113,11 +125,12 @@ export default function ServiceEnquiryScreen() {
       const days = Number(fields.duration_days);
       const area = Number(fields.total_sq_ft);
       const price = Number(fields.expected_price_per_sq_ft);
-      if (fields.work_name.trim().length < 2 || !Number.isInteger(days) || days < 1 || days > 3650 ||
-          !(area > 0) || !Number.isFinite(area) || !(price > 0) || !Number.isFinite(price) ||
-          !validDate(fields.work_start_date)) {
-        setMessage("Enter work details, duration in days, square footage, expected rate and start date."); return;
-      }
+      if (fields.work_name.trim().length < 2) invalid.work_name = "Enter the work name.";
+      if (location.length < 3) invalid.location = "Enter the work location.";
+      if (!Number.isInteger(days) || days < 1 || days > 3650) invalid.duration_days = "Enter between 1 and 3,650 days.";
+      if (!validDate(fields.work_start_date)) invalid.work_start_date = "Choose today or a future date.";
+      if (!Number.isFinite(area) || area <= 0) invalid.total_sq_ft = "Enter an area greater than zero.";
+      if (!Number.isFinite(price) || price <= 0) invalid.expected_price_per_sq_ft = "Enter a rate greater than zero.";
       payload = {
         service_type: "LABOUR_CONTRACTOR", work_name: fields.work_name.trim(), location,
         duration_days: days, work_start_date: fields.work_start_date,
@@ -125,29 +138,35 @@ export default function ServiceEnquiryScreen() {
       };
     } else if (selected === "pump") {
       const hours = Number(fields.estimated_hours);
-      if (fields.customer_name.trim().length < 2 || !validPhone(fields.contact_number) ||
-          fields.pump_type.trim().length < 2 || !(hours > 0) || hours > 72 ||
-          !Number.isFinite(hours) || !validDate(fields.required_date)) {
-        setMessage("Enter your name, phone, pump type, required date and rental hours (up to 72).");
-        return;
-      }
+      if (location.length < 3) invalid.location = "Enter the pump rental site address.";
+      if (fields.pump_type.trim().length < 2) invalid.pump_type = "Enter the pump type.";
+      if (!Number.isFinite(hours) || hours <= 0 || hours > 72) invalid.estimated_hours = "Enter rental hours greater than 0 and up to 72.";
+      if (!validDate(fields.required_date)) invalid.required_date = "Choose today or a future date.";
       payload = {
         service_type: "PUMP_RENTAL", customer_name: fields.customer_name.trim(),
         contact_number: fields.contact_number.trim(), location, required_date: fields.required_date,
         pump_type: fields.pump_type.trim(), estimated_hours: hours,
       };
     } else {
-      if (!MATERIALS.some(item => item === fields.material_type) ||
-          fields.contact_person_name.trim().length < 2 ||
-          !validPhone(fields.mobile_number) || !validDate(fields.delivery_date)) {
-        setMessage("Choose a material and enter contact details and a valid delivery date."); return;
-      }
+      if (!MATERIALS.some(item => item === fields.material_type)) invalid.material_type = "Choose a material.";
+      if (location.length < 3) invalid.location = "Enter a delivery address.";
+      if (fields.contact_person_name.trim().length < 2) invalid.contact_person_name = "Enter the contact name.";
+      if (!validPhone(fields.mobile_number)) invalid.mobile_number = "Enter a valid mobile number.";
+      if (!validDate(fields.delivery_date)) invalid.delivery_date = "Choose today or a future date.";
       payload = {
         service_type: "BUILDING_MATERIAL", material_type: fields.material_type,
         contact_person_name: fields.contact_person_name.trim(),
         mobile_number: fields.mobile_number.trim(), location, delivery_date: fields.delivery_date,
       };
     }
+    setFieldErrors(invalid);
+    const first = (Object.keys(invalid) as FormKey[])[0];
+    if (first) {
+      setMessage(null);
+      inputs.current[first]?.focus();
+      return;
+    }
+    inFlight.current = true;
     setSubmitting(true);
     setMessage(null);
     try {
@@ -158,6 +177,7 @@ export default function ServiceEnquiryScreen() {
     } catch (error: unknown) {
       setMessage(apiErrorDetail(error, "Unable to submit enquiry. Please try again."));
     } finally {
+      inFlight.current = false;
       setSubmitting(false);
     }
   };
@@ -166,11 +186,10 @@ export default function ServiceEnquiryScreen() {
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
       <View style={{ height: insets.top }} />
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => router.back()} style={styles.back}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => router.canGoBack() ? router.back() : router.replace("/customer")} style={styles.back}>
           <Ionicons name="arrow-back" size={24} color={colors.onSurface} />
         </Pressable>
-        {ENQUIRY_SYMBOLS[selected] ? <VectorSymbol name={ENQUIRY_SYMBOLS[selected]!} size={42} /> :
-          <Ionicons name="construct-outline" size={37} color={colors.brand} />}
+        <VectorSymbol name={ENQUIRY_SYMBOLS[selected]} size={24} />
         <View style={{ flex: 1 }}>
           <AppText style={[styles.heading, { color: colors.onSurface }]}>{TITLES[selected]}</AppText>
           <AppText variant="caption">Request a call or quotation. No payment required.</AppText>
@@ -187,7 +206,6 @@ export default function ServiceEnquiryScreen() {
           </Card>
         ) : (
           <Card style={{ gap: spacing.md }} testID="service-enquiry-form">
-            <AppText variant="heading">{TITLES[selected]}</AppText>
             {selected === "cement" ? (
               <>
                 {field("customer_name", "Customer Name")}
@@ -219,36 +237,22 @@ export default function ServiceEnquiryScreen() {
               </>
             ) : (
               <>
-                <AppText style={{ fontFamily: fonts.semibold, color: colors.onSurface }}>Material Type</AppText>
-                <Pressable
-                  testID="material-type-dropdown"
-                  accessibilityRole="button"
-                  accessibilityLabel="Select Material Type"
-                  accessibilityState={{ expanded: showMaterials }}
-                  onPress={() => setShowMaterials(open => !open)}
-                  style={[styles.dropdown, { borderColor: colors.border, backgroundColor: colors.surfaceSecondary }]}
-                >
-                  <AppText style={{ flex: 1 }}>{fields.material_type || "Select Material"}</AppText>
-                  <Ionicons name={showMaterials ? "chevron-up" : "chevron-down"} size={20} color={colors.onSurfaceSecondary} />
-                </Pressable>
-                {showMaterials ? MATERIALS.map(item => (
-                  <Pressable
-                    key={item}
-                    accessibilityRole="button"
-                    onPress={() => { set("material_type")(item); setShowMaterials(false); }}
-                    style={[styles.materialOption, { borderBottomColor: colors.border }]}
-                  >
-                    <AppText>{item}</AppText>
-                  </Pressable>
-                )) : null}
+                <AppText variant="label">Material Type *</AppText>
+                <Button testID="material-type-dropdown" label={fields.material_type || "Select Material Type"}
+                  variant="outline" expanded={showMaterials} onPress={() => setShowMaterials(open => !open)} />
+                {fieldErrors.material_type ? <AppText accessibilityLiveRegion="polite" color={colors.error}>{fieldErrors.material_type}</AppText> : null}
+                {showMaterials ? <View accessibilityRole="radiogroup" accessibilityLabel="Material type" style={{ gap: spacing.xs }}>
+                  {MATERIALS.map(item => <RadioChoice key={item} label={item} checked={fields.material_type === item}
+                    onPress={() => { set("material_type")(item); setShowMaterials(false); }} />)}
+                </View> : null}
                 {field("location", "Location / Delivery Address")}
                 {field("contact_person_name", "Contact Person Name")}
                 {field("mobile_number", "Mobile Number", { keyboardType: "phone-pad" })}
                 {date("delivery_date", "Delivery Date")}
               </>
             )}
-            <AppText variant="caption">Dates use YYYY-MM-DD. Submission is an enquiry, not a confirmed order or booking.</AppText>
-            {message ? <AppText style={{ color: colors.error }} testID="service-enquiry-error">{message}</AppText> : null}
+            <AppText variant="caption">Submitting this enquiry does not confirm a booking.</AppText>
+            {message ? <AppText accessibilityLiveRegion="polite" color={colors.error} testID="service-enquiry-error">{message}</AppText> : null}
             <Button label="Submit Enquiry" loading={submitting} disabled={!token} onPress={() => void submit()} testID="submit-service-enquiry" />
           </Card>
         )}
@@ -276,8 +280,6 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, gap: 12 },
   back: { minWidth: 44, minHeight: 44, justifyContent: "center", alignItems: "center" },
   heading: { fontFamily: fonts.displayBold, fontSize: 20 },
-  content: { padding: spacing.md, paddingBottom: 150, gap: spacing.md, width: "100%", maxWidth: 680, alignSelf: "center" },
-  dropdown: { minHeight: 50, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, flexDirection: "row", alignItems: "center" },
-  materialOption: { paddingVertical: 12, paddingHorizontal: 16, borderBottomWidth: 1 },
+  content: { padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.md, width: "100%", maxWidth: 680, alignSelf: "center" },
   historyRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 10, borderBottomWidth: 1 },
 });

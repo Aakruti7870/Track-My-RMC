@@ -7,7 +7,7 @@ export function createPaperTheme(colors: ThemeColors, reduceMotion: boolean): MD
   const surface = colors.isDark ? palette.graphiteSoft : palette.paper;
   const raised = colors.isDark ? palette.graphiteRaised : palette.mist;
   const background = colors.isDark ? palette.graphite : palette.warmWhite;
-  const accent = colors.isDark ? palette.orange : "#A43D00";
+  const accent = colors.isDark ? palette.orange : colors.accentText;
   const onAccent = colors.isDark ? palette.graphite : palette.paper;
   const paperFonts = { ...base.fonts };
 
@@ -53,7 +53,7 @@ export function createPaperTheme(colors: ThemeColors, reduceMotion: boolean): MD
       inverseSurface: colors.surfaceInverse,
       inverseOnSurface: colors.onSurfaceInverse,
       inversePrimary: colors.isDark ? "#A43D00" : palette.orange,
-      outline: colors.isDark ? "#8793A2" : "#687384",
+      outline: colors.controlOutline,
       outlineVariant: colors.divider,
       error: colors.isDark ? "#FF9997" : colors.error,
       onError: colors.isDark ? palette.graphite : palette.paper,

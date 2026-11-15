@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { forwardRef, useId, useState } from "react";
 import {
   KeyboardTypeOptions,
   StyleSheet,
@@ -19,6 +19,7 @@ type Props = {
   autoFocus?: boolean;
   maxLength?: number;
   error?: string | null;
+  required?: boolean;
   hint?: string;
   editable?: boolean;
   autoCapitalize?: "none" | "sentences" | "words" | "characters";
@@ -30,7 +31,7 @@ type Props = {
   testID?: string;
 };
 
-export function Input({
+export const Input = forwardRef<TextInput, Props>(function Input({
   label,
   value,
   onChangeText,
@@ -39,6 +40,7 @@ export function Input({
   autoFocus,
   maxLength,
   error,
+  required,
   hint,
   editable = true,
   autoCapitalize = "none",
@@ -48,10 +50,11 @@ export function Input({
   leftAdornment,
   rightAdornment,
   testID,
-}: Props) {
+}, ref) {
   const { colors } = useTheme();
   const [focused, setFocused] = useState(false);
-  const borderColor = error ? colors.error : focused ? (colors.isDark ? colors.brand : "#A43D00") : colors.borderStrong;
+  const supportingId = useId();
+  const borderColor = error ? colors.error : focused ? colors.accentText : editable ? colors.controlOutline : colors.border;
   const supportingText = error || hint;
 
   return (
@@ -63,7 +66,7 @@ export function Input({
             { color: error ? colors.error : colors.onSurfaceSecondary },
           ]}
         >
-          {label}
+          {label}{required ? " *" : ""}
         </Text>
       ) : null}
 
@@ -81,6 +84,7 @@ export function Input({
       >
         {leftAdornment ? <View style={styles.adornment}>{leftAdornment}</View> : null}
         <TextInput
+          ref={ref}
           testID={testID}
           value={value}
           onChangeText={onChangeText}
@@ -95,6 +99,9 @@ export function Input({
           secureTextEntry={secureTextEntry}
           accessibilityLabel={label || placeholder || "Input field"}
           accessibilityState={{ disabled: !editable }}
+          aria-required={required}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={supportingText ? supportingId : undefined}
           accessibilityHint={supportingText || undefined}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
@@ -114,6 +121,7 @@ export function Input({
 
       {supportingText ? (
         <Text
+          nativeID={supportingId}
           accessibilityLiveRegion={error ? "polite" : "none"}
           style={[styles.supporting, { color: error ? colors.error : colors.onSurfaceTertiary }]}
         >
@@ -122,7 +130,7 @@ export function Input({
       ) : null}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   wrap: { gap: spacing.xs },

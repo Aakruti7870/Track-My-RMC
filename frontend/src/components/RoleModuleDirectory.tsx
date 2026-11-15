@@ -86,10 +86,10 @@ export function RoleModuleDirectory({ role, title = "Your Modules" }: {
                   ]}
                 >
                   <View style={styles.artwork}>
-                    {module.symbol ? <VectorSymbol name={module.symbol} size={52} /> : <Ionicons name={module.icon} size={38} color={colors.brand} />}
+                    {module.symbol ? <VectorSymbol name={module.symbol} size={24} /> : <Ionicons name={module.icon} size={24} color={colors.onSurfaceTertiary} />}
                   </View>
-                  <AppText style={{ fontFamily: fonts.semibold, color: colors.onSurface, fontSize: 13, textAlign: "center" }} numberOfLines={2}>{module.label}</AppText>
-                  <AppText variant="caption" style={{ textAlign: "center", fontSize: 11 }} numberOfLines={2}>{module.description}</AppText>
+                  <AppText style={{ fontFamily: fonts.semibold, color: colors.onSurface, fontSize: 13, textAlign: "center" }}>{module.label}</AppText>
+                  <AppText variant="caption" style={{ textAlign: "center", fontSize: 11 }}>{module.description}</AppText>
                 </Pressable>
               ))}
             </View>
@@ -103,7 +103,7 @@ export function RoleModuleDirectory({ role, title = "Your Modules" }: {
 const styles = StyleSheet.create({
   heading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
   cards: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  item: { width: "48%", minWidth: 142, flexGrow: 1, minHeight: 154, alignItems: "center",
+  item: { width: "48%", minWidth: 128, flexGrow: 1, minHeight: 112, alignItems: "center",
     justifyContent: "center", gap: 7, borderWidth: 1, borderRadius: 12, padding: 12 },
-  artwork: { height: 58, alignItems: "center", justifyContent: "center" },
+  artwork: { minHeight: 24, alignItems: "center", justifyContent: "center" },
 });

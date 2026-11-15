@@ -1,5 +1,5 @@
 import React from "react";
-import { Modal, Pressable, StyleSheet, View } from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 
@@ -20,9 +20,11 @@ type Props = {
 
 export function QuickActionHub({ visible, onClose, tabs, role, navigation }: Props) {
   const { colors, reduceMotion } = useTheme();
+  const { width, fontScale } = useWindowDimensions();
+  const singleColumn = width / fontScale < 330;
 
   const runAction = (tab: TabDef) => {
-    void Haptics.selectionAsync();
+    void Haptics.selectionAsync().catch(() => undefined);
     onClose();
     navigation.navigate(tab.name);
   };
@@ -33,10 +35,14 @@ export function QuickActionHub({ visible, onClose, tabs, role, navigation }: Pro
         <Pressable
           style={StyleSheet.absoluteFill}
           onPress={onClose}
-          accessibilityRole="button"
-          accessibilityLabel="Close quick actions"
+          accessible={false}
+          aria-hidden
         />
-        <View
+        <ScrollView
+          accessibilityViewIsModal
+          onAccessibilityEscape={onClose}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.sheetContent}
           style={[
             styles.sheet,
             {
@@ -80,6 +86,7 @@ export function QuickActionHub({ visible, onClose, tabs, role, navigation }: Pro
                   accessibilityHint={`Open ${tab.label}`}
                   style={({ pressed }) => [
                     styles.action,
+                    singleColumn && styles.fullWidth,
                     {
                       backgroundColor: pressed ? colors.brandSoft : colors.surfaceSecondary,
                       borderColor: colors.divider,
@@ -94,7 +101,7 @@ export function QuickActionHub({ visible, onClose, tabs, role, navigation }: Pro
               );
             })}
           </View>
-        </View>
+        </ScrollView>
       </View>
     </Modal>
   );
@@ -111,14 +118,16 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     borderWidth: 1,
     overflow: "hidden",
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xl,
+    flexGrow: 0,
+    flexShrink: 1,
+    maxHeight: "100%",
     shadowOffset: { width: 0, height: 16 },
     shadowOpacity: 0.14,
     shadowRadius: 16,
     elevation: 6,
   },
+  sheetContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xl },
+  fullWidth: { width: "100%" },
   handle: {
     alignSelf: "center",
     width: 42,

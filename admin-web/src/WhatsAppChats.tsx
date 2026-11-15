@@ -3,9 +3,9 @@ import apiClient from './api';
 
 type Chat = {phone:string;latest_body:string;latest_at:string;latest_direction:'IN'|'OUT';unread:number;last_inbound?:string};
 type ChatMessage = {id:string;direction:'IN'|'OUT';kind:string;body:string;status:string;at:string};
-const panel:React.CSSProperties={background:'rgba(26,31,38,.94)',border:'1px solid rgba(255,154,61,.24)',borderRadius:14,padding:12};
-const field:React.CSSProperties={background:'#0E1116',color:'#F4F6FA',border:'1px solid #6B7380',borderRadius:8,padding:10,width:'100%',boxSizing:'border-box'};
-const button:React.CSSProperties={background:'#FF8A00',color:'#fff',border:0,borderRadius:8,padding:'10px 14px',fontWeight:700,cursor:'pointer'};
+const panel:React.CSSProperties={background:'var(--tm-panel)',border:'1px solid var(--tm-border)',borderRadius:14,padding:12};
+const field:React.CSSProperties={background:'var(--tm-raised)',color:'var(--tm-text)',border:'1px solid var(--tm-control-outline)',borderRadius:8,padding:10,width:'100%',boxSizing:'border-box'};
+const button:React.CSSProperties={background:'var(--tm-orange-action)',color:'var(--tm-on-action)',border:0,borderRadius:8,padding:'10px 14px',fontWeight:700,cursor:'pointer'};
 function err(value:unknown):string {
   return value && typeof value==='object' && 'message' in value && typeof value.message==='string'
     ? value.message : 'Unable to load WhatsApp inbox.';
@@ -80,35 +80,35 @@ export function WhatsAppChats({onUnreadChange}:{onUnreadChange?:(value:number)=>
   }
   return <section aria-label="WhatsApp Chats" style={{...panel,marginTop:16}} id="whatsapp-chats">
     <h2 style={{fontSize:19,margin:'0 0 6px'}}>WhatsApp Chats — Customer Inbox</h2>
-    <p style={{fontSize:12,color:'#B8C1CC'}}>Verified inbound Meta messages only. No bulk messaging, media downloads or automated replies. Message content remains private to approved Central Admin operators.</p>
+    <p style={{fontSize:12,color:'var(--tm-muted)'}}>Verified inbound Meta messages only. No bulk messaging, media downloads or automated replies. Message content remains private to approved Central Admin operators.</p>
     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,flexWrap:'wrap'}}>
       <strong style={{fontSize:13}}>{threads.length} recent conversations</strong>
-      <button type="button" onClick={()=>void refresh()} style={{...button,background:'#1D232D'}}>Refresh chats</button>
+      <button type="button" onClick={()=>void refresh()} style={{...button,background:'var(--tm-raised)',color:'var(--tm-text)'}}>Refresh chats</button>
     </div>
-    {error&&<p role="alert" style={{color:'#FDECEC'}}>{error}</p>}
-    {notice&&<p role="status" style={{color:'#72D59B'}}>{notice}</p>}
-    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:12,marginTop:12}}>
-      <div aria-label="WhatsApp conversations" style={{...panel,maxHeight:550,overflowY:'auto',background:'#1D232D'}}>
+    {error&&<p role="alert" style={{color:'var(--tm-error-text)'}}>{error}</p>}
+    {notice&&<p role="status" style={{color:'var(--tm-success-text)'}}>{notice}</p>}
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,260px),1fr))',gap:12,marginTop:12}}>
+      <div aria-label="WhatsApp conversations" style={{...panel,maxHeight:550,overflowY:'auto',background:'var(--tm-raised)'}}>
         {threads.map(chat=><button type="button" key={chat.phone} onClick={()=>void openChat(chat.phone)}
           aria-label={'Open WhatsApp chat '+chat.phone}
           style={{display:'block',width:'100%',marginBottom:8,padding:12,textAlign:'left',cursor:'pointer',
-            color:'#F4F6FA',background:chat.phone===selected?'#2C170A':'#1D232D',
-            border:'1px solid rgba(255,154,61,.24)',borderRadius:10}}>
-          <strong>+{chat.phone}</strong>{Number(chat.unread)>0&&<span style={{float:'right',color:'#72D59B'}}>● {chat.unread} new</span>}
-          <div style={{fontSize:12,marginTop:5,overflowWrap:'anywhere',color:'#B8C1CC'}}>{chat.latest_body}</div>
-          <small style={{color:'#B7C2D2'}}>{time(chat.latest_at)}</small>
+            color:'var(--tm-text)',background:chat.phone===selected?'var(--tm-selected-surface)':'var(--tm-raised)',
+            border:'1px solid var(--tm-border)',borderRadius:10}}>
+          <strong>+{chat.phone}</strong>{Number(chat.unread)>0&&<span style={{float:'right',color:'var(--tm-success-text)'}}>● {chat.unread} new</span>}
+          <div style={{fontSize:12,marginTop:5,overflowWrap:'anywhere',color:'var(--tm-muted)'}}>{chat.latest_body}</div>
+          <small style={{color:'var(--tm-muted)'}}>{time(chat.latest_at)}</small>
         </button>)}
-        {!threads.length&&<p style={{color:'#B8C1CC'}}>No incoming WhatsApp conversations recorded.</p>}
+        {!threads.length&&<p style={{color:'var(--tm-muted)'}}>No incoming WhatsApp conversations recorded.</p>}
       </div>
-      <div style={{...panel,minHeight:330,background:'#1D232D'}} aria-label="WhatsApp conversation detail">
+      <div style={{...panel,minHeight:330,background:'var(--tm-raised)'}} aria-label="WhatsApp conversation detail">
         {!selected?<p>Select a conversation to view customer messages.</p>:<>
           <h3 style={{fontSize:16,marginTop:0}}>Conversation with +{selected}</h3>
           <div role="log" aria-label="WhatsApp messages" style={{maxHeight:380,overflowY:'auto',display:'grid',gap:9,padding:9}}>
             {messages.map(m=><div key={m.id} style={{justifySelf:m.direction==='OUT'?'end':'start',maxWidth:'87%',
-              padding:'9px 12px',borderRadius:12,color:'#F4F6FA',
-              background:m.direction==='OUT'?'#2C170A':'#1D232D',overflowWrap:'anywhere'}}>
+              padding:'9px 12px',borderRadius:12,color:'var(--tm-text)',
+              background:m.direction==='OUT'?'var(--tm-selected-surface)':'var(--tm-raised)',overflowWrap:'anywhere'}}>
               <div style={{whiteSpace:'pre-wrap',fontSize:13}}>{m.body}</div>
-              <small style={{fontSize:10,color:'#B8C1CC'}}>{time(m.at)} · {m.direction==='OUT'?m.status:'Received'}</small>
+              <small style={{fontSize:10,color:'var(--tm-muted)'}}>{time(m.at)} · {m.direction==='OUT'?m.status:'Received'}</small>
             </div>)}
             {!messages.length&&<p>No messages loaded for this conversation.</p>}
           </div>
@@ -120,7 +120,7 @@ export function WhatsAppChats({onUnreadChange}:{onUnreadChange?:(value:number)=>
             <input id="whatsapp-reply-mfa" style={field} value={code} onChange={e=>setCode(e.target.value)}
               maxLength={6} pattern="[0-9]{6}" type="password" inputMode="numeric" disabled={busy}/>
             <button type="submit" style={button} disabled={busy||!draft.trim()||code.length!==6}>Send WhatsApp reply</button>
-          </form>:<p style={{fontSize:12,color:'#F59E0B',marginTop:14}}>
+          </form>:<p style={{fontSize:12,color:'var(--tm-warning-text)',marginTop:14}}>
             {!repliesEnabled?'Live operator replies are disabled until provider acceptance.':
               'The 24-hour customer service window has expired. Wait for a customer message.'}
           </p>}

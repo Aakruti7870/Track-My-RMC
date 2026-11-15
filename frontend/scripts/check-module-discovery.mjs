@@ -79,12 +79,12 @@ assert.equal(customerHomeModules().length, 8, "All eight customer Home-eligible 
 
 const customerHome = read("app/customer/index.tsx");
 const homeKeysBlock = customerHome.match(/const HOME_MODULE_KEYS = \[([\s\S]*?)\](?: as const)?;/);
-assert.ok(homeKeysBlock, "Customer Home must declare an explicit eight-module shortlist.");
+assert.ok(homeKeysBlock, "Customer Home must declare an explicit seven-module shortlist.");
 const homeKeys = [...homeKeysBlock[1].matchAll(/"([a-z-]+)"/g)].map(match => match[1]);
 assert.deepEqual(homeKeys, [
   "projects", "pour-planner", "receiving-guide", "cube-tests",
-  "saved-sites", "customer-support", "compare-plants", "free-tools",
-], "Customer Home must show eight shortcuts in the requested order.");
+  "saved-sites", "compare-plants", "free-tools",
+], "Customer Home must show seven shortcuts in the requested order.");
 for (const key of homeKeys) {
   const module = modulesForRole("customer").find(entry => entry.key === key);
   assert.ok(module && module.symbol, `Customer Home must use a registered vector symbol for ${key}`);
@@ -97,12 +97,12 @@ for (const name of ["home-quick-actions", "home-other-services"]) {
 assert.ok(customerHome.includes('testID={testID}') &&
   customerHome.includes('"customer-module-grid"') &&
   customerHome.includes('"home-advice-grid"'),
-  "Both four-item customer groups must use the shared module renderer with stable test IDs.");
+  "Both customer groups must use the shared module renderer with stable test IDs.");
 assert.ok(customerHome.includes('<HomeCarousel style={{ width: Math.min(viewportWidth, 720), borderRadius: 0, borderWidth: 0 }} />'), "Preserve five-slide carousel and make the customer banner edge-to-edge.");
 assert.ok(customerHome.includes('<KycBanner status={data.kyc_status} />'), "Preserve KYC state machine.");
 assert.ok(customerHome.includes('<ActiveTransitMixerCard'), "Preserve real order and demo tracking.");
 assert.ok(customerHome.includes('homeAboveFold: { width: "100%", gap: 10 }'), "Home sections must be separated by 10 dp.");
-assert.ok(customerHome.includes('scrollContent: { paddingHorizontal: 16, paddingTop: 0, paddingBottom: 88, gap: 10,'), "Home sections need 10dp gaps and safe bottom padding.");
+assert.ok(customerHome.includes('scrollContent: { paddingHorizontal: 16, paddingTop: 0, gap: 10,'), "Home sections need their 10dp base gap.");
 assert.ok(customerHome.includes('groupCard: { width: "100%", maxWidth: 620, alignSelf: "center", paddingHorizontal: 0, paddingVertical: 0, gap: 0 }'), "Avoid stacked internal gaps.");
 assert.ok(customerHome.includes('justifyContent: "space-between", rowGap: 10 }'), "Home grid rows must use 10 dp spacing.");
 assert.ok(customerHome.includes('tightGroup: { paddingVertical: 0, gap: 0 }'), "Unheaded groups must have no extra vertical padding.");
@@ -110,7 +110,7 @@ assert.ok(customerHome.includes('>Quick Actions</AppText>'), "The four quick act
 assert.ok(!customerHome.includes('>RMC Tools</AppText>'), "RMC Tools heading must be removed.");
 assert.ok(customerHome.includes('>Supply & Workforce</AppText>'), "Supply & Workforce heading must replace Other Services.");
 assert.ok(customerHome.includes('>Active Projects & Planning</AppText>') || customerHome.includes('"Active Projects & Planning", "customer-module-grid"'), "Planning section heading required.");
-assert.ok(customerHome.includes('"Free Tools & Expert Advice", "home-advice-grid"'), "Four-item advice section required.");
+assert.ok(customerHome.includes('"Free Tools & Expert Advice", "home-advice-grid"'), "Advice section required.");
 assert.ok(customerHome.includes('sectionTitle: { fontFamily: fonts.bold, fontSize: 15, lineHeight: 20'), "Home mobile headings use Jakarta Bold 15dp / compact 20dp line.");
 assert.ok(customerHome.includes('customerHomeSizes(viewportWidth, Platform.OS)'), "Use viewport and platform to size the Home consistently.");
 const responsiveHome = read("src/theme/tokens.ts");
@@ -122,7 +122,7 @@ assert.ok(customerHome.includes('quickGrid: { marginTop: 10 }') && customerHome.
 assert.ok(customerHome.includes('promoPrimaryCard: { width: 240 }') && customerHome.includes('minHeight: 50'), "Pump CTA must retain its default width and a 50dp minimum height.");
 assert.ok(customerHome.includes("Concrete pump rental") && customerHome.includes("Request a quote"), "Pump CTA copy mismatch.");
 assert.ok(customerHome.includes('["pour-planner", "compare-plants", "projects", "saved-sites"]'), "Planning tools must be presented in the requested order.");
-assert.ok(customerHome.includes('["free-tools", "receiving-guide", "cube-tests", "customer-support"]'), "Expert advice must use the four existing authorized routes.");
+assert.ok(customerHome.includes('["free-tools", "receiving-guide", "cube-tests"]'), "Expert advice keeps its three dedicated routes.");
 assert.ok(customerHome.includes('testID="home-pump-rental-promo"') && customerHome.includes('pathname: "/customer/service-enquiry"') && customerHome.includes('service: "pump"'), "Pump-rental callout must open the dedicated pump service enquiry, not unrelated support.");
 assert.ok(!customerHome.includes('On Time,') && !customerHome.includes('Everytime') && !customerHome.includes('promoSecondaryCard'), "Remove the old On Time promotional card entirely.");
 assert.ok(customerHome.includes('{ key: "plants", label: "Plants"'), "The third action label must remain Plants.");

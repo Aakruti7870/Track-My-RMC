@@ -72,6 +72,15 @@ async function run() {
           if (showPlantFailure) return route.fulfill({ status: 503, json: { detail: "Plant list temporarily unavailable" } });
           return route.fulfill({ json: { plants } });
         }
+        if (pathname.endsWith("/maps/autocomplete")) {
+          return route.fulfill({ json: { success: true, predictions: [
+            { place_id: "fixture-place", description: "Synthetic Google Places result" },
+          ] } });
+        }
+        if (pathname.endsWith("/maps/place/fixture-place")) {
+          return route.fulfill({ json: { success: true, place_id: "fixture-place",
+            address: "20 Synthetic Works, Panvel", lat: 18.998, lng: 73.11 } });
+        }
         if (pathname.endsWith("/customer/order-drafts/synthetic-draft") && req.method() === "GET") {
           draftDetailReads += 1;
           return route.fulfill({ json: { id: "synthetic-draft", form: drafts.at(-1)?.form } });
@@ -146,12 +155,17 @@ async function run() {
         const siteName = page.getByTestId("neworder-site");
         await siteName.fill("Synthetic building site");
         await page.getByTestId("neworder-address").fill("10 Test Road");
+        await page.getByRole("button", { name: "Use address Synthetic Google Places result" }).click();
+        await page.waitForFunction(() => document.querySelector('[data-testid="neworder-address"]')?.value === "20 Synthetic Works, Panvel");
         const provisional = page.getByTestId("neworder-provisional");
         await provisional.evaluate(el => { el.click(); el.click(); });
         await page.waitForURL(/customer\/orders/);
         assert.equal(drafts.length, 1);
         assert.equal(drafts[0].form.plant_id, "direct");
         assert.equal(drafts[0].form.grade, "M30");
+        assert.equal(drafts[0].form.address, "20 Synthetic Works, Panvel");
+        assert.equal(drafts[0].form.lat, 18.998);
+        assert.equal(drafts[0].form.lng, 73.11);
         assert.equal(drafts[0].form.payment_mode, "ON_DELIVERY");
         assert.equal(provisionalRequests, 1);
         assert.equal(confirmedOrders, 0);

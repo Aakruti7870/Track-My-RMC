@@ -20,7 +20,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  const order={id:'isolated-order',order_number:'CUSTOMER-ORDER',status:mode==='pending'?'PENDING':mode==='delivered'?'DELIVERED':'DISPATCHED',grade:'M30',quantity:8,site_name:'Actual project'};
  if(mode!=='demo'){home.recent_orders=[order];home.active_order=mode==='delivered'?null:order;}
  const tracking={active:mode==='live',status:order.status,active_loads:mode==='live'?[{id:'load-a',status:'en_route',tm_number:'ASSIGNED-MIXER',location:{lat:19.1,lng:73.1,at:new Date(Date.now()-1000).toISOString()}}]:[],destination:{lat:19.2,lng:73.2}};
- await route.fulfill({json:path.endsWith('/tracking')?tracking:path.endsWith('/permission-consent')?{consent:{version:1,location_choice:'manual',notification_choice:'manual'}}:path.endsWith('/me')?me:path.endsWith('/customer/home')?home:{}});
+ await route.fulfill({json:path.endsWith('/customer/plants/search')?{plants:[{id:'fixture-plant',name:'Panvel Ready-Mix Concrete and Infrastructure Supply',address:'Industrial Estate, Panvel',status:'active',verified:true,order_enabled:true,grades:['M30'],distance_km:4.2}],page:1,has_more:false}:path.endsWith('/tracking')?tracking:path.endsWith('/permission-consent')?{consent:{version:1,location_choice:'manual',notification_choice:'manual'}}:path.endsWith('/me')?me:path.endsWith('/customer/home')?home:{}});
  });
  page.on('pageerror',e=>console.error(e.message));
  await page.goto('http://127.0.0.1:8765/customer/');
@@ -50,11 +50,12 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    const size=await actualVectorSize(id);
    if(size[0]!==expected.service||size[1]!==expected.service)throw Error(`Service SVG size: ${id} ${size} at ${width}`);
  }
- const support=page.getByTestId('customer-support-widget');
  const content=await page.getByTestId('customer-home-scroll').boundingBox();
- const supportBounds=await support.boundingBox();
- if(!content||!supportBounds||content.y+content.height>supportBounds.y+1)
-   throw Error('Support overlaps the scrollable Home content');
+ const tabBar=await page.getByTestId('app-tab-bar').boundingBox();
+ if(!content||!tabBar||content.y+content.height>tabBar.y+1)throw Error('Navigation overlaps Home content');
+ assert.equal(await page.getByTestId('header-help').count(),1);
+ assert.equal(await page.getByTestId('customer-module-customer-support').count(),0);
+ assert.equal(await page.getByTestId('customer-next-action').count(),0);
  const textClipping=await page.locator('[data-testid^="customer-module-"], [data-testid^="service-"]').evaluateAll(nodes =>
    nodes.flatMap(node => Array.from(node.querySelectorAll('div')).filter(el =>
      el.childElementCount===0 && el.textContent.trim() &&
@@ -142,10 +143,10 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  const toolBoxes=await boundsOf('customer-module-grid','customer-module-');
  const adviceBoxes=await boundsOf('home-advice-grid','customer-module-');
  const serviceBoxes=await boundsOf('home-other-services','service-');
- if(toolBoxes.length!==4||adviceBoxes.length!==4||serviceBoxes.length!==3)throw Error('Missing Home cards');
- for(const group of [toolBoxes,adviceBoxes]) {
+ if(toolBoxes.length!==4||adviceBoxes.length!==3||serviceBoxes.length!==3)throw Error('Missing Home cards');
+ for(const [group,columns] of [[toolBoxes,4],[adviceBoxes,3]]) {
    const firstRow = group.filter(box => Math.abs(box.y - group[0].y) < 2);
-   if (firstRow.length !== (width < 382 ? 2 : 4)) throw Error('Tool columns must adapt to width');
+   if (firstRow.length !== (width < 382 ? 2 : columns)) throw Error('Tool columns must adapt to width');
  }
  for (const [kind,boxes,minHeight,maxHeight] of [
    ['Quick Action',actionBoxes.map(box=>({h:box.height,x:box.x,y:box.y,w:box.width})),expected.quickTile-1,expected.quickTile+30],
@@ -203,7 +204,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  const tabIds=['tab-home','tab-orders','tab-plants','tab-more'];
  for(const id of tabIds){const size=await actualVectorSize(id);if(size[0]!==24||size[1]!==24)throw Error(`Tab SVG size: ${id} ${size}`);}
  const tabBoxes=await Promise.all(tabIds.map(id=>page.getByTestId(id).boundingBox()));
- const centerBox=await page.getByTestId('tab-quick-actions').boundingBox();
+ const centerBox=await page.getByTestId('tab-new-order').boundingBox();
  const centers=tabBoxes.map(box=>box.x+box.width/2);
  const mid=centerBox.x+centerBox.width/2;
  if(!(centers[0]<centers[1]&&centers[1]<mid&&mid<centers[2]&&centers[2]<centers[3]))throw Error('Tab ordering around center icon');
@@ -262,18 +263,32 @@ fs.mkdirSync('tracking-previews',{recursive:true});
          .map(label=>label.textContent);
      });
      assert.deepEqual(clipped,[],theme+' Home and navigation text at 200%');
-     const help=page.getByTestId('customer-support-widget');
-     const scroll=await page.getByTestId('customer-home-scroll').boundingBox();
-     const launcher=await help.boundingBox();
-     assert(scroll.y+scroll.height<=launcher.y+1,theme+' support must sit outside Home content');
+     const help=page.getByTestId('header-help');
      await help.click();
      await page.getByTestId('customer-support-place-order').click();
      await page.getByTestId('customer-support-place-order-card').waitFor();
      await page.getByTestId('customer-support-close').click();
      await page.getByTestId('customer-support-panel').waitFor({state:'hidden'});
 
-     await page.goto('http://127.0.0.1:8765/customer/request-quotation?plantId=fixture-plant');
-     await page.getByRole('button',{name:/^Required delivery date:/}).click();
+     await page.getByTestId('tab-new-order').click();
+     await page.waitForURL('**/new-order');
+     await page.goBack();
+     await page.getByTestId('tab-plants').click();
+     const plant=page.getByTestId('nearby-plant-fixture-plant');
+     await plant.waitFor();
+     assert.equal(await plant.getByRole('button',{name:/^Show .* on map$/}).count(),1);
+     const order=plant.getByTestId('nearby-place-order');
+     const ink=await order.getByText('Place Order').evaluate(el=>getComputedStyle(el).color);
+     assert.equal(ink,'rgb(14, 17, 22)');
+     const target=await order.boundingBox();
+     assert(target.height>=48 && target.width>180,theme+' narrow plant primary action must be full width');
+     await plant.getByRole('button',{name:'Request Quotation',exact:true}).click();
+     await page.getByRole('button',{name:'Submit Quotation Request',exact:true}).click();
+     assert.equal(await page.getByRole('textbox',{name:'Required Quantity (m³)',exact:true}).getAttribute('aria-invalid'),'true');
+     await page.getByRole('button',{name:'Concrete grade: M25',exact:true}).click();
+     await page.getByRole('radio',{name:'M30',exact:true}).click();
+     await page.getByRole('button',{name:'Concrete grade: M30',exact:true}).waitFor();
+     await page.getByRole('button',{name:/^Required delivery date:/i}).click();
      const calendar=page.getByTestId('rfq-date-calendar');
      await calendar.waitFor();
      const surface=await calendar.evaluate(el=>getComputedStyle(el).backgroundColor);
@@ -281,7 +296,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      await calendar.getByRole('button',{name:'Next month',exact:true}).click();
      await calendar.getByRole('button',{name:'Close Calendar',exact:true}).click();
      await calendar.waitFor({state:'hidden'});
-     console.log('PASS 320px '+theme+' enlarged labels, in-flow Support and matte RFQ calendar');
+     console.log('PASS 320px '+theme+' enlarged labels, header Support and matte RFQ calendar');
    }
  }
  await page.close();

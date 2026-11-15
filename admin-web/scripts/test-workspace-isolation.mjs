@@ -19,12 +19,13 @@ try {
   assert(ready,'Preview unavailable: '+logs);
   browser=await chromium.launch({headless:true,...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE?{executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE}:{})});
   for(const [width,blockedStorage,failedLogout] of [[390,true,true],[1440,false,false]]){
-    const context=await browser.newContext({viewport:{width,height:1000}});
+    const context=await browser.newContext({viewport:{width,height:1000},reducedMotion:'reduce'});
     if(blockedStorage)await context.addInitScript(()=>{
       Object.defineProperty(window,'sessionStorage',{get(){throw new DOMException('Storage blocked','SecurityError');}});
     });
     const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
-    let plantFails=true,delayPlants=false,releasePlants,currentEmail='';
+    let plantFails=true,delayPlants=false,releasePlants,currentEmail='',rememberedEmail='';
+    const sessionPermissions=['user.view','plant.view','plant_owners.manage','order.view','support.manage'];
     const channels=[];const importedPhones=new Set();let importCalls=0;
     const consentByPhone=new Map();
     const campaigns=[{id:'synthetic-campaign',name:'Test Release Campaign',segment:'Regional Builders',
@@ -36,7 +37,16 @@ try {
       if(path.endsWith('/otp/send'))return reply({status:'EMAIL_OTP_SENT'});
       if(path.endsWith('/auth/login')){currentEmail=route.request().postDataJSON().email;return reply({challenge_token:'synthetic-challenge'});}
       if(path.endsWith('/verify-totp'))return reply({token:'synthetic-token-'+currentEmail,user:{id:currentEmail,role:'central_admin',full_name:currentEmail}});
-      if(path.endsWith('/auth/me'))return reply({permissions:['user.view','plant.view','plant_owners.manage','order.view','support.manage']});
+      if(path.endsWith('/auth/session/remember')) {
+        assert.equal(route.request().headers().authorization,'Bearer synthetic-token-'+currentEmail);
+        rememberedEmail=currentEmail;
+        return reply({success:true});
+      }
+      if(path.endsWith('/auth/session')) {
+        if(!rememberedEmail)return route.fulfill({status:401,json:{message:'Sign in to continue'}});
+        return reply({token:'synthetic-token-'+rememberedEmail,user:{id:rememberedEmail,email:rememberedEmail,role:'central_admin'},permissions:sessionPermissions});
+      }
+      if(path.endsWith('/auth/me'))return reply({permissions:sessionPermissions});
       if(path.endsWith('/summary'))return reply({kpis:[{label:'Onboarding Requests',value:1}]});
       if(path==='/api/control-center/whatsapp/stats')return reply({counts:{conversations:0,unread:0,incoming_today:0},replies_enabled:false});
       if(path==='/api/control-center/whatsapp/chats')return reply({threads:[]});
@@ -115,7 +125,10 @@ try {
           owner_name:'New Applicant',business_name:'Registration Test Concrete',
           business_address:'Test Road Panvel',email:'new@example.invalid',
           whatsapp_number:'919876543210',status:'PENDING',alert_status:'ACCEPTED'}]});
-      if(path.endsWith('/auth/logout'))return route.fulfill(failedLogout?{status:503,json:{message:'Synthetic availability failure'}}:{json:{success:true}});
+      if(path.endsWith('/auth/logout')){
+        if(!failedLogout)rememberedEmail='';
+        return route.fulfill(failedLogout?{status:503,json:{message:'Synthetic availability failure'}}:{json:{success:true}});
+      }
       throw Error('Unexpected API path: '+path);
     });
     const button=name=>page.getByRole('button',{name,exact:true});
@@ -148,6 +161,7 @@ try {
     await page.getByLabel('Dashboard module cards').waitFor();
     assert.match(await page.locator('main').getAttribute('class')||'',/tm-dark/,'graphite theme should be the default');
     const workspace = button('Open Plant Master');
+    await page.mouse.move(0, 0);
     const visual = await workspace.evaluate(el => ({
       width: el.getBoundingClientRect().width,
       right: el.getBoundingClientRect().right,
@@ -166,7 +180,22 @@ try {
     await adminNav('Settings').click();
     await button('Light').click();
     assert.match(await page.locator('main').getAttribute('class')||'',/tm-light/,'light theme should use warm app tokens');
-    await button('Dark').click();
+    for (const mode of ['Light','Dark']) {
+      await button(mode).click();
+      const selected=await button(mode).evaluate(el=>{
+        const {color,backgroundColor}=getComputedStyle(el);
+        return [color,backgroundColor];
+      });
+      assert.deepEqual(selected,['rgb(14, 17, 22)','rgb(255, 138, 0)'],'selected theme uses readable graphite on orange');
+    }
+    await page.reload();
+    await page.getByRole('heading',{name:'Command Center',exact:true}).waitFor();
+    assert.equal(await adminNav('Settings').getAttribute('aria-current'),'page');
+    await page.goBack();
+    await page.waitForURL(url=>url.hash==='#/admin/plants');
+    await page.waitForFunction(()=>document.querySelector('.tm-sidebar [aria-current="page"]')?.textContent?.trim()==='Plant Master');
+    await button('Back to dashboard').click();
+    await page.waitForURL(url=>url.hash==='#/admin/dashboard');
     await adminNav('Chats').click();
     await page.getByText('No incoming WhatsApp conversations recorded.').waitFor();
     assert.equal(await page.getByRole('button',{name:'Send WhatsApp reply'}).count(),0,'WhatsApp sending must remain gated off');
@@ -242,7 +271,10 @@ try {
     await page.getByLabel('Fresh authenticator code',{exact:true}).fill('123456');
     await button('Sign out').click();await page.getByRole('heading',{name:'Central Admin sign in',exact:true}).waitFor();
     await page.getByText(failedLogout?'Signed out locally. Server revocation could not be confirmed; the session expires automatically.':'Signed out and server session revoked.',{exact:true}).waitFor();
-    assert.equal(await page.getByLabel('Approved administrator email').inputValue(),'');await signIn('second@example.invalid');
+    await page.reload();
+    await page.getByRole('heading',{name:'Central Admin sign in',exact:true}).waitFor();
+    assert.equal(await page.getByLabel('Approved administrator email').inputValue(),'');
+    await signIn('second@example.invalid');
     assert.equal(await page.getByLabel('Plant Owner access controls').count(),0);
     assert.equal(await page.getByText('Previous account plant · TEST-001',{exact:true}).count(),0);
     assert.equal(await page.getByText('Test Supervisor',{exact:true}).count(),0);

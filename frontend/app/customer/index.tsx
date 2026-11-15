@@ -42,7 +42,7 @@ const ACTIONS: readonly { key: ActionKey; label: string; symbol: VectorSymbolNam
 // Home-only selection. All other modules remain available from the More directory.
 const HOME_MODULE_KEYS = [
   "projects", "pour-planner", "receiving-guide", "cube-tests",
-  "saved-sites", "customer-support", "compare-plants", "free-tools",
+  "saved-sites", "compare-plants", "free-tools",
 ] as const;
 const DIRECTORY = modulesForRole("customer");
 const CUSTOMER_MODULES = HOME_MODULE_KEYS.flatMap(key => DIRECTORY.filter(module => module.key === key));
@@ -67,6 +67,8 @@ export default function CustomerHome() {
   const { user } = useAuth();
   const router = useRouter();
   const { data, loading, error, refetch, reload } = useGet<HomeData>("/customer/home");
+
+  const activeOrder = data?.active_order;
 
   const onAction = (key: ActionKey) => {
     if (key === "plants") return router.push("/customer/plants");
@@ -101,7 +103,7 @@ export default function CustomerHome() {
             style={({ pressed }) => [styles.tile, styles.quickTile, { minHeight: homeSize.quickTile, width: quickTileWidth, opacity: pressed ? 0.7 : 1 }]}
           >
             <VectorSymbol name={action.symbol} size={homeSize.quickSymbol}
-              color={action.key === "new" ? (colors.isDark ? colors.onBrandSoft : "#9C4100") : undefined} />
+              color={action.key === "new" ? (colors.accentText) : undefined} />
             <AppText maxFontSizeMultiplier={0}
               style={[styles.quickLabel, { fontSize: homeSize.quickLabel, lineHeight: homeSize.quickLabelLine, minHeight: homeSize.quickLabelMin, color: colors.onSurface }]}>{action.label}</AppText>
           </Pressable>
@@ -110,8 +112,7 @@ export default function CustomerHome() {
     </View>
   );
 
-  // Keep the original eight module keys in the registered catalog and simply
-  // present them as two clearly named four-item sections.
+  // Show planning and advice in distinct groups. Account support lives in Help and More.
   const renderModuleGroup = (keys: readonly string[], title: string, testID: string) => (
     <View testID={testID} style={[styles.groupCard, styles.tightGroup]}>
       <AppText style={[styles.sectionTitle, headingSize, { color: colors.onSurface }]}>{title}</AppText>
@@ -123,7 +124,7 @@ export default function CustomerHome() {
             accessibilityRole="button"
             accessibilityLabel={module.label}
             onPress={() => router.push(module.route)}
-            style={({ pressed }) => [styles.tile, styles.directoryTile, { backgroundColor: colors.surfaceSecondary, borderColor: colors.divider, minHeight: homeSize.toolTile, width: toolTileWidth, opacity: pressed ? 0.7 : 1 }]}
+            style={({ pressed }) => [styles.tile, styles.directoryTile, { backgroundColor: colors.surfaceSecondary, borderColor: colors.divider, minHeight: homeSize.toolTile, width: keys.length === 3 && readableGridWidth >= 350 ? "32.5%" : toolTileWidth, opacity: pressed ? 0.7 : 1 }]}
           >
             {module.symbol ? <VectorSymbol name={module.symbol} size={homeSize.toolSymbol} /> : <Ionicons name={module.icon} size={homeSize.toolSymbol} color={colors.onSurfaceTertiary} />}
             <AppText maxFontSizeMultiplier={0}
@@ -140,7 +141,7 @@ export default function CustomerHome() {
     "Active Projects & Planning", "customer-module-grid",
   );
   const adviceTools = renderModuleGroup(
-    ["free-tools", "receiving-guide", "cube-tests", "customer-support"],
+    ["free-tools", "receiving-guide", "cube-tests"],
     "Free Tools & Expert Advice", "home-advice-grid",
   );
 
@@ -190,7 +191,7 @@ export default function CustomerHome() {
 
       <ScrollView
         testID="customer-home-scroll"
-        contentContainerStyle={[styles.scrollContent, { gap: homeSize.sectionGap, paddingBottom: 88 + insets.bottom }]}
+        contentContainerStyle={[styles.scrollContent, { gap: homeSize.sectionGap, paddingBottom: homeSize.sectionGap + insets.bottom }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={colors.brand} />}
       >
@@ -217,15 +218,12 @@ export default function CustomerHome() {
           <>
             {/* Existing carousel and its five images remain unchanged. */}
             <View style={[styles.homeAboveFold, { gap: homeSize.sectionGap }]}>
-              <CustomerNextAction
-                activeOrder={data.active_order}
-                hasOrderHistory={data.recent_orders.length > 0}
-                kycVerified={(data.kyc_status || user?.kyc_status || "").toUpperCase() === "VERIFIED"}
-                onCreateOrder={() => onAction("new")}
-                onViewOrder={(id) => router.push({ pathname: "/order/[id]", params: { id } })}
-                onViewOrders={() => router.push("/customer/orders")}
-                onVerifyIdentity={() => router.push("/kyc")}
-              />
+              {activeOrder ? (
+                <CustomerNextAction
+                  order={activeOrder}
+                  onViewOrder={() => router.push({ pathname: "/order/[id]", params: { id: activeOrder.id } })}
+                />
+              ) : null}
               <HomeCarousel style={{ width: Math.min(viewportWidth, 720), borderRadius: 0, borderWidth: 0 }} />
               {quickActions}
               <View style={styles.groupCard}><KycBanner status={data.kyc_status} /></View>
@@ -250,7 +248,7 @@ export default function CustomerHome() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  scrollContent: { paddingHorizontal: 16, paddingTop: 0, paddingBottom: 88, gap: 10, maxWidth: 1100, alignSelf: "center", width: "100%" },
+  scrollContent: { paddingHorizontal: 16, paddingTop: 0, gap: 10, maxWidth: 1100, alignSelf: "center", width: "100%" },
   // Ten-dp separation between Home sections, while the carousel extends to
   // the viewport edges and the content keeps 16-dp side gutters.
   groupCard: { width: "100%", maxWidth: 620, alignSelf: "center", paddingHorizontal: 0, paddingVertical: 0, gap: 0 },

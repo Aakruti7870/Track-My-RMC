@@ -121,7 +121,7 @@ test("customer support uses a Material Symbol and public login retains its optim
   assert.ok(!widget.includes('name="chatbubbles-outline"'), "do not show the old generic chat icon");
   assert.ok(widget.includes('require("../../assets/images/support-agent-mascot.webp")'));
   assert.equal((widget.match(/<Image source={SUPPORT_AGENT_MASCOT}/g) || []).length, 1, "the public login launcher retains its mascot");
-  assert.match(widget, /testID="customer-support-widget"[\s\S]*?<VectorSymbol name="support" \/>/);
+  assert.match(widget, /testID="header-help"[\s\S]*?<VectorSymbol name="support"/);
   assert.ok(widget.includes('resizeMode="contain"'));
   assert.ok(!widget.includes("AnimatedPuppy"));
   assert.ok(widget.includes("width: 56"));
@@ -136,9 +136,10 @@ test("customer support uses a Material Symbol and public login retains its optim
 
 test("authenticated Place Order and Track Delivery expand inside the support sheet before navigation", () => {
   assert.ok(widget.includes('Boolean(token) && user?.role === "customer"'));
-  assert.ok(widget.includes("CUSTOMER_WIDGET_PATHS.has(normalizedPath)"));
-  for (const path of ["/customer", "/customer/orders", "/customer/plants", "/customer/more"]) assert.ok(widget.includes(`\"${path}\"`));
-  assert.ok(widget.includes("styles.customerToolbar"));
+  assert.ok(widget.includes('normalizedPath === "/customer"'));
+  const header = readFileSync("src/components/customer/CustomerHomeHeader.tsx", "utf8");
+  assert.match(header, /<SupportWidgetBridge customerHeaderTarget=/);
+  assert.doesNotMatch(widget, /customerToolbar/);
   assert.ok(widget.includes("<Modal visible={customerHelpOpen}"));
   assert.ok(widget.includes('testID="customer-support-panel"'));
   assert.ok(widget.includes('accessibilityState={{ expanded: customerHelpOpen }}'));

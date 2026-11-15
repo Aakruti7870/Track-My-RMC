@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Modal, Platform, Pressable, StyleSheet, View } from "react-native";
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import * as Location from "expo-location";
@@ -28,7 +28,7 @@ const HELP: Record<string, string> = {
 
 export function OperationalHomeTopBar() {
   const { token, user } = useAuth();
-  const { colors, toggle, scheme } = useTheme();
+  const { colors, toggle, scheme, reduceMotion } = useTheme();
   const router = useRouter();
   const { data: notifications, refetch: refreshNotifications } = useGet<{ unread: number }>("/notifications?limit=1");
   const [location, setLocation] = useState("Current location");
@@ -126,19 +126,21 @@ export function OperationalHomeTopBar() {
       </Pressable>
     </View>
     {!!message ? <AppText accessibilityLiveRegion="polite" style={{ paddingHorizontal: 16, color: colors.onSurfaceSecondary, fontSize: 11 }}>{message}</AppText> : null}
-    <Modal transparent visible={helpOpen} animationType="fade" onRequestClose={() => setHelpOpen(false)}>
-      <View style={styles.scrim}>
-        <View style={[styles.help, { backgroundColor: colors.surfaceElevated, borderColor: colors.divider }]}>
+    <Modal transparent visible={helpOpen} animationType={reduceMotion ? "none" : "fade"} onRequestClose={() => setHelpOpen(false)}>
+      <View style={[styles.scrim, { backgroundColor: colors.scrim }]}>
+        <ScrollView accessibilityViewIsModal onAccessibilityEscape={() => setHelpOpen(false)}
+          style={[styles.help, { backgroundColor: colors.surfaceElevated, borderColor: colors.divider }]}
+          contentContainerStyle={styles.helpContent}>
           <AppText variant="heading">Role Help</AppText>
           <AppText variant="bodyMuted">{helpText}</AppText>
           <Pressable accessibilityRole="button" onPress={() => { setHelpOpen(false); router.push("/support"); }} style={styles.helpAction}>
             <Ionicons name="help-circle-outline" size={20} color={colors.brand} />
-            <AppText color={colors.brand}>Open Support</AppText>
+            <AppText color={colors.accentText}>Open Support</AppText>
           </Pressable>
           <Pressable accessibilityRole="button" onPress={() => setHelpOpen(false)} style={styles.helpAction}>
             <AppText color={colors.onSurface}>Close</AppText>
           </Pressable>
-        </View>
+        </ScrollView>
       </View>
     </Modal>
   </>;
@@ -148,7 +150,8 @@ const styles = StyleSheet.create({
   target: { width: 43, height: 44, alignItems: "center", justifyContent: "center" },
   location: { flex: 1, minWidth: 0, minHeight: 44, flexDirection: "row", alignItems: "center", gap: 3 },
   dot: { position: "absolute", right: 7, top: 6, width: 8, height: 8, borderRadius: 4 },
-  scrim: { flex: 1, justifyContent: "center", padding: 24, backgroundColor: "rgba(0,0,0,0.55)" },
-  help: { borderWidth: 1, borderRadius: 16, padding: 20, gap: 14 },
+  scrim: { flex: 1, justifyContent: "center", padding: 24 },
+  help: { borderWidth: 1, borderRadius: 16, flexGrow: 0, flexShrink: 1 },
+  helpContent: { padding: 20, gap: 14 },
   helpAction: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 8, justifyContent: "center" },
 });

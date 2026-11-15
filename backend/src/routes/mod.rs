@@ -158,6 +158,14 @@ pub fn build_app_router(state: AppState) -> Router {
         )
         .route("/api/admin/auth/me", get(crate::auth::control_center::me))
         .route(
+            "/api/admin/auth/session",
+            post(crate::auth::control_center::restore_session),
+        )
+        .route(
+            "/api/admin/auth/session/remember",
+            post(crate::auth::control_center::remember_session),
+        )
+        .route(
             "/api/admin/auth/otp/send",
             post(crate::auth::control_center::send_email_otp),
         )

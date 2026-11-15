@@ -826,7 +826,11 @@ async fn read_workspaces_execute_and_enforce_individual_permissions(db: PgPool) 
 
 #[sqlx::test]
 async fn central_admin_rejects_unbound_jwt_and_logout_revokes_active_session(db: PgPool) {
-    let state = state(db.clone());
+    let mut state = state(db.clone());
+    let mut config = (*state.config).clone();
+    config.cors_allowed_origins = vec!["https://trackmyrmc.test".into()];
+    state.config = std::sync::Arc::new(config);
+    let web = trackmyrmc_backend::routes::build_app_router(state.clone());
     let router = app(state.clone());
     let (id, email, secret) = identity(&db, "central_admin", true, vec![]).await;
     let (_, result) = request(
@@ -837,6 +841,44 @@ async fn central_admin_rejects_unbound_jwt_and_logout_revokes_active_session(db:
     )
     .await;
     let first = result["token"].as_str().unwrap();
+    let remember = web
+        .clone()
+        .oneshot(
+            Request::post("/api/admin/auth/session/remember")
+                .header("origin", "https://trackmyrmc.test")
+                .header("authorization", format!("Bearer {first}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(remember.status(), StatusCode::OK);
+    let cookie = remember.headers()["set-cookie"].to_str().unwrap();
+    assert!(cookie.contains("; HttpOnly; Secure; SameSite=Strict;"));
+    let pair = cookie.split(';').next().unwrap().to_owned();
+    let restore = |origin| {
+        Request::post("/api/admin/auth/session")
+            .header("origin", origin)
+            .header("cookie", pair.as_str())
+            .body(Body::empty())
+            .unwrap()
+    };
+    let wrong_origin = web
+        .clone()
+        .oneshot(restore("https://other.test"))
+        .await
+        .unwrap();
+    assert_eq!(wrong_origin.status(), StatusCode::FORBIDDEN);
+    let restored = web
+        .clone()
+        .oneshot(restore("https://trackmyrmc.test"))
+        .await
+        .unwrap();
+    assert_eq!(restored.status(), StatusCode::OK);
+    assert_eq!(restored.headers()["cache-control"], "no-store");
+    let body = to_bytes(restored.into_body(), 8192).await.unwrap();
+    let data: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(data["token"], first);
     let second = generate_token(
         id,
         "central_admin",
@@ -854,6 +896,11 @@ async fn central_admin_rejects_unbound_jwt_and_logout_revokes_active_session(db:
             .0,
         StatusCode::OK
     );
+    let after_logout = web
+        .oneshot(restore("https://trackmyrmc.test"))
+        .await
+        .unwrap();
+    assert_eq!(after_logout.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(
         request(&router, "/me", Some(first), None).await.0,
         StatusCode::UNAUTHORIZED
