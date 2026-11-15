@@ -80,3 +80,12 @@ test("plant onboarding keeps the request pending and supports compact-screen scr
   assert.match(onboarding, /contentContainerStyle=\{\[styles\.successPage/);
   assert.match(onboarding, /router\.canGoBack\(\)/);
 });
+
+test("customer order empty state recovers instead of trapping the user", () => {
+  const orders = read("app/customer/orders.tsx");
+  assert.match(orders, /testID="orders-empty-next-action"/);
+  assert.match(orders, /Start an Order Request/);
+  assert.match(orders, /View All Orders/);
+  assert.match(orders, /router\.push\("\/new-order"\)/);
+  assert.match(orders, /minHeight: 48/);
+});
