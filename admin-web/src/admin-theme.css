@@ -120,7 +120,7 @@ body {margin:0;}
 .tm-settings-panel {padding:22px!important;}
 .tm-appearance-actions {display:flex;gap:9px;flex-wrap:wrap;}
 .tm-appearance-actions button {border:1px solid var(--tm-border);background:var(--tm-raised);color:var(--tm-text);
-  border-radius:10px;min-width:100px;padding:11px;cursor:pointer;}
+  border-radius:10px;min-width:100px;padding:11px;cursor:pointer;transition:none;}
 .tm-appearance-actions .selected {background:var(--tm-orange-action);color:var(--tm-on-action);border-color:var(--tm-orange-action);}
 .tm-admin-root :is(input,textarea,select) {max-width:100%;}
 .tm-admin-root :is(article,section) {min-width:0;}

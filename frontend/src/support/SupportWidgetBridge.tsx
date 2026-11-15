@@ -261,6 +261,7 @@ export function SupportWidgetBridge({ customerHeaderTarget }: { customerHeaderTa
               <Pressable
                 testID="customer-support-open-center"
                 accessibilityRole="button"
+                accessibilityLabel="Customer Support"
                 accessibilityHint="Opens the full support center and support case history"
                 onPress={() => { closeCustomerHelp(); router.push("/support"); }}
                 style={({ pressed }) => [styles.actionSection, styles.actionRow, { borderColor: colors.border, opacity: pressed ? 0.78 : 1 }]}
