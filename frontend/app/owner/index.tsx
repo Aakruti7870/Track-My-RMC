@@ -1,9 +1,10 @@
 import React, { useState } from "react";
-import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
+import { Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/src/auth/AuthContext";
 import { useGet } from "@/src/hooks/useApi";
 import { HomeModuleSection, HomeSectionHeader } from "@/src/components/HomeModuleSection";
+import { PlantHomeActions, PlantHomeHero } from "@/src/components/PlantHomeCards";
 import { AppText } from "@/src/components/ui/AppText";
 import { Skeleton } from "@/src/components/ui/Skeleton";
 import { ErrorView } from "@/src/components/StateViews";
@@ -16,7 +17,6 @@ import { HOME_KEYS, DRIVER_MODULE, ownerDestination, OWNER_HOME_COMMERCIAL, OWNE
 import { OwnerInsights } from "@/src/owner/OwnerInsights";
 import { OwnerFrame, OwnerGlass, OwnerModuleRow, ui, useOwnerBottomSpace, useOwnerPalette } from "@/src/owner/OwnerUI";
 
-const PLANT_HERO_IMAGE = require("../../assets/images/Plant _Owner_All_staff_top_card.webp");
 type HomeData = { cards: Record<string, number>; plant_count: number };
 const METRICS: { key: string; label: string; basis: string; symbol: VectorSymbolName; destination: string }[] = [
   { key: "todays_orders", label: "Total Orders", basis: "Due today", symbol: "plant-orders", destination: "today" },
@@ -35,8 +35,7 @@ export default function OwnerHome() {
   const bottom = useOwnerBottomSpace();
   const { width: viewportWidth, fontScale } = useWindowDimensions();
   const contentWidth = Math.max(0, Math.min(viewportWidth, 820) - 32);
-  const shortcutColumns = contentWidth / fontScale >= 350 ? 4 : 2;
-  const shortcutWidth = (contentWidth - (shortcutColumns - 1) * 8) / shortcutColumns;
+  const shortcutWidth = (Math.min(contentWidth, 620) - 20) / fontScale >= 320 ? "24%" : "49%";
   const metricColumns = contentWidth >= 700 ? 4 : 2;
   const metricWidth = (contentWidth - (metricColumns - 1) * 9) / metricColumns;
   const { user } = useAuth();
@@ -45,7 +44,6 @@ export default function OwnerHome() {
   const { data, loading, error, reload, refetch } = useGet<HomeData>("/owner/home");
   const catalog = modulesForRole(user?.role);
   const modules = HOME_KEYS.flatMap(key => catalog.filter(module => module.key === key));
-  const name = user?.name && !/play\s*review|reviewer/i.test(user.name) ? user.name : "Plant Owner";
 
   const openMetric = (destination: string) => {
     if (destination.startsWith("/")) {
@@ -59,24 +57,24 @@ export default function OwnerHome() {
   return <OwnerFrame>
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[ui.content, { paddingBottom: bottom, gap: 10 }]}
       refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={refetch} tintColor={p.accent} />}>
-      <View testID="owner-home-summary" style={[styles.hero, { backgroundColor: p.panel, borderColor: p.border }]}>
-        <View style={styles.heroCopy}>
-          <AppText style={{ fontSize: 13, color: p.muted }}>Plant operations</AppText>
-          <AppText style={{ fontFamily: fonts.semibold, fontSize: 22, lineHeight: 28, color: p.text }}>{name}</AppText>
+      <View style={styles.homeCards}>
+        <View testID="owner-home-summary" style={[styles.hero, { backgroundColor: p.panel }]}>
+          <PlantHomeHero label="Plant Owner" testID="owner-home-hero-banner" />
         </View>
-        <Image testID="owner-home-hero-banner" source={PLANT_HERO_IMAGE} resizeMode="cover" accessible={false} style={styles.heroImage} />
-      </View>
-
-      <HomeSectionHeader title="Quick Access" seeAll="/owner/operations" testID="home-see-all-owner-operations" />
-      <View style={styles.modules}>
-        {modules.map(module => <Pressable testID={`owner-shortcut-${module.key}`} key={module.key}
-          accessibilityRole="button" accessibilityLabel={module.key === "business-staff" ? "Workforce" : module.label}
-          accessibilityHint={module.description}
-          onPress={() => router.push(ownerDestination(module))}
-          style={({ pressed }) => [styles.shortcut, { width: shortcutWidth, opacity: pressed ? 0.74 : 1 }]}>
-          {module.symbol ? <IconTile symbol={module.symbol} /> : <IconTile icon={module.icon} />}
-          <AppText center style={[styles.shortcutLabel, { color: p.text }]}>{module.key === "business-staff" ? "Workforce" : module.label}</AppText>
-        </Pressable>)}
+        <View style={[styles.quickAccess, { backgroundColor: p.panel, borderColor: p.border }]}>
+          <HomeSectionHeader title="Quick Access" seeAll="/owner/operations" testID="home-see-all-owner-operations" />
+          <View style={styles.modules}>
+            {modules.map(module => <Pressable testID={`owner-shortcut-${module.key}`} key={module.key}
+              accessibilityRole="button" accessibilityLabel={module.key === "business-staff" ? "Workforce" : module.label}
+              accessibilityHint={module.description}
+              onPress={() => router.push(ownerDestination(module))}
+              style={({ pressed }) => [styles.shortcut, { width: shortcutWidth, opacity: pressed ? 0.74 : 1 }]}>
+              {module.symbol ? <IconTile symbol={module.symbol} height={45} /> : <IconTile icon={module.icon} height={45} />}
+              <AppText center style={styles.quickLabel}>{module.key === "business-staff" ? "Workforce" : module.label}</AppText>
+            </Pressable>)}
+          </View>
+        </View>
+        <PlantHomeActions />
       </View>
 
       <AppText style={[ui.section, { color: p.text }]}>Today at a Glance</AppText>
@@ -122,13 +120,14 @@ export default function OwnerHome() {
   </OwnerFrame>;
 }
 const styles = StyleSheet.create({
-  hero: { minHeight: 104, borderWidth: 1, borderRadius: 12, padding: 12, gap: 12, flexDirection: "row", alignItems: "center" },
-  heroImage: { width: 96, height: 72, borderRadius: 8 },
-  heroCopy: { flex: 1, minWidth: 0, gap: 4 },
+  homeCards: { alignSelf: "center", width: "100%", maxWidth: 620, gap: 10 },
+  hero: { borderRadius: 10 },
+  quickAccess: { borderRadius: 10, borderWidth: 1, paddingHorizontal: 9, paddingBottom: 9 },
   metrics: { flexDirection: "row", flexWrap: "wrap", gap: 9 },
   metric: { minHeight: 75, padding: 8, flexDirection: "row", gap: 6, alignItems: "center" },
-  modules: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  shortcut: { minHeight: 80, paddingHorizontal: 2, paddingVertical: 5, alignItems: "center", gap: 5 },
+  modules: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: 6 },
+  shortcut: { minHeight: 80, minWidth: 0, paddingHorizontal: 2, paddingVertical: 4, alignItems: "center", gap: 5 },
+  quickLabel: { fontFamily: fonts.medium, fontSize: 13, lineHeight: 17, width: "100%" },
   shortcutLabel: { flexShrink: 1, fontFamily: fonts.semibold, fontSize: 12, lineHeight: 16 },
   insightsToggle: { flexDirection: "row", alignItems: "center", minHeight: 52, gap: 10, paddingHorizontal: 12, paddingVertical: 8 },
 });

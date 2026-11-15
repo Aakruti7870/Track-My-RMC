@@ -16,6 +16,7 @@ import { Badge } from "@/src/components/ui/Badge";
 import { Skeleton } from "@/src/components/ui/Skeleton";
 import { ErrorView } from "@/src/components/StateViews";
 import { DriverIdentityCard } from "@/src/components/DriverIdentityCard";
+import { PlantHomeActions, PlantHomeHero } from "@/src/components/PlantHomeCards";
 import { fonts, fontSize, radius, spacing, operationalStatus } from "@/src/theme/tokens";
 import { IconTile } from "@/src/components/IconTile";
 
@@ -47,12 +48,20 @@ export default function DriverHome() {
           : "Attendance";
   const attendanceLabel = data?.checked_in ? "On Duty" : shiftComplete ? "Shift Done" : attendanceKnown ? "Check In" : "Attendance";
   const driverTools = modulesForRole(user?.role).filter(module => module.key === "shift-roster" || module.key === "workforce");
+  const plantCards = <View style={styles.plantCards}>
+    <PlantHomeHero label="Driver" testID="driver-home-plant-banner" />
+    <PlantHomeActions />
+  </View>;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface, overflow: screenOverflow }}>
       <OperationalHomeTopBar />
       {error && !data ? (
-        <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}><ErrorView message={error} onRetry={reload} /></ScrollView>
+        <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}>
+          <DriverIdentityCard />
+          {plantCards}
+          <ErrorView message={error} onRetry={reload} />
+        </ScrollView>
       ) : (
         <ScrollView
           testID="driver-home-scroll"
@@ -60,6 +69,8 @@ export default function DriverHome() {
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={false} onRefresh={() => { void refetch(); void refetchAttendance(); }} tintColor={colors.brand} />}
         >
+          <DriverIdentityCard />
+          {plantCards}
           {(loading && !data) || (attendanceLoading && !attendance) ? (
             <>
               <Skeleton height={70} style={{ borderRadius: radius.md }} />
@@ -67,7 +78,6 @@ export default function DriverHome() {
             </>
           ) : data ? (
             <>
-              <DriverIdentityCard />
               <AppText variant="heading">Smart Features</AppText>
               <Card variant="brand" style={styles.summary} testID="driver-home-summary">
                 <View style={{ flex: 1, gap: spacing.xs }}>
@@ -155,6 +165,7 @@ export default function DriverHome() {
 }
 
 const styles = StyleSheet.create({
+  plantCards: { width: "100%", maxWidth: 620, alignSelf: "center", gap: 10 },
   header: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.md, paddingTop: spacing.sm },
   iconBtn: { width: 44, height: 44, borderRadius: radius.md, alignItems: "center", justifyContent: "center", borderWidth: 1 },
   summary: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 108 },
