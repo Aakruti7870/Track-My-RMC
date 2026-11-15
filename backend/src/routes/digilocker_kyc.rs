@@ -339,7 +339,11 @@ fn attempt_status(status: &str, reason: Option<&str>) -> &'static str {
     }
 }
 
-fn effective_attempt_status(profile: &'static str, status: &str, reason: Option<&str>) -> &'static str {
+fn effective_attempt_status(
+    profile: &'static str,
+    status: &str,
+    reason: Option<&str>,
+) -> &'static str {
     match profile {
         "NOT_STARTED" => attempt_status(status, reason),
         "PENDING" => match status {
