@@ -18,6 +18,7 @@ import { layout, spacing } from "@/src/theme/tokens";
 
 const GRADES = ["M10","M15","M20","M25","M30","M35","M40","M45","M50","M55","M60"];
 type CreatedLead = { id: string; status: string; message?: string; canonical_request_id?: string };
+type RequestParams = { googlePlaceId?: string; plantId?: string; plantName?: string; orderReview?: string; visit?: string };
 type FieldName = "customerName" | "email" | "gstin" | "quantity" | "address" | "date" | "phone" | "consent";
 type FieldErrors = Partial<Record<FieldName, string>>;
 const uuid = () => {
@@ -27,11 +28,17 @@ const uuid = () => {
 };
 
 export default function RequestQuotation() {
+  const params = useLocalSearchParams<RequestParams>();
+  const { user } = useAuth();
+  const formKey = JSON.stringify([user?.id, params.plantId, params.googlePlaceId, params.orderReview, params.visit]);
+  return <SupplierRequestForm key={formKey} params={params} />;
+}
+
+function SupplierRequestForm({ params }: { params: RequestParams }) {
   const router = useRouter();
   const { token, user } = useAuth();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ googlePlaceId?: string; plantId?: string; plantName?: string; orderReview?: string }>();
   const reviewOrder = params.orderReview === "1";
   const requestLabel = reviewOrder ? "Order Request" : "Quotation Request";
   const [requestKey] = useState(uuid);

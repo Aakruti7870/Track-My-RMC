@@ -141,6 +141,7 @@ export default function CustomerPlants() {
   const [filters, setFilters] = useState({q:"",grade:"",radius_km:50,verified:false,...EMPTY_PLANT_GEO});
   const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null);
   const [details,setDetails] = useState<PlantData | null>(null);
+  const requestVisit = useRef(0);
   useEffect(() => { setSelectedPlantId(null); }, [userLocation?.lat, userLocation?.lng]);
   const manualLocation = useRef(false);
   const geoLookupVersion = useRef(0);
@@ -333,21 +334,28 @@ export default function CustomerPlants() {
     void Linking.openURL(place.google_maps_uri || fallback);
   }, []);
 
+  function openSupplierRequest(plant: PlantData, orderReview: boolean) {
+    const supplier = plant.status === "google_listing"
+      ? { googlePlaceId: plant.id.slice("google:".length) }
+      : { plantId: plant.id };
+    router.push({
+      pathname: "/customer/request-quotation",
+      params: {
+        ...supplier, plantName: plant.name, orderReview: orderReview ? "1" : "0",
+        visit: String(++requestVisit.current),
+      },
+    });
+  }
+
   function openPlantOrder(plant: PlantData) {
     const destination = plantOrderRoute(plant);
     if (destination === "unavailable") return;
     setDetails(null);
     if (destination === "direct") {
       router.push({ pathname: "/new-order", params: { plantId: plant.id } });
-      return;
+    } else {
+      openSupplierRequest(plant, true);
     }
-    const supplier = plant.status === "google_listing"
-      ? { googlePlaceId: plant.id.slice("google:".length) }
-      : { plantId: plant.id };
-    router.push({
-      pathname: "/customer/request-quotation",
-      params: { ...supplier, plantName: plant.name, orderReview: "1" },
-    });
   }
 
   return (
@@ -461,7 +469,7 @@ export default function CustomerPlants() {
                       <View key={place.place_id} testID="google-places-plant">
                         <NearbyPlantCard
                           plant={listing}
-                          onQuotation={() => router.push({pathname:"/customer/request-quotation",params:{googlePlaceId:place.place_id,plantName:place.name}} as any)}
+                          onQuotation={() => openSupplierRequest(listing, false)}
                           onSelect={() => setSelectedPlantId(listing.id)}
                           onDetails={() => {setSelectedPlantId(listing.id);setDetails(listing);}}
                           onOrder={() => openPlantOrder(listing)}
@@ -484,7 +492,7 @@ export default function CustomerPlants() {
           }
           renderItem={({ item }) => loading && !data ? null : (
             <NearbyPlantCard plant={item} onSelect={()=>setSelectedPlantId(item.id)} onDetails={()=>{setSelectedPlantId(item.id);setDetails(item);}}
-              onQuotation={()=>router.push({pathname:"/customer/request-quotation",params:{plantId:item.id,plantName:item.name}} as any)}
+              onQuotation={() => openSupplierRequest(item, false)}
               onOrder={() => openPlantOrder(item)} />
           )}
           ListFooterComponent={
