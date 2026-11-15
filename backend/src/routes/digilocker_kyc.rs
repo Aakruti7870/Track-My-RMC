@@ -635,7 +635,7 @@ async fn completed_consent_status_after_race(
     environment: &str,
 ) -> Result<&'static str, AppError> {
     let current = sqlx::query(
-        "SELECT d.status AS session_status,COALESCE(p.kyc_status,'unverified') AS profile_status
+        "SELECT d.status AS session_status,d.failure_reason,COALESCE(p.kyc_status,'unverified') AS profile_status
          FROM customer_digilocker_sessions d
          JOIN user_profiles p ON p.user_id=d.user_id
          WHERE d.id=$1 AND d.user_id=$2 AND d.provider_environment=$3",
@@ -666,6 +666,16 @@ async fn completed_consent_status_after_race(
     }
     if current_status != "NOT_STARTED" {
         return Ok(current_status);
+    }
+    // Concurrent status requests can lose the compare-and-set after another
+    // request records a terminal provider document failure. Surface the
+    // committed reason, not a generic retry instruction.
+    if session == "FAILED" {
+        return Ok(match current.get::<Option<String>, _>("failure_reason").as_deref() {
+            Some("aadhaar_not_consented") => "DOCUMENT_NOT_SHARED",
+            Some("document_access_denied") => "DOCUMENT_UNAVAILABLE",
+            _ => "REQUIRES_REVERIFICATION",
+        });
     }
     Ok(if session == "PENDING" {
         // A reviewer reset may have invalidated this older pending session.
@@ -1137,6 +1147,28 @@ mod tests {
             .await
             .unwrap(),
             0
+        );
+        // The second poll after a failed document GET must see the same
+        // terminal reason and must not perform another provider request.
+        assert_eq!(
+            completed_consent_status_after_race(&db, customer, id, "live")
+                .await
+                .unwrap(),
+            "DOCUMENT_UNAVAILABLE"
+        );
+        sqlx::query(
+            "UPDATE customer_digilocker_sessions
+             SET failure_reason='aadhaar_not_consented' WHERE id=$1",
+        )
+        .bind(id)
+        .execute(&db)
+        .await
+        .unwrap();
+        assert_eq!(
+            completed_consent_status_after_race(&db, customer, id, "live")
+                .await
+                .unwrap(),
+            "DOCUMENT_NOT_SHARED"
         );
     }
 
