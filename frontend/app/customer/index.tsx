@@ -15,7 +15,6 @@ import { KycBanner } from "@/src/components/KycBanner";
 import { ErrorView } from "@/src/components/StateViews";
 import { HomeCarousel } from "@/src/components/HomeCarousel";
 import { CustomerHomeHeader } from "@/src/components/customer/CustomerHomeHeader";
-import { CustomerNextAction } from "@/src/components/customer/CustomerNextAction";
 import type { OrderData } from "@/src/components/OrderCard";
 import type { PlantData } from "@/src/components/PlantCard";
 import { customerHomeSizes, fonts, radius } from "@/src/theme/tokens";
@@ -68,7 +67,7 @@ export default function CustomerHome() {
   const router = useRouter();
   const { data, loading, error, refetch, reload } = useGet<HomeData>("/customer/home");
 
-  const activeOrder = data?.active_order;
+  const loadingHome = loading && !data && !error;
 
   const onAction = (key: ActionKey) => {
     if (key === "plants") return router.push("/customer/plants");
@@ -102,8 +101,10 @@ export default function CustomerHome() {
             onPress={() => onAction(action.key)}
             style={({ pressed }) => [styles.tile, styles.quickTile, { minHeight: homeSize.quickTile, width: quickTileWidth, opacity: pressed ? 0.7 : 1 }]}
           >
-            <VectorSymbol name={action.symbol} size={homeSize.quickSymbol}
-              color={action.key === "new" ? (colors.accentText) : undefined} />
+            <View style={[styles.quickIconPlate, { backgroundColor: colors.surfaceTertiary }]}>
+              <VectorSymbol name={action.symbol} size={homeSize.quickSymbol}
+                color={action.key === "new" ? colors.accentText : colors.onSurfaceTertiary} />
+            </View>
             <AppText maxFontSizeMultiplier={0}
               style={[styles.quickLabel, { fontSize: homeSize.quickLabel, lineHeight: homeSize.quickLabelLine, minHeight: homeSize.quickLabelMin, color: colors.onSurface }]}>{action.label}</AppText>
           </Pressable>
@@ -145,21 +146,37 @@ export default function CustomerHome() {
     "Free Tools & Expert Advice", "home-advice-grid",
   );
 
-  // Pump rental is a dedicated service enquiry, not a confirmed booking.
-  const pumpOffer = (
-    <View testID="home-pump-rental-promo" style={styles.promoRow}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Request a concrete pump rental enquiry"
-        accessibilityHint="Opens the concrete pump rental enquiry form"
-        onPress={() => router.push({ pathname: "/customer/service-enquiry", params: { service: "pump" } })}
-        style={({ pressed }) => [styles.promoCard, styles.promoPrimaryCard, { width: homeSize.pumpWidth, minHeight: homeSize.pumpHeight, borderRadius: homeSize.pumpRadius, paddingHorizontal: homeSize.pumpPadding, gap: homeSize.pumpGap, backgroundColor: colors.surfaceSecondary, borderColor: colors.divider, opacity: pressed ? 0.76 : 1 }]}>
-        <VectorSymbol name="pump-rental" size={homeSize.pumpSymbol} />
-        <View style={styles.promoCopy}>
-          <AppText maxFontSizeMultiplier={0}
-            style={[styles.promoFirstLine, { fontSize: homeSize.pumpFirstSize, lineHeight: homeSize.pumpFirstLine, color: colors.onSurface }]}>Concrete pump rental</AppText>
-          <AppText maxFontSizeMultiplier={0}
-            style={[styles.promoSecondLine, { fontSize: homeSize.pumpSecondSize, lineHeight: homeSize.pumpSecondLine, color: colors.onSurface }]}>Request a quote</AppText>
-        </View>
-      </Pressable>
+  const planningActionItems: readonly {
+    key: string; title: string; description: string; symbol: VectorSymbolName; onPress: () => void;
+  }[] = [
+    {
+      key: "pump-rental", title: "Concrete pump rental", description: "Request a quote", symbol: "pump-rental",
+      onPress: () => router.push({ pathname: "/customer/service-enquiry", params: { service: "pump" } }),
+    },
+    {
+      key: "order-request", title: "Start an Order Request", symbol: "new-order",
+      description: "Build and save a request without completing KYC first",
+      onPress: () => onAction("new"),
+    },
+  ];
+  const planningActions = (
+    <View testID="home-planning-actions" style={[styles.groupCard, styles.planningActions, { gap: homeSize.gridGap }]}>
+      {planningActionItems.map(action => (
+        <Pressable key={action.key} testID={`home-${action.key}`} accessibilityRole="button"
+          accessibilityLabel={action.title} accessibilityHint={action.description} onPress={action.onPress}
+          style={({ pressed }) => [styles.planningAction, {
+            minHeight: homeSize.planningActionHeight,
+            backgroundColor: colors.surfaceSecondary, borderColor: colors.divider, opacity: pressed ? 0.76 : 1,
+          }]}>
+          <VectorSymbol name={action.symbol} size={homeSize.toolSymbol} color={colors.accentText} />
+          <AppText style={[styles.planningActionTitle, { fontSize: homeSize.quickLabel, lineHeight: homeSize.quickLabelLine }]}>
+            {action.title}
+          </AppText>
+          <AppText style={{ fontSize: homeSize.toolLabel, lineHeight: homeSize.toolLabelLine, color: colors.onSurfaceTertiary }}>
+            {action.description}
+          </AppText>
+        </Pressable>
+      ))}
     </View>
   );
 
@@ -186,73 +203,50 @@ export default function CustomerHome() {
 
   return (
     <ThemedScreen>
-    <View style={[styles.root, { backgroundColor: colors.surface }]}>
-      <CustomerHomeHeader onRefreshHome={refetch} />
-
-      <ScrollView
-        testID="customer-home-scroll"
-        contentContainerStyle={[styles.scrollContent, { gap: homeSize.sectionGap, paddingBottom: homeSize.sectionGap + insets.bottom }]}
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={colors.brand} />}
-      >
-        {error && !data ? (
-          <>
-            <ErrorView message={error} onRetry={reload} />
-            <View style={[styles.homeAboveFold, { gap: homeSize.sectionGap }]}>
-              {quickActions}
-              <View style={styles.groupCard}><KycBanner status={user?.kyc_status || "NOT_STARTED"} /></View>
-              {planningTools}
-              {pumpOffer}
-              {adviceTools}
+      <View style={[styles.root, { backgroundColor: colors.surface }]}>
+        <CustomerHomeHeader onRefreshHome={refetch} />
+        <ScrollView
+          testID="customer-home-scroll"
+          contentContainerStyle={[styles.scrollContent, { gap: homeSize.sectionGap, paddingBottom: homeSize.sectionGap + insets.bottom }]}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={colors.accentText} />}
+        >
+          <HomeCarousel style={styles.carousel} />
+          {loadingHome ? (
+            <View style={[styles.groupCard, { gap: homeSize.sectionGap }]}>
+              <Skeleton height={120} style={{ borderRadius: radius.lg }} />
+              <Skeleton height={56} style={{ borderRadius: radius.lg }} />
+              <Skeleton height={176} style={{ borderRadius: radius.lg }} />
             </View>
-            {otherServices}
-          </>
-        ) : loading && !data ? (
-          <>
-            <Skeleton height={330} style={{ borderRadius: radius.xl }} />
-            <Skeleton height={168} style={{ borderRadius: radius.lg }} />
-            <Skeleton height={90} style={{ borderRadius: radius.lg }} />
-            <Skeleton height={260} style={{ borderRadius: radius.lg }} />
-          </>
-        ) : data ? (
-          <>
-            {/* Existing carousel and its five images remain unchanged. */}
-            <View style={[styles.homeAboveFold, { gap: homeSize.sectionGap }]}>
-              {activeOrder ? (
-                <CustomerNextAction
-                  order={activeOrder}
-                  onViewOrder={() => router.push({ pathname: "/order/[id]", params: { id: activeOrder.id } })}
+          ) : (
+            <>
+              {quickActions}
+              {error && !data ? <View style={styles.groupCard}><ErrorView message={error} onRetry={reload} /></View> : null}
+              <View style={styles.groupCard}><KycBanner status={data?.kyc_status ?? user?.kyc_status ?? "NOT_STARTED"} /></View>
+              {planningTools}
+              {planningActions}
+              {adviceTools}
+              {otherServices}
+              {data ? (
+                <ActiveTransitMixerCard
+                  order={data.active_order || data.recent_orders[0] || null}
+                  onNewOrder={() => onAction("new")}
+                  onRefreshHome={refetch}
                 />
               ) : null}
-              <HomeCarousel style={{ width: Math.min(viewportWidth, 720), borderRadius: 0, borderWidth: 0 }} />
-              {quickActions}
-              <View style={styles.groupCard}><KycBanner status={data.kyc_status} /></View>
-              {planningTools}
-              {pumpOffer}
-              {adviceTools}
-            </View>
-            {otherServices}
-            {/* Preserve the existing active-order, stale-GPS and demo selection workflow. */}
-            <ActiveTransitMixerCard
-              order={data.active_order || data.recent_orders[0] || null}
-              onNewOrder={() => onAction("new")}
-              onRefreshHome={refetch}
-            />
-          </>
-        ) : null}
-      </ScrollView>
-    </View>
+            </>
+          )}
+        </ScrollView>
+      </View>
     </ThemedScreen>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  scrollContent: { paddingHorizontal: 16, paddingTop: 0, gap: 10, maxWidth: 1100, alignSelf: "center", width: "100%" },
-  // Ten-dp separation between Home sections, while the carousel extends to
-  // the viewport edges and the content keeps 16-dp side gutters.
+  scrollContent: { paddingHorizontal: 16, paddingTop: 10, alignSelf: "center", width: "100%" },
+  carousel: { maxWidth: 620, borderRadius: radius.md },
   groupCard: { width: "100%", maxWidth: 620, alignSelf: "center", paddingHorizontal: 0, paddingVertical: 0, gap: 0 },
-  homeAboveFold: { width: "100%", gap: 10 },
   tightGroup: { paddingVertical: 0, gap: 0 },
   // Keep a 10dp gap from the carousel and below each section heading.
   quickActionsGroup: { paddingTop: 0, paddingBottom: 0 },
@@ -263,15 +257,12 @@ const styles = StyleSheet.create({
   grid: { flexDirection: "row", flexWrap: "wrap", width: "100%", justifyContent: "space-between", rowGap: 10 },
   tile: { minWidth: 0, alignItems: "center", justifyContent: "center", paddingHorizontal: 1, paddingVertical: 2, gap: 4 },
   quickTile: { paddingVertical: 6, gap: 6 },
+  quickIconPlate: { width: 44, height: 44, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
   directoryTile: { paddingHorizontal: 4, paddingVertical: 8, gap: 6, borderWidth: 1, borderRadius: radius.md },
   quickLabel: { fontFamily: fonts.medium, fontSize: 14, lineHeight: 18, textAlign: "center", maxWidth: "100%", minHeight: 18 },
   tileLabel: { fontFamily: fonts.medium, fontSize: 11, lineHeight: 13, textAlign: "center", maxWidth: "100%" },
-  // Center the sole 240x50dp pump CTA; no empty secondary promo slot.
-  promoRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", width: "100%", maxWidth: 620, alignSelf: "center" },
-  promoCard: { minWidth: 0, minHeight: 50, maxWidth: "100%", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, borderWidth: 1, borderRadius: 10, paddingHorizontal: 4, paddingVertical: 2 },
-  promoPrimaryCard: { width: 240 },
-  promoCopy: { flex: 1, minWidth: 0, justifyContent: "center", gap: 1 },
-  promoFirstLine: { fontFamily: fonts.medium, fontSize: 13, lineHeight: 16 },
-  promoSecondLine: { fontFamily: fonts.semibold, fontSize: 15, lineHeight: 18 },
+  planningActions: { flexDirection: "row", alignItems: "stretch" },
+  planningAction: { flex: 1, minWidth: 0, borderWidth: 1, borderRadius: radius.lg, padding: 12, gap: 4 },
+  planningActionTitle: { fontFamily: fonts.semibold },
   serviceLabel: { fontFamily: fonts.medium, fontSize: 12, lineHeight: 15, textAlign: "center", maxWidth: "100%" },
 });
