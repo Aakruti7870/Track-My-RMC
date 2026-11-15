@@ -23,7 +23,7 @@ class PublicSecurityHeadersTests(unittest.TestCase):
         # The tested locations contain no nested location blocks.
         begin = "    location " + location + " {\n"
         self.assertIn(begin, self.nginx)
-        return self.nginx.split(begin, 1)[1].split("\n    }", 1)[0]
+        return self.nginx.rsplit(begin, 1)[1].split("\n    }", 1)[0]
 
     def test_public_spa_and_static_assets_keep_security_headers(self):
         for location in ["/", "/_expo/static/"]:
