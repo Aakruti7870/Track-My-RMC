@@ -51,14 +51,16 @@ test("owner and plant staff reuse the pixel-preserving RMC plant WebP banner", (
   assert.equal(header.subarray(8, 12).toString(), "WEBP");
   // VP8L is WebP's lossless format. A lossy re-encode would violate the image requirement.
   assert.equal(header.subarray(12, 16).toString(), "VP8L");
+  const shared = fs.readFileSync(path.join(root, "src/components/PlantHomeCards.tsx"), "utf8");
+  assert.ok(shared.includes(stem + ".webp"), "missing lossless plant banner in PlantHomeHero");
   for (const component of ["app/owner/index.tsx", "src/screens/StaffHome.tsx"]) {
     const contents = fs.readFileSync(path.join(root, component), "utf8");
-    assert.ok(contents.includes(stem + ".webp"), `missing lossless plant banner in ${component}`);
+    assert.ok(contents.includes("<PlantHomeHero "), `missing shared plant banner in ${component}`);
   }
   assert.ok(!fs.readFileSync(path.join(root, "app/owner/index.tsx"), "utf8").includes('require("../../assets/images/Mixer.png")'), "owner banner must no longer show a truck");
   const staff = fs.readFileSync(path.join(root, "src/screens/StaffHome.tsx"), "utf8");
   assert.ok(staff.includes("disabled={!primaryAllowed}"), "staff permission gate must remain unchanged");
-  assert.match(staff, /onPress=\{\(\) => router\.push\(workspace\.href\)\}/, "The staff banner must open its configured role workspace.");
+  assert.match(staff, /onPress=\{\(\) => router\.push\(workspace\.href\)\}/, "The staff shortcut must open its configured role workspace.");
 });
 
 test("native PNG splash and Android app icons are unchanged", () => {

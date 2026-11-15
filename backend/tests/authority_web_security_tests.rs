@@ -126,6 +126,105 @@ async fn identity(db: &PgPool, role: &str, permissions: &[&str]) -> (Uuid, Strin
 }
 
 #[sqlx::test]
+async fn plant_supplier_enquiry_uses_assigned_plant_and_deduplicates_retries(db: PgPool) {
+    let state = state(db.clone());
+    let (central, _, _) = identity(&db, "central_admin", &["support.view"]).await;
+    let mut users = Vec::new();
+    for role in ["owner", "quality_engineer", "driver", "customer"] {
+        let id: Uuid = sqlx::query_scalar(
+            "INSERT INTO users(hashed_password,full_name,role) VALUES('unused','Supplier Test',$1) RETURNING id",
+        )
+        .bind(role)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        let token =
+            generate_token(id, role, "919876543210", None, &state.config.jwt_secret, 1).unwrap();
+        users.push((id, token));
+    }
+    let [(owner, owner_token), (staff, staff_token), (driver, driver_token), (_, customer_token)] =
+        users.as_slice()
+    else {
+        unreachable!()
+    };
+    let plant: Uuid = sqlx::query_scalar(
+        "INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,address_line,city,state,pincode,contact_phone)
+         VALUES($1,'Supplier Fixture Plant','SUPPLIER-QA',19,73,'Delivery location','Panvel','MH','410206','9876543210')
+         RETURNING id",
+    )
+    .bind(owner)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    sqlx::query("INSERT INTO plant_staff(plant_id,user_id,role) VALUES($1,$2,'quality_engineer')")
+        .bind(plant)
+        .bind(staff)
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO driver_employment_profiles(plant_id,driver_id,is_active,employment_status) VALUES($1,$2,TRUE,'ACTIVE')")
+        .bind(plant).bind(driver).execute(&db).await.unwrap();
+    let app = build_app_router(state);
+    let path = "/api/staff/supplier-enquiries";
+    let body = json!({
+        "plant_id": plant, "request_key": "same-request-key",
+        "materials": ["OPC Cement", "Aggregate", "Fly Ash"],
+        "contact_name": "Supplier Test", "contact_phone": "+919876543210",
+        "location": "Delivery location", "required_date": chrono::Utc::now().date_naive(),
+    });
+    for (token, role) in [
+        (owner_token, "owner"),
+        (staff_token, "quality_engineer"),
+        (driver_token, "driver"),
+    ] {
+        let (status, created) = call(&app, path, Some(token), Some(body.clone())).await;
+        assert_eq!(status, StatusCode::CREATED, "{created}");
+        let (status, retry) = call(&app, path, Some(token), Some(body.clone())).await;
+        assert_eq!(status, StatusCode::OK, "{retry}");
+        assert_eq!(retry["id"], created["id"]);
+        let details: Value = sqlx::query_scalar(
+            "SELECT details FROM customer_service_enquiries WHERE id=$1 AND service_type='PLANT_SUPPLIER'",
+        ).bind(Uuid::parse_str(created["id"].as_str().unwrap()).unwrap()).fetch_one(&db).await.unwrap();
+        assert_eq!(details["plant_id"], body["plant_id"]);
+        assert_eq!(details["materials"], body["materials"]);
+        assert_eq!(details["submitted_by_role"], role);
+    }
+    let mut invalid = body.clone();
+    invalid["plant_id"] = json!(Uuid::new_v4());
+    assert_eq!(
+        call(&app, path, Some(staff_token), Some(invalid)).await.0,
+        StatusCode::FORBIDDEN
+    );
+    let mut invalid = body.clone();
+    invalid["materials"] = json!(["OPC Cement", "Aggregate", "Fly Ash", "Water Tank"]);
+    assert_eq!(
+        call(&app, path, Some(staff_token), Some(invalid)).await.0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        call(&app, path, Some(customer_token), Some(body.clone()))
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        call(
+            &app,
+            "/api/customer/service-enquiries",
+            Some(owner_token),
+            None
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    let notifications: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM notifications WHERE user_id=$1 AND title='New plant supplier enquiry'",
+    ).bind(central).fetch_one(&db).await.unwrap();
+    assert_eq!(notifications, 3);
+}
+
+#[sqlx::test]
 async fn pending_login_cannot_outlive_credential_or_approval_revocation(db: PgPool) {
     let app = build_app_router(state(db.clone()));
     for role in ["central_admin", "authority"] {

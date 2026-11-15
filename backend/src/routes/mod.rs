@@ -536,6 +536,10 @@ pub fn build_app_router(state: AppState) -> Router {
             get(customer_services::list_customer).post(customer_services::create),
         )
         .route(
+            "/api/staff/supplier-enquiries",
+            post(customer_services::create_supplier),
+        )
+        .route(
             "/api/admin/service-enquiries",
             get(customer_services::list_admin),
         )

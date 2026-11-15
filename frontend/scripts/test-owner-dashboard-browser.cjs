@@ -15,6 +15,8 @@ fs.mkdirSync(out, { recursive: true });
       }, { scheme });
       const page = await context.newPage(), errors = [];
       let populated = false, failing = false;
+      let supplierFixture = false;
+      const supplierRequests = [];
       page.on('pageerror', error => errors.push(error.message));
       await page.route('**/api/**', async route => {
         const url = new URL(route.request().url()), path = url.pathname;
@@ -22,7 +24,14 @@ fs.mkdirSync(out, { recursive: true });
         if (path.endsWith('/me')) json = { id: 'isolated-owner', name: 'TrackMyRMC Play Review Owner', role: 'plant_owner', roles: ['plant_owner'], status: 'active', kyc_status: 'pending', plant_id: null };
         else if (path.endsWith('/owner/home')) json = { plant_count: 0, plants: [], cards: { todays_orders: 0, dispatched_loads: 0, active_staff: 0, pending_approvals: 0 }, pending_orders: [] };
         else if (path.endsWith('/notifications')) json = { unread: 2, items: [] };
-        else if (path.endsWith('/master/my-plants')) json = { plants: [] };
+        else if (path.endsWith('/master/my-plants')) json = { plants: supplierFixture ? [{ id: 'plant-one', name: 'Fixture Plant', city: 'Panvel' }] : [] };
+        else if (path.endsWith('/plant-profile/plant-one/editor')) return route.fulfill({ status: 403, json: { message: 'No edit grant' } });
+        else if (path.endsWith('/plant-profile/plant-one')) json = { plant_name: 'Fixture Plant', sections: [], documents: [] };
+        else if (path.endsWith('/staff/supplier-enquiries')) {
+          supplierRequests.push(route.request().postDataJSON());
+          if (supplierRequests.length === 1) return route.fulfill({ status: 503, json: { message: 'Fixture retry' } });
+          return route.fulfill({ status: 201, json: { success: true, id: 'isolated-enquiry', status: 'NEW' } });
+        }
         else if (/\/owner\/orders\/[0-9a-f-]+$/.test(path)) return route.fulfill({ status: 404, json: { message: 'Isolated detail navigation fixture' } });
         else if (path.endsWith('/owner/orders')) {
           if (failing) return route.fulfill({ status: 503, json: { message: 'Isolated network failure' } });
@@ -49,6 +58,15 @@ fs.mkdirSync(out, { recursive: true });
           assert.equal(await page.getByTestId('home-modules-owner-workforce').locator('[data-testid^="role-module-"]').count(), 4);
           assert.equal(await page.getByTestId('role-module-payroll-closure').count(), 0);
           assert.equal(await page.getByTestId('role-module-owner-drivers').count(), 1);
+          const hero = page.getByTestId('owner-home-hero-banner');
+          const order = await page.evaluate(() => {
+            const supplier = document.querySelector('[data-testid="plant-home-supplier-enquiry"]');
+            const profile = document.querySelector('[data-testid="plant-home-profile"]');
+            const kpi = document.querySelector('[data-testid="owner-metric-todays_orders"]');
+            return supplier.compareDocumentPosition(profile) & profile.compareDocumentPosition(kpi) & Node.DOCUMENT_POSITION_FOLLOWING;
+          });
+          assert(await hero.evaluate(node => node.getBoundingClientRect().width >= 280), 'Plant image spans the home card');
+          assert(order, 'Supplier and profile cards sit above the KPI grid in the requested order');
         }
         if (name === 'operations') assert.equal(await page.getByTestId('owner-operations-module-directory').locator('[data-testid^="role-module-"]').count(), 8);
         if (name === 'more') {
@@ -81,6 +99,38 @@ fs.mkdirSync(out, { recursive: true });
       }
       assert.equal(visibleModuleKeys.size, 25, 'Owner Home exposes compact previews alongside the existing Operations and More destinations');
       await go('/owner');
+      if (width === 390) {
+        supplierFixture = true;
+        await page.getByTestId('plant-home-profile').click();
+        await page.getByText('Fixture Plant · TrackMyRMC', { exact: true }).waitFor();
+        await page.getByText('Contact your Plant Owner to request editing access.').waitFor();
+        await page.getByText('Back', { exact: true }).click();
+        await page.getByTestId('plant-home-supplier-enquiry').click();
+        const form = page.getByTestId('supplier-enquiry-form');
+        await form.getByRole('button', { name: 'Submit Enquiry' }).click();
+        await page.getByText('Select at least one material.').waitFor();
+        await form.getByTestId('supplier-material-dropdown').click();
+        assert.equal(await form.getByRole('checkbox').count(), 7);
+        for (const material of ['OPC Cement', 'Aggregate', 'Fly Ash']) {
+          await form.getByRole('checkbox', { name: material, exact: true }).click();
+        }
+        assert(await form.getByRole('checkbox', { name: 'PPC Cement', exact: true }).isDisabled());
+        await form.getByTestId('supplier-material-dropdown').click();
+        await form.getByRole('textbox', { name: 'Contact phone' }).fill('+919876543210');
+        await form.getByRole('textbox', { name: 'Delivery location' }).fill('Fixture delivery address');
+        await form.getByRole('button', { name: /Required delivery date/ }).click();
+        await page.getByRole('button', { name: /^20\d\d-\d\d-\d\d$/ }).last().click();
+        await form.getByRole('button', { name: 'Submit Enquiry' }).click();
+        await page.getByText('The service is temporarily unavailable. Please try again.', { exact: true }).waitFor();
+        await form.getByRole('button', { name: 'Submit Enquiry' }).click();
+        await page.getByTestId('supplier-enquiry-success').waitFor();
+        assert.deepEqual(supplierRequests[0], supplierRequests[1], 'Retry reuses the submitted payload and request key');
+        assert.deepEqual(supplierRequests[0].materials, ['OPC Cement', 'Aggregate', 'Fly Ash']);
+        assert.equal(supplierRequests[0].plant_id, 'plant-one');
+        await page.getByRole('button', { name: 'Done' }).click();
+        await page.getByTestId('owner-home-summary').waitFor();
+        supplierFixture = false;
+      }
       for (const [category, key, count] of [['Commercial','owner-commercial',7],['Workforce','owner-workforce',9]]) {
         await page.getByTestId('home-see-all-' + key).click();
         await page.getByRole('heading', { name: category, exact: true }).waitFor();

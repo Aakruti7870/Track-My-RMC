@@ -1,12 +1,13 @@
 import { screenOverflow } from "@/src/theme/sceneBackground";
 import React, { useState } from "react";
-import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
+import { Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { type VectorSymbolName } from "@/src/components/VectorSymbol";
 import { IconTile } from "@/src/components/IconTile";
 import { useFocusEffect, useRouter, type Href } from "expo-router";
 import { HomeModuleSection, HomeSectionHeader } from "@/src/components/HomeModuleSection";
 import { OperationalHomeTopBar } from "@/src/components/OperationalHomeTopBar";
+import { PlantHomeActions, PlantHomeHero } from "@/src/components/PlantHomeCards";
 
 import { useAuth } from "@/src/auth/AuthContext";
 import { apiPost } from "@/src/api/client";
@@ -22,8 +23,6 @@ import { StaffCollection } from "@/src/screens/StaffCollection";
 import { STAFF_MODULE_GROUPS, staffModulesForScope, visibleStaffModules, type StaffModuleGrant } from "@/src/screens/StaffModuleDirectory";
 import { fonts, fontSize, radius, spacing, operationalStatus, type OperationalStatus } from "@/src/theme/tokens";
 
-const PLANT_HERO_IMAGE = require("../../assets/images/Plant _Owner_All_staff_top_card.webp");
-
 type Kpi = { label: string; value: number; icon: keyof typeof Ionicons.glyphMap; unit?: string | null };
 type HomeData = {
   role: string;
@@ -33,15 +32,15 @@ type HomeData = {
   kpis: Kpi[];
   primary: { title: string; kind: string };
 };
-const ROLE_WORKSPACE: Record<string, { tagline: string; help: string; href: Href; key: string }> = {
-  admin: { tagline: "Plant Operations", help: "Orders and fleet for your assigned plant", href: "/admin/orders", key: "dispatch_queue" },
-  dispatcher: { tagline: "Dispatch Control", help: "Allocate loads, mixers and delivery schedules", href: "/dispatcher/dispatch", key: "dispatch_queue" },
-  operator: { tagline: "Batching Operations", help: "Production queue and approved material recipes", href: "/operator/production", key: "production_queue" },
-  supervisor: { tagline: "Plant Oversight", help: "Follow incidents and operational exceptions", href: "/supervisor/incidents", key: "incidents" },
-  accountant: { tagline: "Commercial Workspace", help: "Plant invoices and collections", href: "/accountant/billing", key: "billing_ledger" },
-  quality_engineer: { tagline: "Quality Assurance", help: "Concrete quality records and mix documentation", href: "/quality_engineer/quality", key: "quality_register" },
-  fleet_manager: { tagline: "Transport Operations", help: "Mixer availability and driver assignments", href: "/fleet_manager/fleet", key: "fleet_availability" },
-  store_manager: { tagline: "Inventory Control", help: "Raw material balance and low-stock monitoring", href: "/store_manager/stock", key: "material_inventory" },
+const ROLE_WORKSPACE: Record<string, { help: string; href: Href; key: string }> = {
+  admin: { help: "Orders and fleet for your assigned plant", href: "/admin/orders", key: "dispatch_queue" },
+  dispatcher: { help: "Allocate loads, mixers and delivery schedules", href: "/dispatcher/dispatch", key: "dispatch_queue" },
+  operator: { help: "Production queue and approved material recipes", href: "/operator/production", key: "production_queue" },
+  supervisor: { help: "Follow incidents and operational exceptions", href: "/supervisor/incidents", key: "incidents" },
+  accountant: { help: "Plant invoices and collections", href: "/accountant/billing", key: "billing_ledger" },
+  quality_engineer: { help: "Concrete quality records and mix documentation", href: "/quality_engineer/quality", key: "quality_register" },
+  fleet_manager: { help: "Mixer availability and driver assignments", href: "/fleet_manager/fleet", key: "fleet_availability" },
+  store_manager: { help: "Raw material balance and low-stock monitoring", href: "/store_manager/stock", key: "material_inventory" },
 };
 const KPI_ARTWORK: Record<string, VectorSymbolName> = {
   "Pending Orders": "plant-orders", "In Transit TMs": "transit-mixer-fleet", "Available TMs": "fleet-availability",
@@ -113,13 +112,43 @@ export function StaffHome() {
     return <HomeModuleSection key={category} id={category.toLowerCase()} title={category} modules={entries.slice(0, 4)}
       seeAll={entries.length > 2 ? { pathname: "/role-modules", params: { category } } : undefined} />;
   });
+  const topCards = (
+    <View style={styles.topCards}>
+      <PlantHomeHero label={data?.role_label || user?.role_label || "Plant Staff"} testID="staff-home-hero-banner" />
+      {data ? (
+        <Pressable
+          testID="staff-home-summary" accessibilityRole="button" accessibilityLabel={"Open " + data.primary.title}
+          accessibilityState={{ disabled: !primaryAllowed }} disabled={!primaryAllowed}
+          onPress={() => router.push(workspace.href)}
+          style={({ pressed }) => [styles.summary, {
+            backgroundColor: colors.surfaceSecondary, borderColor: colors.divider, opacity: pressed ? 0.82 : 1,
+          }]}>
+          <IconTile icon="grid-outline" />
+          <View style={styles.summaryCopy}>
+            <AppText style={styles.summaryTitle}>{data.primary.title}</AppText>
+            <AppText variant="caption">{workspace.help}</AppText>
+            {!primaryAllowed ? <AppText variant="caption" color={colors.warning}>
+              {grantsLoading ? "Checking access…" : grantsError ? "Unable to verify permissions" : "Access restricted by Plant Owner"}
+            </AppText> : null}
+          </View>
+          <Ionicons name={primaryAllowed ? "chevron-forward" : "lock-closed-outline"} size={20} color={colors.accentText}
+            accessible={false} aria-hidden />
+        </Pressable>
+      ) : null}
+      <PlantHomeActions />
+    </View>
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: "transparent", overflow: screenOverflow }}>
       <OperationalHomeTopBar />
 
       {error && !data ? (
-        <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}><ErrorView message={error} onRetry={reload} />{roleTools}</ScrollView>
+        <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}>
+          {topCards}
+          <ErrorView message={error} onRetry={reload} />
+          {roleTools}
+        </ScrollView>
       ) : (
         <ScrollView
           testID="staff-home-scroll"
@@ -127,6 +156,7 @@ export function StaffHome() {
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={refresh} tintColor={colors.brand} />}
         >
+          {topCards}
           {loading && !data ? (
             <>
               <Skeleton height={120} style={{ borderRadius: radius.lg }} />
@@ -134,28 +164,6 @@ export function StaffHome() {
             </>
           ) : data ? (
             <>
-              <Pressable
-                testID="staff-home-summary" accessibilityRole="button" accessibilityLabel={"Open " + data.primary.title}
-                accessibilityState={{ disabled: !primaryAllowed }} disabled={!primaryAllowed}
-                onPress={() => router.push(workspace.href)}
-                style={({ pressed }) => [styles.summary, {
-                  backgroundColor: colors.surfaceSecondary,
-                  borderColor: colors.divider,
-                  opacity: pressed ? 0.82 : 1,
-                }]}>
-                <View style={styles.summaryCopy}>
-                  <AppText variant="eyebrow">{workspace.tagline}</AppText>
-                  <AppText style={[styles.summaryTitle, { color: colors.onSurface }]} numberOfLines={2}>{data.primary.title}</AppText>
-                  <AppText style={{ color: colors.onSurfaceTertiary, fontSize: 12, lineHeight: 17 }} numberOfLines={2}>{workspace.help}</AppText>
-                  {!primaryAllowed ? <AppText style={{ fontSize: 11, color: colors.warning }}>
-                    {grantsLoading ? "Checking access…" : grantsError ? "Unable to verify permissions" : "Access restricted by Plant Owner"}
-                  </AppText> : null}
-                </View>
-                <View style={styles.heroArtwork}>
-                  <Image testID="staff-home-hero-banner" source={PLANT_HERO_IMAGE} resizeMode="cover" accessible={false} style={styles.summaryImage} />
-                  <Ionicons name={primaryAllowed ? "arrow-forward-circle-outline" : "lock-closed-outline"} size={20} color={colors.brand} />
-                </View>
-              </Pressable>
               <View style={styles.grid}>
                 {data.kpis.map((c) => (
                   <View key={c.label} style={[styles.kpi, { width: kpiWidth,
@@ -220,12 +228,10 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.md, paddingTop: spacing.sm },
   iconBtn: { width: 46, height: 46, borderRadius: 15, alignItems: "center", justifyContent: "center", borderWidth: 1 },
   badge: { position: "absolute", top: 8, right: 8, width: 9, height: 9, borderRadius: 5 },
-  summary: { minHeight: 150, flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderRadius: 18,
-    padding: 12 },
-  summaryImage: { width: 64, height: 64, borderRadius: 8 },
-  summaryCopy: { flex: 1, minWidth: 0, gap: 6, padding: 4 },
-  summaryTitle: { fontFamily: fonts.displayBold, fontSize: fontSize["2xl"], lineHeight: 28 },
-  heroArtwork: { alignItems: "center", gap: 6 },
+  topCards: { width: "100%", maxWidth: 620, alignSelf: "center", gap: 10 },
+  summary: { minHeight: 66, flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderRadius: 10, padding: 9 },
+  summaryCopy: { flex: 1, minWidth: 0, gap: 2 },
+  summaryTitle: { fontFamily: fonts.semibold, fontSize: 15, lineHeight: 20 },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   kpi: { minHeight: 108, padding: 9, borderRadius: 16, borderWidth: 1, gap: 4 },
   kpiIcon: { minHeight: 30, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },

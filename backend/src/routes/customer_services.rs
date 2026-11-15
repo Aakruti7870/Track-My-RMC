@@ -1,4 +1,4 @@
-//! Customer service enquiries: authenticated capture, per-type validation and customer-only history.
+//! Authenticated customer and plant supplier enquiries with a shared follow-up queue.
 //! These are leads, not orders, payments, supplier assignments or official quotations.
 use crate::{
     auth::{middleware::check_role, AuthUser},
@@ -61,6 +61,72 @@ pub enum NewServiceEnquiry {
         pump_type: String,
         estimated_hours: f64,
     },
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+enum SupplierMaterial {
+    #[serde(rename = "OPC Cement")]
+    OpcCement,
+    #[serde(rename = "PPC Cement")]
+    PpcCement,
+    Aggregate,
+    #[serde(rename = "Crushed Sand")]
+    CrushedSand,
+    #[serde(rename = "Water Tank")]
+    WaterTank,
+    Chemical,
+    #[serde(rename = "Fly Ash")]
+    FlyAsh,
+}
+
+impl SupplierMaterial {
+    fn label(self) -> &'static str {
+        match self {
+            Self::OpcCement => "OPC Cement",
+            Self::PpcCement => "PPC Cement",
+            Self::Aggregate => "Aggregate",
+            Self::CrushedSand => "Crushed Sand",
+            Self::WaterTank => "Water Tank",
+            Self::Chemical => "Chemical",
+            Self::FlyAsh => "Fly Ash",
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SupplierEnquiry {
+    plant_id: Uuid,
+    request_key: String,
+    contact_name: String,
+    contact_phone: String,
+    location: String,
+    required_date: NaiveDate,
+    materials: Vec<SupplierMaterial>,
+}
+
+struct EnquiryRecord {
+    kind: &'static str,
+    request_key: Option<String>,
+    name: String,
+    mobile: String,
+    location: String,
+    date: NaiveDate,
+    details: Value,
+}
+
+fn supplier_materials(materials: &[SupplierMaterial]) -> Result<Vec<&'static str>, AppError> {
+    if !(1..=3).contains(&materials.len())
+        || materials
+            .iter()
+            .enumerate()
+            .any(|(index, material)| materials[..index].contains(material))
+    {
+        return Err(AppError::BadRequest(
+            "Choose one to three different materials".into(),
+        ));
+    }
+    Ok(materials.iter().map(|material| material.label()).collect())
 }
 
 fn field(value: &str, label: &str, minimum: usize, maximum: usize) -> Result<String, AppError> {
@@ -257,20 +323,115 @@ pub async fn create(
             )
         }
     };
-    let mut tx = state.db.begin().await?;
-    let id: Uuid = sqlx::query_scalar(
-        "INSERT INTO customer_service_enquiries (customer_id, service_type, contact_name, contact_phone, location, required_date, details) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id",
+    save_enquiry(
+        &state,
+        auth.user_id,
+        EnquiryRecord {
+            kind,
+            request_key: None,
+            name,
+            mobile,
+            location,
+            date,
+            details,
+        },
     )
-    .bind(auth.user_id).bind(kind).bind(name).bind(mobile).bind(location).bind(date).bind(details)
-    .fetch_one(&mut *tx).await?;
+    .await
+}
+
+pub async fn create_supplier(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Json(req): Json<SupplierEnquiry>,
+) -> Result<(StatusCode, Json<Value>), AppError> {
+    let plants = super::owner_routes::assigned_plants(&state, &auth).await?;
+    let (_, plant_name, _) = plants
+        .iter()
+        .find(|(id, _, _)| *id == req.plant_id)
+        .ok_or_else(|| AppError::Forbidden("Choose a plant assigned to your account".into()))?;
+    let materials = supplier_materials(&req.materials)?;
+    let request_key = field(&req.request_key, "Request key", 1, 80)?;
+    save_enquiry(
+        &state,
+        auth.user_id,
+        EnquiryRecord {
+            kind: "PLANT_SUPPLIER",
+            request_key: Some(request_key),
+            name: field(&req.contact_name, "Contact name", 2, 150)?,
+            mobile: phone(&req.contact_phone)?,
+            location: field(&req.location, "Delivery location", 3, 500)?,
+            date: valid_date(req.required_date)?,
+            details: json!({
+                "plant_id": req.plant_id,
+                "plant_name": plant_name,
+                "submitted_by_role": auth.role,
+                "materials": materials,
+            }),
+        },
+    )
+    .await
+}
+
+async fn save_enquiry(
+    state: &AppState,
+    requester: Uuid,
+    record: EnquiryRecord,
+) -> Result<(StatusCode, Json<Value>), AppError> {
+    let mut tx = state.db.begin().await?;
+    let created: Option<Uuid> = sqlx::query_scalar(
+        "INSERT INTO customer_service_enquiries
+            (customer_id, service_type, contact_name, contact_phone, location, required_date, details, request_key)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         ON CONFLICT (customer_id, request_key) WHERE request_key IS NOT NULL DO NOTHING RETURNING id",
+    )
+    .bind(requester).bind(record.kind).bind(&record.name).bind(&record.mobile)
+    .bind(&record.location).bind(record.date).bind(&record.details).bind(&record.request_key)
+    .fetch_optional(&mut *tx).await?;
+    let Some(id) = created else {
+        let (id, status, matches): (Uuid, String, bool) = sqlx::query_as(
+            "SELECT id, status, (service_type=$3 AND contact_name=$4 AND contact_phone=$5
+               AND location=$6 AND required_date=$7 AND details=$8)
+             FROM customer_service_enquiries WHERE customer_id=$1 AND request_key=$2",
+        )
+        .bind(requester)
+        .bind(record.request_key)
+        .bind(record.kind)
+        .bind(record.name)
+        .bind(record.mobile)
+        .bind(record.location)
+        .bind(record.date)
+        .bind(record.details)
+        .fetch_one(&mut *tx)
+        .await?;
+        if !matches {
+            return Err(AppError::Conflict(
+                "This request key was already used for a different enquiry".into(),
+            ));
+        }
+        return Ok((
+            StatusCode::OK,
+            Json(json!({"success": true, "id": id, "status": status})),
+        ));
+    };
+    let (title, body) = if record.kind == "PLANT_SUPPLIER" {
+        (
+            "New plant supplier enquiry",
+            "A plant material supplier enquiry is awaiting follow-up.",
+        )
+    } else {
+        (
+            "New service enquiry",
+            "A customer service enquiry is awaiting review and follow-up.",
+        )
+    };
     sqlx::query(
         "INSERT INTO notifications(user_id,title,body,notification_type,reference_id)
-         SELECT u.id,'New service enquiry',
-           'A customer service enquiry is awaiting review and follow-up.',
-           'service_enquiry', $1
+         SELECT u.id,$2,$3,'service_enquiry',$1
          FROM users u WHERE u.is_active=TRUE AND u.role IN ('central_admin','authority')",
     )
     .bind(id.to_string())
+    .bind(title)
+    .bind(body)
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
@@ -288,7 +449,7 @@ pub async fn list_customer(
 ) -> Result<Json<Value>, AppError> {
     check_role(&auth, &["customer"])?;
     let enquiries: Vec<Value> = sqlx::query_scalar(
-        "SELECT jsonb_build_object('id', id, 'service_type', service_type, 'contact_name', contact_name, 'contact_phone', contact_phone, 'location', location, 'required_date', required_date, 'details', details, 'status', status, 'created_at', created_at) FROM customer_service_enquiries WHERE customer_id=$1 ORDER BY created_at DESC LIMIT 100",
+        "SELECT jsonb_build_object('id', id, 'service_type', service_type, 'contact_name', contact_name, 'contact_phone', contact_phone, 'location', location, 'required_date', required_date, 'details', details, 'status', status, 'created_at', created_at) FROM customer_service_enquiries WHERE customer_id=$1 AND service_type<>'PLANT_SUPPLIER' ORDER BY created_at DESC LIMIT 100",
     ).bind(auth.user_id).fetch_all(&state.db).await?;
     Ok(Json(json!({"enquiries": enquiries})))
 }
@@ -372,6 +533,19 @@ pub async fn update_status(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn supplier_enquiry_accepts_up_to_three_distinct_supported_materials() {
+        use SupplierMaterial::*;
+        assert_eq!(
+            supplier_materials(&[OpcCement, Aggregate, FlyAsh]).unwrap(),
+            ["OPC Cement", "Aggregate", "Fly Ash"]
+        );
+        assert!(supplier_materials(&[]).is_err());
+        assert!(supplier_materials(&[Chemical, Chemical]).is_err());
+        assert!(supplier_materials(&[PpcCement, CrushedSand, WaterTank, FlyAsh]).is_err());
+        assert!(serde_json::from_value::<SupplierMaterial>(json!("Bricks")).is_err());
+    }
+
     #[test]
     fn validates_bulk_concrete_grade_and_quantity() {
         assert_eq!(
