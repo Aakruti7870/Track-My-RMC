@@ -17,6 +17,9 @@ const SANDBOX_HOST: &str = "https://test-api.sandbox.co.in";
 const LIVE_HOST: &str = "https://api.sandbox.co.in";
 const REDIRECT_URL: &str = "https://trackmyrmc.com/kyc/return";
 const MAX_PROVIDER_BODY: usize = 262_144;
+// Sandbox's published legacy DigiLocker collection sends x-api-version.
+// Version 1.0.0 was verified on a read-only Live session-status call.
+const DIGILOCKER_API_VERSION: &str = "1.0.0";
 
 // All provider operations must stay on the host chosen for this KYC session.
 // A Live token must never be sent to the Test environment (or vice versa).
@@ -144,6 +147,26 @@ impl Provider {
         })
     }
     async fn read(response: reqwest::Response, stage: &'static str) -> Result<Value, AppError> {
+        if stage == "AADHAAR_DOCUMENT"
+            && response.status() == reqwest::StatusCode::FORBIDDEN
+        {
+            // Sandbox may include an error code in its 403 response. Log only a
+            // numeric category, never bodies, session IDs, URLs or identity data.
+            let code = response
+                .bytes()
+                .await
+                .ok()
+                .filter(|bytes| bytes.len() <= MAX_PROVIDER_BODY)
+                .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+                .and_then(|body| body.get("code").and_then(Value::as_i64));
+            tracing::warn!(
+                kyc_stage = stage,
+                provider_http_status = 403,
+                provider_code = ?code,
+                "digilocker_document_access_denied"
+            );
+            return Err(AppError::Conflict("DIGILOCKER_DOCUMENT_FORBIDDEN".into()));
+        }
         if !response.status().is_success() {
             // Only a fixed operation label and HTTP code are recorded. Never log
             // provider JSON, URLs, access tokens, identity data or credentials.
@@ -221,6 +244,7 @@ impl Provider {
             .post(provider_url(self.host, path))
             .header("Authorization", token)
             .header("x-api-key", &self.api_key)
+            .header("x-api-version", DIGILOCKER_API_VERSION)
             .header(header::CONTENT_TYPE, "application/json")
             .json(&payload)
             .send()
@@ -246,6 +270,7 @@ impl Provider {
                 .get(provider_url(self.host, path))
                 .header("Authorization", token)
                 .header("x-api-key", &self.api_key)
+                .header("x-api-version", DIGILOCKER_API_VERSION)
                 .send()
                 .await
                 .map_err(|_| {
@@ -343,6 +368,29 @@ fn uidai_aadhaar_consented(document: &Value) -> bool {
         .is_some_and(|files| {
             files.iter().any(|file| {
                 file.pointer("/metadata/issuer_id").and_then(Value::as_str) == Some("in.gov.uidai")
+            })
+        })
+}
+
+/// A succeeded session is not proof that the customer shared Aadhaar.
+/// Accept only explicit consent from the server-side provider status response.
+/// Do not infer consent from a browser redirect, the requested doc_types or a
+/// DigiLocker profile flag.
+fn has_aadhaar_consent(status: &Value) -> bool {
+    status
+        .pointer("/data/documents_consented")
+        .and_then(Value::as_array)
+        .is_some_and(|docs| {
+            docs.iter().any(|doc| {
+                let kind = doc.as_str().or_else(|| {
+                    doc.get("doc_type")
+                        .or_else(|| doc.get("document_type"))
+                        .and_then(Value::as_str)
+                });
+                kind.is_some_and(|value| {
+                    value.eq_ignore_ascii_case("aadhaar")
+                        || value.eq_ignore_ascii_case("adhar")
+                })
             })
         })
 }
@@ -800,6 +848,16 @@ pub async fn status(
                 == Some("identity_mismatch")
         {
             "REVIEW_NEEDED"
+        } else if previous == "FAILED"
+            && latest.get::<Option<String>, _>("failure_reason").as_deref()
+                == Some("aadhaar_not_consented")
+        {
+            "DOCUMENT_NOT_SHARED"
+        } else if previous == "FAILED"
+            && latest.get::<Option<String>, _>("failure_reason").as_deref()
+                == Some("document_access_denied")
+        {
+            "DOCUMENT_UNAVAILABLE"
         } else {
             session_status(&previous)
         };
@@ -845,6 +903,25 @@ pub async fn status(
         }
         if !provider_completed(&value) {
             return completed_consent_status_after_race(&state.db, user.user_id, id, provider.environment).await;
+        }
+        // A successful session does not guarantee permission to fetch Aadhaar.
+        // The provider must expressly report Aadhaar in documents_consented.
+        if !has_aadhaar_consent(&body) {
+            let changed = sqlx::query(
+                "UPDATE customer_digilocker_sessions
+                 SET status='FAILED',failure_reason='aadhaar_not_consented',updated_at=NOW()
+                 WHERE id=$1 AND user_id=$2 AND status='IN_PROGRESS'"
+            )
+            .bind(id)
+            .bind(user.user_id)
+            .execute(&state.db)
+            .await?
+            .rows_affected();
+            if changed == 0 {
+                return completed_consent_status_after_race(&state.db, user.user_id, id, provider.environment).await;
+            }
+            tracing::warn!(kyc_stage = "CONSENT_CHECK", "digilocker_aadhaar_consent_absent");
+            return Ok::<&'static str, AppError>("DOCUMENT_NOT_SHARED");
         }
         // Consent must cover an actual UIDAI-issued Aadhaar document, not just profile access.
         // Inspect provider document metadata only; never fetch or persist the presigned file.
@@ -923,6 +1000,38 @@ pub async fn status(
     }).await;
     match refresh {
         Ok(Ok(status)) => Ok(Json(json!({"status":status,"provider":provider.label}))),
+        // Terminal for this attempt, not for the customer. This avoids a
+        // repeated document GET/403 loop while retaining the original evidence.
+        Ok(Err(AppError::Conflict(reason)))
+            if refresh_stage == "AADHAAR_DOCUMENT"
+                && reason == "DIGILOCKER_DOCUMENT_FORBIDDEN" =>
+        {
+            let changed = sqlx::query(
+                "UPDATE customer_digilocker_sessions
+                 SET status='FAILED',failure_reason='document_access_denied',updated_at=NOW()
+                 WHERE id=$1 AND user_id=$2 AND status='IN_PROGRESS'"
+            )
+            .bind(id)
+            .bind(user.user_id)
+            .execute(&state.db)
+            .await?
+            .rows_affected();
+            if changed == 0 {
+                let status = completed_consent_status_after_race(
+                    &state.db,
+                    user.user_id,
+                    id,
+                    provider.environment,
+                )
+                .await?;
+                return Ok(Json(json!({"status":status,"provider":provider.label})));
+            }
+            Ok(Json(json!({
+                "status":"DOCUMENT_UNAVAILABLE",
+                "provider":provider.label,
+                "refresh_stage":"AADHAAR_DOCUMENT"
+            })))
+        }
         Ok(Err(_)) | Err(_) => {
             // This is deliberately not a rejection: the provider may have
             // accepted consent while evidence retrieval was still pending.
@@ -945,6 +1054,55 @@ pub async fn status(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn consent_requires_explicit_aadhaar_in_successful_provider_metadata() {
+        assert!(has_aadhaar_consent(&json!({"data":{"documents_consented":["aadhaar"]}})));
+        assert!(has_aadhaar_consent(&json!({"data":{"documents_consented":["ADHAR"]}})));
+        assert!(has_aadhaar_consent(&json!({"data":{"documents_consented":[{"doc_type":"aadhaar"}]}})));
+        assert!(!has_aadhaar_consent(&json!({"data":{"documents_consented":[]}})));
+        assert!(!has_aadhaar_consent(&json!({"data":{"documents_consented":["pan"]}})));
+        assert!(!has_aadhaar_consent(&json!({"data":{"documents_consented":"aadhaar"}})));
+        assert!(!has_aadhaar_consent(&json!({"data":{"status":"succeeded"}})));
+        assert!(!has_aadhaar_consent(&json!({"data":{"documents_consented":[{"doc_type":"aadhaar.extra"}]}})));
+    }
+
+    #[sqlx::test]
+    async fn denied_document_attempt_cannot_mark_customer_verified(db: sqlx::PgPool) {
+        let customer: Uuid = sqlx::query_scalar(
+            "INSERT INTO users(phone,hashed_password,full_name,role)
+             VALUES($1,'unused','DigiLocker Restricted Customer','customer') RETURNING id",
+        )
+        .bind(format!("91{:010}", Uuid::new_v4().as_u128() % 10_000_000_000))
+        .fetch_one(&db).await.unwrap();
+        sqlx::query("INSERT INTO user_profiles(user_id,kyc_status) VALUES($1,'unverified')")
+            .bind(customer).execute(&db).await.unwrap();
+        let id: Uuid = sqlx::query_scalar(
+            "INSERT INTO customer_digilocker_sessions(user_id,provider_environment,status)
+             VALUES($1,'live','IN_PROGRESS') RETURNING id",
+        )
+        .bind(customer).fetch_one(&db).await.unwrap();
+        let changed = sqlx::query(
+            "UPDATE customer_digilocker_sessions
+             SET status='FAILED',failure_reason='document_access_denied'
+             WHERE id=$1 AND user_id=$2 AND status='IN_PROGRESS'",
+        )
+        .bind(id).bind(customer).execute(&db).await.unwrap().rows_affected();
+        assert_eq!(changed, 1);
+        assert_eq!(
+            sqlx::query_scalar::<_, String>(
+                "SELECT kyc_status FROM user_profiles WHERE user_id=$1"
+            ).bind(customer).fetch_one(&db).await.unwrap(),
+            "unverified"
+        );
+        assert_eq!(
+            sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM customer_digilocker_sessions
+                 WHERE id=$1 AND status='IN_PROGRESS'"
+            ).bind(id).fetch_one(&db).await.unwrap(),
+            0
+        );
+    }
 
     #[sqlx::test]
     async fn completed_consent_requires_unexpired_owned_session_and_is_idempotent(
