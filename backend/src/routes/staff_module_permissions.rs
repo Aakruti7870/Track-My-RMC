@@ -703,6 +703,17 @@ mod tests {
         assert!(dispatcher_ceiling("unknown").is_none());
     }
 
+    async fn quality_allowed(
+        db: &PgPool,
+        actor: &AuthUser,
+        plant: Uuid,
+        action: Action,
+    ) -> bool {
+        require_staff_permission(db, actor, plant, "quality_register", action)
+            .await
+            .is_ok()
+    }
+
     #[sqlx::test]
     async fn quality_grants_revoke_read_and_write_without_cross_plant_access(db: PgPool) {
         let owner: Uuid = sqlx::query_scalar(
@@ -761,36 +772,49 @@ mod tests {
         .execute(&db)
         .await
         .unwrap();
+
         let actor = AuthUser {
             user_id: engineer,
             role: "quality_engineer".into(),
             phone: String::new(),
             email: None,
         };
-        assert!(require_staff_permission(&db, &actor, plant, "quality_register", Action::View)
-            .await.is_ok());
-        assert!(require_staff_permission(&db, &actor, plant, "quality_register", Action::Create)
-            .await.is_ok());
-        assert!(require_staff_permission(&db, &actor, another_plant, "quality_register", Action::View)
-            .await.is_err());
+        assert!(quality_allowed(&db, &actor, plant, Action::View).await);
+        assert!(quality_allowed(&db, &actor, plant, Action::Create).await);
+        assert!(!quality_allowed(&db, &actor, another_plant, Action::View).await);
 
-        sqlx::query("UPDATE plant_staff_module_permissions SET can_create=FALSE,can_edit=FALSE
-                     WHERE plant_id=$1 AND user_id=$2 AND module_key='quality_register'")
-            .bind(plant).bind(engineer).execute(&db).await.unwrap();
-        assert!(require_staff_permission(&db, &actor, plant, "quality_register", Action::Create)
-            .await.is_err());
-        assert!(require_staff_permission(&db, &actor, plant, "quality_register", Action::View)
-            .await.is_ok());
+        sqlx::query(
+            "UPDATE plant_staff_module_permissions SET can_create=FALSE,can_edit=FALSE
+             WHERE plant_id=$1 AND user_id=$2 AND module_key='quality_register'",
+        )
+        .bind(plant)
+        .bind(engineer)
+        .execute(&db)
+        .await
+        .unwrap();
+        assert!(!quality_allowed(&db, &actor, plant, Action::Create).await);
+        assert!(quality_allowed(&db, &actor, plant, Action::View).await);
 
-        sqlx::query("UPDATE plant_staff_module_permissions SET can_view=FALSE
-                     WHERE plant_id=$1 AND user_id=$2 AND module_key='quality_register'")
-            .bind(plant).bind(engineer).execute(&db).await.unwrap();
-        assert!(require_staff_permission(&db, &actor, plant, "quality_register", Action::View)
-            .await.is_err());
-        sqlx::query("UPDATE plant_staff SET is_active=FALSE WHERE plant_id=$1 AND user_id=$2")
-            .bind(plant).bind(engineer).execute(&db).await.unwrap();
-        assert!(require_staff_permission(&db, &actor, plant, "quality_register", Action::View)
-            .await.is_err());
+        sqlx::query(
+            "UPDATE plant_staff_module_permissions SET can_view=FALSE
+             WHERE plant_id=$1 AND user_id=$2 AND module_key='quality_register'",
+        )
+        .bind(plant)
+        .bind(engineer)
+        .execute(&db)
+        .await
+        .unwrap();
+        assert!(!quality_allowed(&db, &actor, plant, Action::View).await);
+
+        sqlx::query(
+            "UPDATE plant_staff SET is_active=FALSE WHERE plant_id=$1 AND user_id=$2",
+        )
+        .bind(plant)
+        .bind(engineer)
+        .execute(&db)
+        .await
+        .unwrap();
+        assert!(!quality_allowed(&db, &actor, plant, Action::View).await);
     }
 
 }
