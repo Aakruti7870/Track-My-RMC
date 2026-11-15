@@ -703,12 +703,7 @@ mod tests {
         assert!(dispatcher_ceiling("unknown").is_none());
     }
 
-    async fn quality_allowed(
-        db: &PgPool,
-        actor: &AuthUser,
-        plant: Uuid,
-        action: Action,
-    ) -> bool {
+    async fn quality_allowed(db: &PgPool, actor: &AuthUser, plant: Uuid, action: Action) -> bool {
         require_staff_permission(db, actor, plant, "quality_register", action)
             .await
             .is_ok()
@@ -806,15 +801,12 @@ mod tests {
         .unwrap();
         assert!(!quality_allowed(&db, &actor, plant, Action::View).await);
 
-        sqlx::query(
-            "UPDATE plant_staff SET is_active=FALSE WHERE plant_id=$1 AND user_id=$2",
-        )
-        .bind(plant)
-        .bind(engineer)
-        .execute(&db)
-        .await
-        .unwrap();
+        sqlx::query("UPDATE plant_staff SET is_active=FALSE WHERE plant_id=$1 AND user_id=$2")
+            .bind(plant)
+            .bind(engineer)
+            .execute(&db)
+            .await
+            .unwrap();
         assert!(!quality_allowed(&db, &actor, plant, Action::View).await);
     }
-
 }
