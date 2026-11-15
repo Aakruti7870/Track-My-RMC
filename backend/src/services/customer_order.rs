@@ -279,9 +279,7 @@ async fn validate(
     if !plant.get::<bool, _>("is_active") || !plant.get::<bool, _>("verified") {
         return Err(AppError::Conflict("Plant not available".into()));
     }
-    // Direct orders remain a plant-specific privilege. ADMIN_REVIEW routes
-    // through the existing human RFQ path; no pending order or payment is
-    // silently created until a verified plant can accept a direct order.
+    // Plant order requests for Central Admin use their own intake route.
     if !intake_permits_direct_order(&plant.get::<String, _>("intake_mode"), req.save_draft) {
         return Err(AppError::Conflict(
             "Direct ordering is restricted for this plant. Request quotation instead.".into(),

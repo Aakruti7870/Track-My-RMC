@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/src/auth/AuthContext";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
+import { IconTile } from "@/src/components/IconTile";
 import { AppText } from "@/src/components/ui/AppText";
 import { modulesForRole } from "@/src/navigation/moduleCatalog";
 import { OwnerFrame, OwnerList, OwnerModuleRow, OwnerGlass, ui, useOwnerPalette } from "@/src/owner/OwnerUI";
@@ -27,7 +28,7 @@ export default function OwnerMore() {
             accessibilityLabel="Manage Staff Module Access" onPress={() => router.push("/staff-module-access")}
             style={{ flex: 1 }}>
             <OwnerGlass style={styles.action}>
-              <VectorSymbol name="plant-staff" size={39} />
+              <IconTile symbol="plant-staff" />
               <View style={styles.actionCopy}>
                 <AppText style={[styles.title, { color: p.text }]}>Manage Staff Module Access</AppText>
                 <AppText style={[styles.subtitle, { color: p.muted }]}>All eight roles · plant-scoped · audited access</AppText>
@@ -37,7 +38,7 @@ export default function OwnerMore() {
           <Pressable testID="owner-permission-settings" accessibilityRole="button" accessibilityLabel="App permissions"
             onPress={() => router.push("/permission-settings")} style={{ flex: 1 }}>
             <OwnerGlass style={styles.action}>
-              <VectorSymbol name="permission-settings" size={36} />
+              <IconTile symbol="permission-settings" />
               <View style={styles.actionCopy}>
                 <AppText style={[styles.title, { color: p.text }]}>App permissions</AppText>
                 <AppText style={[styles.subtitle, { color: p.muted }]}>Manage Android location and notification access</AppText>

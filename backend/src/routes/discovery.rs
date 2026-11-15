@@ -118,16 +118,14 @@ pub async fn search(
     let rows: Vec<Value> = sqlx::query_scalar(r#"
         WITH candidates AS (
             SELECT p.*, EXISTS(SELECT 1 FROM plant_listing_requests r WHERE r.plant_id=p.id AND r.status='APPROVED') verified,
+                COALESCE(c.order_intake_mode,'DIRECT') AS intake_mode,
                 ARRAY(SELECT DISTINCT grade FROM plant_rate_cards r WHERE r.plant_id=p.id AND r.active
                     AND r.effective_from<=CURRENT_DATE AND (r.effective_to IS NULL OR r.effective_to>=CURRENT_DATE) ORDER BY grade) grades,
                 CASE WHEN $2::double precision IS NOT NULL THEN 6371.0 * 2 * asin(sqrt(least(1.0, greatest(0.0,
                     power(sin(radians(p.latitude-$2)/2),2) + cos(radians($2))*cos(radians(p.latitude))*power(sin(radians(p.longitude-$3)/2),2)
                 )))) END distance_km
-            FROM rmc_plants p WHERE p.is_active
-            AND NOT EXISTS (
-                SELECT 1 FROM plant_admin_controls c
-                WHERE c.plant_id=p.id AND NOT c.discovery_visible
-            )
+            FROM rmc_plants p LEFT JOIN plant_admin_controls c ON c.plant_id=p.id
+            WHERE p.is_active AND COALESCE(c.discovery_visible,TRUE)
             AND NOT EXISTS (
                 SELECT 1 FROM google_plant_visibility_exclusions x
                 WHERE x.place_id=p.google_place_id AND NOT x.is_visible
@@ -136,12 +134,12 @@ pub async fn search(
                 = EXISTS(SELECT 1 FROM play_review_fixtures f WHERE f.plant_id=p.id AND f.role='customer' AND f.enabled)
         )
         SELECT jsonb_build_object('id',id,'name',name,'address',address_line,'city',city,'district',coalesce(nullif(district,''),state),'pincode',pincode,
-            'lat',latitude,'lng',longitude,
+            'lat',latitude,'lng',longitude,'google_place_id',google_place_id,
             'contact_phone',CASE WHEN verified THEN contact_phone ELSE NULL END,
             'contact_phone_masked',CASE WHEN NOT verified AND contact_phone IS NOT NULL AND length(regexp_replace(contact_phone,'[^0-9]','','g')) >= 5 THEN
                 left(regexp_replace(contact_phone,'[^0-9]','','g'), greatest(0,length(regexp_replace(contact_phone,'[^0-9]','','g'))-5)) || '*****'
                 ELSE NULL END,
-            'verified',verified,'order_enabled',verified,
+            'verified',verified,'order_enabled',verified AND intake_mode='DIRECT','order_intake_mode',intake_mode,
             'status','active','grades',grades,'distance_km',distance_km)
         FROM candidates WHERE (distance_km IS NULL OR distance_km <= $4)
           AND ($5='' OR strpos(lower(name||' '||address_line||' '||city||' '||state||' '||pincode),lower($5))>0)
@@ -280,6 +278,61 @@ fn normalize_google_nearby(payload: &Value, query: &GoogleNearbyQuery, radius: f
     results
 }
 
+async fn resolve_google_listing_plants(
+    db: &sqlx::PgPool,
+    customer: Uuid,
+    places: &mut Vec<Value>,
+) -> Result<(), AppError> {
+    if places.is_empty() {
+        return Ok(());
+    }
+    let ids: Vec<&str> = places
+        .iter()
+        .filter_map(|place| place["place_id"].as_str())
+        .collect();
+    let policies: Vec<(String, bool, Option<Uuid>, bool, String)> = sqlx::query_as(
+        "WITH review_customer AS (
+            SELECT EXISTS(SELECT 1 FROM play_review_fixtures
+                          WHERE user_id=$2 AND role='customer' AND enabled) AS enabled
+         )
+         SELECT source.place_id,
+            COALESCE(x.is_visible,TRUE) AND CASE WHEN p.id IS NULL THEN NOT review_customer.enabled
+              ELSE p.is_active AND COALESCE(c.discovery_visible,TRUE)
+                AND review_customer.enabled=EXISTS(SELECT 1 FROM play_review_fixtures f
+                    WHERE f.plant_id=p.id AND f.role='customer' AND f.enabled)
+            END AS visible,
+            p.id, EXISTS(SELECT 1 FROM plant_listing_requests r WHERE r.plant_id=p.id AND r.status='APPROVED'),
+            COALESCE(c.order_intake_mode,'DIRECT')
+         FROM (SELECT DISTINCT unnest($1::text[]) AS place_id) source
+         CROSS JOIN review_customer
+         LEFT JOIN google_plant_visibility_exclusions x ON x.place_id=source.place_id
+         LEFT JOIN rmc_plants p ON p.google_place_id=source.place_id
+         LEFT JOIN plant_admin_controls c ON c.plant_id=p.id",
+    )
+    .bind(ids)
+    .bind(customer)
+    .fetch_all(db)
+    .await?;
+    let policies: HashMap<_, _> = policies
+        .into_iter()
+        .map(|(id, visible, plant, verified, mode)| (id, (visible, plant, verified, mode)))
+        .collect();
+    places.retain_mut(|place| {
+        let Some((true, plant, verified, mode)) =
+            place["place_id"].as_str().and_then(|id| policies.get(id))
+        else {
+            return false;
+        };
+        if let Some(plant_id) = plant {
+            place["verified"] = json!(verified);
+            place["order_enabled"] = json!(*verified && mode == "DIRECT");
+            place["registered_plant"] = json!({"id":plant_id,"order_intake_mode":mode});
+        }
+        true
+    });
+    Ok(())
+}
+
 // A separate limit protects our paid Google API quota from repeated map pan/zoom events.
 // In production the API gateway must apply shared limits across application instances too.
 fn allow_google_search(user: Uuid) -> bool {
@@ -384,24 +437,7 @@ pub async fn google_nearby(
         .await
         .map_err(|_| AppError::InternalError("Invalid Google Places response".into()))?;
     let mut places = normalize_google_nearby(&payload, &query, radius);
-    // A held registered plant must not reappear as its linked Google Place.
-    // This does not control unrelated Google listings outside TrackMyRMC.
-    let held_ids: std::collections::HashSet<String> = sqlx::query_scalar(
-        "SELECT p.google_place_id FROM rmc_plants p
-         JOIN plant_admin_controls c ON c.plant_id=p.id
-         WHERE c.discovery_visible=FALSE AND p.google_place_id IS NOT NULL
-         UNION
-         SELECT x.place_id FROM google_plant_visibility_exclusions x WHERE x.is_visible=FALSE",
-    )
-    .fetch_all(&state.db)
-    .await?
-    .into_iter()
-    .collect();
-    places.retain(|place| {
-        place["place_id"]
-            .as_str()
-            .is_none_or(|place_id| !held_ids.contains(place_id))
-    });
+    resolve_google_listing_plants(&state.db, user.user_id, &mut places).await?;
     Ok(Json(json!({
         "places": places,
         "source": "google_places",
@@ -767,6 +803,85 @@ mod tests {
         assert_eq!(plants[0]["verified"], false);
         assert_eq!(plants[0]["order_enabled"], false);
         assert!(plants[0].get("contact_phone").is_none());
+    }
+
+    #[sqlx::test]
+    async fn google_listings_resolve_registered_policy_without_a_directory_page(db: sqlx::PgPool) {
+        let owner: Uuid = sqlx::query_scalar(
+            "INSERT INTO users(phone,hashed_password,full_name,role)
+             VALUES('9100000001','test-only','Google fixture owner','owner') RETURNING id",
+        )
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        let customer: Uuid = sqlx::query_scalar(
+            "INSERT INTO users(phone,hashed_password,full_name,role)
+             VALUES('9100000002','test-only','Google fixture customer','customer') RETURNING id",
+        )
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,address_line,city,state,pincode,contact_phone,google_place_id,is_active)
+             SELECT $1,place_id,place_id,19,73,'Fixture','Panvel','MH','410206','9000000000',place_id,place_id<>'inactive'
+             FROM unnest(ARRAY['direct','rfq','disabled','admin','unapproved','held','inactive']) AS place_id",
+        ).bind(owner).execute(&db).await.unwrap();
+        sqlx::query(
+            "INSERT INTO plant_listing_requests(name,address,lat,lng,status,plant_id)
+             SELECT name,address_line,latitude,longitude,'APPROVED',id
+             FROM rmc_plants WHERE owner_id=$1 AND code<>'unapproved'",
+        )
+        .bind(owner)
+        .execute(&db)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO plant_admin_controls(plant_id,order_intake_mode,changed_by,change_reason,discovery_visible)
+             SELECT id,CASE code WHEN 'rfq' THEN 'RFQ_ONLY' WHEN 'disabled' THEN 'DISABLED'
+                    WHEN 'admin' THEN 'ADMIN_REVIEW' ELSE 'DIRECT' END,$1,'Fixture intake policy',code<>'held'
+             FROM rmc_plants WHERE owner_id=$1",
+        ).bind(owner).execute(&db).await.unwrap();
+        sqlx::query(
+            "INSERT INTO google_plant_visibility_exclusions(place_id,is_visible,changed_by,change_reason)
+             VALUES('external-held',FALSE,$1,'Fixture Google visibility policy')",
+        ).bind(owner).execute(&db).await.unwrap();
+
+        let mut results = [
+            "direct",
+            "rfq",
+            "disabled",
+            "admin",
+            "unapproved",
+            "held",
+            "inactive",
+            "external-held",
+            "external",
+        ]
+        .map(|id| json!({"place_id":id,"verified":false,"order_enabled":false}))
+        .to_vec();
+        resolve_google_listing_plants(&db, customer, &mut results)
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 6);
+        for (index, (mode, verified, order_enabled)) in [
+            ("DIRECT", true, true),
+            ("RFQ_ONLY", true, false),
+            ("DISABLED", true, false),
+            ("ADMIN_REVIEW", true, false),
+            ("DIRECT", false, false),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let listing = &results[index];
+            assert!(listing["registered_plant"]["id"].is_string());
+            assert_eq!(listing["registered_plant"]["order_intake_mode"], mode);
+            assert_eq!(listing["verified"], verified);
+            assert_eq!(listing["order_enabled"], order_enabled);
+            assert!(listing.get("contact_phone").is_none());
+        }
+        assert_eq!(results[5]["place_id"], "external");
+        assert!(results[5].get("registered_plant").is_none());
     }
 
     #[test]

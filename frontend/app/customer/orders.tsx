@@ -9,6 +9,7 @@ import { ThemedScreen } from "@/src/components/ThemedScreen";
 import { useGet } from "@/src/hooks/useApi";
 import { AppText } from "@/src/components/ui/AppText";
 import { Button } from "@/src/components/ui/Button";
+import { Card } from "@/src/components/ui/Card";
 import { Skeleton } from "@/src/components/ui/Skeleton";
 import { OrderCard, OrderData } from "@/src/components/OrderCard";
 import { EmptyView, ErrorView } from "@/src/components/StateViews";
@@ -24,6 +25,15 @@ const FILTERS: { key: string; label: string; match: (s: string) => boolean }[] =
   { key: "cancelled", label: "Cancelled", match: (s) => ["CANCELLED", "REJECTED"].includes(s) },
 ];
 
+type PlantOrderRequest = {
+  id: string;
+  plant_name: string | null;
+  grade: string;
+  quantity_m3: number;
+  delivery_date: string;
+  site_address: string;
+};
+
 export default function CustomerOrders() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -33,7 +43,10 @@ export default function CustomerOrders() {
   const [refreshing, setRefreshing] = useState(false);
   const { data, loading, error, refetch, reload } = useGet<{ orders: OrderData[] }>("/customer/orders");
   const drafts = useGet<{ drafts: { id: string; form: { site_name: string; grade: string | null; quantity: string }; provisional_status?: string | null; provisional_order_id?: string | null; plant_response?: string | null }[] }>("/customer/order-drafts");
-  useFocusEffect(useCallback(() => { void refetch(); void drafts.refetch(); }, [refetch, drafts.refetch]));
+  const review = useGet<{ requests: PlantOrderRequest[] }>("/customer/plant-order-requests");
+  useFocusEffect(useCallback(() => {
+    void refetch(); void drafts.refetch(); void review.refetch();
+  }, [refetch, drafts.refetch, review.refetch]));
 
   const filter = FILTERS.find((f) => f.key === active)!;
   const filtered = (data?.orders || []).filter((order) => filter.match(order.status.toUpperCase()));
@@ -41,11 +54,14 @@ export default function CustomerOrders() {
   const visibleDrafts = showDrafts ? drafts.data?.drafts || [] : [];
   const draftsLoading = showDrafts && drafts.loading && !drafts.data;
   const draftsError = showDrafts && drafts.error;
+  const reviewRequests = showDrafts ? review.data?.requests ?? [] : [];
+  const reviewError = showDrafts && review.error;
+  const reviewLoading = showDrafts && review.loading && !review.data;
 
   const refresh = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([refetch(), drafts.refetch()]);
+      await Promise.all([refetch(), drafts.refetch(), review.refetch()]);
     } finally {
       setRefreshing(false);
     }
@@ -117,7 +133,19 @@ export default function CustomerOrders() {
           showsVerticalScrollIndicator={false}
           onRefresh={() => void refresh()}
           refreshing={refreshing}
-          ListHeaderComponent={visibleDrafts.length || draftsLoading || draftsError ? <View style={{ gap: spacing.sm }}>
+          ListHeaderComponent={<View style={{ gap: spacing.md }}>
+          {reviewRequests.length || reviewError || reviewLoading ? <View style={{ gap: spacing.sm }}>
+            <AppText variant="heading">Requests Awaiting Review</AppText>
+            {reviewLoading ? <ActivityIndicator color={colors.brand} accessibilityLabel="Loading order requests" /> : null}
+            {reviewError ? <Button label="Retry loading order requests" size="sm" variant="outline" fullWidth={false} onPress={() => void review.reload()} /> : null}
+            {reviewRequests.map(request => <Card key={request.id} style={{ gap: spacing.xs }}>
+              <AppText variant="label">{request.plant_name || "Plant order request"}</AppText>
+              <AppText>{request.site_address}</AppText>
+              <AppText variant="caption">{request.grade} · {request.quantity_m3} m³ · {request.delivery_date}</AppText>
+              <AppText variant="caption">Reference {request.id}</AppText>
+            </Card>)}
+          </View> : null}
+          {visibleDrafts.length || draftsLoading || draftsError ? <View style={{ gap: spacing.sm }}>
             <AppText variant="heading">Saved Drafts</AppText>
             {draftsLoading ? (
               <View style={styles.draftLoading} accessibilityLiveRegion="polite">
@@ -142,6 +170,7 @@ export default function CustomerOrders() {
               <AppText variant="caption" color={colors.brand}>Review details</AppText>
             </Pressable>)}
           </View> : null}
+          </View>}
           renderItem={({ item }) => (
             <OrderCard
               order={item}
@@ -149,7 +178,7 @@ export default function CustomerOrders() {
             />
           )}
           ListEmptyComponent={
-            visibleDrafts.length || draftsLoading || draftsError ? null : (
+            visibleDrafts.length || draftsLoading || draftsError || reviewRequests.length || reviewError || reviewLoading ? null : (
               <View testID="orders-empty-next-action" style={{ gap: spacing.lg, alignItems: "stretch" }}>
                 <EmptyView
                   icon="cube-outline"

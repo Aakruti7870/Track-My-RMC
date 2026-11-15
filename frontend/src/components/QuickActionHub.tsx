@@ -7,7 +7,7 @@ import { AppText } from "@/src/components/ui/AppText";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { control, fonts, radius, spacing } from "@/src/theme/tokens";
 import type { TabDef } from "@/src/components/GlassTabBar";
-import { VectorSymbol } from "@/src/components/VectorSymbol";
+import { IconTile } from "@/src/components/IconTile";
 import { tabVectorSymbol } from "@/src/navigation/vectorSymbolAssignments";
 
 type Props = {
@@ -94,7 +94,7 @@ export function QuickActionHub({ visible, onClose, tabs, role, navigation }: Pro
                     },
                   ]}
                 >
-                  {symbol ? <VectorSymbol name={symbol} /> : <Ionicons name={tab.icon} size={24} color={colors.onSurfaceTertiary} />}
+                  {symbol ? <IconTile symbol={symbol} width={38} /> : <IconTile icon={tab.icon} width={38} />}
                   <AppText style={[styles.actionLabel, { color: colors.onSurface }]}>{tab.label}</AppText>
                   <Ionicons name="chevron-forward" size={16} color={colors.onSurfaceTertiary} />
                 </Pressable>

@@ -10,6 +10,7 @@ import { useTheme } from "@/src/theme/ThemeProvider";
 import { ThemedScreen } from "@/src/components/ThemedScreen";
 import { AppText } from "@/src/components/ui/AppText";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
+import { IconTile } from "@/src/components/IconTile";
 import { Card } from "@/src/components/ui/Card";
 import { Badge } from "@/src/components/ui/Badge";
 import { Button } from "@/src/components/ui/Button";
@@ -126,11 +127,9 @@ export default function CustomerMore() {
                   },
                 ]}
               >
-                <View style={[styles.moduleIcon, { backgroundColor: colors.brandSoft }]}>
-                  {module.symbol
-                    ? <VectorSymbol name={module.symbol} size={36} />
-                    : <Ionicons name={module.icon} size={19} color={colors.brand} />}
-                </View>
+                {module.symbol
+                  ? <IconTile symbol={module.symbol} size={30} width={42} />
+                  : <IconTile icon={module.icon} size={20} width={42} />}
                 <View style={{ flex: 1, gap: 2 }}>
                   <AppText style={{ fontFamily: fonts.semibold, color: colors.onSurface }}>{module.label}</AppText>
                   <AppText variant="caption" numberOfLines={2}>{module.description}</AppText>
@@ -160,7 +159,6 @@ const styles = StyleSheet.create({
   avatar: { width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center" },
   themeTarget: { width: 46, height: 46, alignItems: "center", justifyContent: "center" },
   item: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 68, borderWidth: 1, borderRadius: radius.md, padding: spacing.md },
-  moduleIcon: { width: 42, height: 42, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
   logout: {
     flexDirection: "row",
     alignItems: "center",

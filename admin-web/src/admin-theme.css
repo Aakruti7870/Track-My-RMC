@@ -11,6 +11,7 @@ body {margin:0;}
   --tm-selected-ink:#FFB16A;--tm-selected-surface:#2A251F;
   --tm-panel:#1A1F26;--tm-on-action:#0E1116;--tm-control-outline:#8793A2;
   --tm-focus:#FFB47D;--tm-warning-text:#FBBF24;--tm-success-text:#72D59B;--tm-error-text:#FF9997;
+  --tm-icon-tile:#394454;
   position:relative; isolation:isolate; background:#0E1116!important;
   font-family:"Plus Jakarta Sans",Jakarta-Regular,system-ui,-apple-system,sans-serif;
   color:var(--tm-text);width:100%;min-height:100vh;overflow-wrap:anywhere;
@@ -91,7 +92,7 @@ body {margin:0;}
 .tm-kpi-card strong {font-size:clamp(18px,2vw,26px);line-height:1.15;font-variant-numeric:tabular-nums;font-weight:600;}
 .tm-kpi-chat {cursor:pointer;}
 .tm-module-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:16px 0 8px;}
-.tm-module-card {display:grid;grid-template-columns:20px minmax(0,1fr) 16px;align-items:center;gap:12px;
+.tm-module-card {display:grid;grid-template-columns:38px minmax(0,1fr) 16px;align-items:center;gap:12px;
   min-height:68px;min-width:0;padding:12px;border-radius:10px;text-align:left;cursor:pointer;
   border:1px solid var(--tm-border);color:var(--tm-text);background:var(--tm-panel);}
 .tm-admin-root :is(.tm-module-card,.tm-kpi-chat,.tm-dashboard-notices):not(:disabled):hover {
@@ -100,7 +101,9 @@ body {margin:0;}
 .tm-module-copy {display:grid;gap:4px;min-width:0;}
 .tm-module-copy strong {font-size:14px;line-height:1.25;font-weight:600;}
 .tm-module-desc {font-size:12px;line-height:1.4;color:var(--tm-muted);}
-.tm-module-icon,.tm-module-arrow {color:var(--tm-muted);}
+.tm-module-icon {display:grid;place-items:center;width:38px;height:38px;border-radius:10px;
+  background:var(--tm-icon-tile);color:#FFFFFF;}
+.tm-module-arrow {color:var(--tm-muted);}
 .tm-dashboard-aside {grid-area:aside;align-self:start;display:grid;gap:12px;min-width:0;}
 .tm-aside-panel {padding:12px;border-radius:10px;border:1px solid var(--tm-border);background:var(--tm-panel);}
 .tm-aside-panel h2 {font-size:15px;margin:0 0 12px;font-weight:600;}
@@ -131,6 +134,7 @@ body {margin:0;}
 .tm-admin-root.tm-light {color-scheme:light;--tm-text:#14181F;--tm-muted:#59677D;
   --tm-border:#DFE2E5;--tm-panel:#FFFFFF;--tm-raised:#F1F3F5;
   --tm-selected-ink:#873B05;--tm-selected-surface:#F8EFE8;
+  --tm-icon-tile:#4A5568;
   --tm-control-outline:#687384;--tm-focus:#A43D00;--tm-warning-text:#92400E;--tm-success-text:#276749;--tm-error-text:#9B2C2C;
   background:#F7F6F2!important;color:#14181F!important;}
 .tm-light::before {background-image:url('/admin/trackmyrmc-light.webp');opacity:.15;}

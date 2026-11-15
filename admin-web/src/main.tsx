@@ -120,7 +120,7 @@ const ADMIN_MENU = [
   {page:'overview',label:'Platform KPIs',caption:'Live platform performance',icon:BarChart3,permissions:['system.view']},
   {page:'plants',label:'Plant Master',caption:'Plant owner, staff and verification',icon:Factory,permissions:['plant.view','user.view']},
   {page:'visibility',label:'Plant Visibility',caption:'Hold and restore app discovery',icon:Eye,permissions:['plant.view','plant_owners.manage','user.view']},
-  {page:'approvals',label:'Approval Queue',caption:'Onboarding, documents, KYC and RFQs',icon:ClipboardCheck,permissions:[]},
+  {page:'approvals',label:'Approval Queue',caption:'Onboarding, plant order requests, KYC and RFQs',icon:ClipboardCheck,permissions:[]},
   {page:'marketing',label:'Marketing CRM',caption:'Channels, contacts and campaigns',icon:Megaphone,permissions:['support.manage']},
   {page:'chats',label:'Chats',caption:'Verified inbound Meta WhatsApp inbox',icon:MessageCircle,permissions:['support.manage']},
   {page:'automation',label:'Automation',caption:'Native workflow and execution health',icon:Workflow,permissions:['system.view']},
@@ -390,6 +390,8 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
   async function openAdminApproval(event:string) {
     if((event==='plant_onboarding'||event==='plant_owner_registration') && permissions.includes('plant_owners.manage')){
       await loadOwnerRequests();
+    }else if(event==='plant_order_review' && permissions.includes('order.view')){
+      await loadWorkspace('plant_order_requests');
     }else if(event==='rmc_rfq_lead' && permissions.includes('support.view')){
       await loadWorkspace('rmc_rfq_leads');
     }else if(event==='plant_profile' && permissions.includes('plant.view')){
@@ -1585,7 +1587,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                   {adminNotices.map(item=><article key={item.id} style={{padding:'9px 0',borderBottom:'1px solid #1D232D'}}>
                     <div style={{display:'flex',gap:8,alignItems:'center'}}><strong style={{fontSize:13}}>{item.title}</strong>{!item.read&&<span style={{fontSize:11,color:'var(--tm-success-text)'}}>New</span>}</div>
                     <p style={{fontSize:12,color:'var(--tm-muted)',margin:'4px 0'}}>{item.body}</p>
-                    {(['plant_onboarding','plant_owner_registration','rmc_rfq_lead','plant_profile','kyc'].includes(item.event)) && (
+                    {(['plant_onboarding','plant_owner_registration','plant_order_review','rmc_rfq_lead','plant_profile','kyc'].includes(item.event)) && (
                       <button type="button" style={{...buttonStyle,width:'auto',marginTop:4,padding:'6px 10px',fontSize:12}}
                         onClick={()=>void openAdminApproval(item.event)}>Open matching review queue</button>
                     )}
@@ -1606,7 +1608,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                     {visibleMenu.filter(item=>item.page!=='dashboard'&&item.page!=='settings').map(item=><button type="button" key={item.page}
                         className="tm-module-card" onClick={()=>navigateAdmin(item.page)}
                         aria-label={'Open '+item.label}>
-                        <item.icon size={20} strokeWidth={1.5} aria-hidden="true" className="tm-module-icon"/>
+                        <span className="tm-module-icon" aria-hidden="true"><item.icon size={20} strokeWidth={1.5}/></span>
                         <span className="tm-module-copy"><strong>{item.label}</strong><span className="tm-module-desc">{item.caption}</span></span>
                         <ChevronRight size={16} strokeWidth={1.5} aria-hidden="true" className="tm-module-arrow"/>
                       </button>)}
@@ -1724,7 +1726,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                         <label style={{fontSize:12}}>Incoming order mode
                           <select value={govMode} onChange={e=>setGovMode(e.target.value)} style={inputStyle} disabled={govBusy}>
                             <option value="DIRECT">DIRECT — normal verified-plant order flow</option>
-                            <option value="ADMIN_REVIEW">ADMIN_REVIEW — block direct order; RFQ / human review</option>
+                            <option value="ADMIN_REVIEW">ADMIN_REVIEW — send order requests to Central Admin</option>
                             <option value="RFQ_ONLY">RFQ_ONLY — quotations only</option>
                             <option value="DISABLED">DISABLED — no direct orders</option>
                           </select>
@@ -2213,14 +2215,18 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                 </section>}
               </>}
               <nav style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                {['users','orders','support','service_enquiries','rmc_rfq_leads','kyc','audit','sessions'].filter(kind=>permissions.includes(({users:'user.view',plants:'plant.view',orders:'order.view',support:'support.view',service_enquiries:'support.view',rmc_rfq_leads:'support.view',kyc:'kyc.view',audit:'audit.view',sessions:'session.view'} as Record<string,string>)[kind])).map(kind=>
-                  <button key={kind} disabled={busy} onClick={()=>void loadWorkspace(kind)} style={{...buttonStyle,width:'auto',textTransform:'capitalize'}}>{kind}</button>)}
+                {['users','orders','plant_order_requests','support','service_enquiries','rmc_rfq_leads','kyc','audit','sessions'].filter(kind=>permissions.includes(({users:'user.view',plants:'plant.view',orders:'order.view',plant_order_requests:'order.view',support:'support.view',service_enquiries:'support.view',rmc_rfq_leads:'support.view',kyc:'kyc.view',audit:'audit.view',sessions:'session.view'} as Record<string,string>)[kind])).map(kind=>
+                  <button key={kind} disabled={busy} onClick={()=>void loadWorkspace(kind)} style={{...buttonStyle,width:'auto',textTransform:'capitalize'}}>{kind==='plant_order_requests'?'Plant Order Requests':kind}</button>)}
               </nav>
-              {workspace && <><h2 style={{textTransform:'capitalize'}}>{workspace}</h2>
+              {workspace && <><h2 style={{textTransform:'capitalize'}}>{workspace==='plant_order_requests'?'Plant Order Requests':workspace}</h2>
                 {workspaceFeedback}
                 <div style={{overflowX:'auto'}}><table style={{width:'100%',fontSize:13,borderCollapse:'collapse'}}>
                   <thead><tr>{Object.keys(records[0]||{}).map(key=><th key={key} style={{textAlign:'left',padding:8}}>{key.replace(/_/g,' ')}</th>)}</tr></thead>
-                  <tbody>{records.map((row,index)=><tr key={String(row.id||index)}>{Object.entries(row).map(([key,value])=><td key={key} style={{padding:8,borderTop:'1px solid #1D232D'}}>{value===null?'—':typeof value==='object'?JSON.stringify(value):String(value)}</td>)}</tr>)}</tbody>
+                  <tbody>{records.map((row,index)=><tr key={String(row.id||index)}>{Object.entries(row).map(([key,value])=><td key={key} style={{padding:8,borderTop:'1px solid #1D232D'}}>
+                    {workspace==='plant_order_requests' && key==='google_place_id' && typeof value==='string'
+                      ? <a style={{color:'var(--tm-selected-ink)'}} href={'https://www.google.com/maps/search/?api=1&query=RMC%20plant&query_place_id='+encodeURIComponent(value)} target="_blank" rel="noreferrer">View on Google Maps</a>
+                      : value===null?'—':typeof value==='object'?JSON.stringify(value):String(value)}
+                  </td>)}</tr>)}</tbody>
                 </table></div>
                 {supportWorkspace}
                 {workspace === 'service_enquiries' && permissions.includes('support.manage') && (

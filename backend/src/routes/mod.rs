@@ -38,6 +38,7 @@ pub mod owner_routes;
 pub mod payroll_routes;
 pub mod permission_consent;
 pub mod plant_onboarding;
+pub mod plant_order_review;
 pub mod plant_owner_registration;
 pub mod plant_plans_routes;
 pub mod plant_profile;
@@ -556,6 +557,10 @@ pub fn build_app_router(state: AppState) -> Router {
         .route(
             "/api/customer/rmc-rfq-leads",
             get(rmc_rfq_leads::list_customer).post(rmc_rfq_leads::create),
+        )
+        .route(
+            "/api/customer/plant-order-requests",
+            get(plant_order_review::list_customer).post(plant_order_review::create),
         )
         .route(
             "/api/customer/rmc-rfq-leads/:lead_id/confirm",

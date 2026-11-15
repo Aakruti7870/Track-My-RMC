@@ -4,7 +4,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppText } from "@/src/components/ui/AppText";
-import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
+import { type VectorSymbolName } from "@/src/components/VectorSymbol";
+import { IconTile } from "@/src/components/IconTile";
 import type { TabDef } from "@/src/components/GlassTabBar";
 import { OwnerGlass, useOwnerPalette } from "./OwnerUI";
 type Props = { state: { index: number; routes: { key: string; name: string }[] }; navigation: { emit: (event: { type: "tabPress"; target: string; canPreventDefault: true }) => { defaultPrevented: boolean }; navigate: (name: string) => void }; tabs: TabDef[] };
@@ -33,7 +34,7 @@ export function OwnerTabBar({ state, navigation, tabs }: Props) {
       <Pressable accessibilityRole="button" accessibilityLabel="Dismiss quick actions" onPress={() => setOpen(false)} style={{ flex: 1 }} />
       <OwnerGlass style={{ maxWidth: 600, width: "100%", maxHeight: "85%", alignSelf: "center", paddingBottom: insets.bottom + 16, paddingHorizontal: 18, paddingTop: 18, backgroundColor: p.canvas }}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}><AppText variant="heading">Quick Actions</AppText><Pressable accessibilityRole="button" accessibilityLabel="Close quick actions" onPress={() => setOpen(false)} style={{ padding: 12 }}><Ionicons name="close" size={25} color={p.text} /></Pressable></View>
-        <ScrollView contentContainerStyle={{ gap: 8 }}>{ACTIONS.map(action => <Pressable key={action.label} accessibilityRole="button" accessibilityLabel={action.label} onPress={() => { setOpen(false); router.push(action.route); }}><OwnerGlass style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 15 }}><VectorSymbol name={action.symbol} size={36} /><AppText style={{ flex: 1, fontSize: 13, color: p.text }}>{action.label}</AppText><Ionicons name="chevron-forward" size={17} color={p.muted} /></OwnerGlass></Pressable>)}</ScrollView>
+        <ScrollView contentContainerStyle={{ gap: 8 }}>{ACTIONS.map(action => <Pressable key={action.label} accessibilityRole="button" accessibilityLabel={action.label} onPress={() => { setOpen(false); router.push(action.route); }}><OwnerGlass style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 15 }}><IconTile symbol={action.symbol} /><AppText style={{ flex: 1, fontSize: 13, color: p.text }}>{action.label}</AppText><Ionicons name="chevron-forward" size={17} color={p.muted} /></OwnerGlass></Pressable>)}</ScrollView>
       </OwnerGlass>
     </View></Modal>
   </>;

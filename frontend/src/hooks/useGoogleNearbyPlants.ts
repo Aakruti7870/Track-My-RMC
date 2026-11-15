@@ -3,6 +3,7 @@ import { apiErrorDetail, apiPost } from "@/src/api/client";
 import { useAuth } from "@/src/auth/AuthContext";
 import { LatLng, validLatLng } from "@/src/maps/geo";
 import { PlantGeoFilters } from "@/src/domain/plantGeoFilters";
+import type { Plant } from "@/src/domain/plant";
 
 export type GoogleNearbyPlant = {
   place_id: string;
@@ -13,8 +14,9 @@ export type GoogleNearbyPlant = {
   distance_km: number;
   google_maps_uri: string | null;
   source: "google_places";
-  verified: false;
-  order_enabled: false;
+  verified: boolean;
+  order_enabled: boolean;
+  registered_plant?: { id: string; order_intake_mode: Plant["order_intake_mode"] };
 };
 
 type GoogleNearbyResult = {

@@ -1,12 +1,11 @@
 import React, { useCallback, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { apiGet } from "@/src/api/client";
 import { useAuth } from "@/src/auth/AuthContext";
 
 import { AppText } from "@/src/components/ui/AppText";
-import { VectorSymbol } from "@/src/components/VectorSymbol";
+import { IconTile } from "@/src/components/IconTile";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { fonts, spacing } from "@/src/theme/tokens";
 import { modulesForRole, type ModuleGroup } from "@/src/navigation/moduleCatalog";
@@ -85,9 +84,7 @@ export function RoleModuleDirectory({ role, title = "Your Modules" }: {
                     },
                   ]}
                 >
-                  <View style={styles.artwork}>
-                    {module.symbol ? <VectorSymbol name={module.symbol} size={24} /> : <Ionicons name={module.icon} size={24} color={colors.onSurfaceTertiary} />}
-                  </View>
+                  {module.symbol ? <IconTile symbol={module.symbol} /> : <IconTile icon={module.icon} />}
                   <AppText style={{ fontFamily: fonts.semibold, color: colors.onSurface, fontSize: 13, textAlign: "center" }}>{module.label}</AppText>
                   <AppText variant="caption" style={{ textAlign: "center", fontSize: 11 }}>{module.description}</AppText>
                 </Pressable>
@@ -105,5 +102,4 @@ const styles = StyleSheet.create({
   cards: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   item: { width: "48%", minWidth: 128, flexGrow: 1, minHeight: 112, alignItems: "center",
     justifyContent: "center", gap: 7, borderWidth: 1, borderRadius: 12, padding: 12 },
-  artwork: { minHeight: 24, alignItems: "center", justifyContent: "center" },
 });

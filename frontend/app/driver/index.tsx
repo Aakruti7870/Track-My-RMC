@@ -17,7 +17,7 @@ import { Skeleton } from "@/src/components/ui/Skeleton";
 import { ErrorView } from "@/src/components/StateViews";
 import { DriverIdentityCard } from "@/src/components/DriverIdentityCard";
 import { fonts, fontSize, radius, spacing, operationalStatus } from "@/src/theme/tokens";
-import { VectorSymbol } from "@/src/components/VectorSymbol";
+import { IconTile } from "@/src/components/IconTile";
 
 type Trip = { id: string; order_number: string; status: string; grade: string; quantity: number; tm_number: string; site_name: string };
 type Home = { name: string; vehicle: string | null; active_trip: Trip | null; completed_today: number; checked_in: boolean };
@@ -93,7 +93,7 @@ export default function DriverHome() {
               </Card>
               <View style={{ flexDirection: "row", gap: spacing.sm }}>
                 <Pressable onPress={() => router.push("/driver/shift-attendance")} style={[styles.stat, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-                  <VectorSymbol name="driver-attendance" size={28} />
+                  <IconTile symbol="driver-attendance" width={38} />
                   <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.sm, color: colors.onSurface }}>{attendanceLabel}</AppText>
                 </Pressable>
                 <View style={[styles.stat, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
@@ -101,7 +101,7 @@ export default function DriverHome() {
                   <AppText variant="caption">Delivered today</AppText>
                 </View>
                 <View style={[styles.stat, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-                  <VectorSymbol name="transit-mixer-fleet" size={28} />
+                  <IconTile symbol="transit-mixer-fleet" width={38} />
                   <AppText style={{ fontFamily: fonts.semibold, fontSize: 12, color: colors.onSurface }} numberOfLines={1}>{data.vehicle || "—"}</AppText>
                 </View>
               </View>

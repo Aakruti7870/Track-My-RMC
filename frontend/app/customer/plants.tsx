@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, AppState, FlatList, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, AppState, FlatList, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
+import { IconTile } from "@/src/components/IconTile";
 import * as Location from "expo-location";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -21,11 +22,12 @@ import { Badge } from "@/src/components/ui/Badge";
 import { Skeleton } from "@/src/components/ui/Skeleton";
 import { PlantMap } from "@/src/components/PlantMap";
 import type { PlantData } from "@/src/components/PlantCard";
+import { plantOrderRoute } from "@/src/domain/plant";
 import { ErrorView } from "@/src/components/StateViews";
 import { requestNearbyPlantsLocationConsent } from "@/src/location/BackgroundLocationConsent";
 import { distanceKm, LatLng, validLatLng } from "@/src/maps/geo";
 import { EMPTY_PLANT_GEO, cleanPlantGeo, hasPlantGeoFilters, isValidPlantGeo, plantGeoLocationLabel, PlantGeoFilters } from "@/src/domain/plantGeoFilters";
-import { fonts, layout, radius, spacing } from "@/src/theme/tokens";
+import { control, fonts, radius, spacing } from "@/src/theme/tokens";
 
 type NearbyLocationStatus = "ok" | "denied" | "services-disabled" | "timeout" | "unavailable";
 type NearbyLocationResult = { status: NearbyLocationStatus; coords: LatLng | null; fromCache?: boolean; canAskAgain?: boolean };
@@ -139,6 +141,7 @@ export default function CustomerPlants() {
   const [filters, setFilters] = useState({q:"",grade:"",radius_km:50,verified:false,...EMPTY_PLANT_GEO});
   const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null);
   const [details,setDetails] = useState<PlantData | null>(null);
+  const requestVisit = useRef(0);
   useEffect(() => { setSelectedPlantId(null); }, [userLocation?.lat, userLocation?.lng]);
   const manualLocation = useRef(false);
   const geoLookupVersion = useRef(0);
@@ -299,36 +302,61 @@ export default function CustomerPlants() {
     return ranked;
   }, [ranked]);
 
-  // Google-sourced data remains separate from the app's approved, order-enabled directory.
-  const googleEntries = useMemo(() => {
+  const googleListings = useMemo<PlantData[]>(() => {
     const registered = data?.plants || [];
-    return (googleNearby?.places || []).filter((place) => {
-      return !registered.some((plant) => plant.name.trim().toLowerCase() === place.name.trim().toLowerCase()
-        && validLatLng(plant) && distanceKm({lat:plant.lat!,lng:plant.lng!},place) < 0.15);
-    });
+    return (googleNearby?.places || []).filter(place => !registered.some(plant =>
+      plant.google_place_id === place.place_id || (place.registered_plant
+        ? plant.id === place.registered_plant.id
+        : plant.name.trim().toLowerCase() === place.name.trim().toLowerCase()
+          && validLatLng(plant) && distanceKm({lat:plant.lat!,lng:plant.lng!},place) < 0.15),
+    )).map(place => ({
+      id: place.registered_plant?.id ?? `google:${place.place_id}`,
+      google_place_id: place.place_id,
+      name: place.name,
+      city: "",
+      address: place.address,
+      lat: place.lat,
+      lng: place.lng,
+      grades: [],
+      contact_phone: "",
+      service_area_km: 0,
+      status: place.registered_plant ? "active" : "google_listing",
+      verified: Boolean(place.verified),
+      order_enabled: Boolean(place.order_enabled),
+      order_intake_mode: place.registered_plant?.order_intake_mode,
+      distance_km: place.distance_km,
+    }));
   }, [googleNearby, data]);
 
-  const googleMapPlants = useMemo<PlantData[]>(() => googleEntries.map(place => ({
-    id: `google:${place.place_id}`,
-    name: place.name,
-    city: "",
-    address: place.address,
-    lat: place.lat,
-    lng: place.lng,
-    grades: [],
-    contact_phone: "",
-    service_area_km: 0,
-    status: "google_listing",
-    verified: false,
-    order_enabled: false,
-    distance_km: place.distance_km,
-  })), [googleEntries]);
-
-  const mappedPlants = useMemo(() => [...filtered, ...googleMapPlants], [filtered, googleMapPlants]);
+  const mappedPlants = useMemo(() => [...filtered, ...googleListings], [filtered, googleListings]);
   const openGooglePlace = useCallback((place: GoogleNearbyPlant) => {
     const fallback = `https://www.google.com/maps/search/?api=1&query=${place.lat}%2C${place.lng}&query_place_id=${encodeURIComponent(place.place_id)}`;
     void Linking.openURL(place.google_maps_uri || fallback);
   }, []);
+
+  function openSupplierRequest(plant: PlantData, orderReview: boolean, googlePlaceId?: string | null) {
+    const supplier = googlePlaceId
+      ? { googlePlaceId }
+      : { plantId: plant.id };
+    router.push({
+      pathname: "/customer/request-quotation",
+      params: {
+        ...supplier, plantName: plant.name, orderReview: orderReview ? "1" : "0",
+        visit: String(++requestVisit.current),
+      },
+    });
+  }
+
+  function openPlantOrder(plant: PlantData) {
+    const destination = plantOrderRoute(plant);
+    if (destination === "unavailable") return;
+    setDetails(null);
+    if (destination === "direct") {
+      router.push({ pathname: "/new-order", params: { plantId: plant.id } });
+    } else {
+      openSupplierRequest(plant, true, plant.status === "google_listing" ? plant.google_place_id : null);
+    }
+  }
 
   return (
     <ThemedScreen>
@@ -354,13 +382,7 @@ export default function CustomerPlants() {
               <View style={[styles.mapShell, { borderColor: colors.isDark ? "rgba(255,154,61,0.36)" : colors.border, shadowColor: colors.isDark ? "#FF9A3D" : colors.shadow, shadowOpacity: colors.isDark ? 0.14 : 0.04 }]}>
                 <PlantMap plants={mappedPlants} userLocation={userLocation} selectedPlantId={selectedPlantId} onSelectPlant={(plant) => {
                   setSelectedPlantId(plant.id);
-                  if (plant.id.startsWith("google:")) {
-                    const place = googleEntries.find((entry) => `google:${entry.place_id}` === plant.id);
-                    const listing = googleMapPlants.find((entry) => entry.id === plant.id);
-                    if (listing) setDetails(listing);
-                  } else {
-                    setDetails(plant);
-                  }
+                  setDetails(plant);
                 }} onRegionChange={coords => { if (!userLocation || distanceKm(userLocation,coords)>1) { manualLocation.current=true;setUserLocation(coords); setPage(1); } }} />
               </View>
 
@@ -423,7 +445,7 @@ export default function CustomerPlants() {
                     </AppText>
                   </View>
                   <AppText variant="caption">
-                    Google Maps results within {Math.min(filters.radius_km,50)} km of the selected location. Google may return only some matching businesses per page; use Next when more are available. Listings are not TrackMyRMC-verified and cannot accept orders here.
+                    Google Maps results within {Math.min(filters.radius_km,50)} km of the selected location.
                   </AppText>
                   {googleLoading ? <ActivityIndicator accessibilityLabel="Finding live Google Places listings" color={colors.brand} /> : null}
                   {googleError ? (
@@ -432,20 +454,18 @@ export default function CustomerPlants() {
                       <Button label="Retry Google Places search" variant="outline" onPress={refreshGoogle} />
                     </View>
                   ) : null}
-                  {!googleLoading && !googleError && googleNearby && !googleEntries.length ? (
+                  {!googleLoading && !googleError && googleNearby && !googleListings.length ? (
                     <AppText variant="caption">No matching RMC businesses found on Google Maps in this radius. Try moving the map or increasing the radius.</AppText>
                   ) : null}
-                  {googleEntries.map((place) => {
-                    const listing = googleMapPlants.find((plant) => plant.id === `google:${place.place_id}`);
-                    if (!listing) return null;
+                  {googleListings.map((listing) => {
                     return (
-                      <View key={place.place_id} testID="google-places-plant">
+                      <View key={listing.id} testID="google-places-plant">
                         <NearbyPlantCard
                           plant={listing}
-                          onQuotation={() => router.push({pathname:"/customer/request-quotation",params:{googlePlaceId:place.place_id,plantName:place.name}} as any)}
+                          onQuotation={() => openSupplierRequest(listing, false, listing.google_place_id)}
                           onSelect={() => setSelectedPlantId(listing.id)}
                           onDetails={() => {setSelectedPlantId(listing.id);setDetails(listing);}}
-                          onOrder={() => toast("Ordering is available once this supplier completes TrackMyRMC verification.", "info")}
+                          onOrder={() => openPlantOrder(listing)}
                         />
                       </View>
                     );
@@ -465,8 +485,8 @@ export default function CustomerPlants() {
           }
           renderItem={({ item }) => loading && !data ? null : (
             <NearbyPlantCard plant={item} onSelect={()=>setSelectedPlantId(item.id)} onDetails={()=>{setSelectedPlantId(item.id);setDetails(item);}}
-              onQuotation={()=>router.push({pathname:"/customer/request-quotation",params:{plantId:item.id,plantName:item.name}} as any)}
-              onOrder={()=>router.push(`/new-order?plantId=${item.id}` as any)} />
+              onQuotation={() => openSupplierRequest(item, false)}
+              onOrder={() => openPlantOrder(item)} />
           )}
           ListFooterComponent={
             ((userLocation && !filters.verified && !filters.grade.trim() && (googleNearby || googleHasPreviousPage))
@@ -522,18 +542,17 @@ export default function CustomerPlants() {
             <>
               <DetailLine label="Distance from selected site" value={details.distance_km != null ? `${details.distance_km.toFixed(1)} km` : "Not available"} />
               <Button label="View on Google Maps" variant="outline" onPress={()=>{
-                const place=googleEntries.find(entry=>`google:${entry.place_id}` === details.id);
+                const place=googleNearby?.places.find(entry=>entry.place_id === details.google_place_id);
                 if (place) openGooglePlace(place);
               }} />
-              <AppText variant="caption">A submitted enquiry for this unregistered supplier is saved for TrackMyRMC admin assistance. The business is not automatically contacted.</AppText>
-              <Button label="Place Order" disabled onPress={()=>{}} />
             </>
           ) : (
             <>
               <Button label="Open Plant Profile" variant="outline" onPress={()=>{const id=details.id;setDetails(null);router.push({pathname:"/plant-profile",params:{plantId:id}});}} />
-            <Button label="Place Order" disabled={!details.order_enabled} onPress={()=>{setDetails(null);router.push(`/new-order?plantId=${details.id}` as any);}} />
             </>
           )}
+          {plantOrderRoute(details) === "review" ? <AppText variant="caption">TrackMyRMC will review your order request.</AppText> : null}
+          <Button label="Place Order" disabled={plantOrderRoute(details) === "unavailable"} onPress={() => openPlantOrder(details)} />
           </> : null}
           <Button label="Close details" onPress={() => setDetails(null)} />
         </ScrollView>
@@ -555,15 +574,13 @@ function NearbyPlantCard({ plant, onDetails, onQuotation, onOrder, onSelect }: {
   onOrder: () => void;
 }) {
   const { colors } = useTheme();
-  const { width, fontScale } = useWindowDimensions();
-  const compact = Math.min(width, layout.contentMax) / fontScale < 480;
   const googleListing = plant.status === "google_listing";
-  const eligible = plant.order_enabled ?? ((plant.status || "active").toLowerCase() === "active" && plant.verified);
+  const orderRoute = plantOrderRoute(plant);
 
   return (
     <Card testID={`nearby-plant-${plant.id}`} style={styles.plantCard}>
       <Pressable onPress={onSelect} accessibilityRole="button" accessibilityLabel={`Show ${plant.name} on map`} style={styles.plantTopRow}>
-        <VectorSymbol name="nearby-rmc-plants" size={24} />
+        <IconTile symbol="nearby-rmc-plants" width={38} />
         <View style={styles.plantTitleGroup}>
           <AppText variant="heading">{plant.name}</AppText>
           <AppText variant="bodyMuted">{plant.address || [plant.city, plant.district].filter(Boolean).join(", ")}</AppText>
@@ -574,16 +591,15 @@ function NearbyPlantCard({ plant, onDetails, onQuotation, onOrder, onSelect }: {
         <Badge size="sm" status={plant.verified ? "VERIFIED" : "PENDING"}
           label={plant.verified ? "TrackMyRMC verified" : googleListing ? "Not TrackMyRMC verified" : "Verification pending"} />
       </View>
-      <View style={[styles.plantActions, compact && styles.plantActionsStacked]}>
-        <Button testID="nearby-place-order" size="sm" variant={eligible ? "primary" : "outline"}
-          label={eligible ? "Place Order" : "Direct ordering unavailable"} onPress={onOrder}
-          disabled={!eligible} style={!compact && styles.plantAction} />
-        <Button size="sm" variant={eligible ? "outline" : "primary"} label="Request Quotation"
-          onPress={onQuotation} style={!compact && styles.plantAction} />
-        <Button size="sm" variant="ghost" label="Plant Profile" onPress={onDetails}
-          style={!compact && styles.plantAction} />
+      <View style={styles.plantActions}>
+        <Button testID="nearby-place-order" size="sm" fullWidth={false}
+          label="Place Order" onPress={onOrder} disabled={orderRoute === "unavailable"} style={styles.plantAction} />
+        <Button size="sm" variant="outline" fullWidth={false} label="Request Quotation"
+          onPress={onQuotation} style={styles.plantAction} />
+        <Button size="sm" variant="ghost" fullWidth={false} label="Plant Profile" onPress={onDetails}
+          style={styles.plantAction} />
       </View>
-      {!eligible ? <AppText variant="caption" color={colors.onSurfaceTertiary}>{googleListing ? "TrackMyRMC can assist with this enquiry." : "You can request a quote from this plant."}</AppText> : null}
+      {orderRoute === "review" ? <AppText variant="caption" color={colors.onSurfaceTertiary}>TrackMyRMC will review your order request.</AppText> : null}
     </Card>
   );
 }
@@ -666,9 +682,8 @@ const styles = StyleSheet.create({
   plantTopRow: { minHeight: 48, flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
   plantTitleGroup: { minWidth: 0, flex: 1, gap: spacing.xs },
   plantChipRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: spacing.sm },
-  plantActions: { flexDirection: "row", alignItems: "stretch", gap: spacing.sm },
-  plantActionsStacked: { flexDirection: "column" },
-  plantAction: { flex: 1 },
+  plantActions: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start", gap: spacing.sm },
+  plantAction: { flexBasis: "16%", flexShrink: 0, minWidth: 136, maxWidth: "100%", minHeight: control.minTouch, paddingHorizontal: spacing.sm },
   googleListingCard:{backgroundColor:"#FFFFFF",borderWidth:1,borderColor:"#E2E8F0",borderRadius:16,padding:14,gap:8},
   googleListingCaption:{fontFamily:fonts.medium,fontSize:12,color:"#64748B",marginBottom:5},
   googlePlaceLink:{minHeight:42,flexDirection:"row",gap:7,alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:"#F25C05",borderRadius:10},

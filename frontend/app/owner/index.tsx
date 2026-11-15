@@ -7,8 +7,9 @@ import { HomeModuleSection, HomeSectionHeader } from "@/src/components/HomeModul
 import { AppText } from "@/src/components/ui/AppText";
 import { Skeleton } from "@/src/components/ui/Skeleton";
 import { ErrorView } from "@/src/components/StateViews";
-import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
-import { fonts, radius, operationalStatus, type OperationalStatus } from "@/src/theme/tokens";
+import { type VectorSymbolName } from "@/src/components/VectorSymbol";
+import { IconTile } from "@/src/components/IconTile";
+import { fonts, operationalStatus, type OperationalStatus } from "@/src/theme/tokens";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { modulesForRole } from "@/src/navigation/moduleCatalog";
 import { HOME_KEYS, DRIVER_MODULE, ownerDestination, OWNER_HOME_COMMERCIAL, OWNER_HOME_WORKFORCE, ownerModules } from "@/src/owner/modules";
@@ -73,9 +74,7 @@ export default function OwnerHome() {
           accessibilityHint={module.description}
           onPress={() => router.push(ownerDestination(module))}
           style={({ pressed }) => [styles.shortcut, { width: shortcutWidth, opacity: pressed ? 0.74 : 1 }]}>
-          <View style={[styles.shortcutPlate, { backgroundColor: colors.surfaceTertiary }]}>
-            {module.symbol ? <VectorSymbol name={module.symbol} size={24} /> : null}
-          </View>
+          {module.symbol ? <IconTile symbol={module.symbol} /> : <IconTile icon={module.icon} />}
           <AppText center style={[styles.shortcutLabel, { color: p.text }]}>{module.key === "business-staff" ? "Workforce" : module.label}</AppText>
         </Pressable>)}
       </View>
@@ -93,7 +92,7 @@ export default function OwnerHome() {
           accessibilityRole="button" accessibilityLabel={`${metric.label}, ${data?.cards[metric.key] ?? "unavailable"}, ${metric.basis}`}
           onPress={() => openMetric(metric.destination)} style={{ width: metricWidth }}>
           <OwnerGlass style={[styles.metric, value > 0 && tone !== "neutral" ? { borderColor: emphasis + "70" } : null]}>
-            <VectorSymbol name={metric.symbol} size={30} />
+            <IconTile symbol={metric.symbol} width={38} />
             <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
               <AppText style={{ fontSize: 10, color: p.text }} numberOfLines={2}>{metric.label}</AppText>
               {loading && !data ? <Skeleton height={22} /> : <AppText style={{ fontFamily: fonts.bold, fontSize: 22, color: emphasis }}>{data?.cards[metric.key] ?? "—"}</AppText>}
@@ -106,7 +105,7 @@ export default function OwnerHome() {
       <Pressable testID="owner-shortcut-insights" accessibilityRole="button" accessibilityState={{ expanded: insightsExpanded }}
         accessibilityLabel="Plant Overview & Weekly Insights" onPress={() => setInsightsExpanded(v => !v)}>
         <OwnerGlass style={[styles.insightsToggle, insightsExpanded && { borderColor: colors.controlOutline }]}>
-          <VectorSymbol name="production-report" size={24} />
+          <IconTile symbol="production-report" width={36} />
           <AppText style={[styles.shortcutLabel, { color: p.text }]}>Plant Overview & Weekly Insights</AppText>
         </OwnerGlass>
       </Pressable>
@@ -130,7 +129,6 @@ const styles = StyleSheet.create({
   metric: { minHeight: 75, padding: 8, flexDirection: "row", gap: 6, alignItems: "center" },
   modules: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   shortcut: { minHeight: 80, paddingHorizontal: 2, paddingVertical: 5, alignItems: "center", gap: 5 },
-  shortcutPlate: { width: 44, height: 44, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
   shortcutLabel: { flexShrink: 1, fontFamily: fonts.semibold, fontSize: 12, lineHeight: 16 },
   insightsToggle: { flexDirection: "row", alignItems: "center", minHeight: 52, gap: 10, paddingHorizontal: 12, paddingVertical: 8 },
 });

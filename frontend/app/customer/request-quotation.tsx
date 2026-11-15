@@ -18,6 +18,7 @@ import { layout, spacing } from "@/src/theme/tokens";
 
 const GRADES = ["M10","M15","M20","M25","M30","M35","M40","M45","M50","M55","M60"];
 type CreatedLead = { id: string; status: string; message?: string; canonical_request_id?: string };
+type RequestParams = { googlePlaceId?: string; plantId?: string; plantName?: string; orderReview?: string; visit?: string };
 type FieldName = "customerName" | "email" | "gstin" | "quantity" | "address" | "date" | "phone" | "consent";
 type FieldErrors = Partial<Record<FieldName, string>>;
 const uuid = () => {
@@ -27,13 +28,21 @@ const uuid = () => {
 };
 
 export default function RequestQuotation() {
+  const params = useLocalSearchParams<RequestParams>();
+  const { user } = useAuth();
+  const formKey = JSON.stringify([user?.id, params.plantId, params.googlePlaceId, params.orderReview, params.visit]);
+  return <SupplierRequestForm key={formKey} params={params} />;
+}
+
+function SupplierRequestForm({ params }: { params: RequestParams }) {
   const router = useRouter();
   const { token, user } = useAuth();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ googlePlaceId?: string; plantId?: string; plantName?: string }>();
+  const reviewOrder = params.orderReview === "1";
+  const requestLabel = reviewOrder ? "Order Request" : "Quotation Request";
   const [requestKey] = useState(uuid);
-  const [customerName, setCustomerName] = useState(user?.name || "");
+  const [customerName, setCustomerName] = useState(user?.verified_name || user?.name || "");
   const [email, setEmail] = useState(user?.email || "");
   const [gstin, setGstin] = useState("");
   const [grade, setGrade] = useState("M25");
@@ -120,7 +129,7 @@ export default function RequestQuotation() {
     if (siteAddress.trim().length < 5) invalid.address = "Enter the full delivery address.";
     if (deliveryDate < localDate()) invalid.date = "Select today or a future date.";
     if (!/^\+?[0-9]{10,15}$/.test(sitePhone.trim())) invalid.phone = "Enter a valid site contact number.";
-    if (!shareConsent) invalid.consent = "Confirm supplier-sharing permission to continue.";
+    if (!reviewOrder && !shareConsent) invalid.consent = "Confirm supplier-sharing permission to continue.";
     setFieldErrors(invalid);
     const first = (Object.keys(invalid) as FieldName[])[0];
     if (first) {
@@ -132,7 +141,7 @@ export default function RequestQuotation() {
     setBusy(true);
     setError("");
     try {
-      const created = await apiPost<CreatedLead>("/customer/rmc-rfq-leads", token, {
+      const created = await apiPost<CreatedLead>(reviewOrder ? "/customer/plant-order-requests" : "/customer/rmc-rfq-leads", token, {
         request_key: requestKey,
         google_place_id: params.googlePlaceId || null,
         plant_id: params.plantId || null,
@@ -142,11 +151,12 @@ export default function RequestQuotation() {
         grade, quantity_m3: Number(quantity), site_address: siteAddress.trim(),
         site_lat: siteCoords?.lat ?? null, site_lng: siteCoords?.lng ?? null,
         delivery_date: deliveryDate, pump_required: pump,
-        site_contact_phone: sitePhone.trim(), share_with_supplier: shareConsent,
+        site_contact_phone: sitePhone.trim(),
+        ...(!reviewOrder && { share_with_supplier: shareConsent }),
       });
       setResult(created);
     } catch (e: unknown) {
-      setError(apiErrorDetail(e, "Unable to submit quotation request."));
+      setError(apiErrorDetail(e, `Unable to submit ${requestLabel.toLowerCase()}.`));
     } finally { inFlight.current = false; setBusy(false); }
   };
 
@@ -156,26 +166,33 @@ export default function RequestQuotation() {
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{padding:spacing.lg,paddingBottom:spacing.xl,gap:spacing.md,width:"100%",maxWidth:layout.contentMax,alignSelf:"center"}}>
         <Pressable accessibilityRole="button" accessibilityLabel="Back to plants" onPress={() => router.canGoBack() ? router.back() : router.replace("/customer/plants")} style={{flexDirection:"row",alignItems:"center",gap:8,paddingVertical:8}}>
           <Ionicons name="arrow-back" size={22} color={colors.onSurface}/>
-          <AppText variant="heading">Request RMC Quotation</AppText>
+          <AppText variant="heading">{reviewOrder ? "Place Order" : "Request RMC Quotation"}</AppText>
         </Pressable>
         {result ? (
           <Card style={{gap:spacing.md}}>
             <Ionicons name="checkmark-circle" size={45} color={colors.success}/>
-            <AppText variant="heading">Enquiry recorded</AppText>
+            <AppText variant="heading">{reviewOrder ? "Order request sent" : "Enquiry recorded"}</AppText>
             <AppText>Reference: {result.id}</AppText>
-            <AppText>{result.status === "PENDING_SUPPLIER"
-              ? "This supplier has not joined TrackMyRMC. Our team can assist with your enquiry. No supplier notification has been sent."
-              : "Your request is available to the approved plant in TrackMyRMC."}</AppText>
-            {result.status === "PENDING_SUPPLIER" ? <Button label="Share Plant Onboarding Invitation" variant="outline"
-              onPress={()=>void Share.share({
-                message:"TrackMyRMC connects customers with verified Ready-Mix Concrete suppliers. Register your RMC plant to receive and manage quotation requests: https://trackmyrmc.com/plant-onboarding"
-              }).catch(()=>setError("Sharing is not available on this device."))}/> : null}
-            <AppText variant="caption">The invitation contains no customer name, contact, GSTIN or site address.</AppText>
-            <Button label="Back to Plants" onPress={()=>router.replace("/customer/plants")}/>
+            {reviewOrder ? <>
+              <AppText>TrackMyRMC received your request. Your delivery is pending review and confirmation.</AppText>
+              <Button label="View My Orders" onPress={() => router.replace("/customer/orders")} />
+              <Button label="Back to Plants" variant="outline" onPress={() => router.replace("/customer/plants")} />
+            </> : <>
+              <AppText>{result.status === "PENDING_SUPPLIER"
+                ? "This supplier has not joined TrackMyRMC. Our team can assist with your enquiry. No supplier notification has been sent."
+                : "Your request is available to the approved plant in TrackMyRMC."}</AppText>
+              {result.status === "PENDING_SUPPLIER" ? <Button label="Share Plant Onboarding Invitation" variant="outline"
+                onPress={()=>void Share.share({
+                  message:"TrackMyRMC connects customers with verified Ready-Mix Concrete suppliers. Register your RMC plant to receive and manage quotation requests: https://trackmyrmc.com/plant-onboarding"
+                }).catch(()=>setError("Sharing is not available on this device."))}/> : null}
+              <AppText variant="caption">The invitation contains no customer name, contact, GSTIN or site address.</AppText>
+              <Button label="Back to Plants" onPress={()=>router.replace("/customer/plants")}/>
+            </>}
           </Card>
         ) : (
           <Card style={{gap:spacing.md}}>
             <AppText variant="caption">Selected supplier: {params.plantName || "From Nearby Plants"}</AppText>
+            {reviewOrder ? <AppText>TrackMyRMC will review your request and contact you about availability and delivery.</AppText> : null}
             <Input label="Customer Name" required value={customerName} onChangeText={updateField("customerName", setCustomerName)}
               maxLength={160} error={fieldErrors.customerName} ref={ref => { fields.current.customerName = ref; }} />
             <Input label="Email (optional)" value={email} onChangeText={updateField("email", setEmail)}
@@ -210,15 +227,15 @@ export default function RequestQuotation() {
             </View>
             <Input label="Site Contact Number" required value={sitePhone} onChangeText={updateField("phone", setSitePhone)}
               keyboardType="phone-pad" maxLength={16} error={fieldErrors.phone} ref={ref => { fields.current.phone = ref; }} />
-            <Pressable onPress={() => updateField("consent", setShareConsent)(!shareConsent)} accessibilityRole="checkbox" accessibilityState={{checked:shareConsent}}
+            {!reviewOrder ? <Pressable onPress={() => updateField("consent", setShareConsent)(!shareConsent)} accessibilityRole="checkbox" accessibilityState={{checked:shareConsent}}
               style={{flexDirection:"row",alignItems:"flex-start",gap:10,paddingVertical:8}}>
               <Ionicons name={shareConsent?"checkbox":"square-outline"} size={24} color={colors.accentText}/>
               <AppText style={{flex:1}}>I agree that TrackMyRMC may share this enquiry and my contact details with the selected supplier after its verification, or use them for admin follow-up. This is not an order.</AppText>
-            </Pressable>
+            </Pressable> : null}
             {fieldErrors.consent ? <AppText accessibilityLiveRegion="polite" color={colors.error}>{fieldErrors.consent}</AppText> : null}
             {error ? <AppText accessibilityLiveRegion="polite" color={colors.error}>{error}</AppText> : null}
-            <Button label="Submit Quotation Request" loading={busy} onPress={()=>void submit()} disabled={!token || locationBusy}/>
-            <AppText variant="caption">For unregistered Google-listed businesses the enquiry reaches TrackMyRMC admin first. No WhatsApp message is sent to an unverified business.</AppText>
+            <Button label={`Submit ${requestLabel}`} loading={busy} onPress={()=>void submit()} disabled={!token || locationBusy}/>
+            {!reviewOrder ? <AppText variant="caption">For unregistered Google-listed businesses the enquiry reaches TrackMyRMC admin first. No WhatsApp message is sent to an unverified business.</AppText> : null}
           </Card>
         )}
       </ScrollView>

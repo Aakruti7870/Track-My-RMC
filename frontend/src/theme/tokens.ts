@@ -180,6 +180,8 @@ export const radius = {
   pill: 999,
 };
 
+export const iconTile = { light: "#4A5568", dark: "#394454", foreground: "#FFFFFF" };
+
 export const fonts = {
   display: "Jakarta-SemiBold",
   displayBold: "Jakarta-Bold",
