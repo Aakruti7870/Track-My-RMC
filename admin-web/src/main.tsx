@@ -1,14 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import './admin-theme.css';
-import { Bell, Building2, ClipboardCheck, Factory, Megaphone, ShieldCheck, Workflow, MessageCircle, LayoutDashboard, BarChart3, Eye, Users, UserRoundPlus, UserCog, Database, Grid2X2, LogOut, Settings, ChevronRight } from 'lucide-react';
+import { Bell, Building2, ClipboardCheck, Factory, Megaphone, ShieldCheck, Workflow, MessageCircle, LayoutDashboard, BarChart3, Eye, Users, UserRoundPlus, UserCog, Database, Grid2X2, LogOut, Settings, ChevronRight, ArrowLeft, KeyRound, Mail, LockKeyhole } from 'lucide-react';
 import { AuthenticatorQr } from './AuthenticatorQr';
 import { PlantVisibility } from './PlantVisibility';
 import { WhatsAppChats } from './WhatsAppChats';
 import { AdminSecurity } from './AdminSecurity';
-import apiClient, { getAccessToken, setAccessToken } from './api';
+import apiClient, { markCentralSignedOut, rememberCentralSession, restoreCentralSession, setAccessToken } from './api';
 
-type Stage = 'central-login' | 'central-otp' | 'central-mfa' | 'central-recover' | 'central-recovery-codes' | 'authority-login' | 'authority-password' | 'email' | 'otp' | 'mfa-enroll' | 'mfa-login' | 'authenticated';
+type Stage = 'checking-session' | 'central-login' | 'central-otp' | 'central-mfa' | 'central-recover' | 'central-recovery-codes' | 'authority-login' | 'authority-password' | 'email' | 'otp' | 'mfa-enroll' | 'mfa-login' | 'authenticated';
 
 type StaffUser = {
   id?: string;
@@ -129,21 +129,39 @@ const ADMIN_MENU = [
   {page:'admin-access',label:'Admin Access',caption:'Existing Central Admin accounts',icon:UserCog,permissions:['admin_access.manage']},
   {page:'unowned',label:'Unowned Plants',caption:'View plants without eligible owners',icon:Building2,permissions:['plant.view']},
   {page:'assign-owner',label:'Assign Plant Owner',caption:'Audited owner assignment',icon:UserRoundPlus,permissions:['owner.assign','plant.view']},
-  {page:'diagnostics',label:'AI Command',caption:'Read-only database diagnostic',icon:Database,permissions:['ai.diagnose']},
+  {page:'diagnostics',label:'AI Command',caption:'Database connectivity check',icon:Database,permissions:['ai.diagnose']},
   {page:'capabilities',label:'Capabilities',caption:'Authorized feature permissions',icon:Grid2X2,permissions:[]},
   {page:'sessions',label:'Logout All Sessions',caption:'Revoke my Super Admin sessions',icon:LogOut,permissions:[]},
   {page:'settings',label:'Settings',caption:'Portal appearance',icon:Settings,permissions:[]},
 ] as const;
 const ADMIN_SECURITY_SCREENS: AdminScreen[]=['reviewer','admin-access','unowned','assign-owner','diagnostics','capabilities','sessions'];
+const CENTRAL_STEP: Partial<Record<Stage, { label: string; step: number }>> = {
+  'central-login': {label:'Use your approved administrator email.',step:1},
+  'central-otp': {label:'Enter the six-digit code sent to your email.',step:2},
+  'central-mfa': {label:'Use your authenticator to finish signing in.',step:3},
+  'central-recover': {label:'Enter one unused recovery code.',step:3},
+  'central-recovery-codes': {label:'Save your new recovery codes before continuing.',step:3},
+};
+
 function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; onSignedOut: (message: string) => void }) {
-  const [stage, setStage] = useState<Stage>('central-login');
+  const [stage, setStage] = useState<Stage>(initialNotice ? 'central-login' : 'checking-session');
+  const [sessionCheck, setSessionCheck] = useState(0);
+  const heading = useRef<HTMLHeadingElement>(null);
+  const workspaceHeading = useRef<HTMLHeadingElement>(null);
   const [adminScreen,setAdminScreen]=useState<AdminScreen>(currentScreen);
-  const [appearance,setAppearance]=useState<'dark'|'light'|'system'>('dark');
+  const [appearance,setAppearance]=useState<'dark'|'light'|'system'>(()=>{
+    try { const saved = localStorage.getItem('tmrmc-admin-appearance'); if (saved==='dark'||saved==='light'||saved==='system') return saved; } catch { /* Preference storage is optional. */ }
+    return 'dark';
+  });
   const [systemDark,setSystemDark]=useState(()=>typeof window==='undefined'||window.matchMedia('(prefers-color-scheme: dark)').matches);
   useEffect(()=>{const q=window.matchMedia('(prefers-color-scheme: dark)');const update=()=>setSystemDark(q.matches);q.addEventListener('change',update);return()=>q.removeEventListener('change',update);},[]);
+  useEffect(()=>{
+    try { localStorage.setItem('tmrmc-admin-appearance',appearance); } catch { /* Preference storage is optional. */ }
+  },[appearance]);
   const [chatStats,setChatStats]=useState<{unread:number;conversations:number;incoming_today:number}|null>(null);
   const [chatUnread,setChatUnread]=useState(0);
   function navigateAdmin(page:AdminScreen) {
+    if (currentScreen() === page) { setAdminScreen(page); return; }
     window.location.hash='#/admin/'+page;
     setAdminScreen(page);
   }
@@ -283,31 +301,32 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
 
 
   useEffect(() => {
-    const token = getAccessToken();
-    if (!token) return;
-
+    if (initialNotice) return;
     let active = true;
-    apiClient.get('/api/me')
-      .then(async (response) => {
-        const currentUser = response.data?.user as StaffUser | undefined;
-        if (!active || !currentUser?.role) return;
-        if (currentUser.role === 'central_admin' || currentUser.role === 'authority') {
-          const endpoint = currentUser.role === 'authority' ? '/api/authority/auth/me' : '/api/admin/auth/me';
-          const session = await apiClient.get(endpoint);
-          setPermissions(session.data?.permissions || []);
-        } else if (!['plant_owner','owner','dispatcher','operator','supervisor',
-          'quality_engineer','store_manager','accountant','fleet_manager','admin'].includes(currentUser.role)) {
-          throw new Error('Not a supported web account');
-        }
-        setUser(currentUser);
-        setStage('authenticated');
-      })
-      .catch(() => {
-        setAccessToken(null);
-      });
-
+    restoreCentralSession().then(session => {
+      if (!active) return;
+      if (!session) { setStage('central-login'); return; }
+      setAccessToken(session.token);
+      setPermissions(session.permissions || []);
+      setUser(session.user);
+      setStage('authenticated');
+    }).catch(failure => {
+      if (!active) return;
+      setError(errorMessage(failure));
+    });
     return () => { active = false; };
-  }, []);
+  }, [initialNotice, sessionCheck]);
+
+  useEffect(() => {
+    if (stage !== 'checking-session' && stage !== 'authenticated') heading.current?.focus();
+  }, [stage]);
+
+  useEffect(() => {
+    if (stage === 'authenticated' && user?.role === 'central_admin') {
+      workspaceHeading.current?.focus();
+      window.scrollTo(0, 0);
+    }
+  }, [adminScreen, stage, user?.role]);
 
   useEffect(() => {
     if (stage !== 'authenticated') return;
@@ -939,7 +958,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
     try {
       await apiClient.post('/api/admin/auth/otp/send', { email: email.trim() });
       setStage('central-otp');
-      setNotice('Enter the verification code sent to your registered email.');
+
     } catch (error) {
       setError(errorMessage(error));
     } finally { setBusy(false); }
@@ -985,6 +1004,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
       } else {
         const session = await apiClient.get('/api/admin/auth/me');
         setPermissions(session.data?.permissions || []);
+        await rememberCentralSession().catch(() => setNotice('Signed in. Session restoration is unavailable in this browser.'));
         setUser(data.user); setStage('authenticated');
       }
     } catch (error) {
@@ -998,6 +1018,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
     try {
       const session = await apiClient.get('/api/admin/auth/me');
       setPermissions(session.data?.permissions || []);
+      await rememberCentralSession().catch(() => setNotice('Signed in. Session restoration is unavailable in this browser.'));
       setCentralRecoveryCodes([]); setRecoveryCodesSaved(false); setStage('authenticated');
     } catch (error) {
       setError(errorMessage(error));
@@ -1180,14 +1201,16 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
 
   async function logout(message?: string) {
     setBusy(true);
+    if (user?.role === 'central_admin') markCentralSignedOut();
     let revokedOnServer = false;
     try {
-      await apiClient.post(user?.role === 'central_admin' ? '/api/admin/auth/logout' : user?.role === 'authority' ? '/api/authority/auth/logout' : '/api/auth/logout');
+      await apiClient.post(user?.role === 'central_admin' ? '/api/admin/auth/logout' : user?.role === 'authority' ? '/api/authority/auth/logout' : '/api/auth/logout', {}, {withCredentials:user?.role === 'central_admin'});
       revokedOnServer = true;
     } catch {
       // Always clear this browser session, even if the server is temporarily unreachable.
     } finally {
       setAccessToken(null);
+      window.history.replaceState(null,'',window.location.pathname + window.location.search);
       // Remount the entire workspace: every record, password, MFA code and
       // unsent draft belongs to one authenticated account only.
       onSignedOut(message || (revokedOnServer
@@ -1197,9 +1220,17 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
   }
 
   const visibleMenu=ADMIN_MENU.filter(item=>item.permissions.every(permission=>permissions.includes(permission)));
+  const centralStep = CENTRAL_STEP[stage];
+  const activeWorkspace = visibleMenu.find(item=>item.page===adminScreen);
+  useEffect(()=>{
+    if (stage==='authenticated' && user?.role==='central_admin' && !activeWorkspace) {
+      window.history.replaceState(null,'','#/admin/dashboard');
+      setAdminScreen('dashboard');
+    }
+  }, [activeWorkspace, stage, user?.role]);
   const isDark=appearance==='dark'||(appearance==='system'&&systemDark);
   const pageStyle: React.CSSProperties = {
-    minHeight: '100vh', padding: stage === 'authenticated' ? '20px clamp(10px, 3vw, 38px)' : '32px 18px',
+    minHeight: '100vh', padding: stage === 'authenticated' ? '20px clamp(10px, 3vw, 38px)' : '24px clamp(12px, 4vw, 20px)',
     boxSizing: 'border-box',
     fontFamily: 'Jakarta-Regular, "Plus Jakarta Sans", system-ui, sans-serif',
     background: '#0E1116',
@@ -1286,29 +1317,41 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
   return (
     <main className={'tm-admin-root '+(isDark?'tm-dark':'tm-light')} style={pageStyle}>
       <section className={stage==='authenticated'?'tm-authenticated-shell':'tm-login-shell'} style={panelStyle} aria-labelledby="portal-title">
-        <div className="tm-titlebar"><img src={import.meta.env.BASE_URL+'trackmyrmc-logo.png'} alt="TrackMyRMC official logo" className="tm-brand-logo"/><div className="tm-titlecopy"><div style={{ color: 'var(--tm-focus)', fontSize: 12, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase' }}>
-          TrackMyRMC · Secure Access
-        </div>
-        <h1 id="portal-title" style={{ margin: '10px 0 6px', fontSize: 30, lineHeight: 1.2 }}>
-          {stage === 'authenticated' ? 'Command Center' : stage.startsWith('central-') ? 'Central Admin sign in' : stage === 'authority-login' ? 'Delegated Authority sign in' : 'Verified email sign in'}
-        </h1>
-        <p style={{ color: 'var(--tm-muted)', lineHeight: 1.6, marginTop: 0 }}>
-          {stage === 'authenticated'
-            ? 'Your access is restricted to the permissions assigned to your account.'
-            : stage.startsWith('central-') ? 'Verify your registered email and authenticator to access the Control Center.' : stage === 'authority-login' ? 'Authority uses a password, authenticator and separate one-hour browser session with scoped permissions. Reloading this page requires signing in again.' : 'Approved staff and first-time Authority accounts use email verification followed by authenticator MFA.'}
-        </p></div></div>
+        <header className="tm-titlebar">
+          <img src={import.meta.env.BASE_URL+'trackmyrmc-logo.png'} alt="TrackMyRMC official logo" className="tm-brand-logo"/>
+          <div className="tm-titlecopy">
+            <h1 id="portal-title" tabIndex={-1} ref={heading}>
+              {stage === 'checking-session' ? 'Control Center' : stage === 'authenticated' ? 'Command Center' : centralStep ? 'Central Admin sign in' : stage === 'authority-login' ? 'Delegated Authority sign in' : 'Verified email sign in'}
+            </h1>
+            {centralStep && <p>{centralStep.label}</p>}
+          </div>
+        </header>
 
+        {centralStep && stage !== 'central-recovery-codes' && <ol className="tm-signin-steps" aria-label="Sign-in progress">
+          {[{label:'Email',icon:Mail},{label:'Email code',icon:LockKeyhole},{label:'Authenticator',icon:KeyRound}].map(({label,icon:Icon},index)=>
+            <li key={label} aria-current={centralStep.step===index+1?'step':undefined}>
+              <Icon size={16} aria-hidden="true"/><span>{label}</span>
+            </li>)}
+        </ol>}
+        {stage === 'checking-session' && <div className="tm-session-check">
+          {error ? <><button type="button" style={buttonStyle} onClick={()=>{setError('');setSessionCheck(value=>value+1);}}>Retry session check</button><button className="tm-auth-back" type="button" onClick={()=>{setError('');setStage('central-login');}}>Go to sign in</button></>
+            : <p role="status">Checking your session…</p>}
+        </div>}
         {error && <div role="alert" style={{ padding: 12, borderRadius: 8, background: '#35191B', border: '1px solid #E53E3E', color: '#FDECEC', margin: '16px 0' }}>{error}</div>}
         {notice && <div role="status" style={{ padding: 12, borderRadius: 8, background: '#12251A', border: '1px solid #276749', color: '#E6F4EA', margin: '16px 0' }}>{notice}</div>}
 
         {stage === 'central-login' && (
-          <form onSubmit={sendCentralOtp}>
-            <label htmlFor="central-email">Approved administrator email</label>
-            <input id="central-email" type="email" autoComplete="username" required value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} disabled={busy} />
-            <button type="submit" disabled={busy} style={buttonStyle}>Send email verification code</button>
-            <button type="button" onClick={() => {setStage('authority-login');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid rgba(255,154,61,0.24)'}}>Delegated Authority sign in</button>
-            <button type="button" onClick={() => {setAuthorityEnrollment(false);setStage('email');setError('');setMfaCode('');}} style={{...buttonStyle,background:'transparent',border:'1px solid rgba(255,154,61,0.24)'}}>Plant staff / approved MFA setup</button>
-          </form>
+          <>
+            <form onSubmit={sendCentralOtp}>
+              <label htmlFor="central-email">Approved administrator email</label>
+              <input id="central-email" type="email" autoComplete="username" required value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} disabled={busy} />
+              <button type="submit" disabled={busy} style={buttonStyle}>{busy?'Sending…':'Send email verification code'}</button>
+            </form>
+            <div className="tm-signin-alternatives">
+              <button type="button" onClick={() => {setStage('authority-login');setError('');setMfaCode('');}}>Delegated Authority sign in</button>
+              <button type="button" onClick={() => {setAuthorityEnrollment(false);setStage('email');setError('');setMfaCode('');}}>Plant staff / approved MFA setup</button>
+            </div>
+          </>
         )}
 
         {stage === 'central-otp' && (
@@ -1318,7 +1361,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
               value={otp} onChange={e=>setOtp(e.target.value)} style={inputStyle} disabled={busy} />
             <button type="submit" disabled={busy} style={buttonStyle}>Verify email code</button>
             <button type="button" disabled={busy} onClick={restartCentralLogin}
-              style={{...buttonStyle,background:'transparent',border:'1px solid rgba(255,154,61,0.24)'}}>Start over or request a new code</button>
+              className="tm-auth-back"><ArrowLeft size={16} aria-hidden="true"/>Start over or request a new code</button>
           </form>
         )}
 
@@ -1336,8 +1379,8 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
               <button type="button" disabled={busy} onClick={()=>{setMfaCode('');setError('');setStage('central-recover');}}
                 style={{...buttonStyle,background:'transparent',border:'1px solid rgba(255,154,61,0.24)'}}>Recover with a saved code</button>
             )}
-            <button type="button" disabled={busy} onClick={restartCentralLogin}
-              style={{...buttonStyle,background:'transparent',border:'1px solid rgba(255,154,61,0.24)'}}>Start over</button>
+            <button type="button" disabled={busy} onClick={stage==='central-recover' ? ()=>{setMfaCode('');setError('');setStage('central-mfa');} : restartCentralLogin}
+              className="tm-auth-back"><ArrowLeft size={16} aria-hidden="true"/>{stage==='central-recover'?'Back to authenticator':'Start over'}</button>
           </form>
         )}
 
@@ -1477,11 +1520,16 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
               <button type="button" className="tm-sidebar-logout" disabled={busy} onClick={()=>void logout()}><LogOut size={17}/> Sign out</button>
             </aside>}
             <div className={'tm-workspace-content tm-view-'+adminScreen}>
+            {user.role==='central_admin' && <header className="tm-workspace-heading">
+              {adminScreen!=='dashboard' && <button type="button" className="tm-auth-back" onClick={()=>navigateAdmin('dashboard')}>
+                <ArrowLeft size={16} aria-hidden="true"/>Back to dashboard
+              </button>}
+              <h2 tabIndex={-1} ref={workspaceHeading}>{activeWorkspace?.label || 'Control Center'}</h2>
+            </header>}
             <div className="tm-identity-strip" style={{ marginTop: 20, padding: 16, border: '1px solid #1D232D', borderRadius: 10, background: '#1D232D',
-              display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:8 }}>
+              display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,220px),1fr))',gap:8 }}>
               <p style={{ margin: '0 0 8px' }}><strong>Signed in as</strong> {user.full_name || user.email || user.phone || 'Staff user'}</p>
               <p style={{ margin: '0 0 8px' }}><strong>Role</strong> {user.role}</p>
-              <p style={{ margin: 0 }}><strong>Session</strong> {user.role === 'central_admin' || user.role === 'authority' ? 'Dedicated one-hour web authenticator session' : 'Email OTP + MFA verified'}</p>
             </div>
             {user.role === 'authority' && (
               <details style={{marginTop:14,padding:14,border:'1px solid #1D232D',borderRadius:10}}>
@@ -1518,7 +1566,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
             {user.role === 'central_admin' && (
               <section className="tm-central-nav" aria-label="Central Admin quick navigation" style={{marginTop:16}}>
                 <div className="tm-dashboard-heading">
-                  <h2>{adminScreen === 'dashboard' ? 'Operations overview' : 'Control Center'}</h2>
+                  {adminScreen==='dashboard' && <h3>Operations overview</h3>}
                   <button type="button" onClick={()=>setShowAdminNotices(value=>!value)}
                     className="tm-dashboard-notices" aria-expanded={showAdminNotices}
                     aria-label="Review admin notifications">
@@ -2250,7 +2298,9 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
             </section>}
             {user.role === 'central_admin' && ADMIN_SECURITY_SCREENS.includes(adminScreen) && (
               <AdminSecurity activeSection={adminScreen} permissions={permissions} onRevokeAll={()=>{
+                markCentralSignedOut();
                 setAccessToken(null);
+                window.history.replaceState(null,'',window.location.pathname + window.location.search);
                 onSignedOut('All Super Admin sessions revoked. Sign in again.');
               }}/>
             )}
@@ -2353,9 +2403,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
           </div>
         )}
 
-        <p style={{ margin: '24px 0 0', borderTop: '1px solid #1D232D', paddingTop: 16, color: 'var(--tm-muted)', fontSize: 12, lineHeight: 1.5 }}>
-          Never share verification codes or recovery codes. Admin and staff password-only login is disabled.
-        </p>
+
       </section>
     </main>
   );

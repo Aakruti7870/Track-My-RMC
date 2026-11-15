@@ -140,7 +140,7 @@ export function AdminSecurity({permissions,onRevokeAll,activeSection='all'}:{
       </section>}
       {show('diagnostics')&&can('ai.diagnose')&&<section aria-label="Read-only Diagnostics" style={panel}>
         <h3 style={{fontSize:16,marginTop:0}}>Platform Diagnostic Check</h3>
-        <p style={{fontSize:12,color:'var(--tm-muted)'}}>The existing API only verifies database connectivity. It does not run AI tasks, deployments or privileged commands.</p>
+        <p style={{fontSize:12,color:'var(--tm-muted)'}}>Check database connectivity.</p>
         <label>Diagnostic request
           <input aria-label="Diagnostic request" value={diagnostic} onChange={e=>setDiagnostic(e.target.value)} maxLength={160} style={field}/>
         </label>
@@ -153,7 +153,7 @@ export function AdminSecurity({permissions,onRevokeAll,activeSection='all'}:{
         {show('capabilities')&&<p style={{fontSize:12,overflowWrap:'anywhere'}}>{capabilities.length?capabilities.join(' · '):'No capabilities returned by the authorized Rust endpoint.'}</p>}
         {show('sessions')&&<button type="button" disabled={busy} style={{...button,background:'#9B2C2C',color:'#fff'}}
           onClick={()=>void privileged(async()=>{
-            await apiClient.post('/api/control-center/logout-all');
+            await apiClient.post('/api/admin/auth/logout-all', {}, {withCredentials:true});
             onRevokeAll();
           },'Revoke every active session for this Super Admin account',false)}>
           Logout All My Sessions

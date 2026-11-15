@@ -1,7 +1,6 @@
 import axios from 'axios';
 
-// Privileged bearer tokens live only in this page's memory. Reloading requires
-// authentication again; neither browser storage nor another tab receives them.
+// The Admin bearer stays in memory. Rust validates the HttpOnly session cookie after reload.
 let accessToken: string | null = null;
 export const getAccessToken = () => accessToken;
 export function setAccessToken(token: string | null) { accessToken = token; }
@@ -49,5 +48,39 @@ apiClient.interceptors.response.use(
     return Promise.reject(errorData);
   }
 );
+
+const SIGNED_OUT = 'tmrmc-admin-signed-out';
+
+export function markCentralSignedOut() {
+  try { localStorage.setItem(SIGNED_OUT, 'true'); } catch { /* Server revocation still applies. */ }
+}
+
+let restoring: Promise<CentralSession | null> | undefined;
+type CentralSession = {
+  token: string;
+  user: { id: string; email?: string; role: 'central_admin' };
+  permissions: string[];
+};
+
+export function restoreCentralSession(): Promise<CentralSession | null> {
+  try { if (localStorage.getItem(SIGNED_OUT)) return Promise.resolve(null); } catch { /* Check the server. */ }
+  restoring ??= apiClient.post<CentralSession>('/api/admin/auth/session', {}, {withCredentials:true})
+    .then(({data}) => {
+      if (data?.user?.role !== 'central_admin' || !data.token) return null;
+      return data;
+    })
+    .catch(error => {
+      if (error.status === 401 || error.status === 403 || error.status === 404) return null;
+      throw error;
+    })
+    .finally(() => { restoring = undefined; });
+  return restoring;
+}
+
+export function rememberCentralSession() {
+  return apiClient.post('/api/admin/auth/session/remember', {}, {withCredentials:true}).then(() => {
+    try { localStorage.removeItem(SIGNED_OUT); } catch { /* The cookie remains usable. */ }
+  });
+}
 
 export default apiClient;

@@ -100,6 +100,12 @@ try {
   // Workspace navigation buttons include a descriptive caption in their accessible name.
   await page.getByRole('navigation', { name: 'Control Center sections' })
     .getByRole('button', { name: /^Approval Queue\b/ }).click();
+  const cookie =(await page.context().cookies()).find(item=>item.name==='__Secure-tmrmc-admin');
+  assert.ok(cookie?.httpOnly && cookie.secure && cookie.sameSite==='Strict');
+  assert.equal(cookie.path,'/api/admin/auth/');
+  await page.reload();
+  await page.getByRole('heading', {name:'Command Center',exact:true}).waitFor();
+  assert.match(page.url(),/#\/admin\/approvals$/);
   await page.getByRole('button', { name: 'users', exact: true }).click();
   await page.locator('tbody').getByText('CI Central Admin', { exact: true }).waitFor();
   for (const kind of ['orders', 'support', 'audit', 'sessions']) {
@@ -138,6 +144,9 @@ try {
   const revoked=await page.request.get('http://127.0.0.1:8000/api/admin/auth/me',{headers:{Authorization:'Bearer '+token}});
   // A successfully revoked access token is unauthenticated, not merely forbidden.
   assert.equal(revoked.status(), 401, 'signed-out admin session must be unauthorized');
+  assert.equal((await page.context().cookies()).some(item=>item.name==='__Secure-tmrmc-admin'),false);
+  await page.reload();
+  await page.getByRole('heading', {name:'Central Admin sign in',exact:true}).waitFor();
   console.log('PASS: real Central Admin MFA, authorized workspaces and browser logout');
   authenticatorKey = testAuthorityKey;
   await page.getByRole('button', {name:'Delegated Authority sign in',exact:true}).click();

@@ -606,9 +606,13 @@ pub async fn admin_logout_all(
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
-    Ok(Json(
-        json!({ "success": true, "message": "All account sessions revoked" }),
-    ))
+    let mut response = (
+        [(axum::http::header::CACHE_CONTROL, "no-store")],
+        Json(json!({ "success": true, "message": "All account sessions revoked" })),
+    )
+        .into_response();
+    crate::auth::control_center::clear_admin_cookie(&mut response)?;
+    Ok(response)
 }
 
 pub async fn get_portal_summary(

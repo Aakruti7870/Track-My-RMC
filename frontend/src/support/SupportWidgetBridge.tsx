@@ -273,7 +273,7 @@ export function SupportWidgetBridge({ customerHeaderTarget }: { customerHeaderTa
                 </View>
                 <Ionicons name="open-outline" size={17} color={colors.onSurfaceTertiary} />
               </Pressable>
-              <Pressable accessibilityRole="button" onPress={() => { closeCustomerHelp(); router.push("/account-deletion"); }}
+              <Pressable accessibilityRole="button" accessibilityLabel="Delete Account" onPress={() => { closeCustomerHelp(); router.push("/account-deletion"); }}
                 style={[styles.actionSection, styles.actionRow, { borderColor: colors.divider }]}>
                 <Ionicons name="person-remove-outline" size={19} color={colors.accentText} />
                 <AppText variant="label" style={{ flex: 1 }}>Delete Account</AppText>
