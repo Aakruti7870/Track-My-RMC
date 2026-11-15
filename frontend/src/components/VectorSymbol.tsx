@@ -4,17 +4,29 @@ import Svg, { Path } from "react-native-svg";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { materialSymbolNames, materialSymbolPaths } from "./vector-symbols/materialSymbols";
 
+import { homeShortcutPaths } from "./vector-symbols/homeShortcutPaths";
+
 export type VectorSymbolName = keyof typeof materialSymbolNames;
 
 type Props = {
   name: VectorSymbolName;
   size?: number;
   color?: string;
+  outline?: boolean;
 };
 
 /** The surrounding control or status text supplies the accessible name. */
-export function VectorSymbol({ name, size = 24, color }: Props) {
+export function VectorSymbol({ name, size = 24, color, outline = false }: Props) {
   const { colors } = useTheme();
+  const ink = color ?? colors.onSurfaceTertiary;
+  const outlinePath = outline ? (homeShortcutPaths as Partial<Record<VectorSymbolName, string>>)[name] : undefined;
+
+  if (outlinePath) {
+    return <Svg width={size} height={size} viewBox="0 0 24 24" aria-hidden accessible={false}
+      importantForAccessibility="no-hide-descendants">
+      <Path d={outlinePath} fill="none" stroke={ink} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>;
+  }
 
   return (
     <Svg
@@ -25,7 +37,7 @@ export function VectorSymbol({ name, size = 24, color }: Props) {
       accessible={false}
       importantForAccessibility="no-hide-descendants"
     >
-      <Path d={materialSymbolPaths[materialSymbolNames[name]]} fill={color ?? colors.onSurfaceTertiary} />
+      <Path d={materialSymbolPaths[materialSymbolNames[name]]} fill={ink} />
     </Svg>
   );
 }

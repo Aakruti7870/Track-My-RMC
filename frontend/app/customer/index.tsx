@@ -8,10 +8,11 @@ import { useAuth } from "@/src/auth/AuthContext";
 import { ActiveTransitMixerCard } from "@/src/components/ActiveTransitMixerCard";
 import { CustomerHomeHeader } from "@/src/components/customer/CustomerHomeHeader";
 import { HomeCarousel } from "@/src/components/HomeCarousel";
+import { HomeScroll } from "@/src/components/HomeScroll";
 import { KycBanner } from "@/src/components/KycBanner";
 import { ErrorView } from "@/src/components/StateViews";
 import { ThemedScreen } from "@/src/components/ThemedScreen";
-import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
+import type { VectorSymbolName } from "@/src/components/VectorSymbol";
 import { IconTile } from "@/src/components/IconTile";
 import { AppText } from "@/src/components/ui/AppText";
 import type { OrderData } from "@/src/components/OrderCard";
@@ -89,7 +90,7 @@ export default function CustomerHome() {
           width: tileWidth, minHeight: kind === "quick" ? 90 : material ? 70 : 82,
           opacity: pressed ? 0.72 : 1,
         }, material && { backgroundColor: colors.surfaceSecondary, borderColor: colors.divider, borderWidth: 1, borderRadius: 10 }]}>
-        <IconTile symbol={symbol} size={iconSize} height={45} />
+        <IconTile symbol={symbol} size={iconSize} height={45} homeShortcut={kind === "quick"} />
         <AppText center style={[styles.label, { fontSize: labelSize, lineHeight: Math.max(16, labelSize + 3) }]}>{label}</AppText>
       </Pressable>
     );
@@ -106,12 +107,12 @@ export default function CustomerHome() {
     <ThemedScreen>
       <View style={[styles.root, { backgroundColor: colors.surface }]}>
         <CustomerHomeHeader onRefreshHome={refetch} />
-        <ScrollView testID="customer-home-scroll"
-          contentContainerStyle={[styles.scrollContent, { gap: size.sectionGap, paddingBottom: size.sectionGap + insets.bottom }]}
-          showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={colors.accentText} />}>
-          <HomeCarousel style={styles.carousel} />
-          <View testID="home-quick-actions" style={panel}>
+        <HomeScroll testID="customer-home-scroll"
+          backgroundColor={colors.surface} gap={size.sectionGap} paddingHorizontal={12} paddingTop={10}
+          contentContainerStyle={{ paddingBottom: size.sectionGap + insets.bottom }}
+          refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={colors.accentText} />}
+          lead={<HomeCarousel style={styles.carousel} />}
+          shortcuts={<View testID="home-quick-actions" style={panel}>
             <AppText accessibilityRole="header" style={heading}>Quick Actions</AppText>
             <View style={styles.grid}>
               {ACTIONS.map(action => tile({ id: "action-" + action.key, label: action.label,
@@ -120,11 +121,11 @@ export default function CustomerHome() {
             <Pressable testID="home-bulk-quote" accessibilityRole="button"
               onPress={() => router.push(enquiryRoute("bulk"))}
               style={({ pressed }) => [styles.bulk, { backgroundColor: colors.surfaceTertiary, opacity: pressed ? 0.72 : 1 }]}>
-              <VectorSymbol name="quotation-requests" size={22} color={colors.accentText} />
+              <IconTile symbol="quotation-requests" width={34} size={22} homeShortcut />
               <AppText style={styles.bulkLabel}>Concrete in bulk? Get our best rate for your project.</AppText>
               <Ionicons name="chevron-forward" size={18} color={colors.accentText} accessible={false} aria-hidden />
             </Pressable>
-          </View>
+          </View>}>
           <View style={styles.group}><KycBanner status={data?.kyc_status ?? user?.kyc_status ?? "NOT_STARTED"} /></View>
           <View testID="customer-module-grid" style={panel}>
             <AppText accessibilityRole="header" style={heading}>Active Projects & Planning</AppText>
@@ -142,7 +143,7 @@ export default function CustomerHome() {
           {error && !data ? <View style={styles.group}><ErrorView message={error} onRetry={reload} /></View> : null}
           {data ? <ActiveTransitMixerCard order={order || data.recent_orders[0] || null}
             onNewOrder={() => openAction("new")} onRefreshHome={refetch} /> : null}
-        </ScrollView>
+        </HomeScroll>
       </View>
       <Modal visible={directory !== null} transparent animationType={reduceMotion ? "none" : "fade"}
         onRequestClose={closeDirectory} onDismiss={() => directoryTrigger.current?.focus()}>
@@ -179,7 +180,6 @@ export default function CustomerHome() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, overflow: screenOverflow },
-  scrollContent: { paddingHorizontal: 12, paddingTop: 10, width: "100%" },
   carousel: { maxWidth: 620, borderRadius: 10 },
   group: { width: "100%", maxWidth: 620, alignSelf: "center" },
   panel: { width: "100%", maxWidth: 620, alignSelf: "center", padding: 9, borderRadius: 10, borderWidth: 1, gap: 8 },

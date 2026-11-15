@@ -59,6 +59,29 @@ fs.mkdirSync(out, { recursive: true });
           assert.equal(await page.getByTestId('role-module-payroll-closure').count(), 0);
           assert.equal(await page.getByTestId('role-module-owner-drivers').count(), 1);
           const hero = page.getByTestId('owner-home-hero-banner');
+          const fixed = page.getByTestId('owner-home-scroll-fixed');
+          await fixed.getByTestId('plant-home-supplier-enquiry').waitFor();
+          await fixed.getByTestId('owner-quick-access').waitFor();
+          const scroll = page.getByTestId('owner-home-scroll');
+          const profile = scroll.getByTestId('plant-home-profile');
+          assert.equal(await profile.count(), 1, 'Owner profile remains in the scroll area');
+          if (width === 390) {
+            await page.setViewportSize({ width, height: 760 });
+            await fixed.getByTestId('plant-home-supplier-enquiry').waitFor();
+            const movement = await scroll.evaluate(node => {
+              const profile = node.querySelector('[data-testid="plant-home-profile"]');
+              const supplier = document.querySelector('[data-testid="plant-home-supplier-enquiry"]');
+              const profileTop = profile.getBoundingClientRect().top;
+              const supplierTop = supplier.getBoundingClientRect().top;
+              node.scrollTop = 100;
+              return { offset: node.scrollTop, profile: profile.getBoundingClientRect().top - profileTop,
+                supplier: supplier.getBoundingClientRect().top - supplierTop };
+            });
+            assert(movement.offset > 0 && movement.profile < 0, 'Owner profile scrolls with the dashboard');
+            assert.equal(movement.supplier, 0, 'Owner supplier enquiry stays fixed');
+            await page.setViewportSize({ width, height: 920 });
+            await scroll.evaluate(node => { node.scrollTop = 0; });
+          }
           const order = await page.evaluate(() => {
             const supplier = document.querySelector('[data-testid="plant-home-supplier-enquiry"]');
             const profile = document.querySelector('[data-testid="plant-home-profile"]');
