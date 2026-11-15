@@ -219,7 +219,7 @@ export const control = {
   minTouch: 44,
   inputHeight: 56,
   buttonHeight: 54,
-  buttonHeightSmall: 44,
+  buttonHeightSmall: 48,
   buttonHeightLarge: 60,
   iconButton: 44,
 };
