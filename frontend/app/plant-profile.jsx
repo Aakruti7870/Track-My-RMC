@@ -31,7 +31,7 @@ function Unavailable({colors}) {
     <Ionicons name="information-circle-outline" size={42} color={colors.brand}/>
     <AppText style={{fontWeight:"700",fontSize:17,textAlign:"center"}}>Plant Profile Update in Progress</AppText>
     <AppText variant="caption" style={{textAlign:"center",lineHeight:22}}>We apologize for the inconvenience.
-      This plant's information is being updated. Verified details will be available here shortly.</AppText>
+      This plant&apos;s information is being updated. Verified details will be available here shortly.</AppText>
   </View>;
 }
 function DetailRows({details,colors,draft=false}) {
