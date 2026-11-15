@@ -153,7 +153,7 @@ export default function StaffModuleAccess() {
               <Pressable key={item.id} testID={"permission-plant-" + item.id}
                 onPress={() => { if (dirty) { toast("Save or discard current changes first", "info"); return; } setPlant(item.id); }}
                 style={{ backgroundColor: plant === item.id ? p.accent : p.panel, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: p.border }}>
-                <AppText style={{ color: plant === item.id ? "#FFFFFF" : p.text }}>{item.name}</AppText>
+                <AppText style={{ color: plant === item.id ? p.onAccent : p.text }}>{item.name}</AppText>
               </Pressable>
             ))}
           </View>
@@ -163,7 +163,7 @@ export default function StaffModuleAccess() {
               <Pressable key={member.id} testID={"permission-staff-" + member.id}
                 onPress={() => { if (dirty) { toast("Save or discard current changes first", "info"); return; } setStaffId(member.id); }}
                 style={{ backgroundColor: staffId === member.id ? p.accent : p.panel, padding: 11, borderRadius: 12, borderWidth: 1, borderColor: p.border }}>
-                <AppText style={{ color: staffId === member.id ? "#FFFFFF" : p.text }}>{member.name} · {member.role.replace(/_/g, " ")}</AppText>
+                <AppText style={{ color: staffId === member.id ? p.onAccent : p.text }}>{member.name} · {member.role.replace(/_/g, " ")}</AppText>
               </Pressable>
             ))}
           </View>

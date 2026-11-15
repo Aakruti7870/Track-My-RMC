@@ -1,5 +1,6 @@
 const {chromium}=require('../../admin-web/node_modules/playwright');
 const fs=require('node:fs');
+const assert=require('node:assert/strict');
 fs.mkdirSync('tracking-previews',{recursive:true});
 (async()=>{
  const browser=await chromium.launch({headless:true,args:['--no-sandbox'],...(process.env.HEADER_CHROMIUM_PATH ? {executablePath:process.env.HEADER_CHROMIUM_PATH} : {})});
@@ -49,6 +50,16 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    const size=await actualVectorSize(id);
    if(size[0]!==expected.service||size[1]!==expected.service)throw Error(`Service SVG size: ${id} ${size} at ${width}`);
  }
+ const support=page.getByTestId('customer-support-widget');
+ const content=await page.getByTestId('customer-home-scroll').boundingBox();
+ const supportBounds=await support.boundingBox();
+ if(!content||!supportBounds||content.y+content.height>supportBounds.y+1)
+   throw Error('Support overlaps the scrollable Home content');
+ const textClipping=await page.locator('[data-testid^="customer-module-"], [data-testid^="service-"]').evaluateAll(nodes =>
+   nodes.flatMap(node => Array.from(node.querySelectorAll('div')).filter(el =>
+     el.childElementCount===0 && el.textContent.trim() &&
+     (el.scrollHeight>el.clientHeight+1||el.scrollWidth>el.clientWidth+1)).map(el=>el.textContent)));
+ if(textClipping.length)throw Error('Home tile text is clipped: '+textClipping.join(', '));
  const actionBoxes=await Promise.all(['action-new','action-track','action-plants','action-orders'].map(id=>page.getByTestId(id).boundingBox()));
  // Verify compact, single-ink icons with visible labels and touch targets.
  for(const [id,label] of [['action-new','New Order'],['action-track','Track Order'],['action-plants','Plants'],['action-orders','My Orders']]) {
@@ -133,8 +144,8 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  const serviceBoxes=await boundsOf('home-other-services','service-');
  if(toolBoxes.length!==4||adviceBoxes.length!==4||serviceBoxes.length!==3)throw Error('Missing Home cards');
  for(const group of [toolBoxes,adviceBoxes]) {
-   if(Math.max(...group.map(box=>box.y))-Math.min(...group.map(box=>box.y))>2)
-     throw Error('All four module vectors must fit one row');
+   const firstRow = group.filter(box => Math.abs(box.y - group[0].y) < 2);
+   if (firstRow.length !== (width < 382 ? 2 : 4)) throw Error('Tool columns must adapt to width');
  }
  for (const [kind,boxes,minHeight,maxHeight] of [
    ['Quick Action',actionBoxes.map(box=>({h:box.height,x:box.x,y:box.y,w:box.width})),expected.quickTile-1,expected.quickTile+30],
@@ -157,7 +168,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  if(promoCards.length!==1)throw Error('Pump CTA must be the only promotional card');
  const pump=await promoCards[0].boundingBox();
  const row=await page.getByTestId('home-pump-rental-promo').boundingBox();
- if(!pump||!row||Math.abs(pump.width-expected.pumpWidth)>1||Math.abs(pump.height-expected.pumpHeight)>1)
+ if(!pump||!row||Math.abs(pump.width-expected.pumpWidth)>1||pump.height<expected.pumpHeight-1)
    throw Error('Pump CTA dimensions mismatch at '+width+': '+JSON.stringify({pump,row}));
  const pumpSvg=await promoCards[0].locator('svg').first().boundingBox();
  if(!pumpSvg||Math.abs(pumpSvg.width-expected.quick)>1||Math.abs(pumpSvg.height-expected.quick)>1)
@@ -225,6 +236,53 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      await real.getByText(/19.10000, 73.10000/).waitFor();
    }
    if(state==='delivered')await real.getByText('DELIVERED',{exact:true}).first().waitFor();
+ }
+ if(width===320){
+   mode='demo';
+   await page.setViewportSize({width,height:480});
+   await page.emulateMedia({reducedMotion:'reduce'});
+   await page.route('http://127.0.0.1:8765/customer/request-quotation?*',async route=>{
+     const response=await route.fetch({url:'http://127.0.0.1:8765/customer/request-quotation.html'});
+     await route.fulfill({response});
+   });
+   for(const theme of ['light','dark']){
+     await page.evaluate(value=>localStorage.setItem('tmrmc_theme_mode',JSON.stringify(value)),theme);
+     await page.goto('http://127.0.0.1:8765/customer/');
+     await page.getByTestId('customer-module-compare-plants').waitFor();
+     const clipped=await page.evaluate(()=>{
+       const labels=[...document.querySelectorAll('[data-testid^="action-"],[data-testid^="customer-module-"],[data-testid^="service-"],[role="tab"]')]
+         .filter(el=>el.matches('[role="button"],[role="tab"]'))
+         .flatMap(el=>[...el.querySelectorAll('div')].filter(text=>!text.childElementCount&&text.textContent.trim()));
+       for(const label of labels){
+         const style=getComputedStyle(label);
+         label.style.fontSize=2*parseFloat(style.fontSize)+'px';
+         label.style.lineHeight=2*parseFloat(style.lineHeight)+'px';
+       }
+       return labels.filter(label=>label.scrollHeight>label.clientHeight+1||label.scrollWidth>label.clientWidth+1)
+         .map(label=>label.textContent);
+     });
+     assert.deepEqual(clipped,[],theme+' Home and navigation text at 200%');
+     const help=page.getByTestId('customer-support-widget');
+     const scroll=await page.getByTestId('customer-home-scroll').boundingBox();
+     const launcher=await help.boundingBox();
+     assert(scroll.y+scroll.height<=launcher.y+1,theme+' support must sit outside Home content');
+     await help.click();
+     await page.getByTestId('customer-support-place-order').click();
+     await page.getByTestId('customer-support-place-order-card').waitFor();
+     await page.getByTestId('customer-support-close').click();
+     await page.getByTestId('customer-support-panel').waitFor({state:'hidden'});
+
+     await page.goto('http://127.0.0.1:8765/customer/request-quotation?plantId=fixture-plant');
+     await page.getByRole('button',{name:/^Required delivery date:/}).click();
+     const calendar=page.getByTestId('rfq-date-calendar');
+     await calendar.waitFor();
+     const surface=await calendar.evaluate(el=>getComputedStyle(el).backgroundColor);
+     assert.equal(surface,theme==='light'?'rgb(255, 255, 255)':'rgb(32, 38, 46)');
+     await calendar.getByRole('button',{name:'Next month',exact:true}).click();
+     await calendar.getByRole('button',{name:'Close Calendar',exact:true}).click();
+     await calendar.waitFor({state:'hidden'});
+     console.log('PASS 320px '+theme+' enlarged labels, in-flow Support and matte RFQ calendar');
+   }
  }
  await page.close();
  }

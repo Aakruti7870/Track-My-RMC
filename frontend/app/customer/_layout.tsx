@@ -2,6 +2,7 @@ import React from "react";
 import { Redirect, Tabs } from "expo-router";
 
 import { useAuth } from "@/src/auth/AuthContext";
+import { SupportWidgetBridge } from "@/src/support/SupportWidgetBridge";
 import { GlassTabBar, TabDef } from "@/src/components/GlassTabBar";
 import { usePermissions } from "@/src/permissions/PermissionProvider";
 import { useTheme } from "@/src/theme/ThemeProvider";
@@ -24,7 +25,7 @@ export default function CustomerLayout() {
   if (!ready) return null;
 
   return (
-    <Tabs backBehavior="history" screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: getThemedCanvasColor(colors) } }} tabBar={(props) => <GlassTabBar {...props} tabs={TABS} centerLabel="New" />}>
+    <Tabs backBehavior="history" screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: getThemedCanvasColor(colors) } }} tabBar={(props) => <GlassTabBar {...props} tabs={TABS} centerLabel="New" toolbar={<SupportWidgetBridge customerTabBar />} />}>
       {TABS.map((tab) => (
         <Tabs.Screen key={tab.name} name={tab.name} />
       ))}

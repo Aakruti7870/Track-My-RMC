@@ -129,20 +129,20 @@ test("customer support uses a Material Symbol and public login retains its optim
   assert.ok(widget.includes("width: 48, height: 48"));
   assert.ok(widget.includes("compactPanelWidth(viewportWidth)"));
   assert.ok(widget.includes("viewportWidth * 0.72"));
-  assert.ok(widget.includes("viewportHeight * 0.42"));
-  assert.ok((widget.match(/pointerEvents=\"box-none\"/g) || []).length >= 4);
+  assert.ok((widget.match(/pointerEvents=\"box-none\"/g) || []).length >= 2);
   assert.ok(widget.includes("insets.top + spacing.sm"));
   assert.ok(widget.includes("flexDirection: \"column-reverse\""));
 });
 
-test("authenticated Place Order and Track Delivery expand inside the corner card before navigation", () => {
+test("authenticated Place Order and Track Delivery expand inside the support sheet before navigation", () => {
   assert.ok(widget.includes('Boolean(token) && user?.role === "customer"'));
   assert.ok(widget.includes("CUSTOMER_WIDGET_PATHS.has(normalizedPath)"));
   for (const path of ["/customer", "/customer/orders", "/customer/plants", "/customer/more"]) assert.ok(widget.includes(`\"${path}\"`));
-  assert.ok(widget.includes("insets.bottom + 80"));
+  assert.ok(widget.includes("styles.customerToolbar"));
+  assert.ok(widget.includes("<Modal visible={customerHelpOpen}"));
   assert.ok(widget.includes('testID="customer-support-panel"'));
   assert.ok(widget.includes('accessibilityState={{ expanded: customerHelpOpen }}'));
-  assert.ok(widget.includes("setCustomerHelpOpen((value) => !value)"));
+  assert.ok(widget.includes("setCustomerHelpOpen(true)"));
 
   assert.ok(widget.includes('type CustomerSupportFlow = "order" | "tracking" | null'));
   assert.ok(widget.includes('testID="customer-support-place-order"'));

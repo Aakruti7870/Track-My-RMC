@@ -73,7 +73,7 @@ assert.match(home, /<VectorSymbol name="pump-rental" size=\{homeSize.pumpSymbol\
 
 const nav = read("src/components/GlassTabBar.tsx");
 assert.match(nav, /<VectorSymbol name=\{symbol\} color=\{ink\} \/>/);
-assert.ok(nav.includes('styles.tabSide}>{leftRoutes.map(renderTab)') && nav.includes('styles.tabSide}>{rightRoutes.map(renderTab)'), "Two symmetric side groups must flank New Order");
+assert.ok(nav.includes('{leftRoutes.map(renderTab)}') && nav.includes('{rightRoutes.map(renderTab)}'), "Two symmetric side groups must flank New Order");
 assert.ok(!nav.includes("styles.iconWrap"), "Navigation icon plates must be absent");
 const kyc = read("src/components/KycBanner.tsx");
 assert.match(kyc, /<VectorSymbol name=\{cfg.symbol\} size=\{size.kycSymbol\} color=\{tone\}/);

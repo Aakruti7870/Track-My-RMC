@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Platform, Pressable, StyleSheet, View } from "react-native";
+import { Platform, Pressable, StyleSheet, useWindowDimensions, View, type TextStyle } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
@@ -20,6 +20,11 @@ export type TabDef = {
   active: keyof typeof Ionicons.glyphMap;
 };
 
+const tabLabelWrapping = Platform.select<TextStyle>({
+  web: { overflowWrap: "anywhere" } as TextStyle,
+  default: {},
+});
+
 type TabRoute = { key: string; name: string };
 type TabState = { index: number; routes: TabRoute[] };
 type TabNavigation = {
@@ -32,12 +37,16 @@ type GlassTabBarProps = {
   navigation: TabNavigation;
   tabs: TabDef[];
   centerLabel?: string;
+  toolbar?: React.ReactNode;
 };
 
-export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick" }: GlassTabBarProps) {
+export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick", toolbar }: GlassTabBarProps) {
   const { colors } = useTheme();
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
+  const { fontScale } = useWindowDimensions();
+  const stackedTabs = fontScale >= 1.3;
+  const inFlow = stackedTabs || toolbar != null;
   const [hubOpen, setHubOpen] = useState(false);
 
   const visibleRoutes = state.routes.filter((route) => tabs.some((tab) => tab.name === route.name));
@@ -56,7 +65,7 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick" }: 
       <Pressable
         key={route.key}
         testID={`tab-${tab.label.toLowerCase()}`}
-        style={({ pressed }) => [styles.item, { opacity: pressed ? 0.76 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] }]}
+        style={({ pressed }) => [styles.item, stackedTabs && styles.stackedItem, { opacity: pressed ? 0.76 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] }]}
         accessibilityRole="tab"
         accessibilityState={{ selected: focused }}
         aria-selected={focused}
@@ -71,13 +80,15 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick" }: 
         <View style={[styles.activeIndicator, { backgroundColor: focused ? colors.brand : "transparent" }]} />
         {symbol ? <VectorSymbol name={symbol} color={ink} /> : <Ionicons name={focused ? tab.active : tab.icon} size={24} color={ink} />}
         <AppText
-          numberOfLines={1}
-          style={{
+          maxFontSizeMultiplier={0}
+          style={[tabLabelWrapping, {
             fontFamily: focused ? fonts.semibold : fonts.medium,
             fontSize: 11,
             lineHeight: 15,
             color: ink,
-          }}
+            textAlign: "center",
+            maxWidth: "100%",
+          }]}
         >
           {tab.label}
         </AppText>
@@ -87,7 +98,8 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick" }: 
 
   return (
     <>
-      <View pointerEvents="box-none" style={[styles.wrap, { paddingBottom: Platform.OS === "web" ? 0 : insets.bottom, backgroundColor: getThemedCanvasColor(colors) }]}>
+      <View pointerEvents="box-none" style={[!inFlow && styles.wrap, { paddingBottom: Platform.OS === "web" ? 0 : insets.bottom, backgroundColor: getThemedCanvasColor(colors) }]}>
+        {toolbar}
         <View
           testID="app-tab-bar"
           style={[
@@ -98,9 +110,9 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick" }: 
             },
           ]}
         >
-          <View style={styles.tabSide}>{leftRoutes.map(renderTab)}</View>
+          <View style={[styles.tabSide, stackedTabs && styles.stackedSide]}>{leftRoutes.map(renderTab)}</View>
 
-          <View style={styles.centerSlot}>
+          <View style={[styles.centerSlot, inFlow && styles.centerInFlow]}>
             <Pressable
               testID="tab-quick-actions"
               accessibilityRole="button"
@@ -120,10 +132,10 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick" }: 
             >
               {centerLabel === "New" ? <VectorSymbol name="new-order" size={26} color="#14181F" /> : <Ionicons name="add" size={26} color="#14181F" />}
             </Pressable>
-            <AppText style={[styles.centerLabel, { color: colors.onSurfaceTertiary }]}>{centerLabel}</AppText>
+            <AppText maxFontSizeMultiplier={0} style={[styles.centerLabel, { color: colors.onSurfaceTertiary }]}>{centerLabel}</AppText>
           </View>
 
-          <View style={styles.tabSide}>{rightRoutes.map(renderTab)}</View>
+          <View style={[styles.tabSide, stackedTabs && styles.stackedSide]}>{rightRoutes.map(renderTab)}</View>
         </View>
       </View>
 
@@ -144,9 +156,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xs,
   },
   tabSide: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "flex-end" },
+  stackedSide: { alignItems: "stretch", flexDirection: "column" },
   item: { flex: 1, minWidth: 0, minHeight: 58, alignItems: "center", justifyContent: "flex-end", gap: 3, paddingVertical: 2 },
+  stackedItem: { flexGrow: 0, flexShrink: 0, flexBasis: "auto" },
   activeIndicator: { width: 18, height: 3, borderRadius: radius.pill, marginBottom: 1 },
   centerSlot: { width: 72, minHeight: 60, alignItems: "center", justifyContent: "flex-end", marginTop: -30 },
+  centerInFlow: { marginTop: 0 },
   centerButton: {
     width: 58,
     height: 58,
@@ -157,5 +172,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  centerLabel: { marginTop: 4, fontFamily: fonts.semibold, fontSize: 11, lineHeight: 14 },
+  centerLabel: { marginTop: 4, fontFamily: fonts.semibold, fontSize: 11, lineHeight: 14, textAlign: "center" },
 });

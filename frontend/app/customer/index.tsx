@@ -55,12 +55,15 @@ const SERVICES: readonly { key: ServiceKey; label: string; symbol: VectorSymbolN
 
 export default function CustomerHome() {
   const { colors } = useTheme();
-  const { width: viewportWidth } = useWindowDimensions();
+  const { width: viewportWidth, fontScale } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const homeSize = customerHomeSizes(viewportWidth, Platform.OS);
   const headingSize = { fontSize: homeSize.headerSize, lineHeight: homeSize.headerLine };
   const [quickGridWidth, setQuickGridWidth] = React.useState(0);
-  const fourColumns = quickGridWidth >= 270;
+  const readableGridWidth = quickGridWidth / fontScale;
+  const quickTileWidth = readableGridWidth >= 270 ? "24.25%" : "49%";
+  const toolTileWidth = readableGridWidth >= 350 ? "24.25%" : "49%";
+  const serviceTileWidth = readableGridWidth >= 280 ? "32.5%" : "100%";
   const { user } = useAuth();
   const router = useRouter();
   const { data, loading, error, refetch, reload } = useGet<HomeData>("/customer/home");
@@ -81,7 +84,6 @@ export default function CustomerHome() {
     router.push({ pathname: "/customer/service-enquiry", params: { service } });
   };
 
-  // The mobile shortcuts preserve their 52dp symbols and KYC guards.
   const quickActions = (
     <View testID="home-quick-actions" style={[styles.groupCard, styles.tightGroup, styles.quickActionsGroup]}>
       <AppText style={[styles.sectionTitle, headingSize, { color: colors.onSurface }]}>Quick Actions</AppText>
@@ -96,11 +98,11 @@ export default function CustomerHome() {
             accessibilityRole="button"
             accessibilityLabel={action.label}
             onPress={() => onAction(action.key)}
-            style={({ pressed }) => [styles.tile, styles.quickTile, { minHeight: homeSize.quickTile, width: fourColumns ? "24.25%" : "49%", opacity: pressed ? 0.7 : 1 }]}
+            style={({ pressed }) => [styles.tile, styles.quickTile, { minHeight: homeSize.quickTile, width: quickTileWidth, opacity: pressed ? 0.7 : 1 }]}
           >
             <VectorSymbol name={action.symbol} size={homeSize.quickSymbol}
               color={action.key === "new" ? (colors.isDark ? colors.onBrandSoft : "#9C4100") : undefined} />
-            <AppText numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.85}
+            <AppText maxFontSizeMultiplier={0}
               style={[styles.quickLabel, { fontSize: homeSize.quickLabel, lineHeight: homeSize.quickLabelLine, minHeight: homeSize.quickLabelMin, color: colors.onSurface }]}>{action.label}</AppText>
           </Pressable>
         ))}
@@ -121,10 +123,10 @@ export default function CustomerHome() {
             accessibilityRole="button"
             accessibilityLabel={module.label}
             onPress={() => router.push(module.route)}
-            style={({ pressed }) => [styles.tile, styles.directoryTile, { backgroundColor: colors.surfaceSecondary, borderColor: colors.divider, minHeight: homeSize.toolTile, width: fourColumns ? "24.25%" : "49%", opacity: pressed ? 0.7 : 1 }]}
+            style={({ pressed }) => [styles.tile, styles.directoryTile, { backgroundColor: colors.surfaceSecondary, borderColor: colors.divider, minHeight: homeSize.toolTile, width: toolTileWidth, opacity: pressed ? 0.7 : 1 }]}
           >
             {module.symbol ? <VectorSymbol name={module.symbol} size={homeSize.toolSymbol} /> : <Ionicons name={module.icon} size={homeSize.toolSymbol} color={colors.onSurfaceTertiary} />}
-            <AppText numberOfLines={3} adjustsFontSizeToFit minimumFontScale={0.85}
+            <AppText maxFontSizeMultiplier={0}
               style={[styles.tileLabel, { fontSize: homeSize.toolLabel, lineHeight: homeSize.toolLabelLine, color: colors.onSurface }]}>
               {module.key === "projects" ? "Project Hub" : module.key === "free-tools" ? "RMC Calculator" : module.label}
             </AppText>
@@ -148,12 +150,12 @@ export default function CustomerHome() {
       <Pressable accessibilityRole="button" accessibilityLabel="Request a concrete pump rental enquiry"
         accessibilityHint="Opens the concrete pump rental enquiry form"
         onPress={() => router.push({ pathname: "/customer/service-enquiry", params: { service: "pump" } })}
-        style={({ pressed }) => [styles.promoCard, styles.promoPrimaryCard, { width: homeSize.pumpWidth, height: homeSize.pumpHeight, borderRadius: homeSize.pumpRadius, paddingHorizontal: homeSize.pumpPadding, gap: homeSize.pumpGap, backgroundColor: colors.surfaceSecondary, borderColor: colors.divider, opacity: pressed ? 0.76 : 1 }]}>
+        style={({ pressed }) => [styles.promoCard, styles.promoPrimaryCard, { width: homeSize.pumpWidth, minHeight: homeSize.pumpHeight, borderRadius: homeSize.pumpRadius, paddingHorizontal: homeSize.pumpPadding, gap: homeSize.pumpGap, backgroundColor: colors.surfaceSecondary, borderColor: colors.divider, opacity: pressed ? 0.76 : 1 }]}>
         <VectorSymbol name="pump-rental" size={homeSize.pumpSymbol} />
         <View style={styles.promoCopy}>
-          <AppText numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}
+          <AppText maxFontSizeMultiplier={0}
             style={[styles.promoFirstLine, { fontSize: homeSize.pumpFirstSize, lineHeight: homeSize.pumpFirstLine, color: colors.onSurface }]}>Concrete pump rental</AppText>
-          <AppText numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}
+          <AppText maxFontSizeMultiplier={0}
             style={[styles.promoSecondLine, { fontSize: homeSize.pumpSecondSize, lineHeight: homeSize.pumpSecondLine, color: colors.onSurface }]}>Request a quote</AppText>
         </View>
       </Pressable>
@@ -171,10 +173,10 @@ export default function CustomerHome() {
             accessibilityRole="button"
             accessibilityLabel={`${service.label} enquiry`}
             onPress={() => openService(service.key)}
-            style={({ pressed }) => [styles.tile, styles.directoryTile, { backgroundColor: colors.surfaceSecondary, borderColor: colors.divider, minHeight: homeSize.serviceTile, width: "32.5%", opacity: pressed ? 0.7 : 1 }]}
+            style={({ pressed }) => [styles.tile, styles.directoryTile, { backgroundColor: colors.surfaceSecondary, borderColor: colors.divider, minHeight: homeSize.serviceTile, width: serviceTileWidth, opacity: pressed ? 0.7 : 1 }]}
           >
             <VectorSymbol name={service.symbol} size={homeSize.serviceSymbol} />
-            <AppText numberOfLines={2} style={[styles.serviceLabel, { fontSize: homeSize.serviceLabel, lineHeight: homeSize.serviceLabelLine, color: colors.onSurface }]}>{service.label}</AppText>
+            <AppText maxFontSizeMultiplier={0} style={[styles.serviceLabel, { fontSize: homeSize.serviceLabel, lineHeight: homeSize.serviceLabelLine, color: colors.onSurface }]}>{service.label}</AppText>
           </Pressable>
         ))}
       </View>
@@ -261,17 +263,17 @@ const styles = StyleSheet.create({
   serviceGrid: { marginTop: 10 },
   sectionTitle: { fontFamily: fonts.bold, fontSize: 15, lineHeight: 20, paddingHorizontal: 2 },
   grid: { flexDirection: "row", flexWrap: "wrap", width: "100%", justifyContent: "space-between", rowGap: 10 },
-  tile: { alignItems: "center", justifyContent: "center", paddingHorizontal: 1, paddingVertical: 2, gap: 4 },
+  tile: { minWidth: 0, alignItems: "center", justifyContent: "center", paddingHorizontal: 1, paddingVertical: 2, gap: 4 },
   quickTile: { paddingVertical: 6, gap: 6 },
   directoryTile: { paddingHorizontal: 4, paddingVertical: 8, gap: 6, borderWidth: 1, borderRadius: radius.md },
-  quickLabel: { fontFamily: fonts.medium, fontSize: 14, lineHeight: 18, textAlign: "center", minHeight: 18 },
-  tileLabel: { fontFamily: fonts.medium, fontSize: 11, lineHeight: 13, textAlign: "center" },
+  quickLabel: { fontFamily: fonts.medium, fontSize: 14, lineHeight: 18, textAlign: "center", maxWidth: "100%", minHeight: 18 },
+  tileLabel: { fontFamily: fonts.medium, fontSize: 11, lineHeight: 13, textAlign: "center", maxWidth: "100%" },
   // Center the sole 240x50dp pump CTA; no empty secondary promo slot.
   promoRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", width: "100%", maxWidth: 620, alignSelf: "center" },
-  promoCard: { minWidth: 0, height: 50, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, borderWidth: 1, borderRadius: 10, paddingHorizontal: 4, paddingVertical: 2 },
+  promoCard: { minWidth: 0, minHeight: 50, maxWidth: "100%", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, borderWidth: 1, borderRadius: 10, paddingHorizontal: 4, paddingVertical: 2 },
   promoPrimaryCard: { width: 240 },
   promoCopy: { flex: 1, minWidth: 0, justifyContent: "center", gap: 1 },
   promoFirstLine: { fontFamily: fonts.medium, fontSize: 13, lineHeight: 16 },
   promoSecondLine: { fontFamily: fonts.semibold, fontSize: 15, lineHeight: 18 },
-  serviceLabel: { fontFamily: fonts.medium, fontSize: 12, lineHeight: 15, textAlign: "center" },
+  serviceLabel: { fontFamily: fonts.medium, fontSize: 12, lineHeight: 15, textAlign: "center", maxWidth: "100%" },
 });

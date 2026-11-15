@@ -55,7 +55,7 @@ export function Button({
     secondary: colors.surfaceElevated,
     outline: "transparent",
     ghost: "transparent",
-    danger: colors.error,
+    danger: palette.errorDark,
   }[variant];
 
   const pressedBackground = {
@@ -79,7 +79,7 @@ export function Button({
     secondary: colors.border,
     outline: colors.borderStrong,
     ghost: "transparent",
-    danger: colors.error,
+    danger: palette.errorDark,
   }[variant];
 
   return (

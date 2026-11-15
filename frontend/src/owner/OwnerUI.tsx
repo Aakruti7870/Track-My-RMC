@@ -14,7 +14,7 @@ import { ownerDestination } from "./modules";
 export function useOwnerPalette() {
   const { colors } = useTheme();
   const dark = colors.isDark;
-  return { dark, accent: "#FF6B00", pressed: "#E65F00", text: dark ? "#F4F6FA" : "#141B28", muted: dark ? "#B7C2D2" : "#59677D", canvas: dark ? "#0E1116" : "#F7F6F2", panel: colors.surfaceSecondary, border: colors.divider };
+  return { dark, accent: "#FF6B00", pressed: "#E65F00", onAccent: colors.onBrand, text: dark ? "#F4F6FA" : "#141B28", muted: dark ? "#B7C2D2" : "#59677D", canvas: dark ? "#0E1116" : "#F7F6F2", panel: colors.surfaceSecondary, border: colors.divider };
 }
 export function useOwnerBottomSpace() { return 112 + useSafeAreaInsets().bottom; }
 export function OwnerGlass({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {

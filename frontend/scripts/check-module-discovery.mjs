@@ -119,15 +119,15 @@ for (const mobile of ["quickSymbol: 24", "toolSymbol: 24", "serviceSymbol: 24", 
   assert.ok(responsiveHome.includes(mobile), `Missing mobile design token: ${mobile}`);
 }
 assert.ok(customerHome.includes('quickGrid: { marginTop: 10 }') && customerHome.includes('toolGrid: { marginTop: 10 }') && customerHome.includes('serviceGrid: { marginTop: 10 }'), "Keep a 10dp gap between each section header and row.");
-assert.ok(customerHome.includes('promoPrimaryCard: { width: 240 }') && customerHome.includes('height: 50'), "Pump CTA must retain its 240x50dp dimensions.");
+assert.ok(customerHome.includes('promoPrimaryCard: { width: 240 }') && customerHome.includes('minHeight: 50'), "Pump CTA must retain its default width and a 50dp minimum height.");
 assert.ok(customerHome.includes("Concrete pump rental") && customerHome.includes("Request a quote"), "Pump CTA copy mismatch.");
 assert.ok(customerHome.includes('["pour-planner", "compare-plants", "projects", "saved-sites"]'), "Planning tools must be presented in the requested order.");
 assert.ok(customerHome.includes('["free-tools", "receiving-guide", "cube-tests", "customer-support"]'), "Expert advice must use the four existing authorized routes.");
 assert.ok(customerHome.includes('testID="home-pump-rental-promo"') && customerHome.includes('pathname: "/customer/service-enquiry"') && customerHome.includes('service: "pump"'), "Pump-rental callout must open the dedicated pump service enquiry, not unrelated support.");
 assert.ok(!customerHome.includes('On Time,') && !customerHome.includes('Everytime') && !customerHome.includes('promoSecondaryCard'), "Remove the old On Time promotional card entirely.");
 assert.ok(customerHome.includes('{ key: "plants", label: "Plants"'), "The third action label must remain Plants.");
-assert.ok(customerHome.includes('fourColumns ? "24.25%" : "49%"'), "Quick Actions must use four compact columns when wide and two when narrow for readable labels.");
-assert.ok(customerHome.includes('width: "32.5%"'), "Other Services must use three compact columns.");
+assert.ok(customerHome.includes('readableGridWidth >= 270 ? "24.25%" : "49%"'), "Quick Actions must use four compact columns when wide and two when narrow for readable labels.");
+assert.ok(customerHome.includes('readableGridWidth >= 280 ? "32.5%" : "100%"'), "Supply cards must adapt to the space available.");
 assert.ok(!customerHome.includes('<Card testID="customer-module-grid"'), "Redundant RMC Tools outer border must be removed.");
 assert.ok(!customerHome.includes('<Card testID="home-quick-actions"'), "Redundant Quick Actions outer border must be removed.");
 assert.ok(!customerHome.includes('<Card testID="home-other-services"'), "Redundant Other Services outer border must be removed.");

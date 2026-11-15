@@ -28,7 +28,7 @@ const uuid = () => {
 export default function RequestQuotation() {
   const router = useRouter();
   const { token, user } = useAuth();
-  const { colors } = useTheme();
+  const { colors, reduceMotion } = useTheme();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ googlePlaceId?: string; plantId?: string; plantName?: string }>();
   const [requestKey] = useState(uuid);
@@ -169,6 +169,7 @@ export default function RequestQuotation() {
             {siteCoords ? <AppText variant="caption" color={colors.success}>Map location selected. Edit address if needed.</AppText> : null}
             <AppText>Required Delivery Date *</AppText>
             <Pressable onPress={()=>setDateOpen(true)} accessibilityRole="button"
+              accessibilityLabel={`Required delivery date: ${deliveryDate}`}
               style={{borderWidth:1,borderColor:colors.border,borderRadius:12,padding:14,flexDirection:"row",alignItems:"center",gap:10}}>
               <Ionicons name="calendar-outline" size={20} color={colors.onSurface}/>
               <AppText>{deliveryDate}</AppText>
@@ -192,28 +193,58 @@ export default function RequestQuotation() {
           </Card>
         )}
       </ScrollView>
-      <Modal visible={dateOpen} transparent animationType="slide" onRequestClose={()=>setDateOpen(false)}>
-        <View style={{flex:1,backgroundColor:"rgba(0,0,0,0.55)",justifyContent:"center",padding:20}}>
-          <View style={{backgroundColor:colors.surface,borderRadius:18,padding:20,gap:14}}>
-            <View style={{flexDirection:"row",justifyContent:"space-between",alignItems:"center"}}>
-              <Pressable onPress={()=>setCalendarMonth(d=>new Date(d.getFullYear(),d.getMonth()-1,1))}><Ionicons name="chevron-back" size={24} color={colors.onSurface}/></Pressable>
-              <AppText variant="heading">{calendarMonth.toLocaleString("en-IN",{month:"long",year:"numeric"})}</AppText>
-              <Pressable onPress={()=>setCalendarMonth(d=>new Date(d.getFullYear(),d.getMonth()+1,1))}><Ionicons name="chevron-forward" size={24} color={colors.onSurface}/></Pressable>
+      <Modal visible={dateOpen} transparent animationType={reduceMotion ? "none" : "fade"} onRequestClose={() => setDateOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: colors.scrim, justifyContent: "center", padding: spacing.lg }}>
+          <ScrollView
+            testID="rfq-date-calendar"
+            accessibilityViewIsModal
+            onAccessibilityEscape={() => setDateOpen(false)}
+            style={{
+              flexGrow: 0, flexShrink: 1, width: "100%", maxWidth: 420, maxHeight: "100%",
+              alignSelf: "center", borderRadius: 18, borderWidth: 1, borderColor: colors.divider,
+              backgroundColor: colors.surfaceElevated,
+            }}
+            contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Previous month"
+                onPress={() => setCalendarMonth(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
+                style={{ width: 44, minHeight: 44, alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="chevron-back" size={24} color={colors.onSurface} />
+              </Pressable>
+              <AppText variant="heading" center style={{ flex: 1, minWidth: 0 }}>
+                {calendarMonth.toLocaleString("en-IN", { month: "long", year: "numeric" })}
+              </AppText>
+              <Pressable accessibilityRole="button" accessibilityLabel="Next month"
+                onPress={() => setCalendarMonth(d => new Date(d.getFullYear(), d.getMonth() + 1, 1))}
+                style={{ width: 44, minHeight: 44, alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="chevron-forward" size={24} color={colors.onSurface} />
+              </Pressable>
             </View>
-            <View style={{flexDirection:"row",justifyContent:"space-around"}}>{["S","M","T","W","T","F","S"].map((w,i)=><AppText key={i}>{w}</AppText>)}</View>
-            <View style={{flexDirection:"row",flexWrap:"wrap"}}>
-              {blanks.map(i=><View key={"blank"+i} style={{width:"14.28%",height:44}}/>)}
-              {days.map(day=>{
-                const value=isoDate(new Date(calendarMonth.getFullYear(),calendarMonth.getMonth(),day));
-                const disabled=value<isoDate(new Date());
-                return <Pressable key={day} disabled={disabled} onPress={()=>{setDeliveryDate(value);setDateOpen(false);}}
-                  style={{width:"14.28%",height:44,alignItems:"center",justifyContent:"center",backgroundColor:value===deliveryDate?colors.brandSoft:"transparent"}}>
-                  <AppText color={disabled?colors.onSurfaceTertiary:colors.onSurface}>{day}</AppText>
-                </Pressable>;
+            <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
+              {["S", "M", "T", "W", "T", "F", "S"].map((weekday, index) => <AppText key={index}>{weekday}</AppText>)}
+            </View>
+            <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+              {blanks.map(index => <View key={`blank-${index}`} style={{ width: "14.28%", minHeight: 44 }} />)}
+              {days.map(day => {
+                const value = isoDate(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day));
+                const disabled = value < isoDate(new Date());
+                const selected = value === deliveryDate;
+                return (
+                  <Pressable key={day} accessibilityRole="button" accessibilityLabel={value}
+                    accessibilityState={{ disabled, selected }} disabled={disabled}
+                    onPress={() => { setDeliveryDate(value); setDateOpen(false); }}
+                    style={{
+                      width: "14.28%", minHeight: 44, alignItems: "center", justifyContent: "center",
+                      backgroundColor: selected ? colors.brandSoft : "transparent",
+                    }}>
+                    <AppText color={disabled ? colors.onSurfaceTertiary : colors.onSurface}>{day}</AppText>
+                  </Pressable>
+                );
               })}
             </View>
-            <Button label="Close Calendar" variant="outline" onPress={()=>setDateOpen(false)}/>
-          </View>
+            <Button label="Close Calendar" variant="outline" onPress={() => setDateOpen(false)} />
+          </ScrollView>
         </View>
       </Modal>
     </View>
