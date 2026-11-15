@@ -36,7 +36,7 @@ try {
       const reply=json=>route.fulfill({json});
       if(path.endsWith('/otp/send'))return reply({status:'EMAIL_OTP_SENT'});
       if(path.endsWith('/auth/login')){currentEmail=route.request().postDataJSON().email;return reply({challenge_token:'synthetic-challenge'});}
-      if(path.endsWith('/verify-totp'))return reply({token:'synthetic-token-'+currentEmail,user:{id:currentEmail,role:'central_admin',full_name:currentEmail}});
+      if(path.endsWith('/verify-totp'))return reply({token:'synthetic-token-'+currentEmail,user:{id:currentEmail,email:currentEmail,role:'central_admin',full_name:'Fixture Support Account'}});
       if(path.endsWith('/auth/session/remember')) {
         assert.equal(route.request().headers().authorization,'Bearer synthetic-token-'+currentEmail);
         rememberedEmail=currentEmail;
@@ -47,6 +47,7 @@ try {
         return reply({token:'synthetic-token-'+rememberedEmail,user:{id:rememberedEmail,email:rememberedEmail,role:'central_admin'},permissions:sessionPermissions});
       }
       if(path.endsWith('/auth/me'))return reply({permissions:sessionPermissions});
+      if(path==='/api/control-center/capabilities')return reply({permissions:sessionPermissions});
       if(path.endsWith('/summary'))return reply({kpis:[{label:'Onboarding Requests',value:1}]});
       if(path==='/api/control-center/whatsapp/stats')return reply({counts:{conversations:0,unread:0,incoming_today:0},replies_enabled:false});
       if(path==='/api/control-center/whatsapp/chats')return reply({threads:[]});
@@ -134,10 +135,13 @@ try {
     const button=name=>page.getByRole('button',{name,exact:true});
     const adminNav=name=>page.getByRole('navigation',{name:'Control Center sections'})
       .getByRole('button',{name:new RegExp('^'+name+'\\b')});
+    const checkViewportFit=()=>page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth);
     const signIn=async email=>{
       await page.getByLabel('Approved administrator email').fill(email);
       await button('Send email verification code').click();
+      await page.locator('.tm-signin-steps [aria-current="step"]').filter({hasText:'Email code'}).waitFor();
       await page.getByLabel('Email verification code',{exact:true}).fill('123456');await button('Verify email code').click();
+      await page.locator('.tm-signin-steps [aria-current="step"]').filter({hasText:'Authenticator'}).waitFor();
       await page.getByLabel('Authenticator code',{exact:true}).fill('123456');await button('Verify authenticator and sign in').click();
       await page.getByRole('heading',{name:'Command Center',exact:true}).waitFor();
       if (width === 390) {
@@ -153,7 +157,28 @@ try {
         assert.notEqual(appearance.color, appearance.background, 'Selected navigation label must remain visible');
       }
     };
-    await page.goto(origin+'/admin/');await signIn('first@example.invalid');
+    await page.goto(origin+'/admin/');
+    if(width===390)await page.setViewportSize({width:320,height:700});
+    await page.getByRole('heading',{name:'Central Admin sign in',exact:true}).waitFor();
+    await button('Switch to light theme').click();
+    assert.equal(await page.locator('main').evaluate(el=>getComputedStyle(el).colorScheme),'light');
+    assert.equal(await checkViewportFit(),true,'Light sign-in fits the viewport');
+    await button('Switch to dark theme').click();
+    assert.equal(await page.locator('main').evaluate(el=>getComputedStyle(el).colorScheme),'dark');
+    assert.equal(await checkViewportFit(),true,'Dark sign-in fits the viewport');
+    await page.setViewportSize({width,height:1000});
+    await signIn('first@example.invalid');
+    assert.equal(await page.getByText('Signed in as',{exact:true}).count(),0,'Dashboard omits account identity');
+    assert.equal(await page.getByText('Fixture Support Account',{exact:true}).count(),0,'Dashboard omits account name');
+    await adminNav('Account').click();
+    await page.getByRole('region',{name:'Account details',exact:true}).getByText('Fixture Support Account',{exact:true}).waitFor();
+    await page.getByText('One-hour web session with authenticator verification',{exact:true}).waitFor();
+    await button('Manage sessions').click();
+    await page.waitForURL(url=>url.hash==='#/admin/sessions');
+    await adminNav('Account').click();
+    await page.reload();
+    await page.getByRole('region',{name:'Account details',exact:true}).getByText('first@example.invalid',{exact:true}).waitFor();
+    assert.equal(await adminNav('Account').getAttribute('aria-current'),'page','Account route survives session restoration');
     const officialLogo=page.locator('img[alt="TrackMyRMC official logo"]').first();
     await officialLogo.waitFor();
     assert.equal(await officialLogo.evaluate(img=>img.complete&&img.naturalWidth>0),true,'official repository logo must render');
@@ -180,6 +205,10 @@ try {
     await adminNav('Settings').click();
     await button('Light').click();
     assert.match(await page.locator('main').getAttribute('class')||'',/tm-light/,'light theme should use warm app tokens');
+    await adminNav('Dashboard').click();
+    assert.equal(await workspace.evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(255, 255, 255)','Light workspace cards use a light surface');
+    await adminNav('Plant Master').click();
+    await adminNav('Settings').click();
     for (const mode of ['Light','Dark']) {
       await button(mode).click();
       const selected=await button(mode).evaluate(el=>{

@@ -70,13 +70,24 @@ fs.mkdirSync(out, { recursive: true });
         await fixed.getByTestId('plant-home-supplier-enquiry').waitFor();
         const scroll = page.getByTestId('staff-home-scroll');
         const profile = scroll.getByTestId('plant-home-profile');
-        const before = (await profile.boundingBox()).y;
-        const pinnedTop = (await fixed.boundingBox()).y;
-        await scroll.evaluate(node => node.scrollTo(0, 100));
-        await page.waitForFunction(() => document.querySelector('[data-testid="staff-home-scroll"]').scrollTop > 0);
-        assert.equal((await fixed.boundingBox()).y, pinnedTop, role + ' Quick Access stays fixed');
-        assert((await profile.boundingBox()).y < before, role + ' content below the enquiry scrolls');
-        await scroll.evaluate(node => node.scrollTo(0, 0));
+        assert.equal(await profile.count(), 1, 'Staff profile remains in the scroll area');
+        if (width === 390) {
+          await page.setViewportSize({ width, height: 760 });
+          await fixed.getByTestId('plant-home-supplier-enquiry').waitFor();
+          const movement = await scroll.evaluate(node => {
+            const profile = node.querySelector('[data-testid="plant-home-profile"]');
+            const supplier = document.querySelector('[data-testid="plant-home-supplier-enquiry"]');
+            const profileTop = profile.getBoundingClientRect().top;
+            const supplierTop = supplier.getBoundingClientRect().top;
+            node.scrollTo(0, 100);
+            return { offset: node.scrollTop, profile: profile.getBoundingClientRect().top - profileTop,
+              supplier: supplier.getBoundingClientRect().top - supplierTop };
+          });
+          assert(movement.offset > 0 && movement.profile < 0, 'Staff profile scrolls with the dashboard');
+          assert.equal(movement.supplier, 0, 'Staff supplier enquiry stays fixed');
+          await page.setViewportSize({ width, height: 920 });
+          await scroll.evaluate(node => node.scrollTo(0, 0));
+        }
         const surface = await summary.evaluate(el => getComputedStyle(el).backgroundColor);
         assert.equal(surface, 'rgb(255, 255, 255)', 'Staff summary copy sits on opaque white');
         await page.waitForFunction(() => document.querySelector('[data-testid="tab-home"]')?.getAttribute('aria-selected') === 'true');

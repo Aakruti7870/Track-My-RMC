@@ -81,7 +81,7 @@ export function AdminSecurity({permissions,onRevokeAll,activeSection='all'}:{
           value={code} onChange={e=>setCode(e.target.value)} style={field} disabled={busy} autoComplete="off"/>
       </label>
     </div>
-    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(270px,1fr))',gap:12,marginTop:12}}>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,270px),1fr))',gap:12,marginTop:12}}>
       {show('reviewer')&&can('reviewer_access.manage')&&<section aria-label="Reviewer Access" style={panel}>
         <h3 style={{fontSize:16,marginTop:0}}>Google Play Reviewer Access</h3>
         <p style={{fontSize:12}}>Current: {reviewer?.mode||'Load controls'} · {reviewer?.environment||'Unknown environment'}</p>
@@ -151,7 +151,7 @@ export function AdminSecurity({permissions,onRevokeAll,activeSection='all'}:{
         <h3 style={{fontSize:16,marginTop:0}}>Session Security & Capabilities</h3>
         <p style={{fontSize:12,color:'var(--tm-muted)'}}>Dedicated Central Admin web session and currently authorized permissions.</p>
         {show('capabilities')&&<p style={{fontSize:12,overflowWrap:'anywhere'}}>{capabilities.length?capabilities.join(' · '):'No capabilities returned by the authorized Rust endpoint.'}</p>}
-        {show('sessions')&&<button type="button" disabled={busy} style={{...button,background:'#9B2C2C',color:'#fff'}}
+        {show('sessions')&&<button type="button" disabled={busy} style={{...button,background:'var(--tm-danger-action)',color:'var(--tm-on-status-action)'}}
           onClick={()=>void privileged(async()=>{
             await apiClient.post('/api/admin/auth/logout-all', {}, {withCredentials:true});
             onRevokeAll();

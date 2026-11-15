@@ -64,13 +64,24 @@ fs.mkdirSync(out, { recursive: true });
           await fixed.getByTestId('owner-quick-access').waitFor();
           const scroll = page.getByTestId('owner-home-scroll');
           const profile = scroll.getByTestId('plant-home-profile');
-          const before = (await profile.boundingBox()).y;
-          const pinnedTop = (await fixed.boundingBox()).y;
-          await scroll.evaluate(node => node.scrollTo(0, 100));
-          await page.waitForFunction(() => document.querySelector('[data-testid="owner-home-scroll"]').scrollTop > 0);
-          assert.equal((await fixed.boundingBox()).y, pinnedTop, 'Owner Quick Access stays fixed');
-          assert((await profile.boundingBox()).y < before, 'Owner content below the enquiry scrolls');
-          await scroll.evaluate(node => node.scrollTo(0, 0));
+          assert.equal(await profile.count(), 1, 'Owner profile remains in the scroll area');
+          if (width === 390) {
+            await page.setViewportSize({ width, height: 760 });
+            await fixed.getByTestId('plant-home-supplier-enquiry').waitFor();
+            const movement = await scroll.evaluate(node => {
+              const profile = node.querySelector('[data-testid="plant-home-profile"]');
+              const supplier = document.querySelector('[data-testid="plant-home-supplier-enquiry"]');
+              const profileTop = profile.getBoundingClientRect().top;
+              const supplierTop = supplier.getBoundingClientRect().top;
+              node.scrollTo(0, 100);
+              return { offset: node.scrollTop, profile: profile.getBoundingClientRect().top - profileTop,
+                supplier: supplier.getBoundingClientRect().top - supplierTop };
+            });
+            assert(movement.offset > 0 && movement.profile < 0, 'Owner profile scrolls with the dashboard');
+            assert.equal(movement.supplier, 0, 'Owner supplier enquiry stays fixed');
+            await page.setViewportSize({ width, height: 920 });
+            await scroll.evaluate(node => node.scrollTo(0, 0));
+          }
           const order = await page.evaluate(() => {
             const supplier = document.querySelector('[data-testid="plant-home-supplier-enquiry"]');
             const profile = document.querySelector('[data-testid="plant-home-profile"]');

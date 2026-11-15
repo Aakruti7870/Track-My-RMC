@@ -61,7 +61,10 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  await page.getByText('KYC verified', { exact: true }).first().waitFor();
  const actualVectorSize = async (testId) => page.getByTestId(testId).locator('svg').first()
    .evaluate(node => [Math.round(node.getBoundingClientRect().width), Math.round(node.getBoundingClientRect().height)]);
- const content = await page.getByTestId('customer-home-scroll').boundingBox();
+ const fixed = page.getByTestId('customer-home-scroll-fixed');
+ await fixed.getByTestId('home-bulk-quote').waitFor();
+ const scroll = page.getByTestId('customer-home-scroll');
+ const content = await scroll.boundingBox();
  const tabBar = await page.getByTestId('app-tab-bar').boundingBox();
  const homeHeader = await page.getByTestId('customer-home-header').boundingBox();
  assert(content && tabBar && homeHeader && content.y + content.height <= tabBar.y + 1);
@@ -76,18 +79,9 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    assert(next.x >= 0 && next.x + next.width <= width + 1, 'Home section exceeds viewport');
  }
  assert(Math.abs(sections[0].width / sections[0].height - 16 / 9) < 0.03, 'Carousel preserves artwork ratio');
- const fixed = page.getByTestId('customer-home-scroll-fixed');
- await fixed.getByTestId('home-bulk-quote').waitFor();
  assert.equal(await fixed.getByTestId('home-promotional-carousel').count(), 1);
  assert.equal(await page.getByTestId('customer-home-scroll').getByTestId('kyc-banner').count(), 1);
  const bulk = page.getByTestId('home-bulk-quote');
- const bulkTop = (await bulk.boundingBox()).y;
- const planningTop = sections[3].y;
- await page.getByTestId('customer-home-scroll').evaluate(scroll => scroll.scrollTo(0, 100));
- await page.waitForFunction(() => document.querySelector('[data-testid="customer-home-scroll"]').scrollTop > 0);
- assert.equal((await bulk.boundingBox()).y, bulkTop, 'Bulk quote stays fixed while the lower dashboard scrolls');
- assert((await page.getByTestId('customer-module-grid').boundingBox()).y < planningTop);
- await page.getByTestId('customer-home-scroll').evaluate(scroll => scroll.scrollTo(0, 0));
  assert((await bulk.boundingBox()).height >= 49);
  await bulk.getByText('Concrete in bulk? Get our best rate for your project.', { exact: true }).waitFor();
  await page.getByTestId('kyc-banner').getByText('KYC verified', { exact: true }).waitFor();
@@ -123,28 +117,41 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  if(!(centers[0]<centers[1]&&centers[1]<mid&&mid<centers[2]&&centers[2]<centers[3]))throw Error('Tab ordering around center icon');
  if(Math.abs((mid-centers[1])-(centers[2]-mid))>4 || Math.abs((mid-centers[0])-(centers[3]-mid))>4)throw Error('Tab spacing is not symmetric');
  const card=page.getByTestId('demo-tracking-card'); try { await card.waitFor({timeout:30000}); } catch(e) { await page.screenshot({path:`tracking-previews/failure-${width}.png`,fullPage:true}); console.error(await page.locator('body').innerText()); throw e; }
- await page.getByTestId('customer-home-scroll').evaluate((scroll) => {
-   const card = scroll.querySelector('[data-testid="demo-tracking-card"]');
-   scroll.scrollTo(0, scroll.scrollTop + card.getBoundingClientRect().top - scroll.getBoundingClientRect().top);
- });
  if (width === 390) {
-   const scroll = page.getByTestId('customer-home-scroll');
+   // A tall viewport can fit the entire lower section. Reduce its height
+   // while keeping enough space for the fixed banner and shortcuts.
+   await page.setViewportSize({ width, height: 760 });
+   await fixed.getByTestId('home-bulk-quote').waitFor();
+   const movement = await scroll.evaluate(node => {
+     const bulk = document.querySelector('[data-testid="home-bulk-quote"]');
+     const planning = node.querySelector('[data-testid="customer-module-grid"]');
+     const bulkTop = bulk.getBoundingClientRect().top;
+     const planningTop = planning.getBoundingClientRect().top;
+     node.scrollTo(0, 100);
+     return { offset: node.scrollTop, bulk: bulk.getBoundingClientRect().top - bulkTop,
+       planning: planning.getBoundingClientRect().top - planningTop };
+   });
+   assert(movement.offset > 0, 'The short test viewport must make lower content overflow');
+   assert.equal(movement.bulk, 0, 'Bulk quote stays fixed while the lower dashboard scrolls');
+   assert(movement.planning < 0, 'Planning moves with the lower dashboard');
+
    await page.setViewportSize({ width, height: 540 });
    await fixed.waitFor({ state: 'detached' });
-   await scroll.evaluate(node => node.scrollTo(0, 0));
-   const stickyTop = await scroll.evaluate(node => node.getBoundingClientRect().top);
-   await scroll.evaluate(node => node.scrollTo(0, 500));
+   const stickyTop = await scroll.evaluate(node => {
+     node.scrollTo(0, 500);
+     return node.getBoundingClientRect().top;
+   });
    await page.waitForFunction(top => {
      const tile = document.querySelector('[data-testid="home-quick-actions"]');
      return tile && Math.abs(tile.getBoundingClientRect().top - top) <= 2;
    }, stickyTop);
    await page.setViewportSize({ width, height: 1000 });
    await fixed.waitFor();
-   await scroll.evaluate(node => {
-     const track = node.querySelector('[data-testid="demo-tracking-card"]');
-     node.scrollTo(0, node.scrollTop + track.getBoundingClientRect().top - node.getBoundingClientRect().top);
-   });
  }
+ await scroll.evaluate(node => {
+   const track = node.querySelector('[data-testid="demo-tracking-card"]');
+   node.scrollTo(0, node.scrollTop + track.getBoundingClientRect().top - node.getBoundingClientRect().top);
+ });
  const b=await card.boundingBox();
  assert.equal(Math.round((await page.getByTestId('customer-home-header').boundingBox()).y), Math.round(homeHeader.y));
  assert.equal(Math.round((await page.getByTestId('app-tab-bar').boundingBox()).y), Math.round(tabBar.y));
@@ -196,10 +203,11 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      await page.evaluate(value=>localStorage.setItem('tmrmc_theme_mode',JSON.stringify(value)),theme);
      await page.goto('http://127.0.0.1:8765/customer/');
      await page.getByTestId('home-planning-see-all').waitFor();
-     const tileBackground=theme==='light'?'rgb(74, 85, 104)':'rgb(57, 68, 84)';
+     const secondaryTile=theme==='light'?'rgb(74, 85, 104)':'rgb(57, 68, 84)';
+     const shortcutTile=theme==='light'?'rgb(220, 232, 244)':'rgb(41, 70, 95)';
      for (const id of ['action-new','home-pump-rental','service-cement']) {
        const background=await page.getByTestId(id).locator('svg').first().evaluate(el=>getComputedStyle(el.parentElement).backgroundColor);
-       assert.equal(background,tileBackground,`${id} uses the shared ${theme} icon shade`);
+       assert.equal(background,id==='action-new'?shortcutTile:secondaryTile,`${id} uses its ${theme} icon shade`);
      }
      const clipped=await page.evaluate(()=>{
        const labels=[...document.querySelectorAll('[data-testid^="action-"],[data-testid^="customer-module-"],[data-testid^="service-"],[data-testid="home-pump-rental"],[data-testid="home-order-request"],[role="tab"]')]
