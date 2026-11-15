@@ -671,11 +671,13 @@ async fn completed_consent_status_after_race(
     // request records a terminal provider document failure. Surface the
     // committed reason, not a generic retry instruction.
     if session == "FAILED" {
-        return Ok(match current.get::<Option<String>, _>("failure_reason").as_deref() {
+        let reason: Option<String> = current.get("failure_reason");
+        let response = match reason.as_deref() {
             Some("aadhaar_not_consented") => "DOCUMENT_NOT_SHARED",
             Some("document_access_denied") => "DOCUMENT_UNAVAILABLE",
             _ => "REQUIRES_REVERIFICATION",
-        });
+        };
+        return Ok(response);
     }
     Ok(if session == "PENDING" {
         // A reviewer reset may have invalidated this older pending session.
