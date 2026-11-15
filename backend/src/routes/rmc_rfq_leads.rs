@@ -35,6 +35,7 @@ pub struct NewRmcRfq {
     pub delivery_date: NaiveDate,
     pub pump_required: bool,
     pub site_contact_phone: String,
+    #[serde(default)]
     pub share_with_supplier: bool,
 }
 
@@ -44,6 +45,10 @@ fn validate(input: &NewRmcRfq) -> Result<(), AppError> {
             "Supplier-sharing permission is required".into(),
         ));
     }
+    validate_requirements(input)
+}
+
+pub(super) fn validate_requirements(input: &NewRmcRfq) -> Result<(), AppError> {
     if input.google_place_id.is_some() == input.plant_id.is_some() {
         return Err(AppError::BadRequest("Choose exactly one supplier".into()));
     }
@@ -124,7 +129,7 @@ fn validate(input: &NewRmcRfq) -> Result<(), AppError> {
     Ok(())
 }
 
-async fn verify_google_place(state: &AppState, place_id: &str) -> Result<(), AppError> {
+pub(super) async fn verify_google_place(state: &AppState, place_id: &str) -> Result<(), AppError> {
     let key = state
         .config
         .google_places_api_key

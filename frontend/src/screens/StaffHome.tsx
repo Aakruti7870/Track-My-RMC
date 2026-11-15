@@ -2,7 +2,8 @@ import { screenOverflow } from "@/src/theme/sceneBackground";
 import React, { useState } from "react";
 import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
+import { type VectorSymbolName } from "@/src/components/VectorSymbol";
+import { IconTile } from "@/src/components/IconTile";
 import { useFocusEffect, useRouter, type Href } from "expo-router";
 import { HomeModuleSection, HomeSectionHeader } from "@/src/components/HomeModuleSection";
 import { OperationalHomeTopBar } from "@/src/components/OperationalHomeTopBar";
@@ -164,8 +165,8 @@ export function StaffHome() {
                       : operationalStatus(kpiTone(c), colors.isDark) + "60",
                   }]}>
                     <View style={styles.kpiIcon}>
-                      {KPI_ARTWORK[c.label] ? <VectorSymbol name={KPI_ARTWORK[c.label]} size={30} /> :
-                        <Ionicons name={c.icon} size={24} color={colors.brand} />}
+                      {KPI_ARTWORK[c.label] ? <IconTile symbol={KPI_ARTWORK[c.label]} width={38} /> :
+                        <IconTile icon={c.icon} width={38} />}
                       {c.label === "Low Stock" && c.value > 0 ? <Ionicons name="alert-circle" size={16} color={operationalStatus("warning", colors.isDark)} /> : null}
                     </View>
                     <AppText style={{ fontFamily: fonts.displayBold, fontSize: fontSize.xl,

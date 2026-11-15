@@ -53,10 +53,11 @@ const integrationFiles = [
   "src/components/RoleModuleDirectory.tsx",
   "src/components/GlassTabBar.tsx",
   "src/components/QuickActionHub.tsx",
+  "src/components/IconTile.tsx",
   "app/customer/index.tsx",
 ];
 for (const filename of integrationFiles) {
-  assert.match(read(filename), /<VectorSymbol\b/, `SVG not rendered by ${filename}`);
+  assert.match(read(filename), /<(?:VectorSymbol|IconTile\b[^>]*\bsymbol=)/, `SVG not rendered by ${filename}`);
 }
 const renderer = read("src/components/VectorSymbol.tsx");
 assert.match(renderer, /viewBox="0 -960 960 960"/);

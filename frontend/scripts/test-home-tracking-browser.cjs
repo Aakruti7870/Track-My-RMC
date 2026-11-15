@@ -6,10 +6,23 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  const browser=await chromium.launch({headless:true,args:['--no-sandbox'],...(process.env.HEADER_CHROMIUM_PATH ? {executablePath:process.env.HEADER_CHROMIUM_PATH} : {})});
  for(const width of [320,390,768,960,1024,1440]){
  let mode='demo';
+ let reviewSubmission;
  const page=await browser.newPage({viewport:{width,height:1000}});
  await page.addInitScript(()=>localStorage.setItem('tmrmc_token',JSON.stringify('isolated-browser-fixture')));
  await page.route('https://trackmyrmc.com/api/**',async route=>{
  const path=new URL(route.request().url()).pathname;
+ if (path.endsWith('/customer/plant-order-requests')) {
+   if (route.request().method() === 'POST') {
+     reviewSubmission = route.request().postDataJSON();
+     await route.fulfill({json:{id:'admin-review-fixture',status:'PENDING_ADMIN_REVIEW'}});
+   } else {
+     await route.fulfill({json:{requests:reviewSubmission ? [{
+       id:'admin-review-fixture',grade:reviewSubmission.grade,quantity_m3:reviewSubmission.quantity_m3,
+       site_address:reviewSubmission.site_address,delivery_date:reviewSubmission.delivery_date,
+     }] : []}});
+   }
+   return;
+ }
  if (path.endsWith('/customer/service-enquiries') && route.request().method() === 'POST') {
    await route.fulfill({ status: 201, json: { id: 'isolated-enquiry', status: 'NEW' } });
    return;
@@ -19,7 +32,20 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  const order={id:'isolated-order',order_number:'CUSTOMER-ORDER',status:mode==='pending'?'PENDING':mode==='delivered'?'DELIVERED':'DISPATCHED',grade:'M30',quantity:8,site_name:'Actual project'};
  if(mode!=='demo'){home.recent_orders=[order];home.active_order=mode==='delivered'?null:order;}
  const tracking={active:mode==='live',status:order.status,active_loads:mode==='live'?[{id:'load-a',status:'en_route',tm_number:'ASSIGNED-MIXER',location:{lat:19.1,lng:73.1,at:new Date(Date.now()-1000).toISOString()}}]:[],destination:{lat:19.2,lng:73.2}};
- await route.fulfill({json:path.endsWith('/customer/plants/search')?{plants:[{id:'fixture-plant',name:'Panvel Ready-Mix Concrete and Infrastructure Supply',address:'Industrial Estate, Panvel',status:'active',verified:true,order_enabled:true,grades:['M30'],distance_km:4.2}],page:1,has_more:false}:path.endsWith('/tracking')?tracking:path.endsWith('/customer/service-enquiries')?{enquiries:[]}:path.endsWith('/customer/plants')?{plants:[]}:path.endsWith('/permission-consent')?{consent:{version:1,location_choice:'manual',notification_choice:'manual'}}:path.endsWith('/me')?me:path.endsWith('/customer/home')?home:{}});
+ const plants=[{id:'fixture-plant',name:'Panvel Ready-Mix Concrete and Infrastructure Supply',address:'Industrial Estate, Panvel',status:'active',verified:true,order_enabled:true,grades:['M30'],distance_km:4.2}];
+ if (path.endsWith('/customer/plants/search')) {
+   await route.fulfill({json:{plants,page:1,has_more:false}});return;
+ }
+ if (path.endsWith('/customer/plants/locate')) {
+   await route.fulfill({json:{lat:19.1,lng:73.1,label:'Panvel'}});return;
+ }
+ if (path.endsWith('/customer/plants/google-nearby')) {
+   await route.fulfill({json:{places:[{place_id:'ChIJ_review_fixture',name:'Independent Concrete',address:'Panvel',lat:19.11,lng:73.11,distance_km:2}],source:'google_places',attribution:'Google Maps',radius_km:50}});return;
+ }
+ if (path.endsWith('/maps/autocomplete')) {
+   await route.fulfill({json:{predictions:[]}});return;
+ }
+ await route.fulfill({json:path.endsWith('/tracking')?tracking:path.endsWith('/customer/service-enquiries')?{enquiries:[]}:path.endsWith('/customer/plants')?{plants}:path.endsWith('/customer/orders')?{orders:[]}:path.endsWith('/customer/order-drafts')?{drafts:[]}:path.endsWith('/permission-consent')?{consent:{version:1,location_choice:'manual',notification_choice:'manual'}}:path.endsWith('/me')?me:path.endsWith('/customer/home')?home:{}});
  });
  page.on('pageerror',e=>console.error(e.message));
  await page.goto('http://127.0.0.1:8765/customer/');
@@ -129,9 +155,15 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      await route.fulfill({response});
    });
    for(const theme of ['light','dark']){
+     reviewSubmission=undefined;
      await page.evaluate(value=>localStorage.setItem('tmrmc_theme_mode',JSON.stringify(value)),theme);
      await page.goto('http://127.0.0.1:8765/customer/');
      await page.getByTestId('home-planning-see-all').waitFor();
+     const tileBackground=theme==='light'?'rgb(74, 85, 104)':'rgb(57, 68, 84)';
+     for (const id of ['action-new','home-pump-rental','service-cement']) {
+       const background=await page.getByTestId(id).locator('svg').first().evaluate(el=>getComputedStyle(el.parentElement).backgroundColor);
+       assert.equal(background,tileBackground,`${id} uses the shared ${theme} icon shade`);
+     }
      const clipped=await page.evaluate(()=>{
        const labels=[...document.querySelectorAll('[data-testid^="action-"],[data-testid^="customer-module-"],[data-testid^="service-"],[data-testid="home-pump-rental"],[data-testid="home-order-request"],[role="tab"]')]
          .filter(el=>el.matches('[role="button"],[role="tab"]'))
@@ -217,7 +249,10 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      const ink=await order.getByText('Place Order').evaluate(el=>getComputedStyle(el).color);
      assert.equal(ink,'rgb(14, 17, 22)');
      const target=await order.boundingBox();
-     assert(target.height>=48 && target.width>180,theme+' narrow plant primary action must be full width');
+     assert(target.height>=44 && target.width<180,theme+' narrow plant primary action must be compact');
+     await order.click();
+     await page.waitForURL('**/new-order?plantId=fixture-plant');
+     await page.goBack();
      await plant.getByRole('button',{name:'Request Quotation',exact:true}).click();
      await page.getByRole('button',{name:'Submit Quotation Request',exact:true}).click();
      assert.equal(await page.getByRole('textbox',{name:'Required Quantity (m³)',exact:true}).getAttribute('aria-invalid'),'true');
@@ -232,6 +267,24 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      await calendar.getByRole('button',{name:'Next month',exact:true}).click();
      await calendar.getByRole('button',{name:'Close Calendar',exact:true}).click();
      await calendar.waitFor({state:'hidden'});
+     await page.goBack();
+     await page.getByTestId('plants-filter-toggle').click();
+     await page.getByTestId('plants-filter-state').fill('Maharashtra');
+     const googlePlant=page.getByTestId('nearby-plant-google:ChIJ_review_fixture');
+     await googlePlant.getByRole('button',{name:'Plant Profile',exact:true}).click();
+     await page.getByRole('button',{name:'Close details',exact:true}).waitFor();
+     await page.getByRole('button',{name:'Close details',exact:true}).click();
+     await googlePlant.getByTestId('nearby-place-order').click();
+     await page.getByRole('textbox',{name:'Required Quantity (m³)',exact:true}).fill('6.5');
+     await page.getByRole('textbox',{name:'Delivery Site Address',exact:true}).fill('Sector 18, Panvel');
+     await page.getByRole('button',{name:'Submit Order Request',exact:true}).click();
+     await page.getByText('Order request sent',{exact:true}).waitFor();
+     assert.equal(reviewSubmission.google_place_id,'ChIJ_review_fixture');
+     assert.equal(reviewSubmission.plant_id,null);
+     assert.equal(reviewSubmission.share_with_supplier,undefined);
+     await page.getByRole('button',{name:'View My Orders',exact:true}).click();
+     await page.getByText('Requests Awaiting Review',{exact:true}).waitFor();
+     await page.getByText('Reference admin-review-fixture',{exact:true}).waitFor();
      console.log('PASS 320px '+theme+' enlarged labels, header Support and matte RFQ calendar');
    }
  }

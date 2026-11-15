@@ -12,6 +12,7 @@ import { KycBanner } from "@/src/components/KycBanner";
 import { ErrorView } from "@/src/components/StateViews";
 import { ThemedScreen } from "@/src/components/ThemedScreen";
 import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
+import { IconTile } from "@/src/components/IconTile";
 import { AppText } from "@/src/components/ui/AppText";
 import type { OrderData } from "@/src/components/OrderCard";
 import { useGet } from "@/src/hooks/useApi";
@@ -43,7 +44,6 @@ export default function CustomerHome() {
   const materialsTrigger = useRef<View>(null);
   const cardWidth = Math.min(Math.max(0, width - 24), 620);
   const tileWidth = (cardWidth - 20) / fontScale >= 250 ? "24%" : "49%";
-  const shortcutSurface = colors.isDark ? "#394454" : "#4A5568";
   const heading = [styles.heading, { fontSize: size.headerSize, lineHeight: size.headerLine }];
   const panel = [styles.panel, { backgroundColor: colors.surfaceSecondary, borderColor: colors.divider }];
   const order = data?.active_order;
@@ -78,7 +78,6 @@ export default function CustomerHome() {
     kind: "quick" | "planning" | "material"; seeAll?: Directory;
   }) {
     const material = kind === "material";
-    const filled = kind === "quick" || seeAll !== undefined;
     const iconSize = kind === "quick" ? size.quickSymbol : material ? size.serviceSymbol : size.toolSymbol;
     const labelSize = material ? size.serviceLabel : kind === "quick" ? Math.max(13, size.toolLabel) : size.toolLabel;
     return (
@@ -90,9 +89,7 @@ export default function CustomerHome() {
           width: tileWidth, minHeight: kind === "quick" ? 90 : material ? 70 : 82,
           opacity: pressed ? 0.72 : 1,
         }, material && { backgroundColor: colors.surfaceSecondary, borderColor: colors.divider, borderWidth: 1, borderRadius: 10 }]}>
-        <View style={[styles.iconPlate, { backgroundColor: filled ? shortcutSurface : "transparent" }]}>
-          <VectorSymbol name={symbol} size={iconSize} color={filled ? "#FFFFFF" : colors.onSurfaceTertiary} />
-        </View>
+        <IconTile symbol={symbol} size={iconSize} height={45} />
         <AppText center style={[styles.label, { fontSize: labelSize, lineHeight: Math.max(16, labelSize + 3) }]}>{label}</AppText>
       </Pressable>
     );
@@ -164,7 +161,7 @@ export default function CustomerHome() {
                 <Pressable key={item.key} testID={"home-" + item.key} accessibilityRole="button" accessibilityLabel={item.label}
                   accessibilityHint={item.hint} onPress={() => { directoryTrigger.current = null; setDirectory(null); router.push(item.route); }}
                   style={({ pressed }) => [styles.directoryRow, { borderColor: colors.divider, opacity: pressed ? 0.72 : 1 }]}>
-                  <VectorSymbol name={item.symbol} size={24} />
+                  <IconTile symbol={item.symbol} width={36} />
                   <View style={styles.flexCopy}>
                     <AppText variant="label">{item.label}</AppText>
                     {item.hint ? <AppText variant="caption">{item.hint}</AppText> : null}
@@ -189,7 +186,6 @@ const styles = StyleSheet.create({
   heading: { fontFamily: fonts.bold, paddingHorizontal: 5 },
   grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: 6 },
   tile: { minWidth: 0, alignItems: "center", paddingHorizontal: 2, paddingVertical: 3, gap: 4 },
-  iconPlate: { width: 44, height: 45, borderRadius: 10, alignItems: "center", justifyContent: "center" },
   label: { fontFamily: fonts.medium, width: "100%" },
   bulk: { minHeight: 49, borderRadius: 8, padding: 8, flexDirection: "row", gap: 8, alignItems: "center" },
   bulkLabel: { flex: 1, minWidth: 0, fontSize: 14, lineHeight: 19 },

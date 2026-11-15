@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { OperationalHomeTopBar } from "@/src/components/OperationalHomeTopBar";
 import { AppText } from "@/src/components/ui/AppText";
-import { VectorSymbol } from "@/src/components/VectorSymbol";
+import { IconTile } from "@/src/components/IconTile";
 import { fonts } from "@/src/theme/tokens";
 import type { RoleModule } from "@/src/navigation/moduleCatalog";
 import { ownerDestination } from "./modules";
@@ -45,7 +45,7 @@ export function OwnerModuleRow({ module, compact = false }: { module: RoleModule
   const router = useRouter();
   return <Pressable testID={`role-module-${module.key}`} accessibilityRole="button" accessibilityLabel={module.label} onPress={() => router.push(ownerDestination(module))} style={({ pressed }) => ({ opacity: pressed ? 0.72 : 1 })}>
     <OwnerGlass style={[ui.moduleRow, compact && { minHeight: 50, paddingVertical: 5 }]}>
-      {module.symbol ? <VectorSymbol name={module.symbol} size={compact ? 36 : 44} /> : <Ionicons name={module.icon} size={30} color={p.accent} />}
+      {module.symbol ? <IconTile symbol={module.symbol} width={compact ? 38 : 44} /> : <IconTile icon={module.icon} width={compact ? 38 : 44} />}
       <View style={{ flex: 1, minWidth: 0, gap: 3 }}><AppText style={{ fontFamily: fonts.semibold, fontSize: 14, lineHeight: 18, color: p.text }}>{module.label}</AppText><AppText numberOfLines={1} style={{ fontSize: 11, lineHeight: 15, color: p.muted }}>{module.description}</AppText></View>
       <Ionicons name="chevron-forward" size={17} color={p.text} />
     </OwnerGlass>

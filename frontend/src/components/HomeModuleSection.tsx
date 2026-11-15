@@ -4,7 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter, type Href } from "expo-router";
 
 import { AppText } from "@/src/components/ui/AppText";
-import { VectorSymbol } from "@/src/components/VectorSymbol";
+import { IconTile } from "@/src/components/IconTile";
 import type { RoleModule } from "@/src/navigation/moduleCatalog";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { fonts, radius } from "@/src/theme/tokens";
@@ -43,10 +43,7 @@ export function HomeModuleSection({ id, title, modules, seeAll, testIDPrefix = "
             accessibilityLabel={module.label} accessibilityHint={module.description}
             onPress={() => router.push(module.route)}
             style={({ pressed }) => [styles.tile, { width: compact ? "48%" : "23.5%", opacity: pressed ? 0.74 : 1 }]}>
-            <View style={[styles.icon, { backgroundColor: colors.surfaceTertiary }]}>
-              {module.symbol ? <VectorSymbol name={module.symbol} size={24} /> :
-                <Ionicons name={module.icon} size={24} color={colors.onSurfaceTertiary} accessible={false} aria-hidden />}
-            </View>
+            {module.symbol ? <IconTile symbol={module.symbol} /> : <IconTile icon={module.icon} />}
             <AppText center style={styles.label}>{module.label}</AppText>
           </Pressable>
         ))}
@@ -63,6 +60,5 @@ const styles = StyleSheet.create({
   linkLabel: { fontFamily: fonts.semibold, fontSize: 12, lineHeight: 16 },
   grid: { flexDirection: "row", flexWrap: "wrap", columnGap: "2%", rowGap: 8 },
   tile: { minHeight: 76, minWidth: 0, paddingHorizontal: 2, paddingVertical: 4, gap: 6, alignItems: "center" },
-  icon: { width: 44, height: 44, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
   label: { fontFamily: fonts.medium, fontSize: 12, lineHeight: 16, maxWidth: "100%" },
 });

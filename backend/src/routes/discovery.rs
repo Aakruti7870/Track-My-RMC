@@ -118,16 +118,14 @@ pub async fn search(
     let rows: Vec<Value> = sqlx::query_scalar(r#"
         WITH candidates AS (
             SELECT p.*, EXISTS(SELECT 1 FROM plant_listing_requests r WHERE r.plant_id=p.id AND r.status='APPROVED') verified,
+                COALESCE(c.order_intake_mode,'DIRECT') AS intake_mode,
                 ARRAY(SELECT DISTINCT grade FROM plant_rate_cards r WHERE r.plant_id=p.id AND r.active
                     AND r.effective_from<=CURRENT_DATE AND (r.effective_to IS NULL OR r.effective_to>=CURRENT_DATE) ORDER BY grade) grades,
                 CASE WHEN $2::double precision IS NOT NULL THEN 6371.0 * 2 * asin(sqrt(least(1.0, greatest(0.0,
                     power(sin(radians(p.latitude-$2)/2),2) + cos(radians($2))*cos(radians(p.latitude))*power(sin(radians(p.longitude-$3)/2),2)
                 )))) END distance_km
-            FROM rmc_plants p WHERE p.is_active
-            AND NOT EXISTS (
-                SELECT 1 FROM plant_admin_controls c
-                WHERE c.plant_id=p.id AND NOT c.discovery_visible
-            )
+            FROM rmc_plants p LEFT JOIN plant_admin_controls c ON c.plant_id=p.id
+            WHERE p.is_active AND COALESCE(c.discovery_visible,TRUE)
             AND NOT EXISTS (
                 SELECT 1 FROM google_plant_visibility_exclusions x
                 WHERE x.place_id=p.google_place_id AND NOT x.is_visible
@@ -136,12 +134,12 @@ pub async fn search(
                 = EXISTS(SELECT 1 FROM play_review_fixtures f WHERE f.plant_id=p.id AND f.role='customer' AND f.enabled)
         )
         SELECT jsonb_build_object('id',id,'name',name,'address',address_line,'city',city,'district',coalesce(nullif(district,''),state),'pincode',pincode,
-            'lat',latitude,'lng',longitude,
+            'lat',latitude,'lng',longitude,'google_place_id',google_place_id,
             'contact_phone',CASE WHEN verified THEN contact_phone ELSE NULL END,
             'contact_phone_masked',CASE WHEN NOT verified AND contact_phone IS NOT NULL AND length(regexp_replace(contact_phone,'[^0-9]','','g')) >= 5 THEN
                 left(regexp_replace(contact_phone,'[^0-9]','','g'), greatest(0,length(regexp_replace(contact_phone,'[^0-9]','','g'))-5)) || '*****'
                 ELSE NULL END,
-            'verified',verified,'order_enabled',verified,
+            'verified',verified,'order_enabled',verified AND intake_mode='DIRECT','order_intake_mode',intake_mode,
             'status','active','grades',grades,'distance_km',distance_km)
         FROM candidates WHERE (distance_km IS NULL OR distance_km <= $4)
           AND ($5='' OR strpos(lower(name||' '||address_line||' '||city||' '||state||' '||pincode),lower($5))>0)

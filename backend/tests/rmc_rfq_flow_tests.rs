@@ -111,6 +111,97 @@ fn request_body(plant_id: Uuid, request_key: Uuid) -> Value {
 }
 
 #[sqlx::test]
+async fn plant_order_review_dispatches_only_to_central_admin_and_replays_once(db: PgPool) {
+    let customer = identity(&db, "customer").await;
+    let other = identity(&db, "customer").await;
+    let owner = identity(&db, "owner").await;
+    let admin = identity(&db, "central_admin").await;
+    let plant_id = plant(&db, owner).await;
+    let (state, app) = app(db.clone());
+    let customer_token = token(&state, customer, "customer");
+    let admin_token = token(&state, admin, "central_admin");
+    use sha2::{Digest, Sha256};
+    sqlx::query("INSERT INTO control_center_access(user_id,approved,permissions) VALUES($1,TRUE,ARRAY['order.view'])")
+        .bind(admin).execute(&db).await.unwrap();
+    sqlx::query("INSERT INTO control_center_sessions(user_id,token_hash,expires_at) VALUES($1,$2,NOW()+INTERVAL '1 hour')")
+        .bind(admin).bind(format!("{:x}", Sha256::digest(admin_token.as_bytes()))).execute(&db).await.unwrap();
+    let route = "/api/customer/plant-order-requests";
+    let queue = "/api/control-center/collections/plant_order_requests";
+    let mut payload = request_body(plant_id, Uuid::new_v4());
+    payload
+        .as_object_mut()
+        .unwrap()
+        .remove("share_with_supplier");
+    assert_eq!(
+        call(&app, route, "POST", Some(payload.clone()), &customer_token)
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+
+    sqlx::query("DELETE FROM plant_listing_requests WHERE plant_id=$1")
+        .bind(plant_id)
+        .execute(&db)
+        .await
+        .unwrap();
+    let (first, retry) = tokio::join!(
+        call(&app, route, "POST", Some(payload.clone()), &customer_token),
+        call(&app, route, "POST", Some(payload.clone()), &customer_token)
+    );
+    assert_eq!(first.0, StatusCode::OK, "{}", first.1);
+    assert_eq!(retry, first);
+    assert_eq!(first.1["status"], "PENDING_ADMIN_REVIEW");
+    let recipients: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT user_id FROM notifications WHERE notification_type='plant_order_review'",
+    )
+    .fetch_all(&db)
+    .await
+    .unwrap();
+    assert_eq!(recipients, vec![admin]);
+    for table in ["orders", "rmc_rfq_leads"] {
+        let count: i64 = sqlx::query_scalar(&format!(
+            "SELECT COUNT(*) FROM {table} WHERE customer_id=$1"
+        ))
+        .bind(customer)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        assert_eq!(count, 0);
+    }
+    let (status, items) = call(&app, queue, "GET", None, &admin_token).await;
+    assert_eq!(status, StatusCode::OK, "{items}");
+    assert_eq!(items["items"][0]["id"], first.1["id"]);
+    assert_eq!(
+        call(&app, queue, "GET", None, &token(&state, owner, "owner"))
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        call(&app, route, "GET", None, &customer_token).await.1["requests"][0]["id"],
+        first.1["id"]
+    );
+    assert_eq!(
+        call(&app, route, "GET", None, &token(&state, other, "customer"))
+            .await
+            .1["requests"],
+        json!([])
+    );
+
+    sqlx::query("INSERT INTO plant_admin_controls(plant_id,discovery_visible,changed_by,change_reason) VALUES($1,FALSE,$2,'Hold this fixture plant')")
+        .bind(plant_id).bind(admin).execute(&db).await.unwrap();
+    payload["request_key"] = json!(Uuid::new_v4());
+    payload["google_place_id"] = json!("ChIJ_test_rmc");
+    payload["plant_id"] = Value::Null;
+    assert_eq!(
+        call(&app, route, "POST", Some(payload), &customer_token)
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+}
+
+#[sqlx::test]
 async fn approved_lead_reuses_existing_quoting_and_notifies_owner_customer(db: PgPool) {
     let customer = identity(&db, "customer").await;
     let owner = identity(&db, "owner").await;
