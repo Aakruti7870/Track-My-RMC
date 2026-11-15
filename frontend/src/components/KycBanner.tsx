@@ -67,7 +67,7 @@ export function KycBanner({ status }: { status: string }) {
 
 const styles = StyleSheet.create({
   wrap: {
-    minHeight: 38,
+    minHeight: 46,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,

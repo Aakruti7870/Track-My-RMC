@@ -48,16 +48,18 @@ test("KYC navigation has history fallback and does not imply verification", () =
 
 test("home offers KYC-later request building and prioritizes next actions", () => {
   const home = read("app/customer/index.tsx");
-  const actionHandler = home.split("const onAction = ")[1]?.split("const openService = ")[0] || "";
-  assert.match(actionHandler, /router\.push\("\/new-order"\)/);
-  assert.doesNotMatch(actionHandler, /Complete KYC to place an order/);
+  const homeLinks = read("src/navigation/customerHome.ts");
+  assert.match(homeLinks, /Build and save a request without completing KYC first/);
+  assert.match(homeLinks, /key: "order-request"[^\n]+route: "\/new-order"/);
+  assert.match(home, /case "new": router\.push\("\/new-order"\)/);
   assert.doesNotMatch(home, /CustomerNextAction/);
   const carousel = home.indexOf("<HomeCarousel");
-  const shortcuts = home.indexOf("{quickActions}", carousel);
-  const planning = home.indexOf("{planningTools}", shortcuts);
-  const requests = home.indexOf("{planningActions}", planning);
-  assert.ok(carousel >= 0 && carousel < shortcuts && shortcuts < planning && planning < requests);
-  assert.match(home, /Build and save a request without completing KYC first/);
+  const shortcuts = home.indexOf('testID="home-quick-actions"', carousel);
+  const bulk = home.indexOf('testID="home-bulk-quote"', shortcuts);
+  const kyc = home.indexOf("<KycBanner", bulk);
+  const planning = home.indexOf('testID="customer-module-grid"', kyc);
+  const supply = home.indexOf('testID="home-other-services"', planning);
+  assert.ok(carousel >= 0 && carousel < shortcuts && shortcuts < bulk && bulk < kyc && kyc < planning && planning < supply);
   const tracking = read("src/components/ActiveTransitMixerCard.tsx");
   assert.match(tracking, /View order details/);
   assert.match(tracking, /pathname: "\/order\/\[id\]"/);

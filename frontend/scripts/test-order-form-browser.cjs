@@ -102,6 +102,7 @@ async function run() {
       });
 
       await page.goto(origin + "/customer/");
+      await page.getByTestId("home-planning-see-all").click();
       await page.getByTestId("home-order-request").click({ timeout: 15000 }).catch(async error => {
         console.error("Home fixture failed", page.url(), await page.locator("body").innerText(), pageErrors);
         throw error;

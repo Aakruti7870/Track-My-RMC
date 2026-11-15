@@ -47,7 +47,7 @@ test("matte light and dark surfaces keep body and secondary text readable", () =
 });
 
 test("customer Plants quick action uses the Material Symbols factory glyph", () => {
-  assert.match(read("app/customer/index.tsx"), /key: "plants", label: "Plants", symbol: "nearby-rmc-plants"/);
+  assert.match(read("app/customer/index.tsx"), /key: "plants", label: "Nearby Plants", symbol: "nearby-rmc-plants"/);
   assert.match(read("src/components/vector-symbols/materialSymbols.ts"), /"nearby-rmc-plants": "factory"/);
 });
 

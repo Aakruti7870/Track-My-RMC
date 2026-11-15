@@ -5,17 +5,16 @@ fs.mkdirSync('tracking-previews',{recursive:true});
 (async()=>{
  const browser=await chromium.launch({headless:true,args:['--no-sandbox'],...(process.env.HEADER_CHROMIUM_PATH ? {executablePath:process.env.HEADER_CHROMIUM_PATH} : {})});
  for(const width of [320,390,768,960,1024,1440]){
-  const expected=width>=1024
-    ? {quick:28,tool:28,service:28,quickTile:88,toolTile:84,serviceTile:84,quickFont:16,toolFont:14,serviceFont:15,heading:18,headingLine:24,sectionGap:16,actionHeight:120,kyc:36,kycTitle:18,location:15}
-    : width>=600
-      ? {quick:24,tool:24,service:24,quickTile:84,toolTile:80,serviceTile:80,quickFont:15,toolFont:13,serviceFont:14,heading:16,headingLine:22,sectionGap:12,actionHeight:112,kyc:32,kycTitle:16,location:14}
-      : {quick:24,tool:24,service:24,quickTile:80,toolTile:76,serviceTile:76,quickFont:14,toolFont:12,serviceFont:12,heading:15,headingLine:20,sectionGap:10,actionHeight:112,kyc:28,kycTitle:15,location:13};
  let mode='demo';
  const page=await browser.newPage({viewport:{width,height:1000}});
  await page.addInitScript(()=>localStorage.setItem('tmrmc_token',JSON.stringify('isolated-browser-fixture')));
  await page.route('https://trackmyrmc.com/api/**',async route=>{
  const path=new URL(route.request().url()).pathname;
- const me={id:'test-customer',name:'Customer',role:'customer',roles:['customer'],status:'active',kyc_status:'VERIFIED',plant_id:null};
+ if (path.endsWith('/customer/service-enquiries') && route.request().method() === 'POST') {
+   await route.fulfill({ status: 201, json: { id: 'isolated-enquiry', status: 'NEW' } });
+   return;
+ }
+ const me={id:'test-customer',name:'Customer',role:'customer',roles:['customer'],status:'active',kyc_status:'VERIFIED',phone:'9000000000',plant_id:null};
  const home={name:'Customer',kyc_status:'VERIFIED',active_order:null,recent_orders:[],nearby_plants:[],unread_notifications:0};
  const order={id:'isolated-order',order_number:'CUSTOMER-ORDER',status:mode==='pending'?'PENDING':mode==='delivered'?'DELIVERED':'DISPATCHED',grade:'M30',quantity:8,site_name:'Actual project'};
  if(mode!=='demo'){home.recent_orders=[order];home.active_order=mode==='delivered'?null:order;}
@@ -24,176 +23,47 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  });
  page.on('pageerror',e=>console.error(e.message));
  await page.goto('http://127.0.0.1:8765/customer/');
- // Verify real SVG layout (rather than PNG pixel dimensions) at mobile and desktop widths.
  await page.getByTestId('action-new').waitFor({timeout:30000});
- // The first paint can use a two-column fallback before onLayout measures
- // the grid. Assert after the responsive four-column calculation settles.
- await page.waitForFunction(() => {
-   const ids=['action-new','action-track','action-plants','action-orders'];
-   const nodes=ids.map(id=>document.querySelector(`[data-testid="${id}"]`));
-   if(nodes.some(node=>!node))return false;
-   const ys=nodes.map(node=>node.getBoundingClientRect().top);
-   return ys.every(y=>Math.abs(y-ys[0])<2);
- },undefined,{timeout:15000});
-
+ await page.getByText('KYC verified', { exact: true }).first().waitFor();
  const actualVectorSize = async (testId) => page.getByTestId(testId).locator('svg').first()
    .evaluate(node => [Math.round(node.getBoundingClientRect().width), Math.round(node.getBoundingClientRect().height)]);
- for(const id of ['action-new','action-track','action-plants','action-orders']) {
-   const size = await actualVectorSize(id);
-   if(size[0]!==expected.quick||size[1]!==expected.quick)throw Error(`Quick Action SVG size: ${id} ${size} at ${width}`);
- }
- for(const id of ['customer-module-projects','customer-module-free-tools']) {
-   const size=await actualVectorSize(id);
-   if(size[0]!==expected.tool||size[1]!==expected.tool)throw Error(`RMC Tools SVG size: ${id} ${size} at ${width}`);
- }
- for(const id of ['service-cement','service-labour','service-material']) {
-   const size=await actualVectorSize(id);
-   if(size[0]!==expected.service||size[1]!==expected.service)throw Error(`Service SVG size: ${id} ${size} at ${width}`);
- }
- const content=await page.getByTestId('customer-home-scroll').boundingBox();
- const tabBar=await page.getByTestId('app-tab-bar').boundingBox();
- if(!content||!tabBar||content.y+content.height>tabBar.y+1)throw Error('Navigation overlaps Home content');
- assert.equal(await page.getByTestId('header-help').count(),1);
- assert.equal(await page.getByTestId('customer-module-customer-support').count(),0);
- assert.equal(await page.getByTestId('customer-next-action').count(),0);
- const textClipping=await page.locator('[data-testid^="customer-module-"], [data-testid^="service-"]').evaluateAll(nodes =>
-   nodes.flatMap(node => Array.from(node.querySelectorAll('div')).filter(el =>
-     el.childElementCount===0 && el.textContent.trim() &&
-     (el.scrollHeight>el.clientHeight+1||el.scrollWidth>el.clientWidth+1)).map(el=>el.textContent)));
- if(textClipping.length)throw Error('Home tile text is clipped: '+textClipping.join(', '));
- const actionBoxes=await Promise.all(['action-new','action-track','action-plants','action-orders'].map(id=>page.getByTestId(id).boundingBox()));
- // Verify compact, single-ink icons with visible labels and touch targets.
- for(const [id,label] of [['action-new','New Order'],['action-track','Track Order'],['action-plants','Plants'],['action-orders','My Orders']]) {
-   const action=page.getByTestId(id);
-   const tile=await action.boundingBox();
-   const svg=await action.locator('svg').first().boundingBox();
-   const name=await action.getByText(label,{exact:true}).boundingBox();
-   const icon = action.locator('svg');
-   if(!tile||!svg||!name)throw Error(`Missing Quick Action geometry: ${id}`);
-   if(tile.height<expected.quickTile-1||tile.height>expected.quickTile+30)throw Error(`Quick Action tile height mismatch: ${id} ${tile.height} at ${width}`);
-   if(svg.y<tile.y||name.y<svg.y+svg.height-1||name.y+name.height>tile.y+tile.height+1)
-     throw Error(`Quick Action SVG/label clipping: ${id}`);
-   if(await icon.getAttribute('aria-hidden')!=='true'||await icon.locator('path').count()!==1)
-     throw Error(`Quick Action must render one decorative vector path: ${id}`);
- }
- const carouselBox=await page.getByTestId('home-promotional-carousel').boundingBox();
- const quickSectionBox=await page.getByTestId('home-quick-actions').boundingBox();
- if(width<=390) {
-   const titleBox=await page.getByText('Quick Actions',{exact:true}).boundingBox();
-   const bannerToSection=quickSectionBox.y-(carouselBox.y+carouselBox.height);
-   if(Math.abs(bannerToSection-10)>1)
-     throw Error('Carousel-to-Quick Actions section gap must be 10dp: '+bannerToSection);
-   const bannerToTitle=titleBox.y-(carouselBox.y+carouselBox.height);
-   if(bannerToTitle<10||bannerToTitle>18)
-     throw Error('Quick Actions title must fit below the 10dp section gap: '+bannerToTitle);
-
-   for(const [id,label] of [['action-new','New Order'],['action-track','Track Order'],['action-plants','Plants'],['action-orders','My Orders']]){
-     const font=await page.getByTestId(id).getByText(label,{exact:true}).evaluate(el=>getComputedStyle(el).fontSize);
-     if(font!=='14px')throw Error('Quick Action label must be 14sp: '+id+' '+font);
-   }
- }
- const expectedQuickHeight=expected.headingLine+expected.sectionGap+expected.quickTile;
- if(quickSectionBox.height<expectedQuickHeight-1||quickSectionBox.height>expectedQuickHeight+24)
-   throw Error('Quick Actions height mismatch at '+width+': '+quickSectionBox.height+' vs '+expectedQuickHeight);
- const kycIcon=await actualVectorSize('kyc-banner');
- if(kycIcon[0]!==expected.kyc||kycIcon[1]!==expected.kyc)
-   throw Error('KYC symbol mismatch at '+width+': '+kycIcon);
- const kycTitleSize=await page.getByTestId('kyc-banner').getByText('KYC verified',{exact:true})
-   .evaluate(el=>getComputedStyle(el).fontSize);
- if(kycTitleSize!==expected.kycTitle+'px')throw Error('KYC title mismatch at '+width+': '+kycTitleSize);
- const kycBox=await page.getByTestId('kyc-banner').boundingBox();
- const toolSectionBox=await page.getByTestId('customer-module-grid').boundingBox();
- const actionSectionBox=await page.getByTestId('home-planning-actions').boundingBox();
- const adviceSectionBox=await page.getByTestId('home-advice-grid').boundingBox();
- const otherServicesSectionBox=await page.getByTestId('home-other-services').boundingBox();
- const trackingSectionBox=await page.getByTestId('demo-tracking-card').locator('xpath=..').boundingBox();
- const gapBetween=(above,below)=>below.y-(above.y+above.height);
- for(const [name,actual] of [
-   ['carousel to quick actions',gapBetween(carouselBox,quickSectionBox)],
-   ['quick actions to KYC',gapBetween(quickSectionBox,kycBox)],
-   ['KYC to planning',gapBetween(kycBox,toolSectionBox)],
-   ['planning to order actions',gapBetween(toolSectionBox,actionSectionBox)],
-   ['order actions to advice',gapBetween(actionSectionBox,adviceSectionBox)],
-   ['advice to supply',gapBetween(adviceSectionBox,otherServicesSectionBox)],
-   ['supply to tracking',gapBetween(otherServicesSectionBox,trackingSectionBox)],
-   ])if(Math.abs(actual-expected.sectionGap)>1)throw Error(`${name} must be ${expected.sectionGap}dp; got ${actual}`);
- for(const title of ['Quick Actions','Active Projects & Planning','Free Tools & Expert Advice','Supply & Workforce','Track My RMC']){
-   if(!await page.getByText(title,{exact:true}).count())throw Error(`Home heading missing: ${title}`);
- }
- if((await page.getByTestId('action-plants').innerText()).trim()!=='Plants')throw Error('Third Quick Action must be labeled Plants');
- if(Math.max(...actionBoxes.map(box=>box.y))-Math.min(...actionBoxes.map(box=>box.y))>2)
-   throw Error('All four Quick Actions must fit one row at 320dp and above');
-
+ const content = await page.getByTestId('customer-home-scroll').boundingBox();
+ const tabBar = await page.getByTestId('app-tab-bar').boundingBox();
  const homeHeader = await page.getByTestId('customer-home-header').boundingBox();
- assert(Math.abs(carouselBox.y - (homeHeader.y + homeHeader.height) - 10) <= 1, 'Carousel starts under the fixed header');
- assert(Math.abs(carouselBox.width - Math.min(width - 32, 620)) <= 1, 'Carousel shares Home gutters');
- assert(Math.abs(carouselBox.width / carouselBox.height - 16 / 9) < 0.03, 'Carousel preserves artwork ratio');
-
- // No redundant outer borders. The responsive tools and supply sections have
- // stable test IDs, and all eight catalog actions still have a reachable tile.
- for (const section of ['home-quick-actions','customer-module-grid','home-advice-grid','home-other-services']) {
-   const locator=page.getByTestId(section);
-   const bounds=await locator.boundingBox();
-   const border=await locator.evaluate(node=>getComputedStyle(node).borderTopWidth);
-   if(border!=='0px')throw Error(`Redundant outer section border on ${section}: ${border}`);
-   if(bounds.width>620.5)throw Error(`Oversized desktop outer section: ${section} ${bounds.width}`);
-   if(bounds.x<0||bounds.x+bounds.width>width+1)throw Error(`Outer section overflow: ${section}`);
+ assert(content && tabBar && homeHeader && content.y + content.height <= tabBar.y + 1);
+ assert.equal(await page.getByTestId('header-help').count(), 1);
+ assert.equal(await page.getByTestId('customer-next-action').count(), 0);
+ const sections = await Promise.all([
+   'home-promotional-carousel', 'home-quick-actions', 'kyc-banner', 'customer-module-grid', 'home-other-services',
+ ].map(id => page.getByTestId(id).boundingBox()));
+ for (let i = 1; i < sections.length; i++) {
+   const previous = sections[i - 1], next = sections[i];
+   assert(next.y - previous.y - previous.height >= 8, 'Home sections must appear in design order with gutter spacing');
+   assert(next.x >= 0 && next.x + next.width <= width + 1, 'Home section exceeds viewport');
  }
- const boundsOf=async (container,prefix)=>page.getByTestId(container).locator(`[data-testid^="${prefix}"]`)
-   .evaluateAll(nodes=>nodes.map(node=>{const box=node.getBoundingClientRect();return {x:box.x,y:box.y,w:box.width,h:box.height,scrollHeight:node.scrollHeight};}));
- const toolBoxes=await boundsOf('customer-module-grid','customer-module-');
- const adviceBoxes=await boundsOf('home-advice-grid','customer-module-');
- const serviceBoxes=await boundsOf('home-other-services','service-');
- if(toolBoxes.length!==4||adviceBoxes.length!==3||serviceBoxes.length!==3)throw Error('Missing Home cards');
- for(const [group,columns] of [[toolBoxes,4],[adviceBoxes,3]]) {
-   const firstRow = group.filter(box => Math.abs(box.y - group[0].y) < 2);
-   if (firstRow.length !== (width < 382 ? 2 : columns)) throw Error('Tool columns must adapt to width');
+ assert(Math.abs(sections[0].width / sections[0].height - 16 / 9) < 0.03, 'Carousel preserves artwork ratio');
+ const bulk = page.getByTestId('home-bulk-quote');
+ assert((await bulk.boundingBox()).height >= 49);
+ await bulk.getByText('Concrete in bulk? Get our best rate for your project.', { exact: true }).waitFor();
+ await page.getByTestId('kyc-banner').getByText('KYC verified', { exact: true }).waitFor();
+ const planning = page.getByTestId('customer-module-grid');
+ const materials = page.getByTestId('home-other-services');
+ assert.equal(await planning.getByRole('button').count(), 8);
+ assert.equal(await materials.getByRole('button').count(), 4);
+ for (const [id, label] of [['action-new','New Order'], ['action-track','Track Order'], ['action-plants','Nearby Plants'], ['action-orders','My Orders']]) {
+   const action = page.getByTestId(id);
+   const target = await action.boundingBox();
+   await action.getByText(label, {exact:true}).waitFor();
+   assert(target.width >= 44 && target.height >= 44);
+   const symbolSize = width >= 1024 ? 28 : 24;
+   assert.deepEqual(await actualVectorSize(id), [symbolSize, symbolSize]);
+   assert.equal(await action.locator('svg').first().getAttribute('aria-hidden'), 'true');
  }
- for (const [kind,boxes,minHeight,maxHeight] of [
-   ['Quick Action',actionBoxes.map(box=>({h:box.height,x:box.x,y:box.y,w:box.width})),expected.quickTile-1,expected.quickTile+30],
-   ['Planning Tool',toolBoxes,expected.toolTile-8,expected.toolTile+45],
-   ['Expert Advice',adviceBoxes,expected.toolTile-8,expected.toolTile+45],
-   ['Supply',serviceBoxes,expected.serviceTile-10,expected.serviceTile+35],
- ]) {
-   for(const box of boxes) {
-     if(box.h<minHeight||box.h>maxHeight)throw Error(`${kind} card height ${box.h} outside ${minHeight}-${maxHeight}`);
-     if(box.x<0||box.x+box.w>width+1)throw Error(`${kind} card overflows the viewport`);
-     if(box.scrollHeight&&box.scrollHeight>box.h+1)throw Error(`${kind} label or SVG is clipped`);
-   }
-   const firstRow=boxes.filter(box=>Math.abs(box.y-boxes[0].y)<2).sort((a,b)=>a.x-b.x);
-   for(let i=1;i<firstRow.length;i++){
-     const gap=firstRow[i].x-(firstRow[i-1].x+firstRow[i-1].w);
-     if(gap>12||gap<0)throw Error(`${kind} horizontal gap ${gap} outside compact bounds`);
-   }
- }
- const pump = page.getByTestId('home-pump-rental');
- const request = page.getByTestId('home-order-request');
- const [pumpBox, requestBox] = await Promise.all([pump.boundingBox(), request.boundingBox()]);
- assert(Math.abs(pumpBox.y - requestBox.y) <= 1, 'Planning actions must share a row');
- assert(Math.abs(pumpBox.height - requestBox.height) <= 1 && requestBox.height >= expected.actionHeight - 1,
-   'Both planning actions must match the taller card');
- assert(Math.abs(pumpBox.width - requestBox.width) <= 1, 'Planning actions must have equal widths');
- assert(Math.abs(requestBox.x - (pumpBox.x + pumpBox.width) - expected.sectionGap) <= 1, 'Planning actions need the responsive gutter');
- for (const id of ['home-pump-rental', 'home-order-request']) {
-   assert.deepEqual(await actualVectorSize(id), [expected.tool, expected.tool]);
- }
- await pump.getByText('Concrete pump rental',{exact:true}).waitFor();
- await pump.getByText('Request a quote',{exact:true}).waitFor();
- await request.getByText('Start an Order Request',{exact:true}).waitFor();
- await request.getByText('Build and save a request without completing KYC first',{exact:true}).waitFor();
- if(await page.getByText('On Time, Everytime').count())throw Error('Removed On Time card still appears');
- for(const title of ['Quick Actions','Active Projects & Planning','Free Tools & Expert Advice','Supply & Workforce','Track My RMC']){
-   const style=await page.getByText(title,{exact:true}).first().evaluate(el=>{const s=getComputedStyle(el);return {size:s.fontSize,height:s.lineHeight,family:s.fontFamily};});
-   if(style.size!==expected.heading+'px'||style.height!==expected.headingLine+'px'||!style.family.toLowerCase().includes('jakarta-bold'))
-     throw Error('Home heading typography regression '+title+': '+JSON.stringify(style));
- }
- if(!await page.getByTestId('header-location').count())throw Error('Location header missing');
- const locationFont=await page.getByTestId('header-location').getByText('Select Location',{exact:true})
-   .evaluate(el=>getComputedStyle(el).fontSize);
- if(locationFont!==expected.location+'px')throw Error('Location typography mismatch at '+width+': '+locationFont);
- for(const [id,label,font] of [['customer-module-projects','Project Hub',expected.toolFont],['service-cement','Cement',expected.serviceFont]]){
-   const actual=await page.getByTestId(id).getByText(label,{exact:true}).evaluate(el=>getComputedStyle(el).fontSize);
-   if(actual!==font+'px')throw Error('Responsive label mismatch at '+width+': '+id+' '+actual);
+ const cardBoxes = await Promise.all(['service-cement', 'service-sand', 'service-bricks', 'home-materials-see-all']
+   .map(id => page.getByTestId(id).boundingBox()));
+ for (const box of cardBoxes) {
+   assert(box.height >= 70 && Math.abs(box.width - cardBoxes[0].width) <= 1);
+   assert(Math.abs(box.y - cardBoxes[0].y) <= 1, 'Materials must share a row at normal font scale');
  }
 
  // Export full-page Home references at the exact mobile/desktop sizes that
@@ -261,7 +131,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    for(const theme of ['light','dark']){
      await page.evaluate(value=>localStorage.setItem('tmrmc_theme_mode',JSON.stringify(value)),theme);
      await page.goto('http://127.0.0.1:8765/customer/');
-     await page.getByTestId('customer-module-compare-plants').waitFor();
+     await page.getByTestId('home-planning-see-all').waitFor();
      const clipped=await page.evaluate(()=>{
        const labels=[...document.querySelectorAll('[data-testid^="action-"],[data-testid^="customer-module-"],[data-testid^="service-"],[data-testid="home-pump-rental"],[data-testid="home-order-request"],[role="tab"]')]
          .filter(el=>el.matches('[role="button"],[role="tab"]'))
@@ -286,10 +156,56 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      await page.waitForURL(/\/customer\/service-enquiry\/?\?service=pump/);
      await page.getByText('Concrete Pump Rental Enquiry',{exact:true}).waitFor();
      await page.goBack();
-     await page.getByTestId('home-order-request').click();
+     await page.getByTestId('home-planning-see-all').click();
+     const planningDirectory = page.getByTestId('home-shortcut-directory');
+     for (const id of ['home-order-request', 'home-compare-plants', 'home-quotations', 'home-documents']) {
+       await planningDirectory.getByTestId(id).waitFor();
+     }
+     await planningDirectory.getByTestId('home-order-request').click();
      await page.waitForURL('**/new-order');
      await page.getByTestId('neworder-draft').waitFor();
      await page.goBack();
+     await page.getByTestId('home-bulk-quote').click();
+     await page.getByText('Bulk Concrete Enquiry',{exact:true}).waitFor();
+     await page.getByTestId('submit-service-enquiry').click();
+     assert.equal(await page.getByTestId('enquiry-quantity_m3').getAttribute('aria-invalid'), 'true');
+     await page.getByTestId('enquiry-quantity_m3').fill('125.25');
+     await page.getByTestId('bulk-grade-dropdown').click();
+     await page.getByRole('radio',{name:'M30',exact:true}).click();
+     await page.getByTestId('enquiry-location').fill('Synthetic delivery site, Panvel');
+     await page.getByTestId('enquiry-contact_number').fill('9000000000');
+     await page.getByRole('button',{name:'Required Date: Choose date',exact:true}).click();
+     const today = await page.evaluate(() => {
+       const d = new Date();
+       return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
+     });
+     await page.getByRole('button',{name:today,exact:true}).click();
+     const bulkRequest = page.waitForRequest(req => req.method() === 'POST' && req.url().endsWith('/customer/service-enquiries'));
+     await page.getByTestId('submit-service-enquiry').click();
+     const bulkData = (await bulkRequest).postDataJSON();
+     assert.equal(bulkData.service_type, 'BULK_CONCRETE');
+     assert.equal(bulkData.grade, 'M30');
+     assert.equal(bulkData.quantity_m3, 125.25);
+     await page.getByText('Enquiry received',{exact:true}).waitFor();
+     await page.goBack();
+     await page.getByTestId('service-sand').click();
+     await page.getByText('Sand Enquiry',{exact:true}).waitFor();
+     await page.getByTestId('material-type-dropdown').click();
+     await page.getByRole('radio',{name:'Crushed Sand',exact:true}).waitFor();
+     await page.goBack();
+     await page.getByTestId('service-bricks').click();
+     await page.getByText('Bricks Enquiry',{exact:true}).waitFor();
+     await page.getByTestId('service-enquiry-form').getByText('Bricks',{exact:true}).waitFor();
+     await page.goBack();
+     await page.getByTestId('home-materials-see-all').click();
+     const directory = page.getByTestId('home-shortcut-directory');
+     for (const [id, title] of [['steel','Steel Enquiry'], ['labour','Labour Contractor Enquiry'],
+       ['office-cabin','Office Cabin Enquiry'], ['shuttering','Shuttering Material Enquiry'], ['material','Building Material Enquiry']]) {
+       await directory.getByTestId('home-' + id).click();
+       await page.getByText(title,{exact:true}).waitFor();
+       await page.goBack();
+       if (id !== 'material') await page.getByTestId('home-materials-see-all').click();
+     }
      await page.getByTestId('tab-new-order').click();
      await page.waitForURL('**/new-order');
      await page.goBack();

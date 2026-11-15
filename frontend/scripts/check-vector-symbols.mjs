@@ -64,7 +64,7 @@ assert.match(renderer, /<Path d=\{materialSymbolPaths\[materialSymbolNames\[name
 assert.match(renderer, /\baria-hidden\b/);
 assert.doesNotMatch(renderer, /SvgXml|[Gg]radient|warmAccent/);
 
-const home = read("app/customer/index.tsx");
+const home = read("src/navigation/customerHome.ts");
 const homeIcons = [materialSymbolNames["new-order"], materialSymbolNames["live-order-tracking"],
   materialSymbolNames["nearby-rmc-plants"], materialSymbolNames["my-orders"],
   materialSymbolNames.cement, materialSymbolNames["labour-contractor"], materialSymbolNames["building-material"]];
