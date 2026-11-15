@@ -195,7 +195,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      await page.goBack();
      await page.getByTestId('service-bricks').click();
      await page.getByText('Bricks Enquiry',{exact:true}).waitFor();
-     await page.getByText('Bricks',{exact:true}).waitFor();
+     await page.getByTestId('service-enquiry-form').getByText('Bricks',{exact:true}).waitFor();
      await page.goBack();
      await page.getByTestId('home-materials-see-all').click();
      const directory = page.getByTestId('home-shortcut-directory');
