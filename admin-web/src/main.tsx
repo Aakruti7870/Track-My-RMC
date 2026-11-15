@@ -1449,12 +1449,12 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
               <textarea readOnly value={enrollment.otpauth_uri} rows={3} style={{ ...inputStyle, resize: 'vertical', fontFamily: 'monospace' }} />
             </details>
             {stage === 'mfa-enroll' && (
-            <div style={{ marginTop: 16, padding: 14, borderRadius: 10, border: '1px solid #C05621', background: '#2C170A' }}>
+            <div style={{ marginTop: 16, padding: 14, borderRadius: 10, border: '1px solid var(--tm-control-outline)', background: 'var(--tm-selected-surface)' }}>
               <strong style={{ color: 'var(--tm-warning-text)' }}>Save these recovery codes now</strong>
               <p style={{ margin: '6px 0 10px', color: 'var(--tm-warning-text)', fontSize: 13 }}>Each code is single-use. This screen will not show them again after setup.</p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
                 {enrollment.recovery_codes.map((recoveryCode) => (
-                  <code key={recoveryCode} style={{ padding: 8, background: '#1c1917', borderRadius: 6, textAlign: 'center' }}>{recoveryCode}</code>
+                  <code key={recoveryCode} style={{ padding: 8, background: 'var(--tm-raised)', color: 'var(--tm-text)', borderRadius: 6, textAlign: 'center' }}>{recoveryCode}</code>
                 ))}
               </div>
               <label style={{ display: 'flex', gap: 9, alignItems: 'flex-start', marginTop: 12, lineHeight: 1.4 }}>
