@@ -13,11 +13,11 @@ fs.mkdirSync(out, { recursive: true });
         localStorage.setItem('tmrmc_token', JSON.stringify('isolated-owner-browser-test'));
         localStorage.setItem('tmrmc_theme_mode', JSON.stringify(scheme));
       }, { scheme });
-      const page = await context.newPage(), errors = [], requests = [];
+      const page = await context.newPage(), errors = [];
       let populated = false, failing = false;
       page.on('pageerror', error => errors.push(error.message));
       await page.route('**/api/**', async route => {
-        const url = new URL(route.request().url()), path = url.pathname; requests.push(url);
+        const url = new URL(route.request().url()), path = url.pathname;
         let json = {};
         if (path.endsWith('/me')) json = { id: 'isolated-owner', name: 'TrackMyRMC Play Review Owner', role: 'plant_owner', roles: ['plant_owner'], status: 'active', kyc_status: 'pending', plant_id: null };
         else if (path.endsWith('/owner/home')) json = { plant_count: 0, plants: [], cards: { todays_orders: 0, dispatched_loads: 0, active_staff: 0, pending_approvals: 0 }, pending_orders: [] };
@@ -89,14 +89,21 @@ fs.mkdirSync(out, { recursive: true });
       await page.waitForFunction(() => location.search.includes('status=pending'));
       await page.getByTestId('owner-filter-processing').click();
       await page.waitForFunction(() => location.search.includes('status=processing'));
+      const searchRequest = page.waitForRequest(request => {
+        const url = new URL(request.url());
+        return url.pathname.endsWith('/owner/orders') && url.searchParams.get('q') === 'Site literal %'
+          && url.searchParams.get('status') === 'processing' && url.searchParams.get('limit') === '30';
+      });
       await page.getByTestId('owner-order-search').fill('Site literal %');
-      await page.waitForTimeout(450);
-      assert(requests.some(url => url.pathname.endsWith('/owner/orders') && url.searchParams.get('q') === 'Site literal %' && url.searchParams.get('status') === 'processing' && url.searchParams.get('limit') === '30'));
+      await searchRequest;
       await page.getByRole('button', { name: 'Order filters', exact: true }).click();
       await page.getByRole('textbox', { name: 'Concrete grade', exact: true }).fill('M25');
+      const filterRequest = page.waitForRequest(request => {
+        const url = new URL(request.url());
+        return url.pathname.endsWith('/owner/orders') && url.searchParams.get('grade') === 'M25';
+      });
       await page.getByRole('button', { name: 'Apply filters', exact: true }).click();
-      await page.waitForTimeout(200);
-      assert(requests.some(url => url.searchParams.get('grade') === 'M25'));
+      await filterRequest;
       await go('/owner/more?directory=1');
       assert.equal(await page.getByTestId('role-module-directory').locator('[data-testid^="role-module-"]').count(), 4);
       await go('/owner/operations');
