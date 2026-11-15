@@ -94,7 +94,7 @@ export default function NewOrder() {
   const [time, setTime] = useState<string | null>(params.deliveryTime || "10:00");
   const [siteName, setSiteName] = useState(params.siteName || "");
   const [address, setAddress] = useState(params.siteAddress || "");
-  const [contact, setContact] = useState(user?.verified_name || user?.name || "");
+  const [contact, setContact] = useState(user?.verified_name || (user?.needs_kyc_name ? "" : user?.name || ""));
   const [mobile, setMobile] = useState(user?.phone || "");
   const [notes, setNotes] = useState("");
   const [pumpRequired, setPumpRequired] = useState(false);

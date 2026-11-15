@@ -1,12 +1,13 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { AppState, Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { apiPost } from "@/src/api/client";
+import { apiErrorDetail, apiPost } from "@/src/api/client";
 import { useAuth } from "@/src/auth/AuthContext";
+import { formatAccountMobile } from "@/src/auth/phone";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { useToast } from "@/src/components/ui/Toast";
 import { useGet } from "@/src/hooks/useApi";
@@ -14,32 +15,27 @@ import { AppText } from "@/src/components/ui/AppText";
 import { Card } from "@/src/components/ui/Card";
 import { Button } from "@/src/components/ui/Button";
 import { Skeleton } from "@/src/components/ui/Skeleton";
-import { control, fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
+import { control, radius, spacing } from "@/src/theme/tokens";
 import { markKycReturnPending, saveKycDestination, takeKycDestination } from "@/src/kyc/returnContext";
 
 const STATE_META: Record<string, { icon: keyof typeof Ionicons.glyphMap; title: string; body: string; tone: "success" | "warning" | "error" | "info" }> = {
-  VERIFIED: { icon: "shield-checkmark", title: "KYC Verified", body: "You can place orders using the app.", tone: "success" },
-  IN_PROGRESS: { icon: "phone-portrait-outline", title: "Complete DigiLocker", body: "After giving consent in DigiLocker, use Check Verification to confirm without repeating OTP.", tone: "warning" },
-  PENDING: { icon: "hourglass-outline", title: "Confirmation pending", body: "TrackMyRMC is checking the completed identity evidence. You do not need to submit another verification.", tone: "warning" },
-  REJECTED: { icon: "close-circle", title: "Verification rejected", body: "Something didn't match. Please retry.", tone: "error" },
-  REVIEW_NEEDED: { icon: "alert-circle-outline", title: "Identity details did not match", body: "Your DigiLocker name or mobile did not match this account. Retry, or contact support for help.", tone: "warning" },
-  DOCUMENT_NOT_SHARED: { icon: "document-text-outline", title: "Aadhaar not shared", body: "DigiLocker completed, but Aadhaar document consent was not confirmed. You can retry DigiLocker or contact support.", tone: "warning" },
-  DOCUMENT_UNAVAILABLE: { icon: "cloud-offline-outline", title: "DigiLocker document unavailable", body: "Your DigiLocker session completed, but the provider denied Aadhaar document retrieval. This is not an identity rejection. Retry later or contact support.", tone: "warning" },
-  REQUIRES_REVERIFICATION: { icon: "refresh", title: "Re-verification required", body: "Please start DigiLocker again to continue.", tone: "warning" },
-  NOT_STARTED: { icon: "id-card-outline", title: "Verify your identity", body: "Complete KYC to unlock live concrete ordering.", tone: "info" },
+  VERIFIED: { icon: "shield-checkmark", title: "KYC verified", body: "You can now place concrete orders.", tone: "success" },
+  IN_PROGRESS: { icon: "phone-portrait-outline", title: "Verification in progress", body: "If you have shared Aadhaar in DigiLocker, check verification here.", tone: "warning" },
+  PENDING: { icon: "hourglass-outline", title: "Confirmation pending", body: "TrackMyRMC is checking your DigiLocker verification.", tone: "warning" },
+  REJECTED: { icon: "close-circle", title: "Verification rejected", body: "Contact support if you need help before trying again.", tone: "error" },
+  REVIEW_NEEDED: { icon: "alert-circle-outline", title: "Identity details need attention", body: "Check that DigiLocker contains your own identity details, or contact support.", tone: "warning" },
+  MOBILE_MISMATCH: { icon: "call-outline", title: "Mobile numbers differ", body: "Automatic KYC requires the mobile in your DigiLocker profile to match your TrackMyRMC login mobile. If you use different numbers, contact support before retrying.", tone: "warning" },
+  PROFILE_INCOMPLETE: { icon: "person-outline", title: "DigiLocker profile incomplete", body: "DigiLocker could not confirm your name, mobile or Aadhaar. Check your DigiLocker profile or contact support.", tone: "warning" },
+  DOCUMENT_NOT_SHARED: { icon: "document-text-outline", title: "Aadhaar sharing required", body: "Start DigiLocker again and allow Aadhaar sharing to continue.", tone: "warning" },
+  DOCUMENT_UNAVAILABLE: { icon: "cloud-offline-outline", title: "DigiLocker document unavailable", body: "DigiLocker could not share your Aadhaar with TrackMyRMC. Try again later or contact support.", tone: "warning" },
+  REQUIRES_REVERIFICATION: { icon: "refresh", title: "Start verification again", body: "Open a new DigiLocker session to continue.", tone: "warning" },
+  NOT_STARTED: { icon: "id-card-outline", title: "Verify your identity", body: "Use a DigiLocker profile with the same mobile as your TrackMyRMC account and allow Aadhaar sharing to enable live ordering.", tone: "info" },
 };
-
-const STEPS = [
-  "Verify your identity via DigiLocker / approved KYC",
-  "We confirm your details against government records",
-  "Successful Live DigiLocker confirmation unlocks ordering automatically",
-];
 
 type KycStatusResponse = {
   status: string;
   provider?: string;
   refresh_failed?: boolean;
-  refresh_stage?: "AUTHENTICATE" | "SESSION_STATUS" | "AADHAAR_DOCUMENT" | "IDENTITY_PROFILE" | "FINALIZE" | "SESSION_INIT";
   retry_after_seconds?: number;
 };
 
@@ -50,10 +46,14 @@ export default function KycScreen() {
   const toast = useToast();
   const insets = useSafeAreaInsets();
   const { hydrating, token, user, refreshMe } = useAuth();
-  const { data, loading, error, refetch } = useGet<KycStatusResponse>("/customer/kyc");
+  const { data, loading, error, refetch } = useGet<KycStatusResponse>(
+    user?.role === "customer" ? "/customer/kyc" : null,
+  );
   const [submitting, setSubmitting] = useState(false);
+  const starting = useRef(false);
   const [refreshing, setRefreshing] = useState(false);
   const [active, setActive] = useState(AppState.currentState !== "background");
+  const pollAttempts = useRef(0);
   const [returningFromProvider, setReturningFromProvider] = useState(returned === "1");
   // A resolved refreshMe() promise does not prove /me succeeded: transient
   // failures are handled within AuthContext. Verify the actual profile state.
@@ -94,12 +94,12 @@ export default function KycScreen() {
     // but limit retries so genuine review-pending Test sessions do not loop.
     const confirming = data?.status === "IN_PROGRESS"
       || (returningFromProvider && data?.status === "PENDING");
+    if (!confirming) pollAttempts.current = 0;
     if (!token || !active || !confirming || data?.provider === "unavailable") return;
     let cancelled = false;
-    let attempts = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const poll = async () => {
-      if (cancelled || attempts++ >= 30) return;
+      if (cancelled || pollAttempts.current++ >= 30) return;
       await refetch();
       // Provider evidence can lag behind the browser return. Failed reads
       // back off rather than causing a burst of provider requests and 429s.
@@ -114,7 +114,7 @@ export default function KycScreen() {
   // effective VERIFIED status and a verified name. AuthContext intentionally
   // suppresses transient refresh errors, so promise settlement is not proof.
   // Cap retries to avoid an endless loop when the profile cannot be loaded.
-  const profileRefreshAttempts = React.useRef(0);
+  const profileRefreshAttempts = useRef(0);
   useEffect(() => {
     if (data?.status !== "VERIFIED") {
       profileRefreshAttempts.current = 0;
@@ -129,7 +129,7 @@ export default function KycScreen() {
       try {
         await refreshMe();
       } catch {
-        // Remain on KYC until an authenticated /me refresh really succeeds.
+        // Retry profile synchronization before navigating.
       }
       if (!cancelled && profileRefreshAttempts.current < 8) {
         timer = setTimeout(() => { void syncProfile(); }, 2500);
@@ -145,7 +145,7 @@ export default function KycScreen() {
   // Make navigation independent of the timing of the provider-return link:
   // verification and the 'returned' route flag can arrive in either order.
   // Do not open Customer Home before /me reflects the verified identity.
-  const navigating = React.useRef(false);
+  const navigating = useRef(false);
   useEffect(() => {
     if (data?.status !== "VERIFIED" || !profileSynced || !returningFromProvider || !user || navigating.current) return;
     navigating.current = true;
@@ -161,14 +161,20 @@ export default function KycScreen() {
     })();
   }, [data?.status, profileSynced, returningFromProvider, user, router]);
 
-  const status = data?.status || "NOT_STARTED";
+  const accountStatus = user?.kyc_status || "NOT_STARTED";
+  const lastStatus = accountStatus === "NOT_STARTED" ? user?.kyc_attempt_status || accountStatus : accountStatus;
+  const status = data?.status || lastStatus;
   const providerUnavailable = data?.provider === "unavailable" && status !== "VERIFIED";
-  const meta = STATE_META[status] || STATE_META.NOT_STARTED;
+  const meta = providerUnavailable
+    ? { ...STATE_META.PROFILE_INCOMPLETE, title: "DigiLocker unavailable", body: "Try checking again in a few minutes." }
+    : STATE_META[status] || STATE_META.NOT_STARTED;
+  const mobile = formatAccountMobile(user?.phone || user?.mobile);
   const tone = { success: colors.success, warning: colors.warning, error: colors.error, info: colors.brand }[meta.tone];
 
   const startKyc = async () => {
     if (!token || providerUnavailable) return;
-    if (!user || user.role !== "customer") return;
+    if (!user || user.role !== "customer" || starting.current) return;
+    starting.current = true;
     setSubmitting(true);
     try {
       const destination = draftId ? { kind: "order" as const, draftId }
@@ -180,12 +186,14 @@ export default function KycScreen() {
       if (!result.authorization_url?.startsWith("https://")) {
         throw { detail: "DigiLocker did not return a secure authorization link" };
       }
-      toast("Opening DigiLocker securely", "success");
+      pollAttempts.current = 0;
       setReturningFromProvider(true);
       await Linking.openURL(result.authorization_url);
-    } catch (e: any) {
-      toast(e.detail || "Could not start KYC", "error");
+    } catch (error: unknown) {
+      toast(apiErrorDetail(error, "Could not open DigiLocker"), "error");
+      void refetch();
     } finally {
+      starting.current = false;
       setSubmitting(false);
     }
   };
@@ -193,7 +201,9 @@ export default function KycScreen() {
   const refreshStatus = async () => {
     setRefreshing(true);
     try {
+      pollAttempts.current = 0;
       await refetch();
+      if (status === "VERIFIED") await refreshMe();
     } finally {
       setRefreshing(false);
     }
@@ -205,23 +215,28 @@ export default function KycScreen() {
     else router.replace("/customer");
   };
 
-  const ctaLabel =
-    status === "NOT_STARTED"
-      ? "Continue with DigiLocker"
-      : status === "IN_PROGRESS"
-      ? "Check Verification"
-      : status === "PENDING"
-      ? "Check Verification"
-      : status === "VERIFIED"
-      ? "Back to Home"
-      : "Retry DigiLocker";
-
-  const onCta =
-    status === "VERIFIED"
-      ? () => router.replace("/customer")
-      : status === "PENDING" || status === "IN_PROGRESS"
-      ? refreshStatus
-      : startKyc;
+  const checking = status === "PENDING" || status === "IN_PROGRESS" || Boolean(error);
+  const showSupportLink = status === "PROFILE_INCOMPLETE" || status === "REVIEW_NEEDED" || status === "REJECTED";
+  const action = (() => {
+    if (providerUnavailable) {
+      return { id: "kyc-refresh-availability", label: "Check DigiLocker Availability", run: refreshStatus };
+    }
+    if (status === "VERIFIED" && profileSynced && !error) {
+      const fromProfile = origin === "profile";
+      return {
+        id: "kyc-cta",
+        label: fromProfile ? "Back to profile" : "Back to Home",
+        run: () => router.replace(fromProfile ? "/customer/more" : "/customer"),
+      };
+    }
+    if (checking || status === "VERIFIED") {
+      return { id: "kyc-cta", label: "Check verification", run: refreshStatus };
+    }
+    if (status === "MOBILE_MISMATCH") {
+      return { id: "kyc-cta", label: "Contact support", run: () => router.push("/support") };
+    }
+    return { id: "kyc-cta", label: status === "NOT_STARTED" ? "Continue with DigiLocker" : "Retry DigiLocker", run: startKyc };
+  })();
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
@@ -239,72 +254,32 @@ export default function KycScreen() {
           <Skeleton height={200} style={{ borderRadius: radius.lg }} />
         ) : (
           <>
-            <Card style={{ alignItems: "center", gap: spacing.md, paddingVertical: spacing.xl, borderColor: tone + "66" }}>
-              <View style={[styles.statusIcon, { backgroundColor: tone }]}>
+            <Card testID={providerUnavailable ? "kyc-unavailable" : "kyc-status"} style={{ gap: spacing.md, paddingVertical: spacing.xl, borderColor: tone + "66" }}>
+              <View style={[styles.statusIcon, { backgroundColor: tone, alignSelf: "center" }]}>
                 <Ionicons name={meta.icon} size={34} color={scheme === "dark" ? "#121212" : "#FFFFFF"} />
               </View>
               <AppText variant="heading" center>{meta.title}</AppText>
               <AppText variant="bodyMuted" center>{meta.body}</AppText>
-              {status === "VERIFIED" ? (
-                <View style={[styles.verifiedPill, { backgroundColor: colors.success }]}>
-                  <Ionicons name="checkmark-circle" size={16} color="#121212" />
-                  <AppText style={{ fontFamily: fonts.bold, fontSize: fontSize.sm, color: "#121212" }}>
-                    YOU CAN PLACE ORDERS USING APP
-                  </AppText>
-                </View>
+              {mobile && status !== "VERIFIED" ? (
+                <AppText variant="caption" center testID="kyc-login-mobile">{`TrackMyRMC login mobile · ${mobile}`}</AppText>
+              ) : null}
+              {data?.refresh_failed || error ? (
+                <AppText variant="caption" center color={colors.warning}>
+                  {error || "Confirmation is temporarily unavailable. Check verification again shortly."}
+                </AppText>
               ) : null}
             </Card>
 
-            {providerUnavailable ? (
-              <Card testID="kyc-unavailable" style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, borderColor: colors.warning + "66" }}>
-                <Ionicons name="information-circle-outline" size={20} color={colors.warning} />
-                <AppText variant="caption" style={{ flex: 1 }}>
-                  DigiLocker verification is temporarily unavailable. Your existing KYC status is unchanged. You can check again later; do not share identity documents with anyone outside the official verification process.
-                </AppText>
-              </Card>
-            ) : null}
-
-            {data?.refresh_failed ? (
-              <Card style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, borderColor: colors.warning + "66" }}>
-                <Ionicons name="warning-outline" size={18} color={colors.warning} />
-                <AppText variant="caption" style={{ flex: 1 }}>
-                  DigiLocker confirmation is temporarily unavailable{data.refresh_stage ? ` (step: ${data.refresh_stage.replace(/_/g, " ").toLowerCase()})` : ""}. Your KYC has not been rejected. Check Verification again; do not restart DigiLocker while your consent is being processed.
-                </AppText>
-              </Card>
-            ) : null}
-
-            {status !== "VERIFIED" ? (
-              <View style={{ gap: spacing.md }}>
-                <AppText variant="heading">How it works</AppText>
-                {STEPS.map((s, i) => (
-                  <View key={i} style={styles.step}>
-                    <View style={[styles.stepNum, { backgroundColor: colors.brandSoft }]}>
-                      <AppText style={{ fontFamily: fonts.bold, color: colors.onBrandSoft, fontSize: fontSize.sm }}>{i + 1}</AppText>
-                    </View>
-                    <AppText variant="body" style={{ flex: 1 }}>{s}</AppText>
-                  </View>
-                ))}
-                <Card style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center" }}>
-                  <Ionicons name="lock-closed-outline" size={18} color={colors.onSurfaceTertiary} />
-                  <AppText variant="caption" style={{ flex: 1 }}>
-                    Your documents are encrypted and used only for verification.
-                  </AppText>
-                </Card>
-              </View>
-            ) : null}
-
-            {error ? <AppText variant="caption" color={colors.error}>{error}</AppText> : null}
-
-            {providerUnavailable ? (
-              <Button testID="kyc-refresh-availability" label="Check DigiLocker Availability" variant="outline" onPress={refreshStatus} loading={refreshing} />
-            ) : (
-              <Button testID="kyc-cta" label={ctaLabel} onPress={onCta} loading={submitting || (status === "PENDING" && refreshing)} />
-            )}
-
+            <Button testID={action.id} label={action.label} onPress={action.run} loading={submitting || refreshing} />
             {!providerUnavailable && status === "IN_PROGRESS" ? (
-              <Button testID="kyc-restart" label="Restart DigiLocker (replaces this attempt)" variant="outline" onPress={startKyc} loading={submitting} />
+              <Button testID="kyc-restart" label="Start a new DigiLocker session" variant="outline" onPress={startKyc} loading={submitting} />
             ) : null}
-            {status === "REVIEW_NEEDED" ? <Button label="Contact Support" variant="outline" onPress={() => router.push("/support")} /> : null}
+            {status === "MOBILE_MISMATCH" && !providerUnavailable && !error ? (
+              <Button label="Retry DigiLocker" variant="outline" onPress={startKyc} loading={submitting} />
+            ) : null}
+            {showSupportLink ? (
+              <Button label="Contact support" variant="outline" onPress={() => router.push("/support")} />
+            ) : null}
           </>
         )}
       </ScrollView>
@@ -316,7 +291,4 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth },
   iconBtn: { width: control.minTouch, height: control.minTouch, borderRadius: radius.md, alignItems: "center", justifyContent: "center", borderWidth: 1 },
   statusIcon: { width: 72, height: 72, borderRadius: 36, alignItems: "center", justifyContent: "center" },
-  verifiedPill: { flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.pill },
-  step: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  stepNum: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center" },
 });
