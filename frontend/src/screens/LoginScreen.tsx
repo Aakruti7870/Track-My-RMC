@@ -601,7 +601,7 @@ export default function LoginScreen() {
         <LinearGradient pointerEvents="none" colors={[look.heroJoin, colors.canvas, look.canvas]}
           locations={colors.isDark ? [0, 0.24, 1] : [0, 0.74, 1]} style={styles.heroFade} />
 
-        <View style={[styles.loginShell, { backgroundColor: colors.surfaceSecondary, shadowColor: colors.shadow }]}>
+        <View testID="login-card" style={[styles.loginShell, { backgroundColor: colors.surfaceSecondary, shadowColor: colors.shadow }]}>
           <LinearGradient pointerEvents="none" colors={look.card} style={styles.sheetFill}
             start={{ x: 0, y: 0 }} end={{ x: 0.9, y: 1 }} />
           <Svg width="100%" height="100%" pointerEvents="none" style={StyleSheet.absoluteFill} aria-hidden accessible={false}>
@@ -617,13 +617,13 @@ export default function LoginScreen() {
 
           <View accessibilityRole="tablist" style={[styles.segmented, { backgroundColor: look.rail, borderColor: look.railOutline }]}>
             {([
-              { key: "user", icon: "person-outline", label: "USER LOGIN" },
-              { key: "plant", icon: "people-outline", label: "PLANT STAFF" },
-            ] as const).map(({ key, icon, label }) => {
+              { key: "user", testID: "login-user-tab", icon: "person-outline", label: "USER LOGIN" },
+              { key: "plant", testID: "login-plant-tab", icon: "people-outline", label: "PLANT STAFF" },
+            ] as const).map(({ key, testID, icon, label }) => {
               const selected = mode === key;
               return (
-                <Pressable key={key} testID={`login-${key}-tab`}
-                  accessibilityRole="tab" accessibilityState={{ selected }} aria-selected={selected} onPress={() => resetEntry(key)}
+                <Pressable key={key} testID={testID}
+                  accessibilityRole="tab" accessibilityLabel={label} accessibilityState={{ selected }} aria-selected={selected} onPress={() => resetEntry(key)}
                   style={[styles.segment, selected && { borderColor: look.tabOutline }]}>
                   {selected ? <LinearGradient pointerEvents="none" colors={look.tab}
                     start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} /> : null}
@@ -670,7 +670,7 @@ export default function LoginScreen() {
             testID="login-review-access"
             accessibilityRole="button"
             accessibilityLabel="Google Play Reviewer Access"
-            onPress={() => router.push("/review-access" as any)}
+            onPress={() => router.push("/review-access")}
             style={[styles.reviewAccess, { backgroundColor: colors.surfaceSecondary, borderColor: colors.controlOutline }]}
           >
             <Ionicons name="shield-checkmark-outline" size={20} color={look.reviewer} />

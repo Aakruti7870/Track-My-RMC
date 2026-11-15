@@ -37,9 +37,8 @@ describe("optimized login banner assets and non-cropping layout", () => {
 
   it("retains login card width, hero seam, and existing options", () => {
     assert.match(screen, /loginShell:\s*\{\s*width:\s*"92%",\s*maxWidth:\s*470,\s*marginTop:\s*-16/);
-    assert.ok(screen.includes('testID={`login-${key}-tab`}'));
-    assert.match(screen, /key: "user".*label: "USER LOGIN"/);
-    assert.match(screen, /key: "plant".*label: "PLANT STAFF"/);
+    assert.match(screen, /key: "user", testID: "login-user-tab".*label: "USER LOGIN"/);
+    assert.match(screen, /key: "plant", testID: "login-plant-tab".*label: "PLANT STAFF"/);
     assert.ok(screen.includes('testID="login-review-access"'));
   });
   it("links the Plant Staff work email to the new Plant Owner registration form", () => {

@@ -121,7 +121,7 @@ if (directRoleRouteCount < 2) {
   failures.push("Successful login flows must route using the server-provided me.role");
 }
 
-if (!login.includes('testID="login-user-tab"') || !login.includes('testID="login-plant-tab"')) {
+if (!['login-user-tab', 'login-plant-tab'].every(testID => login.includes(`"${testID}"`))) {
   failures.push("Login must expose separate User Login and Plant Staff Login tabs");
 }
 
@@ -133,42 +133,43 @@ if (!login.includes('testID="login-plant-email-input"') || !login.includes('test
   failures.push("Plant Staff Login must start from the approved work email");
 }
 
-if (!login.includes('testID="login-review-access"') || !login.includes('router.push("/review-access" as any)')) {
-  failures.push("Google Play reviewer access must be discoverable from the login landing screen");
+// Validate the reviewer action within the login card, before the legal links.
+const loginTree = ts.createSourceFile("login.tsx", login, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+const byTestId = new Map();
+function collectTestIds(node) {
+  if (ts.isJsxElement(node)) {
+    const id = node.openingElement.attributes.properties.find(attribute =>
+      ts.isJsxAttribute(attribute) && attribute.name.getText(loginTree) === "testID");
+    if (id?.initializer && ts.isStringLiteral(id.initializer)) byTestId.set(id.initializer.text, node);
+  }
+  ts.forEachChild(node, collectTestIds);
 }
-// The Google Play reviewer entry is a compact standalone action AFTER the login
-// shell and BEFORE the Terms & Privacy line, on both mobile and tablet widths.
-const reviewerEntry = login.indexOf('testID="login-review-access"');
-const reviewerAfterShell = login.indexOf('</View>\n\n        <Pressable\n          testID="login-review-access"');
-const legalStart = login.indexOf('<View style={styles.legalArea}>');
-if (reviewerEntry < 0 || reviewerAfterShell < 0 || reviewerEntry >= legalStart) {
-  failures.push("Google Play reviewer entry must sit below the login card and above legal terms");
+collectTestIds(loginTree);
+
+const card = byTestId.get("login-card");
+const reviewer = byTestId.get("login-review-access");
+const terms = byTestId.get("login-terms-link");
+if (!card || !reviewer || !terms || reviewer.parent !== card || reviewer.end >= terms.getStart(loginTree) || terms.end >= card.end) {
+  failures.push("Google Play reviewer access must be inside the login card and before legal terms");
 }
-if ((login.match(/Google Play Reviewer Access/g) || []).length !== 2 ||
-    login.includes("Dedicated Customer, Plant Owner and Driver review accounts")) {
-  failures.push("Reviewer action must show only the Google Play Reviewer Access title, without the old subtitle");
+const reviewerAction = reviewer?.getText(loginTree) ?? "";
+if (!reviewerAction.includes('router.push("/review-access")') ||
+    !reviewerAction.includes('accessibilityRole="button"') ||
+    !reviewerAction.includes('accessibilityLabel="Google Play Reviewer Access"')) {
+  failures.push("Google Play reviewer access must be an accessible action that opens the dedicated route");
 }
-if (!login.includes('reviewAccessStandalone: {') ||
-    !login.includes('width: "92%"') ||
-    !login.includes('maxWidth: 470') ||
-    !login.includes('minHeight: 56')) {
-  failures.push("Reviewer action must retain touch-friendly responsive width under the login card");
+if ((reviewerAction.match(/Google Play Reviewer Access/g) || []).length !== 2 ||
+    !reviewerAction.includes('name="shield-checkmark-outline"') ||
+    !reviewerAction.includes('color={look.reviewer}') ||
+    !reviewerAction.includes('color: colors.onSurface')) {
+  failures.push("Reviewer action must retain a green shield and theme-aware label");
 }
-// Reviewer access must remain a plain centered link, not a second colored card.
-const reviewerAction = login.slice(reviewerAfterShell, legalStart);
-if (!reviewerAction.includes("style={styles.reviewAccessStandalone}") ||
-    ["reviewAccessCard", "reviewAccessIcon", "backgroundColor:", "borderColor:", 'name="chevron-forward"'].some((item) => reviewerAction.includes(item))) {
-  failures.push("Google Play reviewer action must not render a colored card, icon container, or trailing chevron");
-}
-if (!reviewerAction.includes('name="shield-checkmark-outline"') ||
-    !reviewerAction.includes('color={colors.isDark ? "#4ADE80" : "#16834A"}') ||
-    !reviewerAction.includes('style={[styles.reviewAccessLabel, { color: colors.onSurface }]}')) {
-  failures.push("Reviewer action must display a green shield checkmark and readable theme-aware text");
-}
-if (!login.includes('reviewAccessStandalone: {') ||
-    !login.includes('justifyContent: "center"') ||
-    !login.includes('marginTop: 0')) {
-  failures.push("Reviewer action must stay centered immediately beneath the login card");
+const reviewerStyle = login.match(/reviewAccess: \{([\s\S]*?)\n  \},/)?.[1] ?? "";
+if (!reviewerAction.includes("styles.reviewAccess") ||
+    !reviewerStyle.includes('alignSelf: "center"') ||
+    !reviewerStyle.includes('maxWidth: "100%"') ||
+    Number(reviewerStyle.match(/minHeight: (\d+)/)?.[1] ?? 0) < 44) {
+  failures.push("Reviewer action must fit the login card and keep a 44 px touch target");
 }
 
 if (login.includes('EXPO_PUBLIC_ENABLE_PLAY_REVIEW === "true"') || reviewAccess.includes('EXPO_PUBLIC_ENABLE_PLAY_REVIEW === "true"') || reviewAccess.includes('<Redirect href="/login" />')) {
