@@ -110,7 +110,7 @@ export function StaffHome() {
   const roleTools = STAFF_MODULE_GROUPS.map(category => {
     const entries = modules.filter(module => module.group === category);
     return <HomeModuleSection key={category} id={category.toLowerCase()} title={category} modules={entries.slice(0, 4)}
-      seeAll={entries.length > 4 ? { pathname: "/role-modules", params: { category } } : undefined} />;
+      seeAll={entries.length > 2 ? { pathname: "/role-modules", params: { category } } : undefined} />;
   });
 
   return (

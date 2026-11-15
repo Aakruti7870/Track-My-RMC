@@ -73,8 +73,8 @@ fs.mkdirSync(out, { recursive: true });
           }
         }
         if (name === 'home') {
-          const heights = await page.locator('[data-testid^="owner-shortcut-"]').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().height));
-          assert(heights.every(height => height >= 82 && height <= 135), `Owner shortcut card outside compact range at ${width}px: ${heights}`);
+          const heights = await page.locator('[data-testid^="owner-shortcut-"]:not([data-testid="owner-shortcut-insights"])').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().height));
+          assert(heights.every(height => height >= 80 && height <= 135), `Owner shortcut card outside compact range at ${width}px: ${heights}`);
         }
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `Horizontal overflow at ${width}`);
         await page.screenshot({ path: `${out}/${scheme}-${width}-${name}.png`, animations: 'disabled' });

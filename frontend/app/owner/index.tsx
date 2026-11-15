@@ -8,16 +8,15 @@ import { AppText } from "@/src/components/ui/AppText";
 import { Skeleton } from "@/src/components/ui/Skeleton";
 import { ErrorView } from "@/src/components/StateViews";
 import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
-import { fonts } from "@/src/theme/tokens";
+import { fonts, radius, operationalStatus, type OperationalStatus } from "@/src/theme/tokens";
+import { useTheme } from "@/src/theme/ThemeProvider";
 import { modulesForRole } from "@/src/navigation/moduleCatalog";
-import { operationalStatus, type OperationalStatus } from "@/src/theme/tokens";
 import { HOME_KEYS, DRIVER_MODULE, ownerDestination, OWNER_HOME_COMMERCIAL, OWNER_HOME_WORKFORCE, ownerModules } from "@/src/owner/modules";
 import { OwnerInsights } from "@/src/owner/OwnerInsights";
 import { OwnerFrame, OwnerGlass, OwnerModuleRow, ui, useOwnerBottomSpace, useOwnerPalette } from "@/src/owner/OwnerUI";
 
 const PLANT_HERO_IMAGE = require("../../assets/images/Plant _Owner_All_staff_top_card.webp");
 type HomeData = { cards: Record<string, number>; plant_count: number };
-const SHORT_COPY = ["Approve & manage", "Batching & workflows", "Stock & reorders", "Staff, attendance"];
 const METRICS: { key: string; label: string; basis: string; symbol: VectorSymbolName; destination: string }[] = [
   { key: "todays_orders", label: "Total Orders", basis: "Due today", symbol: "plant-orders", destination: "today" },
   { key: "dispatched_loads", label: "Dispatches", basis: "Loads dispatched today", symbol: "production-dispatch", destination: "/owner/dispatches" },
@@ -31,11 +30,12 @@ const METRICS: { key: string; label: string; basis: string; symbol: VectorSymbol
 
 export default function OwnerHome() {
   const p = useOwnerPalette();
+  const { colors } = useTheme();
   const bottom = useOwnerBottomSpace();
-  const { width: viewportWidth } = useWindowDimensions();
+  const { width: viewportWidth, fontScale } = useWindowDimensions();
   const contentWidth = Math.max(0, Math.min(viewportWidth, 820) - 32);
-  const columns = contentWidth >= 700 ? 5 : contentWidth >= 450 ? 3 : 2;
-  const tileWidth = (contentWidth - (columns - 1) * 8) / columns;
+  const shortcutColumns = contentWidth / fontScale >= 350 ? 4 : 2;
+  const shortcutWidth = (contentWidth - (shortcutColumns - 1) * 8) / shortcutColumns;
   const metricColumns = contentWidth >= 700 ? 4 : 2;
   const metricWidth = (contentWidth - (metricColumns - 1) * 9) / metricColumns;
   const { user } = useAuth();
@@ -66,6 +66,20 @@ export default function OwnerHome() {
         <Image testID="owner-home-hero-banner" source={PLANT_HERO_IMAGE} resizeMode="cover" accessible={false} style={styles.heroImage} />
       </View>
 
+      <HomeSectionHeader title="Quick Access" seeAll="/owner/operations" testID="home-see-all-owner-operations" />
+      <View style={styles.modules}>
+        {modules.map(module => <Pressable testID={`owner-shortcut-${module.key}`} key={module.key}
+          accessibilityRole="button" accessibilityLabel={module.key === "business-staff" ? "Workforce" : module.label}
+          accessibilityHint={module.description}
+          onPress={() => router.push(ownerDestination(module))}
+          style={({ pressed }) => [styles.shortcut, { width: shortcutWidth, opacity: pressed ? 0.74 : 1 }]}>
+          <View style={[styles.shortcutPlate, { backgroundColor: colors.surfaceTertiary }]}>
+            {module.symbol ? <VectorSymbol name={module.symbol} size={24} /> : null}
+          </View>
+          <AppText center style={[styles.shortcutLabel, { color: p.text }]}>{module.key === "business-staff" ? "Workforce" : module.label}</AppText>
+        </Pressable>)}
+      </View>
+
       <AppText style={[ui.section, { color: p.text }]}>Today at a Glance</AppText>
       {error ? <ErrorView message={error} onRetry={reload} /> : null}
       <View style={styles.metrics}>
@@ -89,26 +103,13 @@ export default function OwnerHome() {
         </Pressable>; })}
       </View>
 
-      <HomeSectionHeader title="Quick Access" seeAll="/owner/operations" testID="home-see-all-owner-operations" />
-      <View style={styles.modules}>
-        {modules.map((module, i) => <Pressable testID={`owner-shortcut-${module.key}`} key={module.key}
-          accessibilityRole="button" accessibilityLabel={module.key === "business-staff" ? "Workforce" : module.label}
-          onPress={() => router.push(ownerDestination(module))} style={{ width: tileWidth }}>
-          <OwnerGlass style={styles.shortcut}>
-            {module.symbol ? <VectorSymbol name={module.symbol} size={35} /> : null}
-            <AppText center numberOfLines={2} style={[styles.shortcutLabel, { color: p.text }]}>{module.key === "business-staff" ? "Workforce" : module.label}</AppText>
-            <AppText center numberOfLines={2} style={[styles.shortcutCopy, { color: p.muted }]}>{SHORT_COPY[i]}</AppText>
-          </OwnerGlass>
-        </Pressable>)}
-        <Pressable testID="owner-shortcut-insights" accessibilityRole="button" accessibilityState={{ expanded: insightsExpanded }}
-          accessibilityLabel="Plant Overview & Weekly Insights" onPress={() => setInsightsExpanded(v => !v)}
-          style={{ width: tileWidth }}>
-          <OwnerGlass style={[styles.shortcut, insightsExpanded && { borderColor: p.accent }]}>
-            <VectorSymbol name="production-report" size={35} />
-            <AppText center numberOfLines={3} style={[styles.shortcutLabel, { color: p.text }]}>Plant Overview & Weekly Insights</AppText>
-          </OwnerGlass>
-        </Pressable>
-      </View>
+      <Pressable testID="owner-shortcut-insights" accessibilityRole="button" accessibilityState={{ expanded: insightsExpanded }}
+        accessibilityLabel="Plant Overview & Weekly Insights" onPress={() => setInsightsExpanded(v => !v)}>
+        <OwnerGlass style={[styles.insightsToggle, insightsExpanded && { borderColor: colors.controlOutline }]}>
+          <VectorSymbol name="production-report" size={24} />
+          <AppText style={[styles.shortcutLabel, { color: p.text }]}>Plant Overview & Weekly Insights</AppText>
+        </OwnerGlass>
+      </Pressable>
       <OwnerInsights expanded={insightsExpanded} />
 
       <HomeModuleSection id="owner-commercial" title="Commercial" modules={ownerModules(OWNER_HOME_COMMERCIAL)}
@@ -128,7 +129,8 @@ const styles = StyleSheet.create({
   metrics: { flexDirection: "row", flexWrap: "wrap", gap: 9 },
   metric: { minHeight: 75, padding: 8, flexDirection: "row", gap: 6, alignItems: "center" },
   modules: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  shortcut: { minHeight: 88, height: "100%", paddingHorizontal: 5, paddingVertical: 7, alignItems: "center", justifyContent: "center", gap: 3 },
-  shortcutLabel: { fontFamily: fonts.semibold, fontSize: 11, lineHeight: 14 },
-  shortcutCopy: { fontSize: 9, lineHeight: 12 },
+  shortcut: { minHeight: 80, paddingHorizontal: 2, paddingVertical: 5, alignItems: "center", gap: 5 },
+  shortcutPlate: { width: 44, height: 44, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
+  shortcutLabel: { flexShrink: 1, fontFamily: fonts.semibold, fontSize: 12, lineHeight: 16 },
+  insightsToggle: { flexDirection: "row", alignItems: "center", minHeight: 52, gap: 10, paddingHorizontal: 12, paddingVertical: 8 },
 });
