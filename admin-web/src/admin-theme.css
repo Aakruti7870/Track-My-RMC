@@ -187,3 +187,14 @@ body {margin:0;}
   .tm-login-shell form {padding:14px;}
 }
 @media (prefers-reduced-motion:reduce) {.tm-admin-root * {transition:none!important;scroll-behavior:auto!important;}}
+
+/* Respect reduced-motion preferences without changing the existing brand palette. */
+@media (prefers-reduced-motion: reduce) {
+  .tm-admin-root *, .tm-admin-root *::before, .tm-admin-root *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+  .tm-module-card:hover { transform: none; }
+}
