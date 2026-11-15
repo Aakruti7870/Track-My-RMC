@@ -250,15 +250,27 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    # A location-level add_header stops inheritance of the server-level HSTS
+    # on Nginx versions without add_header_inherit. Keep mandatory security
+    # headers explicit on both the app shell and hashed assets.
     location /_expo/static/ {
         try_files $uri =404;
         expires 1y;
         add_header Cache-Control "public, max-age=31536000, immutable";
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header Content-Security-Policy "object-src 'none'; base-uri 'self'; frame-ancestors 'none'" always;
     }
 
     location / {
         try_files $uri /index.html;
-        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer" always;
+        # Minimal web-app CSP; do not impose Admin's script-src restrictions on Expo.
+        add_header Content-Security-Policy "object-src 'none'; base-uri 'self'; frame-ancestors 'none'" always;
     }
 }
 NGINX
