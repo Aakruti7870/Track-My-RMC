@@ -45,7 +45,8 @@ function nextDays(n: number) {
   for (let i = 0; i < n; i++) {
     const d = new Date();
     d.setDate(d.getDate() + i);
-    const value = d.toISOString().slice(0, 10);
+    // Use a local calendar date; UTC conversion can move the day in India.
+    const value = [d.getFullYear(), String(d.getMonth() + 1).padStart(2, "0"), String(d.getDate()).padStart(2, "0")].join("-");
     const label = i === 0 ? "Today" : i === 1 ? "Tomorrow" : d.toLocaleDateString(undefined, { weekday: "short" });
     const sub = d.toLocaleDateString(undefined, { day: "2-digit", month: "short" });
     out.push({ value, label, sub });
@@ -163,6 +164,15 @@ export default function NewOrder() {
   const grades = selectedPlant?.grades || [];
   const kycOk = user?.kyc_status?.toUpperCase() === "VERIFIED";
   const verifiedCustomerName = kycOk ? user?.verified_name?.trim() : null;
+  const readySections = [
+    Boolean(plantId), Boolean(grade), Number.isFinite(Number(quantity)) && Number(quantity) > 0,
+    Boolean(date && time), Boolean(siteName.trim() && address.trim()), Boolean(paymentMode),
+  ];
+  const readyCount = readySections.filter(Boolean).length;
+  const goBack = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace("/customer");
+  };
 
   const saveDraft = async (copy = false) => {
     if (!token || !user || user.role !== "customer") throw { detail: "Sign in as a customer to save this draft" };
@@ -311,14 +321,14 @@ export default function NewOrder() {
           testID="neworder-back"
           accessibilityRole="button"
           accessibilityLabel="Go back"
-          onPress={() => router.back()}
+          onPress={goBack}
           style={({ pressed }) => [styles.iconBtn, { borderColor: colors.border, backgroundColor: pressed ? colors.surfaceTertiary : colors.surfaceSecondary }]}
         >
           <Ionicons name="chevron-back" size={22} color={colors.onSurface} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <AppText variant="title">{assistantMode ? "Place Order with Agent" : "New Order"}</AppText>
-          <AppText variant="caption">Plant → mix → schedule → site</AppText>
+          <AppText variant="sectionTitle" style={{ flexShrink: 1 }}>{assistantMode ? "Place Order with Agent" : "New Order"}</AppText>
+          <AppText variant="caption">Plant → mix → quantity → delivery → site → payment</AppText>
         </View>
       </View>
 
@@ -328,6 +338,19 @@ export default function NewOrder() {
         contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing["3xl"], gap: spacing.xl }}
         showsVerticalScrollIndicator={false}
       >
+        <Card variant="glass" testID="neworder-progress" style={{ gap: spacing.sm }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", gap: spacing.sm }}>
+            <AppText variant="label">Your request</AppText>
+            <AppText variant="caption">{readyCount} of 6 sections ready</AppText>
+          </View>
+          <View accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 6, now: readyCount }}
+            style={{ flexDirection: "row", gap: 4, height: 7 }}>
+            {readySections.map((ready, i) => (
+              <View key={i} style={{ flex: 1, borderRadius: radius.pill, backgroundColor: ready ? colors.brand : colors.border }} />
+            ))}
+          </View>
+          <AppText variant="caption">Save a draft anytime. No payment is taken when submitting a request.</AppText>
+        </Card>
         {quotationLocked ? (
           <View style={[styles.infoBanner, { backgroundColor: colors.brandSoft, borderColor: colors.brand + "55" }]}>
             <View style={[styles.bannerIcon, { backgroundColor: colors.brand + "16" }]}>
@@ -406,46 +429,8 @@ export default function NewOrder() {
           </View>
         </Section>
 
-        <Section title="2. Preferred Payment Mode" subtitle="Choose how you would prefer to pay after plant acceptance">
-          <View style={{ gap: spacing.sm }}>
-            {SELECTABLE_PAYMENT_MODES.map((mode) => {
-              const selected = paymentMode === mode.value;
-              return (
-                <Pressable
-                  key={mode.value}
-                  testID={`neworder-payment-${mode.value}`}
-                  accessibilityRole="radio"
-                  accessibilityLabel={mode.label}
-                  accessibilityState={{ selected }}
-                  onPress={() => setPaymentMode(mode.value)}
-                  style={({ pressed }) => [
-                    styles.plantRow,
-                    { borderColor: selected ? colors.brand : colors.border,
-                      backgroundColor: selected ? colors.brandSoft : colors.surfaceSecondary,
-                      opacity: pressed ? 0.85 : 1 },
-                  ]}
-                >
-                  <Ionicons name={selected ? "radio-button-on" : "radio-button-off"} size={20} color={selected ? colors.brand : colors.onSurfaceTertiary} />
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <AppText style={{ fontFamily: fonts.semibold }}>{mode.label}</AppText>
-                    <AppText variant="caption">{mode.desc}</AppText>
-                  </View>
-                </Pressable>
-              );
-            })}
-            <View style={[styles.infoBanner, { backgroundColor: colors.brandSoft, borderColor: colors.brand + "55" }]}>
-              <Ionicons name="shield-checkmark-outline" size={20} color={colors.brand} />
-              <AppText variant="caption" style={{ flex: 1 }}>
-                No payment is required when submitting this order request. Your selection is a preference, subject to the plant&apos;s acceptance and final terms. Review and accept the confirmed amount before paying. {SHOW_SANDBOX_PREPAID
-                  ? "Sandbox prepaid testing is available only for approved test plants; no real payment is collected. Never pay using an unofficial link."
-                  : "Online advance payments are not yet activated. Use pay-on-delivery or plant-approved credit only. Never pay using an unofficial link."}
-              </AppText>
-            </View>
-          </View>
-        </Section>
-
         {selectedPlant ? (
-          <Section title="3. Concrete Grade" subtitle={quotationLocked ? "Locked by quotation" : "Choose the specified structural grade"}>
+          <Section title="2. Concrete Grade" subtitle={quotationLocked ? "Locked by quotation" : "Choose the specified structural grade"}>
             <View style={styles.chips}>
               {grades.map((g) => {
                 const sel = g === grade;
@@ -475,7 +460,7 @@ export default function NewOrder() {
           </Section>
         ) : null}
 
-        <Section title="4. Quantity" subtitle="Concrete volume in cubic metres (m³)">
+        <Section title="3. Quantity" subtitle="Concrete volume in cubic metres (m³)">
           <View style={styles.stepper}>
             <Stepper icon="remove" label="Decrease quantity" disabled={quotationLocked} onPress={() => setQuantity((q) => String(Math.max(1, Number(q) - 1)))} colors={colors} />
             <View style={{ flex: 1 }}>
@@ -492,7 +477,7 @@ export default function NewOrder() {
           </View>
         </Section>
 
-        <Section title="5. Delivery Schedule" subtitle="Choose the preferred date and arrival window">
+        <Section title="4. Delivery Schedule" subtitle="Choose the preferred date and arrival window">
           <View style={styles.scheduleBlock}>
             <AppText variant="label">Date</AppText>
             <View style={styles.chips}>
@@ -548,7 +533,7 @@ export default function NewOrder() {
           </View>
         </Section>
 
-        <Section title="6. Site & Contact" subtitle="Where the concrete should arrive and who will receive it">
+        <Section title="5. Site & Contact" subtitle="Where the concrete should arrive and who will receive it">
           <View style={{ gap: spacing.md }}>
             {verifiedCustomerName ? (
               <Card testID="neworder-verified-customer" style={{ gap: 4, borderColor: colors.success + "55" }}>
@@ -591,6 +576,66 @@ export default function NewOrder() {
           </View>
         </Section>
 
+        <Section title="6. Payment Preference" subtitle="Choose how you would prefer to pay after plant acceptance">
+          <View style={{ gap: spacing.sm }}>
+            {SELECTABLE_PAYMENT_MODES.map((mode) => {
+              const selected = paymentMode === mode.value;
+              return (
+                <Pressable
+                  key={mode.value}
+                  testID={`neworder-payment-${mode.value}`}
+                  accessibilityRole="radio"
+                  accessibilityLabel={mode.label}
+                  accessibilityState={{ selected }}
+                  onPress={() => setPaymentMode(mode.value)}
+                  style={({ pressed }) => [
+                    styles.plantRow,
+                    { borderColor: selected ? colors.brand : colors.border,
+                      backgroundColor: selected ? colors.brandSoft : colors.surfaceSecondary,
+                      opacity: pressed ? 0.85 : 1 },
+                  ]}
+                >
+                  <Ionicons name={selected ? "radio-button-on" : "radio-button-off"} size={20} color={selected ? colors.brand : colors.onSurfaceTertiary} />
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <AppText style={{ fontFamily: fonts.semibold }}>{mode.label}</AppText>
+                    <AppText variant="caption">{mode.desc}</AppText>
+                  </View>
+                </Pressable>
+              );
+            })}
+            <View style={[styles.infoBanner, { backgroundColor: colors.brandSoft, borderColor: colors.brand + "55" }]}>
+              <Ionicons name="shield-checkmark-outline" size={20} color={colors.brand} />
+              <AppText variant="caption" style={{ flex: 1 }}>
+                No payment is required when submitting this order request. Your selection is a preference, subject to the plant&apos;s acceptance and final terms. Review and accept the confirmed amount before paying. {SHOW_SANDBOX_PREPAID
+                  ? "Sandbox prepaid testing is available only for approved test plants; no real payment is collected. Never pay using an unofficial link."
+                  : "Online advance payments are not yet activated. Use pay-on-delivery or plant-approved credit only. Never pay using an unofficial link."}
+              </AppText>
+            </View>
+          </View>
+        </Section>
+
+        <Card variant="glass" testID="neworder-review" style={{ gap: spacing.sm }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+            <Ionicons name="receipt-outline" size={20} color={colors.brand} />
+            <AppText variant="heading">Review your request</AppText>
+          </View>
+          <AppText variant="caption">Review preferences before sending. The plant confirms availability, rates and final payment terms.</AppText>
+          {([
+            ["Plant", selectedPlant?.name || "Choose a plant"],
+            ["Concrete", grade ? `${grade} · ${quantity || "—"} m³` : "Choose grade and quantity"],
+            ["Delivery", `${date} · ${time || "Time not chosen"}`],
+            ["Site", siteName.trim() || "Enter the delivery site"],
+            ["Pump", pumpRequired ? "Required; subject to availability" : "Not requested"],
+            ["Payment preference", PAYMENT_MODES.find(m => m.value === paymentMode)?.label || "Not selected"],
+          ] as const).map(([label, value]) => (
+            <View key={label} style={[styles.reviewRow, { borderBottomColor: colors.divider }]}>
+              <AppText variant="label" style={{ flex: 1 }}>{label}</AppText>
+              <AppText variant="body" style={{ flex: 2, textAlign: "right", flexShrink: 1 }}>{value}</AppText>
+            </View>
+          ))}
+          <AppText variant="caption">This is not a confirmed order or price quote.</AppText>
+        </Card>
+
         {error || draftError ? (
           <View accessibilityRole="alert" style={[styles.infoBanner, { backgroundColor: colors.error + "12", borderColor: colors.error + "44" }]}>
             <View style={[styles.bannerIcon, { backgroundColor: colors.error + "12" }]}>
@@ -626,8 +671,9 @@ export default function NewOrder() {
 }
 
 function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+  const { colors } = useTheme();
   return (
-    <View style={{ gap: spacing.sm }}>
+    <View style={[styles.section, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
       <View style={{ gap: 2 }}>
         <AppText variant="heading">{title}</AppText>
         {subtitle ? <AppText variant="caption">{subtitle}</AppText> : null}
@@ -653,6 +699,8 @@ function Stepper({ icon, label, onPress, colors, disabled = false }: any) {
 }
 
 const styles = StyleSheet.create({
+  section: { minWidth: 0, borderWidth: 1, borderRadius: radius.lg, gap: spacing.md, padding: spacing.lg },
+  reviewRow: { flexDirection: "row", gap: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: spacing.sm },
   header: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth },
   iconBtn: { width: 44, height: 44, borderRadius: radius.md, alignItems: "center", justifyContent: "center", borderWidth: 1 },
   infoBanner: { minHeight: 64, flexDirection: "row", gap: spacing.sm, alignItems: "center", borderWidth: 1, borderRadius: radius.lg, padding: spacing.md },
