@@ -153,12 +153,24 @@ try {
         assert.notEqual(appearance.color, appearance.background, 'Selected navigation label must remain visible');
       }
     };
-    await page.goto(origin+'/admin/');await signIn('first@example.invalid');
+    await page.goto(origin+'/admin/');
+    await page.getByRole('heading',{name:'Central Admin sign in',exact:true}).waitFor();
+    await button('Switch to light theme').click();
+    assert.match(await page.locator('main').getAttribute('class')||'',/tm-light/);
+    await button('Switch to dark theme').click();
+    await signIn('first@example.invalid');
     const officialLogo=page.locator('img[alt="TrackMyRMC official logo"]').first();
     await officialLogo.waitFor();
     assert.equal(await officialLogo.evaluate(img=>img.complete&&img.naturalWidth>0),true,'official repository logo must render');
     await adminNav('Dashboard').click();
-    await page.getByLabel('Dashboard module cards').waitFor();
+    const dashboard = page.getByLabel('Dashboard module cards');
+    await dashboard.waitFor();
+    assert.equal(await page.getByText('Signed in as',{exact:true}).count(),0);
+    assert.equal(await page.getByRole('heading',{name:'Service health',exact:true}).count(),0);
+    for (const name of ['Capabilities','Logout All Sessions','Settings']) {
+      assert.equal(await adminNav(name).count(),1,name+' remains reachable in navigation');
+      assert.equal(await dashboard.getByRole('button',{name:'Open '+name,exact:true}).count(),0);
+    }
     assert.match(await page.locator('main').getAttribute('class')||'',/tm-dark/,'graphite theme should be the default');
     const workspace = button('Open Plant Master');
     await page.mouse.move(0, 0);
@@ -178,6 +190,11 @@ try {
     await workspace.click();
     assert.equal(await adminNav('Plant Master').getAttribute('aria-current'), 'page');
     await adminNav('Settings').click();
+    await page.getByRole('heading',{name:'Account and session',exact:true}).waitFor();
+    await page.getByText('first@example.invalid',{exact:true}).waitFor();
+    await page.getByText('central_admin',{exact:true}).waitFor();
+    await page.getByText('Dedicated one-hour web authenticator session',{exact:true}).waitFor();
+    await page.getByRole('heading',{name:'Service health',exact:true}).waitFor();
     await button('Light').click();
     assert.match(await page.locator('main').getAttribute('class')||'',/tm-light/,'light theme should use warm app tokens');
     for (const mode of ['Light','Dark']) {
@@ -191,6 +208,7 @@ try {
     await page.reload();
     await page.getByRole('heading',{name:'Command Center',exact:true}).waitFor();
     assert.equal(await adminNav('Settings').getAttribute('aria-current'),'page');
+    await page.getByText('first@example.invalid',{exact:true}).waitFor();
     await page.goBack();
     await page.waitForURL(url=>url.hash==='#/admin/plants');
     await page.waitForFunction(()=>document.querySelector('.tm-sidebar [aria-current="page"]')?.textContent?.trim()==='Plant Master');

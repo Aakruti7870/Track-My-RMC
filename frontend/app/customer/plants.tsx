@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, AppState, FlatList, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { ActivityIndicator, AppState, FlatList, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { IconTile } from "@/src/components/IconTile";
@@ -395,8 +395,8 @@ export default function CustomerPlants() {
                     returnKeyType="search" style={[styles.searchInput,{color:colors.onSurface}]} />
                   {q ? <Pressable onPress={()=>{setQ("");setPage(1);setFilters(current=>({...current,q:""}));}} accessibilityLabel="Clear search"><Ionicons name="close" size={20} color={colors.onSurfaceTertiary} /></Pressable> : null}
                 </View>
-                <Pressable testID="plants-filter-toggle" accessibilityLabel={showFilters ? "Hide location filters" : "Location filters"} onPress={()=>setShowFilters(v=>!v)} style={[styles.orangeFilter,{backgroundColor:colors.brand,borderColor:colors.isDark ? "#FF9A3D" : colors.brand}]} accessibilityRole="button">
-                  <VectorSymbol name="filter" size={20} color="#14181F" /><AppText style={styles.orangeFilterText}>Filters</AppText>
+                <Pressable testID="plants-filter-toggle" accessibilityLabel={showFilters ? "Hide location filters" : "Location filters"} onPress={()=>setShowFilters(v=>!v)} style={[styles.orangeFilter,{backgroundColor:colors.brand,borderColor:colors.brand}]} accessibilityRole="button">
+                  <VectorSymbol name="filter" size={20} color={colors.onBrand} /><AppText style={styles.orangeFilterText} color={colors.onBrand}>Filters</AppText>
                 </Pressable>
               </View>
               {showFilters ? <Card testID="plants-geo-filters" style={{gap:12}}>
@@ -526,7 +526,7 @@ export default function CustomerPlants() {
         />
       )}
       <Modal visible={!!details} animationType="slide" onRequestClose={() => setDetails(null)}>
-        <ScrollView contentContainerStyle={{padding:24,paddingTop:56,gap:16,backgroundColor:colors.isDark ? "#0E1116" : "#F7F8F9",flexGrow:1}}>
+        <ScrollView contentContainerStyle={{padding:24,paddingTop:56,gap:16,backgroundColor:colors.surface,flexGrow:1}}>
           {details ? <><AppText variant="title">{"Plant Profile"}</AppText><AppText style={{color:colors.accentText}}>{details.name}</AppText><AppText>{details.address}</AppText>
           {details.status === "google_listing" ? (
             <AppText accessibilityLabel="Google Maps" style={{fontSize:14,color:colors.onSurfaceTertiary}}>
@@ -574,6 +574,9 @@ function NearbyPlantCard({ plant, onDetails, onQuotation, onOrder, onSelect }: {
   onOrder: () => void;
 }) {
   const { colors } = useTheme();
+  const { width, fontScale } = useWindowDimensions();
+  const stackActions = width / fontScale < 320;
+  const actionStyle = [styles.plantAction, stackActions && styles.plantActionStacked];
   const googleListing = plant.status === "google_listing";
   const orderRoute = plantOrderRoute(plant);
 
@@ -591,13 +594,13 @@ function NearbyPlantCard({ plant, onDetails, onQuotation, onOrder, onSelect }: {
         <Badge size="sm" status={plant.verified ? "VERIFIED" : "PENDING"}
           label={plant.verified ? "TrackMyRMC verified" : googleListing ? "Not TrackMyRMC verified" : "Verification pending"} />
       </View>
-      <View style={styles.plantActions}>
+      <View style={[styles.plantActions, stackActions && styles.plantActionsStacked]}>
         <Button testID="nearby-place-order" size="sm" fullWidth={false}
-          label="Place Order" onPress={onOrder} disabled={orderRoute === "unavailable"} style={styles.plantAction} />
+          label="Place Order" onPress={onOrder} disabled={orderRoute === "unavailable"} style={actionStyle} />
         <Button size="sm" variant="outline" fullWidth={false} label="Request Quotation"
-          onPress={onQuotation} style={styles.plantAction} />
+          onPress={onQuotation} style={actionStyle} />
         <Button size="sm" variant="ghost" fullWidth={false} label="Plant Profile" onPress={onDetails}
-          style={styles.plantAction} />
+          style={actionStyle} />
       </View>
       {orderRoute === "review" ? <AppText variant="caption" color={colors.onSurfaceTertiary}>TrackMyRMC will review your order request.</AppText> : null}
     </Card>
@@ -671,22 +674,19 @@ function LocationBanner({ status, locating, onEnable, onRetry }: {
 const styles = StyleSheet.create({
   titleRow: { paddingHorizontal: 18, paddingTop: 16, paddingBottom: 8, gap: 3 },
   mapShell:{height:242,borderRadius:20,overflow:"hidden",borderWidth:1,position:"relative",shadowOffset:{width:0,height:6},shadowRadius:16,elevation:2},
-  mapPill:{position:"absolute",top:10,right:10,backgroundColor:"#FFFFFF",borderRadius:24,paddingVertical:7,paddingHorizontal:13,flexDirection:"row",alignItems:"center",gap:6,elevation:3},
-  mapPillText:{color:"#1E293B",fontFamily:fonts.bold,fontSize:13},
   searchRow:{flexDirection:"row",gap:10,alignItems:"center"},
   geoFilterField:{flexGrow:1,flexBasis:"45%",minWidth:130,gap:5},
-  geoFilterInput:{minHeight:44,borderWidth:1,borderColor:"#E2E8F0",backgroundColor:"#FFFFFF",borderRadius:10,paddingHorizontal:10,fontFamily:fonts.medium,fontSize:13,color:"#1E293B"},
+  geoFilterInput:{minHeight:control.minTouch,borderWidth:1,borderRadius:10,paddingHorizontal:10,fontFamily:fonts.medium,fontSize:13},
   orangeFilter:{borderRadius:12,minHeight:46,paddingHorizontal:14,flexDirection:"row",alignItems:"center",justifyContent:"center",gap:6,borderWidth:1},
-  orangeFilterText:{fontFamily:fonts.semibold,fontSize:14,color:"#14181F"},
+  orangeFilterText:{fontFamily:fonts.semibold,fontSize:14},
   plantCard: { gap: spacing.md },
   plantTopRow: { minHeight: 48, flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
   plantTitleGroup: { minWidth: 0, flex: 1, gap: spacing.xs },
   plantChipRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: spacing.sm },
-  plantActions: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start", gap: spacing.sm },
-  plantAction: { flexBasis: "16%", flexShrink: 0, minWidth: 136, maxWidth: "100%", minHeight: control.minTouch, paddingHorizontal: spacing.sm },
-  googleListingCard:{backgroundColor:"#FFFFFF",borderWidth:1,borderColor:"#E2E8F0",borderRadius:16,padding:14,gap:8},
-  googleListingCaption:{fontFamily:fonts.medium,fontSize:12,color:"#64748B",marginBottom:5},
-  googlePlaceLink:{minHeight:42,flexDirection:"row",gap:7,alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:"#F25C05",borderRadius:10},
+  plantActions: { flexDirection: "row", gap: spacing.sm },
+  plantActionsStacked: { flexDirection: "column" },
+  plantAction: { alignSelf: "stretch", flex: 1, minWidth: 0, maxWidth: 154, minHeight: control.minTouch, paddingHorizontal: spacing.xs },
+  plantActionStacked: { flex: 0, maxWidth: "100%" },
   searchBar: { flex:1,minHeight:46, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", gap: 8, shadowOffset:{width:0,height:4},shadowRadius:12,shadowOpacity:0.08 },
   searchInput: { flex: 1, minHeight: 44, fontFamily: fonts.medium, fontSize: 14, paddingVertical: 0 },
   refreshButton: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center" },

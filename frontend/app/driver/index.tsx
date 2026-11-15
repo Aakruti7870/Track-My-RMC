@@ -84,15 +84,16 @@ export default function DriverHome() {
                   </AppText>
                 </View>
                 <Pressable
+                  accessibilityRole="button"
                   accessibilityLabel={data.active_trip ? "Open active trip" : "Open attendance"}
                   onPress={() => data.active_trip ? router.push(`/trip/${data.active_trip.id}` as any) : router.push("/driver/shift-attendance")}
-                  style={[styles.summaryAction, { backgroundColor: colors.brand }]}
+                  style={styles.summaryAction}
                 >
-                  <Ionicons name={data.active_trip ? "navigate" : shiftComplete ? "checkmark-done" : "finger-print"} size={20} color={colors.onBrand} />
+                  <IconTile icon={data.active_trip ? "navigate" : shiftComplete ? "checkmark-done" : "finger-print"} width={48} size={20} />
                 </Pressable>
               </Card>
               <View style={{ flexDirection: "row", gap: spacing.sm }}>
-                <Pressable onPress={() => router.push("/driver/shift-attendance")} style={[styles.stat, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+                <Pressable accessibilityRole="button" onPress={() => router.push("/driver/shift-attendance")} style={[styles.stat, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
                   <IconTile symbol="driver-attendance" width={38} />
                   <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.sm, color: colors.onSurface }}>{attendanceLabel}</AppText>
                 </Pressable>
@@ -102,7 +103,7 @@ export default function DriverHome() {
                 </View>
                 <View style={[styles.stat, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
                   <IconTile symbol="transit-mixer-fleet" width={38} />
-                  <AppText style={{ fontFamily: fonts.semibold, fontSize: 12, color: colors.onSurface }} numberOfLines={1}>{data.vehicle || "—"}</AppText>
+                  <AppText style={{ fontFamily: fonts.semibold, fontSize: 13, lineHeight: 18, color: colors.onSurface }}>{data.vehicle || "—"}</AppText>
                 </View>
               </View>
 

@@ -72,9 +72,10 @@ export function StaffHome() {
   const { user, token } = useAuth();
   const toast = useToast();
   const router = useRouter();
-  const { width: viewportWidth } = useWindowDimensions();
+  const { width: viewportWidth, fontScale } = useWindowDimensions();
   const contentWidth = Math.max(0, Math.min(viewportWidth, 980) - 2 * spacing.lg);
-  const kpiColumns = contentWidth >= 680 ? 4 : contentWidth >= 460 ? 3 : 2;
+  const readableWidth = contentWidth / fontScale;
+  const kpiColumns = readableWidth >= 680 ? 4 : readableWidth >= 460 ? 3 : readableWidth >= 275 ? 2 : 1;
   const kpiWidth = (contentWidth - (kpiColumns - 1) * 10) / kpiColumns;
   const { data, loading, error, refetch, reload } = useGet<HomeData>("/staff/home");
   const { data: workday, error: workdayError, refetch: refreshWorkday } =
@@ -146,8 +147,8 @@ export function StaffHome() {
                 <View style={styles.summaryCopy}>
                   <AppText variant="eyebrow">{workspace.tagline}</AppText>
                   <AppText style={[styles.summaryTitle, { color: colors.onSurface }]} numberOfLines={2}>{data.primary.title}</AppText>
-                  <AppText style={{ color: colors.onSurfaceTertiary, fontSize: 12, lineHeight: 17 }} numberOfLines={2}>{workspace.help}</AppText>
-                  {!primaryAllowed ? <AppText style={{ fontSize: 11, color: colors.warning }}>
+                  <AppText style={{ color: colors.onSurfaceTertiary, fontSize: 13, lineHeight: 18 }}>{workspace.help}</AppText>
+                  {!primaryAllowed ? <AppText style={{ fontSize: 12, lineHeight: 17, color: colors.warning }}>
                     {grantsLoading ? "Checking access…" : grantsError ? "Unable to verify permissions" : "Access restricted by Plant Owner"}
                   </AppText> : null}
                 </View>
@@ -174,7 +175,7 @@ export function StaffHome() {
                       {formatValue(c)}
                       {c.unit && c.unit !== "₹" ? <AppText style={{ fontFamily: fonts.medium, fontSize: 12, color: colors.onSurfaceTertiary }}> {c.unit}</AppText> : null}
                     </AppText>
-                    <AppText variant="caption">{c.label}</AppText>
+                    <AppText variant="caption" style={styles.kpiCaption}>{c.label}</AppText>
                   </View>
                 ))}
               </View>
@@ -228,6 +229,7 @@ const styles = StyleSheet.create({
   heroArtwork: { alignItems: "center", gap: 6 },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   kpi: { minHeight: 108, padding: 9, borderRadius: 16, borderWidth: 1, gap: 4 },
+  kpiCaption: { fontSize: 12, lineHeight: 17 },
   kpiIcon: { minHeight: 30, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   workday: { minHeight: 75, borderRadius: 16, borderWidth: 1, padding: 12, flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 10 },
   restricted: { minHeight: 86, flexDirection: "row", alignItems: "center", gap: 12,

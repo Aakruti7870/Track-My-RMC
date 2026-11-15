@@ -11,7 +11,7 @@ import { HomeCarousel } from "@/src/components/HomeCarousel";
 import { KycBanner } from "@/src/components/KycBanner";
 import { ErrorView } from "@/src/components/StateViews";
 import { ThemedScreen } from "@/src/components/ThemedScreen";
-import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
+import type { VectorSymbolName } from "@/src/components/VectorSymbol";
 import { IconTile } from "@/src/components/IconTile";
 import { AppText } from "@/src/components/ui/AppText";
 import type { OrderData } from "@/src/components/OrderCard";
@@ -120,7 +120,7 @@ export default function CustomerHome() {
             <Pressable testID="home-bulk-quote" accessibilityRole="button"
               onPress={() => router.push(enquiryRoute("bulk"))}
               style={({ pressed }) => [styles.bulk, { backgroundColor: colors.surfaceTertiary, opacity: pressed ? 0.72 : 1 }]}>
-              <VectorSymbol name="quotation-requests" size={22} color={colors.accentText} />
+              <IconTile symbol="quotation-requests" width={38} size={22} />
               <AppText style={styles.bulkLabel}>Concrete in bulk? Get our best rate for your project.</AppText>
               <Ionicons name="chevron-forward" size={18} color={colors.accentText} accessible={false} aria-hidden />
             </Pressable>

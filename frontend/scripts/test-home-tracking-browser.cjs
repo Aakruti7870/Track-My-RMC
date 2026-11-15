@@ -258,6 +258,11 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      assert.equal(ink,'rgb(14, 17, 22)');
      const target=await order.boundingBox();
      assert(target.height>=44 && target.width<180,theme+' narrow plant primary action must be compact');
+     for (const label of ['Request Quotation', 'Plant Profile']) {
+       const action = await plant.getByRole('button',{name:label,exact:true}).boundingBox();
+       assert(action.height>=44 && Math.abs(action.width-target.width)<1,theme+' plant action targets must be equal');
+       assert(Math.abs(action.y-target.y)<1,theme+' plant actions must share one row at the default text scale');
+     }
      await order.click();
      await page.waitForURL('**/new-order?plantId=fixture-plant');
      await page.goBack();

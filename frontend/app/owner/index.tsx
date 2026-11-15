@@ -37,7 +37,8 @@ export default function OwnerHome() {
   const contentWidth = Math.max(0, Math.min(viewportWidth, 820) - 32);
   const shortcutColumns = contentWidth / fontScale >= 350 ? 4 : 2;
   const shortcutWidth = (contentWidth - (shortcutColumns - 1) * 8) / shortcutColumns;
-  const metricColumns = contentWidth >= 700 ? 4 : 2;
+  const readableWidth = contentWidth / fontScale;
+  const metricColumns = readableWidth >= 700 ? 4 : readableWidth >= 275 ? 2 : 1;
   const metricWidth = (contentWidth - (metricColumns - 1) * 9) / metricColumns;
   const { user } = useAuth();
   const router = useRouter();
@@ -94,9 +95,9 @@ export default function OwnerHome() {
           <OwnerGlass style={[styles.metric, value > 0 && tone !== "neutral" ? { borderColor: emphasis + "70" } : null]}>
             <IconTile symbol={metric.symbol} width={38} />
             <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-              <AppText style={{ fontSize: 10, color: p.text }} numberOfLines={2}>{metric.label}</AppText>
+              <AppText style={{ fontSize: 12, lineHeight: 16, color: p.text }}>{metric.label}</AppText>
               {loading && !data ? <Skeleton height={22} /> : <AppText style={{ fontFamily: fonts.bold, fontSize: 22, color: emphasis }}>{data?.cards[metric.key] ?? "—"}</AppText>}
-              <AppText style={{ fontSize: 9, color: p.muted }}>{metric.basis}</AppText>
+              <AppText style={{ fontSize: 11, lineHeight: 15, color: p.muted }}>{metric.basis}</AppText>
             </View>
           </OwnerGlass>
         </Pressable>; })}

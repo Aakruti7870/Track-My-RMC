@@ -25,7 +25,7 @@ import { Button } from "@/src/components/ui/Button";
 import { Input } from "@/src/components/ui/Input";
 import { useToast } from "@/src/components/ui/Toast";
 import { useTheme } from "@/src/theme/ThemeProvider";
-import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
+import { control, fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 
 // Keep 16:9 hero assets theme-specific; the login sheet layout is unchanged.
 const HERO_LIGHT = require("../../assets/images/TrackMyRMC_Login_Top_Banner_light.webp");
@@ -33,8 +33,6 @@ const HERO_DARK = require("../../assets/images/TrackMyRMC_Login_Top_Banner_Dark.
 
 const PRIVACY_POLICY_URL = "https://trackmyrmc.com/privacy_policy";
 const ACCOUNT_DELETION_URL = "https://trackmyrmc.com/account-deletion";
-const SUCCESS = "#28C48D";
-const ERROR = "#E5484D";
 const DEMO_LOGIN_ENABLED = process.env.EXPO_PUBLIC_ENABLE_DEMO_LOGIN === "1";
 
 const DEMO_ROLES = [
@@ -349,7 +347,7 @@ export default function LoginScreen() {
             onResend={resendCurrentOtp}
             colors={otpColors}
           />
-          <Pressable onPress={() => resetEntry("user")} hitSlop={10}>
+          <Pressable accessibilityRole="button" style={styles.textAction} onPress={() => resetEntry("user")}>
             <AppText variant="label" center color={colors.brand}>← Change mobile number</AppText>
           </Pressable>
         </View>
@@ -373,7 +371,7 @@ export default function LoginScreen() {
             resendLabel="Resend email code"
             colors={otpColors}
           />
-          <Pressable onPress={() => resetEntry("plant")} hitSlop={10}>
+          <Pressable accessibilityRole="button" style={styles.textAction} onPress={() => resetEntry("plant")}>
             <AppText variant="label" center color={colors.brand}>← Change email</AppText>
           </Pressable>
         </View>
@@ -423,8 +421,8 @@ export default function LoginScreen() {
             successSubtitle="Authenticator verification completed."
           />
           <View style={styles.linkRow}>
-            <Pressable onPress={() => resetEntry("plant")}><AppText variant="label" color={colors.brand}>← Change email</AppText></Pressable>
-            <Pressable testID="login-use-recovery" onPress={() => { setRecoveryCode(""); setCode(""); setError(null); setPhase("staff_recovery"); }}>
+            <Pressable accessibilityRole="button" style={styles.textAction} onPress={() => resetEntry("plant")}><AppText variant="label" color={colors.brand}>← Change email</AppText></Pressable>
+            <Pressable testID="login-use-recovery" accessibilityRole="button" style={styles.textAction} onPress={() => { setRecoveryCode(""); setCode(""); setError(null); setPhase("staff_recovery"); }}>
               <AppText variant="label" color={colors.brand}>Use recovery code</AppText>
             </Pressable>
           </View>
@@ -451,7 +449,7 @@ export default function LoginScreen() {
             error={error}
           />
           <Button label="Recover & Login" onPress={handleVerifyRecovery} loading={loading} icon={<Ionicons name="key-outline" size={18} color={colors.onBrand} />} />
-          <Pressable onPress={() => { setError(null); setCode(""); setOtpVisual("idle"); setPhase("staff_totp"); }}>
+          <Pressable accessibilityRole="button" style={styles.textAction} onPress={() => { setError(null); setCode(""); setOtpVisual("idle"); setPhase("staff_totp"); }}>
             <AppText variant="label" center color={colors.brand}>Back to Authenticator</AppText>
           </Pressable>
         </View>
@@ -609,12 +607,14 @@ export default function LoginScreen() {
             <View style={[styles.sheetHandle, { backgroundColor: colors.isDark ? "rgba(255,255,255,0.18)" : "rgba(15,23,42,0.12)" }]} />
           </View>
 
-          <View style={[styles.segmented, { backgroundColor: colors.surface, borderColor: colors.border }]}> 
-            <Pressable testID="login-user-tab" onPress={() => resetEntry("user")} style={[styles.segment, mode === "user" && { backgroundColor: colors.brandSoft, borderColor: `${colors.brand}88`, }]}>
+          <View accessibilityRole="tablist" style={[styles.segmented, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Pressable testID="login-user-tab" accessibilityRole="tab" accessibilityState={{ selected: mode === "user" }}
+              accessibilityLabel="User login, Customer and Driver" onPress={() => resetEntry("user")} style={[styles.segment, mode === "user" && { backgroundColor: colors.brandSoft, borderColor: `${colors.brand}88`, }]}>
               <Ionicons name="person-outline" size={18} color={mode === "user" ? colors.brand : colors.onSurfaceTertiary} />
               <AppText style={styles.segmentLabel} color={mode === "user" ? colors.onSurface : colors.onSurfaceTertiary}>USER LOGIN</AppText>
             </Pressable>
-            <Pressable testID="login-plant-tab" onPress={() => resetEntry("plant")} style={[styles.segment, mode === "plant" && { backgroundColor: colors.brandSoft, borderColor: `${colors.brand}88`, }]}>
+            <Pressable testID="login-plant-tab" accessibilityRole="tab" accessibilityState={{ selected: mode === "plant" }}
+              accessibilityLabel="Plant staff login" onPress={() => resetEntry("plant")} style={[styles.segment, mode === "plant" && { backgroundColor: colors.brandSoft, borderColor: `${colors.brand}88`, }]}>
               <Ionicons name="people-outline" size={18} color={mode === "plant" ? colors.brand : colors.onSurfaceTertiary} />
               <AppText style={styles.segmentLabel} color={mode === "plant" ? colors.onSurface : colors.onSurfaceTertiary}>PLANT STAFF</AppText>
             </Pressable>
@@ -629,6 +629,8 @@ export default function LoginScreen() {
                 {DEMO_ROLES.map((item) => (
                   <Pressable
                     key={item.role}
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: loading }}
                     disabled={loading}
                     onPress={async () => {
                       try {
@@ -661,30 +663,23 @@ export default function LoginScreen() {
         </Pressable>
 
         <View style={styles.legalArea}>
-          <AppText variant="caption" center style={{ color: colors.onSurfaceTertiary }}>
-            {"By clicking on Login, I accept the "}
-            <AppText
-              testID="login-terms-link"
-              variant="caption"
-              style={[styles.legalLink, { color: colors.onSurface, textDecorationColor: SUCCESS }]}
-              onPress={() => router.push("/terms" as any)}
-            >Terms & Conditions</AppText>
-            {" & "}
-            <AppText
-              testID="login-privacy-link"
-              variant="caption"
-              style={[styles.legalLink, { color: colors.onSurface, textDecorationColor: SUCCESS }]}
-              onPress={() => void openExternal(PRIVACY_POLICY_URL)}
-            >Privacy Policy</AppText>
+          <AppText variant="caption" center color={colors.onSurfaceTertiary}>
+            By signing in, I accept the Terms &amp; Conditions and Privacy Policy.
           </AppText>
-
-          <AppText
-            testID="login-delete-account"
-            variant="caption"
-            center
-            style={[styles.legalLink, { color: colors.onSurface, textDecorationColor: ERROR }]}
-            onPress={() => void openExternal(ACCOUNT_DELETION_URL)}
-          >Delete Account</AppText>
+          <View style={styles.legalActions}>
+            <Pressable testID="login-terms-link" accessibilityRole="link" style={styles.textAction}
+              onPress={() => router.push("/terms" as any)}>
+              <AppText variant="caption" style={styles.legalLink}>Terms &amp; Conditions</AppText>
+            </Pressable>
+            <Pressable testID="login-privacy-link" accessibilityRole="link" style={styles.textAction}
+              onPress={() => void openExternal(PRIVACY_POLICY_URL)}>
+              <AppText variant="caption" style={styles.legalLink}>Privacy Policy</AppText>
+            </Pressable>
+            <Pressable testID="login-delete-account" accessibilityRole="link" style={styles.textAction}
+              onPress={() => void openExternal(ACCOUNT_DELETION_URL)}>
+              <AppText variant="caption" style={styles.legalLink}>Delete Account</AppText>
+            </Pressable>
+          </View>
 
           <View style={styles.securityNote}>
             <Ionicons name="lock-closed-outline" size={14} color={colors.onSurfaceTertiary} />
@@ -836,9 +831,11 @@ const styles = StyleSheet.create({
   onboardingTitle: { fontFamily: fonts.bold, fontSize: fontSize.lg },
   demoBox: { borderWidth: 1, borderRadius: radius.lg, padding: spacing.md, gap: spacing.sm },
   demoRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, justifyContent: "center" },
-  demoChip: { borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  textAction: { minHeight: control.minTouch, justifyContent: "center" },
+  demoChip: { minHeight: control.minTouch, justifyContent: "center", borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   legalArea: { width: "92%", maxWidth: 470, paddingTop: spacing.xs, paddingHorizontal: spacing.sm, gap: spacing.md },
-  legalLink: { fontFamily: fonts.semibold },
+  legalActions: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", columnGap: spacing.md },
+  legalLink: { fontFamily: fonts.semibold, textDecorationLine: "underline" },
   poweredFooter: { marginTop: spacing.sm },
   reviewAccessStandalone: {
     width: "92%",
