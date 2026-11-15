@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import './admin-theme.css';
-import { Bell, Building2, ClipboardCheck, Factory, Megaphone, ShieldCheck, Workflow, MessageCircle, LayoutDashboard, BarChart3, Eye, Users, UserRoundPlus, UserCog, Bot, Grid2X2, LogOut, Settings, ArrowRight } from 'lucide-react';
+import { Bell, Building2, ClipboardCheck, Factory, Megaphone, ShieldCheck, Workflow, MessageCircle, LayoutDashboard, BarChart3, Eye, Users, UserRoundPlus, UserCog, Database, Grid2X2, LogOut, Settings, ChevronRight } from 'lucide-react';
 import { AuthenticatorQr } from './AuthenticatorQr';
 import { PlantVisibility } from './PlantVisibility';
 import { WhatsAppChats } from './WhatsAppChats';
@@ -116,23 +116,23 @@ function currentScreen(): AdminScreen {
   return SCREENS.find(item=>item===value)||'dashboard';
 }
 const ADMIN_MENU = [
-  {page:'dashboard',label:'Dashboard',caption:'Operations overview',icon:LayoutDashboard,tone:'orange',permissions:[]},
-  {page:'overview',label:'Platform KPIs',caption:'Live platform performance',icon:BarChart3,tone:'orange',permissions:['system.view']},
-  {page:'plants',label:'Plant Master',caption:'Plant owner, staff and verification',icon:Factory,tone:'green',permissions:['plant.view','user.view']},
-  {page:'visibility',label:'Plant Visibility',caption:'Hold and restore app discovery',icon:Eye,tone:'amber',permissions:['plant.view','plant_owners.manage','user.view']},
-  {page:'approvals',label:'Approval Queue',caption:'Onboarding, documents, KYC and RFQs',icon:ClipboardCheck,tone:'amber',permissions:[]},
-  {page:'marketing',label:'Marketing CRM',caption:'Channels, contacts and campaigns',icon:Megaphone,tone:'orange',permissions:['support.manage']},
-  {page:'chats',label:'Chats',caption:'Verified inbound Meta WhatsApp inbox',icon:MessageCircle,tone:'green',permissions:['support.manage']},
-  {page:'automation',label:'Automation',caption:'Native workflow and execution health',icon:Workflow,tone:'orange',permissions:['system.view']},
-  {page:'governance',label:'Governance',caption:'Authority, permissions and audit',icon:ShieldCheck,tone:'green',permissions:['admin_access.manage']},
-  {page:'reviewer',label:'Reviewer Access',caption:'Google Play reviewer test access',icon:Users,tone:'amber',permissions:['reviewer_access.manage']},
-  {page:'admin-access',label:'Admin Access',caption:'Existing Central Admin accounts',icon:UserCog,tone:'red',permissions:['admin_access.manage']},
-  {page:'unowned',label:'Unowned Plants',caption:'View plants without eligible owners',icon:Building2,tone:'amber',permissions:['plant.view']},
-  {page:'assign-owner',label:'Assign Plant Owner',caption:'Audited owner assignment',icon:UserRoundPlus,tone:'green',permissions:['owner.assign','plant.view']},
-  {page:'diagnostics',label:'AI Command',caption:'Read-only database diagnostic',icon:Bot,tone:'orange',permissions:['ai.diagnose']},
-  {page:'capabilities',label:'Capabilities',caption:'Authorized feature permissions',icon:Grid2X2,tone:'orange',permissions:[]},
-  {page:'sessions',label:'Logout All Sessions',caption:'Revoke my Super Admin sessions',icon:LogOut,tone:'red',permissions:[]},
-  {page:'settings',label:'Settings',caption:'Portal appearance',icon:Settings,tone:'orange',permissions:[]},
+  {page:'dashboard',label:'Dashboard',caption:'Operations overview',icon:LayoutDashboard,permissions:[]},
+  {page:'overview',label:'Platform KPIs',caption:'Live platform performance',icon:BarChart3,permissions:['system.view']},
+  {page:'plants',label:'Plant Master',caption:'Plant owner, staff and verification',icon:Factory,permissions:['plant.view','user.view']},
+  {page:'visibility',label:'Plant Visibility',caption:'Hold and restore app discovery',icon:Eye,permissions:['plant.view','plant_owners.manage','user.view']},
+  {page:'approvals',label:'Approval Queue',caption:'Onboarding, documents, KYC and RFQs',icon:ClipboardCheck,permissions:[]},
+  {page:'marketing',label:'Marketing CRM',caption:'Channels, contacts and campaigns',icon:Megaphone,permissions:['support.manage']},
+  {page:'chats',label:'Chats',caption:'Verified inbound Meta WhatsApp inbox',icon:MessageCircle,permissions:['support.manage']},
+  {page:'automation',label:'Automation',caption:'Native workflow and execution health',icon:Workflow,permissions:['system.view']},
+  {page:'governance',label:'Governance',caption:'Authority, permissions and audit',icon:ShieldCheck,permissions:['admin_access.manage']},
+  {page:'reviewer',label:'Reviewer Access',caption:'Google Play reviewer test access',icon:Users,permissions:['reviewer_access.manage']},
+  {page:'admin-access',label:'Admin Access',caption:'Existing Central Admin accounts',icon:UserCog,permissions:['admin_access.manage']},
+  {page:'unowned',label:'Unowned Plants',caption:'View plants without eligible owners',icon:Building2,permissions:['plant.view']},
+  {page:'assign-owner',label:'Assign Plant Owner',caption:'Audited owner assignment',icon:UserRoundPlus,permissions:['owner.assign','plant.view']},
+  {page:'diagnostics',label:'AI Command',caption:'Read-only database diagnostic',icon:Database,permissions:['ai.diagnose']},
+  {page:'capabilities',label:'Capabilities',caption:'Authorized feature permissions',icon:Grid2X2,permissions:[]},
+  {page:'sessions',label:'Logout All Sessions',caption:'Revoke my Super Admin sessions',icon:LogOut,permissions:[]},
+  {page:'settings',label:'Settings',caption:'Portal appearance',icon:Settings,permissions:[]},
 ] as const;
 const ADMIN_SECURITY_SCREENS: AdminScreen[]=['reviewer','admin-access','unowned','assign-owner','diagnostics','capabilities','sessions'];
 function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; onSignedOut: (message: string) => void }) {
@@ -1470,7 +1470,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                 {visibleMenu.map(item=><button key={item.page} type="button"
                   className={'tm-sidebar-link '+(adminScreen===item.page?'is-current':'')}
                   aria-current={adminScreen===item.page?'page':undefined}
-                  onClick={()=>navigateAdmin(item.page)}><item.icon size={18} aria-hidden="true"/>
+                  onClick={()=>navigateAdmin(item.page)}><item.icon size={18} strokeWidth={1.5} aria-hidden="true"/>
                   <span>{item.label}</span>{item.page==='chats'&&chatUnread>0&&<em className="tm-unread">{chatUnread}</em>}
                 </button>)}
               </nav>
@@ -1517,13 +1517,10 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
             </div>}
             {user.role === 'central_admin' && (
               <section className="tm-central-nav" aria-label="Central Admin quick navigation" style={{marginTop:16}}>
-                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
-                  <div>
-                    <h2 style={{fontSize:19,margin:'0 0 4px'}}>TMRMC Control Center</h2>
-                    <p style={{fontSize:12,color:'#B8C1CC',margin:0}}>One secure workspace for approvals, plant operations and platform oversight.</p>
-                  </div>
+                <div className="tm-dashboard-heading">
+                  <h2>{adminScreen === 'dashboard' ? 'Operations overview' : 'Control Center'}</h2>
                   <button type="button" onClick={()=>setShowAdminNotices(value=>!value)}
-                    style={{...buttonStyle,width:'auto',marginTop:0,background:'#1D232D',display:'flex',alignItems:'center',gap:8}}
+                    className="tm-dashboard-notices" aria-expanded={showAdminNotices}
                     aria-label="Review admin notifications">
                     <Bell size={17} aria-hidden="true"/> Notifications {adminUnread>0?'('+adminUnread+')':''}
                   </button>
@@ -1549,39 +1546,39 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                 </section>}
                 {adminScreen==='dashboard'&&<>
                   <div className="tm-kpi-row" aria-label="Dashboard live KPI tiles">
-                    {permissions.includes('system.view')&&adminKpis.slice(0,4).map((item,i)=><div className={'tm-kpi-card tm-kpi-'+i} key={item.label}>
-                      <small>{item.label}</small><strong>{String(item.value)}</strong><span>Platform API</span>
+                    {permissions.includes('system.view')&&adminKpis.slice(0,4).map(item=><div className="tm-kpi-card" key={item.label}>
+                      <small>{item.label}</small><strong>{String(item.value)}</strong>
                     </div>)}
                     {adminOverviewError&&<div role="alert">{adminOverviewError}</div>}
                     {permissions.includes('support.manage')&&<button type="button" className="tm-kpi-card tm-kpi-chat" onClick={()=>navigateAdmin('chats')}>
-                      <small>Unread WhatsApp Chats</small><strong>{chatStats?.unread??'—'}</strong><span>{chatStats?'Inbox API':'Not verified'}</span>
+                      <small>Unread WhatsApp chats</small><strong>{chatStats?.unread ?? 'Unavailable'}</strong>
                     </button>}
                   </div>
                   <div className="tm-module-grid" aria-label="Dashboard module cards">
                     {visibleMenu.filter(item=>item.page!=='dashboard'&&item.page!=='settings').map(item=><button type="button" key={item.page}
-                        className={'tm-module-card tm-tone-'+item.tone} onClick={()=>navigateAdmin(item.page)}
+                        className="tm-module-card" onClick={()=>navigateAdmin(item.page)}
                         aria-label={'Open '+item.label}>
-                        <span className="tm-module-icon"><item.icon size={24} aria-hidden="true"/></span>
-                        <strong>{item.label}</strong><span className="tm-module-desc">{item.caption}</span>
-                        <span className="tm-module-action">Open workspace <ArrowRight size={16} aria-hidden="true"/></span>
+                        <item.icon size={20} strokeWidth={1.5} aria-hidden="true" className="tm-module-icon"/>
+                        <span className="tm-module-copy"><strong>{item.label}</strong><span className="tm-module-desc">{item.caption}</span></span>
+                        <ChevronRight size={16} strokeWidth={1.5} aria-hidden="true" className="tm-module-arrow"/>
                       </button>)}
                   </div>
                 </>}
               </section>
             )}
             {user.role==='central_admin'&&adminScreen==='dashboard'&&<aside className="tm-dashboard-aside" aria-label="Dashboard activity and status">
-              <section className="tm-aside-panel"><h2><Bell size={18}/> Notifications</h2>
+              <section className="tm-aside-panel"><h2>Notifications</h2>
                 {adminNotices.slice(0,4).map(item=><div key={item.id} className="tm-aside-notice"><strong>{item.title}</strong><small>{item.body}</small></div>)}
                 {!adminNotices.length&&<p>No notifications recorded or available.</p>}
                 <button type="button" onClick={()=>{navigateAdmin('approvals');setShowAdminNotices(true)}}>Open Approval Queue</button>
               </section>
-              <section className="tm-aside-panel"><h2>Quick Actions</h2><div className="tm-quick-actions">
+              <section className="tm-aside-panel"><h2>Quick actions</h2><div className="tm-quick-actions">
                 {visibleMenu.filter(item=>['reviewer','admin-access','unowned','assign-owner','chats'].includes(item.page)).map(item=>
                   <button type="button" key={item.page} onClick={()=>navigateAdmin(item.page)}>
-                    <item.icon size={20} aria-hidden="true"/><span>{item.label}</span>
+                    <item.icon size={18} strokeWidth={1.5} aria-hidden="true"/><span>{item.label}</span>
                   </button>)}
               </div></section>
-              <section className="tm-aside-panel"><h2>System Status</h2>
+              <section className="tm-aside-panel"><h2>System status</h2>
                 <div className="tm-status-line"><span>API</span><strong>{health?.status||'Not verified'}</strong></div>
                 <div className="tm-status-line"><span>PostgreSQL</span><strong>{health?.database||'Not confirmed'}</strong></div>
                 <div className="tm-status-line"><span>Environment</span><strong>{health?.environment||'Unknown'}</strong></div>

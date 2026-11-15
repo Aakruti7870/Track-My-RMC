@@ -12,7 +12,7 @@ const CONFIG: Record<
   string,
   { symbol: VectorSymbolName; title: string; sub: string; tone: "verified" | "brand" | "warning" | "error" }
 > = {
-  VERIFIED: { symbol: "kyc-verified", title: "KYC VERIFIED", sub: "You can place orders using the app", tone: "verified" },
+  VERIFIED: { symbol: "kyc-verified", title: "KYC verified", sub: "You can place orders using the app", tone: "verified" },
   PENDING: { symbol: "pending-approval", title: "KYC Under Review", sub: "We’re verifying your details", tone: "warning" },
   REJECTED: { symbol: "warning", title: "KYC Rejected", sub: "Review the issue and retry verification", tone: "error" },
   REQUIRES_REVERIFICATION: { symbol: "warning", title: "Re-verification Needed", sub: "Update your KYC to continue", tone: "warning" },
@@ -46,14 +46,12 @@ export function KycBanner({ status }: { status: string }) {
         { gap: size.kycGap, paddingHorizontal: size.kycPadding, paddingVertical: size.kycPadding, borderRadius: size.kycRadius },
         {
           backgroundColor: colors.surfaceSecondary,
-          borderColor: isVerified ? tone + "60" : tone + "34",
+          borderColor: colors.divider,
           transform: [{ scale: pressed && !isVerified ? 0.992 : 1 }],
-          shadowColor: isVerified ? tone : colors.shadow,
-          shadowOpacity: isVerified ? (colors.isDark ? 0.18 : 0.08) : 0,
         },
       ]}
     >
-      <VectorSymbol name={cfg.symbol} size={size.kycSymbol} />
+      <VectorSymbol name={cfg.symbol} size={size.kycSymbol} color={tone} />
       <View style={styles.copy}>
         <AppText style={{ fontFamily: fonts.bold, fontSize: size.kycTitle, lineHeight: size.kycTitleLine, color: isVerified ? tone : colors.onSurface }}>
           {cfg.title}
@@ -77,9 +75,6 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 4,
     borderWidth: 1,
-    shadowOffset: { width: 0, height: 6 },
-    shadowRadius: 16,
-    elevation: 0,
   },
   copy: { minWidth: 0, flex: 1, gap: 1 },
   trailing: {

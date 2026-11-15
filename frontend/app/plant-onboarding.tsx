@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -84,6 +84,7 @@ export default function PlantOnboarding() {
   const [searching, setSearching] = useState(false);
   const [locating, setLocating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const submissionInFlight = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
 
@@ -181,6 +182,7 @@ export default function PlantOnboarding() {
   };
 
   const submit = async () => {
+    if (submissionInFlight.current) return;
     setError(null);
     if (ownerName.trim().length < 2) return setError("Enter the Plant Owner name");
     if (!validEmail(email)) return setError("Enter a valid email address");
@@ -188,6 +190,7 @@ export default function PlantOnboarding() {
     if (plantName.trim().length < 2) return setError("Enter the plant name");
     if (compactRegistration) {
       if (address.trim().length < 5) return setError("Enter the registered business address");
+      submissionInFlight.current = true;
       setSubmitting(true);
       try {
         const response = await apiPublicPost<OnboardingResponse>("/plant-owner-registration/requests", {
@@ -202,12 +205,14 @@ export default function PlantOnboarding() {
       } catch (e: any) {
         setError(e.detail || "Could not submit registration request");
       } finally {
+        submissionInFlight.current = false;
         setSubmitting(false);
       }
       return;
     }
     if (!locationMarked || lat === null || lng === null) return setError("Mark the plant location before submitting");
 
+    submissionInFlight.current = true;
     setSubmitting(true);
     try {
       const response = await apiPublicPost<OnboardingResponse>("/plant-onboarding/requests", {
@@ -225,13 +230,23 @@ export default function PlantOnboarding() {
     } catch (e: any) {
       setError(e.detail || "Could not submit onboarding request");
     } finally {
+      submissionInFlight.current = false;
       setSubmitting(false);
     }
   };
 
+  const goBack = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace("/login");
+  };
+
   if (requestId) {
     return (
-      <View style={[styles.successPage, { backgroundColor: colors.surface, paddingTop: insets.top + spacing.xl }]}>
+      <ScrollView
+        style={{ flex: 1, backgroundColor: colors.surface }}
+        contentContainerStyle={[styles.successPage, { paddingTop: insets.top + spacing.xl }]}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={[styles.successIcon, { backgroundColor: colors.success + "18" }]}>
           <Ionicons name="checkmark-circle" size={52} color={colors.success} />
         </View>
@@ -241,15 +256,21 @@ export default function PlantOnboarding() {
         </AppText>
         <View style={[styles.requestCard, { borderColor: colors.border, backgroundColor: colors.surfaceSecondary }]}>
           <AppText variant="caption" center>REQUEST ID</AppText>
-          <AppText style={{ fontFamily: fonts.bold, fontSize: fontSize.lg, color: colors.onSurface }} center>
+          <AppText selectable style={{ fontFamily: fonts.bold, fontSize: fontSize.lg, color: colors.onSurface }} center>
             {requestId}
           </AppText>
         </View>
         <AppText variant="caption" center>
           {compactRegistration ? "Submitting this request does not verify your email or activate an Owner account. The team will contact you for plant verification." : "Approval is not automatic. Once approved, use your registered email on Plant Staff Login to receive an email OTP."}
         </AppText>
-        <Button label="Back to Login" onPress={() => router.replace("/login" as any)} />
-      </View>
+        <View testID="onboarding-next-steps" style={[styles.requestCard, { borderColor: colors.border, backgroundColor: colors.surfaceSecondary }]}>
+          <AppText variant="heading">What happens next?</AppText>
+          <AppText variant="body">1. We review your submitted business details.</AppText>
+          <AppText variant="body">2. The TrackMyRMC team contacts you if more information is needed.</AppText>
+          <AppText variant="body">3. Account access is enabled only after approval.</AppText>
+        </View>
+        <Button label="Back to Login" onPress={() => router.replace("/login")} />
+      </ScrollView>
     );
   }
 
@@ -259,7 +280,7 @@ export default function PlantOnboarding() {
         <View style={{ height: insets.top }} />
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={styles.headerRow}>
-            <Pressable onPress={() => router.back()} hitSlop={12} style={[styles.backButton, { borderColor: colors.border }]}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={goBack} hitSlop={12} style={[styles.backButton, { borderColor: colors.border }]}>
               <Ionicons name="arrow-back" size={20} color={colors.onSurface} />
             </Pressable>
             <View style={{ flex: 1, gap: 2 }}>
@@ -324,7 +345,7 @@ export default function PlantOnboarding() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.headerRow}>
-          <Pressable onPress={() => router.back()} hitSlop={12} style={[styles.backButton, { borderColor: colors.border }]}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={goBack} hitSlop={12} style={[styles.backButton, { borderColor: colors.border }]}>
             <Ionicons name="arrow-back" size={20} color={colors.onSurface} />
           </Pressable>
           <View style={{ flex: 1, gap: 2 }}>
@@ -494,9 +515,9 @@ export default function PlantOnboarding() {
 }
 
 const styles = StyleSheet.create({
-  content: { padding: spacing.lg, paddingBottom: 80, gap: spacing.xl },
+  content: { width: "100%", maxWidth: 720, alignSelf: "center", padding: spacing.lg, paddingBottom: 80, gap: spacing.xl },
   headerRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  backButton: { width: 42, height: 42, borderWidth: 1, borderRadius: 21, alignItems: "center", justifyContent: "center" },
+  backButton: { width: 48, height: 48, borderWidth: 1, borderRadius: 21, alignItems: "center", justifyContent: "center" },
   infoBanner: { borderWidth: 1, borderRadius: radius.lg, padding: spacing.md, flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
   section: { gap: spacing.md },
   phoneInputWrap: { flexDirection: "row", minHeight: 56, borderRadius: radius.md, borderWidth: 1, overflow: "hidden" },
@@ -513,7 +534,7 @@ const styles = StyleSheet.create({
   addressInput: { minHeight: 92, borderWidth: 1, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.md, fontFamily: fonts.medium, fontSize: fontSize.sm, textAlignVertical: "top" },
   locationMarked: { borderWidth: 1, borderRadius: radius.md, padding: spacing.md, flexDirection: "row", alignItems: "center", gap: spacing.sm },
   errorBox: { borderWidth: 1, borderRadius: radius.md, padding: spacing.md, flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  successPage: { flex: 1, padding: spacing.xl, alignItems: "center", justifyContent: "center", gap: spacing.lg },
+  successPage: { flexGrow: 1, width: "100%", maxWidth: 720, alignSelf: "center", padding: spacing.xl, alignItems: "center", justifyContent: "center", gap: spacing.lg },
   successIcon: { width: 84, height: 84, borderRadius: 42, alignItems: "center", justifyContent: "center" },
   requestCard: { alignSelf: "stretch", borderWidth: 1, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.xs },
 });

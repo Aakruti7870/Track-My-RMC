@@ -62,11 +62,12 @@ test("unresolved scripted guidance escalates safely and can omit free text", () 
   assert.ok(screen.includes("passwords, OTPs, passkeys, recovery codes or payment credentials"));
 });
 
-test("support escalation rotates idempotency only after a successful case request", () => {
+test("support escalation reuses the request ID when retrying the same case", () => {
   assert.ok(screen.includes("const newEscalationId"));
   const post = screen.indexOf('apiPost<Reply>("/assistant/support"');
-  const rotate = screen.indexOf("escalationId.current = newEscalationId()");
-  assert.ok(post >= 0 && rotate > post);
+  const beforePost = screen.slice(screen.indexOf("const fingerprint"), post);
+  assert.match(beforePost, /if \(escalationBody\.current !== fingerprint\) \{\s*escalationId\.current = newEscalationId\(\);/);
+  assert.ok(post >= 0 && screen.indexOf("escalationId.current = newEscalationId()", post) > post);
 });
 
 test("all customer categories and case conversation controls are present", () => {
@@ -111,15 +112,16 @@ test("login help widget stays compact and public issue choices expand before nav
   assert.ok(!publicWidget.includes('"/assistant/') && !publicWidget.includes('"/customer/orders'));
 });
 
-test("support widget uses the uploaded vector in both open panels and optimized WebP launchers", () => {
+test("customer support uses a Material Symbol and public login retains its optimized launcher", () => {
   const asset = readFileSync(`${process.cwd()}/assets/images/support-agent-mascot.webp`);
   assert.equal(asset.toString("ascii", 0, 4), "RIFF");
   assert.equal(asset.toString("ascii", 8, 12), "WEBP", "mascot asset must be a WebP");
   assert.ok(widget.includes('import { VectorSymbol } from "@/src/components/VectorSymbol";'));
-  assert.equal(widget.split('<VectorSymbol name="support" size={40} />').length - 1, 2, "both support panels must display the uploaded support.svg vector");
+  assert.equal(widget.split('<VectorSymbol name="support" size={40} />').length - 1, 2, "both support panels must render the shared support symbol");
   assert.ok(!widget.includes('name="chatbubbles-outline"'), "do not show the old generic chat icon");
   assert.ok(widget.includes('require("../../assets/images/support-agent-mascot.webp")'));
-  assert.equal((widget.match(/<Image source={SUPPORT_AGENT_MASCOT}/g) || []).length, 2, "both customer and login launchers must display the uploaded mascot");
+  assert.equal((widget.match(/<Image source={SUPPORT_AGENT_MASCOT}/g) || []).length, 1, "the public login launcher retains its mascot");
+  assert.match(widget, /testID="customer-support-widget"[\s\S]*?<VectorSymbol name="support" \/>/);
   assert.ok(widget.includes('resizeMode="contain"'));
   assert.ok(!widget.includes("AnimatedPuppy"));
   assert.ok(widget.includes("width: 56"));
@@ -127,20 +129,20 @@ test("support widget uses the uploaded vector in both open panels and optimized 
   assert.ok(widget.includes("width: 48, height: 48"));
   assert.ok(widget.includes("compactPanelWidth(viewportWidth)"));
   assert.ok(widget.includes("viewportWidth * 0.72"));
-  assert.ok(widget.includes("viewportHeight * 0.42"));
-  assert.ok((widget.match(/pointerEvents=\"box-none\"/g) || []).length >= 4);
+  assert.ok((widget.match(/pointerEvents=\"box-none\"/g) || []).length >= 2);
   assert.ok(widget.includes("insets.top + spacing.sm"));
   assert.ok(widget.includes("flexDirection: \"column-reverse\""));
 });
 
-test("authenticated Place Order and Track Delivery expand inside the corner card before navigation", () => {
+test("authenticated Place Order and Track Delivery expand inside the support sheet before navigation", () => {
   assert.ok(widget.includes('Boolean(token) && user?.role === "customer"'));
   assert.ok(widget.includes("CUSTOMER_WIDGET_PATHS.has(normalizedPath)"));
   for (const path of ["/customer", "/customer/orders", "/customer/plants", "/customer/more"]) assert.ok(widget.includes(`\"${path}\"`));
-  assert.ok(widget.includes("Math.max(insets.bottom + 104, 120)"));
+  assert.ok(widget.includes("styles.customerToolbar"));
+  assert.ok(widget.includes("<Modal visible={customerHelpOpen}"));
   assert.ok(widget.includes('testID="customer-support-panel"'));
   assert.ok(widget.includes('accessibilityState={{ expanded: customerHelpOpen }}'));
-  assert.ok(widget.includes("setCustomerHelpOpen((value) => !value)"));
+  assert.ok(widget.includes("setCustomerHelpOpen(true)"));
 
   assert.ok(widget.includes('type CustomerSupportFlow = "order" | "tracking" | null'));
   assert.ok(widget.includes('testID="customer-support-place-order"'));

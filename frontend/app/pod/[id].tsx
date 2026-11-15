@@ -19,7 +19,7 @@ import { AppText } from "@/src/components/ui/AppText";
 import { Button } from "@/src/components/ui/Button";
 import { Input } from "@/src/components/ui/Input";
 import { stopTripLocationTracking } from "@/src/location/tripTracking";
-import { radius, spacing } from "@/src/theme/tokens";
+import { palette, radius, spacing } from "@/src/theme/tokens";
 
 export default function PodScreen() {
   const { colors, scheme } = useTheme();
@@ -195,7 +195,7 @@ export default function PodScreen() {
               <Pressable
                 testID="pod-photo-remove"
                 onPress={() => setPhoto(null)}
-                style={[styles.removeBtn, { backgroundColor: colors.error }]}
+                style={[styles.removeBtn, { backgroundColor: palette.errorDark }]}
               >
                 <Ionicons name="close" size={16} color="#fff" />
               </Pressable>

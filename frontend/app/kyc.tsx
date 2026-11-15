@@ -14,7 +14,7 @@ import { AppText } from "@/src/components/ui/AppText";
 import { Card } from "@/src/components/ui/Card";
 import { Button } from "@/src/components/ui/Button";
 import { Skeleton } from "@/src/components/ui/Skeleton";
-import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
+import { control, fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 import { markKycReturnPending, saveKycDestination, takeKycDestination } from "@/src/kyc/returnContext";
 
 const STATE_META: Record<string, { icon: keyof typeof Ionicons.glyphMap; title: string; body: string; tone: "success" | "warning" | "error" | "info" }> = {
@@ -199,6 +199,12 @@ export default function KycScreen() {
     }
   };
 
+  // Direct links and provider returns may have no back-stack entry.
+  const goBack = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace("/customer");
+  };
+
   const ctaLabel =
     status === "NOT_STARTED"
       ? "Continue with DigiLocker"
@@ -212,7 +218,7 @@ export default function KycScreen() {
 
   const onCta =
     status === "VERIFIED"
-      ? () => router.back()
+      ? () => router.replace("/customer")
       : status === "PENDING" || status === "IN_PROGRESS"
       ? refreshStatus
       : startKyc;
@@ -222,10 +228,10 @@ export default function KycScreen() {
       <StatusBar style={scheme === "dark" ? "light" : "dark"} />
       <View style={{ height: insets.top }} />
       <View style={[styles.header, { borderBottomColor: colors.divider }]}>
-        <Pressable testID="kyc-back" onPress={() => router.back()} style={[styles.iconBtn, { borderColor: colors.border }]}>
+        <Pressable testID="kyc-back" accessibilityRole="button" accessibilityLabel="Back" onPress={goBack} style={[styles.iconBtn, { borderColor: colors.border }]}>
           <Ionicons name="chevron-back" size={22} color={colors.onSurface} />
         </Pressable>
-        <AppText variant="title">KYC Verification</AppText>
+        <AppText variant="sectionTitle" style={{ flexShrink: 1 }}>KYC Verification</AppText>
       </View>
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg }} showsVerticalScrollIndicator={false}>
@@ -233,7 +239,7 @@ export default function KycScreen() {
           <Skeleton height={200} style={{ borderRadius: radius.lg }} />
         ) : (
           <>
-            <Card style={{ alignItems: "center", gap: spacing.md, paddingVertical: spacing.xl, backgroundColor: tone + "14", borderColor: tone + "44" }}>
+            <Card style={{ alignItems: "center", gap: spacing.md, paddingVertical: spacing.xl, borderColor: tone + "66" }}>
               <View style={[styles.statusIcon, { backgroundColor: tone }]}>
                 <Ionicons name={meta.icon} size={34} color={scheme === "dark" ? "#121212" : "#FFFFFF"} />
               </View>
@@ -308,7 +314,7 @@ export default function KycScreen() {
 
 const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth },
-  iconBtn: { width: 40, height: 40, borderRadius: radius.md, alignItems: "center", justifyContent: "center", borderWidth: 1 },
+  iconBtn: { width: control.minTouch, height: control.minTouch, borderRadius: radius.md, alignItems: "center", justifyContent: "center", borderWidth: 1 },
   statusIcon: { width: 72, height: 72, borderRadius: 36, alignItems: "center", justifyContent: "center" },
   verifiedPill: { flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.pill },
   step: { flexDirection: "row", alignItems: "center", gap: spacing.md },

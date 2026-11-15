@@ -42,7 +42,7 @@ export function Badge({ label, status, color, solid = false, size = "md", testID
     >
       <View style={[styles.dot, size === "sm" ? styles.smallDot : null, { backgroundColor: solid ? "#FFFFFF" : c }]} />
       <Text
-        numberOfLines={1}
+        numberOfLines={2}
         style={[
           styles.text,
           size === "sm" ? styles.smallText : null,
@@ -57,6 +57,8 @@ export function Badge({ label, status, color, solid = false, size = "md", testID
 
 const styles = StyleSheet.create({
   badge: {
+    minWidth: 0,
+    maxWidth: "100%",
     minHeight: 28,
     flexDirection: "row",
     alignItems: "center",
@@ -75,6 +77,7 @@ const styles = StyleSheet.create({
   dot: { width: 6, height: 6, borderRadius: 3 },
   smallDot: { width: 5, height: 5, borderRadius: 2.5 },
   text: {
+    flexShrink: 1,
     fontFamily: fonts.semibold,
     fontSize: fontSize.sm,
     lineHeight: 16,

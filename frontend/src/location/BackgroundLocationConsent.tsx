@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Linking, Modal, Pressable, StyleSheet, View } from "react-native";
+import { Linking, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -255,15 +255,12 @@ export function BackgroundLocationConsentProvider() {
       onRequestClose={() => settle(false)}
     >
       <View style={styles.backdrop}>
-        <View
-          style={[
-            styles.sheet,
-            {
-              backgroundColor: colors.surface,
-              borderColor: colors.border,
-              paddingBottom: insets.bottom + spacing.lg,
-            },
-          ]}
+        <ScrollView
+          style={[styles.sheet, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}
+          contentContainerStyle={[styles.sheetContent, { paddingBottom: insets.bottom + spacing.lg }]}
+          showsVerticalScrollIndicator
+          accessibilityViewIsModal
+          nestedScrollEnabled
         >
           <View style={[styles.iconWrap, { backgroundColor: colors.brand + "1A" }]}>
             <Ionicons
@@ -325,7 +322,7 @@ export function BackgroundLocationConsentProvider() {
           <AppText variant="caption" center style={styles.footer}>
             {declineFooter}
           </AppText>
-        </View>
+        </ScrollView>
       </View>
     </Modal>
   );
@@ -338,9 +335,14 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   sheet: {
+    width: "100%",
+    maxHeight: "92%",
+    flexGrow: 0,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     borderWidth: 1,
+  },
+  sheetContent: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.xl,
     gap: spacing.md,

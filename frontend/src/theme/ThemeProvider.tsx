@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { useColorScheme } from "react-native";
+import { AccessibilityInfo, Platform, useColorScheme } from "react-native";
 
 import { storage } from "@/src/utils/storage";
 import { ThemeColors, darkColors, lightColors } from "./tokens";
@@ -11,6 +11,7 @@ type ThemeContextValue = {
   colors: ThemeColors;
   scheme: Scheme;
   mode: ThemeMode;
+  reduceMotion: boolean;
   setMode: (m: ThemeMode) => void;
   toggle: () => void;
 };
@@ -28,6 +29,35 @@ export function ThemeProvider({
   const system = useColorScheme();
   const [mode, setModeState] = useState<ThemeMode>("system");
   const [ready, setReady] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState(() =>
+    Platform.OS === "web" && typeof window !== "undefined"
+      ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      : false,
+  );
+
+  useEffect(() => {
+    if (Platform.OS === "web") {
+      const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+      const update = () => setReduceMotion(query.matches);
+      query.addEventListener("change", update);
+      update();
+      return () => query.removeEventListener("change", update);
+    }
+
+    let active = true;
+    let observedChange = false;
+    const subscription = AccessibilityInfo.addEventListener("reduceMotionChanged", (enabled) => {
+      observedChange = true;
+      setReduceMotion(enabled);
+    });
+    void AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
+      if (active && !observedChange) setReduceMotion(enabled);
+    }).catch(() => undefined);
+    return () => {
+      active = false;
+      subscription.remove();
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -61,8 +91,8 @@ export function ThemeProvider({
   }, [scheme, setMode]);
 
   const value = useMemo(
-    () => ({ colors, scheme, mode, setMode, toggle }),
-    [colors, scheme, mode, setMode, toggle],
+    () => ({ colors, scheme, mode, reduceMotion, setMode, toggle }),
+    [colors, scheme, mode, reduceMotion, setMode, toggle],
   );
 
   // Keep the native splash on-screen until the persisted preference is known;

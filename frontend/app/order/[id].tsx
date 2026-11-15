@@ -250,7 +250,7 @@ export default function OrderDetail() {
             <Card style={{ gap: spacing.sm }} testID="customer-dispatch-whatsapp-consent">
               <AppText variant="heading">WhatsApp Delivery Updates</AppText>
               <AppText variant="caption">
-                Receive transaction-only updates when this order's concrete is dispatched.
+                Receive transaction-only updates when this order&apos;s concrete is dispatched.
                 This does not subscribe you to promotional WhatsApp messages.
               </AppText>
               <Button

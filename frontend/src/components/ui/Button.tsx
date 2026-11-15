@@ -11,7 +11,7 @@ import {
 import * as Haptics from "expo-haptics";
 
 import { useTheme } from "@/src/theme/ThemeProvider";
-import { control, fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
+import { control, fonts, fontSize, palette, radius, spacing } from "@/src/theme/tokens";
 
 type Variant = "primary" | "secondary" | "outline" | "ghost" | "danger";
 type Size = "lg" | "md" | "sm";
@@ -51,15 +51,15 @@ export function Button({
   const isDisabled = Boolean(disabled || loading);
 
   const background = {
-    primary: colors.brand,
+    primary: palette.orange,
     secondary: colors.surfaceElevated,
     outline: "transparent",
     ghost: "transparent",
-    danger: colors.error,
+    danger: palette.errorDark,
   }[variant];
 
   const pressedBackground = {
-    primary: colors.brandPressed,
+    primary: palette.orangeBright,
     secondary: colors.surfaceTertiary,
     outline: colors.surfaceTertiary,
     ghost: colors.brandSoft,
@@ -67,7 +67,7 @@ export function Button({
   }[variant];
 
   const foreground = {
-    primary: colors.onBrand,
+    primary: palette.graphite,
     secondary: colors.onSurface,
     outline: colors.onSurface,
     ghost: colors.brand,
@@ -75,11 +75,11 @@ export function Button({
   }[variant];
 
   const borderColor = {
-    primary: colors.brand,
+    primary: palette.orange,
     secondary: colors.border,
     outline: colors.borderStrong,
     ghost: "transparent",
-    danger: colors.error,
+    danger: palette.errorDark,
   }[variant];
 
   return (
@@ -96,7 +96,7 @@ export function Button({
           variant === "danger"
             ? Haptics.ImpactFeedbackStyle.Medium
             : Haptics.ImpactFeedbackStyle.Light,
-        );
+        ).catch(() => undefined);
         onPress?.();
       }}
       disabled={isDisabled}
@@ -111,7 +111,6 @@ export function Button({
               ? pressedBackground
               : background,
           borderColor: isDisabled ? colors.border : borderColor,
-          transform: [{ scale: pressed && !isDisabled ? 0.985 : 1 }],
           shadowColor: variant === "primary" ? colors.brand : colors.shadow,
           shadowOpacity:
             variant === "primary" && !isDisabled
@@ -135,7 +134,6 @@ export function Button({
           icon
         )}
         <Text
-          numberOfLines={1}
           style={[
             styles.label,
             size === "lg" ? styles.largeLabel : size === "sm" ? styles.smallLabel : null,
@@ -151,6 +149,7 @@ export function Button({
 
 const styles = StyleSheet.create({
   base: {
+    minWidth: 0,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
@@ -161,18 +160,23 @@ const styles = StyleSheet.create({
     minHeight: control.buttonHeightLarge,
     borderRadius: radius.lg,
     paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.sm,
   },
   medium: {
     minHeight: control.buttonHeight,
     borderRadius: radius.md,
     paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.sm,
   },
   small: {
     minHeight: control.buttonHeightSmall,
     paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
     borderRadius: radius.sm,
   },
   content: {
+    minWidth: 0,
+    maxWidth: "100%",
     minHeight: 24,
     flexDirection: "row",
     alignItems: "center",
@@ -180,6 +184,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   label: {
+    flexShrink: 1,
+    textAlign: "center",
     fontFamily: fonts.semibold,
     fontSize: fontSize.base,
     lineHeight: 20,

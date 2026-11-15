@@ -4,7 +4,6 @@ import type { ThemeColors } from "@/src/theme/tokens";
 /**
  * Navigation scene backgrounds must be fully opaque. Translucent navigation
  * scenes reveal other mounted routes (the Home carousel behind Plants/Orders).
- * Individual glass cards keep their own alpha surfaces.
  */
 export function getThemedCanvasColor(colors: ThemeColors): string {
   return colors.isDark ? "#0E1116" : "#F7F8F9";

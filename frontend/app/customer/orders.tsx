@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from "react";
-import { FlatList, Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 
@@ -8,10 +8,11 @@ import { useAuth } from "@/src/auth/AuthContext";
 import { ThemedScreen } from "@/src/components/ThemedScreen";
 import { useGet } from "@/src/hooks/useApi";
 import { AppText } from "@/src/components/ui/AppText";
+import { Button } from "@/src/components/ui/Button";
 import { Skeleton } from "@/src/components/ui/Skeleton";
 import { OrderCard, OrderData } from "@/src/components/OrderCard";
 import { EmptyView, ErrorView } from "@/src/components/StateViews";
-import { fonts, radius, spacing } from "@/src/theme/tokens";
+import { fonts, palette, radius, spacing } from "@/src/theme/tokens";
 
 const FILTERS: { key: string; label: string; match: (s: string) => boolean }[] = [
   { key: "all", label: "All", match: () => true },
@@ -29,13 +30,26 @@ export default function CustomerOrders() {
   const router = useRouter();
   const { user } = useAuth();
   const [active, setActive] = useState("all");
+  const [refreshing, setRefreshing] = useState(false);
   const { data, loading, error, refetch, reload } = useGet<{ orders: OrderData[] }>("/customer/orders");
   const drafts = useGet<{ drafts: { id: string; form: { site_name: string; grade: string | null; quantity: string }; provisional_status?: string | null; provisional_order_id?: string | null; plant_response?: string | null }[] }>("/customer/order-drafts");
   useFocusEffect(useCallback(() => { void refetch(); void drafts.refetch(); }, [refetch, drafts.refetch]));
 
   const filter = FILTERS.find((f) => f.key === active)!;
   const filtered = (data?.orders || []).filter((order) => filter.match(order.status.toUpperCase()));
-  const visibleDrafts = active === "all" || active === "pending" ? drafts.data?.drafts || [] : [];
+  const showDrafts = active === "all" || active === "pending";
+  const visibleDrafts = showDrafts ? drafts.data?.drafts || [] : [];
+  const draftsLoading = showDrafts && drafts.loading && !drafts.data;
+  const draftsError = showDrafts && drafts.error;
+
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([refetch(), drafts.refetch()]);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   return (
     <ThemedScreen>
@@ -58,6 +72,9 @@ export default function CustomerOrders() {
             return (
               <Pressable
                 testID={`filter-${item.key}`}
+                accessibilityRole="button"
+                accessibilityLabel={`Show ${item.label} orders`}
+                accessibilityState={{ selected }}
                 onPress={() => setActive(item.key)}
                 style={[
                   styles.chip,
@@ -68,10 +85,11 @@ export default function CustomerOrders() {
                 ]}
               >
                 <AppText
+                  maxFontSizeMultiplier={0}
                   style={{
                     fontFamily: fonts.semibold,
                     fontSize: 13,
-                    color: selected ? colors.onBrand : colors.onSurfaceSecondary,
+                    color: selected ? palette.graphite : colors.onSurfaceSecondary,
                   }}
                 >
                   {item.label}
@@ -97,11 +115,22 @@ export default function CustomerOrders() {
           keyExtractor={(o) => o.id}
           contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120, gap: spacing.md, flexGrow: 1 }}
           showsVerticalScrollIndicator={false}
-          onRefresh={() => { void refetch(); void drafts.refetch(); }}
-          refreshing={false}
-          ListHeaderComponent={visibleDrafts.length || drafts.error ? <View style={{ gap: spacing.sm }}>
+          onRefresh={() => void refresh()}
+          refreshing={refreshing}
+          ListHeaderComponent={visibleDrafts.length || draftsLoading || draftsError ? <View style={{ gap: spacing.sm }}>
             <AppText variant="heading">Saved Drafts</AppText>
-            {drafts.error ? <AppText variant="caption">Could not load saved drafts. Pull to refresh.</AppText> : null}
+            {draftsLoading ? (
+              <View style={styles.draftLoading} accessibilityLiveRegion="polite">
+                <ActivityIndicator color={colors.brand} />
+                <AppText variant="caption">Loading saved drafts…</AppText>
+              </View>
+            ) : null}
+            {draftsError ? (
+              <View style={{ gap: spacing.sm }} accessibilityLiveRegion="polite">
+                <AppText variant="bodyMuted">Could not load saved drafts.</AppText>
+                <Button label="Retry drafts" size="sm" variant="outline" fullWidth={false} onPress={() => void drafts.reload()} />
+              </View>
+            ) : null}
             {visibleDrafts.map((draft) => <Pressable key={draft.id} accessibilityRole="button"
               onPress={() => draft.provisional_status === "CONVERTED" && draft.provisional_order_id
                 ? router.push({ pathname: "/order/[id]", params: { id: draft.provisional_order_id } })
@@ -120,11 +149,19 @@ export default function CustomerOrders() {
             />
           )}
           ListEmptyComponent={
-            visibleDrafts.length ? null : <EmptyView
-              icon="cube-outline"
-              title="No orders here"
-              subtitle={active === "all" ? "You haven't placed any orders yet" : "No orders in this status"}
-            />
+            visibleDrafts.length || draftsLoading || draftsError ? null : (
+              <View testID="orders-empty-next-action" style={{ gap: spacing.lg, alignItems: "stretch" }}>
+                <EmptyView
+                  icon="cube-outline"
+                  title={active === "all" ? "Ready for your first pour?" : "No orders in this status"}
+                  subtitle={active === "all" ? "You can build and save an order request before completing KYC." : "Try a different status to find your orders."}
+                />
+                <Button
+                  label={active === "all" ? "Start an Order Request" : "View All Orders"}
+                  onPress={() => active === "all" ? router.push("/new-order") : setActive("all")}
+                />
+              </View>
+            )
           }
         />
       )}
@@ -135,9 +172,10 @@ export default function CustomerOrders() {
 
 const styles = StyleSheet.create({
   titleRow: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.md },
-  chipRow: { maxHeight: 56, marginBottom: spacing.sm },
+  chipRow: { flexGrow: 0, marginBottom: spacing.sm },
+  draftLoading: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   chip: {
-    height: 36,
+    minHeight: 48,
     flexShrink: 0,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.pill,

@@ -79,30 +79,29 @@ export type ThemeColors = {
   disabledContent: string;
   scrim: string;
   shadow: string;
-  glassTint: string;
   isDark: boolean;
 };
 
 export const darkColors: ThemeColors = {
   surface: "rgba(14,17,22,0.52)",
   onSurface: "#FFFFFF",
-  surfaceSecondary: "rgba(26,31,38,0.96)",
+  surfaceSecondary: "#1A1F26",
   onSurfaceSecondary: "#F8FAFC",
-  surfaceTertiary: "rgba(38,45,56,0.94)",
+  surfaceTertiary: "#262D38",
   onSurfaceTertiary: "#B8C1CC",
-  surfaceElevated: "rgba(26,31,38,0.98)",
+  surfaceElevated: "#20262E",
   surfaceInverse: "#FFFFFF",
   onSurfaceInverse: "#0E1116",
   brand: "#FF8A00",
   brandPressed: "#E67500",
-  onBrand: "#FFFFFF",
+  onBrand: "#0E1116",
   brandSoft: "rgba(255,138,0,0.18)",
   onBrandSoft: "#FF9A3D",
   success: "#38A169",
   verified: "#38A169",
   verifiedSoft: "#12251A",
   warning: "#DD6B20",
-  error: "#E53E3E",
+  error: "#FF7777",
   errorSoft: "#35191B",
   border: "rgba(255,154,61,0.24)",
   borderStrong: "rgba(255,154,61,0.46)",
@@ -112,23 +111,22 @@ export const darkColors: ThemeColors = {
   disabledContent: "#CBD5E1",
   scrim: "rgba(3,5,8,0.66)",
   shadow: "#000000",
-  glassTint: "rgba(26,31,38,0.95)",
   isDark: true,
 };
 
 export const lightColors: ThemeColors = {
   surface: "rgba(247,248,249,0.52)",
   onSurface: "#14181F",
-  surfaceSecondary: "rgba(255,255,255,0.96)",
+  surfaceSecondary: "#FFFFFF",
   onSurfaceSecondary: "#14181F",
-  surfaceTertiary: "rgba(241,243,245,0.94)",
+  surfaceTertiary: "#F1F3F5",
   onSurfaceTertiary: "#4A5568",
-  surfaceElevated: "rgba(255,255,255,0.98)",
+  surfaceElevated: "#FFFFFF",
   surfaceInverse: "#0E1116",
   onSurfaceInverse: "#FFFFFF",
   brand: "#FF6A00",
   brandPressed: "#D65700",
-  onBrand: "#FFFFFF",
+  onBrand: "#0E1116",
   brandSoft: "#FFE1CC",
   onBrandSoft: "#D65700",
   success: "#276749",
@@ -139,24 +137,13 @@ export const lightColors: ThemeColors = {
   errorSoft: "#FDECEC",
   border: "#E2E8F0",
   borderStrong: "#CBD5E0",
-  divider: "#EDF2F7",
+  divider: "#E0E3E7",
   focusRing: "rgba(255,106,0,0.20)",
   disabledSurface: "#ECEFF1",
   disabledContent: "#929AA3",
   scrim: "rgba(14,17,22,0.45)",
   shadow: "#0E1116",
-  glassTint: "rgba(255,255,255,0.95)",
   isDark: false,
-};
-
-export const glass = {
-  lightSurface: "rgba(255,255,255,0.96)",
-  darkSurface: "rgba(26,31,38,0.96)",
-  lightBorder: "rgba(20,24,31,0.08)",
-  darkBorder: "rgba(255,154,61,0.28)",
-  lightHighlight: "rgba(255,255,255,0.98)",
-  darkHighlight: "rgba(255,255,255,0.07)",
-  overlay: "rgba(14,17,22,0.48)",
 };
 
 export const aurora = {
@@ -219,7 +206,7 @@ export const control = {
   minTouch: 44,
   inputHeight: 56,
   buttonHeight: 54,
-  buttonHeightSmall: 44,
+  buttonHeightSmall: 48,
   buttonHeightLarge: 60,
   iconButton: 44,
 };
@@ -266,7 +253,8 @@ export function statusColor(colors: ThemeColors, status?: string) {
     return operationalStatus("critical", colors.isDark);
   if (["PENDING", "NEW", "OPEN", "DRAFT", "PARTIAL", "UNPAID", "LOW_STOCK",
        "RESPONDING", "ACKNOWLEDGED", "CONTACTED", "NEEDS_REVIEW",
-       "REQUIRES_REVERIFICATION", "WAITING", "REORDER", "WARNING"].includes(s))
+       "REQUIRES_REVERIFICATION", "REVIEW_NEEDED", "DOCUMENT_NOT_SHARED",
+       "DOCUMENT_UNAVAILABLE", "IN_PROGRESS", "WAITING", "REORDER", "WARNING"].includes(s))
     return operationalStatus("warning", colors.isDark);
   if (["QUOTED", "PRODUCTION_COMPLETE", "DISPATCHED", "EN_ROUTE", "AT_SITE",
        "UNLOADING", "IN_PRODUCTION", "LOADING", "READY_TO_DISPATCH", "TM_ASSIGNED",
@@ -276,16 +264,14 @@ export function statusColor(colors: ThemeColors, status?: string) {
 }
 
 
-// Customer Home design sizes. The Android/iOS app and mobile web retain the
-// approved PR #152 measurements. Only wider *web* viewports use larger values.
+// Customer Home sizes shared by native and mobile web. Wider web layouts use a larger type scale.
 // React Native layout units are dp on native and CSS px on web.
 const customerHomeMobile = {
   sectionGap: 10, gridGap: 10, headerSize: 15, headerLine: 20,
-  quickSymbol: 52, quickCircle: 56, quickTile: 82, quickLabel: 14, quickLabelLine: 18, quickLabelMin: 18,
-  toolSymbol: 52, toolPlate: 56, toolTile: 101, toolLabel: 11, toolLabelLine: 13,
-  serviceSymbol: 58, servicePlate: 62, serviceTile: 103, serviceLabel: 12, serviceLabelLine: 15,
-  sloganWidth: 132, sloganHeight: 28, sloganIcon: 19,
-  pumpWidth: 240, pumpHeight: 50, pumpIconWidth: 40, pumpIconHeight: 35,
+  quickSymbol: 24, quickTile: 64, quickLabel: 14, quickLabelLine: 18, quickLabelMin: 18,
+  toolSymbol: 24, toolTile: 76, toolLabel: 12, toolLabelLine: 16,
+  serviceSymbol: 24, serviceTile: 76, serviceLabel: 12, serviceLabelLine: 15,
+  pumpWidth: 240, pumpHeight: 50, pumpSymbol: 24,
   pumpFirstSize: 13, pumpFirstLine: 16, pumpSecondSize: 15, pumpSecondLine: 18,
   pumpGap: 4, pumpPadding: 4, pumpRadius: 10,
   kycSymbol: 28, kycArrow: 25, kycArrowIcon: 17, kycTitle: 15, kycTitleLine: 20,
@@ -298,11 +284,10 @@ const customerHomeMobile = {
 const customerHomeTablet = {
   ...customerHomeMobile,
   sectionGap: 12, gridGap: 12, headerSize: 16, headerLine: 22,
-  quickSymbol: 64, quickCircle: 68, quickTile: 94, quickLabel: 15, quickLabelLine: 20, quickLabelMin: 20,
-  toolSymbol: 64, toolPlate: 68, toolTile: 119, toolLabel: 13, toolLabelLine: 16,
-  serviceSymbol: 70, servicePlate: 74, serviceTile: 125, serviceLabel: 14, serviceLabelLine: 18,
-  sloganWidth: 146, sloganHeight: 32, sloganIcon: 21,
-  pumpWidth: 300, pumpHeight: 62, pumpIconWidth: 48, pumpIconHeight: 42,
+  quickSymbol: 24, quickTile: 68, quickLabel: 15, quickLabelLine: 20, quickLabelMin: 20,
+  toolSymbol: 24, toolTile: 80, toolLabel: 13, toolLabelLine: 16,
+  serviceSymbol: 24, serviceTile: 80, serviceLabel: 14, serviceLabelLine: 18,
+  pumpWidth: 300, pumpHeight: 62, pumpSymbol: 24,
   pumpFirstSize: 14, pumpFirstLine: 18, pumpSecondSize: 16, pumpSecondLine: 20,
   pumpGap: 8, pumpPadding: 8, pumpRadius: 12,
   kycSymbol: 32, kycArrow: 28, kycArrowIcon: 19, kycTitle: 16, kycTitleLine: 22,
@@ -315,11 +300,10 @@ const customerHomeTablet = {
 const customerHomeDesktop = {
   ...customerHomeTablet,
   sectionGap: 16, gridGap: 16, headerSize: 18, headerLine: 24,
-  quickSymbol: 72, quickCircle: 76, quickTile: 104, quickLabel: 16, quickLabelLine: 20, quickLabelMin: 20,
-  toolSymbol: 72, toolPlate: 76, toolTile: 132, toolLabel: 14, toolLabelLine: 18,
-  serviceSymbol: 80, servicePlate: 84, serviceTile: 140, serviceLabel: 15, serviceLabelLine: 20,
-  sloganWidth: 166, sloganHeight: 36, sloganIcon: 23,
-  pumpWidth: 360, pumpHeight: 70, pumpIconWidth: 54, pumpIconHeight: 48,
+  quickSymbol: 28, quickTile: 72, quickLabel: 16, quickLabelLine: 20, quickLabelMin: 20,
+  toolSymbol: 28, toolTile: 84, toolLabel: 14, toolLabelLine: 18,
+  serviceSymbol: 28, serviceTile: 84, serviceLabel: 15, serviceLabelLine: 20,
+  pumpWidth: 360, pumpHeight: 70, pumpSymbol: 28,
   pumpFirstSize: 16, pumpFirstLine: 20, pumpSecondSize: 18, pumpSecondLine: 22,
   pumpGap: 10, pumpPadding: 10, pumpRadius: 14,
   kycSymbol: 36, kycArrow: 32, kycArrowIcon: 21, kycTitle: 18, kycTitleLine: 24,
@@ -331,7 +315,7 @@ const customerHomeDesktop = {
 
 export function customerHomeSizes(viewportWidth: number, platform: string) {
   // Breakpoints use the actual viewport width, not a device model or user agent.
-  // Native tablet apps intentionally preserve the established mobile design.
+  // Native tablets use the native sizing policy.
   if (platform !== "web" || viewportWidth < 600) return customerHomeMobile;
   if (viewportWidth < 1024) return customerHomeTablet;
   return customerHomeDesktop;

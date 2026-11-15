@@ -51,7 +51,7 @@ export default function OwnerDispatchesToday() {
       >
         <OwnerGlass style={{ padding: 12, gap: 7 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
-            <VectorSymbol name="delivery-challan" size={34} warmAccent />
+            <VectorSymbol name="delivery-challan" size={34} />
             <View style={{ flex: 1 }}>
               <AppText style={{ color: p.text, fontFamily: fonts.semibold }}>{item.order_number} · Load {item.load_number}</AppText>
               <AppText style={{ color: p.muted, fontSize: 12 }}>{item.grade} · {item.quantity_m3} m³</AppText>

@@ -163,8 +163,8 @@ export default function OwnerOperations() {
           {(plants?.plants ?? []).map(plant => <Pressable key={plant.id} accessibilityRole="button"
             accessibilityState={{ selected: plant.id === plantId }} onPress={() => setPlantId(plant.id)}
             style={{ paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12,
-              backgroundColor: plant.id === plantId ? p.accent : p.glass }}>
-            <AppText style={{ color: plant.id === plantId ? "#FFFFFF" : p.text, fontSize: 12 }}>{plant.name}</AppText>
+              backgroundColor: plant.id === plantId ? p.accent : p.panel }}>
+            <AppText style={{ color: plant.id === plantId ? p.onAccent : p.text, fontSize: 12 }}>{plant.name}</AppText>
           </Pressable>)}
         </View> : null}
         {!plantId && !plantsError ? <AppText style={{ color: p.muted }}>No approved plants are available for automation.</AppText> : null}
@@ -193,9 +193,9 @@ export default function OwnerOperations() {
                 const allowFirstTouch = willEnable && !whatsappSettings?.preference_exists;
                 void updateWhatsapp(willEnable, allowFirstTouch || Boolean(whatsappSettings?.marketing_enabled));
               }}
-              style={{ backgroundColor: whatsappSettings?.enabled ? p.accent : p.glass,
+              style={{ backgroundColor: whatsappSettings?.enabled ? p.accent : p.panel,
                 borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9 }}>
-              <AppText style={{ color: whatsappSettings?.enabled ? "#FFFFFF" : p.text, fontWeight: "700" }}>
+              <AppText style={{ color: whatsappSettings?.enabled ? p.onAccent : p.text, fontWeight: "700" }}>
                 {whatsappSettings?.enabled ? "ON" : "OFF"}
               </AppText>
             </Pressable>
@@ -222,9 +222,9 @@ export default function OwnerOperations() {
                 disabled: updatingWhatsapp || !plantId || !whatsappSettings }}
               disabled={updatingWhatsapp || !plantId || !whatsappSettings}
               onPress={() => void updateWhatsapp(Boolean(whatsappSettings?.enabled), !whatsappSettings?.marketing_enabled)}
-              style={{ backgroundColor: whatsappSettings?.marketing_enabled ? p.accent : p.glass,
+              style={{ backgroundColor: whatsappSettings?.marketing_enabled ? p.accent : p.panel,
                 borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9 }}>
-              <AppText style={{ color: whatsappSettings?.marketing_enabled ? "#FFFFFF" : p.text, fontWeight: "700" }}>
+              <AppText style={{ color: whatsappSettings?.marketing_enabled ? p.onAccent : p.text, fontWeight: "700" }}>
                 {whatsappSettings?.marketing_enabled ? "ON" : "OFF"}
               </AppText>
             </Pressable>
@@ -274,7 +274,7 @@ export default function OwnerOperations() {
                 style={{ minWidth: 44, alignSelf: "stretch", minHeight: 44, justifyContent: "center",
                   borderRadius: 9, backgroundColor: on ? p.accent : p.canvas,
                   opacity: disabled ? 0.65 : 1 }}>
-                <AppText center style={{ color: on ? "#FFFFFF" : p.text, fontSize: 11, fontWeight: "700" }}>
+                <AppText center style={{ color: on ? p.onAccent : p.text, fontSize: 11, fontWeight: "700" }}>
                   {busyRule === rule.key ? "..." : on ? "ON" : "OFF"}
                 </AppText>
               </Pressable>
@@ -313,7 +313,7 @@ export default function OwnerOperations() {
                   disabled={Boolean(busyRule)} onPress={() => void updateRule(selectedRule, true, minutes)}
                   style={{ borderRadius: 9, paddingVertical: 7, paddingHorizontal: 9,
                     backgroundColor: selectedRule.reminder_after_minutes === minutes ? p.accent : p.canvas }}>
-                  <AppText style={{ fontSize: 11, color: selectedRule.reminder_after_minutes === minutes ? "#FFFFFF" : p.text }}>{minutes}</AppText>
+                  <AppText style={{ fontSize: 11, color: selectedRule.reminder_after_minutes === minutes ? p.onAccent : p.text }}>{minutes}</AppText>
                 </Pressable>)}
               </View>
             </View> : null}
@@ -326,7 +326,7 @@ export default function OwnerOperations() {
                   disabled={Boolean(busyRule)} onPress={() => void updateRule(selectedRule, true, undefined, minutes)}
                   style={{ borderRadius: 9, paddingVertical: 7, paddingHorizontal: 9,
                     backgroundColor: selectedRule.sla_minutes === minutes ? p.accent : p.canvas }}>
-                  <AppText style={{ fontSize: 11, color: selectedRule.sla_minutes === minutes ? "#FFFFFF" : p.text }}>{minutes}</AppText>
+                  <AppText style={{ fontSize: 11, color: selectedRule.sla_minutes === minutes ? p.onAccent : p.text }}>{minutes}</AppText>
                 </Pressable>)}
               </View>
             </View> : null}

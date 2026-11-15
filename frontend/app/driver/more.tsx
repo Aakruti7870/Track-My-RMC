@@ -38,7 +38,7 @@ export default function DriverMore() {
             <AppText variant="caption">Location, camera and Android notifications</AppText></View>
           <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceTertiary} />
         </Pressable>
-        <Pressable testID="driver-logout" onPress={async () => { await signOut(); router.replace("/login"); }} style={[styles.logout, { backgroundColor: colors.isDark ? "#96352D" : "#B42318" }]}><VectorSymbol name="logout" size={24} /><AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: "#FFFFFF" }}>Sign out</AppText></Pressable>
+        <Pressable testID="driver-logout" onPress={async () => { await signOut(); router.replace("/login"); }} style={[styles.logout, { backgroundColor: colors.isDark ? "#96352D" : "#B42318" }]}><VectorSymbol name="logout" size={20} color="#FFFFFF" /><AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: "#FFFFFF" }}>Sign out</AppText></Pressable>
         <AppText variant="caption" center>TrackMyRMC · v2.0.18 (76)</AppText>
       </ScrollView>
     </View>

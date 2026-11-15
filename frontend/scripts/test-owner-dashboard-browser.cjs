@@ -13,11 +13,11 @@ fs.mkdirSync(out, { recursive: true });
         localStorage.setItem('tmrmc_token', JSON.stringify('isolated-owner-browser-test'));
         localStorage.setItem('tmrmc_theme_mode', JSON.stringify(scheme));
       }, { scheme });
-      const page = await context.newPage(), errors = [], requests = [];
+      const page = await context.newPage(), errors = [];
       let populated = false, failing = false;
       page.on('pageerror', error => errors.push(error.message));
       await page.route('**/api/**', async route => {
-        const url = new URL(route.request().url()), path = url.pathname; requests.push(url);
+        const url = new URL(route.request().url()), path = url.pathname;
         let json = {};
         if (path.endsWith('/me')) json = { id: 'isolated-owner', name: 'TrackMyRMC Play Review Owner', role: 'plant_owner', roles: ['plant_owner'], status: 'active', kyc_status: 'pending', plant_id: null };
         else if (path.endsWith('/owner/home')) json = { plant_count: 0, plants: [], cards: { todays_orders: 0, dispatched_loads: 0, active_staff: 0, pending_approvals: 0 }, pending_orders: [] };
@@ -38,6 +38,11 @@ fs.mkdirSync(out, { recursive: true });
         assert.equal(await tab.getAttribute('aria-selected'), 'true');
         assert.equal(await page.getByText('TrackMyRMC Play Review Owner', { exact: true }).count(), 0);
         if (name === 'home') {
+          const summary = await page.getByTestId('owner-home-summary').evaluate(el => getComputedStyle(el).backgroundColor);
+          assert.equal(summary, scheme === 'dark' ? 'rgb(26, 31, 38)' : 'rgb(255, 255, 255)');
+          const card = await page.locator('[data-testid^="owner-metric-"]').first().locator(':scope > div').first()
+            .evaluate(el => getComputedStyle(el).backgroundColor);
+          assert.equal(card, summary, 'Owner KPI cards share the matte surface');
           assert.equal(await page.locator('[data-testid^="owner-shortcut-"]').count(), 5);
           assert.equal(await page.locator('[data-testid^="owner-metric-"]').count(), 8);
           assert.equal(await page.getByTestId('owner-commercial-grid').locator(':scope > *').count(), 12, '12 commercial tiles hold 13 separately accessible modules');
@@ -84,14 +89,21 @@ fs.mkdirSync(out, { recursive: true });
       await page.waitForFunction(() => location.search.includes('status=pending'));
       await page.getByTestId('owner-filter-processing').click();
       await page.waitForFunction(() => location.search.includes('status=processing'));
+      const searchRequest = page.waitForRequest(request => {
+        const url = new URL(request.url());
+        return url.pathname.endsWith('/owner/orders') && url.searchParams.get('q') === 'Site literal %'
+          && url.searchParams.get('status') === 'processing' && url.searchParams.get('limit') === '30';
+      });
       await page.getByTestId('owner-order-search').fill('Site literal %');
-      await page.waitForTimeout(450);
-      assert(requests.some(url => url.pathname.endsWith('/owner/orders') && url.searchParams.get('q') === 'Site literal %' && url.searchParams.get('status') === 'processing' && url.searchParams.get('limit') === '30'));
+      await searchRequest;
       await page.getByRole('button', { name: 'Order filters', exact: true }).click();
       await page.getByRole('textbox', { name: 'Concrete grade', exact: true }).fill('M25');
+      const filterRequest = page.waitForRequest(request => {
+        const url = new URL(request.url());
+        return url.pathname.endsWith('/owner/orders') && url.searchParams.get('grade') === 'M25';
+      });
       await page.getByRole('button', { name: 'Apply filters', exact: true }).click();
-      await page.waitForTimeout(200);
-      assert(requests.some(url => url.searchParams.get('grade') === 'M25'));
+      await filterRequest;
       await go('/owner/more?directory=1');
       assert.equal(await page.getByTestId('role-module-directory').locator('[data-testid^="role-module-"]').count(), 4);
       await go('/owner/operations');
@@ -191,6 +203,60 @@ fs.mkdirSync(out, { recursive: true });
       assert.equal(ruleState[3].reminder_after_minutes, 120, 'Reminder settings remain accessible from selected tile');
       await context.close();
       console.log('PASS owner automation: ' + width + 'px, grid 4/4/2, API toggle and reminder');
+    }
+    {
+      const page = await browser.newPage({ viewport: { width: 320, height: 900 }, reducedMotion: "reduce" });
+      let plantResponse = "error";
+      let stockMutations = 0;
+      await page.addInitScript(() => localStorage.setItem("tmrmc_token", JSON.stringify("isolated-inventory-fixture")));
+      await page.route("**/api/**", async route => {
+        const request = route.request();
+        const path = new URL(request.url()).pathname;
+        if (request.method() !== "GET" && path.includes("/fixture-plant/")) stockMutations += 1;
+        if (path.endsWith("/me")) return route.fulfill({ json: {
+          id: "inventory-owner", name: "Fixture owner", role: "plant_owner", roles: ["plant_owner"], status: "active",
+        } });
+        if (path.endsWith("/permission-consent")) return route.fulfill({ json: {
+          consent: { version: 1, location_choice: "manual", notification_choice: "manual" },
+        } });
+        if (path.endsWith("/master/my-plants")) {
+          if (plantResponse === "error") return route.fulfill({ status: 503, json: {} });
+          return route.fulfill({ json: { plants: plantResponse === "empty" ? [] : [{ id: "fixture-plant", name: "Fixture Plant" }] } });
+        }
+        if (path.endsWith("/fixture-plant/resources")) return route.fulfill({ json: {
+          materials: ["Cement", "Sand", "Gravel", "Other"].map((name, i) => ({ id: String(i), name, stock: i + 1, reorder: 2, unit: "kg" })),
+        } });
+        if (path.endsWith("/owner/home")) return route.fulfill({ json: { plants: [], cards: {}, pending_orders: [] } });
+        return route.fulfill({ json: {} });
+      });
+
+      const openInventory = async () => {
+        await page.goto("http://127.0.0.1:8765/owner/");
+        await page.getByTestId("owner-shortcut-business-inventory").click();
+      };
+      await openInventory();
+      const retry = page.getByRole("button", { name: "Retry", exact: true });
+      await retry.waitFor();
+      plantResponse = "empty";
+      await retry.click();
+      await page.getByText("No plant is assigned to this account.", { exact: true }).waitFor();
+
+      plantResponse = "loaded";
+      await openInventory();
+      const search = page.getByRole("textbox", { name: "Search records" });
+      await search.fill("No such material");
+      await page.getByText("No records match your search.", { exact: true }).waitFor();
+      await search.fill("Cement");
+      await page.getByText("Cement", { exact: true }).waitFor();
+      assert.equal(await page.getByText("Sand", { exact: true }).count(), 0);
+      await page.getByRole("button", { name: "Stock In", exact: true }).click();
+      const quantity = page.getByRole("textbox", { name: "Quantity" });
+      await quantity.fill("2");
+      await page.getByRole("button", { name: "Cancel", exact: true }).click();
+      await quantity.waitFor({ state: "detached" });
+      assert.equal(stockMutations, 0);
+      await page.close();
+      console.log("PASS owner inventory: 320px, plant retry, empty assignment, search correction and adjustment cancellation");
     }
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

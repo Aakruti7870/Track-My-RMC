@@ -103,7 +103,7 @@ export function StaffMore() {
           <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceTertiary} />
         </Pressable>
 
-        <Pressable testID="logout-button" accessibilityRole="button" accessibilityLabel="Sign out of staff account" onPress={doLogout} style={[styles.logout, { backgroundColor: colors.isDark ? "#96352D" : "#B42318" }]}><VectorSymbol name="logout" size={24} /><AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: "#FFFFFF" }}>Sign out</AppText></Pressable>
+        <Pressable testID="logout-button" accessibilityRole="button" accessibilityLabel="Sign out of staff account" onPress={doLogout} style={[styles.logout, { backgroundColor: colors.isDark ? "#96352D" : "#B42318" }]}><VectorSymbol name="logout" size={20} color="#FFFFFF" /><AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: "#FFFFFF" }}>Sign out</AppText></Pressable>
         <AppText variant="caption" center>TrackMyRMC · v{appVersion} ({buildNumber})</AppText>
       </ScrollView>
     </View>

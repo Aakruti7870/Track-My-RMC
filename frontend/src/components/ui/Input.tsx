@@ -51,7 +51,7 @@ export function Input({
 }: Props) {
   const { colors } = useTheme();
   const [focused, setFocused] = useState(false);
-  const borderColor = error ? colors.error : focused ? colors.brand : colors.border;
+  const borderColor = error ? colors.error : focused ? (colors.isDark ? colors.brand : "#A43D00") : colors.borderStrong;
   const supportingText = error || hint;
 
   return (
@@ -60,7 +60,7 @@ export function Input({
         <Text
           style={[
             styles.label,
-            { color: error ? colors.error : focused ? colors.brand : colors.onSurfaceSecondary },
+            { color: error ? colors.error : colors.onSurfaceSecondary },
           ]}
         >
           {label}
@@ -95,6 +95,7 @@ export function Input({
           secureTextEntry={secureTextEntry}
           accessibilityLabel={label || placeholder || "Input field"}
           accessibilityState={{ disabled: !editable }}
+          accessibilityHint={supportingText || undefined}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           selectionColor={colors.brand}

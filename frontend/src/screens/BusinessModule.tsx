@@ -294,7 +294,7 @@ function unpackRows(kind: string, data: any): Row[] {
 export function BusinessModule({ kind }: { kind: string }) {
   const def = MODULES[kind] || MODULES.reports;
   const { token, user } = useAuth();
-  const { colors } = useTheme();
+  const { colors, reduceMotion } = useTheme();
   const toast = useToast();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -304,6 +304,7 @@ export function BusinessModule({ kind }: { kind: string }) {
   const [data, setData] = useState<any>(null);
   const [resources, setResources] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState(false);
@@ -356,9 +357,17 @@ export function BusinessModule({ kind }: { kind: string }) {
 
   const loadPlants = useCallback(async () => {
     if (!token) return;
-    const result = await apiGet<{ plants: Plant[] }>("/master/my-plants", token);
-    setPlants(result.plants);
-    setPlantId((old) => old && result.plants.some((p) => p.id === old) ? old : result.plants[0]?.id || null);
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await apiGet<{ plants: Plant[] }>("/master/my-plants", token);
+      setPlants(result.plants);
+      setPlantId((old) => old && result.plants.some((p) => p.id === old) ? old : result.plants[0]?.id || null);
+      if (result.plants.length === 0) setLoading(false);
+    } catch (e: any) {
+      setError(e.detail || "Could not load plants");
+      setLoading(false);
+    }
   }, [token]);
 
   const load = useCallback(async () => {
@@ -382,7 +391,16 @@ export function BusinessModule({ kind }: { kind: string }) {
     }
   }, [kind, plantId, token]);
 
-  useEffect(() => { loadPlants().catch((e: any) => setError(e.detail || "Could not load plants")); }, [loadPlants]);
+  const reloadWorkspace = async () => {
+    setRefreshing(true);
+    try {
+      await (plantId ? load() : loadPlants());
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => { void loadPlants(); }, [loadPlants]);
   useEffect(() => { if (plantId) load(); }, [plantId, load]);
 
   const staffAssignments = useMemo<PlantRoleAssignment[]>(
@@ -396,10 +414,11 @@ export function BusinessModule({ kind }: { kind: string }) {
   );
   const [removeConfirmId, setRemoveConfirmId] = useState<string | null>(null);
 
+  const moduleRows = useMemo(() => unpackRows(kind, data), [kind, data]);
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return unpackRows(kind, data).filter((r) => !q || [r.title, r.subtitle, r.meta].some((v) => (v || "").toLowerCase().includes(q)));
-  }, [kind, data, query]);
+    return moduleRows.filter((row) => !q || [row.title, row.subtitle, row.meta].some((v) => (v || "").toLowerCase().includes(q)));
+  }, [moduleRows, query]);
 
   const openForm = () => {
     const initial: Record<string, string> = {};
@@ -593,7 +612,7 @@ export function BusinessModule({ kind }: { kind: string }) {
       <View style={{ height: insets.top }} />
       <ScrollView
         contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120, gap: spacing.lg }}
-        refreshControl={<RefreshControl refreshing={false} onRefresh={load} tintColor={colors.brand} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void reloadWorkspace()} tintColor={colors.brand} />}
       >
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
           {moduleSymbol ? <VectorSymbol name={moduleSymbol} size={40} /> : null}
@@ -615,7 +634,7 @@ export function BusinessModule({ kind }: { kind: string }) {
             <AppText variant="label">Permissions for the next Manager appointment</AppText>
             {(["can_manage_staff","can_manage_permissions","can_manage_fleet","can_manage_drivers"] as const).map(key=><Pressable key={key} accessibilityRole="checkbox" accessibilityState={{checked:managerPolicy[key]}}
               onPress={()=>setManagerPolicy(old=>({...old,[key]:!old[key]}))}><AppText>{managerPolicy[key]?"☑":"☐"} {key.replace(/_/g," ")}</AppText></Pressable>)}
-            <AppText variant="caption">Permission delegation is limited to the Manager's currently approved module grants.</AppText>
+            <AppText variant="caption">Permission delegation is limited to the Manager&apos;s currently approved module grants.</AppText>
           </> : null}
         </Card> : null}
 
@@ -632,8 +651,8 @@ export function BusinessModule({ kind }: { kind: string }) {
           </ScrollView>
         ) : null}
 
-        {!plantId && !loading ? <Card><AppText variant="bodyMuted">No plant is assigned to this account.</AppText></Card> : null}
-        {error ? <Card><AppText style={{ color: colors.error }}>{error}</AppText><Button label="Retry" onPress={load} /></Card> : null}
+        {!plantId && !loading && !error ? <Card><AppText variant="bodyMuted">No plant is assigned to this account.</AppText></Card> : null}
+        {error ? <Card><AppText style={{ color: colors.error }}>{error}</AppText><Button label="Retry" onPress={() => void reloadWorkspace()} /></Card> : null}
         {kind==="reports" && (isPlantOwner || permissionExports.plant_reports) ? <Button label="Export plant summary" variant="outline" onPress={async()=>{
           if(!token || !plantId)return;
           try{
@@ -647,7 +666,7 @@ export function BusinessModule({ kind }: { kind: string }) {
 
         {loading ? (
           <><Skeleton height={82} style={{ borderRadius: radius.lg }} /><Skeleton height={82} style={{ borderRadius: radius.lg }} /></>
-        ) : kind === "reports" && report ? (
+        ) : !plantId || (error && !data) ? null : kind === "reports" && report ? (
           <View style={styles.grid}>
             {[
               ["Orders", report.orders], ["Active", report.active_orders], ["Delivered m³", report.delivered_m3],
@@ -679,10 +698,10 @@ export function BusinessModule({ kind }: { kind: string }) {
           </Card>
         ) : (
           <>
-            {rows.length >= 4 ? (
+            {moduleRows.length >= 4 || query ? (
               <View style={[styles.search, { borderColor: colors.border, backgroundColor: colors.surfaceSecondary }]}>
                 <Ionicons name="search" size={18} color={colors.onSurfaceTertiary} />
-                <TextInput value={query} onChangeText={setQuery} placeholder="Search…" placeholderTextColor={colors.onSurfaceTertiary} style={{ flex: 1, color: colors.onSurface, fontFamily: fonts.regular }} />
+                <TextInput accessibilityLabel="Search records" value={query} onChangeText={setQuery} placeholder="Search…" placeholderTextColor={colors.onSurfaceTertiary} style={{ flex: 1, color: colors.onSurface, fontFamily: fonts.regular }} />
               </View>
             ) : null}
             {kind === "staff" && !canManageStaff && !loading ? (
@@ -738,7 +757,7 @@ export function BusinessModule({ kind }: { kind: string }) {
                   </View>
                 ) : null}
               </Card>
-            )) : <Card><AppText variant="bodyMuted">No records yet.</AppText></Card>}
+            )) : <Card><AppText variant="bodyMuted">{query.trim() ? "No records match your search." : "No records yet."}</AppText></Card>}
           </>
         )}
         {kind === "staff" && canManageStaff ? <Card style={{gap:spacing.sm}}>
@@ -767,13 +786,15 @@ export function BusinessModule({ kind }: { kind: string }) {
         ) : null}
       </ScrollView>
 
-      <Modal visible={modal} transparent animationType="slide" onRequestClose={() => setModal(false)}>
+      <Modal visible={modal} transparent animationType={reduceMotion ? "none" : "slide"} onRequestClose={() => setModal(false)}>
         <View style={styles.backdrop}>
-          <View style={[styles.sheet, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View accessibilityViewIsModal style={[styles.sheet, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}>
             <ScrollView contentContainerStyle={{ gap: spacing.md, paddingBottom: spacing.lg }} keyboardShouldPersistTaps="handled">
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                <AppText variant="heading">{def.addLabel}</AppText>
-                <Pressable onPress={() => setModal(false)}><Ionicons name="close" size={24} color={colors.onSurface} /></Pressable>
+                <AppText variant="heading" accessibilityRole="header" style={{ flex: 1 }}>{def.addLabel}</AppText>
+                <Pressable accessibilityRole="button" accessibilityLabel="Close form" onPress={() => setModal(false)} style={styles.closeControl}>
+                  <Ionicons name="close" size={24} color={colors.onSurface} />
+                </Pressable>
               </View>
               {(def.fields || []).map((f) => (
                 kind === "staff" && f.key === "role" ? (
@@ -822,9 +843,9 @@ export function BusinessModule({ kind }: { kind: string }) {
         </View>
       </Modal>
 
-      <Modal visible={!!adjustRow} transparent animationType="fade" onRequestClose={() => setAdjustRow(null)}>
+      <Modal visible={!!adjustRow} transparent animationType={reduceMotion ? "none" : "fade"} onRequestClose={() => setAdjustRow(null)}>
         <View style={styles.backdrop}>
-          <View style={[styles.adjustSheet, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View accessibilityViewIsModal style={[styles.adjustSheet, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}>
             <AppText variant="heading">{adjustSign > 0 ? "Stock In" : "Stock Out"}</AppText>
             <AppText variant="caption">{adjustRow?.title}</AppText>
             <Input label="Quantity" value={adjustAmount} keyboardType="numeric" onChangeText={(v) => setAdjustAmount(v.replace(/[^0-9.]/g, ""))} />
@@ -840,7 +861,8 @@ export function BusinessModule({ kind }: { kind: string }) {
 
 const styles = StyleSheet.create({
   chip: { height: 36, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, justifyContent: "center" },
-  search: { flexDirection: "row", alignItems: "center", gap: spacing.sm, height: 44, paddingHorizontal: spacing.md, borderWidth: 1, borderRadius: radius.md },
+  closeControl: { minWidth: 48, minHeight: 48, alignItems: "center", justifyContent: "center" },
+  search: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 48, paddingHorizontal: spacing.md, borderWidth: 1, borderRadius: radius.md },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   roleOption: { width: "48%", minHeight: 48, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, borderWidth: 1, borderRadius: radius.md },
   stat: { width: "48%", gap: 4 },

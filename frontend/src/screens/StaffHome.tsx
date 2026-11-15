@@ -30,15 +30,15 @@ type HomeData = {
   kpis: Kpi[];
   primary: { title: string; kind: string };
 };
-const ROLE_WORKSPACE: Record<string, { tagline: string; help: string; symbol: VectorSymbolName; href: string; key: string }> = {
-  admin: { tagline: "Plant Operations", help: "Orders and fleet for your assigned plant", symbol: "plant-order-management", href: "/admin/orders", key: "dispatch_queue" },
-  dispatcher: { tagline: "Dispatch Control", help: "Allocate loads, mixers and delivery schedules", symbol: "dispatch-queue", href: "/dispatcher/dispatch", key: "dispatch_queue" },
-  operator: { tagline: "Batching Operations", help: "Production queue and approved material recipes", symbol: "batching-operations", href: "/operator/production", key: "production_queue" },
-  supervisor: { tagline: "Plant Oversight", help: "Follow incidents and operational exceptions", symbol: "incident-register", href: "/supervisor/incidents", key: "incidents" },
-  accountant: { tagline: "Commercial Workspace", help: "Plant invoices and collections", symbol: "billing", href: "/accountant/billing", key: "billing_ledger" },
-  quality_engineer: { tagline: "Quality Assurance", help: "Concrete quality records and mix documentation", symbol: "quality-register", href: "/quality_engineer/quality", key: "quality_register" },
-  fleet_manager: { tagline: "Transport Operations", help: "Mixer availability and driver assignments", symbol: "transit-mixer-fleet", href: "/fleet_manager/fleet", key: "fleet_availability" },
-  store_manager: { tagline: "Inventory Control", help: "Raw material balance and low-stock monitoring", symbol: "stock-register", href: "/store_manager/stock", key: "material_inventory" },
+const ROLE_WORKSPACE: Record<string, { tagline: string; help: string; href: string; key: string }> = {
+  admin: { tagline: "Plant Operations", help: "Orders and fleet for your assigned plant", href: "/admin/orders", key: "dispatch_queue" },
+  dispatcher: { tagline: "Dispatch Control", help: "Allocate loads, mixers and delivery schedules", href: "/dispatcher/dispatch", key: "dispatch_queue" },
+  operator: { tagline: "Batching Operations", help: "Production queue and approved material recipes", href: "/operator/production", key: "production_queue" },
+  supervisor: { tagline: "Plant Oversight", help: "Follow incidents and operational exceptions", href: "/supervisor/incidents", key: "incidents" },
+  accountant: { tagline: "Commercial Workspace", help: "Plant invoices and collections", href: "/accountant/billing", key: "billing_ledger" },
+  quality_engineer: { tagline: "Quality Assurance", help: "Concrete quality records and mix documentation", href: "/quality_engineer/quality", key: "quality_register" },
+  fleet_manager: { tagline: "Transport Operations", help: "Mixer availability and driver assignments", href: "/fleet_manager/fleet", key: "fleet_availability" },
+  store_manager: { tagline: "Inventory Control", help: "Raw material balance and low-stock monitoring", href: "/store_manager/stock", key: "material_inventory" },
 };
 const KPI_ARTWORK: Record<string, VectorSymbolName> = {
   "Pending Orders": "plant-orders", "In Transit TMs": "transit-mixer-fleet", "Available TMs": "fleet-availability",
@@ -126,12 +126,11 @@ export function StaffHome() {
                 accessibilityState={{ disabled: !primaryAllowed }} disabled={!primaryAllowed}
                 onPress={() => router.push(workspace.href as any)}
                 style={({ pressed }) => [styles.summary, {
-                  backgroundColor: colors.isDark ? "rgba(30,35,42,0.88)" : "rgba(255,255,255,0.88)",
-                  borderColor: colors.isDark ? "rgba(255,154,61,0.40)" : "rgba(255,255,255,0.98)",
+                  backgroundColor: colors.surfaceSecondary,
+                  borderColor: colors.divider,
                   opacity: pressed ? 0.82 : 1,
                 }]}>
-                <Image testID="staff-home-hero-banner" source={PLANT_HERO_IMAGE} resizeMode="cover" accessibilityIgnoresInvertColors style={styles.summaryBackdrop} />
-                <View style={[styles.summaryTextPlate, { backgroundColor: colors.isDark ? "rgba(20,26,32,0.88)" : "rgba(255,255,255,0.90)" }]}>
+                <View style={styles.summaryCopy}>
                   <AppText variant="eyebrow">{workspace.tagline}</AppText>
                   <AppText style={[styles.summaryTitle, { color: colors.onSurface }]} numberOfLines={2}>{data.primary.title}</AppText>
                   <AppText style={{ color: colors.onSurfaceTertiary, fontSize: 12, lineHeight: 17 }} numberOfLines={2}>{workspace.help}</AppText>
@@ -140,20 +139,20 @@ export function StaffHome() {
                   </AppText> : null}
                 </View>
                 <View style={styles.heroArtwork}>
-                  <VectorSymbol name={workspace.symbol} size={38} warmAccent />
+                  <Image testID="staff-home-hero-banner" source={PLANT_HERO_IMAGE} resizeMode="cover" accessible={false} style={styles.summaryImage} />
                   <Ionicons name={primaryAllowed ? "arrow-forward-circle-outline" : "lock-closed-outline"} size={20} color={colors.brand} />
                 </View>
               </Pressable>
               <View style={styles.grid}>
                 {data.kpis.map((c) => (
                   <View key={c.label} style={[styles.kpi, { width: kpiWidth,
-                    backgroundColor: colors.isDark ? "rgba(29,35,43,0.88)" : "rgba(255,255,255,0.84)",
+                    backgroundColor: colors.surfaceSecondary,
                     borderColor: kpiTone(c) === "neutral"
-                      ? colors.border
+                      ? colors.divider
                       : operationalStatus(kpiTone(c), colors.isDark) + "60",
                   }]}>
                     <View style={styles.kpiIcon}>
-                      {KPI_ARTWORK[c.label] ? <VectorSymbol name={KPI_ARTWORK[c.label]} size={30} warmAccent /> :
+                      {KPI_ARTWORK[c.label] ? <VectorSymbol name={KPI_ARTWORK[c.label]} size={30} /> :
                         <Ionicons name={c.icon} size={24} color={colors.brand} />}
                       {c.label === "Low Stock" && c.value > 0 ? <Ionicons name="alert-circle" size={16} color={colors.warning} /> : null}
                     </View>
@@ -208,15 +207,13 @@ const styles = StyleSheet.create({
   iconBtn: { width: 46, height: 46, borderRadius: 15, alignItems: "center", justifyContent: "center", borderWidth: 1 },
   badge: { position: "absolute", top: 8, right: 8, width: 9, height: 9, borderRadius: 5 },
   summary: { minHeight: 150, flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderRadius: 18,
-    padding: 12, overflow: "hidden", shadowColor: "#BC782C", shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.1,
-    shadowRadius: 15, elevation: 2 },
-  summaryBackdrop: { ...StyleSheet.absoluteFillObject, width: "100%", height: "100%" },
-  summaryTextPlate: { flex: 1, minWidth: 0, gap: 6, borderRadius: 14, padding: 10 },
+    padding: 12 },
+  summaryImage: { width: 64, height: 64, borderRadius: 8 },
+  summaryCopy: { flex: 1, minWidth: 0, gap: 6, padding: 4 },
   summaryTitle: { fontFamily: fonts.displayBold, fontSize: fontSize["2xl"], lineHeight: 28 },
-  heroArtwork: { width: 46, alignItems: "center", gap: 5 },
+  heroArtwork: { alignItems: "center", gap: 6 },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  kpi: { minHeight: 108, padding: 9, borderRadius: 16, borderWidth: 1, gap: 4,
-    shadowColor: "#996847", shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1 },
+  kpi: { minHeight: 108, padding: 9, borderRadius: 16, borderWidth: 1, gap: 4 },
   kpiIcon: { minHeight: 30, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   workday: { minHeight: 75, borderRadius: 16, borderWidth: 1, padding: 12, flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 10 },
   restricted: { minHeight: 86, flexDirection: "row", alignItems: "center", gap: 12,

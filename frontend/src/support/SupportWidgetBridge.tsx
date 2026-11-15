@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Image, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from "react-native";
+import { Image, Modal, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { usePathname, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -32,15 +32,15 @@ function deliveryDateFor(window: DeliveryWindow) {
  * Global support entry point with a strict authentication boundary:
  * - before login: static login/account guidance only, no customer APIs;
  * - after login: authenticated customers get a compact Support Agent card on
- *   the four tab-shell screens that already reserve bottom-navigation space.
+ *   the four tab-shell screens, launched from a toolbar outside screen content.
  *
- * Quick issue choices expand inside the compact corner card. Navigation only
+ * Quick issue choices expand inside the support sheet. Navigation only
  * occurs after a second explicit action such as Start Assisted Order or Open My Orders.
  * All overlay wrappers use box-none so only visible support controls receive touches.
  */
-export function SupportWidgetBridge() {
+export function SupportWidgetBridge({ customerTabBar = false }: { customerTabBar?: boolean } = {}) {
   const { hydrating, token, user } = useAuth();
-  const { colors } = useTheme();
+  const { colors, reduceMotion } = useTheme();
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
@@ -61,17 +61,17 @@ export function SupportWidgetBridge() {
   }, [pathname, token, user?.role]);
 
   const normalizedPath = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
-  const showPublicLoginHelp = !hydrating && !token && !user && normalizedPath === "/login";
+  const showPublicLoginHelp = !customerTabBar && !hydrating && !token && !user && normalizedPath === "/login";
   const showCustomerSupport =
-    !hydrating && Boolean(token) && user?.role === "customer" && CUSTOMER_WIDGET_PATHS.has(normalizedPath);
+    customerTabBar && !hydrating && Boolean(token) && user?.role === "customer" && CUSTOMER_WIDGET_PATHS.has(normalizedPath);
 
   if (!showPublicLoginHelp && !showCustomerSupport) return null;
 
   if (showCustomerSupport) {
-    const anchorBottom = Math.max(insets.bottom + 104, 120);
-    const panelWidth = compactPanelWidth(viewportWidth);
-    const availableHeight = Math.max(190, viewportHeight - anchorBottom - 16);
-    const panelMaxHeight = Math.min(400, Math.max(260, viewportHeight * 0.42), availableHeight);
+    const closeCustomerHelp = () => {
+      setCustomerHelpOpen(false);
+      setCustomerFlow(null);
+    };
 
     const openAssistedOrder = () => {
       const params: Record<string, string> = {
@@ -84,25 +84,33 @@ export function SupportWidgetBridge() {
     };
 
     return (
-      <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-        <View pointerEvents="box-none" style={[styles.customerAnchor, { bottom: anchorBottom }]}>
-          {customerHelpOpen ? (
+      <View style={[styles.customerToolbar, { backgroundColor: colors.surfaceSecondary, borderColor: colors.divider }]}>
+        <Pressable
+          testID="customer-support-widget"
+          accessibilityRole="button"
+          accessibilityLabel="Open TrackMyRMC Support"
+          accessibilityHint="Opens quick support without leaving this screen"
+          accessibilityState={{ expanded: customerHelpOpen }}
+          onPress={() => setCustomerHelpOpen(true)}
+          style={({ pressed }) => [styles.customerButton, { opacity: pressed ? 0.76 : 1 }]}
+        >
+          <VectorSymbol name="support" />
+          <AppText variant="label" maxFontSizeMultiplier={0}>Support</AppText>
+        </Pressable>
+        <Modal visible={customerHelpOpen} transparent animationType={reduceMotion ? "none" : "fade"} onRequestClose={closeCustomerHelp}>
+          <View style={[styles.customerModal, { backgroundColor: colors.scrim, paddingBottom: Math.max(spacing.lg, insets.bottom) }]}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={closeCustomerHelp} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <ScrollView
               testID="customer-support-panel"
-              accessibilityLiveRegion="polite"
-              style={[
-                styles.supportPanel,
-                {
-                  width: panelWidth,
-                  maxHeight: panelMaxHeight,
-                  backgroundColor: colors.surfaceSecondary,
-                  borderColor: colors.border,
-                },
-              ]}
+              accessibilityViewIsModal
+              onAccessibilityEscape={closeCustomerHelp}
+              style={[styles.supportPanel, styles.customerPanel, {
+                backgroundColor: colors.surfaceElevated,
+                borderColor: colors.divider,
+              }]}
               contentContainerStyle={styles.panelContent}
               keyboardShouldPersistTaps="handled"
               nestedScrollEnabled
-              showsVerticalScrollIndicator
             >
               <View style={styles.panelHeader}>
                 <View style={styles.panelIcon}>
@@ -117,10 +125,7 @@ export function SupportWidgetBridge() {
                   accessibilityRole="button"
                   accessibilityLabel="Close TrackMyRMC Support"
                   hitSlop={10}
-                  onPress={() => {
-                    setCustomerHelpOpen(false);
-                    setCustomerFlow(null);
-                  }}
+                  onPress={closeCustomerHelp}
                   style={[styles.closeButton, { borderColor: colors.border }]}
                 >
                   <Ionicons name="close" size={18} color={colors.onSurface} />
@@ -269,32 +274,8 @@ export function SupportWidgetBridge() {
                 <Ionicons name="open-outline" size={17} color={colors.onSurfaceTertiary} />
               </Pressable>
             </ScrollView>
-          ) : null}
-
-          <View pointerEvents="box-none" style={styles.customerLauncher}>
-            <Pressable
-              testID="customer-support-widget"
-              accessibilityRole="button"
-              accessibilityLabel="Open TrackMyRMC Support"
-              accessibilityHint="Expands a compact support card without leaving this screen"
-              accessibilityState={{ expanded: customerHelpOpen }}
-              onPress={() => setCustomerHelpOpen((value) => !value)}
-              style={({ pressed }) => [
-                styles.supportButton,
-                {
-                  backgroundColor: colors.surfaceSecondary,
-                  borderColor: colors.brand,
-                  opacity: pressed ? 0.84 : 1,
-                },
-              ]}
-            >
-              <Image source={SUPPORT_AGENT_MASCOT} style={styles.supportMascot} resizeMode="contain" accessible={false} />
-            </Pressable>
-            <View pointerEvents="none" style={[styles.customerBadge, { backgroundColor: colors.brand }]}> 
-              <AppText style={[styles.badgeText, { color: colors.onBrand }]}>May I Help you?</AppText>
-            </View>
           </View>
-        </View>
+        </Modal>
       </View>
     );
   }
@@ -454,13 +435,25 @@ export function SupportWidgetBridge() {
 }
 
 const styles = StyleSheet.create({
-  customerAnchor: {
-    position: "absolute",
-    right: spacing.md,
+  customerToolbar: {
     alignItems: "flex-end",
-    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
-  customerLauncher: { alignItems: "center" },
+  customerModal: {
+    flex: 1,
+    justifyContent: "flex-end",
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.lg,
+  },
+  customerPanel: {
+    flexGrow: 0,
+    flexShrink: 1,
+    width: "100%",
+    maxWidth: 400,
+    maxHeight: "85%",
+    alignSelf: "flex-end",
+  },
   publicAnchor: {
     position: "absolute",
     right: spacing.sm,
@@ -483,16 +476,14 @@ const styles = StyleSheet.create({
     elevation: 7,
   },
   supportMascot: { width: 48, height: 48 },
-  customerBadge: {
-    minHeight: 24,
-    minWidth: 54,
-    marginTop: -5,
-    paddingHorizontal: 8,
-    borderRadius: radius.pill,
+  customerButton: {
+    minHeight: 44,
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
   },
-  badgeText: { fontFamily: fonts.semibold, fontSize: 10 },
   supportPanel: {
     borderWidth: 1,
     borderRadius: radius.xl,
