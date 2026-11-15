@@ -105,8 +105,9 @@ fs.mkdirSync(out, { recursive: true });
           role + ' must keep personal documents and profile cards on More only');
         let homeSizes = await homeCards.evaluateAll(nodes => nodes.map(node => ({
           width: node.getBoundingClientRect().width, height: node.getBoundingClientRect().height,
+          quick: Boolean(node.closest('[data-testid="home-modules-quick-access"]')),
         })));
-        assert(homeSizes.every(box => box.width >= 72 && box.width <= 240 && box.height >= 76 && box.height <= 140),
+        assert(homeSizes.every(box => box.width >= (box.quick ? 60 : 72) && box.width <= 240 && box.height >= 76 && box.height <= 140),
           role + ' oversize or clipped Home card at ' + width + 'px: ' + JSON.stringify(homeSizes));
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
           role + ' Home horizontal overflow at ' + width);

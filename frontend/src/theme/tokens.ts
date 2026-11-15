@@ -204,7 +204,7 @@ export const loginAppearance = {
     link: "#C48B49", privacy: "#C38644", reviewer: "#3DA07F", delete: "#C8B4B5",
   },
   light: {
-    canvas: "#F4F1EC", heroTop: "#A0BACD", heroEdge: "#777372", heroJoin: "#E9E4DE",
+    canvas: "#F4F1EC", heroTop: "#A0BACD", heroEdge: "#777372", heroJoin: "#6E6D6A",
     card: ["#FCFBF7", "#FAF9F5", "#F8F7F3"], rim: ["#BCA07B", "#FEFDF9", "#C9C4BE"],
     rail: "#F0EDE6", railOutline: "#D9D6CF",
     tab: ["#FEE7CD", "#FDE9D0", "#FEEDD9"], selectedIcon: "#9A6637", selectedText: "#5D3719", tabOutline: "#B4906E", inactive: "#504D47",

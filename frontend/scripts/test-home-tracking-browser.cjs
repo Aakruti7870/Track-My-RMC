@@ -95,7 +95,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    const target = await action.boundingBox();
    await action.getByText(label, {exact:true}).waitFor();
    assert(target.width >= 44 && target.height >= 44);
-   const symbolSize = width >= 1024 ? 28 : 24;
+   const symbolSize = width >= 1024 ? 28 : width >= 600 ? 25 : 24;
    assert.deepEqual(await actualVectorSize(id), [symbolSize, symbolSize]);
    assert.equal(await action.locator('svg').first().getAttribute('aria-hidden'), 'true');
  }

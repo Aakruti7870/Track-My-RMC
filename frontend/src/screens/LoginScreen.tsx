@@ -599,14 +599,14 @@ export default function LoginScreen() {
           </Pressable>
         </View>
         <LinearGradient pointerEvents="none" colors={[look.heroJoin, colors.canvas, look.canvas]}
-          locations={[0, 0.24, 1]} style={styles.heroFade} />
+          locations={colors.isDark ? [0, 0.24, 1] : [0, 0.74, 1]} style={styles.heroFade} />
 
         <View style={[styles.loginShell, { backgroundColor: colors.surfaceSecondary, shadowColor: colors.shadow }]}>
           <LinearGradient pointerEvents="none" colors={look.card} style={styles.sheetFill}
             start={{ x: 0, y: 0 }} end={{ x: 0.9, y: 1 }} />
           <Svg width="100%" height="100%" pointerEvents="none" style={StyleSheet.absoluteFill} aria-hidden accessible={false}>
             <Defs>
-              <SvgGradient id="loginCardRim" x1="0%" y1="0%" x2="100%" y2="55%" gradientUnits="objectBoundingBox">
+              <SvgGradient id="loginCardRim" x1="0%" y1="0%" x2="98%" y2="55%" gradientUnits="objectBoundingBox">
                 <Stop offset="0" stopColor={look.rim[0]} />
                 <Stop offset="0.3" stopColor={look.rim[1]} />
                 <Stop offset="1" stopColor={look.rim[2]} />
