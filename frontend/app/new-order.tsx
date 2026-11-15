@@ -436,7 +436,7 @@ export default function NewOrder() {
             <View style={[styles.infoBanner, { backgroundColor: colors.brandSoft, borderColor: colors.brand + "55" }]}>
               <Ionicons name="shield-checkmark-outline" size={20} color={colors.brand} />
               <AppText variant="caption" style={{ flex: 1 }}>
-                No payment is required when submitting this order request. Your selection is a preference, subject to the plant's acceptance and final terms. Review and accept the confirmed amount before paying. {SHOW_SANDBOX_PREPAID
+                No payment is required when submitting this order request. Your selection is a preference, subject to the plant&apos;s acceptance and final terms. Review and accept the confirmed amount before paying. {SHOW_SANDBOX_PREPAID
                   ? "Sandbox prepaid testing is available only for approved test plants; no real payment is collected. Never pay using an unofficial link."
                   : "Online advance payments are not yet activated. Use pay-on-delivery or plant-approved credit only. Never pay using an unofficial link."}
               </AppText>
