@@ -44,3 +44,39 @@ test("KYC navigation has history fallback and does not imply verification", () =
   assert.match(kyc, /accessibilityLabel="Back"/);
   assert.match(kyc, /data\?\.status !== "VERIFIED"/);
 });
+
+test("home offers KYC-later request building and prioritizes next actions", () => {
+  const home = read("app/customer/index.tsx");
+  const actionHandler = home.split("const onAction = ")[1]?.split("const openService = ")[0] || "";
+  assert.match(actionHandler, /router\.push\("\/new-order"\)/);
+  assert.doesNotMatch(actionHandler, /Complete KYC to place an order/);
+  assert.match(home, /<CustomerNextAction/);
+  const firstCard = home.indexOf("<CustomerNextAction");
+  const carousel = home.indexOf("<HomeCarousel");
+  const shortcuts = home.indexOf("{quickActions}", carousel);
+  assert.ok(firstCard < carousel && carousel < shortcuts, "context-first home keeps carousel and shortcuts adjacent");
+  const action = read("src/components/customer/CustomerNextAction.tsx");
+  assert.match(action, /activeOrder/);
+  assert.match(action, /Verify identity/);
+  assert.match(action, /No payment is taken/);
+});
+test("new order uses local calendar dates and a transparent final review", () => {
+  const order = read("app/new-order.tsx");
+  const nextDays = order.split("function nextDays")[1]?.split("export default function")[0] || "";
+  assert.match(nextDays, /getFullYear\(\)/);
+  assert.doesNotMatch(nextDays, /toISOString\(\)/);
+  for (const section of ["1. Choose Plant", "2. Concrete Grade", "3. Quantity", "4. Delivery Schedule", "5. Site & Contact", "6. Payment Preference"]) {
+    assert.ok(order.includes(section), "Missing step " + section);
+  }
+  assert.ok(order.indexOf("5. Site & Contact") < order.indexOf("6. Payment Preference"), "payment comes after site information");
+  assert.ok(order.indexOf('testID="neworder-review"') > order.indexOf("6. Payment Preference"), "review is last");
+  assert.match(order, /plant confirms availability, rates and final payment terms/);
+  assert.match(order, /router\.canGoBack\(\)/);
+});
+test("plant onboarding keeps the request pending and supports compact-screen scrolling", () => {
+  const onboarding = read("app/plant-onboarding.tsx");
+  assert.match(onboarding, /testID="onboarding-next-steps"/);
+  assert.match(onboarding, /Account access is enabled only after approval/);
+  assert.match(onboarding, /contentContainerStyle=\{\[styles\.successPage/);
+  assert.match(onboarding, /router\.canGoBack\(\)/);
+});
