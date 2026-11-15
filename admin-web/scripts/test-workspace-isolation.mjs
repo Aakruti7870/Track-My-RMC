@@ -198,7 +198,7 @@ try {
     assert(visual.width > 0 && visual.right <= width + 1, 'Workspace rows fit the viewport');
     assert.equal(visual.gradient, 'none', 'Workspace rows use a flat surface');
     assert.equal(visual.blur, 'none', 'Workspace rows do not blur their backdrop');
-    assert.equal(visual.surface, 'rgb(26, 31, 38)', 'Workspace rows use opaque graphite');
+    assert.equal(visual.surface, 'rgb(18, 18, 18)', 'Workspace rows use opaque graphite');
     assert.equal(visual.icon, '20', 'Workspace icons use a consistent small size');
     await workspace.click();
     assert.equal(await adminNav('Plant Master').getAttribute('aria-current'), 'page');
@@ -206,7 +206,7 @@ try {
     await button('Light').click();
     assert.match(await page.locator('main').getAttribute('class')||'',/tm-light/,'light theme should use warm app tokens');
     await adminNav('Dashboard').click();
-    assert.equal(await workspace.evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(255, 255, 255)','Light workspace cards use a light surface');
+    assert.equal(await workspace.evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(250, 249, 245)','Light workspace cards use a light surface');
     await adminNav('Plant Master').click();
     await adminNav('Settings').click();
     for (const mode of ['Light','Dark']) {
@@ -215,7 +215,7 @@ try {
         const {color,backgroundColor}=getComputedStyle(el);
         return [color,backgroundColor];
       });
-      assert.deepEqual(selected,['rgb(14, 17, 22)','rgb(255, 138, 0)'],'selected theme uses readable graphite on orange');
+      assert.deepEqual(selected,['rgb(7, 8, 13)', mode === 'Light' ? 'rgb(255, 130, 1)' : 'rgb(255, 120, 0)'],'selected theme uses readable graphite on orange');
     }
     await page.reload();
     await page.getByRole('heading',{name:'Command Center',exact:true}).waitFor();

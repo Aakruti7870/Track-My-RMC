@@ -76,6 +76,13 @@ fs.mkdirSync(out, { recursive: true });
           await page.setViewportSize({ width, height: 760 });
           // At smaller heights the shortcut block can become sticky after the hero scrolls.
           await page.getByTestId('staff-home-scroll-shortcuts').getByTestId('plant-home-supplier-enquiry').waitFor();
+          await page.waitForFunction(() => {
+            const block = document.querySelector('[data-testid="staff-home-scroll-shortcuts"]');
+            const frame = document.querySelector('[data-testid="staff-home-scroll-frame"]');
+            if (!block || !frame || frame.getBoundingClientRect().bottom > innerHeight + 1) return false;
+            return !!block.closest('[data-testid="staff-home-scroll-fixed"]')
+              || getComputedStyle(block.parentElement).position === 'sticky';
+          });
           await scroll.evaluate(node => {
             const shortcuts = node.querySelector('[data-testid="staff-home-scroll-shortcuts"]');
             if (shortcuts) node.scrollTop = Math.max(0, shortcuts.getBoundingClientRect().top - node.getBoundingClientRect().top + 24);
