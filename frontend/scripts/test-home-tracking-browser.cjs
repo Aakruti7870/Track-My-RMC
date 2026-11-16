@@ -17,7 +17,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      await route.fulfill({json:{id:'admin-review-fixture',status:'PENDING_ADMIN_REVIEW'}});
    } else {
      await route.fulfill({json:{requests:reviewSubmission ? [{
-       id:'admin-review-fixture',grade:reviewSubmission.grade,quantity_m3:reviewSubmission.quantity_m3,
+       id:'admin-review-fixture',status:'PENDING_ADMIN_REVIEW',grade:reviewSubmission.grade,quantity_m3:reviewSubmission.quantity_m3,
        site_address:reviewSubmission.site_address,delivery_date:reviewSubmission.delivery_date,
      }] : []}});
    }
@@ -396,7 +396,8 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      assert.equal(reviewSubmission.plant_id,null);
      assert.equal(reviewSubmission.share_with_supplier,undefined);
      await page.getByRole('button',{name:'View My Orders',exact:true}).click();
-     await page.getByText('Requests Awaiting Review',{exact:true}).waitFor();
+     await page.getByText('Plant Order Requests',{exact:true}).waitFor();
+     await page.getByText('Awaiting Super Admin review',{exact:true}).waitFor();
      await page.getByText('Reference admin-review-fixture',{exact:true}).waitFor();
      console.log('PASS 320px '+theme+' enlarged labels, header Support and matte RFQ calendar');
    }

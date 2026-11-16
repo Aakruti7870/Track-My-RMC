@@ -16,6 +16,7 @@ fs.mkdirSync(out, { recursive: true });
     ...(process.env.OWNER_CHROMIUM_PATH ? { executablePath: process.env.OWNER_CHROMIUM_PATH } : {}) });
   try {
     for (const role of roles) {
+      const routeName = role === "admin" ? "plant-admin" : role;
       for (const width of [320, 390, 768]) {
         const context = await browser.newContext({ viewport: { width, height: 920 } });
         await context.addInitScript(() => {
@@ -60,7 +61,7 @@ fs.mkdirSync(out, { recursive: true });
           };
           await route.fulfill({ json });
         });
-        await page.goto('http://127.0.0.1:8765/' + (role === 'admin' ? 'plant-admin' : role) + '/');
+        await page.goto('http://127.0.0.1:8765/' + routeName + '/');
         const summary = page.getByTestId('staff-home-summary');
         await summary.waitFor({ timeout: 25000 });
         await page.getByTestId('staff-home-hero-banner').waitFor();
@@ -122,7 +123,7 @@ fs.mkdirSync(out, { recursive: true });
         await page.waitForFunction(() => document.querySelector('[data-testid="tab-more"]')?.getAttribute('aria-selected') === 'true');
         await page.getByTestId('staff-module-search').waitFor();
         await page.getByTestId('tab-more').click({ clickCount: 3 });
-        await page.waitForURL(new RegExp('/' + role + '/more/?$'));
+        await page.waitForURL(new RegExp('/' + routeName + '/more/?$'));
         assert.equal(await page.getByTestId('tab-more').getAttribute('aria-selected'), 'true');
         await page.waitForFunction(() => !document.body.innerText.includes('Checking staff permissions…'));
         const moreCards = page.locator('[data-testid="role-module-directory"]:has([data-testid="staff-module-search"]) [data-testid^="role-module-"]');
