@@ -70,7 +70,7 @@ export default function DriverTrips() {
               <Card style={{ gap: spacing.sm }}>
                 <View style={styles.rowBetween}>
                   <AppText style={{ flexShrink: 1, fontFamily: fonts.bold, fontSize: fontSize.lg, color: colors.onSurface }}>{item.order_number}</AppText>
-                  <Badge label={item.status.replace(/_/g, " ")} status={item.status} />
+                  <Badge label={item.status.replace(/_/g, " ")} status={item.status} orderStatus />
                 </View>
                 <AppText variant="caption">{item.grade} · {item.quantity} m³ · {item.tm_number}</AppText>
                 <View style={styles.siteRow}>

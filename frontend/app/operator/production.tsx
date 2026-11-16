@@ -113,7 +113,7 @@ export default function OperatorProduction() {
                   {item.secondary ? <AppText variant="caption">{item.secondary}</AppText> : null}
                   {item.meta ? <AppText variant="caption">{item.meta}</AppText> : null}
                 </View>
-                <Badge label={status.replace(/_/g, " ")} status={item.badge_status || status} />
+                <Badge label={status.replace(/_/g, " ")} status={item.badge_status || status} orderStatus />
               </View>
               {["ACCEPTED", "SCHEDULED"].includes(status) ? <Button label="Start Production" onPress={() => start(item)} loading={busy} /> : null}
               {status === "IN_PRODUCTION" ? (

@@ -166,7 +166,7 @@ export default function TrackScreen() {
                 <AppText variant="heading">{selected?.load_code || (data.status === "DELIVERED" ? "Delivery complete" : data.active ? "Mixer delivery" : "Not dispatched yet")}</AppText>
                 {selected?.quantity_m3 ? <AppText variant="caption">{selected.quantity_m3} m³ delivery load</AppText> : null}
               </View>
-              <Badge label={liveStatus.replace(/_/g, " ")} status={liveStatus} />
+              <Badge label={liveStatus.replace(/_/g, " ")} status={liveStatus} orderStatus />
             </View>
             <Row icon="business-outline" label="Destination" value={`${data.destination.site_name}${data.destination.address ? " — " + data.destination.address : ""}`} colors={colors} />
             {tm ? <Row icon="bus-outline" label="Transit Mixer" value={tm} colors={colors} /> : null}
@@ -196,7 +196,7 @@ export default function TrackScreen() {
                     <AppText variant="caption">{[load.tm_number, load.driver_name].filter(Boolean).join(" · ") || "Not assigned"}</AppText>
                     {MILESTONES.filter(({key})=>!!load.milestones?.[key]).map(({key,label}) => <AppText key={key} variant="caption">{label}: {new Date(load.milestones![key]!).toLocaleString()}</AppText>)}
                   </View>
-                  <Badge label={(load.status || "").replace(/_/g, " ")} status={load.status} />
+                  <Badge label={(load.status || "").replace(/_/g, " ")} status={load.status} orderStatus />
                 </Card>
               ))}
             </View>

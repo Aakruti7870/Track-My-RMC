@@ -193,7 +193,20 @@ try {
     ]);
     assert.equal(anonymousRefresh.status(), 401, 'Anonymous session restoration must be rejected');
     assert.equal((await anonymousRefresh.json()).message, 'Refresh credential required');
-    await expect(page.getByTestId('login-user-tab')).toBeVisible({ timeout: 180000 });
+    await expect(page.getByRole('tab', { name: 'USER LOGIN', exact: true })).toHaveAttribute('data-testid', 'login-user-tab', { timeout: 180000 });
+    await expect(page.getByRole('tab', { name: 'PLANT STAFF', exact: true })).toHaveAttribute('data-testid', 'login-plant-tab');
+    if (user.role === 'customer') {
+      const card = page.getByTestId('login-card');
+      const reviewer = card.getByRole('button', { name: 'Google Play Reviewer Access', exact: true });
+      await expect(reviewer).toBeVisible();
+      const bounds = await reviewer.boundingBox();
+      const legal = await card.getByTestId('login-terms-link').boundingBox();
+      const shell = await card.boundingBox();
+      assert(bounds && legal && shell && bounds.height >= 44 && bounds.y + bounds.height <= legal.y,
+        'Reviewer action must have a touch target above the legal links');
+      assert(bounds.x >= shell.x && bounds.x + bounds.width <= shell.x + shell.width,
+        'Reviewer action must fit inside the login card');
+    }
     const destination = user.email ?? user.phone.replace(/^\+/, '');
     if (user.email) {
       await page.getByTestId('login-plant-tab').click();
@@ -353,10 +366,11 @@ try {
         .filter(key => key !== 'notifications' && !disabledKeys.includes(key));
     // Staff and Driver notifications are exclusively in the shared header.
     if (user.role !== 'customer') await expect(page.getByTestId('operational-notifications')).toBeVisible();
-    const visibleModuleCards = async (locator = page) => {
-      const cards = locator.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])')
+    const visibleModuleCards = async (locator = page, prefix = 'role-module-') => {
+      const cards = locator.locator(`[data-testid^="${prefix}"]:not([data-testid="role-module-directory"])`)
         .filter({ visible: true });
-      return cards.evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid').slice('role-module-'.length)));
+      return cards.evaluateAll((nodes, prefixLength) =>
+        nodes.map(node => node.getAttribute('data-testid').slice(prefixLength)), prefix.length);
     };
     const roleModulesPage = page.getByTestId('role-modules-page');
     async function openSection(link, category) {
@@ -432,10 +446,15 @@ try {
       await expect(page.getByTestId('role-module-directory')).toBeVisible();
       for (const key of visibleKeys) await expect(page.getByTestId('role-module-' + key)).toBeVisible();
     } else if (user.role === 'driver') {
+      phase = 'driver Quick Access';
+      const quickAccess = page.getByTestId('home-modules-driver-quick-access');
+      await expect(quickAccess.getByRole('heading', { name: 'Quick Access', exact: true })).toBeVisible();
+      assert.deepEqual(await visibleModuleCards(quickAccess, 'driver-shortcut-'),
+        ['driver-trips', 'driver-attendance', 'shift-roster', 'my-payslip']);
       phase = 'driver Workforce preview and See All';
       const preview = page.getByTestId('home-modules-driver-workforce');
-      await expect(preview.getByTestId('role-module-shift-roster')).toBeVisible();
-      assert.deepEqual(new Set(await visibleModuleCards(preview)), new Set(['shift-roster', 'workforce']));
+      await expect(preview.getByTestId('role-module-workforce')).toBeVisible();
+      assert.deepEqual(await visibleModuleCards(preview), ['workforce']);
       await openSection(preview.getByTestId('home-see-all-driver-workforce'), 'Workforce');
       assert.deepEqual(new Set(await visibleModuleCards(roleModulesPage)),
         new Set(['driver-attendance', 'workforce', 'shift-roster', 'my-payslip']));
@@ -468,38 +487,54 @@ try {
       const personalKeys = ['public-plant-profile', 'my-payslip'];
       const expectedHome = modulesForRole(user.role).filter(({ key }) =>
         visibleKeys.includes(key) && !nativeTabKeys.includes(key) && !personalKeys.includes(key));
-      const categories = [...new Set(expectedHome.map(({ group }) => group))];
-      const staffHome = page.getByTestId('staff-home-scroll');
+      const staffHome = page.getByTestId('staff-home-scroll-frame');
       phase = 'staff Home permission resolution';
       await expect.poll(() => successfulPaths.has('/api/staff/module-permissions')).toBe(true);
-      await expect(staffHome.locator('[data-testid^="home-modules-"]')).toHaveCount(categories.length);
-      const homeKeys = [];
+
+      const quickAccess = staffHome.getByTestId('home-modules-quick-access');
+      phase = 'staff Quick Access';
+      await expect(quickAccess.getByRole('heading', { name: 'Quick Access', exact: true })).toBeVisible();
+      await expect.poll(async () => (await visibleModuleCards(quickAccess)).length).toBe(Math.min(4, expectedHome.length));
+      const quickKeys = await visibleModuleCards(quickAccess);
+      const allowedHomeKeys = new Set(expectedHome.map(({ key }) => key));
+      assert.equal(new Set(quickKeys).size, quickKeys.length, 'Staff Quick Access repeats a shortcut');
+      assert(quickKeys.every(key => allowedHomeKeys.has(key)), 'Staff Quick Access exposes a shortcut outside effective permissions');
+
+      const remaining = expectedHome.filter(({ key }) => !quickKeys.includes(key));
+      const categories = [...new Set(remaining.map(({ group }) => group))];
+      await expect(staffHome.locator('[data-testid^="home-modules-"]')).toHaveCount(categories.length + 1);
+      const homeKeys = new Set(quickKeys);
+      const previewKeysSeen = new Set(quickKeys);
       for (const category of categories) {
         const slug = category.toLowerCase();
         const preview = staffHome.getByTestId(`home-modules-${slug}`);
-        const expectedKeys = expectedHome.filter(({ group }) => group === category).map(({ key }) => key);
+        const categoryKeys = expectedHome.filter(({ group }) => group === category).map(({ key }) => key);
+        const remainingKeys = remaining.filter(({ group }) => group === category).map(({ key }) => key);
         phase = `staff ${category} preview`;
-        await expect.poll(async () => (await visibleModuleCards(preview)).length).toBe(Math.min(4, expectedKeys.length));
+        await expect.poll(async () => (await visibleModuleCards(preview)).length).toBe(Math.min(4, remainingKeys.length));
         const previewKeys = await visibleModuleCards(preview);
-        assert.equal(new Set(previewKeys).size, previewKeys.length, `${category} Home has duplicate shortcuts`);
-        assert(previewKeys.every(key => expectedKeys.includes(key)), `${category} Home exposes a shortcut outside the role's section`);
+        for (const key of previewKeys) {
+          assert(remainingKeys.includes(key), `${category} Home exposes a shortcut outside the role's section`);
+          assert(!previewKeysSeen.has(key), `${category} Home repeats shortcut ${key}`);
+          previewKeysSeen.add(key);
+          homeKeys.add(key);
+        }
         const seeAll = preview.getByTestId(`home-see-all-${slug}`);
-        if (expectedKeys.length <= 2) {
+        if (categoryKeys.length <= 2) {
           await expect(seeAll).toHaveCount(0);
-          homeKeys.push(...previewKeys);
           continue;
         }
         phase = `staff ${category} See All`;
         await openSection(seeAll, category);
         await expect(roleModulesPage.getByText('Checking staff permissions…', { exact: true })).not.toBeVisible();
-        await expect.poll(async () => (await visibleModuleCards(roleModulesPage)).length).toBe(expectedKeys.length);
+        await expect.poll(async () => (await visibleModuleCards(roleModulesPage)).length).toBe(categoryKeys.length);
         const fullKeys = await visibleModuleCards(roleModulesPage);
-        assert.deepEqual(new Set(fullKeys), new Set(expectedKeys), `${category} directory must reflect effective permissions`);
+        assert.deepEqual(new Set(fullKeys), new Set(categoryKeys), `${category} directory must reflect effective permissions`);
         const search = roleModulesPage.getByTestId('staff-module-search');
         await search.fill('no-module-matches-this-test');
         await expect(roleModulesPage.getByText('No modules match this filter or your current access.')).toBeVisible();
         await expect.poll(async () => (await visibleModuleCards(roleModulesPage)).length).toBe(0);
-        homeKeys.push(...fullKeys);
+        fullKeys.forEach(key => homeKeys.add(key));
         await returnFromSection();
       }
       phase = 'staff More account-only inventory';

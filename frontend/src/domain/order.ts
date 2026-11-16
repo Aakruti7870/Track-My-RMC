@@ -1,3 +1,5 @@
+import orderStages from "./order-status-colors.json";
+
 export type Order = {
   id: string;
   order_number: string;
@@ -16,3 +18,9 @@ export type Order = {
   challan_number?: string;
   invoice_number?: string;
 };
+
+export function orderStatusColor(status: string, dark: boolean): string | undefined {
+  const normalized = status.trim().toUpperCase().replace(/[\s-]+/g, "_");
+  const stage = Object.values(orderStages).find(({ aliases }) => aliases.includes(normalized));
+  return stage?.[dark ? "dark" : "light"];
+}

@@ -191,7 +191,7 @@ export default function TripDetail() {
           <Card style={{ gap: spacing.md }}>
             <View style={styles.rowBetween}>
               <AppText variant="caption">Status</AppText>
-              <Badge label={t.status.replace(/_/g, " ")} status={t.status} />
+              <Badge label={t.status.replace(/_/g, " ")} status={t.status} orderStatus />
             </View>
             <View style={styles.stages}>
               {STAGES.map((s, i) => (

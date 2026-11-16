@@ -1,6 +1,7 @@
 import React from "react";
 import { StyleSheet, View } from "react-native";
 
+import { orderStatusColor } from "@/src/domain/order";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { fonts, fontSize, spacing, statusColor } from "@/src/theme/tokens";
 import { AppText } from "./ui/AppText";
@@ -25,7 +26,7 @@ export function OrderTimeline({ history }: { history: HistoryEntry[] }) {
   return (
     <View style={{ gap: 0 }}>
       {items.map((h, i) => {
-        const c = statusColor(colors, h.to);
+        const c = orderStatusColor(h.to, colors.isDark) ?? statusColor(colors, h.to);
         const last = i === items.length - 1;
         return (
           <View key={i} style={styles.row}>
@@ -34,7 +35,7 @@ export function OrderTimeline({ history }: { history: HistoryEntry[] }) {
               {!last ? <View style={[styles.line, { backgroundColor: colors.border }]} /> : null}
             </View>
             <View style={{ flex: 1, paddingBottom: last ? 0 : spacing.lg }}>
-              <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: colors.onSurface }}>
+              <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: c }}>
                 {h.to.replace(/_/g, " ")}
               </AppText>
               {h.note ? <AppText variant="caption">{h.note}</AppText> : null}

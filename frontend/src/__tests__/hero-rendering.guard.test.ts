@@ -29,20 +29,20 @@ describe('final login and customer hero guards', () => {
     for (const value of [terms, privacy, deletion, secured, review, powered]) assert.ok(value >= 0);
     assert.ok(terms < privacy);
     assert.ok(privacy < deletion);
-    assert.ok(deletion < secured);
+    assert.ok(secured < review);
+    assert.ok(deletion < powered);
     assert.ok(review < terms);
-    assert.ok(secured < powered);
     assert.doesNotMatch(login, /Contact Us/);
-    assert.doesNotMatch(login, /textDecorationLine\s*:\s*["']underline["']/);
+    assert.match(login, /legalLink: \{[^\n]*textDecorationLine: "underline"/);
   });
 
-  it('renders exactly five new banners in the approved order', () => {
+  it('renders the six uploaded banners in carousel order', () => {
     assert.ok(home.includes('HomeCarousel'));
     assert.ok(carousel.includes('const AUTO_MS = 4500'));
     assert.ok(carousel.includes('const SLIDE_COUNT = SLIDES.length'));
     assert.ok(carousel.includes('pagingEnabled'));
     assert.ok(carousel.includes('aspectRatio: 16 / 9'));
-    const filenames = ['Mixer.webp', 'KYC-verification.webp', 'Free-Calculator.webp', 'Cashfree.webp', 'CountryMap.webp'];
+    const filenames = ['order-concrete.webp', 'track-order.webp', 'nearby-plants.webp', 'rmc-calculator.webp', 'bulk-concrete.webp', 'delivery-challans.webp'];
     const imports = carousel.split("\n").filter(line => line.includes('source: require('))
       .map(line => line.split('assets/images/')[1]?.split('"')[0]);
     assert.deepEqual(imports.map(file => path.basename(file)), filenames);
@@ -64,8 +64,8 @@ describe('final login and customer hero guards', () => {
     }
     assert.ok(fs.existsSync(path.join(root, 'assets/images', 'Background Light Theme.PNG')));
     assert.ok(activePage.includes('opacity: 0.15'));
-    assert.ok(scene.includes('rgba(247,248,249,0.85)'));
-    assert.ok(scene.includes('rgba(14,17,22,0.85)'));
+    assert.ok(scene.includes('rgba(233,228,222,0.85)'));
+    assert.ok(scene.includes('rgba(7,8,13,0.85)'));
     assert.ok(layout.includes('contentStyle: getThemedSceneStyle(colors)'));
     assert.ok(!layout.includes('contentStyle: { backgroundColor: "transparent" }'));
     assert.match(colors, /surfaceSecondary: "#[0-9A-F]{6}"/);

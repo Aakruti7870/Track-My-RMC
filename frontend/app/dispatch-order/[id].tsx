@@ -92,7 +92,7 @@ export default function DispatchOrder() {
           <Card style={{ gap: spacing.xs }}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
               <AppText variant="heading">{o.order_number}</AppText>
-              <Badge label={(o.status || "").replace(/_/g, " ")} status={o.status} />
+              <Badge label={(o.status || "").replace(/_/g, " ")} status={o.status} orderStatus />
             </View>
             <AppText style={{ fontFamily: fonts.displayBold, fontSize: fontSize["2xl"], color: colors.onSurface }}>
               {o.grade} · {o.quantity} m³

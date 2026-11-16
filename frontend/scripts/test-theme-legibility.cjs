@@ -46,9 +46,10 @@ test("matte light and dark surfaces keep body and secondary text readable", () =
   assert.match(read("src/theme/sceneBackground.ts"), /0\.85/);
 });
 
-test("customer Plants quick action uses the Material Symbols factory glyph", () => {
+test("customer Plants quick action uses the uploaded nearby RMC plants glyph", () => {
   assert.match(read("app/customer/index.tsx"), /key: "plants", label: "Nearby Plants", symbol: "nearby-rmc-plants"/);
-  assert.match(read("src/components/vector-symbols/materialSymbols.ts"), /"nearby-rmc-plants": "factory"/);
+  const icons = JSON.parse(read("src/components/vector-symbols/track-icons.json"));
+  assert.ok(icons["nearby-rmc-plants"].compact.length);
 });
 
 test("tab bars do not add transparent web padding below navigation", () => {
@@ -57,4 +58,29 @@ test("tab bars do not add transparent web padding below navigation", () => {
   assert.match(customer, /backgroundColor: getThemedCanvasColor\(colors\)/);
   const owner = read("src/owner/OwnerTabBar.tsx");
   assert.match(owner, /paddingBottom: Platform\.OS === "web" \? 8 : Math\.max\(insets\.bottom, 8\)/);
+});
+
+test("order stages share the requested colors, including persisted aliases", () => {
+  const ts = require("typescript");
+  const { runInNewContext } = require("node:vm");
+  const code = ts.transpileModule(read("src/domain/order.ts"), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, esModuleInterop: true },
+  }).outputText;
+  const exports = {};
+  runInNewContext(code, { exports, require: () => require("../src/domain/order-status-colors.json") });
+  const { orderStatusColor } = exports;
+  for (const dark of [false, true]) {
+    for (const states of [
+      ["Pending", "pending_kyc"],
+      ["Accepted", "confirmed", "scheduled"],
+      ["Preparing", "in-production", "produced", "ready_to_dispatch"],
+      ["Dispatched", "in_transit", "en route", "at_site"],
+      ["Delivered", "completed"],
+    ]) {
+      for (const value of states) assert.equal(orderStatusColor(value, dark), orderStatusColor(states[0], dark));
+    }
+    assert.equal(new Set(["Pending", "Accepted", "Preparing", "Dispatched", "Delivered"]
+      .map(value => orderStatusColor(value, dark))).size, 5);
+    assert.equal(orderStatusColor("VERIFIED", dark), undefined);
+  }
 });

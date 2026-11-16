@@ -1,3 +1,4 @@
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import React, { useEffect, useMemo, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
@@ -98,7 +99,7 @@ export default function CustomerProjects() {
                 {calculations.length ? <SummaryLine label="Calculated quantity" value={`${calculatedM3.toFixed(2)} m³`} /> : null}
                 {checklistDone ? <SummaryLine label="Checklist items completed" value={String(checklistDone)} /> : null}
               </View>
-              {calculations.slice(0, 3).map((item) => <View key={item.id} style={[styles.calcRow, { borderColor: colors.border }]}><Ionicons name="calculator-outline" size={18} color={colors.brand} /><View style={{ flex: 1 }}><AppText style={{ fontFamily: fonts.medium }}>{item.name}</AppText><AppText variant="caption">{item.grade || "Grade not selected"} · {item.quantity} m³</AppText></View></View>)}
+              {calculations.slice(0, 3).map((item) => <View key={item.id} style={[styles.calcRow, { borderColor: colors.border }]}><VectorSymbol name="free-rmc-tools" size={18} color={colors.brand} /><View style={{ flex: 1 }}><AppText style={{ fontFamily: fonts.medium }}>{item.name}</AppText><AppText variant="caption">{item.grade || "Grade not selected"} · {item.quantity} m³</AppText></View></View>)}
               <View style={styles.actions}><View style={{ flex: 1 }}><Button label="Pour Planner" variant="outline" onPress={() => router.push("/customer/pour-planner")} /></View><View style={{ flex: 1 }}><Button label="Receiving Guide" variant="outline" onPress={() => router.push("/customer/receiving-guide")} /></View></View>
               <Button label="Cube Test Follow-up" variant="outline" onPress={() => router.push("/customer/cube-test-follow-up")} />
               <View style={styles.actions}>

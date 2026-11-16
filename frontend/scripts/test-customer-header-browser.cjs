@@ -33,7 +33,7 @@ const out=process.env.HEADER_PREVIEW_DIR||'header-previews';fs.mkdirSync(out,{re
   const home=async()=>{await page.goto('http://127.0.0.1:8765/customer/');await page.getByTestId('customer-home-header').waitFor();};
   await home();const header=page.getByTestId('customer-home-header');
   await page.getByTestId('header-unread-dot').waitFor();
-  const expectedSurface=scheme==='light'?'rgb(255, 255, 255)':'rgb(26, 31, 38)';
+  const expectedSurface=scheme==='light'?'rgb(250, 249, 245)':'rgb(18, 18, 18)';
   const headerSurface=await header.evaluate(node=>getComputedStyle(node.parentElement).backgroundColor);
   assert.equal(headerSurface,expectedSurface,`matte header expected at ${width}px`);
   const tabBar=page.getByTestId('app-tab-bar');

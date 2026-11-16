@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { AppState, Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { IdentityVerificationSymbol } from "@/src/components/vector-symbols/IdentityVerificationSymbol";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -255,8 +257,10 @@ export default function KycScreen() {
         ) : (
           <>
             <Card testID={providerUnavailable ? "kyc-unavailable" : "kyc-status"} style={{ gap: spacing.md, paddingVertical: spacing.xl, borderColor: tone + "66" }}>
-              <View style={[styles.statusIcon, { backgroundColor: tone, alignSelf: "center" }]}>
-                <Ionicons name={meta.icon} size={34} color={scheme === "dark" ? "#121212" : "#FFFFFF"} />
+              <View style={[styles.statusIcon, { backgroundColor: status === "VERIFIED" || providerUnavailable ? tone : colors.surfaceTertiary }]}>
+                {providerUnavailable ? <Ionicons name={meta.icon} size={34} color={scheme === "dark" ? "#121212" : "#FFFFFF"} />
+                  : status === "VERIFIED" ? <VectorSymbol name="kyc-verified" size={34} color={scheme === "dark" ? "#121212" : "#FFFFFF"} />
+                  : <IdentityVerificationSymbol size={51} />}
               </View>
               <AppText variant="heading" center>{meta.title}</AppText>
               <AppText variant="bodyMuted" center>{meta.body}</AppText>
@@ -290,5 +294,5 @@ export default function KycScreen() {
 const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth },
   iconBtn: { width: control.minTouch, height: control.minTouch, borderRadius: radius.md, alignItems: "center", justifyContent: "center", borderWidth: 1 },
-  statusIcon: { width: 72, height: 72, borderRadius: 36, alignItems: "center", justifyContent: "center" },
+  statusIcon: { alignSelf: "center", width: 72, height: 72, borderRadius: 36, alignItems: "center", justifyContent: "center" },
 });

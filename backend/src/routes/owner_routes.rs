@@ -20,51 +20,46 @@ pub async fn my_plants(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
-    check_role(
-        &auth_user,
-        &[
-            "owner",
-            "plant_owner",
-            "admin",
-            "dispatcher",
-            "operator",
-            "supervisor",
-            "quality_engineer",
-            "store_manager",
-            "accountant",
-            "fleet_manager",
-        ],
-    )?;
-
-    let rows: Vec<(uuid::Uuid, String, String)> = match auth_user.role.as_str() {
-        "owner" | "plant_owner" => {
-            sqlx::query_as(
-                "SELECT id, name, city FROM rmc_plants WHERE owner_id = $1 AND is_active = TRUE ORDER BY name",
-            )
-            .bind(auth_user.user_id)
-            .fetch_all(&state.db)
-            .await?
-        }
-        _ => {
-            sqlx::query_as(
-                "SELECT p.id, p.name, p.city
-                 FROM rmc_plants p
-                 INNER JOIN plant_staff ps ON ps.plant_id = p.id
-                 WHERE ps.user_id = $1 AND ps.is_active = TRUE AND p.is_active = TRUE
-                 ORDER BY p.name",
-            )
-            .bind(auth_user.user_id)
-            .fetch_all(&state.db)
-            .await?
-        }
-    };
-
-    let plants: Vec<_> = rows
+    let plants: Vec<_> = assigned_plants(&state, &auth_user)
+        .await?
         .into_iter()
         .map(|(id, name, city)| json!({ "id": id, "name": name, "city": city }))
         .collect();
 
     Ok(Json(json!({ "success": true, "plants": plants })))
+}
+
+pub(super) async fn assigned_plants(
+    state: &AppState,
+    auth_user: &AuthUser,
+) -> Result<Vec<(Uuid, String, String)>, AppError> {
+    let sql = match auth_user.role.as_str() {
+        "owner" | "plant_owner" => {
+            "SELECT id, name, city FROM rmc_plants
+             WHERE owner_id = $1 AND is_active
+             ORDER BY name, id"
+        }
+        "driver" => {
+            "SELECT p.id, p.name, p.city FROM rmc_plants p WHERE p.is_active AND (
+                EXISTS (SELECT 1 FROM driver_employment_profiles ep WHERE ep.plant_id = p.id
+                        AND ep.driver_id = $1 AND ep.is_active AND ep.released_at IS NULL
+                        AND ep.employment_status = 'ACTIVE')
+                OR EXISTS (SELECT 1 FROM transit_mixers tm WHERE tm.plant_id = p.id AND tm.driver_id = $1)
+             ) ORDER BY p.name, p.id"
+        }
+        role if super::staff_module_permissions::STAFF_ROLES.contains(&role) => {
+            "SELECT p.id, p.name, p.city FROM rmc_plants p
+             JOIN plant_staff ps ON ps.plant_id = p.id JOIN users u ON u.id = ps.user_id
+             WHERE ps.user_id = $1 AND ps.role = u.role AND ps.is_active AND ps.removed_at IS NULL
+               AND ps.employment_status = 'ACTIVE' AND p.is_active
+             ORDER BY p.name, p.id"
+        }
+        _ => return Err(AppError::Forbidden("Plant staff access required".into())),
+    };
+    Ok(sqlx::query_as(sql)
+        .bind(auth_user.user_id)
+        .fetch_all(&state.db)
+        .await?)
 }
 
 pub async fn list_owner_plants(

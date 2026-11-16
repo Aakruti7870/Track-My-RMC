@@ -8,14 +8,14 @@ import { useTheme } from "@/src/theme/ThemeProvider";
 import { OperationalHomeTopBar } from "@/src/components/OperationalHomeTopBar";
 import { AppText } from "@/src/components/ui/AppText";
 import { IconTile } from "@/src/components/IconTile";
-import { control, fonts } from "@/src/theme/tokens";
+import { fonts } from "@/src/theme/tokens";
 import type { RoleModule } from "@/src/navigation/moduleCatalog";
 import { ownerDestination } from "./modules";
 
 export function useOwnerPalette() {
   const { colors } = useTheme();
   const dark = colors.isDark;
-  return { dark, accent: colors.brand, pressed: colors.brandPressed, onAccent: colors.onBrand, text: dark ? "#F4F6FA" : "#141B28", muted: dark ? "#B7C2D2" : "#59677D", canvas: dark ? "#0E1116" : "#F7F6F2", panel: colors.surfaceSecondary, border: colors.divider };
+  return { dark, accent: colors.brand, pressed: colors.brandPressed, onAccent: colors.onBrand, text: colors.onSurface, muted: colors.onSurfaceTertiary, canvas: colors.canvas, panel: colors.surfaceSecondary, border: colors.divider };
 }
 export function useOwnerBottomSpace() { return 112 + useSafeAreaInsets().bottom; }
 export function OwnerGlass({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
@@ -54,7 +54,7 @@ export function OwnerModuleRow({ module, compact = false }: { module: RoleModule
 export const ui = StyleSheet.create({
   container: { flex: 1, width: "100%", maxWidth: 820, alignSelf: "center" },
   header: { flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 17 },
-  headerButton: { minWidth: control.minTouch, minHeight: control.minTouch, borderRadius: 18, alignItems: "center", justifyContent: "center" },
+  headerButton: { width: 38, height: 40, borderRadius: 18, alignItems: "center", justifyContent: "center" },
   badge: { position: "absolute", top: 0, right: 0, minWidth: 16, height: 16, paddingHorizontal: 3, borderRadius: 8, backgroundColor: "#D62C20", alignItems: "center", justifyContent: "center" },
   title: { paddingHorizontal: 18, paddingBottom: 16, gap: 3 },
   content: { paddingHorizontal: 16, gap: 8 },

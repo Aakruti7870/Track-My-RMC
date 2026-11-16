@@ -56,7 +56,7 @@ export default function OwnerDispatchesToday() {
               <AppText style={{ color: p.text, fontFamily: fonts.semibold }}>{item.order_number} · Load {item.load_number}</AppText>
               <AppText style={{ color: p.muted, fontSize: 12 }}>{item.grade} · {item.quantity_m3} m³</AppText>
             </View>
-            <Badge label={item.status.replace(/_/g, " ")} status={item.status} size="sm" />
+            <Badge label={item.status.replace(/_/g, " ")} status={item.status} orderStatus size="sm" />
           </View>
           <AppText style={{ color: p.muted, fontSize: 12 }}>
             {[item.plant_name, item.site_name, item.mixer_number, item.driver_name].filter(Boolean).join(" · ")}

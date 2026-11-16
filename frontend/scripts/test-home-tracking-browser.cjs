@@ -58,10 +58,13 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  page.on('pageerror',e=>console.error(e.message));
  await page.goto('http://127.0.0.1:8765/customer/');
  await page.getByTestId('action-new').waitFor({timeout:30000});
- await page.getByText('KYC verified', { exact: true }).first().waitFor();
+ await page.getByText('KYC Verified', { exact: true }).first().waitFor();
  const actualVectorSize = async (testId) => page.getByTestId(testId).locator('svg').first()
    .evaluate(node => [Math.round(node.getBoundingClientRect().width), Math.round(node.getBoundingClientRect().height)]);
- const content = await page.getByTestId('customer-home-scroll').boundingBox();
+ const fixed = page.getByTestId('customer-home-scroll-fixed');
+ await fixed.getByTestId('home-bulk-quote').waitFor();
+ const scroll = page.getByTestId('customer-home-scroll');
+ const content = await scroll.boundingBox();
  const tabBar = await page.getByTestId('app-tab-bar').boundingBox();
  const homeHeader = await page.getByTestId('customer-home-header').boundingBox();
  assert(content && tabBar && homeHeader && content.y + content.height <= tabBar.y + 1);
@@ -76,10 +79,13 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    assert(next.x >= 0 && next.x + next.width <= width + 1, 'Home section exceeds viewport');
  }
  assert(Math.abs(sections[0].width / sections[0].height - 16 / 9) < 0.03, 'Carousel preserves artwork ratio');
+ assert.equal(await fixed.getByTestId('home-promotional-carousel').count(), 1);
+ assert.equal(await page.getByTestId('customer-home-scroll').getByTestId('kyc-banner').count(), 1);
  const bulk = page.getByTestId('home-bulk-quote');
  assert((await bulk.boundingBox()).height >= 49);
+ await page.getByTestId('home-quick-actions').getByRole('heading', { name: 'Quick Access', exact: true }).waitFor();
  await bulk.getByText('Concrete in bulk? Get our best rate for your project.', { exact: true }).waitFor();
- await page.getByTestId('kyc-banner').getByText('KYC verified', { exact: true }).waitFor();
+ await page.getByTestId('kyc-banner').getByText('KYC Verified', { exact: true }).waitFor();
  const planning = page.getByTestId('customer-module-grid');
  const materials = page.getByTestId('home-other-services');
  assert.equal(await planning.getByRole('button').count(), 8);
@@ -89,7 +95,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    const target = await action.boundingBox();
    await action.getByText(label, {exact:true}).waitFor();
    assert(target.width >= 44 && target.height >= 44);
-   const symbolSize = width >= 1024 ? 28 : 24;
+   const symbolSize = width >= 1024 ? 28 : width >= 600 ? 25 : 24;
    assert.deepEqual(await actualVectorSize(id), [symbolSize, symbolSize]);
    assert.equal(await action.locator('svg').first().getAttribute('aria-hidden'), 'true');
  }
@@ -112,9 +118,41 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  if(!(centers[0]<centers[1]&&centers[1]<mid&&mid<centers[2]&&centers[2]<centers[3]))throw Error('Tab ordering around center icon');
  if(Math.abs((mid-centers[1])-(centers[2]-mid))>4 || Math.abs((mid-centers[0])-(centers[3]-mid))>4)throw Error('Tab spacing is not symmetric');
  const card=page.getByTestId('demo-tracking-card'); try { await card.waitFor({timeout:30000}); } catch(e) { await page.screenshot({path:`tracking-previews/failure-${width}.png`,fullPage:true}); console.error(await page.locator('body').innerText()); throw e; }
- await page.getByTestId('customer-home-scroll').evaluate((scroll) => {
-   const card = scroll.querySelector('[data-testid="demo-tracking-card"]');
-   scroll.scrollTo(0, scroll.scrollTop + card.getBoundingClientRect().top - scroll.getBoundingClientRect().top);
+ if (width === 390) {
+   // A tall viewport can fit the entire lower section. Reduce its height
+   // while keeping enough space for the fixed banner and shortcuts.
+   await page.setViewportSize({ width, height: 760 });
+   await fixed.getByTestId('home-bulk-quote').waitFor();
+   const movement = await scroll.evaluate(node => {
+     const bulk = document.querySelector('[data-testid="home-bulk-quote"]');
+     const planning = node.querySelector('[data-testid="customer-module-grid"]');
+     const bulkTop = bulk.getBoundingClientRect().top;
+     const planningTop = planning.getBoundingClientRect().top;
+     node.scrollTop = 100;
+     return { offset: node.scrollTop, viewport: node.clientHeight, content: node.scrollHeight,
+       bulk: bulk.getBoundingClientRect().top - bulkTop,
+       planning: planning.getBoundingClientRect().top - planningTop };
+   });
+   assert(movement.offset > 0, `The lower content (${movement.content}px) must scroll in the ${movement.viewport}px viewport`);
+   assert.equal(movement.bulk, 0, 'Bulk quote stays fixed while the lower dashboard scrolls');
+   assert(movement.planning < 0, 'Planning moves with the lower dashboard');
+
+   await page.setViewportSize({ width, height: 540 });
+   await fixed.waitFor({ state: 'detached' });
+   const stickyTop = await scroll.evaluate(node => {
+     node.scrollTop = 500;
+     return node.getBoundingClientRect().top;
+   });
+   await page.waitForFunction(top => {
+     const tile = document.querySelector('[data-testid="home-quick-actions"]');
+     return tile && Math.abs(tile.getBoundingClientRect().top - top) <= 2;
+   }, stickyTop);
+   await page.setViewportSize({ width, height: 1000 });
+   await fixed.waitFor();
+ }
+ await scroll.evaluate(node => {
+   const track = node.querySelector('[data-testid="demo-tracking-card"]');
+   node.scrollTop += track.getBoundingClientRect().top - node.getBoundingClientRect().top;
  });
  const b=await card.boundingBox();
  assert.equal(Math.round((await page.getByTestId('customer-home-header').boundingBox()).y), Math.round(homeHeader.y));
@@ -154,6 +192,30 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      await page.goBack();
    }
  }
+ if (width === 390) {
+   await page.emulateMedia({ reducedMotion: 'reduce' });
+   for (const [id, label, destination] of [
+     ['new', 'New Order', '/new-order'],
+     ['track', 'Track Order', '/track/isolated-order'],
+     ['plants', 'Find Plants', '/customer/plants'],
+     ['calculator', 'Calculate Volume', '/customer/free-tools'],
+     ['bulk', 'Request a Quote', '/customer/service-enquiry?service=bulk'],
+     ['orders', 'My Orders', '/customer/orders'],
+   ]) {
+     mode = 'live';
+     await page.goto('http://127.0.0.1:8765/customer/');
+     await page.getByTestId('real-tracking-card').waitFor();
+     const dot = page.getByTestId(`carousel-page-${id}`);
+     await dot.click();
+     const banner = page.getByTestId('home-promotional-carousel').getByRole('button', { name: label, exact: true });
+     const loaded = await banner.locator('img').first().evaluate(node =>
+       node.decode().then(() => node.currentSrc.includes('.webp')));
+     assert.equal(loaded, true, `The ${id} banner must load a WebP`);
+     await banner.click();
+     await page.waitForURL(url => url.pathname.replace(/\/$/, '') + url.search === destination);
+   }
+   console.log('PASS all six carousel WebPs load and open their advertised actions');
+ }
  if(width===320){
    mode='demo';
    await page.setViewportSize({width,height:480});
@@ -167,11 +229,18 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      await page.evaluate(value=>localStorage.setItem('tmrmc_theme_mode',JSON.stringify(value)),theme);
      await page.goto('http://127.0.0.1:8765/customer/');
      await page.getByTestId('home-planning-see-all').waitFor();
-     const tileBackground=theme==='light'?'rgb(74, 85, 104)':'rgb(57, 68, 84)';
+     const secondaryTile=theme==='light'?'rgb(240, 237, 230)':'rgb(26, 26, 26)';
+     const shortcutTile=theme==='light'?'rgb(250, 249, 245)':'rgb(18, 18, 18)';
      for (const id of ['action-new','home-pump-rental','service-cement']) {
        const background=await page.getByTestId(id).locator('svg').first().evaluate(el=>getComputedStyle(el.parentElement).backgroundColor);
-       assert.equal(background,tileBackground,`${id} uses the shared ${theme} icon shade`);
+       assert.equal(background,id==='action-new'?shortcutTile:secondaryTile,`${id} uses its ${theme} icon shade`);
      }
+     const quickPaint = await page.getByTestId('action-new').locator('svg').first().evaluate(el => {
+       const box = el.parentElement;
+       return { fill: getComputedStyle(box.firstElementChild).backgroundColor, rim: getComputedStyle(box.parentElement).backgroundImage };
+     });
+     assert.equal(quickPaint.fill, 'rgba(255, 120, 0, 0.5)');
+     assert.match(quickPaint.rim, /rgb\(157, 105, 48\).*rgb\(129, 85, 48\)/);
      const clipped=await page.evaluate(()=>{
        const labels=[...document.querySelectorAll('[data-testid^="action-"],[data-testid^="customer-module-"],[data-testid^="service-"],[data-testid="home-pump-rental"],[data-testid="home-order-request"],[role="tab"]')]
          .filter(el=>el.matches('[role="button"],[role="tab"]'))
@@ -255,7 +324,9 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      assert.equal(await plant.getByRole('button',{name:/^Show .* on map$/}).count(),1);
      const order=plant.getByTestId('nearby-place-order');
      const ink=await order.getByText('Place Order').evaluate(el=>getComputedStyle(el).color);
-     assert.equal(ink,'rgb(14, 17, 22)');
+     assert.equal(ink,theme==='light'?'rgb(10, 9, 7)':'rgb(18, 18, 18)');
+     const profile = plant.getByRole('button',{name:'Plant Profile',exact:true});
+     assert.equal(await profile.evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(34, 197, 94, 0.2)');
      const target=await order.boundingBox();
      assert(target.height>=44 && target.width<180,theme+' narrow plant primary action must be compact');
      for (const label of ['Request Quotation', 'Plant Profile']) {
@@ -276,7 +347,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      const calendar=page.getByTestId('rfq-date-calendar');
      await calendar.waitFor();
      const surface=await calendar.evaluate(el=>getComputedStyle(el).backgroundColor);
-     assert.equal(surface,theme==='light'?'rgb(255, 255, 255)':'rgb(32, 38, 46)');
+     assert.equal(surface,theme==='light'?'rgb(252, 251, 247)':'rgb(28, 28, 28)');
      await calendar.getByRole('button',{name:'Next month',exact:true}).click();
      await calendar.getByRole('button',{name:'Close Calendar',exact:true}).click();
      await calendar.waitFor({state:'hidden'});

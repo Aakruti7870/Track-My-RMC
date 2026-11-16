@@ -28,7 +28,7 @@ void SplashScreen.preventAutoHideAsync();
 function ThemedNavigator() {
   const { colors, reduceMotion } = useTheme();
   return (
-    <View style={[styles.appCanvas, { backgroundColor: colors.isDark ? "#0E1116" : "#F7F8F9" }]}>
+    <View style={[styles.appCanvas, { backgroundColor: colors.canvas }]}>
       {/* Opaque route scenes prevent previous pages from showing behind new pages. */}
       <Stack screenOptions={{ headerShown: false, animation: reduceMotion ? "none" : "fade", contentStyle: getThemedSceneStyle(colors) }} />
     </View>

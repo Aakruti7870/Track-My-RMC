@@ -1,23 +1,25 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent, ScrollView, StyleSheet, View, ViewStyle } from "react-native";
+import { LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, View, ViewStyle } from "react-native";
 import { Image } from "expo-image";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { radius } from "@/src/theme/tokens";
 
-// Exactly five approved 1280x720 images, in display order; paths are case sensitive.
 const SLIDES = [
-  { id: "mixer", source: require("../../assets/images/Mixer.webp"), label: "Transit mixer" },
-  { id: "kyc", source: require("../../assets/images/KYC-verification.webp"), label: "KYC verification" },
-  { id: "calculator", source: require("../../assets/images/Free-Calculator.webp"), label: "Free RMC calculator" },
-  { id: "cashfree", source: require("../../assets/images/Cashfree.webp"), label: "Cashfree payments" },
-  { id: "country", source: require("../../assets/images/CountryMap.webp"), label: "India coverage" },
+  { id: "new", source: require("../../assets/images/carousel/order-concrete.webp"), label: "New Order" },
+  { id: "track", source: require("../../assets/images/carousel/track-order.webp"), label: "Track Order" },
+  { id: "plants", source: require("../../assets/images/carousel/nearby-plants.webp"), label: "Find Plants" },
+  { id: "calculator", source: require("../../assets/images/carousel/rmc-calculator.webp"), label: "Calculate Volume" },
+  { id: "bulk", source: require("../../assets/images/carousel/bulk-concrete.webp"), label: "Request a Quote" },
+  { id: "orders", source: require("../../assets/images/carousel/delivery-challans.webp"), label: "My Orders" },
 ] as const;
+export type CarouselAction = typeof SLIDES[number]["id"];
+
 const AUTO_MS = 4500;
 const SLIDE_COUNT = SLIDES.length;
 const MAX_WIDTH = 720;
 
-export function HomeCarousel({ style }: { style?: ViewStyle }) {
-  const { colors } = useTheme();
+export function HomeCarousel({ onAction, style }: { onAction: (action: CarouselAction) => void; style?: ViewStyle }) {
+  const { colors, reduceMotion } = useTheme();
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [index, setIndex] = useState(0);
   const indexRef = useRef(0);
@@ -30,17 +32,17 @@ export function HomeCarousel({ style }: { style?: ViewStyle }) {
   useEffect(() => {
     if (size.w > 0) scrollRef.current?.scrollTo({ x: indexRef.current * size.w, animated: false });
   }, [size.w]);
+  const showSlide = useCallback((next: number) => {
+    scrollRef.current?.scrollTo({ x: next * size.w, animated: !reduceMotion });
+  }, [size.w, reduceMotion]);
   useEffect(() => {
-    if (size.w <= 0) return;
+    if (size.w <= 0 || reduceMotion) return;
     const timer = setInterval(() => {
       if (interactingRef.current) return;
-      const next = (indexRef.current + 1) % SLIDE_COUNT;
-      indexRef.current = next;
-      setIndex(next);
-      scrollRef.current?.scrollTo({ x: next * size.w, animated: true });
+      showSlide((indexRef.current + 1) % SLIDE_COUNT);
     }, AUTO_MS);
     return () => clearInterval(timer);
-  }, [size.w]);
+  }, [size.w, reduceMotion, showSlide]);
   const onScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     if (size.w <= 0) return;
     const next = Math.round(event.nativeEvent.contentOffset.x / size.w);
@@ -61,20 +63,28 @@ export function HomeCarousel({ style }: { style?: ViewStyle }) {
             onScrollEndDrag={() => { interactingRef.current = false; }}
             onMomentumScrollEnd={() => { interactingRef.current = false; }}
             style={StyleSheet.absoluteFill}>
-            {SLIDES.map(slide => (
-              <View key={slide.id} style={{ width: size.w, height: size.h }}>
+            {SLIDES.map((slide, i) => (
+              <Pressable key={slide.id} testID={`carousel-action-${slide.id}`}
+                accessibilityRole="button" accessibilityLabel={slide.label}
+                aria-hidden={i !== index} tabIndex={i === index ? 0 : -1}
+                importantForAccessibility={i === index ? "yes" : "no-hide-descendants"}
+                onPress={() => onAction(slide.id)} style={{ width: size.w, height: size.h }}>
                 <Image source={slide.source} style={StyleSheet.absoluteFill}
                   contentFit="contain" contentPosition="center" cachePolicy="memory-disk"
-                  priority={slide.id === "mixer" ? "high" : "low"}
-                  accessibilityLabel={slide.label} />
-              </View>
+                  priority={i === 0 ? "high" : "low"} accessible={false} />
+              </Pressable>
             ))}
           </ScrollView>
-          <View style={styles.dots} pointerEvents="none">
+          <View style={styles.dots} pointerEvents="box-none">
             {SLIDES.map((slide, i) => (
-              <View key={slide.id} style={[styles.dot, i === index
-                ? { width: 18, backgroundColor: colors.brand }
-                : { width: 6, backgroundColor: "rgba(148,163,184,0.76)" }]} />
+              <Pressable key={slide.id} testID={`carousel-page-${slide.id}`}
+                accessibilityRole="button" accessibilityLabel={`Show banner ${i + 1} of ${SLIDE_COUNT}: ${slide.label}`}
+                accessibilityState={{ selected: i === index }} hitSlop={{ top: 12, bottom: 4 }}
+                onPress={() => showSlide(i)} style={styles.dotTarget}>
+                <View style={[styles.dot, i === index
+                  ? { width: 18, backgroundColor: colors.brand }
+                  : { width: 6, backgroundColor: "rgba(148,163,184,0.76)" }]} />
+              </Pressable>
             ))}
           </View>
         </>
@@ -84,6 +94,7 @@ export function HomeCarousel({ style }: { style?: ViewStyle }) {
 }
 const styles = StyleSheet.create({
   wrap: { width: "100%", maxWidth: MAX_WIDTH, alignSelf: "center", aspectRatio: 16 / 9, borderRadius: radius.xl, overflow: "hidden", borderWidth: 1 },
-  dots: { position: "absolute", bottom: 10, left: 0, right: 0, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 5 },
+  dots: { position: "absolute", bottom: 4, left: 0, right: 0, flexDirection: "row", justifyContent: "center", alignItems: "center" },
+  dotTarget: { width: 26, height: 18, justifyContent: "center", alignItems: "center" },
   dot: { height: 6, borderRadius: 3 },
 });

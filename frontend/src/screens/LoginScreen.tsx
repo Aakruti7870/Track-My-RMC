@@ -3,8 +3,10 @@ import {
   Pressable,
   StyleSheet,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
+import Svg, { Defs, LinearGradient as SvgGradient, Rect, Stop } from "react-native-svg";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,14 +22,15 @@ import { roleRouteFor } from "@/src/auth/roleRoutes";
 import { loginPhone } from "@/src/auth/phone";
 import { shouldResumeKycAfterLogin } from "@/src/kyc/returnContext";
 import { OtpOrbitVerification, OtpVisualState } from "@/src/components/auth/OtpOrbitVerification";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { AppText } from "@/src/components/ui/AppText";
 import { Button } from "@/src/components/ui/Button";
 import { Input } from "@/src/components/ui/Input";
 import { useToast } from "@/src/components/ui/Toast";
 import { useTheme } from "@/src/theme/ThemeProvider";
-import { control, fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
+import { fonts, fontSize, loginAppearance, radius, spacing } from "@/src/theme/tokens";
 
-// Keep 16:9 hero assets theme-specific; the login sheet layout is unchanged.
+// Theme-specific, lossless crops of the approved login artwork.
 const HERO_LIGHT = require("../../assets/images/TrackMyRMC_Login_Top_Banner_light.webp");
 const HERO_DARK = require("../../assets/images/TrackMyRMC_Login_Top_Banner_Dark.webp");
 
@@ -49,11 +52,14 @@ const validEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.tr
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export default function LoginScreen() {
-  const { colors } = useTheme();
+  const { colors, toggle } = useTheme();
+  const look = loginAppearance[colors.isDark ? "dark" : "light"];
   const heroSource = colors.isDark ? HERO_DARK : HERO_LIGHT;
   const router = useRouter();
   const toast = useToast();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const [phoneFocused, setPhoneFocused] = useState(false);
   const {
     hydrating,
     token,
@@ -347,7 +353,7 @@ export default function LoginScreen() {
             onResend={resendCurrentOtp}
             colors={otpColors}
           />
-          <Pressable accessibilityRole="button" style={styles.textAction} onPress={() => resetEntry("user")}>
+          <Pressable onPress={() => resetEntry("user")} hitSlop={10}>
             <AppText variant="label" center color={colors.brand}>← Change mobile number</AppText>
           </Pressable>
         </View>
@@ -371,7 +377,7 @@ export default function LoginScreen() {
             resendLabel="Resend email code"
             colors={otpColors}
           />
-          <Pressable accessibilityRole="button" style={styles.textAction} onPress={() => resetEntry("plant")}>
+          <Pressable onPress={() => resetEntry("plant")} hitSlop={10}>
             <AppText variant="label" center color={colors.brand}>← Change email</AppText>
           </Pressable>
         </View>
@@ -421,8 +427,8 @@ export default function LoginScreen() {
             successSubtitle="Authenticator verification completed."
           />
           <View style={styles.linkRow}>
-            <Pressable accessibilityRole="button" style={styles.textAction} onPress={() => resetEntry("plant")}><AppText variant="label" color={colors.brand}>← Change email</AppText></Pressable>
-            <Pressable testID="login-use-recovery" accessibilityRole="button" style={styles.textAction} onPress={() => { setRecoveryCode(""); setCode(""); setError(null); setPhase("staff_recovery"); }}>
+            <Pressable onPress={() => resetEntry("plant")}><AppText variant="label" color={colors.brand}>← Change email</AppText></Pressable>
+            <Pressable testID="login-use-recovery" onPress={() => { setRecoveryCode(""); setCode(""); setError(null); setPhase("staff_recovery"); }}>
               <AppText variant="label" color={colors.brand}>Use recovery code</AppText>
             </Pressable>
           </View>
@@ -449,7 +455,7 @@ export default function LoginScreen() {
             error={error}
           />
           <Button label="Recover & Login" onPress={handleVerifyRecovery} loading={loading} icon={<Ionicons name="key-outline" size={18} color={colors.onBrand} />} />
-          <Pressable accessibilityRole="button" style={styles.textAction} onPress={() => { setError(null); setCode(""); setOtpVisual("idle"); setPhase("staff_totp"); }}>
+          <Pressable onPress={() => { setError(null); setCode(""); setOtpVisual("idle"); setPhase("staff_totp"); }}>
             <AppText variant="label" center color={colors.brand}>Back to Authenticator</AppText>
           </Pressable>
         </View>
@@ -460,21 +466,24 @@ export default function LoginScreen() {
       return (
         <View style={styles.formGap}>
           <View style={styles.headingBlock}>
-            <View style={[styles.iconBubble, { backgroundColor: colors.brandSoft, borderColor: `${colors.brand}42` }]}>
-              <Ionicons name="phone-portrait-outline" size={24} color={colors.brand} />
+            <View style={[styles.iconBubble, { backgroundColor: look.iconSurface, borderColor: look.tabOutline }]}>
+              <Ionicons name="phone-portrait-outline" size={24} color={look.phoneIcon} />
             </View>
             <AppText variant="heading" center>Welcome back</AppText>
             <AppText variant="bodyMuted" center>Secure access to Track My RMC</AppText>
           </View>
-          <View style={[styles.phoneInputWrap, { borderColor: error ? colors.error : colors.border, backgroundColor: colors.surface }]}> 
-            <View style={[styles.prefix, { borderRightColor: colors.border }]}><AppText style={styles.prefixText}>{mobile.startsWith("+") ? "INTL" : "+91"}</AppText></View>
+          <View style={[styles.phoneInputWrap, { borderColor: error ? colors.error : phoneFocused ? colors.accentText : look.fieldOutline, backgroundColor: look.field }]}>
+            <View style={[styles.prefix, { borderRightColor: look.fieldDivider, backgroundColor: look.prefix }]}><AppText style={styles.prefixText} color={look.prefixText}>{mobile.startsWith("+") ? "INTL" : "+91"}</AppText></View>
             <TextInput
               testID="login-mobile-input"
               value={mobile}
               onChangeText={(text) => { setMobile((text.trimStart().startsWith("+") ? "+" : "") + text.replace(/\D/g, "").slice(0, 15)); setError(null); }}
               accessibilityLabel="WhatsApp mobile number"
+              aria-invalid={Boolean(error)}
+              onFocus={() => setPhoneFocused(true)}
+              onBlur={() => setPhoneFocused(false)}
               placeholder="10 Digit WhatsApp Number"
-              placeholderTextColor={colors.onSurfaceTertiary}
+              placeholderTextColor={look.placeholder}
               keyboardType="phone-pad"
               inputMode="tel"
               maxLength={16}
@@ -483,7 +492,9 @@ export default function LoginScreen() {
           </View>
           {sessionMessage ? <AppText testID="login-session-message" variant="caption" color={colors.error}>{sessionMessage}</AppText> : null}
           {error ? <AppText variant="caption" color={colors.error}>{error}</AppText> : null}
-          <Button label="CONTINUE" onPress={handleSendUserOtp} loading={loading} disabled={!loginPhone(mobile)} icon={<Ionicons name="shield-checkmark-outline" size={19} color={colors.onBrand} />} />
+          <Button label="CONTINUE" onPress={handleSendUserOtp} loading={loading} disabled={!loginPhone(mobile)}
+            style={(loading || !loginPhone(mobile)) && { borderColor: look.continueOutline }}
+            icon={<Ionicons name="shield-checkmark-outline" size={19} color={loading || !loginPhone(mobile) ? look.continueShield : colors.onBrand} />} />
         </View>
       );
     }
@@ -491,8 +502,8 @@ export default function LoginScreen() {
     return (
       <View style={styles.formGap}>
         <View style={styles.headingBlock}>
-          <View style={[styles.iconBubble, { backgroundColor: colors.brandSoft, borderColor: `${colors.brand}42` }]}>
-            <Ionicons name="business-outline" size={24} color={colors.brand} />
+          <View style={[styles.iconBubble, { backgroundColor: look.iconSurface, borderColor: look.tabOutline }]}>
+            <Ionicons name="business-outline" size={24} color={look.selectedIcon} />
           </View>
           <AppText variant="heading" center>Plant Staff Secure Login</AppText>
           <AppText variant="bodyMuted" center>Use your approved work email.</AppText>
@@ -568,10 +579,13 @@ export default function LoginScreen() {
     );
   };
 
-  const heroBackground = colors.isDark ? "#080A0C" : "#F7F8F6";
+  const heroAspect = (colors.isDark ? 1229 : 1227) / 615;
+  const heroWidth = Math.min(width, 760);
+  const artworkScale = heroWidth / (colors.isDark ? 1229 : 1227);
+  const cardWidth = Math.min(width - 24, Math.max(366, artworkScale * 678));
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.surface }}>
+    <View style={{ flex: 1, backgroundColor: look.canvas }}>
       <StatusBar style={colors.isDark ? "light" : "dark"} />
       <KeyboardAwareScrollView
         bottomOffset={24}
@@ -579,9 +593,10 @@ export default function LoginScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={{ width: "100%", height: insets.top, backgroundColor: heroBackground }} />
-        <View style={[styles.hero, { backgroundColor: heroBackground }]}>
+        <View style={{ width: "100%", height: insets.top, backgroundColor: look.heroTop }} />
+        <View style={[styles.hero, { aspectRatio: heroAspect, backgroundColor: look.heroTop }]}>
           <Image
+            testID="login-hero"
             source={heroSource}
             style={styles.heroImage}
             contentFit="contain"
@@ -590,104 +605,132 @@ export default function LoginScreen() {
             cachePolicy="memory-disk"
             transition={0}
           />
-          <LinearGradient
-            pointerEvents="none"
-            colors={colors.isDark ? ["rgba(0,0,0,0)", "rgba(0,0,0,0.02)", colors.surface] : ["rgba(255,255,255,0)", "rgba(255,255,255,0.02)", colors.surface]}
-            locations={[0, 0.80, 1]}
-            style={StyleSheet.absoluteFill}
-          />
+          <Pressable accessibilityRole="button" accessibilityLabel="Switch light or dark mode"
+            testID="login-theme-toggle" onPress={toggle} style={styles.themeButton}>
+            <Ionicons name={colors.isDark ? "sunny-outline" : "moon-outline"} size={20} color="#FFFFFF" />
+          </Pressable>
         </View>
-
-        <View style={[styles.loginShell, {
-          backgroundColor: colors.surfaceSecondary,
-          borderColor: colors.isDark ? "rgba(255,255,255,0.10)" : "rgba(15,23,42,0.08)",
-          shadowColor: colors.isDark ? "#000000" : "#111827",
-        }]}> 
-          <View style={styles.sheetHandleWrap}>
-            <View style={[styles.sheetHandle, { backgroundColor: colors.isDark ? "rgba(255,255,255,0.18)" : "rgba(15,23,42,0.12)" }]} />
+        <View testID="login-backdrop" style={styles.backdrop}>
+          <LinearGradient pointerEvents="none" colors={look.page} locations={[0, 0.45, 1]}
+            style={StyleSheet.absoluteFill} />
+          <View pointerEvents="none" testID="login-hero-edge"
+            style={[styles.heroExtension, { height: artworkScale * 72 }]}>
+            <LinearGradient colors={look.heroEdge} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+              style={StyleSheet.absoluteFill} />
+            <LinearGradient colors={look.heroBlend} locations={[0, 0.21, 0.45, 0.69, 1]}
+              style={StyleSheet.absoluteFill} />
           </View>
 
-          <View accessibilityRole="tablist" style={[styles.segmented, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Pressable testID="login-user-tab" accessibilityRole="tab" accessibilityState={{ selected: mode === "user" }}
-              accessibilityLabel="User login, Customer and Driver" onPress={() => resetEntry("user")} style={[styles.segment, mode === "user" && { backgroundColor: colors.brandSoft, borderColor: `${colors.brand}88`, }]}>
-              <Ionicons name="person-outline" size={18} color={mode === "user" ? colors.brand : colors.onSurfaceTertiary} />
-              <AppText style={styles.segmentLabel} color={mode === "user" ? colors.onSurface : colors.onSurfaceTertiary}>USER LOGIN</AppText>
-            </Pressable>
-            <Pressable testID="login-plant-tab" accessibilityRole="tab" accessibilityState={{ selected: mode === "plant" }}
-              accessibilityLabel="Plant staff login" onPress={() => resetEntry("plant")} style={[styles.segment, mode === "plant" && { backgroundColor: colors.brandSoft, borderColor: `${colors.brand}88`, }]}>
-              <Ionicons name="people-outline" size={18} color={mode === "plant" ? colors.brand : colors.onSurfaceTertiary} />
-              <AppText style={styles.segmentLabel} color={mode === "plant" ? colors.onSurface : colors.onSurfaceTertiary}>PLANT STAFF</AppText>
-            </Pressable>
-          </View>
-
-          {renderForm()}
-
-          {DEMO_LOGIN_ENABLED ? (
-            <View style={[styles.demoBox, { backgroundColor: colors.surface, borderColor: colors.border }]}> 
-              <AppText variant="caption" center>Google Play review demo</AppText>
-              <View style={styles.demoRow}>
-                {DEMO_ROLES.map((item) => (
-                  <Pressable
-                    key={item.role}
-                    accessibilityRole="button"
-                    accessibilityState={{ disabled: loading }}
-                    disabled={loading}
-                    onPress={async () => {
-                      try {
-                        const me = await demoLogin(item.role);
-                        router.replace(roleRouteFor(me.role) as any);
-                      } catch (e: any) {
-                        setError(e.detail || "Demo login is unavailable");
-                      }
-                    }}
-                    style={[styles.demoChip, { borderColor: colors.border }]}
-                  >
-                    <AppText variant="caption">{item.label}</AppText>
-                  </Pressable>
-                ))}
-              </View>
+          <View testID="login-card" style={[styles.loginShell, {
+            width: cardWidth, marginTop: artworkScale * 4, backgroundColor: look.card[0], shadowColor: look.shadow,
+          }]}>
+            <LinearGradient pointerEvents="none" colors={look.card} style={styles.sheetFill}
+              start={{ x: 0, y: 0 }} end={{ x: 0.9, y: 1 }} />
+            <View pointerEvents="none" style={styles.cardHighlight}>
+              <LinearGradient colors={[look.gleam + (colors.isDark ? "55" : "47"), look.gleam + "00"]}
+                start={{ x: 0.08, y: 0 }} end={{ x: 0.56, y: 1 }} style={StyleSheet.absoluteFill} />
             </View>
-          ) : null}
-        </View>
+            <Svg width="100%" height="100%" pointerEvents="none" style={StyleSheet.absoluteFill} aria-hidden accessible={false}>
+              <Defs>
+                <SvgGradient id="loginCardRim" x1="0%" y1="0%" x2="25%" y2="100%">
+                  <Stop offset="0" stopColor={look.rim[0]} />
+                  <Stop offset="0.10" stopColor={look.rim[1]} />
+                  <Stop offset="0.60" stopColor={look.rim[2]} />
+                  <Stop offset="1" stopColor={look.rim[3]} />
+                </SvgGradient>
+              </Defs>
+              <Rect width="100%" height="100%" rx={28} fill="none" stroke="url(#loginCardRim)" strokeWidth={1.5} />
+            </Svg>
 
-        <Pressable
-          testID="login-review-access"
-          accessibilityRole="button"
-          accessibilityLabel="Google Play Reviewer Access"
-          onPress={() => router.push("/review-access" as any)}
-          style={styles.reviewAccessStandalone}
-          hitSlop={8}
-        >
-          <Ionicons name="shield-checkmark-outline" size={20} color={colors.isDark ? "#4ADE80" : "#16834A"} />
-          <AppText variant="caption" numberOfLines={2} style={[styles.reviewAccessLabel, { color: colors.onSurface }]}>Google Play Reviewer Access</AppText>
-        </Pressable>
+            <View accessibilityRole="tablist" style={[styles.segmented, { backgroundColor: look.rail, borderColor: look.railOutline }]}>
+              {([
+                { key: "user", testID: "login-user-tab", icon: "profile", label: "USER LOGIN" },
+                { key: "plant", testID: "login-plant-tab", icon: "plant-staff", label: "PLANT STAFF" },
+              ] as const).map(({ key, testID, icon, label }) => {
+                const selected = mode === key;
+                return (
+                  <Pressable key={key} testID={testID}
+                    accessibilityRole="tab" accessibilityLabel={label} accessibilityState={{ selected }} aria-selected={selected} onPress={() => resetEntry(key)}
+                    style={styles.segment}>
+                    {selected ? (
+                      <LinearGradient pointerEvents="none" colors={look.tabRim}
+                        start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill}>
+                        <LinearGradient colors={look.tab} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                          style={styles.segmentFill} />
+                      </LinearGradient>
+                    ) : null}
+                    <View style={styles.segmentContent} pointerEvents="none">
+                      <VectorSymbol name={icon} size={18} color={selected ? look.selectedIcon : look.inactiveIcon} />
+                      <AppText style={styles.segmentLabel} color={selected ? look.selectedText : look.inactive}>{label}</AppText>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
 
-        <View style={styles.legalArea}>
-          <AppText variant="caption" center color={colors.onSurfaceTertiary}>
-            By signing in, I accept the Terms &amp; Conditions and Privacy Policy.
-          </AppText>
-          <View style={styles.legalActions}>
-            <Pressable testID="login-terms-link" accessibilityRole="link" style={styles.textAction}
-              onPress={() => router.push("/terms" as any)}>
-              <AppText variant="caption" style={styles.legalLink}>Terms &amp; Conditions</AppText>
+            {renderForm()}
+
+            {DEMO_LOGIN_ENABLED ? (
+              <View style={[styles.demoBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <AppText variant="caption" center>Google Play review demo</AppText>
+                <View style={styles.demoRow}>
+                  {DEMO_ROLES.map((item) => (
+                    <Pressable
+                      key={item.role}
+                      disabled={loading}
+                      onPress={async () => {
+                        try {
+                          const me = await demoLogin(item.role);
+                          router.replace(roleRouteFor(me.role) as any);
+                        } catch (e: any) {
+                          setError(e.detail || "Demo login is unavailable");
+                        }
+                      }}
+                      style={[styles.demoChip, { borderColor: colors.border }]}
+                    >
+                      <AppText variant="caption">{item.label}</AppText>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+
+            <View style={styles.securityNote}>
+              <Ionicons name="lock-closed-outline" size={14} color={look.securityLock} />
+              <AppText variant="caption" color={look.securityText} style={{ flexShrink: 1 }}>Secured with 6-digit OTP verification</AppText>
+            </View>
+
+            <Pressable
+              testID="login-review-access"
+              accessibilityRole="button"
+              accessibilityLabel="Google Play Reviewer Access"
+              onPress={() => router.push("/review-access")}
+              style={[styles.reviewAccess, { backgroundColor: look.reviewerFill, borderColor: look.reviewerOutline }]}
+            >
+              <Ionicons name="shield-checkmark-outline" size={20} color={look.reviewer} />
+              <AppText variant="caption" style={[styles.reviewAccessLabel, { color: look.reviewerLabel }]}>Google Play Reviewer Access</AppText>
             </Pressable>
-            <Pressable testID="login-privacy-link" accessibilityRole="link" style={styles.textAction}
-              onPress={() => void openExternal(PRIVACY_POLICY_URL)}>
-              <AppText variant="caption" style={styles.legalLink}>Privacy Policy</AppText>
-            </Pressable>
-            <Pressable testID="login-delete-account" accessibilityRole="link" style={styles.textAction}
-              onPress={() => void openExternal(ACCOUNT_DELETION_URL)}>
-              <AppText variant="caption" style={styles.legalLink}>Delete Account</AppText>
-            </Pressable>
+
+            <View style={styles.legalArea}>
+              <AppText variant="caption" center color={look.consent}>
+                {"By clicking on Login, I accept the "}
+                <AppText testID="login-terms-link" variant="caption" style={styles.legalLink} color={look.link}
+                  onPress={() => router.push("/terms" as any)}>Terms & Conditions</AppText>
+                {" & "}
+                <AppText testID="login-privacy-link" variant="caption" style={styles.legalLink} color={look.privacy}
+                  onPress={() => void openExternal(PRIVACY_POLICY_URL)}>Privacy Policy</AppText>
+              </AppText>
+
+              <Pressable testID="login-delete-account" accessibilityRole="link" accessibilityLabel="Delete Account"
+                style={styles.deleteLink} onPress={() => void openExternal(ACCOUNT_DELETION_URL)}>
+                <Ionicons name="trash-outline" size={16} color={look.deleteIcon} />
+                <AppText variant="caption" color={look.delete}>Delete Account</AppText>
+              </Pressable>
+            </View>
+
+            <AppText variant="caption" center color={look.footer}>Powered by <AppText variant="label" color={look.footerBrand}>Gold e Tech</AppText></AppText>
           </View>
-
-          <View style={styles.securityNote}>
-            <Ionicons name="lock-closed-outline" size={14} color={colors.onSurfaceTertiary} />
-            <AppText variant="caption" color={colors.onSurfaceTertiary}>Secured with 6-digit OTP verification</AppText>
-          </View>
         </View>
-
-        <AppText variant="caption" center color={colors.onSurfaceTertiary} style={styles.poweredFooter}>Powered by <AppText variant="label">Gold e Tech</AppText></AppText>
       </KeyboardAwareScrollView>
     </View>
   );
@@ -698,7 +741,6 @@ const styles = StyleSheet.create({
   hero: {
     width: "100%",
     maxWidth: 760,
-    aspectRatio: 16 / 9,
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
@@ -707,23 +749,22 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
+  backdrop: { width: "100%", flexGrow: 1, alignItems: "center", paddingBottom: spacing.lg },
+  heroExtension: { position: "absolute", top: 0, width: "100%", maxWidth: 760, alignSelf: "center" },
   loginShell: {
-    width: "92%",
-    maxWidth: 470,
-    marginTop: -24,
-    borderWidth: 1,
     borderRadius: 28,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.lg,
-    paddingTop: spacing.sm,
+    paddingTop: spacing.lg,
     gap: spacing.lg,
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.14,
     shadowRadius: 28,
     elevation: 8,
   },
-  sheetHandleWrap: { alignItems: "center", paddingTop: 2, marginBottom: -2 },
-  sheetHandle: { width: 44, height: 5, borderRadius: radius.pill },
+  sheetFill: { ...StyleSheet.absoluteFillObject, borderRadius: 28 },
+  themeButton: { position: "absolute", left: 10, top: 8, width: 44, height: 44, borderRadius: 22,
+    alignItems: "center", justifyContent: "center", backgroundColor: "rgba(18,18,18,0.68)" },
   segmented: {
     flexDirection: "row",
     borderWidth: 1,
@@ -734,15 +775,17 @@ const styles = StyleSheet.create({
   segment: {
     flex: 1,
     minHeight: 48,
-    borderWidth: 1,
-    borderColor: "transparent",
     borderRadius: 14,
+    overflow: "hidden",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: spacing.xs,
     paddingHorizontal: spacing.sm,
   },
+  cardHighlight: { position: "absolute", top: 1, left: 1, right: 1, height: 28, borderTopLeftRadius: 27, borderTopRightRadius: 27, overflow: "hidden" },
+  segmentContent: { zIndex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.xs },
+  segmentFill: { ...StyleSheet.absoluteFillObject, top: 1, right: 1, bottom: 1, left: 1, borderRadius: 13 },
   segmentLabel: { fontFamily: fonts.semibold, fontSize: fontSize.sm, letterSpacing: 0.2 },
   formGap: { gap: spacing.md },
   headingBlock: { alignItems: "center", gap: spacing.xs, paddingVertical: spacing.xs },
@@ -831,24 +874,25 @@ const styles = StyleSheet.create({
   onboardingTitle: { fontFamily: fonts.bold, fontSize: fontSize.lg },
   demoBox: { borderWidth: 1, borderRadius: radius.lg, padding: spacing.md, gap: spacing.sm },
   demoRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, justifyContent: "center" },
-  textAction: { minHeight: control.minTouch, justifyContent: "center" },
-  demoChip: { minHeight: control.minTouch, justifyContent: "center", borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  legalArea: { width: "92%", maxWidth: 470, paddingTop: spacing.xs, paddingHorizontal: spacing.sm, gap: spacing.md },
-  legalActions: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", columnGap: spacing.md },
+  demoChip: { borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  legalArea: { gap: spacing.xs },
   legalLink: { fontFamily: fonts.semibold, textDecorationLine: "underline" },
-  poweredFooter: { marginTop: spacing.sm },
-  reviewAccessStandalone: {
-    width: "92%",
-    maxWidth: 470,
-    minHeight: 56,
-    marginTop: 0,
-    paddingHorizontal: spacing.sm,
+  deleteLink: { minHeight: 44, alignSelf: "center", paddingHorizontal: 10, flexDirection: "row",
+    alignItems: "center", justifyContent: "center", gap: 5 },
+  reviewAccess: {
+    alignSelf: "center",
+    maxWidth: "100%",
+    minHeight: 44,
+    borderWidth: 1,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.xs,
+    gap: spacing.sm,
   },
   reviewAccessLabel: {
+    flexShrink: 1,
     fontFamily: fonts.semibold,
     textAlign: "center",
   },
