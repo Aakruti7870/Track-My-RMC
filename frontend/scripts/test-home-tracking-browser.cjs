@@ -192,6 +192,30 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      await page.goBack();
    }
  }
+ if (width === 390) {
+   await page.emulateMedia({ reducedMotion: 'reduce' });
+   for (const [id, label, destination] of [
+     ['new', 'New Order', '/new-order'],
+     ['track', 'Track Order', '/track/isolated-order'],
+     ['plants', 'Find Plants', '/customer/plants'],
+     ['calculator', 'Calculate Volume', '/customer/free-tools'],
+     ['bulk', 'Request a Quote', '/customer/service-enquiry?service=bulk'],
+     ['orders', 'My Orders', '/customer/orders'],
+   ]) {
+     mode = 'live';
+     await page.goto('http://127.0.0.1:8765/customer/');
+     await page.getByTestId('real-tracking-card').waitFor();
+     const dot = page.getByTestId(`carousel-page-${id}`);
+     await dot.click();
+     const banner = page.getByTestId('home-promotional-carousel').getByRole('button', { name: label, exact: true });
+     const loaded = await banner.locator('img').first().evaluate(node =>
+       node.decode().then(() => node.currentSrc.includes('.webp')));
+     assert.equal(loaded, true, `The ${id} banner must load a WebP`);
+     await banner.click();
+     await page.waitForURL(url => url.pathname.replace(/\/$/, '') + url.search === destination);
+   }
+   console.log('PASS all six carousel WebPs load and open their advertised actions');
+ }
  if(width===320){
    mode='demo';
    await page.setViewportSize({width,height:480});

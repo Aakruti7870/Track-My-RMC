@@ -7,6 +7,7 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import Svg, { Defs, LinearGradient as SvgGradient, Rect, Stop } from "react-native-svg";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
@@ -49,7 +50,6 @@ const DEMO_ROLES = [
 type LoginMode = "user" | "plant";
 type LoginPhase = "enter" | "user_otp" | "staff_email_otp" | "staff_totp" | "staff_recovery" | "staff_enroll" | "staff_save_recovery";
 const RESEND_DELAY_MS = 30_000;
-const CARD_RADIUS = 28;
 
 function signedInRoute(user: Me): Href {
   if (user.mfa_configured && !user.mfa_enabled && user.role !== "customer" && user.role !== "driver") {
@@ -64,7 +64,6 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export default function LoginScreen() {
   const { colors, toggle, reduceMotion } = useTheme();
   const { width } = useWindowDimensions();
-  const compact = width < 360;
   const look = loginAppearance[colors.isDark ? "dark" : "light"];
   const heroSource = colors.isDark ? HERO_DARK : HERO_LIGHT;
   const router = useRouter();
@@ -346,7 +345,7 @@ export default function LoginScreen() {
   const renderHeading = (icon: keyof typeof Ionicons.glyphMap, title: string, subtitle: string) => (
     <View style={styles.headingBlock}>
       <View style={[styles.iconBubble, { backgroundColor: look.iconSurface }]}>
-        <Ionicons name={icon} size={24} color={look.selectedIcon} />
+        <Ionicons name={icon} size={24} color={icon === "phone-portrait-outline" ? look.phoneIcon : look.selectedIcon} />
       </View>
       <AppText accessibilityRole="header" variant="heading" center>{title}</AppText>
       <AppText variant="bodyMuted" center color={colors.onSurfaceSecondary}>{subtitle}</AppText>
@@ -363,7 +362,7 @@ export default function LoginScreen() {
 
   const renderContinue = (testID: string, label: string, valid: boolean, onPress: () => void) => {
     const disabled = !valid || loading || hydrating;
-    const foreground = disabled ? look.disabledText : colors.onBrand;
+    const foreground = disabled ? colors.disabledContent : colors.onBrand;
     return (
       <Pressable
         testID={testID}
@@ -375,15 +374,14 @@ export default function LoginScreen() {
         style={({ pressed }) => [
           styles.continueButton,
           {
-            borderColor: disabled ? look.railOutline : look.tabOutline,
-            backgroundColor: disabled ? look.disabledFill : pressed ? colors.brandPressed : colors.brand,
+            borderColor: disabled ? look.continueOutline : colors.brand,
+            backgroundColor: disabled ? colors.disabledSurface : pressed ? colors.brandPressed : colors.brand,
           },
         ]}
       >
-        {disabled && <LinearGradient pointerEvents="none" colors={look.disabledGradient} style={StyleSheet.absoluteFill} />}
         {loading
           ? <ActivityIndicator color={foreground} />
-          : <Ionicons name="shield-checkmark-outline" size={19} color={foreground} />}
+          : <Ionicons name="shield-checkmark-outline" size={19} color={disabled ? look.continueShield : foreground} />}
         <AppText style={styles.continueLabel} color={foreground}>{loading ? "Sending code…" : label}</AppText>
       </Pressable>
     );
@@ -546,14 +544,15 @@ export default function LoginScreen() {
           {renderHeading("phone-portrait-outline", "Welcome back", "Secure access to Track My RMC")}
           <View style={[
             styles.phoneInputWrap,
-            { borderColor: error ? colors.error : phoneFocused ? look.tabOutline : look.fieldOutline, backgroundColor: look.field },
+            { borderColor: error ? colors.error : phoneFocused ? colors.accentText : look.fieldOutline, backgroundColor: look.field },
           ]}>
-            <View style={[styles.prefix, { borderRightColor: look.fieldOutline, backgroundColor: look.prefix }]}><AppText style={styles.prefixText}>{mobile.startsWith("+") ? "INTL" : "+91"}</AppText></View>
+            <View style={[styles.prefix, { borderRightColor: look.fieldDivider, backgroundColor: look.prefix }]}><AppText style={styles.prefixText} color={look.prefixText}>{mobile.startsWith("+") ? "INTL" : "+91"}</AppText></View>
             <TextInput
               testID="login-mobile-input"
               value={mobile}
               onChangeText={(text) => { setMobile((text.trimStart().startsWith("+") ? "+" : "") + text.replace(/\D/g, "").slice(0, 15)); setError(null); }}
               accessibilityLabel="WhatsApp mobile number"
+              aria-invalid={Boolean(error)}
               placeholder="10 Digit WhatsApp Number"
               placeholderTextColor={look.placeholder}
               keyboardType="phone-pad"
@@ -627,7 +626,7 @@ export default function LoginScreen() {
         </Pressable>
         {renderContinue("login-plant-send-otp", "Continue Securely", validEmail(plantEmail), handleStartPlantLogin)}
         {onboardingRequired ? (
-          <View style={[styles.onboardingCard, { borderColor: `${colors.brand}55`, backgroundColor: colors.brandSoft }]}> 
+          <View style={[styles.onboardingCard, { borderColor: `${colors.brand}55`, backgroundColor: colors.brandSoft }]}>
             <AppText style={styles.onboardingTitle}>Welcome to TrackMyRMC</AppText>
             <AppText variant="caption" center>This email is not associated with an approved plant account. Submit onboarding details for Authority review.</AppText>
             <Button testID="login-get-onboard" label="Get Onboard" onPress={openOnboarding} />
@@ -638,6 +637,9 @@ export default function LoginScreen() {
   };
 
   const heroAspect = (colors.isDark ? 1229 : 1227) / 615;
+  const heroWidth = Math.min(width, 760);
+  const artworkScale = heroWidth / (colors.isDark ? 1229 : 1227);
+  const cardWidth = Math.min(width - 24, Math.max(366, artworkScale * 678));
 
   return (
     <View style={{ flex: 1, backgroundColor: look.canvas }}>
@@ -649,7 +651,7 @@ export default function LoginScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={{ width: "100%", height: insets.top, backgroundColor: look.heroTop }} />
-        <View style={[styles.hero, { aspectRatio: heroAspect, backgroundColor: look.heroEdge }]}>
+        <View style={[styles.hero, { aspectRatio: heroAspect, backgroundColor: look.heroTop }]}>
           <Image
             testID="login-hero"
             source={heroSource}
@@ -663,117 +665,136 @@ export default function LoginScreen() {
             transition={0}
           />
         </View>
-        <LinearGradient pointerEvents="none" colors={look.heroFade}
-          locations={[0, 0.8, 1]} style={styles.heroFade} />
-
-        <View testID="login-card" style={[styles.loginShell, compact && styles.compactShell, { shadowColor: colors.shadow }]}>
-          <LinearGradient pointerEvents="none" colors={look.card} style={styles.sheetFill}
-            start={{ x: 0, y: 0 }} end={{ x: 0.9, y: 1 }} />
-          <LinearGradient pointerEvents="none" colors={look.cardHighlight} locations={[0, 0.56, 1]}
-            start={{ x: 0, y: 0 }} end={{ x: 0.34, y: 0.16 }} style={styles.sheetFill} />
-          <Svg width="100%" height="100%" pointerEvents="none" style={StyleSheet.absoluteFill} aria-hidden accessible={false}>
-            <Defs>
-              <SvgGradient id="loginCardRim" x1="0%" y1="0%" x2="100%" y2="100%">
-                <Stop offset="0" stopColor={look.rim[0]} />
-                <Stop offset="0.19" stopColor={look.rim[1]} />
-                <Stop offset="0.63" stopColor={look.rim[2]} />
-                <Stop offset="1" stopColor={look.rim[1]} />
-              </SvgGradient>
-            </Defs>
-            <Rect width="100%" height="100%" rx={CARD_RADIUS} fill="none" stroke="url(#loginCardRim)" strokeWidth={2} />
-          </Svg>
-
-          <View accessibilityRole="tablist" style={[styles.segmented, { backgroundColor: look.rail, borderColor: look.railOutline }]}>
-            {([
-              { key: "user", testID: "login-user-tab", icon: "person-outline", label: "USER LOGIN" },
-              { key: "plant", testID: "login-plant-tab", icon: "people-outline", label: "PLANT STAFF" },
-            ] as const).map(({ key, testID, icon, label }) => {
-              const selected = mode === key;
-              return (
-                <Pressable key={key} testID={testID}
-                  accessibilityRole="tab" accessibilityLabel={label} accessibilityState={{ selected, disabled: loading }} aria-selected={selected} disabled={loading}
-                  onPress={() => { if (!selected) resetEntry(key); }}
-                  style={[styles.segment, selected && { borderColor: look.tabOutline }]}>
-                  {selected ? <LinearGradient pointerEvents="none" colors={look.tab}
-                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} /> : null}
-                  <Ionicons name={icon} size={18} color={selected ? look.selectedIcon : look.inactive} />
-                  <AppText style={styles.segmentLabel} color={selected ? look.selectedText : look.inactive}>{label}</AppText>
-                </Pressable>
-              );
-            })}
+        <View testID="login-backdrop" style={styles.backdrop}>
+          <LinearGradient pointerEvents="none" colors={look.page} locations={[0, 0.45, 1]}
+            style={StyleSheet.absoluteFill} />
+          <View pointerEvents="none" testID="login-hero-edge"
+            style={[styles.heroExtension, { height: artworkScale * 72 }]}>
+            <LinearGradient colors={look.heroEdge} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+              style={StyleSheet.absoluteFill} />
+            <LinearGradient colors={look.heroBlend} locations={[0, 0.21, 0.45, 0.69, 1]}
+              style={StyleSheet.absoluteFill} />
           </View>
 
-          {renderForm()}
-
-          {DEMO_LOGIN_ENABLED ? (
-            <View style={[styles.demoBox, { backgroundColor: colors.surface, borderColor: colors.border }]}> 
-              <AppText variant="caption" center>Google Play review demo</AppText>
-              <View style={styles.demoRow}>
-                {DEMO_ROLES.map((item) => (
-                  <Pressable
-                    key={item.role}
-                    disabled={loading}
-                    onPress={() => void runLoginAction(async () => {
-                      try {
-                        await finishLogin(await demoLogin(item.role));
-                      } catch (error) {
-                        setError(apiErrorDetail(error, "Demo login is unavailable"));
-                      }
-                    })}
-                    style={[styles.demoChip, { borderColor: colors.border }]}
-                  >
-                    <AppText variant="caption">{item.label}</AppText>
-                  </Pressable>
-                ))}
-              </View>
+          <View testID="login-card" style={[styles.loginShell, {
+            width: cardWidth, marginTop: artworkScale * 4, backgroundColor: look.card[0], shadowColor: look.shadow,
+          }]}>
+            <LinearGradient pointerEvents="none" colors={look.card} style={styles.sheetFill}
+              start={{ x: 0, y: 0 }} end={{ x: 0.9, y: 1 }} />
+            <View pointerEvents="none" style={styles.cardHighlight}>
+              <LinearGradient colors={[look.gleam + (colors.isDark ? "55" : "47"), look.gleam + "00"]}
+                start={{ x: 0.08, y: 0 }} end={{ x: 0.56, y: 1 }} style={StyleSheet.absoluteFill} />
             </View>
-          ) : null}
+            <Svg width="100%" height="100%" pointerEvents="none" style={StyleSheet.absoluteFill} aria-hidden accessible={false}>
+              <Defs>
+                <SvgGradient id="loginCardRim" x1="0%" y1="0%" x2="25%" y2="100%">
+                  <Stop offset="0" stopColor={look.rim[0]} />
+                  <Stop offset="0.10" stopColor={look.rim[1]} />
+                  <Stop offset="0.60" stopColor={look.rim[2]} />
+                  <Stop offset="1" stopColor={look.rim[3]} />
+                </SvgGradient>
+              </Defs>
+              <Rect width="100%" height="100%" rx={28} fill="none" stroke="url(#loginCardRim)" strokeWidth={1.5} />
+            </Svg>
 
-          <View style={styles.securityNote}>
-            <Ionicons name="lock-closed-outline" size={14} color={colors.onSurfaceTertiary} />
-            <AppText variant="caption" color={colors.onSurfaceTertiary} style={{ flexShrink: 1 }}>Secured with 6-digit OTP verification</AppText>
+            <View accessibilityRole="tablist" style={[styles.segmented, { backgroundColor: look.rail, borderColor: look.railOutline }]}>
+              {([
+                { key: "user", testID: "login-user-tab", icon: "profile", label: "USER LOGIN" },
+                { key: "plant", testID: "login-plant-tab", icon: "plant-staff", label: "PLANT STAFF" },
+              ] as const).map(({ key, testID, icon, label }) => {
+                const selected = mode === key;
+                return (
+                  <Pressable key={key} testID={testID}
+                    accessibilityRole="tab" accessibilityLabel={label} accessibilityState={{ selected, disabled: loading }} aria-selected={selected} disabled={loading}
+                    onPress={() => { if (!selected) resetEntry(key); }}
+                    style={styles.segment}>
+                    {selected ? (
+                      <LinearGradient pointerEvents="none" colors={look.tabRim}
+                        start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill}>
+                        <LinearGradient colors={look.tab} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                          style={styles.segmentFill} />
+                      </LinearGradient>
+                    ) : null}
+                    <View style={styles.segmentContent} pointerEvents="none">
+                      <VectorSymbol name={icon} size={18} color={selected ? look.selectedIcon : look.inactiveIcon} />
+                      <AppText style={styles.segmentLabel} color={selected ? look.selectedText : look.inactive}>{label}</AppText>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {renderForm()}
+
+            {DEMO_LOGIN_ENABLED ? (
+              <View style={[styles.demoBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <AppText variant="caption" center>Google Play review demo</AppText>
+                <View style={styles.demoRow}>
+                  {DEMO_ROLES.map((item) => (
+                    <Pressable
+                      key={item.role}
+                      disabled={loading}
+                      onPress={async () => {
+                        try {
+                          const me = await demoLogin(item.role);
+                          router.replace(roleRouteFor(me.role) as any);
+                        } catch (e: any) {
+                          setError(e.detail || "Demo login is unavailable");
+                        }
+                      }}
+                      style={[styles.demoChip, { borderColor: colors.border }]}
+                    >
+                      <AppText variant="caption">{item.label}</AppText>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+
+            <View style={styles.securityNote}>
+              <Ionicons name="lock-closed-outline" size={14} color={look.securityLock} />
+              <AppText variant="caption" color={look.securityText} style={{ flexShrink: 1 }}>Secured with 6-digit OTP verification</AppText>
+            </View>
+
+            <Pressable
+              testID="login-review-access"
+              accessibilityRole="button"
+              accessibilityLabel="Google Play Reviewer Access"
+              disabled={loading}
+              onPress={() => router.push("/review-access")}
+              style={[styles.reviewAccess, { backgroundColor: look.reviewerFill, borderColor: look.reviewerOutline }]}
+            >
+              <Ionicons name="shield-checkmark-outline" size={20} color={look.reviewer} />
+              <AppText variant="caption" style={[styles.reviewAccessLabel, { color: look.reviewerLabel }]}>Google Play Reviewer Access</AppText>
+            </Pressable>
+
+            <View style={styles.legalArea}>
+              <AppText variant="caption" center color={look.consent}>
+                {"By clicking on Login, I accept the "}
+                <AppText testID="login-terms-link" variant="caption" style={styles.legalLink} color={look.link}
+                  accessibilityRole="link" onPress={() => { if (!requestInFlight.current) router.push("/terms"); }}>Terms & Conditions</AppText>
+                {" & "}
+                <AppText testID="login-privacy-link" variant="caption" style={styles.legalLink} color={look.privacy}
+                  accessibilityRole="link" onPress={() => { if (!requestInFlight.current) void openExternal(PRIVACY_POLICY_URL); }}>Privacy Policy</AppText>
+              </AppText>
+
+              <Pressable testID="login-delete-account" accessibilityRole="link" accessibilityLabel="Delete Account"
+                style={styles.deleteLink} disabled={loading} onPress={() => void openExternal(ACCOUNT_DELETION_URL)}>
+                <Ionicons name="trash-outline" size={16} color={look.deleteIcon} />
+                <AppText variant="caption" color={look.delete}>Delete Account</AppText>
+              </Pressable>
+            </View>
+
+            <AppText variant="caption" center color={look.footer}>Powered by <AppText variant="label" color={look.footerBrand}>Gold e Tech</AppText></AppText>
           </View>
-
-          <Pressable
-            testID="login-review-access"
-            accessibilityRole="button"
-            accessibilityLabel="Google Play Reviewer Access"
-            disabled={loading}
-            onPress={() => router.push("/review-access")}
-            style={[styles.reviewAccess, { backgroundColor: look.reviewerSurface, borderColor: look.fieldOutline }]}
-          >
-            <Ionicons name="shield-checkmark-outline" size={20} color={look.reviewer} />
-            <AppText variant="caption" style={[styles.reviewAccessLabel, { color: colors.onSurface }]}>Google Play Reviewer Access</AppText>
-          </Pressable>
-
-          <View style={styles.legalArea}>
-            <AppText variant="caption" center color={colors.onSurfaceSecondary}>
-              {"By clicking on Login, I accept the\u00A0"}
-              <AppText testID="login-terms-link" variant="caption" style={styles.legalLink} color={look.link}
-                accessibilityRole="link" onPress={() => { if (!requestInFlight.current) router.push("/terms"); }}>Terms & Conditions</AppText>
-              {" & "}
-              <AppText testID="login-privacy-link" variant="caption" style={styles.legalLink} color={look.privacy}
-                accessibilityRole="link" onPress={() => { if (!requestInFlight.current) void openExternal(PRIVACY_POLICY_URL); }}>Privacy Policy</AppText>
-            </AppText>
-
-            <Pressable testID="login-delete-account" accessibilityRole="link" accessibilityLabel="Delete Account"
-              style={styles.deleteLink} disabled={loading} onPress={() => void openExternal(ACCOUNT_DELETION_URL)}>
-              <Ionicons name="trash-outline" size={16} color={look.delete} />
-              <AppText variant="caption" color={look.delete}>Delete Account</AppText>
+          <View style={[styles.utilityRow, { width: cardWidth }]}>
+            <SupportWidgetBridge />
+            <Pressable accessibilityRole="button" accessibilityLabel="Switch light or dark mode"
+              testID="login-theme-toggle" onPress={toggle}
+              style={[styles.themeButton, { backgroundColor: look.rail, borderColor: look.railOutline }]}>
+              <Ionicons name={colors.isDark ? "sunny-outline" : "moon-outline"} size={19} color={look.inactive} />
             </Pressable>
           </View>
-
-          <AppText variant="caption" center color={colors.onSurfaceTertiary} style={styles.credit}>
-            {"Powered by\u00A0"}<AppText variant="label" color={colors.onSurface}>Gold e Tech</AppText>
-          </AppText>
-        </View>
-        <View style={[styles.utilityRow, compact && styles.compactUtilityRow]}>
-          <SupportWidgetBridge />
-          <Pressable accessibilityRole="button" accessibilityLabel="Switch light or dark mode"
-            testID="login-theme-toggle" onPress={toggle}
-            style={[styles.themeButton, { backgroundColor: look.rail, borderColor: look.railOutline }]}>
-            <Ionicons name={colors.isDark ? "sunny-outline" : "moon-outline"} size={19} color={look.inactive} />
-          </Pressable>
         </View>
       </KeyboardAwareScrollView>
     </View>
@@ -793,50 +814,47 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
+  backdrop: { width: "100%", flexGrow: 1, alignItems: "center", paddingBottom: spacing.lg },
+  heroExtension: { position: "absolute", top: 0, width: "100%", maxWidth: 760, alignSelf: "center" },
   loginShell: {
-    width: "88%",
-    maxWidth: 420,
-    marginTop: -7,
-    borderRadius: CARD_RADIUS,
-    paddingHorizontal: 17,
-    paddingBottom: 17,
-    paddingTop: 22,
-    gap: 16,
+    borderRadius: 28,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
+    paddingTop: spacing.lg,
+    gap: spacing.lg,
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.14,
     shadowRadius: 28,
     elevation: 8,
   },
-  compactShell: { width: "92%", paddingHorizontal: 12 },
-  heroFade: { width: "100%", maxWidth: 760, height: 12 },
-  sheetFill: { ...StyleSheet.absoluteFillObject, borderRadius: CARD_RADIUS },
-  utilityRow: { width: "88%", maxWidth: 420, marginTop: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between", zIndex: 1 },
-  compactUtilityRow: { width: "92%" },
+  sheetFill: { ...StyleSheet.absoluteFillObject, borderRadius: 28 },
+  utilityRow: { marginTop: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between", zIndex: 1 },
   themeButton: { marginLeft: "auto", width: 44, height: 44, borderRadius: 22, borderWidth: 1,
     alignItems: "center", justifyContent: "center" },
   segmented: {
     flexDirection: "row",
     borderWidth: 1,
     borderRadius: 18,
-    padding: 3,
-    gap: 3,
+    padding: 5,
+    gap: 5,
   },
   segment: {
     flex: 1,
-    minHeight: 44,
-    borderWidth: 1,
-    borderColor: "transparent",
+    minHeight: 48,
     borderRadius: 14,
     overflow: "hidden",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: spacing.xs,
-    paddingHorizontal: 4,
+    paddingHorizontal: spacing.sm,
   },
-  segmentLabel: { flexShrink: 1, textAlign: "center", fontFamily: fonts.semibold, fontSize: fontSize.sm, lineHeight: 17 },
-  formGap: { gap: 11 },
-  headingBlock: { alignItems: "center", gap: 2, paddingBottom: 5 },
+  cardHighlight: { position: "absolute", top: 1, left: 1, right: 1, height: 28, borderTopLeftRadius: 27, borderTopRightRadius: 27, overflow: "hidden" },
+  segmentContent: { zIndex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.xs },
+  segmentFill: { ...StyleSheet.absoluteFillObject, top: 1, right: 1, bottom: 1, left: 1, borderRadius: 13 },
+  segmentLabel: { flexShrink: 1, textAlign: "center", fontFamily: fonts.semibold, fontSize: fontSize.sm, letterSpacing: 0.2 },
+  formGap: { gap: spacing.md },
+  headingBlock: { alignItems: "center", gap: spacing.xs, paddingVertical: spacing.xs },
   stepAction: { minHeight: 44, justifyContent: "center", paddingHorizontal: 6 },
   setupKey: { alignSelf: "center", textAlign: "center" },
   recoveryCodes: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: spacing.md },
@@ -853,15 +871,17 @@ const styles = StyleSheet.create({
   },
   continueLabel: { fontFamily: fonts.semibold, fontSize: fontSize.base },
   iconBubble: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 5,
+    marginBottom: spacing.xs,
   },
   phoneInputWrap: {
-    minHeight: 48,
+    height: 56,
+    maxHeight: 56,
     borderWidth: 1,
     borderRadius: 16,
     flexDirection: "row",
@@ -870,8 +890,8 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   prefix: {
-    alignSelf: "stretch",
-    minWidth: 54,
+    height: 56,
+    minWidth: 62,
     alignItems: "center",
     justifyContent: "center",
     borderRightWidth: 1,
@@ -879,9 +899,8 @@ const styles = StyleSheet.create({
   prefixText: { fontFamily: fonts.semibold },
   phoneInput: {
     flex: 1,
-    minWidth: 0,
-    minHeight: 46,
-    paddingHorizontal: 10,
+    height: 56,
+    paddingHorizontal: spacing.md,
     fontFamily: fonts.regular,
     fontSize: fontSize.base,
   },
@@ -890,7 +909,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     gap: 6,
-    marginTop: 3,
+    marginTop: -2,
   },
   onboardingLink: {
     width: "100%",
@@ -918,14 +937,26 @@ const styles = StyleSheet.create({
     fontSize: fontSize.base,
     textAlign: "center",
   },
+  altAuthRow: { flexDirection: "row", gap: spacing.sm },
+  altAuthCard: {
+    flex: 1,
+    minHeight: 62,
+    borderWidth: 1,
+    borderRadius: 15,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  altAuthText: { flex: 1, gap: 1 },
   linkRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.md, flexWrap: "wrap" },
   onboardingCard: { borderWidth: 1, borderRadius: radius.lg, padding: spacing.md, gap: spacing.sm, alignItems: "center" },
   onboardingTitle: { fontFamily: fonts.bold, fontSize: fontSize.lg },
   demoBox: { borderWidth: 1, borderRadius: radius.lg, padding: spacing.md, gap: spacing.sm },
   demoRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, justifyContent: "center" },
   demoChip: { borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  legalArea: { gap: 2, paddingTop: 2 },
-  credit: { marginTop: 2 },
+  legalArea: { gap: spacing.xs },
   legalLink: { fontFamily: fonts.semibold, textDecorationLine: "underline" },
   deleteLink: { minHeight: 44, alignSelf: "center", paddingHorizontal: 10, flexDirection: "row",
     alignItems: "center", justifyContent: "center", gap: 5 },

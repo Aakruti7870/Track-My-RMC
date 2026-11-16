@@ -1,3 +1,4 @@
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import React, { useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -504,7 +505,7 @@ export default function PlantOnboarding() {
           label="TMRMC ONBOARD"
           onPress={submit}
           loading={submitting}
-          icon={<Ionicons name="business-outline" size={18} color={colors.onBrand} />}
+          icon={<VectorSymbol name="plant-onboarding-review" size={18} color={colors.onBrand} />}
         />
         <AppText variant="caption" center>
           Submitting this form creates a pending request only. It does not create an approved Plant Owner session.

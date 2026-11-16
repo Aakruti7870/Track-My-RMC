@@ -160,7 +160,7 @@ if (!reviewerAction.includes('router.push("/review-access")') ||
 if ((reviewerAction.match(/Google Play Reviewer Access/g) || []).length !== 2 ||
     !reviewerAction.includes('name="shield-checkmark-outline"') ||
     !reviewerAction.includes('color={look.reviewer}') ||
-    !reviewerAction.includes('color: colors.onSurface')) {
+    !reviewerAction.includes('color: look.reviewerLabel')) {
   failures.push("Reviewer action must retain a green shield and theme-aware label");
 }
 const reviewerStyle = login.match(/reviewAccess: \{([\s\S]*?)\n  \},/)?.[1] ?? "";

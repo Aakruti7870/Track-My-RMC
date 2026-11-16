@@ -16,11 +16,10 @@ export function IconTile({ symbol, icon, size = 24, width = 44, height = width, 
   bulk?: boolean;
 }) {
   const { colors } = useTheme();
-  const foreground = bulk ? "#FFFFFF" : homeShortcut ? colors.isDark ? "#FFF0E2" : "#D88A38" : colors.onSurfaceSecondary;
+  const foreground = bulk ? "#FFFFFF" : homeShortcut ? colors.isDark ? "#FFF0E2" : "#633507" : colors.onSurfaceSecondary;
   const glyph = symbol
-    ? <VectorSymbol name={symbol} size={size} color={foreground} outline={homeShortcut || bulk}
-        outlineBackdrop={homeShortcut && !colors.isDark ? "#633507" : undefined} />
-    : <Ionicons name={icon} size={size} color={homeShortcut && !colors.isDark ? "#633507" : foreground} accessible={false} aria-hidden />;
+    ? <VectorSymbol name={symbol} size={size} color={foreground} />
+    : <Ionicons name={icon} size={size} color={foreground} accessible={false} aria-hidden />;
   if (homeShortcut && !bulk) {
     return (
       <LinearGradient colors={homeArtwork.copperEdge} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }}

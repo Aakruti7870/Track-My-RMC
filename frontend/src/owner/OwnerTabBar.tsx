@@ -4,7 +4,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppText } from "@/src/components/ui/AppText";
-import { type VectorSymbolName } from "@/src/components/VectorSymbol";
+import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
+import { tabVectorSymbol } from "@/src/navigation/vectorSymbolAssignments";
 import { IconTile } from "@/src/components/IconTile";
 import type { TabDef } from "@/src/components/GlassTabBar";
 import { OwnerGlass, useOwnerPalette } from "./OwnerUI";
@@ -22,7 +23,8 @@ export function OwnerTabBar({ state, navigation, tabs }: Props) {
   function tabItem(tab: TabDef) {
     const route = state.routes.find(route => route.name === tab.name); if (!route) return null;
     const selected = state.routes[state.index]?.key === route.key;
-    return <Pressable key={tab.name} testID={`tab-${tab.label.toLowerCase()}`} accessibilityRole="tab" accessibilityLabel={`${tab.label} tab`} accessibilityState={{ selected }} aria-selected={selected} onPress={() => { const event = navigation.emit({ type: "tabPress", target: route.key, canPreventDefault: true }); if (!event.defaultPrevented) navigation.navigate(tab.name); }} style={{ flex: 1, minWidth: 0, minHeight: 65, alignItems: "center", justifyContent: "center", gap: 4 }}><Ionicons name={selected ? tab.active : tab.icon} size={30} color={selected ? p.accent : p.muted} /><AppText numberOfLines={1} style={{ fontSize: 10, color: selected ? p.accent : p.muted }}>{tab.label}</AppText></Pressable>;
+    const symbol = tabVectorSymbol(tab.label, "plant_owner");
+    return <Pressable key={tab.name} testID={`tab-${tab.label.toLowerCase()}`} accessibilityRole="tab" accessibilityLabel={`${tab.label} tab`} accessibilityState={{ selected }} aria-selected={selected} onPress={() => { const event = navigation.emit({ type: "tabPress", target: route.key, canPreventDefault: true }); if (!event.defaultPrevented) navigation.navigate(tab.name); }} style={{ flex: 1, minWidth: 0, minHeight: 65, alignItems: "center", justifyContent: "center", gap: 4 }}>{symbol ? <VectorSymbol name={symbol} size={30} color={selected ? p.accent : p.muted} active={selected} /> : <Ionicons name={selected ? tab.active : tab.icon} size={30} color={selected ? p.accent : p.muted} />}<AppText numberOfLines={1} style={{ fontSize: 10, color: selected ? p.accent : p.muted }}>{tab.label}</AppText></Pressable>;
   }
   return <>
     <View pointerEvents="box-none" style={{ position: "absolute", left: 0, right: 0, bottom: 0 }}><OwnerGlass style={{ width: "100%", maxWidth: 820, alignSelf: "center", borderBottomLeftRadius: 0, borderBottomRightRadius: 0, borderTopLeftRadius: 26, borderTopRightRadius: 26, paddingBottom: Platform.OS === "web" ? 8 : Math.max(insets.bottom, 8), paddingTop: 3, flexDirection: "row", alignItems: "center" }}>

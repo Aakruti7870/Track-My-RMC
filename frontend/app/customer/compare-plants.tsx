@@ -1,3 +1,4 @@
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import React, { useEffect, useMemo, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
@@ -161,7 +162,7 @@ export default function ComparePlants() {
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 100, gap: spacing.lg }} keyboardShouldPersistTaps="handled">
         <Card style={{ gap: spacing.md }}>
           <View style={styles.notice}>
-            <Ionicons name="shield-checkmark-outline" size={20} color={colors.success} />
+            <VectorSymbol name="verified-plant" size={20} color={colors.success} />
             <AppText variant="caption" style={{ flex: 1 }}>
               Results use active plant rate cards and are sorted by estimated total, distance and name. Premium or promotion status does not change this order.
             </AppText>

@@ -15,7 +15,8 @@ test('Metro consumes the pinned parser with the existing Buffer API', () => {
 });
 
 test('all uploaded supported image assets retain valid dimensions through Metro', () => {
-  let count = 0;
+  const images = path.join(__dirname, "../assets/images");
+  const inspected = new Set();
   function inspect(directory) {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
       const file = path.join(directory, entry.name);
@@ -27,11 +28,21 @@ test('all uploaded supported image assets retain valid dimensions through Metro'
       const actual = metro.getAssetSize(extension, buffer, file);
       assert.ok(actual.width > 0 && actual.height > 0, file);
       assert.deepEqual(actual, { width: expected.width, height: expected.height }, file);
-      count++;
+      inspected.add(path.relative(images, file));
     }
   }
-  inspect(path.join(__dirname, '../assets/images'));
-  assert.ok(count >= 100, `Expected uploaded asset coverage, inspected ${count}`);
+  inspect(images);
+  for (const filename of [
+    'TrackMyRMC_Login_Top_Banner_light.webp',
+    'TrackMyRMC_Login_Top_Banner_Dark.webp',
+    'Plant _Owner_All_staff_top_card.webp',
+    'adaptive-icon.png',
+  ]) {
+    assert.ok(inspected.has(filename), `Metro did not inspect ${filename}`);
+  }
+  const carousel = [...inspected].filter(file => path.dirname(file) === 'carousel');
+  assert.equal(carousel.length, 6, 'Metro must inspect all customer carousel banners');
+  assert.ok(carousel.every(file => path.extname(file) === '.webp'));
 });
 
 test('Metro file-based asset discovery supports the parser byte-only API', async () => {

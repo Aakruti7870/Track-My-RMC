@@ -1,3 +1,4 @@
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import React, { useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
@@ -118,7 +119,7 @@ export default function CustomerQuotations() {
         {quotes.loading && !quotes.data ? <><Skeleton height={140} /><Skeleton height={140} /></> : null}
         {quotes.data?.quotations.map((q) => (
           <Card key={q.id} style={{ gap: spacing.sm }}>
-            <View style={styles.between}><View style={{ flex: 1 }}><View style={styles.quoteTitle}><Ionicons name="document-text-outline" size={20} color={colors.brand} /><AppText style={styles.name}>{q.quotation_number}</AppText></View><AppText variant="caption">{q.grade} · {q.quantity_m3} m³ · {q.site_name}</AppText></View><Badge label={q.status} status={q.status} /></View>
+            <View style={styles.between}><View style={{ flex: 1 }}><View style={styles.quoteTitle}><VectorSymbol name="quotations" size={20} color={colors.brand} /><AppText style={styles.name}>{q.quotation_number}</AppText></View><AppText variant="caption">{q.grade} · {q.quantity_m3} m³ · {q.site_name}</AppText></View><Badge label={q.status} status={q.status} /></View>
             <AppText variant="caption">{q.site_address}</AppText>
             <View style={[styles.breakdown, { borderColor: colors.border }]}>
               <Line label="Concrete rate" value={`${money(q.rate_per_m3)}/m³`} />

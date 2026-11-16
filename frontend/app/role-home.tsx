@@ -1,3 +1,4 @@
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import React from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -107,7 +108,7 @@ export default function RoleHome() {
           </View>
         </View>
 
-        <Button testID="role-logout" label="Logout" variant="outline" onPress={doLogout} icon={<Ionicons name="log-out-outline" size={18} color={colors.onSurface} />} />
+        <Button testID="role-logout" label="Logout" variant="outline" onPress={doLogout} icon={<VectorSymbol name="logout" size={18} color={colors.onSurface} />} />
       </ScrollView>
     </View>
   );

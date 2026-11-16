@@ -8,11 +8,6 @@ from pathlib import Path
 import subprocess
 
 ASSETS = {
-    "Mixer.png": 88,
-    "KYC-verification.png": 88,
-    "Free-Calculator.png": 88,
-    "Cashfree.png": 88,
-    "CountryMap.png": 88,
     "TrackMyRMC_Login_Top_Banner_light.png": 90,
     "TrackMyRMC_Login_Top_Banner_Dark.png": 90,
     "Background Light Theme.png": 89,

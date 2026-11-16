@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/src/auth/AuthContext";
 import { ActiveTransitMixerCard } from "@/src/components/ActiveTransitMixerCard";
 import { CustomerHomeHeader } from "@/src/components/customer/CustomerHomeHeader";
-import { HomeCarousel } from "@/src/components/HomeCarousel";
+import { HomeCarousel, type CarouselAction } from "@/src/components/HomeCarousel";
 import { HomeScroll } from "@/src/components/HomeScroll";
 import { KycBanner } from "@/src/components/KycBanner";
 import { ErrorView } from "@/src/components/StateViews";
@@ -50,10 +50,12 @@ export default function CustomerHome() {
   const panel = [styles.panel, { backgroundColor: colors.surfaceSecondary, borderColor: colors.divider }];
   const order = data?.active_order;
 
-  function openAction(key: typeof ACTIONS[number]["key"]) {
+  function openAction(key: CarouselAction) {
     switch (key) {
       case "new": router.push("/new-order"); return;
       case "plants": router.push("/customer/plants"); return;
+      case "calculator": router.push("/customer/free-tools"); return;
+      case "bulk": router.push(enquiryRoute("bulk")); return;
       case "track":
         if (order) {
           router.push({ pathname: "/track/[id]", params: { id: order.id } });
@@ -114,7 +116,7 @@ export default function CustomerHome() {
           backgroundColor={colors.canvas} gap={size.sectionGap} paddingHorizontal={12} paddingTop={10}
           contentContainerStyle={{ paddingBottom: size.sectionGap + insets.bottom }}
           refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={colors.accentText} />}
-          lead={<HomeCarousel style={styles.carousel} />}
+          lead={<HomeCarousel style={styles.carousel} onAction={openAction} />}
           shortcuts={<View testID="home-quick-actions" style={panel}>
             <AppText accessibilityRole="header" style={heading}>Quick Access</AppText>
             <View style={styles.grid}>
@@ -122,7 +124,7 @@ export default function CustomerHome() {
                 symbol: action.symbol, kind: "quick", onPress: () => openAction(action.key) }))}
             </View>
             <Pressable testID="home-bulk-quote" accessibilityRole="button"
-              onPress={() => router.push(enquiryRoute("bulk"))}
+              onPress={() => openAction("bulk")}
               style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}>
               <LinearGradient colors={homeArtwork.bulkSurface} style={styles.bulk} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }}>
                 <IconTile symbol="quotation-requests" width={34} size={22} bulk />
