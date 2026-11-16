@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="82 110 168 192">
+  <!-- TrackMyRMC mark from the public login hero. -->
+  <defs>
+    <linearGradient id="orange" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop stop-color="#ff8515"/>
+      <stop offset="1" stop-color="#ff4200"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#orange)" d="m167 117-79 46 30 17 49-28z"/>
+  <path fill="#ff8018" d="m88 163 30 17v53l-30 17z"/>
+  <path fill="#f85008" d="m88 250 30-17 37 21-29 18z"/>
+  <path fill="#fff" d="m167 117 76 46-28 17-48-28z"/>
+  <path fill="#e2e6ef" d="m243 163-28 17v51l28 15z"/>
+  <path fill="url(#orange)" d="m147 176 38 22v22l-38-23z"/>
+  <path fill="#fff" d="m147 197 92 54-72 44-41-23 29-18 12 7 25-15-45-26z"/>
+  <path fill="#e2e6ef" d="m210 234 29 17-72 44v-34l25-15z"/>
+</svg>

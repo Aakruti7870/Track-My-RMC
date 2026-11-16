@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import './admin-theme.css';
+import trackMyRmcMark from './trackmyrmc-mark.svg?no-inline';
 import orderStages from '../../frontend/src/domain/order-status-colors.json';
 import { Building2, ClipboardCheck, Factory, Megaphone, ShieldCheck, Workflow, MessageCircle, LayoutDashboard, BarChart3, Eye, Users, UserRoundPlus, UserCog, Database, Grid2X2, LogOut, Settings, ChevronRight, ArrowLeft, Check, KeyRound, Mail, LockKeyhole, Moon, Sun, UserRound } from 'lucide-react';
 import { AuthenticatorQr } from './AuthenticatorQr';
@@ -1349,7 +1350,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
             </button>
           </div>}
           <header className="tm-titlebar">
-            <img src={import.meta.env.BASE_URL+'trackmyrmc-logo.png'} alt="TrackMyRMC official logo" className="tm-brand-logo"/>
+            <img src={trackMyRmcMark} alt="TrackMyRMC official logo" className="tm-brand-logo"/>
             <div className="tm-titlecopy">
               <h1 id="portal-title" tabIndex={-1} ref={heading}>
                 {stage === 'checking-session' ? 'Control Center' : stage === 'authenticated' ? 'Command Center' : centralStep ? 'Central Admin sign in' : stage === 'authority-login' ? 'Delegated Authority sign in' : 'Verified email sign in'}
@@ -1542,7 +1543,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
           <div className={'tm-workspace '+(isCentral?'tm-workspace-central':'tm-workspace-authority')}>
             {isCentral&&<aside className="tm-sidebar" aria-label="Super Admin sidebar">
               <div className="tm-sidebar-brand">
-                <img src={import.meta.env.BASE_URL+'trackmyrmc-logo.png'} alt="TrackMyRMC official logo"/>
+                <img src={trackMyRmcMark} alt="TrackMyRMC official logo" className="tm-brand-logo"/>
                 <span>TrackMyRMC</span>
               </div>
               <nav aria-label="Control Center sections">
