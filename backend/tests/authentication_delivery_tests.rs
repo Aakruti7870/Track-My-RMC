@@ -1068,6 +1068,11 @@ async fn registered_email_invitation_claim_lifecycle_and_rehire_are_atomic(db: P
         .0,
         StatusCode::OK
     );
+    wait_for_otp_delivery(&db, "unregistered@example.invalid").await;
+    assert!(
+        delivery.messages.lock().unwrap().is_empty(),
+        "Unknown addresses must not receive an OTP"
+    );
     let challenge = email_challenge(&db, &app, &delivery, "new-dispatcher@example.invalid").await;
     assert_eq!(
         sqlx::query_scalar::<_, String>(
@@ -1165,6 +1170,12 @@ async fn registered_email_invitation_claim_lifecycle_and_rehire_are_atomic(db: P
         StatusCode::OK,
         "Suspension requests receive the standard public reply"
     );
+    // Let the background delivery check finish while the employee is suspended.
+    wait_for_otp_delivery(&db, "new-dispatcher@example.invalid").await;
+    assert!(
+        delivery.messages.lock().unwrap().is_empty(),
+        "Suspended staff must not receive an OTP"
+    );
     assert_eq!(
         call(&app, &invite, Some(body.clone()), owner_token).await.0,
         StatusCode::CONFLICT
@@ -1206,7 +1217,11 @@ async fn registered_email_invitation_claim_lifecycle_and_rehire_are_atomic(db: P
         .0,
         StatusCode::OK
     );
-    assert!(delivery.messages.lock().unwrap().is_empty());
+    wait_for_otp_delivery(&db, "new-dispatcher@example.invalid").await;
+    assert!(
+        delivery.messages.lock().unwrap().is_empty(),
+        "Terminated staff must not receive an OTP"
+    );
     let (status, rehire) = call(&app, &invite, Some(body), owner_token).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(rehire["staff_user_id"], employee.to_string());
