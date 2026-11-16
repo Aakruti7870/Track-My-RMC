@@ -895,6 +895,15 @@ pub async fn get_quality_details(
     )?;
 
     super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
+    // Authenticated plant membership alone does not grant Quality Register visibility.
+    super::staff_module_permissions::require_order(
+        &state,
+        &auth_user,
+        order_id,
+        "quality_register",
+        super::staff_module_permissions::Action::View,
+    )
+    .await?;
     let order = sqlx::query(
         r#"
         SELECT o.id, o.order_number, o.concrete_grade, CAST(o.total_quantity_m3 AS DOUBLE PRECISION) as quantity,

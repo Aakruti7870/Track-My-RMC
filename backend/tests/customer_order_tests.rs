@@ -1788,6 +1788,24 @@ async fn quality_fixture(db: &PgPool) -> (AppState, Router, Uuid, Uuid, Uuid, St
         .execute(db)
         .await
         .unwrap();
+    // An authenticated Quality Engineer needs an explicit Owner-approved
+    // module grant; test fixtures must not rely on the old missing gate.
+    let owner: Uuid = sqlx::query_scalar("SELECT owner_id FROM rmc_plants WHERE id=$1")
+        .bind(plant)
+        .fetch_one(db)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO plant_staff_module_permissions
+         (plant_id,user_id,module_key,can_view,can_edit,can_approve,can_create,can_export,updated_by)
+         VALUES($1,$2,'quality_register',TRUE,TRUE,FALSE,TRUE,FALSE,$3)",
+    )
+    .bind(plant)
+    .bind(engineer)
+    .bind(owner)
+    .execute(db)
+    .await
+    .unwrap();
     let token = generate_token(
         engineer,
         "quality_engineer",
@@ -1798,6 +1816,49 @@ async fn quality_fixture(db: &PgPool) -> (AppState, Router, Uuid, Uuid, Uuid, St
     )
     .unwrap();
     (state, app, engineer, plant, order, token)
+}
+
+#[sqlx::test]
+async fn revoked_quality_module_grants_block_api_reads_and_writes(db: PgPool) {
+    let (_, app, engineer, plant, order, token) = quality_fixture(&db).await;
+    let payload = json!({"order_id":order,"slump_mm":120,"result":"PASS"});
+
+    let (status, _) = call(&app, "/api/staff/quality", Some(payload), &token).await;
+    assert_eq!(status, StatusCode::OK);
+
+    sqlx::query(
+        "UPDATE plant_staff_module_permissions SET can_create=FALSE,can_edit=FALSE
+         WHERE plant_id=$1 AND user_id=$2 AND module_key='quality_register'",
+    )
+    .bind(plant)
+    .bind(engineer)
+    .execute(&db)
+    .await
+    .unwrap();
+    let second = json!({"order_id":order,"slump_mm":125,"result":"FAIL"});
+    let (status, _) = call(&app, "/api/staff/quality", Some(second), &token).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM cube_tests WHERE order_id=$1")
+        .bind(order)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(count, 1);
+
+    // View permission remains independently effective until revoked.
+    let (status, _) = call(&app, &format!("/api/staff/quality/{order}"), None, &token).await;
+    assert_eq!(status, StatusCode::OK);
+    sqlx::query(
+        "UPDATE plant_staff_module_permissions SET can_view=FALSE
+         WHERE plant_id=$1 AND user_id=$2 AND module_key='quality_register'",
+    )
+    .bind(plant)
+    .bind(engineer)
+    .execute(&db)
+    .await
+    .unwrap();
+    let (status, _) = call(&app, &format!("/api/staff/quality/{order}"), None, &token).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
 }
 
 #[sqlx::test]

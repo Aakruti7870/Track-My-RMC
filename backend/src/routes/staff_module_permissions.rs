@@ -6,7 +6,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sqlx::{PgPool, Row};
+use sqlx::{PgConnection, PgPool, Row};
 use uuid::Uuid;
 
 pub const KEYS: [&str; 6] = [
@@ -289,7 +289,11 @@ async fn owned_plant(state: &AppState, owner: &AuthUser, plant_id: Uuid) -> Resu
     }
     Ok(())
 }
-async fn active_staff_role(db: &PgPool, plant: Uuid, user: Uuid) -> Result<String, AppError> {
+async fn active_staff_role<'e>(
+    db: impl sqlx::PgExecutor<'e>,
+    plant: Uuid,
+    user: Uuid,
+) -> Result<String, AppError> {
     let role: Option<String> = sqlx::query_scalar(
         "SELECT ps.role FROM plant_staff ps JOIN users u ON u.id=ps.user_id \
          JOIN rmc_plants p ON p.id=ps.plant_id \
@@ -373,6 +377,19 @@ pub async fn require(
         // Plant owner privileges must never escape the owner's active plant.
         return owned_plant(state, user, plant).await;
     }
+    let mut db = state.db.acquire().await?;
+    require_staff_permission(&mut db, user, plant, module, action).await
+}
+
+// Checks the active role and effective, owner-delegated module grant against the
+// requested plant. Shared by API enforcement and database-backed regressions.
+pub(crate) async fn require_staff_permission(
+    db: &mut PgConnection,
+    user: &AuthUser,
+    plant: Uuid,
+    module: &str,
+    action: Action,
+) -> Result<(), AppError> {
     if !is_staff_role(&user.role) {
         return Err(AppError::Forbidden(
             "Plant staff permission required for this module".into(),
@@ -380,18 +397,18 @@ pub async fn require(
     }
     let ceiling = role_ceiling(&user.role, module)
         .ok_or_else(|| AppError::Forbidden("Unknown module permission".into()))?;
-    let active_role = active_staff_role(&state.db, plant, user.user_id).await?;
+    let active_role = active_staff_role(&mut *db, plant, user.user_id).await?;
     if active_role != user.role {
         return Err(AppError::Forbidden("Assigned plant role mismatch".into()));
     }
     let row: Option<(bool, bool, bool, bool, bool)> = sqlx::query_as(
         "SELECT can_view,can_edit,can_approve,can_create,can_export FROM plant_staff_module_permissions \
-         WHERE plant_id=$1 AND user_id=$2 AND module_key=$3",
+         WHERE plant_id=$1 AND user_id=$2 AND module_key=$3 FOR SHARE",
     )
     .bind(plant)
     .bind(user.user_id)
     .bind(module)
-    .fetch_optional(&state.db)
+    .fetch_optional(db)
     .await?;
     let grant = row
         .map(|(v, e, a, c, x)| Grant {
@@ -689,5 +706,113 @@ mod tests {
             Grant::new(true, false, false)
         );
         assert!(dispatcher_ceiling("unknown").is_none());
+    }
+
+    async fn quality_allowed(db: &PgPool, actor: &AuthUser, plant: Uuid, action: Action) -> bool {
+        let mut connection = db.acquire().await.unwrap();
+        require_staff_permission(&mut connection, actor, plant, "quality_register", action)
+            .await
+            .is_ok()
+    }
+
+    #[sqlx::test]
+    async fn quality_grants_revoke_read_and_write_without_cross_plant_access(db: PgPool) {
+        let owner: Uuid = sqlx::query_scalar(
+            "INSERT INTO users(phone,hashed_password,full_name,role)
+             VALUES($1,'unused','Quality Test Owner','owner') RETURNING id",
+        )
+        .bind(Uuid::new_v4().simple().to_string()[..18].to_string())
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        let engineer: Uuid = sqlx::query_scalar(
+            "INSERT INTO users(phone,hashed_password,full_name,role)
+             VALUES($1,'unused','Quality Test Engineer','quality_engineer') RETURNING id",
+        )
+        .bind(Uuid::new_v4().simple().to_string()[..18].to_string())
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        let plant: Uuid = sqlx::query_scalar(
+            "INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,address_line,city,state,pincode,contact_phone)
+             VALUES($1,'Quality Test Plant',$2,0,0,'Test','Test','Test','0','0') RETURNING id",
+        )
+        .bind(owner)
+        .bind(format!("QUAL{}", &Uuid::new_v4().simple().to_string()[..8]))
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        let another_plant: Uuid = sqlx::query_scalar(
+            "INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,address_line,city,state,pincode,contact_phone)
+             VALUES($1,'Other Test Plant',$2,0,0,'Test','Test','Test','0','0') RETURNING id",
+        )
+        .bind(owner)
+        .bind(format!("QUAL{}", &Uuid::new_v4().simple().to_string()[..8]))
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO plant_staff(plant_id,user_id,role,is_active)
+             VALUES($1,$2,'quality_engineer',TRUE)",
+        )
+        .bind(plant)
+        .bind(engineer)
+        .execute(&db)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO plant_staff_module_permissions
+             (plant_id,user_id,module_key,can_view,can_edit,can_approve,can_create,can_export,updated_by)
+             VALUES($1,$2,'quality_register',TRUE,TRUE,FALSE,TRUE,FALSE,$3)
+             ON CONFLICT (plant_id,user_id,module_key) DO UPDATE SET
+             can_view=TRUE,can_edit=TRUE,can_create=TRUE",
+        )
+        .bind(plant)
+        .bind(engineer)
+        .bind(owner)
+        .execute(&db)
+        .await
+        .unwrap();
+
+        let actor = AuthUser {
+            user_id: engineer,
+            role: "quality_engineer".into(),
+            phone: String::new(),
+            email: None,
+        };
+        assert!(quality_allowed(&db, &actor, plant, Action::View).await);
+        assert!(quality_allowed(&db, &actor, plant, Action::Create).await);
+        assert!(!quality_allowed(&db, &actor, another_plant, Action::View).await);
+
+        sqlx::query(
+            "UPDATE plant_staff_module_permissions SET can_create=FALSE,can_edit=FALSE
+             WHERE plant_id=$1 AND user_id=$2 AND module_key='quality_register'",
+        )
+        .bind(plant)
+        .bind(engineer)
+        .execute(&db)
+        .await
+        .unwrap();
+        assert!(!quality_allowed(&db, &actor, plant, Action::Create).await);
+        assert!(quality_allowed(&db, &actor, plant, Action::View).await);
+
+        sqlx::query(
+            "UPDATE plant_staff_module_permissions SET can_view=FALSE
+             WHERE plant_id=$1 AND user_id=$2 AND module_key='quality_register'",
+        )
+        .bind(plant)
+        .bind(engineer)
+        .execute(&db)
+        .await
+        .unwrap();
+        assert!(!quality_allowed(&db, &actor, plant, Action::View).await);
+
+        sqlx::query("UPDATE plant_staff SET is_active=FALSE WHERE plant_id=$1 AND user_id=$2")
+            .bind(plant)
+            .bind(engineer)
+            .execute(&db)
+            .await
+            .unwrap();
+        assert!(!quality_allowed(&db, &actor, plant, Action::View).await);
     }
 }

@@ -133,6 +133,16 @@ pub async fn record(
             "Active Quality Engineer assignment to this plant is required".into(),
         ));
     }
+    // Plant membership does not imply that the Owner has granted Quality Register
+    // write access. Deny before any inspection or audit data is created.
+    crate::routes::staff_module_permissions::require_staff_permission(
+        &mut tx,
+        user,
+        plant,
+        "quality_register",
+        crate::routes::staff_module_permissions::Action::Create,
+    )
+    .await?;
     if let Some(load) = p.load_id {
         let linked: Option<Uuid> =
             sqlx::query_scalar("SELECT id FROM order_loads WHERE id=$1 AND order_id=$2 FOR SHARE")
