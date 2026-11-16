@@ -1,6 +1,8 @@
 import React from "react";
 import { StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { CardHighlight } from "./ui/CardHighlight";
+import { IconTile } from "./IconTile";
 import { VectorSymbol } from "./VectorSymbol";
 
 import { useTheme } from "@/src/theme/ThemeProvider";
@@ -13,6 +15,7 @@ export function ErrorView({ message, onRetry }: { message: string; onRetry: () =
   return (
     <View style={styles.wrap} testID="error-view" accessibilityRole="alert">
       <View style={[styles.stateCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+        <CardHighlight radius={radius.lg} />
         <View style={[styles.errorIcon, { backgroundColor: colors.error + "12" }]}>
           <VectorSymbol name={/access denied|forbidden|not authorized|permission denied/i.test(message) ? "restricted-access" : "warning"} size={44} />
         </View>
@@ -41,9 +44,8 @@ export function EmptyView({
   return (
     <View style={styles.wrap} testID="empty-view">
       <View style={[styles.stateCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-        <View style={[styles.iconBubble, { backgroundColor: colors.brandSoft }]}>
-          <Ionicons name={icon} size={30} color={colors.brand} />
-        </View>
+        <CardHighlight radius={radius.lg} />
+        <IconTile icon={icon} size={30} width={64} height={58} homeShortcut />
         <AppText style={[styles.title, { color: colors.onSurface }]} center>{title}</AppText>
         {subtitle ? <AppText variant="bodyMuted" center>{subtitle}</AppText> : null}
         {cta && onCta ? (
@@ -70,13 +72,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing["2xl"],
     borderRadius: radius.xl,
     borderWidth: 1,
-  },
-  iconBubble: {
-    width: 68,
-    height: 68,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
   },
   errorIcon: {
     width: 68,

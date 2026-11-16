@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { AppState, Modal, Platform, ScrollView, StyleSheet, View } from "react-native";
+import { IconTile } from "@/src/components/IconTile";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import * as Location from "expo-location";
@@ -341,9 +342,7 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
             }]}>
               <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
                 <View style={styles.heading}>
-                  <View style={[styles.topIcon, { backgroundColor: colors.brandSoft }]}>
-                    <Ionicons name="shield-checkmark-outline" size={24} color={colors.brand} />
-                  </View>
+                  <IconTile icon="shield-checkmark-outline" width={48} height={44} size={24} homeShortcut />
                   <AppText variant="eyebrow" center>TrackMyRMC</AppText>
                   <AppText variant="sectionTitle" center>App permissions</AppText>
                   <AppText variant="bodyMuted" center>
@@ -413,13 +412,6 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
   },
   heading: { alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.sm },
-  topIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   steps: { flexDirection: "row", justifyContent: "center", gap: spacing.sm, alignItems: "center" },
   stepDot: { height: 8, borderRadius: 8 },
   consentCard: {

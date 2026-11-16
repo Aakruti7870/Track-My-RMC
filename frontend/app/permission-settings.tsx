@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { AppState, Linking, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { IconTile } from "@/src/components/IconTile";
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect, useRouter } from "expo-router";
 import * as Location from "expo-location";
@@ -39,9 +40,7 @@ function PermissionCard({
   const blocked = state.status === "denied" && !state.canAskAgain;
   return (
     <Card variant="elevated" style={styles.permissionCard}>
-      <View style={[styles.icon, { backgroundColor: colors.brandSoft, borderColor: colors.brand + "55" }]}>
-        <Ionicons name={icon} size={36} color={colors.brand} />
-      </View>
+      <View style={styles.icon}><IconTile icon={icon} size={36} width={54} height={50} homeShortcut /></View>
       <AppText variant="heading" center>{title}</AppText>
       <AppText variant="bodyMuted" center>{description}</AppText>
       <AppText variant="caption" center>Android permission: {labelFor(state.status)}</AppText>

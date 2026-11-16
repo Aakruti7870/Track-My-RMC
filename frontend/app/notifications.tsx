@@ -1,6 +1,7 @@
 import { VectorSymbol } from "@/src/components/VectorSymbol";
 import React, { useEffect, useState } from "react";
 import { Linking, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
+import { IconTile } from "@/src/components/IconTile";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -130,9 +131,7 @@ export default function Notifications() {
           data?.items.map((n) => (
             <Pressable key={n.id} testID={`notif-${n.id}`} onPress={() => void openOne(n.id, n.event, n.read)}>
               <Card style={{ flexDirection: "row", gap: spacing.md, opacity: n.read ? 0.6 : 1 }}>
-                <View style={[styles.icon, { backgroundColor: colors.brandSoft }]}>
-                  <Ionicons name={ICONS[n.event] || "notifications-outline"} size={18} color={colors.onBrandSoft} />
-                </View>
+                <IconTile icon={ICONS[n.event] || "notifications-outline"} size={18} width={38} homeShortcut />
                 <View style={{ flex: 1, gap: 2 }}>
                   <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: colors.onSurface }}>{n.title}</AppText>
                   <AppText variant="caption">{n.body}</AppText>
@@ -151,6 +150,5 @@ export default function Notifications() {
 const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth },
   iconBtn: { width: 40, height: 40, borderRadius: radius.md, alignItems: "center", justifyContent: "center", borderWidth: 1 },
-  icon: { width: 38, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   dot: { width: 8, height: 8, borderRadius: 4, alignSelf: "center" },
 });

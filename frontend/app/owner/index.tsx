@@ -36,7 +36,7 @@ export default function OwnerHome() {
   const bottom = useOwnerBottomSpace();
   const { width: viewportWidth, fontScale } = useWindowDimensions();
   const contentWidth = Math.max(0, Math.min(viewportWidth, 820) - 32);
-  const shortcutWidth = (Math.min(contentWidth, 620) - 20) / fontScale >= 320 ? "24%" : "49%";
+  const shortcutWidth = (Math.min(contentWidth, 620) - 20) / fontScale >= 250 ? "24%" : "49%";
   const readableWidth = contentWidth / fontScale;
   const metricColumns = readableWidth >= 700 ? 4 : readableWidth >= 275 ? 2 : 1;
   const metricWidth = (contentWidth - (metricColumns - 1) * 9) / metricColumns;
@@ -58,14 +58,14 @@ export default function OwnerHome() {
 
   return <OwnerFrame>
     <HomeScroll testID="owner-home-scroll" paddingHorizontal={16} gap={10}
-      backgroundColor={p.canvas} tabBarOverlay={bottom}
       contentContainerStyle={{ paddingBottom: bottom }}
       refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={refetch} tintColor={p.accent} />}
-      lead={<View testID="owner-home-summary" style={[styles.homeCards, styles.hero, { backgroundColor: p.panel }]}>
+    >
+      <View testID="owner-home-summary" style={[styles.homeCards, styles.hero, { backgroundColor: p.panel }]}>
         <PlantHomeHero label="Plant Owner" testID="owner-home-hero-banner" />
-      </View>}
-      shortcuts={<View style={styles.homeCards}>
-        <View testID="owner-quick-access" style={[styles.quickAccess, { backgroundColor: p.panel, borderColor: p.border }]}>
+      </View>
+      <View style={styles.homeCards}>
+        <OwnerGlass testID="owner-quick-access" style={styles.quickAccess}>
           <HomeSectionHeader title="Quick Access" seeAll="/owner/operations" testID="home-see-all-owner-operations" />
           <View style={styles.modules}>
             {modules.map(module => <Pressable testID={`owner-shortcut-${module.key}`} key={module.key}
@@ -73,14 +73,14 @@ export default function OwnerHome() {
               accessibilityHint={module.description}
               onPress={() => router.push(ownerDestination(module))}
               style={({ pressed }) => [styles.shortcut, { width: shortcutWidth, opacity: pressed ? 0.74 : 1 }]}>
-              {module.symbol ? <IconTile symbol={module.symbol} height={45} homeShortcut /> : <IconTile icon={module.icon} height={45} homeShortcut />}
+              {module.symbol ? <IconTile symbol={module.symbol} homeShortcut /> : <IconTile icon={module.icon} homeShortcut />}
               <AppText center style={styles.quickLabel}>{module.key === "business-staff" ? "Workforce" : module.label}</AppText>
             </Pressable>)}
           </View>
-        </View>
-        <PlantHomeActions action="supplier-enquiry" homeShortcut />
-      </View>}>
-      <PlantHomeActions action="profile" homeShortcut />
+        </OwnerGlass>
+        <PlantHomeActions action="supplier-enquiry" />
+      </View>
+      <PlantHomeActions action="profile" />
       <AppText style={[ui.section, { color: p.text }]}>Today at a Glance</AppText>
       {error ? <ErrorView message={error} onRetry={reload} /> : null}
       <View style={styles.metrics}>
@@ -131,7 +131,7 @@ const styles = StyleSheet.create({
   metric: { minHeight: 75, padding: 8, flexDirection: "row", gap: 6, alignItems: "center" },
   modules: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: 6 },
   shortcut: { minHeight: 80, minWidth: 0, paddingHorizontal: 2, paddingVertical: 4, alignItems: "center", gap: 5 },
-  quickLabel: { fontFamily: fonts.medium, fontSize: 13, lineHeight: 17, width: "100%" },
+  quickLabel: { fontFamily: fonts.medium, fontSize: 12, lineHeight: 16, width: "100%" },
   shortcutLabel: { flexShrink: 1, fontFamily: fonts.semibold, fontSize: 12, lineHeight: 16 },
   insightsToggle: { flexDirection: "row", alignItems: "center", minHeight: 52, gap: 10, paddingHorizontal: 12, paddingVertical: 8 },
 });

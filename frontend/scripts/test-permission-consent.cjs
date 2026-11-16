@@ -116,7 +116,7 @@ test('fresh customer location approval wins over delayed saved denial', async ()
     '@/src/theme/ThemeProvider': { useTheme: () => ({ colors: {} }) },
     '@/src/theme/tokens': { radius: {}, spacing: {} }, '@/src/utils/storage': { storage },
   };
-  for (const name of ['ThemedScreen', 'ui/AppText', 'ui/Button', 'ui/Card']) mocks[`@/src/components/${name}`] = {};
+  for (const name of ['IconTile', 'ThemedScreen', 'ui/AppText', 'ui/Button', 'ui/Card']) mocks[`@/src/components/${name}`] = {};
   const provider = load('src/permissions/PermissionProvider.tsx', mocks).PermissionProvider({ children: null });
   effects[1](); await tick();
   await provider.props.value.enableDiscoveryLocation();

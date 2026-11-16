@@ -3,6 +3,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { Image, Pressable, StyleSheet, View } from "react-native";
 
+import { CardHighlight } from "@/src/components/ui/CardHighlight";
 import { IconTile } from "@/src/components/IconTile";
 import { AppText } from "@/src/components/ui/AppText";
 import type { VectorSymbolName } from "@/src/components/VectorSymbol";
@@ -24,16 +25,16 @@ export function PlantHomeHero({ label, testID }: { label: string; testID: string
   );
 }
 
-export function PlantHomeActions({ action, homeShortcut = false }: { action?: "supplier-enquiry" | "profile"; homeShortcut?: boolean } = {}) {
+export function PlantHomeActions({ action }: { action?: "supplier-enquiry" | "profile" } = {}) {
   const router = useRouter();
   const { colors } = useTheme();
   const actions = [
-    { key: "supplier-enquiry", title: "Connect With Best Material Supplier", detail: "Request quotes for up to 3 materials",
+    { key: "supplier-enquiry", title: "Connect With Best Material Supplier",
       symbol: "suppliers", highlight: true, onPress: () => router.push("/supplier-enquiry") },
-    { key: "profile", title: "Add Plant Profile Details", detail: "Open your assigned plant profile",
+    { key: "profile", title: "Add Plant Profile Details", detail: "Open your plant Profile",
       symbol: "plant-profile", highlight: false,
       onPress: () => router.push({ pathname: "/plant-profile", params: { assigned: "1" } }) },
-  ] satisfies { key: string; title: string; detail: string; symbol: VectorSymbolName; highlight: boolean; onPress: () => void }[];
+  ] satisfies { key: string; title: string; detail?: string; symbol: VectorSymbolName; highlight: boolean; onPress: () => void }[];
 
   return (
     <View style={styles.actions}>
@@ -44,10 +45,11 @@ export function PlantHomeActions({ action, homeShortcut = false }: { action?: "s
             borderColor: highlight ? colors.brand : colors.divider,
             opacity: pressed ? 0.76 : 1,
           }]}>
-          <IconTile symbol={symbol} homeShortcut={homeShortcut} />
+          <CardHighlight radius={10} />
+          <IconTile symbol={symbol} width={44} height={38} size={24} homeShortcut />
           <View style={styles.actionCopy}>
             <AppText style={styles.actionTitle}>{title}</AppText>
-            <AppText variant="caption">{detail}</AppText>
+            {detail ? <AppText variant="caption">{detail}</AppText> : null}
           </View>
           <Ionicons name="chevron-forward" size={20} color={highlight ? colors.accentText : colors.onSurfaceTertiary}
             accessible={false} aria-hidden />
@@ -64,7 +66,7 @@ const styles = StyleSheet.create({
   heroEyebrow: { fontFamily: fonts.medium, fontSize: 12, lineHeight: 17 },
   heroTitle: { fontFamily: fonts.bold, fontSize: 24, lineHeight: 30 },
   actions: { gap: 10, width: "100%", maxWidth: 620, alignSelf: "center" },
-  action: { borderWidth: 1, borderRadius: 10, padding: 9, minHeight: 64, flexDirection: "row", alignItems: "center", gap: 10 },
+  action: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6, minHeight: 54.4, flexDirection: "row", alignItems: "center", gap: 10 },
   actionCopy: { flex: 1, minWidth: 0, gap: 2 },
   actionTitle: { fontFamily: fonts.semibold, fontSize: 15, lineHeight: 20 },
 });

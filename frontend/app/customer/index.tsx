@@ -9,6 +9,7 @@ import { useAuth } from "@/src/auth/AuthContext";
 import { ActiveTransitMixerCard } from "@/src/components/ActiveTransitMixerCard";
 import { CustomerHomeHeader } from "@/src/components/customer/CustomerHomeHeader";
 import { HomeCarousel, type CarouselAction } from "@/src/components/HomeCarousel";
+import { CardHighlight } from "@/src/components/ui/CardHighlight";
 import { HomeScroll } from "@/src/components/HomeScroll";
 import { KycBanner } from "@/src/components/KycBanner";
 import { ErrorView } from "@/src/components/StateViews";
@@ -113,11 +114,13 @@ export default function CustomerHome() {
           colors={colors.isDark ? ["#090A0F", "#07080D", "#06070C"] : ["#E9E4DE", "#ECE7E1", "#F4F1EC"]} />
         <CustomerHomeHeader onRefreshHome={refetch} />
         <HomeScroll testID="customer-home-scroll"
-          backgroundColor={colors.canvas} gap={size.sectionGap} paddingHorizontal={12} paddingTop={10}
+          gap={size.sectionGap} paddingHorizontal={12} paddingTop={10}
           contentContainerStyle={{ paddingBottom: size.sectionGap + insets.bottom }}
           refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={colors.accentText} />}
-          lead={<HomeCarousel style={styles.carousel} onAction={openAction} />}
-          shortcuts={<View testID="home-quick-actions" style={panel}>
+        >
+          <HomeCarousel style={styles.carousel} onAction={openAction} />
+          <View testID="home-quick-actions" style={panel}>
+            <CardHighlight radius={10} />
             <AppText accessibilityRole="header" style={heading}>Quick Access</AppText>
             <View style={styles.grid}>
               {ACTIONS.map(action => tile({ id: "action-" + action.key, label: action.label,
@@ -132,9 +135,10 @@ export default function CustomerHome() {
                 <Ionicons name="chevron-forward" size={18} color="#FFF0E2" accessible={false} aria-hidden />
               </LinearGradient>
             </Pressable>
-          </View>}>
+          </View>
           <View style={styles.group}><KycBanner status={data?.kyc_status ?? user?.kyc_status ?? "NOT_STARTED"} /></View>
           <View testID="customer-module-grid" style={panel}>
+            <CardHighlight radius={10} />
             <AppText accessibilityRole="header" style={heading}>Active Projects & Planning</AppText>
             <View style={styles.grid}>
               {planningPreview.map(item => linkTile(item, "planning"))}

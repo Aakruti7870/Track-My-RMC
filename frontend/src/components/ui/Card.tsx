@@ -1,6 +1,7 @@
 import React from "react";
 import { StyleProp, StyleSheet, View, ViewStyle } from "react-native";
 
+import { CardHighlight } from "./CardHighlight";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { radius, spacing } from "@/src/theme/tokens";
 
@@ -50,6 +51,7 @@ export function Card({ children, style, padded = true, variant = "default", test
     },
   }[variant];
 
+  const customRadius = StyleSheet.flatten(style)?.borderRadius;
   return (
     <View
       testID={testID}
@@ -63,6 +65,7 @@ export function Card({ children, style, padded = true, variant = "default", test
         style,
       ]}
     >
+      <CardHighlight radius={typeof customRadius === "number" ? customRadius : radius.lg} />
       {children}
     </View>
   );

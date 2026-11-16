@@ -184,14 +184,19 @@ export const radius = {
 
 export const homeArtwork = {
   copperEdge: ["#9D6930", "#815530"],
-  quickFill: "rgba(255,120,0,0.50)",
+  quickFill: ["#603813", "#472D13", "#3A2611"],
+  iconInk: "#FFF0E2",
   bulkSurface: ["#452D15", "#483019"],
   bulkIconFill: "rgba(34,197,94,0.70)",
-  kycSurface: "rgba(99,52,250,0.18)",
-  kycIconFill: "rgba(99,52,255,0.70)",
+  kycIconFill: "#166534",
   positiveTint: "rgba(34,197,94,0.20)",
   positiveAction: "#166534",
   positivePressed: "#14532D",
+} as const;
+
+export const cardHighlight = {
+  dark: ["#D0A56E90", "#DC9C5255", "#38312973", "#38312900"],
+  light: ["#D0A56E99", "#DC9C5255", "#FCFBF799", "#FCFBF700"],
 } as const;
 
 export const loginAppearance = {
@@ -202,10 +207,9 @@ export const loginAppearance = {
     heroBlend: ["#090A0F00", "#090A0F4D", "#090A0FBF", "#090A0FFF", "#090A0FFF"],
     card: ["#151515", "#121212", "#111111"],
     rim: ["#D0A56E", "#DCDCDC", "#404040", "#7E7E7E"],
-    gleam: "#DC9C52", shadow: "#000000",
+    shadow: "#000000",
     rail: "#131313", railOutline: "#404040",
-    tab: ["#603813", "#472D13", "#3A2611"], selectedIcon: "#D88A38", selectedText: "#FFF0E2", tabOutline: "#9D6930", tabRim: ["#9D6930", "#815530"], inactive: "#C1C1C1", inactiveIcon: "#B2B2B2",
-    iconSurface: "#452D15", phoneIcon: "#E29531",
+    inactive: "#C1C1C1", inactiveIcon: "#B2B2B2",
     field: "#171717", prefix: "#121212", prefixText: "#F1F1F1", fieldOutline: "#5F5F5F", fieldDivider: "#414141", placeholder: "#E4E4E4",
     continueOutline: "#3E3E3E", continueShield: "#B9B9B9",
     securityText: "#A0A0A0", securityLock: "#999999", consent: "#DDDDDD",
@@ -220,10 +224,9 @@ export const loginAppearance = {
     heroBlend: ["#E9E4DE00", "#E9E4DE4D", "#E9E4DEBF", "#E9E4DEFA", "#E9E4DEFF"],
     card: ["#FCFBF7", "#FAF9F5", "#F8F7F3"],
     rim: ["#BCA07B", "#FEFDF9", "#C9C4BE", "#BFB8B0"],
-    gleam: "#D8CAAF", shadow: "#68625A",
+    shadow: "#68625A",
     rail: "#F0EDE6", railOutline: "#D9D6CF",
-    tab: ["#FEE7CD", "#FDE9D0", "#FEEDD9"], selectedIcon: "#BB8356", selectedText: "#5D3719", tabOutline: "#B4906E", tabRim: ["#B4906E", "#D1B08F"], inactive: "#504D47", inactiveIcon: "#5B5853",
-    iconSurface: "#FAE5CD", phoneIcon: "#AE7947",
+    inactive: "#504D47", inactiveIcon: "#5B5853",
     field: "#FCFBF7", prefix: "#FCFCF8", prefixText: "#0B0B0A", fieldOutline: "#B5B2AD", fieldDivider: "#D1CDCA", placeholder: "#343331",
     continueOutline: "#DBD8D1", continueShield: "#67645D",
     securityText: "#41403E", securityLock: "#51504E", consent: "#3C3B39",
@@ -329,7 +332,7 @@ export function statusColor(colors: ThemeColors, status?: string) {
 // React Native layout units are dp on native and CSS px on web.
 const customerHomeMobile = {
   sectionGap: 10, gridGap: 10, headerSize: 15, headerLine: 20,
-  quickSymbol: 24, quickIconBox: 44, quickTile: 80, quickLabel: 14, quickLabelLine: 18, quickLabelMin: 18,
+  quickSymbol: 28, quickIconBox: 52, quickTile: 84, quickLabel: 13, quickLabelLine: 18, quickLabelMin: 18,
   toolSymbol: 24, toolTile: 76, toolLabel: 12, toolLabelLine: 16,
   serviceSymbol: 24, serviceTile: 76, serviceLabel: 12, serviceLabelLine: 15,
   kycSymbol: 28, kycArrow: 25, kycArrowIcon: 17, kycTitle: 15, kycTitleLine: 20,
@@ -342,7 +345,7 @@ const customerHomeMobile = {
 const customerHomeTablet = {
   ...customerHomeMobile,
   sectionGap: 12, gridGap: 12, headerSize: 16, headerLine: 22,
-  quickSymbol: 25, quickIconBox: 47, quickTile: 84, quickLabel: 15, quickLabelLine: 20, quickLabelMin: 20,
+  quickSymbol: 29, quickIconBox: 55, quickTile: 88, quickLabel: 14, quickLabelLine: 20, quickLabelMin: 20,
   toolSymbol: 24, toolTile: 80, toolLabel: 13, toolLabelLine: 16,
   serviceSymbol: 24, serviceTile: 80, serviceLabel: 14, serviceLabelLine: 18,
   kycSymbol: 32, kycArrow: 28, kycArrowIcon: 19, kycTitle: 16, kycTitleLine: 22,
@@ -355,7 +358,7 @@ const customerHomeTablet = {
 const customerHomeDesktop = {
   ...customerHomeTablet,
   sectionGap: 16, gridGap: 16, headerSize: 18, headerLine: 24,
-  quickSymbol: 28, quickIconBox: 52, quickTile: 88, quickLabel: 16, quickLabelLine: 20, quickLabelMin: 20,
+  quickSymbol: 32, quickIconBox: 60, quickTile: 92, quickLabel: 15, quickLabelLine: 20, quickLabelMin: 20,
   toolSymbol: 28, toolTile: 84, toolLabel: 14, toolLabelLine: 18,
   serviceSymbol: 28, serviceTile: 84, serviceLabel: 15, serviceLabelLine: 20,
   kycSymbol: 36, kycArrow: 32, kycArrowIcon: 21, kycTitle: 18, kycTitleLine: 24,

@@ -63,6 +63,10 @@ async function checkLayout(browser) {
       const reviewer = await page.getByTestId('login-review-access').boundingBox();
       const legal = await page.getByTestId('login-terms-link').boundingBox();
       assert(reviewer.height >= 44 && reviewer.y + reviewer.height <= legal.y);
+      const pill = await page.getByTestId('login-review-access').locator(':scope > div').boundingBox();
+      assert(pill.height >= 39 && pill.height <= 41);
+      const theme = await page.getByTestId('login-theme-toggle').boundingBox();
+      assert(theme.y + theme.height <= 900, 'Sign-in controls fit the normal-height viewport');
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width);
       await page.screenshot({ path: `${previewDir}/login-${colorScheme}-${width}.png`, fullPage: true });
       if (width === 390 && colorScheme === 'dark') {
@@ -126,6 +130,15 @@ async function checkWhatsApp(browser, role, resumeKyc = false) {
     ? url.pathname === '/kyc' && url.searchParams.get('returned') === '1'
     : url.pathname === '/' + role);
   assert.equal(attempts, role === 'customer' && !resumeKyc ? 2 : 1);
+  if (!resumeKyc) {
+    const more = page.getByTestId('tab-more');
+    await more.click();
+    await page.waitForURL(url => url.pathname === '/' + role + '/more');
+    if (role === 'customer') await page.getByTestId('customer-account-profile').waitFor();
+    await more.click({ clickCount: 3 });
+    assert.equal(await more.getAttribute('aria-selected'), 'true');
+    assert.equal(new URL(page.url()).pathname, '/' + role + '/more');
+  }
   await page.close();
 }
 

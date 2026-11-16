@@ -65,53 +65,23 @@ fs.mkdirSync(out, { recursive: true });
         await summary.waitFor({ timeout: 25000 });
         await page.getByTestId('staff-home-hero-banner').waitFor();
         await page.getByTestId('plant-home-supplier-enquiry').waitFor();
-        const fixed = page.getByTestId('staff-home-scroll-fixed');
-        await fixed.getByRole('heading', { name: 'Quick Access', exact: true }).waitFor();
-        await fixed.getByTestId('staff-home-summary').waitFor();
-        await fixed.getByTestId('plant-home-supplier-enquiry').waitFor();
         const scroll = page.getByTestId('staff-home-scroll');
+        await scroll.getByRole('heading', { name: 'Quick Access', exact: true }).waitFor();
         const profile = scroll.getByTestId('plant-home-profile');
-        assert.equal(await profile.count(), 1, 'Staff profile remains in the scroll area');
+        assert.equal(await profile.count(), 1);
         if (width === 390) {
-          await page.setViewportSize({ width, height: 760 });
-          // At smaller heights the shortcut block can become sticky after the hero scrolls.
-          await page.getByTestId('staff-home-scroll-shortcuts').getByTestId('plant-home-supplier-enquiry').waitFor();
-          await page.waitForFunction(() => {
-            const block = document.querySelector('[data-testid="staff-home-scroll-shortcuts"]');
-            const frame = document.querySelector('[data-testid="staff-home-scroll-frame"]');
-            if (!block || !frame || frame.getBoundingClientRect().bottom > innerHeight + 1) return false;
-            return !!block.closest('[data-testid="staff-home-scroll-fixed"]')
-              || getComputedStyle(block.parentElement).position === 'sticky';
-          });
-          await page.waitForFunction(() => {
-            const node = document.querySelector('[data-testid="staff-home-scroll"]');
-            const profile = node?.querySelector('[data-testid="plant-home-profile"]');
-            const shortcuts = document.querySelector('[data-testid="staff-home-scroll-shortcuts"]');
-            const supplier = shortcuts?.querySelector('[data-testid="plant-home-supplier-enquiry"]');
-            if (!node || !profile || !shortcuts || !supplier) return false;
-            const sticky = node.contains(shortcuts);
-            if (sticky && getComputedStyle(shortcuts.parentElement).position !== 'sticky') return false;
-
-            // Start from a known scroll offset and sample both positions in the
-            // same browser frame so resize and scroll handlers cannot separate them.
+          await page.setViewportSize({ width, height: 660 });
+          const movement = await scroll.evaluate(node => {
+            const supplier = node.querySelector('[data-testid="plant-home-supplier-enquiry"]');
             node.scrollTop = 0;
-            if (sticky) {
-              const distance = shortcuts.getBoundingClientRect().top - node.getBoundingClientRect().top;
-              node.scrollTop = Math.max(0, Math.ceil(distance) + 24);
-            }
-            const offset = node.scrollTop;
-            const profileTop = profile.getBoundingClientRect().top;
-            const supplierTop = supplier.getBoundingClientRect().top;
-            node.scrollTop = offset + 75;
-            return node.scrollTop > offset && profile.getBoundingClientRect().top < profileTop
-              && Math.abs(supplier.getBoundingClientRect().top - supplierTop) <= 1;
-          }, null, { timeout: 5000 });
+            const top = supplier.getBoundingClientRect().top;
+            node.scrollTop = 120;
+            return { offset: node.scrollTop, moved: top - supplier.getBoundingClientRect().top };
+          });
+          assert(movement.offset > 0 && Math.abs(movement.moved - movement.offset) <= 1);
           await page.setViewportSize({ width, height: 920 });
-          await fixed.getByTestId("staff-home-summary").waitFor();
           await scroll.evaluate(node => { node.scrollTop = 0; });
         }
-        const surface = await summary.evaluate(el => getComputedStyle(el).backgroundColor);
-        assert.equal(surface, 'rgb(250, 249, 245)', 'Staff summary copy sits on opaque ivory');
         await page.waitForFunction(() => document.querySelector('[data-testid="tab-home"]')?.getAttribute('aria-selected') === 'true');
         await page.waitForFunction(() => document.querySelector('[data-testid^="home-modules-"] [data-testid^="role-module-"]'));
         const homeCards = page.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])');
@@ -151,6 +121,9 @@ fs.mkdirSync(out, { recursive: true });
         await page.getByTestId('tab-more').click();
         await page.waitForFunction(() => document.querySelector('[data-testid="tab-more"]')?.getAttribute('aria-selected') === 'true');
         await page.getByTestId('staff-module-search').waitFor();
+        await page.getByTestId('tab-more').click({ clickCount: 3 });
+        await page.waitForURL(new RegExp('/' + role + '/more/?$'));
+        assert.equal(await page.getByTestId('tab-more').getAttribute('aria-selected'), 'true');
         await page.waitForFunction(() => !document.body.innerText.includes('Checking staff permissions…'));
         const moreCards = page.locator('[data-testid="role-module-directory"]:has([data-testid="staff-module-search"]) [data-testid^="role-module-"]');
         const moreKeys = await moreCards.evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid')));

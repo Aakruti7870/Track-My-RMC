@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Linking, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { IconTile } from "@/src/components/IconTile";
 import { Ionicons } from "@expo/vector-icons";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -287,9 +288,7 @@ export default function TripDetail() {
       >
         <View style={styles.modalBackdrop}>
           <View style={[styles.disclosureCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={[styles.disclosureIcon, { backgroundColor: colors.brandSoft }]}>
-              <Ionicons name="location-outline" size={26} color={colors.onBrandSoft} />
-            </View>
+            <IconTile symbol="gps-live-location" width={46} height={42} size={26} homeShortcut />
             <AppText variant="title">Location for active deliveries</AppText>
             <AppText variant="bodyMuted">
               This app collects location data to enable live mixer delivery tracking even when the app is closed or not in use.
@@ -358,12 +357,5 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: spacing.xl,
     gap: spacing.md,
-  },
-  disclosureIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    alignItems: "center",
-    justifyContent: "center",
   },
 });

@@ -1,3 +1,4 @@
+import { IconTile } from "@/src/components/IconTile";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
 import React, { useEffect, useMemo, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -71,7 +72,7 @@ export default function CustomerProjects() {
           const checklistDone = calculations.reduce((sum, item) => sum + Object.values(item.checklist || {}).filter(Boolean).length, 0);
           return <Card key={site.id} style={{ gap: spacing.md, borderColor: open ? colors.brand : colors.border }}>
             <Pressable onPress={() => setExpanded(open ? null : site.id)} style={styles.between}>
-              <View style={styles.siteTitle}><View style={[styles.siteIcon, { backgroundColor: colors.brandSoft }]}><Ionicons name="business-outline" size={21} color={colors.brand} /></View><View style={{ flex: 1 }}><View style={styles.titleLine}><AppText variant="heading">{site.name}</AppText>{site.is_default ? <Badge label="Default" color={colors.brand} /> : null}</View><AppText variant="caption" numberOfLines={2}>{site.address}</AppText></View></View>
+              <View style={styles.siteTitle}><IconTile symbol="saved-sites" width={40} size={21} homeShortcut /><View style={{ flex: 1 }}><View style={styles.titleLine}><AppText variant="heading">{site.name}</AppText>{site.is_default ? <Badge label="Default" color={colors.brand} /> : null}</View><AppText variant="caption" numberOfLines={2}>{site.address}</AppText></View></View>
               <Ionicons name={open ? "chevron-up" : "chevron-down"} size={20} color={colors.onSurfaceTertiary} />
             </Pressable>
 
@@ -131,7 +132,7 @@ const styles = StyleSheet.create({
   headerTitle: { fontFamily: fonts.displayBold, fontSize: fontSize.xl }, headerSub: { fontSize: 12 },
   notice: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
   between: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
-  siteTitle: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.md }, siteIcon: { width: 44, height: 44, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
+  siteTitle: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.md },
   titleLine: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" },
   metrics: { flexDirection: "row", gap: spacing.sm }, metric: { flex: 1, minHeight: 64, alignItems: "center", justifyContent: "center", borderRadius: radius.md },
   upcoming: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md, borderRadius: radius.md },

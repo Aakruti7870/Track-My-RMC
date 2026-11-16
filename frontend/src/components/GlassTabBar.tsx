@@ -9,6 +9,7 @@ import { useTheme } from "@/src/theme/ThemeProvider";
 import { AppText } from "@/src/components/ui/AppText";
 import { QuickActionHub } from "@/src/components/QuickActionHub";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
+import { pressRoleTab, type RoleTabRoute, type RoleTabState, type RoleTabNavigation } from "@/src/navigation/pressRoleTab";
 import { tabVectorSymbol } from "@/src/navigation/vectorSymbolAssignments";
 import { control, fonts, radius, spacing } from "@/src/theme/tokens";
 import { getThemedCanvasColor } from "@/src/theme/sceneBackground";
@@ -25,16 +26,9 @@ const tabLabelWrapping = Platform.select<TextStyle>({
   default: {},
 });
 
-type TabRoute = { key: string; name: string };
-type TabState = { index: number; routes: TabRoute[] };
-type TabNavigation = {
-  emit: (event: { type: "tabPress"; target: string; canPreventDefault: true }) => { defaultPrevented: boolean };
-  navigate: (name: string) => void;
-};
-
 type GlassTabBarProps = {
-  state: TabState;
-  navigation: TabNavigation;
+  state: RoleTabState;
+  navigation: RoleTabNavigation;
   tabs: TabDef[];
   centerLabel?: string;
   onCenterPress?: () => void;
@@ -53,7 +47,7 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick", on
   const leftRoutes = visibleRoutes.slice(0, 2);
   const rightRoutes = visibleRoutes.slice(2, 4);
 
-  const renderTab = (route: TabRoute) => {
+  const renderTab = (route: RoleTabRoute) => {
     const tab = tabs.find((definition) => definition.name === route.name)!;
     const index = state.routes.findIndex((candidate) => candidate.key === route.key);
     const focused = state.index === index;
@@ -72,9 +66,8 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick", on
         accessibilityLabel={`${tab.label} tab`}
         hitSlop={4}
         onPress={() => {
-          void Haptics.selectionAsync();
-          const event = navigation.emit({ type: "tabPress", target: route.key, canPreventDefault: true });
-          if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
+          void Haptics.selectionAsync().catch(() => undefined);
+          pressRoleTab(state, navigation, route);
         }}
       >
         <View style={[styles.activeIndicator, { backgroundColor: focused ? colors.brand : "transparent" }]} />
@@ -139,7 +132,10 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick", on
         </View>
       </View>
 
-      {!onCenterPress ? <QuickActionHub visible={hubOpen} onClose={() => setHubOpen(false)} tabs={tabs} role={user?.role} navigation={navigation} /> : null}
+      {!onCenterPress ? <QuickActionHub visible={hubOpen} onClose={() => setHubOpen(false)} tabs={tabs} role={user?.role} onSelect={(name) => {
+        const route = state.routes.find(item => item.name === name);
+        if (route) pressRoleTab(state, navigation, route);
+      }} /> : null}
     </>
   );
 }
