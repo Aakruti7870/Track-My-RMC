@@ -359,7 +359,8 @@ try {
     }
     // Verify each unique module destination across the redesigned tab surfaces.
     // The old single-page catalog assertion must not duplicate Home cards.
-    const disabledKeys = user.role === 'dispatcher' ? ['business-reports'] : [];
+    // The dispatcher fixture has neither a plant_reports nor a workforce grant.
+    const disabledKeys = user.role === 'dispatcher' ? ['business-reports', 'business-attendance'] : [];
     const visibleKeys = user.role === 'customer'
       ? ['account-deletion', 'customer-support', 'quotations', 'documents']
       : modulesForRole(user.role).map(module => module.key)
