@@ -29,6 +29,12 @@ async function openLogin(browser, { width = 390, colorScheme = 'dark', role = 'c
     if (endpoint === '/customer/home') return route.fulfill({
       json: { name: 'Test User', kyc_status: 'VERIFIED', active_order: null, recent_orders: [] },
     });
+    if (endpoint === '/driver/home') return route.fulfill({
+      json: { name: 'Test User', checked_in: false, completed_today: 0 },
+    });
+    if (endpoint === '/driver/identity') return route.fulfill({
+      json: { driver_name: 'Test User', employment: {} },
+    });
     if (endpoint === '/auth/refresh') return route.fulfill({ status: 401, json: { message: 'Sign in required' } });
     if (endpoint.startsWith('/auth/')) return route.fulfill({ status: 500, json: { message: 'Unexpected authentication request' } });
     return route.fulfill({ json: {} });
