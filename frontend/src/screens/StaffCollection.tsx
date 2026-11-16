@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Modal, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
+import { IconTile } from "@/src/components/IconTile";
 import { useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -54,20 +55,18 @@ export type StaffItem = {
 type CreateDef = { label: string; path: string; form: "material" | "vehicle" };
 type CollectionData = { title: string; empty: string; items: StaffItem[]; create?: CreateDef };
 
-function ItemRow({ item, onAction, onPress, symbol }: { item: StaffItem; onAction: (i: StaffItem, a: StaffAction) => void; onPress?: () => void; symbol?: VectorSymbolName }) {
+function ItemRow({ item, onAction, onPress, symbol, orderStatus }: { orderStatus: boolean; item: StaffItem; onAction: (i: StaffItem, a: StaffAction) => void; onPress?: () => void; symbol?: VectorSymbolName }) {
   const { colors } = useTheme();
   const rowContent = (
     <>
-      <View style={[styles.icon, { backgroundColor: colors.brandSoft }]}>
-        {symbol ? <VectorSymbol name={symbol} size={30} /> :
-          <Ionicons name={item.icon || "ellipse-outline"} size={18} color={colors.onBrandSoft} />}
-      </View>
+      {symbol ? <IconTile symbol={symbol} size={26} width={38} />
+        : <IconTile icon={item.icon || "ellipse-outline"} size={18} width={38} />}
       <View style={{ flex: 1, gap: 2 }}>
         <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: colors.onSurface }} numberOfLines={1}>{item.primary}</AppText>
         {item.secondary ? <AppText variant="caption" numberOfLines={1}>{item.secondary}</AppText> : null}
         {item.meta ? <AppText style={{ fontFamily: fonts.regular, fontSize: 11, color: colors.onSurfaceTertiary }} numberOfLines={1}>{item.meta}</AppText> : null}
       </View>
-      {item.badge ? <Badge label={item.badge} status={item.badge_status || item.badge} /> : null}
+      {item.badge ? <Badge label={item.badge} status={item.badge_status || item.badge} orderStatus={orderStatus} /> : null}
       {onPress ? <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceTertiary} /> : null}
     </>
   );
@@ -241,7 +240,7 @@ export function StaffCollection({ kind, embedded = false, limit, onItemPress }: 
 
             return (
               <View key={it.id} style={i < items.length - 1 && { borderBottomColor: colors.divider, borderBottomWidth: StyleSheet.hairlineWidth }}>
-                <ItemRow item={it} onAction={onAction} onPress={itemPress}
+                <ItemRow item={it} onAction={onAction} onPress={itemPress} orderStatus={["orders", "dispatch", "production"].includes(kind)}
                   symbol={kind === "incidents"
                     ? (it.badge?.toUpperCase() === "RESOLVED" ? "success"
                       : it.badge?.toUpperCase() === "OPEN" ? "emergency-sos" : "incident-register")
@@ -369,7 +368,6 @@ const styles = StyleSheet.create({
   chip: { height: 32, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   rowWrap: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  icon: { width: 38, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.sm, marginLeft: 50 },
   actionBtn: { paddingHorizontal: spacing.md, height: 36, borderRadius: radius.md, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: spacing.lg },

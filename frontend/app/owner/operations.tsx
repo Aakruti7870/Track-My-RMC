@@ -7,6 +7,7 @@ import { apiErrorDetail, apiPost, apiPut } from "@/src/api/client";
 import { useGet } from "@/src/hooks/useApi";
 import { AppText } from "@/src/components/ui/AppText";
 import { OwnerFrame, OwnerGlass, OwnerList, OwnerModuleRow, useOwnerPalette } from "@/src/owner/OwnerUI";
+import { operationalStatus } from "@/src/theme/tokens";
 import { OPERATIONS_KEYS, ownerModules } from "@/src/owner/modules";
 
 type Plant = { id: string; name: string };
@@ -158,21 +159,21 @@ export default function OwnerOperations() {
         <AppText style={{ color: p.muted, fontSize: 12, lineHeight: 18 }}>
           Your plant can enable approved internal reminders and human review tasks. All order approvals remain manual.
         </AppText>
-        {plantsError ? <AppText style={{ color: "#FCA5A5" }}>{plantsError}</AppText> : null}
+        {plantsError ? <AppText style={{ color: operationalStatus("critical", p.dark) }}>{plantsError}</AppText> : null}
         {(plants?.plants ?? []).length > 1 ? <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
           {(plants?.plants ?? []).map(plant => <Pressable key={plant.id} accessibilityRole="button"
             accessibilityState={{ selected: plant.id === plantId }} onPress={() => setPlantId(plant.id)}
             style={{ paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12,
-              backgroundColor: plant.id === plantId ? p.accent : p.glass }}>
-            <AppText style={{ color: plant.id === plantId ? "#FFFFFF" : p.text, fontSize: 12 }}>{plant.name}</AppText>
+              backgroundColor: plant.id === plantId ? p.accent : p.panel }}>
+            <AppText style={{ color: plant.id === plantId ? p.onAccent : p.text, fontSize: 12 }}>{plant.name}</AppText>
           </Pressable>)}
         </View> : null}
         {!plantId && !plantsError ? <AppText style={{ color: p.muted }}>No approved plants are available for automation.</AppText> : null}
-        {ruleError ? <AppText style={{ color: "#FCA5A5" }}>{ruleError}</AppText> : null}
-        {requestError ? <AppText accessibilityRole="alert" style={{ color: "#FCA5A5" }}>{requestError}</AppText> : null}
+        {ruleError ? <AppText style={{ color: operationalStatus("critical", p.dark) }}>{ruleError}</AppText> : null}
+        {requestError ? <AppText accessibilityRole="alert" style={{ color: operationalStatus("critical", p.dark) }}>{requestError}</AppText> : null}
         {notice ? <AppText style={{ color: p.text }}>{notice}</AppText> : null}
         {rulesLoading && !rules ? <AppText style={{ color: p.muted }}>Loading automation settings…</AppText> : null}
-        {rules && !rules.worker_enabled ? <AppText accessibilityRole="alert" style={{ color: "#F59E0B", fontSize: 12 }}>
+        {rules && !rules.worker_enabled ? <AppText accessibilityRole="alert" style={{ color: operationalStatus("warning", p.dark), fontSize: 12 }}>
           Automation engine not activated. Preferences are saved, but the background worker is currently off.
         </AppText> : null}
         <OwnerGlass style={{ padding: 12, gap: 8, borderColor: p.border }}>
@@ -193,9 +194,9 @@ export default function OwnerOperations() {
                 const allowFirstTouch = willEnable && !whatsappSettings?.preference_exists;
                 void updateWhatsapp(willEnable, allowFirstTouch || Boolean(whatsappSettings?.marketing_enabled));
               }}
-              style={{ backgroundColor: whatsappSettings?.enabled ? p.accent : p.glass,
+              style={{ backgroundColor: whatsappSettings?.enabled ? p.accent : p.panel,
                 borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9 }}>
-              <AppText style={{ color: whatsappSettings?.enabled ? "#FFFFFF" : p.text, fontWeight: "700" }}>
+              <AppText style={{ color: whatsappSettings?.enabled ? p.onAccent : p.text, fontWeight: "700" }}>
                 {whatsappSettings?.enabled ? "ON" : "OFF"}
               </AppText>
             </Pressable>
@@ -222,9 +223,9 @@ export default function OwnerOperations() {
                 disabled: updatingWhatsapp || !plantId || !whatsappSettings }}
               disabled={updatingWhatsapp || !plantId || !whatsappSettings}
               onPress={() => void updateWhatsapp(Boolean(whatsappSettings?.enabled), !whatsappSettings?.marketing_enabled)}
-              style={{ backgroundColor: whatsappSettings?.marketing_enabled ? p.accent : p.glass,
+              style={{ backgroundColor: whatsappSettings?.marketing_enabled ? p.accent : p.panel,
                 borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9 }}>
-              <AppText style={{ color: whatsappSettings?.marketing_enabled ? "#FFFFFF" : p.text, fontWeight: "700" }}>
+              <AppText style={{ color: whatsappSettings?.marketing_enabled ? p.onAccent : p.text, fontWeight: "700" }}>
                 {whatsappSettings?.marketing_enabled ? "ON" : "OFF"}
               </AppText>
             </Pressable>
@@ -274,7 +275,7 @@ export default function OwnerOperations() {
                 style={{ minWidth: 44, alignSelf: "stretch", minHeight: 44, justifyContent: "center",
                   borderRadius: 9, backgroundColor: on ? p.accent : p.canvas,
                   opacity: disabled ? 0.65 : 1 }}>
-                <AppText center style={{ color: on ? "#FFFFFF" : p.text, fontSize: 11, fontWeight: "700" }}>
+                <AppText center style={{ color: on ? p.onAccent : p.text, fontSize: 11, fontWeight: "700" }}>
                   {busyRule === rule.key ? "..." : on ? "ON" : "OFF"}
                 </AppText>
               </Pressable>
@@ -313,7 +314,7 @@ export default function OwnerOperations() {
                   disabled={Boolean(busyRule)} onPress={() => void updateRule(selectedRule, true, minutes)}
                   style={{ borderRadius: 9, paddingVertical: 7, paddingHorizontal: 9,
                     backgroundColor: selectedRule.reminder_after_minutes === minutes ? p.accent : p.canvas }}>
-                  <AppText style={{ fontSize: 11, color: selectedRule.reminder_after_minutes === minutes ? "#FFFFFF" : p.text }}>{minutes}</AppText>
+                  <AppText style={{ fontSize: 11, color: selectedRule.reminder_after_minutes === minutes ? p.onAccent : p.text }}>{minutes}</AppText>
                 </Pressable>)}
               </View>
             </View> : null}
@@ -326,7 +327,7 @@ export default function OwnerOperations() {
                   disabled={Boolean(busyRule)} onPress={() => void updateRule(selectedRule, true, undefined, minutes)}
                   style={{ borderRadius: 9, paddingVertical: 7, paddingHorizontal: 9,
                     backgroundColor: selectedRule.sla_minutes === minutes ? p.accent : p.canvas }}>
-                  <AppText style={{ fontSize: 11, color: selectedRule.sla_minutes === minutes ? "#FFFFFF" : p.text }}>{minutes}</AppText>
+                  <AppText style={{ fontSize: 11, color: selectedRule.sla_minutes === minutes ? p.onAccent : p.text }}>{minutes}</AppText>
                 </Pressable>)}
               </View>
             </View> : null}
@@ -340,7 +341,7 @@ export default function OwnerOperations() {
               <AppText style={{ color: p.text, fontSize: 11 }}>Refresh cases</AppText>
             </Pressable>
           </View>
-          {tasksError ? <AppText accessibilityRole="alert" style={{ color: "#FCA5A5", fontSize: 12 }}>{tasksError}</AppText> : null}
+          {tasksError ? <AppText accessibilityRole="alert" style={{ color: operationalStatus("critical", p.dark), fontSize: 12 }}>{tasksError}</AppText> : null}
           <AppText style={{ color: p.muted, fontSize: 12 }}>
             {(tasks?.tasks ?? []).filter(task => ["OPEN", "ACKNOWLEDGED"].includes(task.status)).length} unresolved review tasks
           </AppText>
@@ -361,7 +362,7 @@ export default function OwnerOperations() {
               {task.status === "ACKNOWLEDGED" ? <AppText style={{ color: p.muted, fontSize: 11 }}>
                 Acknowledged · awaiting verified operational resolution
               </AppText> : null}
-              {(task.escalation_count ?? 0) > 0 ? <AppText style={{ color: "#F59E0B", fontSize: 11 }}>
+              {(task.escalation_count ?? 0) > 0 ? <AppText style={{ color: operationalStatus("warning", p.dark), fontSize: 11 }}>
                 SLA escalated {task.escalation_count} time(s)
               </AppText> : null}
               {workspaceForTask(task.task_kind) ? <Pressable testID={`owner-automation-workspace-${task.id}`}

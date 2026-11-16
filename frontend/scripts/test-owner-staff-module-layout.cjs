@@ -25,12 +25,19 @@ const staff = loadTs("src/screens/StaffModuleDirectory.tsx", {
 
 const ownerHome = owner.HOME_KEYS;
 const ownerOperations = owner.ownerModules(owner.OPERATIONS_KEYS).map(module => module.key);
-const ownerCommercial = owner.ownerModules(owner.HOME_COMMERCIAL_KEYS).map(module => module.key);
+const ownerCommercial = owner.ownerModules(owner.COMMERCIAL_KEYS).map(module => module.key);
+const ownerWorkforce = owner.ownerModules(owner.WORKFORCE_KEYS).map(module => module.key);
 const ownerMore = owner.ownerModules(owner.ACCOUNT_KEYS).map(module => module.key);
-const ownerGlobal = ["business-attendance", "notifications", owner.DRIVER_MODULE.key];
-const allOwner = [...ownerHome, ...ownerOperations, ...ownerCommercial, ...ownerMore, ...ownerGlobal];
+const ownerGlobal = ["notifications", owner.DRIVER_MODULE.key];
+const allOwner = [...ownerHome, ...ownerOperations, ...ownerCommercial, ...ownerWorkforce, ...ownerMore, ...ownerGlobal];
 assert.equal(ownerHome.length, 4);
-assert.equal(ownerCommercial.length, 13, "12 cards must retain 13 unique Payroll/Closure destinations");
+assert.equal(ownerCommercial.length, 6);
+assert.equal(ownerWorkforce.length, 8);
+assert(ownerWorkforce.includes("business-payroll") && ownerWorkforce.includes("payroll-closure"));
+for (const [preview, directory] of [[owner.OWNER_HOME_COMMERCIAL, ownerCommercial], [owner.OWNER_HOME_WORKFORCE, ownerWorkforce]]) {
+  assert.equal(preview.length, 4);
+  assert(preview.every(key => directory.includes(key)), "Owner previews must use real directory destinations");
+}
 assert.equal(ownerMore.length, 4);
 assert.equal(new Set(allOwner).size, allOwner.length, "Owner modules must not repeat between Home, Operations, More");
 assert.equal(allOwner.length, 32);
@@ -48,6 +55,11 @@ for (const role of staff.STAFF_ROLES) {
   assert(home.length > 0, role + " must expose operational modules on Home");
   assert(home.every(m => !staff.STAFF_MORE_KEYS.includes(m.key)), role + " Home must not repeat personal More cards");
   assert(more.every(m => staff.STAFF_MORE_KEYS.includes(m.key)), role + " More must remain personal/account focused");
+  const protectedModules = home.filter(module => staff.STAFF_MODULE_PERMISSIONS[module.key]);
+  const denied = staff.visibleStaffModules(home, protectedModules.map(module => ({ key: staff.STAFF_MODULE_PERMISSIONS[module.key], view: false })));
+  assert(denied.every(module => !staff.STAFF_MODULE_PERMISSIONS[module.key]), role + " rendered a denied shortcut");
+  const allowed = staff.visibleStaffModules(home, protectedModules.map(module => ({ key: staff.STAFF_MODULE_PERMISSIONS[module.key], view: true })));
+  assert.deepEqual(allowed, home);
   for (const module of [...home, ...more]) assert(catalogKeys.includes(module.key), role + " exposes unauthorized catalog module " + module.key);
   for (const viewportWidth of [320, 360, 390, 480, 680, 768, 980, 1440]) {
     const cols = viewportWidth >= 950 ? 5 : viewportWidth >= 680 ? 4 : viewportWidth >= 470 ? 3 : 2;
@@ -57,7 +69,9 @@ for (const role of staff.STAFF_ROLES) {
     assert(cols * cardWidth + (cols - 1) * 9 <= available + 0.01, role + " grid overflows at " + viewportWidth);
   }
 }
-assert(read("src/screens/StaffHome.tsx").includes('scope="home"'));
+assert(read("src/screens/StaffHome.tsx").includes('staffModulesForScope(user?.role, "home")'));
+assert(read("src/screens/StaffHome.tsx").includes("remaining.slice(0, 4)"));
+assert(read("app/role-modules.tsx").includes('scope="home" category={group}'));
 assert(read("src/screens/StaffMore.tsx").includes('scope="more"'));
 assert(read("src/screens/StaffModuleDirectory.tsx").includes('"/staff/module-permissions"'));
 assert(read("src/screens/StaffModuleDirectory.tsx").includes("grant.view"));
@@ -70,8 +84,9 @@ assert(read("app/customer/more.tsx").includes('testID="customer-more-theme"'));
 assert(read("src/components/customer/CustomerHomeHeader.tsx").includes('testID="header-theme"'));
 assert(read("src/components/OperationalHomeTopBar.tsx").includes('testID="operational-theme"'));
 assert(read("app/owner/index.tsx").includes('testID="owner-shortcut-insights"'));
-assert(read("app/owner/index.tsx").includes('<OwnerCommercial />'));
-assert(read("src/owner/OwnerCommercial.tsx").includes('testID="role-module-payroll-closure"'));
+assert(read("app/owner/index.tsx").includes('id="owner-commercial"'));
+assert(read("app/owner/index.tsx").includes('id="owner-workforce"'));
+assert(read("app/driver/index.tsx").includes('id="driver-workforce"'));
 assert(read("src/screens/StaffHome.tsx").includes('testID="staff-home-check-in"'));
 assert(read("src/screens/StaffHome.tsx").includes('"/workforce/me"'));
 assert(read("src/location/workforceEvidence.ts").includes("requestAttendanceLocationConsent"));
@@ -90,4 +105,4 @@ assert(workforceBackend.includes("WHERE workforce_attendance.check_in_time IS NU
        workforceBackend.includes("updated.rows_affected() != 1"),
   "Staff must not check in twice or check out without a valid active shift");
 
-console.log("PASS: Owner unique Home/Operations/More + eight staff role partitions, payroll dual-action, top-bar theme and check-in");
+console.log("PASS: Owner unique Home/Operations/More + eight staff role partitions, separate payroll destinations, top-bar theme and check-in");

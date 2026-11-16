@@ -8,11 +8,6 @@ from pathlib import Path
 import subprocess
 
 ASSETS = {
-    "Mixer.png": 88,
-    "KYC-verification.png": 88,
-    "Free-Calculator.png": 88,
-    "Cashfree.png": 88,
-    "CountryMap.png": 88,
     "TrackMyRMC_Login_Top_Banner_light.png": 90,
     "TrackMyRMC_Login_Top_Banner_Dark.png": 90,
     "Background Light Theme.png": 89,
@@ -20,7 +15,11 @@ ASSETS = {
     "support-agent-mascot.png": 91,
     "Plant _Owner_All_staff_top_card.png": 100,
 }
-LOSSLESS_ASSETS = {"Plant _Owner_All_staff_top_card.png"}
+LOSSLESS_ASSETS = {
+    "Plant _Owner_All_staff_top_card.png",
+    "TrackMyRMC_Login_Top_Banner_light.png",
+    "TrackMyRMC_Login_Top_Banner_Dark.png",
+}
 ROOT = Path(__file__).resolve().parents[1] / "assets" / "images"
 
 
@@ -31,8 +30,8 @@ def main():
         target = source.with_suffix(".webp")
         if not source.is_file():
             raise FileNotFoundError(f"Missing PNG source: {source}")
-        # The new owner/staff hero must remain pixel-exact, not just visually similar.
-        options = (["-lossless", "-z", "9"] if name in LOSSLESS_ASSETS else
+        # Preserve pixels and retain the color profile for the approved hero artwork.
+        options = (["-lossless", "-z", "9", "-metadata", "icc"] if name in LOSSLESS_ASSETS else
                    ["-q", str(quality), "-m", "6", "-alpha_q", "100"])
         subprocess.run(
             ["cwebp", "-quiet", *options, "-mt", str(source), "-o", str(target)],

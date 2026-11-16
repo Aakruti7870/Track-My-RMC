@@ -1,225 +1,166 @@
 const {chromium}=require('../../admin-web/node_modules/playwright');
 const fs=require('node:fs');
+const assert=require('node:assert/strict');
 fs.mkdirSync('tracking-previews',{recursive:true});
 (async()=>{
- const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+ const browser=await chromium.launch({headless:true,args:['--no-sandbox'],...(process.env.HEADER_CHROMIUM_PATH ? {executablePath:process.env.HEADER_CHROMIUM_PATH} : {})});
  for(const width of [320,390,768,960,1024,1440]){
-  const expected=width>=1024
-    ? {quick:72,tool:72,service:80,circle:76,toolPlate:76,servicePlate:84,quickTile:104,toolTile:132,serviceTile:140,quickFont:16,toolFont:14,serviceFont:15,heading:18,headingLine:24,sectionGap:16,sloganWidth:166,sloganHeight:36,pumpWidth:360,pumpHeight:70,pumpIconWidth:54,pumpIconHeight:48,pumpFirst:16,pumpSecond:18,kyc:36,kycTitle:18,location:15}
-    : width>=600
-      ? {quick:64,tool:64,service:70,circle:68,toolPlate:68,servicePlate:74,quickTile:94,toolTile:119,serviceTile:125,quickFont:15,toolFont:13,serviceFont:14,heading:16,headingLine:22,sectionGap:12,sloganWidth:146,sloganHeight:32,pumpWidth:300,pumpHeight:62,pumpIconWidth:48,pumpIconHeight:42,pumpFirst:14,pumpSecond:16,kyc:32,kycTitle:16,location:14}
-      : {quick:52,tool:52,service:58,circle:56,toolPlate:56,servicePlate:62,quickTile:82,toolTile:101,serviceTile:103,quickFont:14,toolFont:11,serviceFont:12,heading:15,headingLine:20,sectionGap:10,sloganWidth:132,sloganHeight:28,pumpWidth:240,pumpHeight:50,pumpIconWidth:40,pumpIconHeight:35,pumpFirst:13,pumpSecond:15,kyc:28,kycTitle:15,location:13};
  let mode='demo';
+ let reviewSubmission;
  const page=await browser.newPage({viewport:{width,height:1000}});
  await page.addInitScript(()=>localStorage.setItem('tmrmc_token',JSON.stringify('isolated-browser-fixture')));
  await page.route('https://trackmyrmc.com/api/**',async route=>{
  const path=new URL(route.request().url()).pathname;
- const me={id:'test-customer',name:'Customer',role:'customer',roles:['customer'],status:'active',kyc_status:'VERIFIED',plant_id:null};
+ if (path.endsWith('/customer/plant-order-requests')) {
+   if (route.request().method() === 'POST') {
+     reviewSubmission = route.request().postDataJSON();
+     await route.fulfill({json:{id:'admin-review-fixture',status:'PENDING_ADMIN_REVIEW'}});
+   } else {
+     await route.fulfill({json:{requests:reviewSubmission ? [{
+       id:'admin-review-fixture',grade:reviewSubmission.grade,quantity_m3:reviewSubmission.quantity_m3,
+       site_address:reviewSubmission.site_address,delivery_date:reviewSubmission.delivery_date,
+     }] : []}});
+   }
+   return;
+ }
+ if (path.endsWith('/customer/service-enquiries') && route.request().method() === 'POST') {
+   await route.fulfill({ status: 201, json: { id: 'isolated-enquiry', status: 'NEW' } });
+   return;
+ }
+ const me={id:'test-customer',name:'Customer',role:'customer',roles:['customer'],status:'active',kyc_status:'VERIFIED',phone:'9000000000',plant_id:null};
  const home={name:'Customer',kyc_status:'VERIFIED',active_order:null,recent_orders:[],nearby_plants:[],unread_notifications:0};
  const order={id:'isolated-order',order_number:'CUSTOMER-ORDER',status:mode==='pending'?'PENDING':mode==='delivered'?'DELIVERED':'DISPATCHED',grade:'M30',quantity:8,site_name:'Actual project'};
  if(mode!=='demo'){home.recent_orders=[order];home.active_order=mode==='delivered'?null:order;}
  const tracking={active:mode==='live',status:order.status,active_loads:mode==='live'?[{id:'load-a',status:'en_route',tm_number:'ASSIGNED-MIXER',location:{lat:19.1,lng:73.1,at:new Date(Date.now()-1000).toISOString()}}]:[],destination:{lat:19.2,lng:73.2}};
- await route.fulfill({json:path.endsWith('/tracking')?tracking:path.endsWith('/permission-consent')?{consent:{version:1,location_choice:'manual',notification_choice:'manual'}}:path.endsWith('/me')?me:path.endsWith('/customer/home')?home:{}});
+ const plants=[{id:'fixture-plant',name:'Panvel Ready-Mix Concrete and Infrastructure Supply',address:'Industrial Estate, Panvel',status:'active',verified:true,order_enabled:true,grades:['M30'],distance_km:4.2}];
+ const linkedPlant={...plants[0],id:'fixture-plant-off-page',name:'Registered Linked Concrete'};
+ if (path.endsWith('/customer/plants/search')) {
+   await route.fulfill({json:{plants,page:1,has_more:false}});return;
+ }
+ if (path.endsWith('/customer/plants/locate')) {
+   await route.fulfill({json:{lat:19.1,lng:73.1,label:'Panvel'}});return;
+ }
+ if (path.endsWith('/customer/plants/google-nearby')) {
+   const google={place_id:'ChIJ_review_fixture',name:'Independent Concrete',address:'Panvel',lat:19.11,lng:73.11,distance_km:2,verified:false,order_enabled:false};
+   await route.fulfill({json:{places:[
+     google,
+     {...google,place_id:'ChIJ_linked_fixture',name:linkedPlant.name,verified:true,order_enabled:true,
+       registered_plant:{id:linkedPlant.id,order_intake_mode:'DIRECT'}},
+     {...google,place_id:'ChIJ_rfq_fixture',name:'Quotation-only Concrete',verified:true,
+       registered_plant:{id:'fixture-rfq-only',order_intake_mode:'RFQ_ONLY'}},
+   ],source:'google_places',attribution:'Google Maps',radius_km:50}});return;
+ }
+ if (path.endsWith('/maps/autocomplete')) {
+   await route.fulfill({json:{predictions:[]}});return;
+ }
+ await route.fulfill({json:path.endsWith('/tracking')?tracking:path.endsWith('/customer/service-enquiries')?{enquiries:[]}:path.endsWith('/customer/plants')?{plants:[...plants,linkedPlant]}:path.endsWith('/customer/orders')?{orders:[]}:path.endsWith('/customer/order-drafts')?{drafts:[]}:path.endsWith('/permission-consent')?{consent:{version:1,location_choice:'manual',notification_choice:'manual'}}:path.endsWith('/me')?me:path.endsWith('/customer/home')?home:{}});
  });
  page.on('pageerror',e=>console.error(e.message));
  await page.goto('http://127.0.0.1:8765/customer/');
- // Verify real SVG layout (rather than PNG pixel dimensions) at mobile and desktop widths.
  await page.getByTestId('action-new').waitFor({timeout:30000});
- // The first paint can use a two-column fallback before onLayout measures
- // the grid. Assert after the responsive four-column calculation settles.
- await page.waitForFunction(() => {
-   const ids=['action-new','action-track','action-plants','action-orders'];
-   const nodes=ids.map(id=>document.querySelector(`[data-testid="${id}"]`));
-   if(nodes.some(node=>!node))return false;
-   const ys=nodes.map(node=>node.getBoundingClientRect().top);
-   return ys.every(y=>Math.abs(y-ys[0])<2);
- },undefined,{timeout:15000});
-
+ await page.getByText('KYC Verified', { exact: true }).first().waitFor();
  const actualVectorSize = async (testId) => page.getByTestId(testId).locator('svg').first()
    .evaluate(node => [Math.round(node.getBoundingClientRect().width), Math.round(node.getBoundingClientRect().height)]);
- for(const id of ['action-new','action-track','action-plants','action-orders']) {
-   const size = await actualVectorSize(id);
-   if(size[0]!==expected.quick||size[1]!==expected.quick)throw Error(`Quick Action SVG size: ${id} ${size} at ${width}`);
+ const fixed = page.getByTestId('customer-home-scroll-fixed');
+ await fixed.getByTestId('home-bulk-quote').waitFor();
+ const scroll = page.getByTestId('customer-home-scroll');
+ const content = await scroll.boundingBox();
+ const tabBar = await page.getByTestId('app-tab-bar').boundingBox();
+ const homeHeader = await page.getByTestId('customer-home-header').boundingBox();
+ assert(content && tabBar && homeHeader && content.y + content.height <= tabBar.y + 1);
+ assert.equal(await page.getByTestId('header-help').count(), 1);
+ assert.equal(await page.getByTestId('customer-next-action').count(), 0);
+ const sections = await Promise.all([
+   'home-promotional-carousel', 'home-quick-actions', 'kyc-banner', 'customer-module-grid', 'home-other-services',
+ ].map(id => page.getByTestId(id).boundingBox()));
+ for (let i = 1; i < sections.length; i++) {
+   const previous = sections[i - 1], next = sections[i];
+   assert(next.y - previous.y - previous.height >= 8, 'Home sections must appear in design order with gutter spacing');
+   assert(next.x >= 0 && next.x + next.width <= width + 1, 'Home section exceeds viewport');
  }
- for(const id of ['customer-module-projects','customer-module-free-tools']) {
-   const size=await actualVectorSize(id);
-   if(size[0]!==expected.tool||size[1]!==expected.tool)throw Error(`RMC Tools SVG size: ${id} ${size} at ${width}`);
+ assert(Math.abs(sections[0].width / sections[0].height - 16 / 9) < 0.03, 'Carousel preserves artwork ratio');
+ assert.equal(await fixed.getByTestId('home-promotional-carousel').count(), 1);
+ assert.equal(await page.getByTestId('customer-home-scroll').getByTestId('kyc-banner').count(), 1);
+ const bulk = page.getByTestId('home-bulk-quote');
+ assert((await bulk.boundingBox()).height >= 49);
+ await page.getByTestId('home-quick-actions').getByRole('heading', { name: 'Quick Access', exact: true }).waitFor();
+ await bulk.getByText('Concrete in bulk? Get our best rate for your project.', { exact: true }).waitFor();
+ await page.getByTestId('kyc-banner').getByText('KYC Verified', { exact: true }).waitFor();
+ const planning = page.getByTestId('customer-module-grid');
+ const materials = page.getByTestId('home-other-services');
+ assert.equal(await planning.getByRole('button').count(), 8);
+ assert.equal(await materials.getByRole('button').count(), 4);
+ for (const [id, label] of [['action-new','New Order'], ['action-track','Track Order'], ['action-plants','Nearby Plants'], ['action-orders','My Orders']]) {
+   const action = page.getByTestId(id);
+   const target = await action.boundingBox();
+   await action.getByText(label, {exact:true}).waitFor();
+   assert(target.width >= 44 && target.height >= 44);
+   const symbolSize = width >= 1024 ? 28 : width >= 600 ? 25 : 24;
+   assert.deepEqual(await actualVectorSize(id), [symbolSize, symbolSize]);
+   assert.equal(await action.locator('svg').first().getAttribute('aria-hidden'), 'true');
  }
- for(const id of ['service-cement','service-labour','service-material']) {
-   const size=await actualVectorSize(id);
-   if(size[0]!==expected.service||size[1]!==expected.service)throw Error(`Service SVG size: ${id} ${size} at ${width}`);
- }
- const actionBoxes=await Promise.all(['action-new','action-track','action-plants','action-orders'].map(id=>page.getByTestId(id).boundingBox()));
- // Round PhonePe-style quick actions: 52dp artwork is displayed inside a
- // 56dp circular frame with the label visibly below, never clipped.
- for(const [id,label] of [['action-new','New Order'],['action-track','Track Order'],['action-plants','Plants'],['action-orders','My Orders']]) {
-   const action=page.getByTestId(id);
-   const tile=await action.boundingBox();
-   const svg=await action.locator('svg').first().boundingBox();
-   const name=await action.getByText(label,{exact:true}).boundingBox();
-   const circle=await action.locator('svg').first().evaluate(node=>node.parentElement.getBoundingClientRect().toJSON());
-   if(!tile||!svg||!name||!circle)throw Error(`Missing Quick Action geometry: ${id}`);
-   if(tile.height<expected.quickTile-1||tile.height>expected.quickTile+30)throw Error(`Quick Action tile height mismatch: ${id} ${tile.height} at ${width}`);
-   if(Math.abs(circle.width-expected.circle)>1||Math.abs(circle.height-expected.circle)>1)throw Error(`Incorrect circular frame: ${id} at ${width}`);
-   if(svg.y<circle.y-1||name.y<svg.y+svg.height-1||name.y+name.height>tile.y+tile.height+1)
-     throw Error(`Quick Action SVG/label clipping: ${id}`);
- }
- const carouselBox=await page.getByTestId('home-promotional-carousel').boundingBox();
- const quickSectionBox=await page.getByTestId('home-quick-actions').boundingBox();
- // Geometry measured from the PhonePe reference, expressed in viewport dp on web.
- if(width<=390) {
-   if(Math.abs(quickSectionBox.height-120)>(width<=340?20:7))
-     throw Error('Quick Actions section should be 120-140dp depending on label wrapping: '+quickSectionBox.height);
-   const titleBox=await page.getByText('Quick Actions',{exact:true}).boundingBox();
-   const bannerToSection=quickSectionBox.y-(carouselBox.y+carouselBox.height);
-   if(Math.abs(bannerToSection-10)>1)
-     throw Error('Carousel-to-Quick Actions section gap must be 10dp: '+bannerToSection);
-   // The 28dp header row vertically centers its 22dp title text.
-   const bannerToTitle=titleBox.y-(carouselBox.y+carouselBox.height);
-   if(bannerToTitle<10||bannerToTitle>18)
-     throw Error('Quick Actions title must fit below the 10dp section gap: '+bannerToTitle);
-
-   for(const [id,label] of [['action-new','New Order'],['action-track','Track Order'],['action-plants','Plants'],['action-orders','My Orders']]){
-     const font=await page.getByTestId(id).getByText(label,{exact:true}).evaluate(el=>getComputedStyle(el).fontSize);
-     if(font!=='14px')throw Error('Quick Action label must be 14sp: '+id+' '+font);
-   }
- }
- const slogan=await page.getByText('Built Better',{exact:true}).locator('xpath=..').boundingBox();
- if(Math.abs(slogan.width-expected.sloganWidth)>1||Math.abs(slogan.height-expected.sloganHeight)>2)
-   throw Error('Slogan geometry mismatch at '+width+': '+JSON.stringify(slogan));
- const expectedQuickHeight=expected.sloganHeight+expected.sectionGap+expected.quickTile;
- if(Math.abs(quickSectionBox.height-expectedQuickHeight)>(width<=340?20:7))
-   throw Error('Quick Actions height mismatch at '+width+': '+quickSectionBox.height+' vs '+expectedQuickHeight);
- const kycIcon=await actualVectorSize('kyc-banner');
- if(kycIcon[0]!==expected.kyc||kycIcon[1]!==expected.kyc)
-   throw Error('KYC symbol mismatch at '+width+': '+kycIcon);
- const kycTitleSize=await page.getByTestId('kyc-banner').getByText('KYC VERIFIED',{exact:true})
-   .evaluate(el=>getComputedStyle(el).fontSize);
- if(kycTitleSize!==expected.kycTitle+'px')throw Error('KYC title mismatch at '+width+': '+kycTitleSize);
- const kycBox=await page.getByTestId('kyc-banner').boundingBox();
- const toolSectionBox=await page.getByTestId('customer-module-grid').boundingBox();
- const pumpSectionBox=await page.getByTestId('home-pump-rental-promo').boundingBox();
- const adviceSectionBox=await page.getByTestId('home-advice-grid').boundingBox();
- const otherServicesSectionBox=await page.getByTestId('home-other-services').boundingBox();
- const trackingSectionBox=await page.getByTestId('demo-tracking-card').locator('xpath=..').boundingBox();
- const gapBetween=(above,below)=>below.y-(above.y+above.height);
- for(const [name,actual] of [
-   ['carousel to quick actions',gapBetween(carouselBox,quickSectionBox)],
-   ['quick actions to KYC',gapBetween(quickSectionBox,kycBox)],
-   ['KYC to planning',gapBetween(kycBox,toolSectionBox)],
-   ['planning to pump rental',gapBetween(toolSectionBox,pumpSectionBox)],
-   ['pump rental to advice',gapBetween(pumpSectionBox,adviceSectionBox)],
-   ['advice to supply',gapBetween(adviceSectionBox,otherServicesSectionBox)],
-   ['supply to tracking',gapBetween(otherServicesSectionBox,trackingSectionBox)],
-   ])if(Math.abs(actual-expected.sectionGap)>1)throw Error(`${name} must be ${expected.sectionGap}dp; got ${actual}`);
- for(const title of ['Quick Actions','Active Projects & Planning','Free Tools & Expert Advice','Supply & Workforce','Track My RMC']){
-   if(!await page.getByText(title,{exact:true}).count())throw Error(`Home heading missing: ${title}`);
- }
- if(!await page.getByText('Built Better',{exact:true}).count())throw Error('Built Better slogan missing');
- if((await page.getByTestId('action-plants').innerText()).trim()!=='Plants')throw Error('Third Quick Action must be labeled Plants');
- if(Math.max(...actionBoxes.map(box=>box.y))-Math.min(...actionBoxes.map(box=>box.y))>2)
-   throw Error('All four Quick Actions must fit one row at 320dp and above');
-
- // Carousel is full-bleed at mobile widths with the original five-slide source.
- if(width<=390 && (Math.abs(carouselBox.x)>1||Math.abs(carouselBox.width-width)>1))
-   throw Error(`Mobile carousel is not full width: ${JSON.stringify(carouselBox)}`);
-
- // No redundant outer borders. The responsive tools and supply sections have
- // stable test IDs, and all eight catalog actions still have a reachable tile.
- for (const section of ['home-quick-actions','customer-module-grid','home-advice-grid','home-other-services']) {
-   const locator=page.getByTestId(section);
-   const bounds=await locator.boundingBox();
-   const border=await locator.evaluate(node=>getComputedStyle(node).borderTopWidth);
-   if(border!=='0px')throw Error(`Redundant outer section border on ${section}: ${border}`);
-   if(bounds.width>620.5)throw Error(`Oversized desktop outer section: ${section} ${bounds.width}`);
-   if(bounds.x<0||bounds.x+bounds.width>width+1)throw Error(`Outer section overflow: ${section}`);
- }
- const boundsOf=async (container,prefix)=>page.getByTestId(container).locator(`[data-testid^="${prefix}"]`)
-   .evaluateAll(nodes=>nodes.map(node=>{const box=node.getBoundingClientRect();return {x:box.x,y:box.y,w:box.width,h:box.height,scrollHeight:node.scrollHeight};}));
- const toolBoxes=await boundsOf('customer-module-grid','customer-module-');
- const adviceBoxes=await boundsOf('home-advice-grid','customer-module-');
- const serviceBoxes=await boundsOf('home-other-services','service-');
- if(toolBoxes.length!==4||adviceBoxes.length!==4||serviceBoxes.length!==3)throw Error('Missing Home cards');
- for(const group of [toolBoxes,adviceBoxes]) {
-   if(Math.max(...group.map(box=>box.y))-Math.min(...group.map(box=>box.y))>2)
-     throw Error('All four module vectors must fit one row');
- }
- for (const [kind,boxes,minHeight,maxHeight] of [
-   ['Quick Action',actionBoxes.map(box=>({h:box.height,x:box.x,y:box.y,w:box.width})),expected.quickTile-1,expected.quickTile+30],
-   ['Planning Tool',toolBoxes,expected.toolTile-8,expected.toolTile+45],
-   ['Expert Advice',adviceBoxes,expected.toolTile-8,expected.toolTile+45],
-   ['Supply',serviceBoxes,expected.serviceTile-10,expected.serviceTile+35],
- ]) {
-   for(const box of boxes) {
-     if(box.h<minHeight||box.h>maxHeight)throw Error(`${kind} card height ${box.h} outside ${minHeight}-${maxHeight}`);
-     if(box.x<0||box.x+box.w>width+1)throw Error(`${kind} card overflows the viewport`);
-     if(box.scrollHeight&&box.scrollHeight>box.h+1)throw Error(`${kind} label or SVG is clipped`);
-   }
-   const firstRow=boxes.filter(box=>Math.abs(box.y-boxes[0].y)<2).sort((a,b)=>a.x-b.x);
-   for(let i=1;i<firstRow.length;i++){
-     const gap=firstRow[i].x-(firstRow[i-1].x+firstRow[i-1].w);
-     if(gap>12||gap<0)throw Error(`${kind} horizontal gap ${gap} outside compact bounds`);
-   }
- }
- const promoCards=await page.getByTestId('home-pump-rental-promo').locator(':scope > *').all();
- if(promoCards.length!==1)throw Error('Pump CTA must be the only promotional card');
- const pump=await promoCards[0].boundingBox();
- const row=await page.getByTestId('home-pump-rental-promo').boundingBox();
- if(!pump||!row||Math.abs(pump.width-expected.pumpWidth)>1||Math.abs(pump.height-expected.pumpHeight)>1)
-   throw Error('Pump CTA dimensions mismatch at '+width+': '+JSON.stringify({pump,row}));
- const pumpSvg=await promoCards[0].locator('svg').first().boundingBox();
- if(!pumpSvg||Math.abs(pumpSvg.width-expected.pumpIconWidth)>1||Math.abs(pumpSvg.height-expected.pumpIconHeight)>1)
-   throw Error('Pump CTA SVG size mismatch at '+width+': '+JSON.stringify(pumpSvg));
- if(Math.abs((pump.x+pump.width/2)-(row.x+row.width/2))>1)
-   throw Error('Single pump CTA must be horizontally centered');
- if(await page.getByText('On Time, Everytime').count())
-   throw Error('Removed On Time card still appears');
- if(!await page.getByRole('button',{name:'Request a concrete pump rental enquiry'}).count())throw Error('Accessible pump CTA missing');
- for(const title of ['Quick Actions','Active Projects & Planning','Free Tools & Expert Advice','Supply & Workforce','Track My RMC','Built Better']){
-   const style=await page.getByText(title,{exact:true}).first().evaluate(el=>{const s=getComputedStyle(el);return {size:s.fontSize,height:s.lineHeight,family:s.fontFamily};});
-   if(style.size!==expected.heading+'px'||style.height!==expected.headingLine+'px'||!style.family.toLowerCase().includes('jakarta-bold'))
-     throw Error('Home heading typography regression '+title+': '+JSON.stringify(style));
- }
- for(const [title,size,family] of [['Streamline Your Pour',expected.pumpFirst+'px','jakarta-medium'],['Request a Pump Quote',expected.pumpSecond+'px','jakarta-semibold']]){
-   const style=await page.getByText(title,{exact:true}).first().evaluate(el=>{const s=getComputedStyle(el);return {size:s.fontSize,family:s.fontFamily};});
-   if(style.size!==size||!style.family.toLowerCase().includes(family))
-     throw Error('Pump CTA font regression '+title+': '+JSON.stringify(style));
- }
- if(!await page.getByTestId('header-location').count())throw Error('Location header missing');
- const locationFont=await page.getByTestId('header-location').getByText('Select Location',{exact:true})
-   .evaluate(el=>getComputedStyle(el).fontSize);
- if(locationFont!==expected.location+'px')throw Error('Location typography mismatch at '+width+': '+locationFont);
- for(const [id,icon,plate] of [['customer-module-projects',expected.tool,expected.toolPlate],['service-cement',expected.service,expected.servicePlate]]){
-   const dims=await page.getByTestId(id).locator('svg').first().evaluate(el=>{
-     const b=el.getBoundingClientRect(),p=el.parentElement.getBoundingClientRect();
-     return {w:b.width,h:b.height,top:b.y,plateTop:p.y,plateBottom:p.bottom,plateHeight:p.height};
-   });
-   if(Math.abs(dims.w-icon)>1||Math.abs(dims.h-icon)>1||Math.abs(dims.plateHeight-plate)>1||
-      dims.top<dims.plateTop-1||dims.top+dims.h>dims.plateBottom+1)
-     throw Error('Responsive vector plate clipped at '+width+': '+id+' '+JSON.stringify(dims));
- }
- for(const [id,label,font] of [['customer-module-projects','Project Hub',expected.toolFont],['service-cement','Cement',expected.serviceFont]]){
-   const actual=await page.getByTestId(id).getByText(label,{exact:true}).evaluate(el=>getComputedStyle(el).fontSize);
-   if(actual!==font+'px')throw Error('Responsive label mismatch at '+width+': '+id+' '+actual);
+ const cardBoxes = await Promise.all(['service-cement', 'service-sand', 'service-bricks', 'home-materials-see-all']
+   .map(id => page.getByTestId(id).boundingBox()));
+ for (const box of cardBoxes) {
+   assert(box.height >= 70 && Math.abs(box.width - cardBoxes[0].width) <= 1);
+   assert(Math.abs(box.y - cardBoxes[0].y) <= 1, 'Materials must share a row at normal font scale');
  }
 
  // Export full-page Home references at the exact mobile/desktop sizes that
  // the layout gates check; CI uploads them for human visual comparison.
  await page.screenshot({path:`tracking-previews/home-layout-${width}.png`,fullPage:true});
  const tabIds=['tab-home','tab-orders','tab-plants','tab-more'];
- for(const id of tabIds){const size=await actualVectorSize(id);if(size[0]!==35||size[1]!==35)throw Error(`Tab SVG size: ${id} ${size}`);}
+ for(const id of tabIds){const size=await actualVectorSize(id);if(size[0]!==24||size[1]!==24)throw Error(`Tab SVG size: ${id} ${size}`);}
  const tabBoxes=await Promise.all(tabIds.map(id=>page.getByTestId(id).boundingBox()));
- const centerBox=await page.getByTestId('tab-quick-actions').boundingBox();
+ const centerBox=await page.getByTestId('tab-new-order').boundingBox();
  const centers=tabBoxes.map(box=>box.x+box.width/2);
  const mid=centerBox.x+centerBox.width/2;
  if(!(centers[0]<centers[1]&&centers[1]<mid&&mid<centers[2]&&centers[2]<centers[3]))throw Error('Tab ordering around center icon');
  if(Math.abs((mid-centers[1])-(centers[2]-mid))>4 || Math.abs((mid-centers[0])-(centers[3]-mid))>4)throw Error('Tab spacing is not symmetric');
  const card=page.getByTestId('demo-tracking-card'); try { await card.waitFor({timeout:30000}); } catch(e) { await page.screenshot({path:`tracking-previews/failure-${width}.png`,fullPage:true}); console.error(await page.locator('body').innerText()); throw e; }
- await card.evaluate(el=>el.scrollIntoView({block:'start'}));
+ if (width === 390) {
+   // A tall viewport can fit the entire lower section. Reduce its height
+   // while keeping enough space for the fixed banner and shortcuts.
+   await page.setViewportSize({ width, height: 760 });
+   await fixed.getByTestId('home-bulk-quote').waitFor();
+   const movement = await scroll.evaluate(node => {
+     const bulk = document.querySelector('[data-testid="home-bulk-quote"]');
+     const planning = node.querySelector('[data-testid="customer-module-grid"]');
+     const bulkTop = bulk.getBoundingClientRect().top;
+     const planningTop = planning.getBoundingClientRect().top;
+     node.scrollTop = 100;
+     return { offset: node.scrollTop, viewport: node.clientHeight, content: node.scrollHeight,
+       bulk: bulk.getBoundingClientRect().top - bulkTop,
+       planning: planning.getBoundingClientRect().top - planningTop };
+   });
+   assert(movement.offset > 0, `The lower content (${movement.content}px) must scroll in the ${movement.viewport}px viewport`);
+   assert.equal(movement.bulk, 0, 'Bulk quote stays fixed while the lower dashboard scrolls');
+   assert(movement.planning < 0, 'Planning moves with the lower dashboard');
+
+   await page.setViewportSize({ width, height: 540 });
+   await fixed.waitFor({ state: 'detached' });
+   const stickyTop = await scroll.evaluate(node => {
+     node.scrollTop = 500;
+     return node.getBoundingClientRect().top;
+   });
+   await page.waitForFunction(top => {
+     const tile = document.querySelector('[data-testid="home-quick-actions"]');
+     return tile && Math.abs(tile.getBoundingClientRect().top - top) <= 2;
+   }, stickyTop);
+   await page.setViewportSize({ width, height: 1000 });
+   await fixed.waitFor();
+ }
+ await scroll.evaluate(node => {
+   const track = node.querySelector('[data-testid="demo-tracking-card"]');
+   node.scrollTop += track.getBoundingClientRect().top - node.getBoundingClientRect().top;
+ });
  const b=await card.boundingBox();
+ assert.equal(Math.round((await page.getByTestId('customer-home-header').boundingBox()).y), Math.round(homeHeader.y));
+ assert.equal(Math.round((await page.getByTestId('app-tab-bar').boundingBox()).y), Math.round(tabBar.y));
  if(await page.getByTestId('demo-tracking-map').count())throw Error('The home tracking map should be collapsed initially');
  await card.getByTestId('home-toggle-tracking-map').click();
  const m=await page.getByTestId('demo-tracking-map').boundingBox();
+ assert.equal(Math.round((await page.getByTestId('customer-home-header').boundingBox()).y), Math.round(homeHeader.y));
  if(!m||Math.abs(m.width/m.height-2)>0.05)throw Error('map ratio');
  if(b.x<0||b.x+b.width>width+1)throw Error('overflow');
  for(const text of ['Place Your First order','M-25 Grade · 6 m³','Project site 1','Print Challan','Track TM','Call Driver','Call Plant'])if(!await card.getByText(text,{exact:true}).count())throw Error(text);
@@ -234,6 +175,8 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    const real=page.getByTestId('real-tracking-card');await real.waitFor();
    await real.getByText('CUSTOMER-ORDER',{exact:true}).waitFor();
    await real.getByText('Actual project',{exact:true}).waitFor();
+   assert.equal(await page.getByText('Current order',{exact:true}).count(),0);
+   await real.getByRole('button',{name:'View order details for CUSTOMER-ORDER'}).waitFor();
    if(await page.getByTestId('demo-tracking-map').count())throw Error('real order used demo route');
    if(state==='pending'){await real.getByTestId('home-toggle-tracking-map').click();await real.getByText('Waiting for dispatch',{exact:true}).waitFor();}
    if(state==='live'){
@@ -242,6 +185,198 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      await real.getByText(/19.10000, 73.10000/).waitFor();
    }
    if(state==='delivered')await real.getByText('DELIVERED',{exact:true}).first().waitFor();
+   if(state==='live' && width===390){
+     await real.getByTestId('home-view-order-details').click();
+     await page.waitForURL('**/order/isolated-order');
+     await page.getByTestId('order-back').waitFor();
+     await page.goBack();
+   }
+ }
+ if (width === 390) {
+   await page.emulateMedia({ reducedMotion: 'reduce' });
+   for (const [id, label, destination] of [
+     ['new', 'New Order', '/new-order'],
+     ['track', 'Track Order', '/track/isolated-order'],
+     ['plants', 'Find Plants', '/customer/plants'],
+     ['calculator', 'Calculate Volume', '/customer/free-tools'],
+     ['bulk', 'Request a Quote', '/customer/service-enquiry?service=bulk'],
+     ['orders', 'My Orders', '/customer/orders'],
+   ]) {
+     mode = 'live';
+     await page.goto('http://127.0.0.1:8765/customer/');
+     await page.getByTestId('real-tracking-card').waitFor();
+     const dot = page.getByTestId(`carousel-page-${id}`);
+     await dot.click();
+     const banner = page.getByTestId('home-promotional-carousel').getByRole('button', { name: label, exact: true });
+     const loaded = await banner.locator('img').first().evaluate(node =>
+       node.decode().then(() => node.currentSrc.includes('.webp')));
+     assert.equal(loaded, true, `The ${id} banner must load a WebP`);
+     await banner.click();
+     await page.waitForURL(url => url.pathname.replace(/\/$/, '') + url.search === destination);
+   }
+   console.log('PASS all six carousel WebPs load and open their advertised actions');
+ }
+ if(width===320){
+   mode='demo';
+   await page.setViewportSize({width,height:480});
+   await page.emulateMedia({reducedMotion:'reduce'});
+   await page.route('http://127.0.0.1:8765/customer/request-quotation?*',async route=>{
+     const response=await route.fetch({url:'http://127.0.0.1:8765/customer/request-quotation.html'});
+     await route.fulfill({response});
+   });
+   for(const theme of ['light','dark']){
+     reviewSubmission=undefined;
+     await page.evaluate(value=>localStorage.setItem('tmrmc_theme_mode',JSON.stringify(value)),theme);
+     await page.goto('http://127.0.0.1:8765/customer/');
+     await page.getByTestId('home-planning-see-all').waitFor();
+     const secondaryTile=theme==='light'?'rgb(240, 237, 230)':'rgb(26, 26, 26)';
+     const shortcutTile=theme==='light'?'rgb(250, 249, 245)':'rgb(18, 18, 18)';
+     for (const id of ['action-new','home-pump-rental','service-cement']) {
+       const background=await page.getByTestId(id).locator('svg').first().evaluate(el=>getComputedStyle(el.parentElement).backgroundColor);
+       assert.equal(background,id==='action-new'?shortcutTile:secondaryTile,`${id} uses its ${theme} icon shade`);
+     }
+     const quickPaint = await page.getByTestId('action-new').locator('svg').first().evaluate(el => {
+       const box = el.parentElement;
+       return { fill: getComputedStyle(box.firstElementChild).backgroundColor, rim: getComputedStyle(box.parentElement).backgroundImage };
+     });
+     assert.equal(quickPaint.fill, 'rgba(255, 120, 0, 0.5)');
+     assert.match(quickPaint.rim, /rgb\(157, 105, 48\).*rgb\(129, 85, 48\)/);
+     const clipped=await page.evaluate(()=>{
+       const labels=[...document.querySelectorAll('[data-testid^="action-"],[data-testid^="customer-module-"],[data-testid^="service-"],[data-testid="home-pump-rental"],[data-testid="home-order-request"],[role="tab"]')]
+         .filter(el=>el.matches('[role="button"],[role="tab"]'))
+         .flatMap(el=>[...el.querySelectorAll('div')].filter(text=>!text.childElementCount&&text.textContent.trim()));
+       for(const label of labels){
+         const style=getComputedStyle(label);
+         label.style.fontSize=2*parseFloat(style.fontSize)+'px';
+         label.style.lineHeight=2*parseFloat(style.lineHeight)+'px';
+       }
+       return labels.filter(label=>label.scrollHeight>label.clientHeight+1||label.scrollWidth>label.clientWidth+1)
+         .map(label=>label.textContent);
+     });
+     assert.deepEqual(clipped,[],theme+' Home and navigation text at 200%');
+     const help=page.getByTestId('header-help');
+     await help.click();
+     await page.getByTestId('customer-support-place-order').click();
+     await page.getByTestId('customer-support-place-order-card').waitFor();
+     await page.getByTestId('customer-support-close').click();
+     await page.getByTestId('customer-support-panel').waitFor({state:'hidden'});
+
+     await page.getByTestId('home-pump-rental').click();
+     await page.waitForURL(/\/customer\/service-enquiry\/?\?service=pump/);
+     await page.getByText('Concrete Pump Rental Enquiry',{exact:true}).waitFor();
+     await page.goBack();
+     await page.getByTestId('home-planning-see-all').click();
+     const planningDirectory = page.getByTestId('home-shortcut-directory');
+     for (const id of ['home-order-request', 'home-compare-plants', 'home-quotations', 'home-documents']) {
+       await planningDirectory.getByTestId(id).waitFor();
+     }
+     await planningDirectory.getByTestId('home-order-request').click();
+     await page.waitForURL('**/new-order');
+     await page.getByTestId('neworder-draft').waitFor();
+     await page.goBack();
+     await page.getByTestId('home-bulk-quote').click();
+     await page.getByText('Bulk Concrete Enquiry',{exact:true}).waitFor();
+     await page.getByTestId('submit-service-enquiry').click();
+     assert.equal(await page.getByTestId('enquiry-quantity_m3').getAttribute('aria-invalid'), 'true');
+     await page.getByTestId('enquiry-quantity_m3').fill('125.25');
+     await page.getByTestId('bulk-grade-dropdown').click();
+     await page.getByRole('radio',{name:'M30',exact:true}).click();
+     await page.getByTestId('enquiry-location').fill('Synthetic delivery site, Panvel');
+     await page.getByTestId('enquiry-contact_number').fill('9000000000');
+     await page.getByRole('button',{name:'Required Date: Choose date',exact:true}).click();
+     const today = await page.evaluate(() => {
+       const d = new Date();
+       return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
+     });
+     await page.getByRole('button',{name:today,exact:true}).click();
+     const bulkRequest = page.waitForRequest(req => req.method() === 'POST' && req.url().endsWith('/customer/service-enquiries'));
+     await page.getByTestId('submit-service-enquiry').click();
+     const bulkData = (await bulkRequest).postDataJSON();
+     assert.equal(bulkData.service_type, 'BULK_CONCRETE');
+     assert.equal(bulkData.grade, 'M30');
+     assert.equal(bulkData.quantity_m3, 125.25);
+     await page.getByText('Enquiry received',{exact:true}).waitFor();
+     await page.goBack();
+     await page.getByTestId('service-sand').click();
+     await page.getByText('Sand Enquiry',{exact:true}).waitFor();
+     await page.getByTestId('material-type-dropdown').click();
+     await page.getByRole('radio',{name:'Crushed Sand',exact:true}).waitFor();
+     await page.goBack();
+     await page.getByTestId('service-bricks').click();
+     await page.getByText('Bricks Enquiry',{exact:true}).waitFor();
+     await page.getByTestId('service-enquiry-form').getByText('Bricks',{exact:true}).waitFor();
+     await page.goBack();
+     await page.getByTestId('home-materials-see-all').click();
+     const directory = page.getByTestId('home-shortcut-directory');
+     for (const [id, title] of [['steel','Steel Enquiry'], ['labour','Labour Contractor Enquiry'],
+       ['office-cabin','Office Cabin Enquiry'], ['shuttering','Shuttering Material Enquiry'], ['material','Building Material Enquiry']]) {
+       await directory.getByTestId('home-' + id).click();
+       await page.getByText(title,{exact:true}).waitFor();
+       await page.goBack();
+       if (id !== 'material') await page.getByTestId('home-materials-see-all').click();
+     }
+     await page.getByTestId('tab-new-order').click();
+     await page.waitForURL('**/new-order');
+     await page.goBack();
+     await page.getByTestId('tab-plants').click();
+     const plant=page.getByTestId('nearby-plant-fixture-plant');
+     await plant.waitFor();
+     assert.equal(await plant.getByRole('button',{name:/^Show .* on map$/}).count(),1);
+     const order=plant.getByTestId('nearby-place-order');
+     const ink=await order.getByText('Place Order').evaluate(el=>getComputedStyle(el).color);
+     assert.equal(ink,theme==='light'?'rgb(10, 9, 7)':'rgb(18, 18, 18)');
+     const profile = plant.getByRole('button',{name:'Plant Profile',exact:true});
+     assert.equal(await profile.evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(34, 197, 94, 0.2)');
+     const target=await order.boundingBox();
+     assert(target.height>=44 && target.width<180,theme+' narrow plant primary action must be compact');
+     await order.click();
+     await page.waitForURL('**/new-order?plantId=fixture-plant');
+     await page.goBack();
+     await plant.getByRole('button',{name:'Request Quotation',exact:true}).click();
+     await page.getByRole('button',{name:'Submit Quotation Request',exact:true}).click();
+     assert.equal(await page.getByRole('textbox',{name:'Required Quantity (m³)',exact:true}).getAttribute('aria-invalid'),'true');
+     await page.getByRole('button',{name:'Concrete grade: M25',exact:true}).click();
+     await page.getByRole('radio',{name:'M30',exact:true}).click();
+     await page.getByRole('button',{name:'Concrete grade: M30',exact:true}).waitFor();
+     await page.getByRole('button',{name:/^Required delivery date:/i}).click();
+     const calendar=page.getByTestId('rfq-date-calendar');
+     await calendar.waitFor();
+     const surface=await calendar.evaluate(el=>getComputedStyle(el).backgroundColor);
+     assert.equal(surface,theme==='light'?'rgb(252, 251, 247)':'rgb(28, 28, 28)');
+     await calendar.getByRole('button',{name:'Next month',exact:true}).click();
+     await calendar.getByRole('button',{name:'Close Calendar',exact:true}).click();
+     await calendar.waitFor({state:'hidden'});
+     await page.goBack();
+     await page.getByTestId('plants-filter-toggle').click();
+     await page.getByTestId('plants-filter-state').fill('Maharashtra');
+     const linked=page.getByTestId('nearby-plant-fixture-plant-off-page');
+     await linked.getByText('TrackMyRMC verified',{exact:true}).waitFor();
+     const quotationOnly=page.getByTestId('nearby-plant-fixture-rfq-only');
+     assert.equal(await quotationOnly.getByTestId('nearby-place-order').getAttribute('aria-disabled'), 'true');
+     await quotationOnly.getByRole('button',{name:'Request Quotation',exact:true}).click();
+     await page.waitForURL(url=>url.searchParams.get('googlePlaceId')==='ChIJ_rfq_fixture');
+     await page.getByRole('button',{name:'Submit Quotation Request',exact:true}).waitFor();
+     await page.goBack();
+     await linked.getByTestId('nearby-place-order').click();
+     await page.waitForURL('**/new-order?plantId=fixture-plant-off-page');
+     await page.goBack();
+     const googlePlant=page.getByTestId('nearby-plant-google:ChIJ_review_fixture');
+     await googlePlant.getByRole('button',{name:'Plant Profile',exact:true}).click();
+     await page.getByRole('button',{name:'Close details',exact:true}).waitFor();
+     await page.getByRole('button',{name:'Close details',exact:true}).click();
+     await googlePlant.getByTestId('nearby-place-order').click();
+     await page.getByRole('textbox',{name:'Required Quantity (m³)',exact:true}).fill('6.5');
+     await page.getByRole('textbox',{name:'Delivery Site Address',exact:true}).fill('Sector 18, Panvel');
+     await page.getByRole('button',{name:'Submit Order Request',exact:true}).click();
+     await page.getByText('Order request sent',{exact:true}).waitFor();
+     assert.equal(reviewSubmission.google_place_id,'ChIJ_review_fixture');
+     assert.equal(reviewSubmission.plant_id,null);
+     assert.equal(reviewSubmission.share_with_supplier,undefined);
+     await page.getByRole('button',{name:'View My Orders',exact:true}).click();
+     await page.getByText('Requests Awaiting Review',{exact:true}).waitFor();
+     await page.getByText('Reference admin-review-fixture',{exact:true}).waitFor();
+     console.log('PASS 320px '+theme+' enlarged labels, header Support and matte RFQ calendar');
+   }
  }
  await page.close();
  }

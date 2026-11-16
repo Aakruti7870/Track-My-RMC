@@ -26,6 +26,18 @@ jobs:
         run: npm ci
       - name: Type Check
         run: npm run typecheck
+      - name: Lint frontend JSX and hooks
+        run: npm run lint
+      - name: Shared UI, responsive controls and consent-sheet regressions
+        run: node --test scripts/test-uiux-foundation.cjs
+      - name: Inventory all Expo routes and shared UI patterns
+        run: node scripts/audit-ui-elements.cjs --json > uiux-audit.json
+      - name: Upload screen-by-screen UI/UX audit inventory
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uiux-screen-inventory
+          path: frontend/uiux-audit.json
       - name: Permission consent race and notification registration regressions
         run: node --test scripts/test-permission-consent.cjs
       - name: Validate custom operational notification sound assets and channels
@@ -58,7 +70,7 @@ jobs:
         run: npm run check:modules
       - name: Validate unique owner/staff module placement and responsive card sizes
         run: node scripts/test-owner-staff-module-layout.cjs
-      - name: Validate every uploaded vector symbol and role assignment
+      - name: Validate supplied vector artwork and role assignments
         run: npm run check:vector-symbols
       - name: Enforce one font family across the Expo application
         run: npm run check:single-font
@@ -91,10 +103,18 @@ jobs:
           python3 -m http.server 8765 --directory dist > /tmp/home-preview-server.log 2>&1 &
           SERVER_PID=$!
           trap 'kill "$SERVER_PID"' EXIT
+          node scripts/test-order-form-browser.cjs
           node scripts/test-home-tracking-browser.cjs
           node scripts/test-customer-header-browser.cjs
           node scripts/test-owner-dashboard-browser.cjs
           node scripts/test-staff-dashboard-browser.cjs
+          node scripts/test-driver-trips-browser.cjs
+      - name: Upload customer order form previews
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: order-form-responsive-previews
+          path: frontend/order-previews/
       - name: Upload tracking layout previews
         if: always()
         uses: actions/upload-artifact@v4

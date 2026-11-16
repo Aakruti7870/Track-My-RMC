@@ -2,12 +2,15 @@ import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, TextInput, View, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { apiErrorDetail, apiGet, apiPost, apiPut, apiUploadCertificate } from "@/src/api/client";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
+import { apiErrorDetail, apiGet, apiPost, apiPut, apiUploadCertificate, isApiError } from "@/src/api/client";
 import { useAuth } from "@/src/auth/AuthContext";
+import { useGet } from "@/src/hooks/useApi";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { ThemedScreen } from "@/src/components/ThemedScreen";
 import { AppText } from "@/src/components/ui/AppText";
+import { Button } from "@/src/components/ui/Button";
+import { IconTile } from "@/src/components/IconTile";
 
 const CARDS = [
   { key:"identification", title:"Plant Identification", icon:"location-outline" },
@@ -31,7 +34,7 @@ function Unavailable({colors}) {
     <Ionicons name="information-circle-outline" size={42} color={colors.brand}/>
     <AppText style={{fontWeight:"700",fontSize:17,textAlign:"center"}}>Plant Profile Update in Progress</AppText>
     <AppText variant="caption" style={{textAlign:"center",lineHeight:22}}>We apologize for the inconvenience.
-      This plant's information is being updated. Verified details will be available here shortly.</AppText>
+      This plant&apos;s information is being updated. Verified details will be available here shortly.</AppText>
   </View>;
 }
 function DetailRows({details,colors,draft=false}) {
@@ -65,11 +68,45 @@ function chooseWebFile() {
   });
 }
 export default function PlantProfile() {
+  const {plantId:rawId,assigned}=useLocalSearchParams();
+  if(assigned==="1")return <AssignedPlantProfile />;
+  return <PlantProfileDetails explicitId={Array.isArray(rawId)?rawId[0]:rawId} />;
+}
+
+function AssignedPlantProfile() {
   const router=useRouter();
-  const {plantId:rawId}=useLocalSearchParams();
+  const {token,hydrating}=useAuth();
+  const {colors}=useTheme();
+  const {data,loading,error,reload}=useGet("/master/my-plants");
+  const [selectedId,setSelectedId]=useState(null);
+  const plants=data?.plants??[];
+  const activeId=plants.length===1?plants[0].id:plants.find(plant=>plant.id===selectedId)?.id;
+  const goBack=()=>{
+    if(selectedId)setSelectedId(null);
+    else if(router.canGoBack())router.back();
+    else router.replace("/");
+  };
+  if(hydrating)return null;
+  if(!token)return <Redirect href="/login" />;
+  if(activeId)return <PlantProfileDetails key={activeId} explicitId={activeId} assigned onBack={goBack} />;
+  return <ThemedScreen><ScrollView contentContainerStyle={{width:"100%",maxWidth:620,alignSelf:"center",padding:16,gap:12}}>
+    <Button label="Back" variant="ghost" onPress={goBack} fullWidth={false} />
+    <AppText variant="heading" accessibilityRole="header">Plant Profile</AppText>
+    {loading?<ActivityIndicator color={colors.brand}/>:error?<>
+      <AppText color={colors.error}>{error}</AppText>
+      <Button label="Retry" variant="outline" onPress={reload} />
+    </>:plants.length?<>
+      <AppText>Choose a plant</AppText>
+      {plants.map(plant=><Button key={plant.id} label={plant.city?plant.name+" · "+plant.city:plant.name}
+        variant="outline" onPress={()=>setSelectedId(plant.id)} />)}
+    </>:<AppText>No active plant is assigned to your account.</AppText>}
+  </ScrollView></ThemedScreen>;
+}
+
+function PlantProfileDetails({explicitId,assigned=false,onBack}) {
+  const router=useRouter();
   const {token,user}=useAuth();
   const {colors}=useTheme();
-  const explicitId=Array.isArray(rawId)?rawId[0]:rawId;
   const [selectedPlant,setSelectedPlant]=useState(null);
   const plantId=explicitId||user?.plant_id||selectedPlant;
   const [publicData,setPublicData]=useState(null);
@@ -97,11 +134,16 @@ export default function PlantProfile() {
     setLoading(true);setError(null);
     try {
       const published=await apiGet("/plant-profile/"+plantId,token);
-      const editable=await apiGet("/plant-profile/"+plantId+"/editor",token).catch(()=>null);
-      setPublicData(published);setEditor(editable);
+      setPublicData(published);
+      setEditor(null);
+      try {
+        setEditor(await apiGet("/plant-profile/"+plantId+"/editor",token));
+      } catch(e) {
+        if(assigned&&(!isApiError(e)||e.status!==403))throw e;
+      }
     } catch(e){setError(apiErrorDetail(e,"Could not load this plant profile"));}
     finally{setLoading(false);}
-  },[token,plantId]);
+  },[token,plantId,assigned]);
   useEffect(()=>{void refresh();},[refresh]);
   const editableSection=editor?.sections?.find(s=>s.key===selected);
   const publicSection=publicData?.sections?.find(s=>s.key===selected);
@@ -160,7 +202,7 @@ export default function PlantProfile() {
   const docs=publicData?.documents||[];
   return <ThemedScreen><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{
     width:"100%",maxWidth:860,alignSelf:"center",padding:16,paddingBottom:130,gap:14}}>
-    <Pressable accessibilityRole="button" onPress={()=>selected?setSelected(null):router.back()}
+    <Pressable accessibilityRole="button" onPress={()=>selected?setSelected(null):onBack?onBack():router.back()}
       style={{minHeight:44,flexDirection:"row",alignItems:"center",gap:8}}>
       <Ionicons name="arrow-back" color={colors.onSurface} size={22}/>
       <AppText style={{fontWeight:"700",fontSize:16}}>{selected?"Plant Profile":"Back"}</AppText>
@@ -177,13 +219,14 @@ export default function PlantProfile() {
     </View>}
     {!loading&&!publicData&&!error&&<Unavailable colors={colors}/>}
     {!selected&&publicData&&<>
+      {assigned&&!loading&&!editor&&!error&&<AppText variant="bodyMuted">Contact your Plant Owner to request editing access.</AppText>}
       <View onLayout={event=>setGridWidth(event.nativeEvent.layout.width)}
         style={{flexDirection:"row",justifyContent:"space-between",flexWrap:"wrap",rowGap:8}}>
         {CARDS.map(card=><Pressable key={card.key} testID={"plant-profile-"+card.key}
           accessibilityRole="button" accessibilityLabel={card.title} onPress={()=>selectSection(card.key)}
           style={{width:columns===3?"32%":"49%",minHeight:108,backgroundColor:colors.surfaceSecondary,
             borderColor:colors.border,borderWidth:1,borderRadius:15,justifyContent:"center",alignItems:"center",gap:8,padding:8}}>
-          <Ionicons name={card.icon} color={colors.brand} size={33}/>
+          {assigned?<IconTile icon={card.icon}/>:<Ionicons name={card.icon} color={colors.brand} size={33}/>}
           <AppText numberOfLines={3} style={{fontSize:12,lineHeight:17,fontWeight:"700",textAlign:"center"}}>{card.title}</AppText>
         </Pressable>)}
       </View>

@@ -70,6 +70,17 @@ pub async fn get_me(
             .collect::<Vec<_>>()
             .join(" "),
     };
+    let needs_kyc_name = user_resp.role == "customer"
+        && profile
+            .as_ref()
+            .is_some_and(|profile| profile.needs_kyc_name);
+    let kyc_attempt_status = if user_resp.role == "customer"
+        && user_resp.kyc_status.eq_ignore_ascii_case("unverified")
+    {
+        crate::routes::digilocker_kyc::customer_attempt_status(&state.db, auth_user.user_id).await?
+    } else {
+        None
+    };
     Ok(Json(json!({
         "success": true,
         "id":user_resp.id,
@@ -84,6 +95,8 @@ pub async fn get_me(
         "status":"active",
         "kyc_status":if user_resp.kyc_status.eq_ignore_ascii_case("unverified") {"NOT_STARTED".to_string()} else {user_resp.kyc_status.to_uppercase()},
         "verified_name":if user_resp.role == "customer" && user_resp.kyc_status.eq_ignore_ascii_case("verified") {user_resp.verified_name.clone()} else {None},
+        "needs_kyc_name":needs_kyc_name,
+        "kyc_attempt_status":kyc_attempt_status,
         "mfa_enabled":mfa_enabled,
         "mfa_configured":!review_fixture,
         "passkey_enabled":false,

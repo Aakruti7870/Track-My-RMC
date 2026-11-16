@@ -1,7 +1,10 @@
+import { screenOverflow } from "@/src/theme/sceneBackground";
 import React from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { HomeModuleSection, HomeSectionHeader } from "@/src/components/HomeModuleSection";
+import { modulesForRole } from "@/src/navigation/moduleCatalog";
 import { OperationalHomeTopBar } from "@/src/components/OperationalHomeTopBar";
 
 import { useAuth } from "@/src/auth/AuthContext";
@@ -13,8 +16,9 @@ import { Badge } from "@/src/components/ui/Badge";
 import { Skeleton } from "@/src/components/ui/Skeleton";
 import { ErrorView } from "@/src/components/StateViews";
 import { DriverIdentityCard } from "@/src/components/DriverIdentityCard";
+import { PlantHomeActions, PlantHomeHero } from "@/src/components/PlantHomeCards";
 import { fonts, fontSize, radius, spacing, operationalStatus } from "@/src/theme/tokens";
-import { VectorSymbol } from "@/src/components/VectorSymbol";
+import { IconTile } from "@/src/components/IconTile";
 
 type Trip = { id: string; order_number: string; status: string; grade: string; quantity: number; tm_number: string; site_name: string };
 type Home = { name: string; vehicle: string | null; active_trip: Trip | null; completed_today: number; checked_in: boolean };
@@ -43,21 +47,34 @@ export default function DriverHome() {
           ? "Start your shift"
           : "Attendance";
   const attendanceLabel = data?.checked_in ? "On Duty" : shiftComplete ? "Shift Done" : attendanceKnown ? "Check In" : "Attendance";
-  const attendanceIcon: keyof typeof Ionicons.glyphMap = data?.checked_in ? "checkmark-circle" : shiftComplete ? "checkmark-done" : "time-outline";
-  const attendanceColor = data?.checked_in || shiftComplete
-    ? operationalStatus("success", colors.isDark) : operationalStatus("warning", colors.isDark);
+  const driverModules = modulesForRole(user?.role);
+  const shortcutKeys = ["driver-trips", "driver-attendance", "shift-roster", "my-payslip"];
+  const quickModules = shortcutKeys.flatMap(key => driverModules.filter(module => module.key === key));
+  const driverTools = driverModules.filter(module => module.key === "workforce");
+  const plantCards = <View style={styles.plantCards}>
+    <PlantHomeHero label="Driver" testID="driver-home-plant-banner" />
+    <HomeModuleSection id="driver-quick-access" title="Quick Access" modules={quickModules} homeShortcut testIDPrefix="driver-shortcut-" />
+    <PlantHomeActions />
+  </View>;
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.surface }}>
+    <View style={{ flex: 1, backgroundColor: colors.surface, overflow: screenOverflow }}>
       <OperationalHomeTopBar />
       {error && !data ? (
-        <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}><ErrorView message={error} onRetry={reload} /></ScrollView>
+        <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}>
+          <DriverIdentityCard />
+          {plantCards}
+          <ErrorView message={error} onRetry={reload} />
+        </ScrollView>
       ) : (
         <ScrollView
+          testID="driver-home-scroll"
           contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120, gap: spacing.lg }}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={false} onRefresh={() => { void refetch(); void refetchAttendance(); }} tintColor={colors.brand} />}
         >
+          <DriverIdentityCard />
+          {plantCards}
           {(loading && !data) || (attendanceLoading && !attendance) ? (
             <>
               <Skeleton height={70} style={{ borderRadius: radius.md }} />
@@ -65,7 +82,6 @@ export default function DriverHome() {
             </>
           ) : data ? (
             <>
-              <DriverIdentityCard />
               <AppText variant="heading">Smart Features</AppText>
               <Card variant="brand" style={styles.summary} testID="driver-home-summary">
                 <View style={{ flex: 1, gap: spacing.xs }}>
@@ -91,7 +107,7 @@ export default function DriverHome() {
               </Card>
               <View style={{ flexDirection: "row", gap: spacing.sm }}>
                 <Pressable onPress={() => router.push("/driver/shift-attendance")} style={[styles.stat, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-                  <VectorSymbol name="driver-attendance" size={28} />
+                  <IconTile symbol="driver-attendance" width={38} />
                   <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.sm, color: colors.onSurface }}>{attendanceLabel}</AppText>
                 </Pressable>
                 <View style={[styles.stat, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
@@ -99,7 +115,7 @@ export default function DriverHome() {
                   <AppText variant="caption">Delivered today</AppText>
                 </View>
                 <View style={[styles.stat, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-                  <VectorSymbol name="transit-mixer-fleet" size={28} />
+                  <IconTile symbol="transit-mixer-fleet" width={38} />
                   <AppText style={{ fontFamily: fonts.semibold, fontSize: 12, color: colors.onSurface }} numberOfLines={1}>{data.vehicle || "—"}</AppText>
                 </View>
               </View>
@@ -117,13 +133,13 @@ export default function DriverHome() {
               ) : null}
 
 
-              <AppText variant="heading">Current Trip</AppText>
+              <HomeSectionHeader title="Current Trip" seeAll="/driver/trips" testID="home-see-all-driver-trips" />
               {data.active_trip ? (
                 <Pressable testID="active-trip-card" onPress={() => router.push(`/trip/${data.active_trip!.id}` as any)}>
                   <Card style={{ gap: spacing.md }}>
                     <View style={styles.rowBetween}>
                       <AppText style={{ fontFamily: fonts.bold, fontSize: fontSize.lg, color: colors.onSurface }}>{data.active_trip.order_number}</AppText>
-                      <Badge label={data.active_trip.status.replace(/_/g, " ")} status={data.active_trip.status} />
+                      <Badge label={data.active_trip.status.replace(/_/g, " ")} status={data.active_trip.status} orderStatus />
                     </View>
                     <AppText variant="caption">{data.active_trip.grade} · {data.active_trip.quantity} m³ · {data.active_trip.tm_number}</AppText>
                     <View style={styles.siteRow}>
@@ -142,6 +158,8 @@ export default function DriverHome() {
                   <AppText variant="bodyMuted">No active trip. Enjoy the break!</AppText>
                 </Card>
               )}
+              <HomeModuleSection id="driver-workforce" title="Workforce" modules={driverTools}
+                seeAll={{ pathname: "/role-modules", params: { category: "Workforce" } }} />
             </>
           ) : null}
         </ScrollView>
@@ -151,6 +169,7 @@ export default function DriverHome() {
 }
 
 const styles = StyleSheet.create({
+  plantCards: { width: "100%", maxWidth: 620, alignSelf: "center", gap: 10 },
   header: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.md, paddingTop: spacing.sm },
   iconBtn: { width: 44, height: 44, borderRadius: radius.md, alignItems: "center", justifyContent: "center", borderWidth: 1 },
   summary: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 108 },

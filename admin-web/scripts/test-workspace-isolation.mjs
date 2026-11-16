@@ -19,12 +19,13 @@ try {
   assert(ready,'Preview unavailable: '+logs);
   browser=await chromium.launch({headless:true,...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE?{executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE}:{})});
   for(const [width,blockedStorage,failedLogout] of [[390,true,true],[1440,false,false]]){
-    const context=await browser.newContext({viewport:{width,height:1000}});
+    const context=await browser.newContext({viewport:{width,height:1000},reducedMotion:'reduce'});
     if(blockedStorage)await context.addInitScript(()=>{
       Object.defineProperty(window,'sessionStorage',{get(){throw new DOMException('Storage blocked','SecurityError');}});
     });
     const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
-    let plantFails=true,delayPlants=false,releasePlants,currentEmail='';
+    let plantFails=true,delayPlants=false,releasePlants,currentEmail='',rememberedEmail='';
+    const sessionPermissions=['user.view','plant.view','plant_owners.manage','order.view','support.manage'];
     const channels=[];const importedPhones=new Set();let importCalls=0;
     const consentByPhone=new Map();
     const campaigns=[{id:'synthetic-campaign',name:'Test Release Campaign',segment:'Regional Builders',
@@ -35,8 +36,18 @@ try {
       const reply=json=>route.fulfill({json});
       if(path.endsWith('/otp/send'))return reply({status:'EMAIL_OTP_SENT'});
       if(path.endsWith('/auth/login')){currentEmail=route.request().postDataJSON().email;return reply({challenge_token:'synthetic-challenge'});}
-      if(path.endsWith('/verify-totp'))return reply({token:'synthetic-token-'+currentEmail,user:{id:currentEmail,role:'central_admin',full_name:currentEmail}});
-      if(path.endsWith('/auth/me'))return reply({permissions:['user.view','plant.view','plant_owners.manage','order.view','support.manage']});
+      if(path.endsWith('/verify-totp'))return reply({token:'synthetic-token-'+currentEmail,user:{id:currentEmail,email:currentEmail,role:'central_admin',full_name:'Fixture Support Account'}});
+      if(path.endsWith('/auth/session/remember')) {
+        assert.equal(route.request().headers().authorization,'Bearer synthetic-token-'+currentEmail);
+        rememberedEmail=currentEmail;
+        return reply({success:true});
+      }
+      if(path.endsWith('/auth/session')) {
+        if(!rememberedEmail)return route.fulfill({status:401,json:{message:'Sign in to continue'}});
+        return reply({token:'synthetic-token-'+rememberedEmail,user:{id:rememberedEmail,email:rememberedEmail,role:'central_admin'},permissions:sessionPermissions});
+      }
+      if(path.endsWith('/auth/me'))return reply({permissions:sessionPermissions});
+      if(path==='/api/control-center/capabilities')return reply({permissions:sessionPermissions});
       if(path.endsWith('/summary'))return reply({kpis:[{label:'Onboarding Requests',value:1}]});
       if(path==='/api/control-center/whatsapp/stats')return reply({counts:{conversations:0,unread:0,incoming_today:0},replies_enabled:false});
       if(path==='/api/control-center/whatsapp/chats')return reply({threads:[]});
@@ -115,30 +126,105 @@ try {
           owner_name:'New Applicant',business_name:'Registration Test Concrete',
           business_address:'Test Road Panvel',email:'new@example.invalid',
           whatsapp_number:'919876543210',status:'PENDING',alert_status:'ACCEPTED'}]});
-      if(path.endsWith('/auth/logout'))return route.fulfill(failedLogout?{status:503,json:{message:'Synthetic availability failure'}}:{json:{success:true}});
+      if(path.endsWith('/auth/logout')){
+        if(!failedLogout)rememberedEmail='';
+        return route.fulfill(failedLogout?{status:503,json:{message:'Synthetic availability failure'}}:{json:{success:true}});
+      }
       throw Error('Unexpected API path: '+path);
     });
     const button=name=>page.getByRole('button',{name,exact:true});
     const adminNav=name=>page.getByRole('navigation',{name:'Control Center sections'})
       .getByRole('button',{name:new RegExp('^'+name+'\\b')});
+    const checkViewportFit=()=>page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth);
     const signIn=async email=>{
       await page.getByLabel('Approved administrator email').fill(email);
       await button('Send email verification code').click();
+      await page.locator('.tm-signin-steps [aria-current="step"]').filter({hasText:'Email code'}).waitFor();
       await page.getByLabel('Email verification code',{exact:true}).fill('123456');await button('Verify email code').click();
+      await page.locator('.tm-signin-steps [aria-current="step"]').filter({hasText:'Authenticator'}).waitFor();
       await page.getByLabel('Authenticator code',{exact:true}).fill('123456');await button('Verify authenticator and sign in').click();
       await page.getByRole('heading',{name:'Command Center',exact:true}).waitFor();
+      if (width === 390) {
+        const currentNav = page.locator('.tm-sidebar nav [aria-current="page"]');
+        const appearance = await currentNav.evaluate(el => ({
+          height: el.getBoundingClientRect().height,
+          color: getComputedStyle(el).color,
+          background: getComputedStyle(el).backgroundColor,
+          gradient: getComputedStyle(el).backgroundImage,
+        }));
+        assert(appearance.height >= 48, 'Mobile Admin navigation must retain a 48px target');
+        assert.equal(appearance.gradient, 'none', 'Selected navigation uses a flat surface');
+        assert.notEqual(appearance.color, appearance.background, 'Selected navigation label must remain visible');
+      }
     };
-    await page.goto(origin+'/admin/');await signIn('first@example.invalid');
+    await page.goto(origin+'/admin/');
+    if(width===390)await page.setViewportSize({width:320,height:700});
+    await page.getByRole('heading',{name:'Central Admin sign in',exact:true}).waitFor();
+    await button('Switch to light theme').click();
+    assert.equal(await page.locator('main').evaluate(el=>getComputedStyle(el).colorScheme),'light');
+    assert.equal(await checkViewportFit(),true,'Light sign-in fits the viewport');
+    await button('Switch to dark theme').click();
+    assert.equal(await page.locator('main').evaluate(el=>getComputedStyle(el).colorScheme),'dark');
+    assert.equal(await checkViewportFit(),true,'Dark sign-in fits the viewport');
+    await page.setViewportSize({width,height:1000});
+    await signIn('first@example.invalid');
+    assert.equal(await page.getByText('Signed in as',{exact:true}).count(),0,'Dashboard omits account identity');
+    assert.equal(await page.getByText('Fixture Support Account',{exact:true}).count(),0,'Dashboard omits account name');
+    await adminNav('Account').click();
+    await page.getByRole('region',{name:'Account details',exact:true}).getByText('Fixture Support Account',{exact:true}).waitFor();
+    await page.getByText('One-hour web session with authenticator verification',{exact:true}).waitFor();
+    await button('Manage sessions').click();
+    await page.waitForURL(url=>url.hash==='#/admin/sessions');
+    await adminNav('Account').click();
+    await page.reload();
+    await page.getByRole('region',{name:'Account details',exact:true}).getByText('first@example.invalid',{exact:true}).waitFor();
+    assert.equal(await adminNav('Account').getAttribute('aria-current'),'page','Account route survives session restoration');
     const officialLogo=page.locator('img[alt="TrackMyRMC official logo"]').first();
     await officialLogo.waitFor();
     assert.equal(await officialLogo.evaluate(img=>img.complete&&img.naturalWidth>0),true,'official repository logo must render');
     await adminNav('Dashboard').click();
     await page.getByLabel('Dashboard module cards').waitFor();
     assert.match(await page.locator('main').getAttribute('class')||'',/tm-dark/,'graphite theme should be the default');
+    const workspace = button('Open Plant Master');
+    await page.mouse.move(0, 0);
+    const visual = await workspace.evaluate(el => ({
+      width: el.getBoundingClientRect().width,
+      right: el.getBoundingClientRect().right,
+      gradient: getComputedStyle(el).backgroundImage,
+      blur: getComputedStyle(el).backdropFilter,
+      surface: getComputedStyle(el).backgroundColor,
+      icon: el.querySelector('svg')?.getAttribute('width'),
+    }));
+    assert(visual.width > 0 && visual.right <= width + 1, 'Workspace rows fit the viewport');
+    assert.equal(visual.gradient, 'none', 'Workspace rows use a flat surface');
+    assert.equal(visual.blur, 'none', 'Workspace rows do not blur their backdrop');
+    assert.equal(visual.surface, 'rgb(18, 18, 18)', 'Workspace rows use opaque graphite');
+    assert.equal(visual.icon, '20', 'Workspace icons use a consistent small size');
+    await workspace.click();
+    assert.equal(await adminNav('Plant Master').getAttribute('aria-current'), 'page');
     await adminNav('Settings').click();
     await button('Light').click();
     assert.match(await page.locator('main').getAttribute('class')||'',/tm-light/,'light theme should use warm app tokens');
-    await button('Dark').click();
+    await adminNav('Dashboard').click();
+    assert.equal(await workspace.evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(250, 249, 245)','Light workspace cards use a light surface');
+    await adminNav('Plant Master').click();
+    await adminNav('Settings').click();
+    for (const mode of ['Light','Dark']) {
+      await button(mode).click();
+      const selected=await button(mode).evaluate(el=>{
+        const {color,backgroundColor}=getComputedStyle(el);
+        return [color,backgroundColor];
+      });
+      assert.deepEqual(selected,['rgb(7, 8, 13)', mode === 'Light' ? 'rgb(255, 130, 1)' : 'rgb(255, 120, 0)'],'selected theme uses readable graphite on orange');
+    }
+    await page.reload();
+    await page.getByRole('heading',{name:'Command Center',exact:true}).waitFor();
+    assert.equal(await adminNav('Settings').getAttribute('aria-current'),'page');
+    await page.goBack();
+    await page.waitForURL(url=>url.hash==='#/admin/plants');
+    await page.waitForFunction(()=>document.querySelector('.tm-sidebar [aria-current="page"]')?.textContent?.trim()==='Plant Master');
+    await button('Back to dashboard').click();
+    await page.waitForURL(url=>url.hash==='#/admin/dashboard');
     await adminNav('Chats').click();
     await page.getByText('No incoming WhatsApp conversations recorded.').waitFor();
     assert.equal(await page.getByRole('button',{name:'Send WhatsApp reply'}).count(),0,'WhatsApp sending must remain gated off');
@@ -214,7 +300,10 @@ try {
     await page.getByLabel('Fresh authenticator code',{exact:true}).fill('123456');
     await button('Sign out').click();await page.getByRole('heading',{name:'Central Admin sign in',exact:true}).waitFor();
     await page.getByText(failedLogout?'Signed out locally. Server revocation could not be confirmed; the session expires automatically.':'Signed out and server session revoked.',{exact:true}).waitFor();
-    assert.equal(await page.getByLabel('Approved administrator email').inputValue(),'');await signIn('second@example.invalid');
+    await page.reload();
+    await page.getByRole('heading',{name:'Central Admin sign in',exact:true}).waitFor();
+    assert.equal(await page.getByLabel('Approved administrator email').inputValue(),'');
+    await signIn('second@example.invalid');
     assert.equal(await page.getByLabel('Plant Owner access controls').count(),0);
     assert.equal(await page.getByText('Previous account plant · TEST-001',{exact:true}).count(),0);
     assert.equal(await page.getByText('Test Supervisor',{exact:true}).count(),0);

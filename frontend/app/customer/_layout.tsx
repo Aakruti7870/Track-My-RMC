@@ -1,5 +1,5 @@
 import React from "react";
-import { Redirect, Tabs } from "expo-router";
+import { Redirect, Tabs, useRouter } from "expo-router";
 
 import { useAuth } from "@/src/auth/AuthContext";
 import { GlassTabBar, TabDef } from "@/src/components/GlassTabBar";
@@ -17,6 +17,7 @@ const TABS: TabDef[] = [
 export default function CustomerLayout() {
   const { hydrating, token, user } = useAuth();
   const { ready } = usePermissions();
+  const router = useRouter();
   const { colors } = useTheme();
   if (hydrating) return null;
   if (!token || !user) return <Redirect href="/login" />;
@@ -24,7 +25,7 @@ export default function CustomerLayout() {
   if (!ready) return null;
 
   return (
-    <Tabs backBehavior="history" screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: getThemedCanvasColor(colors) } }} tabBar={(props) => <GlassTabBar {...props} tabs={TABS} centerLabel="New" />}>
+    <Tabs backBehavior="history" screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: getThemedCanvasColor(colors) } }} tabBar={(props) => <GlassTabBar {...props} tabs={TABS} centerLabel="New" onCenterPress={() => router.push("/new-order")} />}>
       {TABS.map((tab) => (
         <Tabs.Screen key={tab.name} name={tab.name} />
       ))}

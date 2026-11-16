@@ -12,6 +12,7 @@ import { useFonts } from "expo-font";
 import "@/src/location/tripTracking";
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { ThemeProvider, useTheme } from "@/src/theme/ThemeProvider";
+import { MaterialProvider } from "@/src/theme/MaterialProvider";
 import { AuthProvider } from "@/src/auth/AuthContext";
 import { ToastProvider } from "@/src/components/ui/Toast";
 import { PushNotificationBridge } from "@/src/notifications/PushNotificationBridge";
@@ -25,11 +26,11 @@ import { RootBackHandler } from "@/src/navigation/RootBackHandler";
 void SplashScreen.preventAutoHideAsync();
 
 function ThemedNavigator() {
-  const { colors } = useTheme();
+  const { colors, reduceMotion } = useTheme();
   return (
-    <View style={[styles.appCanvas, { backgroundColor: colors.isDark ? "#0E1116" : "#F7F8F9" }]}>
+    <View style={[styles.appCanvas, { backgroundColor: colors.canvas }]}>
       {/* Opaque route scenes prevent previous pages from showing behind new pages. */}
-      <Stack screenOptions={{ headerShown: false, animation: "fade", contentStyle: getThemedSceneStyle(colors) }} />
+      <Stack screenOptions={{ headerShown: false, animation: reduceMotion ? "none" : "fade", contentStyle: getThemedSceneStyle(colors) }} />
     </View>
   );
 }
@@ -68,17 +69,19 @@ export default function RootLayout() {
         <SafeAreaProvider>
           <KeyboardProvider>
             <ThemeProvider onReady={handleThemeReady}>
-              <AuthProvider>
-                <ToastProvider>
-                  <PushNotificationBridge />
-                  <BackgroundLocationConsentProvider />
-                  <PermissionProvider>
-                    <RootBackHandler />
-                    <ThemedNavigator />
-                    <SupportWidgetBridge />
-                  </PermissionProvider>
-                </ToastProvider>
-              </AuthProvider>
+              <MaterialProvider>
+                <AuthProvider>
+                  <ToastProvider>
+                    <PushNotificationBridge />
+                    <BackgroundLocationConsentProvider />
+                    <PermissionProvider>
+                      <RootBackHandler />
+                      <ThemedNavigator />
+                      <SupportWidgetBridge />
+                    </PermissionProvider>
+                  </ToastProvider>
+                </AuthProvider>
+              </MaterialProvider>
             </ThemeProvider>
           </KeyboardProvider>
         </SafeAreaProvider>

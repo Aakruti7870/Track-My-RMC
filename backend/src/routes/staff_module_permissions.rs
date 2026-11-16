@@ -6,7 +6,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sqlx::{PgPool, Row};
+use sqlx::{PgConnection, PgPool, Row};
 use uuid::Uuid;
 
 pub const KEYS: [&str; 6] = [
@@ -289,7 +289,11 @@ async fn owned_plant(state: &AppState, owner: &AuthUser, plant_id: Uuid) -> Resu
     }
     Ok(())
 }
-async fn active_staff_role(db: &PgPool, plant: Uuid, user: Uuid) -> Result<String, AppError> {
+async fn active_staff_role<'e>(
+    db: impl sqlx::PgExecutor<'e>,
+    plant: Uuid,
+    user: Uuid,
+) -> Result<String, AppError> {
     let role: Option<String> = sqlx::query_scalar(
         "SELECT ps.role FROM plant_staff ps JOIN users u ON u.id=ps.user_id \
          JOIN rmc_plants p ON p.id=ps.plant_id \
@@ -373,13 +377,14 @@ pub async fn require(
         // Plant owner privileges must never escape the owner's active plant.
         return owned_plant(state, user, plant).await;
     }
-    require_staff_permission(&state.db, user, plant, module, action).await
+    let mut db = state.db.acquire().await?;
+    require_staff_permission(&mut db, user, plant, module, action).await
 }
 
 // Checks the active role and effective, owner-delegated module grant against the
 // requested plant. Shared by API enforcement and database-backed regressions.
-async fn require_staff_permission(
-    db: &PgPool,
+pub(crate) async fn require_staff_permission(
+    db: &mut PgConnection,
     user: &AuthUser,
     plant: Uuid,
     module: &str,
@@ -392,13 +397,13 @@ async fn require_staff_permission(
     }
     let ceiling = role_ceiling(&user.role, module)
         .ok_or_else(|| AppError::Forbidden("Unknown module permission".into()))?;
-    let active_role = active_staff_role(db, plant, user.user_id).await?;
+    let active_role = active_staff_role(&mut *db, plant, user.user_id).await?;
     if active_role != user.role {
         return Err(AppError::Forbidden("Assigned plant role mismatch".into()));
     }
     let row: Option<(bool, bool, bool, bool, bool)> = sqlx::query_as(
         "SELECT can_view,can_edit,can_approve,can_create,can_export FROM plant_staff_module_permissions \
-         WHERE plant_id=$1 AND user_id=$2 AND module_key=$3",
+         WHERE plant_id=$1 AND user_id=$2 AND module_key=$3 FOR SHARE",
     )
     .bind(plant)
     .bind(user.user_id)
@@ -704,7 +709,8 @@ mod tests {
     }
 
     async fn quality_allowed(db: &PgPool, actor: &AuthUser, plant: Uuid, action: Action) -> bool {
-        require_staff_permission(db, actor, plant, "quality_register", action)
+        let mut connection = db.acquire().await.unwrap();
+        require_staff_permission(&mut connection, actor, plant, "quality_register", action)
             .await
             .is_ok()
     }

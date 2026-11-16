@@ -39,40 +39,34 @@ pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<User>, AppErro
     Ok(user)
 }
 
-pub async fn create_user(
+pub(crate) const CUSTOMER_SIGNUP_NAME: &str = "RMC Customer";
+
+pub async fn create_whatsapp_customer(
     pool: &PgPool,
     phone: &str,
-    email: Option<&str>,
     hashed_password: &str,
-    full_name: &str,
-    role: &str,
-    business_name: Option<&str>,
 ) -> Result<User, AppError> {
     let mut tx = pool.begin().await?;
 
     let user = sqlx::query_as::<_, User>(
         r#"
         INSERT INTO users (phone, email, hashed_password, full_name, role)
-        VALUES ($1, $2, $3, $4, $5)
+        VALUES ($1, NULL, $2, $3, 'customer')
         RETURNING id, phone, email, hashed_password, full_name, role, is_active, is_verified, created_at, updated_at
         "#,
     )
     .bind(phone)
-    .bind(email)
     .bind(hashed_password)
-    .bind(full_name)
-    .bind(role)
+    .bind(CUSTOMER_SIGNUP_NAME)
     .fetch_one(&mut *tx)
     .await?;
 
     sqlx::query(
         r#"
-        INSERT INTO user_profiles (user_id, business_name, kyc_status)
-        VALUES ($1, $2, 'unverified')
+        INSERT INTO user_profiles (user_id, needs_kyc_name) VALUES ($1, TRUE)
         "#,
     )
     .bind(user.id)
-    .bind(business_name)
     .execute(&mut *tx)
     .await?;
 
@@ -86,7 +80,7 @@ pub async fn get_user_profile(
 ) -> Result<Option<UserProfile>, AppError> {
     let profile = sqlx::query_as::<_, UserProfile>(
         r#"
-        SELECT id, user_id, business_name, gst_number, kyc_status, verified_name, address_line, city, state, pincode, created_at, updated_at
+        SELECT id, user_id, business_name, gst_number, kyc_status, verified_name, needs_kyc_name, address_line, city, state, pincode, created_at, updated_at
         FROM user_profiles
         WHERE user_id = $1
         "#,

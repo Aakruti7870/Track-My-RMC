@@ -11,6 +11,7 @@ import { useTheme } from "@/src/theme/ThemeProvider";
 import { StaffModuleDirectory } from "@/src/screens/StaffModuleDirectory";
 import { AppText } from "@/src/components/ui/AppText";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
+import { IconTile } from "@/src/components/IconTile";
 import { OperationalHomeTopBar } from "@/src/components/OperationalHomeTopBar";
 import { Card } from "@/src/components/ui/Card";
 import { Badge } from "@/src/components/ui/Badge";
@@ -69,7 +70,7 @@ export function StaffMore() {
             accessibilityLabel="Manage plant staff"
             onPress={() => router.push("/business/staff")}
             style={[styles.manage, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-            <VectorSymbol name="plant-staff" size={33} />
+            <IconTile symbol="plant-staff" width={38} />
             <View style={{ flex: 1 }}>
               <AppText variant="heading">Plant Manager · Staff Management</AppText>
               <AppText variant="caption">Manage assigned employees and their role permissions</AppText>
@@ -81,13 +82,13 @@ export function StaffMore() {
         {managerResources.drivers ? <Pressable accessibilityRole="button"
           onPress={() => router.push("/owner/drivers")}
           style={[styles.manage, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-          <VectorSymbol name="drivers" size={33} />
+          <IconTile symbol="drivers" width={38} />
           <AppText variant="heading">Manage delegated Drivers</AppText>
         </Pressable> : null}
         {managerResources.permissions ? <Pressable accessibilityRole="button"
           onPress={() => router.push("/staff-module-access")}
           style={[styles.manage, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-          <VectorSymbol name="permission-settings" size={33} />
+          <IconTile symbol="permission-settings" width={38} />
           <AppText variant="heading">Manage delegated permissions</AppText>
         </Pressable> : null}
         <StaffModuleDirectory role={user?.role} title="Other modules" scope="more" searchable />
@@ -95,7 +96,7 @@ export function StaffMore() {
         <Pressable testID="staff-permission-settings" accessibilityRole="button" accessibilityLabel="App permissions"
           onPress={() => router.push("/permission-settings")}
           style={[styles.manage, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-          <VectorSymbol name="permission-settings" size={33} />
+          <IconTile symbol="permission-settings" width={38} />
           <View style={{ flex: 1 }}>
             <AppText variant="heading">App permissions</AppText>
             <AppText variant="caption">Review Android location and notification access</AppText>
@@ -103,7 +104,7 @@ export function StaffMore() {
           <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceTertiary} />
         </Pressable>
 
-        <Pressable testID="logout-button" accessibilityRole="button" accessibilityLabel="Sign out of staff account" onPress={doLogout} style={[styles.logout, { backgroundColor: colors.isDark ? "#96352D" : "#B42318" }]}><VectorSymbol name="logout" size={24} /><AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: "#FFFFFF" }}>Sign out</AppText></Pressable>
+        <Pressable testID="logout-button" accessibilityRole="button" accessibilityLabel="Sign out of staff account" onPress={doLogout} style={[styles.logout, { backgroundColor: colors.isDark ? "#96352D" : "#B42318" }]}><VectorSymbol name="logout" size={20} color="#FFFFFF" /><AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: "#FFFFFF" }}>Sign out</AppText></Pressable>
         <AppText variant="caption" center>TrackMyRMC · v{appVersion} ({buildNumber})</AppText>
       </ScrollView>
     </View>

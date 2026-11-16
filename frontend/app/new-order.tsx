@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { apiDelete, apiGet, apiPost } from "@/src/api/client";
+import { apiDelete, apiPost } from "@/src/api/client";
+import { getPlaceDetails, predictPlaces, type PlacePrediction } from "@/src/api/places";
 import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { useToast } from "@/src/components/ui/Toast";
@@ -15,8 +16,9 @@ import { AppText } from "@/src/components/ui/AppText";
 import { Button } from "@/src/components/ui/Button";
 import { Card } from "@/src/components/ui/Card";
 import { Input } from "@/src/components/ui/Input";
+import { RadioChoice, radioKeyboardProps } from "@/src/components/ui/RadioChoice";
 import { PlantData } from "@/src/components/PlantCard";
-import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
+import { fonts, fontSize, layout, palette, radius, spacing } from "@/src/theme/tokens";
 
 const TIME_SLOTS = ["06:00", "08:00", "10:00", "12:00", "14:00", "16:00"];
 type DraftForm = {
@@ -25,6 +27,12 @@ type DraftForm = {
   payment_mode: string | null; quotation_id: string | null; site_id: string | null;
   lat: number | null; lng: number | null; pump_required: boolean;
 };
+type Submission = "order" | "draft" | "kyc" | "provisional";
+
+function acceptsOrders(plant: PlantData): boolean {
+  return plant.order_enabled ?? (plant.verified && plant.status === "active");
+}
+
 type SavedDraft = { id: string; form: DraftForm; updated_at: string; provisional_id?: string | null; provisional_order_id?: string | null; provisional_status?: string | null; plant_response?: string | null };
 const PAYMENT_MODES = [
   { value: "FULL_ADVANCE", label: "100% Advance", desc: "Pay in full after plant acceptance" },
@@ -45,7 +53,8 @@ function nextDays(n: number) {
   for (let i = 0; i < n; i++) {
     const d = new Date();
     d.setDate(d.getDate() + i);
-    const value = d.toISOString().slice(0, 10);
+    // Use a local calendar date; UTC conversion can move the day in India.
+    const value = [d.getFullYear(), String(d.getMonth() + 1).padStart(2, "0"), String(d.getDate()).padStart(2, "0")].join("-");
     const label = i === 0 ? "Today" : i === 1 ? "Tomorrow" : d.toLocaleDateString(undefined, { weekday: "short" });
     const sub = d.toLocaleDateString(undefined, { day: "2-digit", month: "short" });
     out.push({ value, label, sub });
@@ -62,13 +71,13 @@ export default function NewOrder() {
   const formOwner = useRef<string | null>(user?.id || null);
   if (!formOwner.current && user?.id) formOwner.current = user.id;
   const params = useLocalSearchParams<{ assistant?: string; draftId?: string; plantId?: string; quantity?: string; grade?: string; quotationId?: string; siteId?: string; siteName?: string; siteAddress?: string; deliveryDate?: string; deliveryTime?: string }>();
-  const { data: plantsData } = useGet<{ plants: PlantData[] }>("/customer/plants");
-  const { data: savedDraft, loading: loadingDraft, error: draftError } = useGet<SavedDraft>(
+  const { data: plantsData, loading: loadingPlants, error: plantsError, reload: reloadPlants } = useGet<{ plants: PlantData[] }>("/customer/plants");
+  const { data: savedDraft, loading: loadingDraft, error: draftError, reload: reloadDraft } = useGet<SavedDraft>(
     params.draftId ? `/customer/order-drafts/${encodeURIComponent(params.draftId)}` : null,
   );
 
   const days = useMemo(() => nextDays(7), []);
-  const [draftId, setDraftId] = useState<string | null>(params.draftId || null);
+  const draftId = useRef<string | null>(params.draftId || null);
   const [provisionalId, setProvisionalId] = useState<string | null>(null);
   const [provisionalStatus, setProvisionalStatus] = useState<string | null>(null);
   const [provisionalOrderId, setProvisionalOrderId] = useState<string | null>(null);
@@ -85,20 +94,22 @@ export default function NewOrder() {
   const [time, setTime] = useState<string | null>(params.deliveryTime || "10:00");
   const [siteName, setSiteName] = useState(params.siteName || "");
   const [address, setAddress] = useState(params.siteAddress || "");
-  const [contact, setContact] = useState(user?.verified_name || user?.name || "");
+  const [contact, setContact] = useState(user?.verified_name || (user?.needs_kyc_name ? "" : user?.name || ""));
   const [mobile, setMobile] = useState(user?.phone || "");
   const [notes, setNotes] = useState("");
   const [pumpRequired, setPumpRequired] = useState(false);
-  const [submitting, setSubmitting] = useState<null | "order" | "draft" | "kyc" | "provisional">(null);
+  const [submitting, setSubmitting] = useState<Submission | null>(null);
+  const submissionInFlight = useRef(false);
+  const [plantQuery, setPlantQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const assistantMode = params.assistant === "1";
   const orderRequest = useRef<{ signature: string; key: string } | null>(null);
   const [prepared, setPrepared] = useState<{ intent_token: string; summary: Record<string, unknown> } | null>(null);
 
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [suggestions, setSuggestions] = useState<{ place_id: string; text: string }[]>([]);
-  const sessionToken = useMemo(() => `rmc-${Date.now()}`, []);
-  const pickedRef = useRef(false);
+  const [suggestions, setSuggestions] = useState<PlacePrediction[]>([]);
+  const pickedAddress = useRef<string | null>(null);
+  const placeSelection = useRef(0);
   const restoredDraft = useRef<string | null>(null);
 
   useEffect(() => {
@@ -112,7 +123,7 @@ export default function NewOrder() {
     if (!savedDraft || restoredDraft.current === savedDraft.id) return;
     const f = savedDraft.form;
     restoredDraft.current = savedDraft.id;
-    setDraftId(savedDraft.id); setPlantId(f.plant_id); setGrade(f.grade); setQuantity(f.quantity);
+    draftId.current = savedDraft.id; setPlantId(f.plant_id); setGrade(f.grade); setQuantity(f.quantity);
     setDate(f.date); setTime(f.time); setSiteName(f.site_name); setAddress(f.address);
     setContact(f.contact); setMobile(f.mobile); setNotes(f.notes); setPaymentMode(f.payment_mode);
     setQuotationId(f.quotation_id); setSiteId(f.site_id); setPumpRequired(f.pump_required);
@@ -130,39 +141,83 @@ export default function NewOrder() {
     paymentMode, quotationId, siteId, pumpRequired, coords?.lat, coords?.lng]);
 
   useEffect(() => {
-    if (pickedRef.current) { pickedRef.current = false; return; }
+    if (pickedAddress.current === address) return;
     const q = address.trim();
-    if (q.length < 3) { setSuggestions([]); return; }
-    const t = setTimeout(async () => {
+    if (!token || q.length < 3) return;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
       try {
-        const res = await apiGet<{ configured: boolean; suggestions: { place_id: string; text: string }[] }>(
-          `/maps/autocomplete?input=${encodeURIComponent(q)}&session_token=${sessionToken}`, token!);
-        setSuggestions(res.configured ? res.suggestions : []);
+        const predictions = await predictPlaces(q, token, controller.signal);
+        if (!controller.signal.aborted && pickedAddress.current !== address) {
+          setSuggestions(predictions);
+        }
       } catch {
-        setSuggestions([]);
+        if (!controller.signal.aborted) setSuggestions([]);
       }
     }, 350);
-    return () => clearTimeout(t);
-  }, [address, token, sessionToken]);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [address, token]);
 
-  const pickPlace = async (place_id: string) => {
+  const changeAddress = (next: string) => {
+    placeSelection.current += 1;
+    pickedAddress.current = null;
+    setAddress(next);
+    setSuggestions([]);
+    setSiteId(null);
+    setCoords(null);
+  };
+
+  const pickPlace = async (placeId: string) => {
+    if (!token) return;
+    const selection = ++placeSelection.current;
     try {
-      const p = await apiGet<{ address: string; lat: number; lng: number }>(`/maps/place/${place_id}?session_token=${sessionToken}`, token!);
-      pickedRef.current = true;
+      const p = await getPlaceDetails(placeId, token);
+      if (selection !== placeSelection.current) return;
+      pickedAddress.current = p.address;
       setAddress(p.address);
       setSiteId(null);
       setCoords({ lat: p.lat, lng: p.lng });
       setSuggestions([]);
     } catch {
-      /* Manual address remains available when place details cannot be resolved. */
+      // The typed address remains available when place details cannot be resolved.
     }
   };
 
-  const plants = plantsData?.plants || [];
-  const selectedPlant = plants.find((p) => p.id === plantId) || null;
+  const plants = plantsData?.plants ?? [];
+  const selectedPlant = plants.find((p) => p.id === plantId);
+  const orderEnabled = selectedPlant ? acceptsOrders(selectedPlant) : false;
+  const orderablePlants = plants.filter(acceptsOrders);
+  const search = plantQuery.trim().toLowerCase();
+  const visiblePlants = orderablePlants.filter((plant) =>
+    !search || `${plant.name} ${plant.city ?? ""}`.toLowerCase().includes(search));
   const grades = selectedPlant?.grades || [];
   const kycOk = user?.kyc_status?.toUpperCase() === "VERIFIED";
   const verifiedCustomerName = kycOk ? user?.verified_name?.trim() : null;
+  const readySections = [
+    orderEnabled, Boolean(grade), Number.isFinite(Number(quantity)) && Number(quantity) > 0,
+    Boolean(date && time), Boolean(siteName.trim() && address.trim()), Boolean(paymentMode),
+  ];
+  const readyCount = readySections.filter(Boolean).length;
+  const goBack = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace("/customer");
+  };
+
+  const beginSubmission = (action: Submission) => {
+    if (submissionInFlight.current) return false;
+    submissionInFlight.current = true;
+    setSubmitting(action);
+    setError(null);
+    return true;
+  };
+
+  const finishSubmission = () => {
+    submissionInFlight.current = false;
+    setSubmitting(null);
+  };
 
   const saveDraft = async (copy = false) => {
     if (!token || !user || user.role !== "customer") throw { detail: "Sign in as a customer to save this draft" };
@@ -172,67 +227,64 @@ export default function NewOrder() {
       payment_mode: paymentMode, quotation_id: quotationId, site_id: siteId,
       lat: coords?.lat ?? null, lng: coords?.lng ?? null, pump_required: pumpRequired,
     };
-    const result = await apiPost<{ id: string }>("/customer/order-drafts", token, { id: copy ? null : draftId, form });
-    if (!copy) setDraftId(result.id);
+    const result = await apiPost<{ id: string }>("/customer/order-drafts", token, { id: copy ? null : draftId.current, form });
+    if (!copy) draftId.current = result.id;
     return result.id;
   };
 
   const copyExpiredRequest = async () => {
-    if (submitting) return;
-    setSubmitting("draft"); setError(null);
+    if (!beginSubmission("draft")) return;
     try {
       const id = await saveDraft(true);
       router.push({ pathname: "/new-order", params: { draftId: id } });
     } catch (e: any) { setError(e.detail || "Could not copy this request"); }
-    finally { setSubmitting(null); }
+    finally { finishSubmission(); }
   };
 
   const startKycFromOrder = async () => {
-    if (submitting) return;
-    setError(null);
-    setSubmitting("kyc");
+    if (!beginSubmission("kyc")) return;
     try {
       const id = await saveDraft();
       router.push({ pathname: "/kyc", params: { draftId: id } });
     } catch (e: any) {
       setError(e.detail || "Could not save your draft before verification");
-    } finally { setSubmitting(null); }
+    } finally { finishSubmission(); }
   };
 
   const sendProvisional = async () => {
-    if (submitting || !token) return;
-    setError(null); setSubmitting("provisional");
+    if (submissionInFlight.current || !token) return;
+    if (!orderEnabled) return setError("Choose a plant that accepts direct orders");
+    if (!beginSubmission("provisional")) return;
     try {
       const id = await saveDraft();
       await apiPost(`/customer/order-drafts/${id}/provisional`, token, {});
       toast("Provisional request sent. It is not an accepted order.", "success");
       router.replace("/customer/orders");
     } catch (e: any) { setError(e.detail || "Could not send the provisional request"); }
-    finally { setSubmitting(null); }
+    finally { finishSubmission(); }
   };
 
   const submit = async (draft: boolean) => {
-    if (submitting) return;
-    setError(null);
+    if (submissionInFlight.current) return;
     if (draft) {
-      setSubmitting("draft");
+      if (!beginSubmission("draft")) return;
       try {
         await saveDraft();
         toast("Draft saved", "success");
         router.replace("/customer/orders");
       } catch (e: any) { setError(e.detail || "Could not save draft"); }
-      finally { setSubmitting(null); }
+      finally { finishSubmission(); }
       return;
     }
     if (!kycOk) return startKycFromOrder();
     if (provisionalId && provisionalStatus !== "PENDING_KYC") return setError("This provisional request is no longer available. Start a new order.");
-    if (!plantId) return setError("Choose a plant");
+    if (!plantId || !orderEnabled) return setError("Choose a plant that accepts direct orders");
     if (!paymentMode) return setError("Choose a preferred payment mode");
     if (!grade) return setError("Select a concrete grade");
     if (!quantity || !Number.isFinite(Number(quantity)) || Number(quantity) <= 0) return setError("Enter a valid quantity");
     if (!siteName.trim()) return setError("Enter the site name");
     if (!address.trim()) return setError("Enter the delivery address");
-    setSubmitting("order");
+    if (!beginSubmission("order")) return;
     try {
       const savedId = await saveDraft();
       const order = {
@@ -276,27 +328,25 @@ export default function NewOrder() {
         setError(e.detail || "Could not place order");
       }
     } finally {
-      setSubmitting(null);
+      finishSubmission();
     }
   };
 
   const confirmAssistantOrder = async () => {
-    if (!prepared || submitting) return;
-    setSubmitting("order");
-    setError(null);
+    if (!prepared || !orderEnabled || !beginSubmission("order")) return;
     try {
       const res = await apiPost<{ id: string; order_number?: string }>("/assistant/orders/confirm", token!, {
         intent_token: prepared.intent_token,
         confirmed: true,
       });
-      if (draftId) await apiDelete(`/customer/order-drafts/${draftId}`, token!).catch(() => undefined);
+      if (draftId.current) await apiDelete(`/customer/order-drafts/${draftId.current}`, token!).catch(() => undefined);
       toast(`Order ${res.order_number || "created"}`, "success");
       router.replace(`/order/${res.id}` as never);
     } catch (e: any) {
       setPrepared(null);
       setError(e.detail || "Could not confirm order");
     } finally {
-      setSubmitting(null);
+      finishSubmission();
     }
   };
 
@@ -311,23 +361,43 @@ export default function NewOrder() {
           testID="neworder-back"
           accessibilityRole="button"
           accessibilityLabel="Go back"
-          onPress={() => router.back()}
+          onPress={goBack}
           style={({ pressed }) => [styles.iconBtn, { borderColor: colors.border, backgroundColor: pressed ? colors.surfaceTertiary : colors.surfaceSecondary }]}
         >
           <Ionicons name="chevron-back" size={22} color={colors.onSurface} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <AppText variant="title">{assistantMode ? "Place Order with Agent" : "New Order"}</AppText>
-          <AppText variant="caption">Plant → mix → schedule → site</AppText>
+          <AppText variant="sectionTitle" style={{ flexShrink: 1 }}>{assistantMode ? "Place Order with Agent" : "New Order"}</AppText>
+          <AppText variant="caption">Plant → mix → quantity → delivery → site → payment</AppText>
         </View>
       </View>
 
+      {params.draftId && (!draftReady || loadingDraft || draftError) ? (
+          <Card style={styles.draftState}>
+            <AppText variant="heading">{loadingDraft || (!draftError && savedDraft) ? "Opening your draft…" : "Could not open your draft"}</AppText>
+            {draftError ? <AppText accessibilityRole="alert" variant="bodyMuted">{draftError}</AppText> : null}
+            {!loadingDraft && (draftError || !savedDraft) ? <Button label="Retry" variant="outline" onPress={() => void reloadDraft()} /> : null}
+          </Card>
+        ) : (
       <KeyboardAwareScrollView
         bottomOffset={24}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing["3xl"], gap: spacing.xl }}
+        contentContainerStyle={styles.formContent}
         showsVerticalScrollIndicator={false}
       >
+        <Card testID="neworder-progress" style={{ gap: spacing.sm }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", gap: spacing.sm }}>
+            <AppText variant="label">Your request</AppText>
+            <AppText variant="caption">{readyCount} of 6 sections ready</AppText>
+          </View>
+          <View accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 6, now: readyCount }}
+            style={{ flexDirection: "row", gap: 4, height: 7 }}>
+            {readySections.map((ready, i) => (
+              <View key={i} style={{ flex: 1, borderRadius: radius.pill, backgroundColor: ready ? colors.brand : colors.border }} />
+            ))}
+          </View>
+          <AppText variant="caption">Save a draft anytime. No payment is taken when submitting a request.</AppText>
+        </Card>
         {quotationLocked ? (
           <View style={[styles.infoBanner, { backgroundColor: colors.brandSoft, borderColor: colors.brand + "55" }]}>
             <View style={[styles.bannerIcon, { backgroundColor: colors.brand + "16" }]}>
@@ -368,95 +438,66 @@ export default function NewOrder() {
         </Card> : null}
 
         <Section title="1. Choose Plant" subtitle={quotationLocked ? "Locked by quotation" : "Select the verified plant supplying this order"}>
-          <View style={{ gap: spacing.sm }}>
-            {plants.map((p) => {
-              const sel = p.id === plantId;
-              const lockedOut = quotationLocked && !sel;
-              return (
-                <Pressable
-                  key={p.id}
-                  testID={`neworder-plant-${p.id}`}
-                  disabled={quotationLocked}
-                  accessibilityRole="radio"
-                  accessibilityLabel={`${p.name}, ${p.city}${p.verified ? ", verified" : ""}`}
-                  accessibilityState={{ selected: sel, disabled: quotationLocked }}
-                  onPress={() => {
-                    setPlantId(p.id);
-                    setGrade(params.grade && p.grades?.includes(params.grade) ? params.grade : null);
-                  }}
-                  style={({ pressed }) => [
-                    styles.plantRow,
-                    {
-                      borderColor: sel ? colors.brand : colors.border,
-                      backgroundColor: sel ? colors.brandSoft : colors.surfaceSecondary,
-                      opacity: lockedOut ? 0.5 : pressed ? 0.88 : 1,
-                    },
-                  ]}
-                >
-                  <Ionicons name={sel ? "radio-button-on" : "radio-button-off"} size={20} color={sel ? colors.brand : colors.onSurfaceTertiary} />
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: colors.onSurface }}>{p.name}</AppText>
-                    <AppText variant="caption">{p.city}</AppText>
-                  </View>
-                  {p.verified ? <Ionicons name="shield-checkmark" size={17} color={colors.verified} /> : null}
-                  {quotationLocked && sel ? <Ionicons name="lock-closed" size={15} color={colors.onSurfaceTertiary} /> : null}
-                </Pressable>
-              );
-            })}
-          </View>
-        </Section>
-
-        <Section title="2. Preferred Payment Mode" subtitle="Choose how you would prefer to pay after plant acceptance">
-          <View style={{ gap: spacing.sm }}>
-            {SELECTABLE_PAYMENT_MODES.map((mode) => {
-              const selected = paymentMode === mode.value;
-              return (
-                <Pressable
-                  key={mode.value}
-                  testID={`neworder-payment-${mode.value}`}
-                  accessibilityRole="radio"
-                  accessibilityLabel={mode.label}
-                  accessibilityState={{ selected }}
-                  onPress={() => setPaymentMode(mode.value)}
-                  style={({ pressed }) => [
-                    styles.plantRow,
-                    { borderColor: selected ? colors.brand : colors.border,
-                      backgroundColor: selected ? colors.brandSoft : colors.surfaceSecondary,
-                      opacity: pressed ? 0.85 : 1 },
-                  ]}
-                >
-                  <Ionicons name={selected ? "radio-button-on" : "radio-button-off"} size={20} color={selected ? colors.brand : colors.onSurfaceTertiary} />
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <AppText style={{ fontFamily: fonts.semibold }}>{mode.label}</AppText>
-                    <AppText variant="caption">{mode.desc}</AppText>
-                  </View>
-                </Pressable>
-              );
-            })}
-            <View style={[styles.infoBanner, { backgroundColor: colors.brandSoft, borderColor: colors.brand + "55" }]}>
-              <Ionicons name="shield-checkmark-outline" size={20} color={colors.brand} />
-              <AppText variant="caption" style={{ flex: 1 }}>
-                No payment is required when submitting this order request. Your selection is a preference, subject to the plant's acceptance and final terms. Review and accept the confirmed amount before paying. {SHOW_SANDBOX_PREPAID
-                  ? "Sandbox prepaid testing is available only for approved test plants; no real payment is collected. Never pay using an unofficial link."
-                  : "Online advance payments are not yet activated. Use pay-on-delivery or plant-approved credit only. Never pay using an unofficial link."}
-              </AppText>
+          {loadingPlants && !plantsData ? (
+            <View accessibilityRole="progressbar" accessibilityLabel="Loading plants" style={styles.loadRow}>
+              <ActivityIndicator color={colors.brand} />
+              <AppText variant="bodyMuted">Loading available plants…</AppText>
             </View>
-          </View>
+          ) : plantsError ? (
+            <View accessibilityLiveRegion="polite" style={styles.loadRow}>
+              <AppText variant="bodyMuted" style={styles.loadCopy}>{plantsError}</AppText>
+              <Button label="Retry" variant="outline" size="sm" fullWidth={false} onPress={() => void reloadPlants()} />
+            </View>
+          ) : !orderablePlants.length ? (
+            <View style={{ gap: spacing.sm }}>
+              <AppText variant="bodyMuted">No plants currently accept direct orders.</AppText>
+              <Button label="Browse plants and request a quote" variant="outline" onPress={() => router.push("/customer/plants")} />
+            </View>
+          ) : (
+            <>
+              {orderablePlants.length > 6 && !quotationLocked ? (
+                <Input label="Find a plant" value={plantQuery} onChangeText={setPlantQuery} placeholder="Plant name or city" />
+              ) : null}
+              <View accessibilityRole="radiogroup" accessibilityLabel="Supplying plant" style={{ gap: spacing.sm }}>
+                {visiblePlants.map((plant) => (
+                  <RadioChoice
+                    key={plant.id}
+                    testID={`neworder-plant-${plant.id}`}
+                    label={plant.name}
+                    description={[plant.city, plant.verified ? "TrackMyRMC verified" : null].filter(Boolean).join(" · ")}
+                    checked={plant.id === plantId}
+                    disabled={quotationLocked}
+                    onPress={() => {
+                      if (plant.id === plantId) return;
+                      setPlantId(plant.id);
+                      setGrade(params.grade && plant.grades?.includes(params.grade) ? params.grade : null);
+                    }}
+                  />
+                ))}
+              </View>
+              {!visiblePlants.length ? <AppText variant="bodyMuted">No plants match your search.</AppText> : null}
+              {plantId && !orderEnabled ? (
+                <AppText variant="bodyMuted">The plant saved on this request is unavailable for direct orders.</AppText>
+              ) : null}
+            </>
+          )}
         </Section>
 
         {selectedPlant ? (
-          <Section title="3. Concrete Grade" subtitle={quotationLocked ? "Locked by quotation" : "Choose the specified structural grade"}>
+          <Section title="2. Concrete Grade" subtitle={quotationLocked ? "Locked by quotation" : "Choose the specified structural grade"}>
             <View style={styles.chips}>
               {grades.map((g) => {
                 const sel = g === grade;
                 return (
                   <Pressable
                     key={g}
+                    {...radioKeyboardProps(() => setGrade(g), quotationLocked)}
                     testID={`grade-${g}`}
                     disabled={quotationLocked}
                     accessibilityRole="radio"
                     accessibilityLabel={`${g} concrete grade`}
-                    accessibilityState={{ selected: sel, disabled: quotationLocked }}
+                    accessibilityState={{ checked: sel, disabled: quotationLocked }}
+                    aria-checked={sel}
                     onPress={() => setGrade(g)}
                     style={({ pressed }) => [
                       styles.chip,
@@ -467,7 +508,7 @@ export default function NewOrder() {
                       },
                     ]}
                   >
-                    <AppText style={{ fontFamily: fonts.semibold, fontSize: 13, color: sel ? colors.onBrand : colors.onSurfaceSecondary }}>{g}</AppText>
+                    <AppText style={{ fontFamily: fonts.semibold, fontSize: 13, color: sel ? palette.graphite : colors.onSurfaceSecondary }}>{g}</AppText>
                   </Pressable>
                 );
               })}
@@ -475,7 +516,7 @@ export default function NewOrder() {
           </Section>
         ) : null}
 
-        <Section title="4. Quantity" subtitle="Concrete volume in cubic metres (m³)">
+        <Section title="3. Quantity" subtitle="Concrete volume in cubic metres (m³)">
           <View style={styles.stepper}>
             <Stepper icon="remove" label="Decrease quantity" disabled={quotationLocked} onPress={() => setQuantity((q) => String(Math.max(1, Number(q) - 1)))} colors={colors} />
             <View style={{ flex: 1 }}>
@@ -492,7 +533,7 @@ export default function NewOrder() {
           </View>
         </Section>
 
-        <Section title="5. Delivery Schedule" subtitle="Choose the preferred date and arrival window">
+        <Section title="4. Delivery Schedule" subtitle="Choose the preferred date and arrival window">
           <View style={styles.scheduleBlock}>
             <AppText variant="label">Date</AppText>
             <View style={styles.chips}>
@@ -504,12 +545,14 @@ export default function NewOrder() {
                     testID={`date-${d.value}`}
                     accessibilityRole="radio"
                     accessibilityLabel={`${d.label}, ${d.sub}`}
-                    accessibilityState={{ selected: sel }}
+                    accessibilityState={{ checked: sel }}
+                    aria-checked={sel}
+                    {...radioKeyboardProps(() => setDate(d.value))}
                     onPress={() => setDate(d.value)}
                     style={({ pressed }) => [styles.dateChip, { backgroundColor: sel ? colors.brand : colors.surfaceSecondary, borderColor: sel ? colors.brand : colors.border, opacity: pressed ? 0.86 : 1 }]}
                   >
-                    <AppText style={{ fontFamily: fonts.semibold, fontSize: 12, color: sel ? colors.onBrand : colors.onSurface }}>{d.label}</AppText>
-                    <AppText style={{ fontFamily: fonts.regular, fontSize: 10, color: sel ? colors.onBrand : colors.onSurfaceTertiary }}>{d.sub}</AppText>
+                    <AppText style={{ fontFamily: fonts.semibold, fontSize: 12, color: sel ? palette.graphite : colors.onSurface }}>{d.label}</AppText>
+                    <AppText style={{ fontFamily: fonts.regular, fontSize: 10, color: sel ? palette.graphite : colors.onSurfaceTertiary }}>{d.sub}</AppText>
                   </Pressable>
                 );
               })}
@@ -526,11 +569,13 @@ export default function NewOrder() {
                     testID={`time-${t}`}
                     accessibilityRole="radio"
                     accessibilityLabel={`${t} delivery time`}
-                    accessibilityState={{ selected: sel }}
+                    accessibilityState={{ checked: sel }}
+                    aria-checked={sel}
+                    {...radioKeyboardProps(() => setTime(t))}
                     onPress={() => setTime(t)}
                     style={({ pressed }) => [styles.chip, { backgroundColor: sel ? colors.brand : colors.surfaceSecondary, borderColor: sel ? colors.brand : colors.border, opacity: pressed ? 0.86 : 1 }]}
                   >
-                    <AppText style={{ fontFamily: fonts.semibold, fontSize: 13, color: sel ? colors.onBrand : colors.onSurfaceSecondary }}>{t}</AppText>
+                    <AppText style={{ fontFamily: fonts.semibold, fontSize: 13, color: sel ? palette.graphite : colors.onSurfaceSecondary }}>{t}</AppText>
                   </Pressable>
                 );
               })}
@@ -541,14 +586,14 @@ export default function NewOrder() {
         <Section title="Pump requirement" subtitle="Tell the plant whether a pump is required">
           <View style={styles.chips}>
             {[false, true].map((value) => <Pressable key={String(value)} accessibilityRole="radio"
-              accessibilityState={{ selected: pumpRequired === value }} onPress={() => setPumpRequired(value)}
+              accessibilityState={{ checked: pumpRequired === value }} aria-checked={pumpRequired === value} {...radioKeyboardProps(() => setPumpRequired(value))} onPress={() => setPumpRequired(value)}
               style={[styles.chip, { backgroundColor: pumpRequired === value ? colors.brand : colors.surfaceSecondary, borderColor: colors.border }]}>
               <AppText style={{ color: pumpRequired === value ? colors.onBrand : colors.onSurface }}>Pump {value ? "required" : "not required"}</AppText>
             </Pressable>)}
           </View>
         </Section>
 
-        <Section title="6. Site & Contact" subtitle="Where the concrete should arrive and who will receive it">
+        <Section title="5. Site & Contact" subtitle="Where the concrete should arrive and who will receive it">
           <View style={{ gap: spacing.md }}>
             {verifiedCustomerName ? (
               <Card testID="neworder-verified-customer" style={{ gap: 4, borderColor: colors.success + "55" }}>
@@ -559,7 +604,7 @@ export default function NewOrder() {
             ) : null}
             <Input testID="neworder-site" label="Site name" value={siteName} onChangeText={(v) => { setSiteName(v); setSiteId(null); }} placeholder="e.g. Skyline Towers" autoCapitalize="words" />
             <View>
-              <Input testID="neworder-address" label="Delivery address" value={address} onChangeText={(t) => { setAddress(t); setCoords(null); setSiteId(null); }} placeholder="Search or type full site address" autoCapitalize="sentences" />
+              <Input testID="neworder-address" label="Delivery address" value={address} onChangeText={changeAddress} placeholder="Search or type full site address" autoCapitalize="sentences" />
               {suggestions.length > 0 ? (
                 <View style={[styles.suggestBox, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
                   {suggestions.map((s) => (
@@ -567,12 +612,12 @@ export default function NewOrder() {
                       key={s.place_id}
                       testID={`suggest-${s.place_id}`}
                       accessibilityRole="button"
-                      accessibilityLabel={`Use address ${s.text}`}
+                      accessibilityLabel={`Use address ${s.description}`}
                       onPress={() => pickPlace(s.place_id)}
                       style={({ pressed }) => [styles.suggestRow, { borderBottomColor: colors.divider, backgroundColor: pressed ? colors.surfaceTertiary : "transparent" }]}
                     >
                       <Ionicons name="location-outline" size={17} color={colors.brand} />
-                      <AppText style={{ flex: 1, fontFamily: fonts.regular, fontSize: fontSize.sm, color: colors.onSurface }} numberOfLines={2}>{s.text}</AppText>
+                      <AppText style={{ flex: 1, fontFamily: fonts.regular, fontSize: fontSize.sm, color: colors.onSurface }}>{s.description}</AppText>
                       <Ionicons name="arrow-forward" size={15} color={colors.onSurfaceTertiary} />
                     </Pressable>
                   ))}
@@ -591,12 +636,59 @@ export default function NewOrder() {
           </View>
         </Section>
 
-        {error || draftError ? (
+        <Section title="6. Payment Preference" subtitle="Choose how you would prefer to pay after plant acceptance">
+          <View style={{ gap: spacing.sm }}>
+            <View accessibilityRole="radiogroup" accessibilityLabel="Payment preference" style={{ gap: spacing.sm }}>
+              {SELECTABLE_PAYMENT_MODES.map((mode) => (
+                <RadioChoice
+                  key={mode.value}
+                  testID={`neworder-payment-${mode.value}`}
+                  label={mode.label}
+                  description={mode.desc}
+                  checked={paymentMode === mode.value}
+                  onPress={() => setPaymentMode(mode.value)}
+                />
+              ))}
+            </View>
+            <View style={[styles.infoBanner, { backgroundColor: colors.brandSoft, borderColor: colors.brand + "55" }]}>
+              <Ionicons name="shield-checkmark-outline" size={20} color={colors.brand} />
+              <AppText variant="caption" style={{ flex: 1 }}>
+                No payment is required when submitting this order request. Your selection is a preference, subject to the plant&apos;s acceptance and final terms. Review and accept the confirmed amount before paying. {SHOW_SANDBOX_PREPAID
+                  ? "Sandbox prepaid testing is available only for approved test plants; no real payment is collected. Never pay using an unofficial link."
+                  : "Online advance payments are not yet activated. Use pay-on-delivery or plant-approved credit only. Never pay using an unofficial link."}
+              </AppText>
+            </View>
+          </View>
+        </Section>
+
+        <Card testID="neworder-review" style={{ gap: spacing.sm }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+            <Ionicons name="receipt-outline" size={20} color={colors.brand} />
+            <AppText variant="heading">Review your request</AppText>
+          </View>
+          <AppText variant="caption">Review preferences before sending. The plant confirms availability, rates and final payment terms.</AppText>
+          {([
+            ["Plant", selectedPlant?.name || "Choose a plant"],
+            ["Concrete", grade ? `${grade} · ${quantity || "—"} m³` : "Choose grade and quantity"],
+            ["Delivery", `${date} · ${time || "Time not chosen"}`],
+            ["Site", siteName.trim() || "Enter the delivery site"],
+            ["Pump", pumpRequired ? "Required; subject to availability" : "Not requested"],
+            ["Payment preference", PAYMENT_MODES.find(m => m.value === paymentMode)?.label || "Not selected"],
+          ] as const).map(([label, value]) => (
+            <View key={label} style={[styles.reviewRow, { borderBottomColor: colors.divider }]}>
+              <AppText variant="label" style={{ flex: 1 }}>{label}</AppText>
+              <AppText variant="body" style={{ flex: 2, textAlign: "right", flexShrink: 1 }}>{value}</AppText>
+            </View>
+          ))}
+          <AppText variant="caption">This is not a confirmed order or price quote.</AppText>
+        </Card>
+
+        {error ? (
           <View accessibilityRole="alert" style={[styles.infoBanner, { backgroundColor: colors.error + "12", borderColor: colors.error + "44" }]}>
             <View style={[styles.bannerIcon, { backgroundColor: colors.error + "12" }]}>
               <Ionicons name="close-circle-outline" size={18} color={colors.error} />
             </View>
-            <AppText variant="caption" color={colors.error} style={{ flex: 1 }}>{error || draftError}</AppText>
+            <AppText variant="caption" color={colors.error} style={{ flex: 1 }}>{error}</AppText>
           </View>
         ) : null}
 
@@ -610,24 +702,26 @@ export default function NewOrder() {
               .map(([field, amount]) => <AppText key={field} variant="caption">{field.replace(/_/g, " ")}: {String(amount)}</AppText>);
             return <AppText key={key} variant="caption">{key.replace(/_/g, " ")}: {String(value)}</AppText>;
           })}
-          <Button testID="assistant-confirm-order" label="Confirm Order" onPress={confirmAssistantOrder} loading={submitting === "order"} disabled={Boolean(submitting)} />
+          <Button testID="assistant-confirm-order" label="Confirm Order" onPress={confirmAssistantOrder} loading={submitting === "order"} disabled={Boolean(submitting) || !orderEnabled} />
         </View> : <View style={[styles.submitPanel, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
           <View style={{ gap: 3 }}>
             <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base }}>Ready to continue?</AppText>
             <AppText variant="caption">Submitting sends an order request for plant review. No payment will be collected now.</AppText>
           </View>
-          <Button testID="neworder-place" label={!kycOk ? "Complete KYC Now" : provisionalId ? "Review Current Order" : assistantMode ? "Prepare Order" : "Submit Order Request"} onPress={() => submit(false)} loading={submitting === "order" || submitting === "kyc"} disabled={Boolean(submitting) || loadingDraft || Boolean(draftError) || !draftReady || Boolean(provisionalId && provisionalStatus !== "PENDING_KYC")} icon={<Ionicons name="checkmark-circle-outline" size={18} color={colors.onBrand} />} />
+          <Button testID="neworder-place" label={!kycOk ? "Complete KYC Now" : provisionalId ? "Review Current Order" : assistantMode ? "Prepare Order" : "Submit Order Request"} onPress={() => submit(false)} loading={submitting === "order" || submitting === "kyc"} disabled={Boolean(submitting) || loadingDraft || Boolean(draftError) || !draftReady || Boolean(provisionalId && provisionalStatus !== "PENDING_KYC")} icon={<Ionicons name="checkmark-circle-outline" size={18} color={palette.graphite} />} />
           {!kycOk && !provisionalId && !assistantMode ? <Button testID="neworder-provisional" label="Send Request & Complete KYC Later" variant="outline" onPress={sendProvisional} loading={submitting === "provisional"} disabled={Boolean(submitting) || loadingDraft || Boolean(draftError) || !draftReady} /> : null}
           {!assistantMode ? <Button testID="neworder-draft" label="Save Draft" variant="outline" onPress={() => submit(true)} loading={submitting === "draft"} disabled={Boolean(submitting) || loadingDraft || Boolean(draftError) || !draftReady} /> : null}
         </View>}
       </KeyboardAwareScrollView>
+      )}
     </View>
   );
 }
 
 function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+  const { colors } = useTheme();
   return (
-    <View style={{ gap: spacing.sm }}>
+    <View style={[styles.section, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
       <View style={{ gap: 2 }}>
         <AppText variant="heading">{title}</AppText>
         {subtitle ? <AppText variant="caption">{subtitle}</AppText> : null}
@@ -653,14 +747,19 @@ function Stepper({ icon, label, onPress, colors, disabled = false }: any) {
 }
 
 const styles = StyleSheet.create({
+  formContent: { alignSelf: "center", width: "100%", maxWidth: layout.contentMax, padding: spacing.lg, paddingBottom: spacing["3xl"], gap: spacing.xl },
+  loadRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: spacing.sm },
+  loadCopy: { flexGrow: 1, flexShrink: 1 },
+  draftState: { margin: spacing.lg, gap: spacing.sm },
+  section: { minWidth: 0, borderWidth: 1, borderRadius: radius.lg, gap: spacing.md, padding: spacing.lg },
+  reviewRow: { flexDirection: "row", gap: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: spacing.sm },
   header: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth },
-  iconBtn: { width: 44, height: 44, borderRadius: radius.md, alignItems: "center", justifyContent: "center", borderWidth: 1 },
+  iconBtn: { width: 48, height: 48, borderRadius: radius.md, alignItems: "center", justifyContent: "center", borderWidth: 1 },
   infoBanner: { minHeight: 64, flexDirection: "row", gap: spacing.sm, alignItems: "center", borderWidth: 1, borderRadius: radius.lg, padding: spacing.md },
   bannerIcon: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  chip: { minHeight: 42, paddingHorizontal: spacing.lg, borderRadius: radius.pill, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  chip: { minHeight: 48, paddingHorizontal: spacing.lg, borderRadius: radius.pill, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   dateChip: { width: 76, minHeight: 56, paddingVertical: spacing.sm, borderRadius: radius.md, borderWidth: 1, alignItems: "center", justifyContent: "center", gap: 2 },
-  plantRow: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md, borderRadius: radius.lg, borderWidth: 1 },
   stepper: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   stepBtn: { width: 56, height: 56, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
   scheduleBlock: { gap: spacing.sm },

@@ -1,3 +1,4 @@
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import React, { useCallback, useEffect, useState } from "react";
 import { Modal, Pressable, ScrollView, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -158,7 +159,7 @@ export function LoadPlanner({ orderId, resourceBase, onChanged }: Props) {
               <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: colors.onSurface }}>{load.load_code}</AppText>
               <AppText variant="caption">{load.quantity_m3} m³{load.delivered_quantity ? ` · Delivered ${load.delivered_quantity} m³` : ""}</AppText>
             </View>
-            <Badge label={load.status.replace(/_/g, " ")} status={load.status} />
+            <Badge label={load.status.replace(/_/g, " ")} status={load.status} orderStatus />
           </View>
 
           {(load.tm_number || load.driver_name) ? (
@@ -223,7 +224,7 @@ export function LoadPlanner({ orderId, resourceBase, onChanged }: Props) {
                 const selected = driverId === d.id;
                 return (
                   <Pressable key={d.id} onPress={() => setDriverId(d.id)} style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: selected ? colors.brand : colors.border, backgroundColor: selected ? colors.brandSoft : colors.surfaceSecondary }}>
-                    <Ionicons name="person-outline" size={18} color={selected ? colors.brand : colors.onSurfaceSecondary} />
+                    <VectorSymbol name="drivers" size={18} color={selected ? colors.brand : colors.onSurfaceSecondary} />
                     <AppText style={{ flex: 1 }}>{d.name}</AppText>
                     {d.phone ? <AppText variant="caption">{d.phone}</AppText> : null}
                   </Pressable>

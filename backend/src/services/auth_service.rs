@@ -148,16 +148,7 @@ pub async fn verify_whatsapp_otp(
         None => {
             // New user registration via WhatsApp OTP
             let dummy_password = hash_password(&Uuid::new_v4().to_string())?;
-            user_repo::create_user(
-                &state.db,
-                &destination,
-                None,
-                &dummy_password,
-                "RMC Customer",
-                "customer",
-                None,
-            )
-            .await?
+            user_repo::create_whatsapp_customer(&state.db, &destination, &dummy_password).await?
         }
     };
 

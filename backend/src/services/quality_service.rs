@@ -135,8 +135,8 @@ pub async fn record(
     }
     // Plant membership does not imply that the Owner has granted Quality Register
     // write access. Deny before any inspection or audit data is created.
-    crate::routes::staff_module_permissions::require(
-        state,
+    crate::routes::staff_module_permissions::require_staff_permission(
+        &mut tx,
         user,
         plant,
         "quality_register",

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, AppState, Modal, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useIsFocused } from "@react-navigation/native";
@@ -17,9 +18,9 @@ import { useTheme } from "@/src/theme/ThemeProvider";
 import { AppText } from "@/src/components/ui/AppText";
 import { Button } from "@/src/components/ui/Button";
 import { Input } from "@/src/components/ui/Input";
-import { customerHomeSizes, fonts, glass } from "@/src/theme/tokens";
+import { customerHomeSizes, fonts } from "@/src/theme/tokens";
 
-type Sheet = "help" | "location" | null;
+import { SupportWidgetBridge } from "@/src/support/SupportWidgetBridge";
 type Geocode = { locality: string; formatted_address: string };
 
 function IndianFlag({ size }: { size: number }) {
@@ -50,7 +51,7 @@ async function deviceCoordinates(): Promise<{ lat: number; lng: number }> {
 
 export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Promise<void> }) {
   const { token } = useAuth();
-  const { colors, scheme, toggle } = useTheme();
+  const { colors, scheme, toggle, reduceMotion } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -58,7 +59,7 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
   const focused = useIsFocused();
   const permissions = usePermissions();
   const { data: feed, error: feedError, refetch: refreshFeed } = useGet<{ unread: number }>("/notifications?limit=1");
-  const [sheet, setSheet] = useState<Sheet>(null);
+  const [sheet, setSheet] = useState<"location" | null>(null);
   const [selection, setSelection] = useState<{ token: string; label: string } | null>(null);
   const [manual, setManual] = useState("");
   const [locationBusy, setLocationBusy] = useState(false);
@@ -163,11 +164,10 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
   }, [focused, token, permissions.ready, permissions.locationEnabled, lookup]);
 
   const close = () => setSheet(null);
-  const glassSurface = colors.isDark ? glass.darkSurface : glass.lightSurface;
-  const glassBorder = colors.isDark ? glass.darkBorder : glass.lightBorder;
+  const surface = colors.surfaceSecondary;
   return <>
     {focused ? <StatusBar style={colors.isDark ? "light" : "dark"} /> : null}
-    <View style={[styles.safeArea, { paddingTop: insets.top, backgroundColor: glassSurface, borderColor: glassBorder, shadowColor: colors.shadow }]}>
+    <View style={[styles.safeArea, { paddingTop: insets.top, backgroundColor: surface, borderColor: colors.divider }]}>
       <View testID="customer-home-header" style={[styles.row, { minHeight: size.headerHeight }]}>
         <Pressable testID="header-location-chevron" accessibilityRole="button" accessibilityLabel="Choose location"
           accessibilityHint="Opens the location selector and refresh options"
@@ -179,38 +179,31 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
           <AppText numberOfLines={1} ellipsizeMode="tail" style={[styles.locationText, { fontSize: size.locationSize, lineHeight: size.locationLine, color: colors.onSurface }]}>{locationBusy ? "Locating…" : label}</AppText>
         </Pressable>
         <Pressable testID="notifications-bell" accessibilityRole="button" accessibilityLabel={unread ? `${feed!.unread} unread notifications` : "Notifications"} onPress={() => router.push("/notifications")} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(44, size.headerTarget) }]}>
-          <Ionicons name="notifications-outline" size={size.headerBell} color={colors.onSurface} />
-          {unread ? <View testID="header-unread-dot" style={[styles.dot, { backgroundColor: colors.verified, borderColor: glassSurface }]} /> : null}
+          <VectorSymbol name="notifications" size={size.headerBell} color={colors.onSurface} />
+          {unread ? <View testID="header-unread-dot" style={[styles.dot, { backgroundColor: colors.verified, borderColor: surface }]} /> : null}
         </Pressable>
         <Pressable testID="header-theme" accessibilityRole="button" accessibilityLabel="Switch light or dark mode"
           onPress={toggle} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(44, size.headerTarget) }]}>
           <Ionicons name={scheme === "dark" ? "sunny-outline" : "moon-outline"} size={size.headerBell} color={colors.onSurface} />
         </Pressable>
-        <Pressable testID="header-help" accessibilityRole="button" accessibilityLabel="Customer help" onPress={() => setSheet("help")} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(44, size.headerTarget) }]}>
-          <Ionicons name="help-circle-outline" size={size.headerHelp} color={colors.onSurface} />
-        </Pressable>
+        <SupportWidgetBridge customerHeaderTarget={size.headerTarget} />
       </View>
     </View>
-    <Modal transparent visible={sheet !== null} animationType="fade" onRequestClose={close}>
-      <View style={styles.overlay}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Close dialog" onPress={close} style={StyleSheet.absoluteFill} />
-        <View accessibilityViewIsModal onAccessibilityEscape={close} style={[styles.sheet, { backgroundColor: glassSurface, borderColor: glassBorder, shadowColor: colors.shadow, paddingBottom: Math.max(insets.bottom, 16) }]}>
+    <Modal transparent visible={sheet !== null} animationType={reduceMotion ? "none" : "fade"} onRequestClose={close}>
+      <View style={[styles.overlay, { backgroundColor: colors.scrim }]}>
+        <Pressable accessible={false} aria-hidden onPress={close} style={StyleSheet.absoluteFill} />
+        <View accessibilityViewIsModal onAccessibilityEscape={close} style={[styles.sheet, { backgroundColor: surface, borderColor: colors.divider, shadowColor: colors.shadow, paddingBottom: Math.max(insets.bottom, 16) }]}>
           <View style={styles.sheetTitle}>
-            <AppText variant="heading">{sheet === "help" ? "Customer Help" : "Choose Location"}</AppText>
+            <AppText variant="heading">Choose Location</AppText>
             <Pressable accessibilityRole="button" accessibilityLabel="Close dialog" onPress={close} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(44, size.headerTarget) }]}><Ionicons name="close" size={24} color={colors.onSurface} /></Pressable>
           </View>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.sheetContent}>
-            {sheet === "help" ? <>
-              <Button label="Customer Support" onPress={() => { close(); router.push("/support"); }} />
-              <Button label="Delete Account" variant="outline" onPress={() => { close(); router.push("/account-deletion"); }} />
-            </> : <>
-              <AppText>Use your location once, or search for a city or locality.</AppText>
-              <Button label="Refresh current location" disabled={locationBusy} onPress={() => void lookup()} />
-              <Input label="City, locality or PIN code" testID="header-manual-location" value={manual} onChangeText={setManual} maxLength={200} editable={!locationBusy} />
-              <Button label="Use selected location" disabled={locationBusy || manual.trim().length < 3} onPress={() => void lookup(manual.trim())} />
-              {locationBusy ? <ActivityIndicator accessibilityLabel="Finding location" color={colors.brand} /> : null}
-              {locationError ? <AppText accessibilityLiveRegion="polite" color={colors.error}>{locationError}</AppText> : null}
-            </>}
+            <AppText>Use your location once, or search for a city or locality.</AppText>
+            <Button label="Refresh current location" variant="success" disabled={locationBusy} onPress={() => void lookup()} />
+            <Input label="City, locality or PIN code" testID="header-manual-location" value={manual} onChangeText={setManual} maxLength={200} editable={!locationBusy} />
+            <Button label="Use selected location" disabled={locationBusy || manual.trim().length < 3} onPress={() => void lookup(manual.trim())} />
+            {locationBusy ? <ActivityIndicator accessibilityLabel="Finding location" color={colors.brand} /> : null}
+            {locationError ? <AppText accessibilityLiveRegion="polite" color={colors.error}>{locationError}</AppText> : null}
           </ScrollView>
         </View>
       </View>
@@ -219,13 +212,13 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
 }
 
 const styles = StyleSheet.create({
-  safeArea: { borderWidth: 1, borderTopWidth: 0, borderBottomLeftRadius: 14, borderBottomRightRadius: 14, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.10, shadowRadius: 18, elevation: 3 },
+  safeArea: { borderBottomWidth: StyleSheet.hairlineWidth },
   row: { width: "100%", maxWidth: 1100, alignSelf: "center", minHeight: 52, paddingHorizontal: 8, flexDirection: "row", alignItems: "center" },
   target: { width: 44, minHeight: 44, flexShrink: 0, alignItems: "center", justifyContent: "center" },
   location: { flex: 1, minWidth: 0, minHeight: 44, flexDirection: "row", gap: 6, alignItems: "center", paddingHorizontal: 4 },
   locationText: { flex: 1, minWidth: 0, fontFamily: fonts.semibold, fontSize: 13, lineHeight: 18 },
   dot: { position: "absolute", top: 8, right: 9, width: 10, height: 10, borderRadius: 5, borderWidth: 1.5 },
-  overlay: { flex: 1, justifyContent: "flex-end", backgroundColor: glass.overlay },
+  overlay: { flex: 1, justifyContent: "flex-end" },
   sheet: { width: "100%", maxWidth: 560, maxHeight: "85%", alignSelf: "center", borderWidth: 1, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 16, shadowOffset: { width: 0, height: -6 }, shadowOpacity: 0.12, shadowRadius: 24, elevation: 6 },
   sheetTitle: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   sheetContent: { gap: 14, paddingBottom: 8 },

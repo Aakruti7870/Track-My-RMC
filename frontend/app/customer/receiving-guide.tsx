@@ -1,3 +1,4 @@
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import React, { useMemo, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, Share, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -107,7 +108,7 @@ export default function ConcreteReceivingGuide() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
       <View style={{ height: insets.top }} />
-      <View style={[styles.header, { backgroundColor: colors.surfaceSecondary, borderBottomColor: colors.divider }]}><Pressable onPress={() => router.back()}><Ionicons name="arrow-back" size={24} color={colors.onSurface} /></Pressable><View style={{ flex: 1 }}><AppText style={[styles.headerTitle, { color: colors.onSurface }]}>Concrete Receiving Guide</AppText><AppText style={[styles.headerSub, { color: colors.onSurfaceSecondary }]}>Observe, record and follow the approved project specification</AppText></View><Ionicons name="shield-checkmark-outline" size={26} color={colors.brand} /></View>
+      <View style={[styles.header, { backgroundColor: colors.surfaceSecondary, borderBottomColor: colors.divider }]}><Pressable onPress={() => router.back()}><Ionicons name="arrow-back" size={24} color={colors.onSurface} /></Pressable><View style={{ flex: 1 }}><AppText style={[styles.headerTitle, { color: colors.onSurface }]}>Concrete Receiving Guide</AppText><AppText style={[styles.headerSub, { color: colors.onSurfaceSecondary }]}>Observe, record and follow the approved project specification</AppText></View><VectorSymbol name="receiving-and-quality-guide" size={26} color={colors.brand} /></View>
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 110, gap: spacing.lg }} refreshControl={<RefreshControl refreshing={false} onRefresh={() => { sites.refetch(); orders.refetch(); records.refetch(); }} tintColor={colors.brand} />} keyboardShouldPersistTaps="handled">
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>{([["GUIDE","Guide"],["RECORD","New Record"],["SAVED","Saved Records"]] as [Tab,string][]).map(([key,label]) => <Chip key={key} label={label} selected={tab === key} onPress={() => setTab(key)} />)}</ScrollView>
 

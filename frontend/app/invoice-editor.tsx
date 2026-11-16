@@ -248,7 +248,7 @@ export default function InvoiceEditor() {
           </Card> : draft ? <>
             <Card style={{gap:spacing.md}}>
               <AppText variant="heading">Seller (Logged-in Plant)</AppText>
-              <AppText variant="caption">Display fields can be corrected; GSTIN must match the plant's verified billing profile. Changing the seller legal name requires Plant Owner authorization and a reason.</AppText>
+              <AppText variant="caption">Display fields can be corrected; GSTIN must match the plant&apos;s verified billing profile. Changing the seller legal name requires Plant Owner authorization and a reason.</AppText>
               <View style={[styles.fields,{gap:spacing.sm}]}>
                 {field("Seller Company Name","seller_name")}
                 {field("Seller GSTIN","seller_gstin",15)}
@@ -344,11 +344,11 @@ export default function InvoiceEditor() {
               <Button label="Issue Final Tax Invoice" onPress={confirmIssue}
                 disabled={!confirmed||pending||workspace?.e_invoice_required!==false} loading={pending}/>
             </Card>
-          </> : !issuedId ? <Card><AppText>Prepare the order's challan before opening an invoice draft.</AppText></Card> : null}
+          </> : !issuedId ? <Card><AppText>Prepare the order&apos;s challan before opening an invoice draft.</AppText></Card> : null}
 
           {workspace ? <Card style={{gap:spacing.md}}>
             <AppText variant="heading">Linked Business Data</AppText>
-            <AppText variant="caption">Read-only historical records from this plant and this order's customer.</AppText>
+            <AppText variant="caption">Read-only historical records from this plant and this order&apos;s customer.</AppText>
             <AppText style={{fontFamily:fonts.semibold}}>Order History</AppText>
             {workspace.order_history.length ? workspace.order_history.map(o=>
               <View key={o.order_id} style={[styles.history,{borderBottomColor:colors.divider}]}>

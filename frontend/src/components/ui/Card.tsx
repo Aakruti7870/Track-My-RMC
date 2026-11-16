@@ -20,15 +20,15 @@ export function Card({ children, style, padded = true, variant = "default", test
   const visual = {
     default: {
       backgroundColor: colors.surfaceSecondary,
-      borderColor: colors.isDark ? "rgba(255,154,61,0.28)" : "rgba(255,255,255,0.92)",
-      shadowOpacity: colors.isDark ? 0.13 : 0.06,
-      elevation: colors.isDark ? 2 : 1,
+      borderColor: colors.divider,
+      shadowOpacity: 0,
+      elevation: 0,
     },
     elevated: {
       backgroundColor: colors.surfaceElevated,
-      borderColor: colors.isDark ? "rgba(255,154,61,0.38)" : "rgba(255,255,255,0.96)",
-      shadowOpacity: colors.isDark ? 0.19 : 0.11,
-      elevation: 5,
+      borderColor: colors.divider,
+      shadowOpacity: colors.isDark ? 0 : 0.08,
+      elevation: colors.isDark ? 0 : 2,
     },
     muted: {
       backgroundColor: colors.surfaceTertiary,
@@ -37,13 +37,13 @@ export function Card({ children, style, padded = true, variant = "default", test
       elevation: 0,
     },
     outline: {
-      backgroundColor: colors.glassTint,
+      backgroundColor: colors.surfaceSecondary,
       borderColor: colors.borderStrong,
       shadowOpacity: 0,
       elevation: 0,
     },
     brand: {
-      backgroundColor: colors.glassTint,
+      backgroundColor: colors.surfaceSecondary,
       borderColor: colors.isDark ? `${colors.brand}72` : `${colors.brand}3D`,
       shadowOpacity: 0,
       elevation: 0,
@@ -58,7 +58,7 @@ export function Card({ children, style, padded = true, variant = "default", test
         visual,
         {
           padding: padded ? spacing.lg : 0,
-          shadowColor: colors.isDark ? "#FF9A3D" : colors.shadow,
+          shadowColor: colors.shadow,
         },
         style,
       ]}
@@ -70,9 +70,10 @@ export function Card({ children, style, padded = true, variant = "default", test
 
 const styles = StyleSheet.create({
   card: {
+    minWidth: 0,
     borderRadius: radius.lg,
     borderWidth: 1,
-    shadowOffset: { width: 0, height: 10 },
-    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 10,
   },
 });

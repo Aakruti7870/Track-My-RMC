@@ -61,9 +61,59 @@ fs.mkdirSync(out, { recursive: true });
           await route.fulfill({ json });
         });
         await page.goto('http://127.0.0.1:8765/' + role + '/');
-        await page.getByTestId('staff-home-summary').waitFor({ timeout: 25000 });
+        const summary = page.getByTestId('staff-home-summary');
+        await summary.waitFor({ timeout: 25000 });
+        await page.getByTestId('staff-home-hero-banner').waitFor();
+        await page.getByTestId('plant-home-supplier-enquiry').waitFor();
+        const fixed = page.getByTestId('staff-home-scroll-fixed');
+        await fixed.getByRole('heading', { name: 'Quick Access', exact: true }).waitFor();
+        await fixed.getByTestId('staff-home-summary').waitFor();
+        await fixed.getByTestId('plant-home-supplier-enquiry').waitFor();
+        const scroll = page.getByTestId('staff-home-scroll');
+        const profile = scroll.getByTestId('plant-home-profile');
+        assert.equal(await profile.count(), 1, 'Staff profile remains in the scroll area');
+        if (width === 390) {
+          await page.setViewportSize({ width, height: 760 });
+          // At smaller heights the shortcut block can become sticky after the hero scrolls.
+          await page.getByTestId('staff-home-scroll-shortcuts').getByTestId('plant-home-supplier-enquiry').waitFor();
+          await page.waitForFunction(() => {
+            const block = document.querySelector('[data-testid="staff-home-scroll-shortcuts"]');
+            const frame = document.querySelector('[data-testid="staff-home-scroll-frame"]');
+            if (!block || !frame || frame.getBoundingClientRect().bottom > innerHeight + 1) return false;
+            return !!block.closest('[data-testid="staff-home-scroll-fixed"]')
+              || getComputedStyle(block.parentElement).position === 'sticky';
+          });
+          await page.waitForFunction(() => {
+            const node = document.querySelector('[data-testid="staff-home-scroll"]');
+            const profile = node?.querySelector('[data-testid="plant-home-profile"]');
+            const shortcuts = document.querySelector('[data-testid="staff-home-scroll-shortcuts"]');
+            const supplier = shortcuts?.querySelector('[data-testid="plant-home-supplier-enquiry"]');
+            if (!node || !profile || !shortcuts || !supplier) return false;
+            const sticky = node.contains(shortcuts);
+            if (sticky && getComputedStyle(shortcuts.parentElement).position !== 'sticky') return false;
+
+            // Start from a known scroll offset and sample both positions in the
+            // same browser frame so resize and scroll handlers cannot separate them.
+            node.scrollTop = 0;
+            if (sticky) {
+              const distance = shortcuts.getBoundingClientRect().top - node.getBoundingClientRect().top;
+              node.scrollTop = Math.max(0, Math.ceil(distance) + 24);
+            }
+            const offset = node.scrollTop;
+            const profileTop = profile.getBoundingClientRect().top;
+            const supplierTop = supplier.getBoundingClientRect().top;
+            node.scrollTop = offset + 75;
+            return node.scrollTop > offset && profile.getBoundingClientRect().top < profileTop
+              && Math.abs(supplier.getBoundingClientRect().top - supplierTop) <= 1;
+          }, null, { timeout: 5000 });
+          await page.setViewportSize({ width, height: 920 });
+          await fixed.getByTestId("staff-home-summary").waitFor();
+          await scroll.evaluate(node => { node.scrollTop = 0; });
+        }
+        const surface = await summary.evaluate(el => getComputedStyle(el).backgroundColor);
+        assert.equal(surface, 'rgb(250, 249, 245)', 'Staff summary copy sits on opaque ivory');
         await page.waitForFunction(() => document.querySelector('[data-testid="tab-home"]')?.getAttribute('aria-selected') === 'true');
-        await page.waitForFunction(() => !document.body.innerText.includes('Checking staff permissions…'));
+        await page.waitForFunction(() => document.querySelector('[data-testid^="home-modules-"] [data-testid^="role-module-"]'));
         const homeCards = page.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])');
         const homeKeys = await homeCards.evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid')));
         assert(homeKeys.length > 0, role + ' Home must expose permission-approved operational cards');
@@ -72,13 +122,32 @@ fs.mkdirSync(out, { recursive: true });
           role + ' must keep personal documents and profile cards on More only');
         let homeSizes = await homeCards.evaluateAll(nodes => nodes.map(node => ({
           width: node.getBoundingClientRect().width, height: node.getBoundingClientRect().height,
+          quick: Boolean(node.closest('[data-testid="home-modules-quick-access"]')),
         })));
-        // Compact staff tiles intentionally use 112dp minimum; preserve readable labels and width constraints.
-        assert(homeSizes.every(box => box.width >= 125 && box.width <= 240 && box.height >= 112 && box.height <= 165),
+        assert(homeSizes.every(box => box.width >= (box.quick ? 60 : 72) && box.width <= 240 && box.height >= 76 && box.height <= 140),
           role + ' oversize or clipped Home card at ' + width + 'px: ' + JSON.stringify(homeSizes));
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
           role + ' Home horizontal overflow at ' + width);
         if (width === 390) await page.screenshot({ path: out + '/' + role + '-home-390.png', fullPage: true });
+        const sections = await page.locator('[data-testid^="home-modules-"]').evaluateAll(nodes =>
+          nodes.map(node => node.querySelectorAll('[data-testid^="role-module-"]').length));
+        assert(sections.every(count => count > 0 && count <= 4), role + ' renders too many Home shortcuts');
+        const seeAll = page.locator('[data-testid^="home-modules-"] [data-testid^="home-see-all-"]');
+        assert(await seeAll.count(), role + ' needs a See All link for its longer categories');
+        {
+          const label = await seeAll.first().getAttribute('aria-label');
+          const category = label.replace('See all ', '');
+          await seeAll.first().click();
+          await page.getByRole('heading', { name: category, exact: true }).waitFor();
+          await page.waitForFunction(() => !document.body.innerText.includes('Checking staff permissions…'));
+          const full = page.getByTestId('role-modules-page');
+          assert((await full.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])').count()) > 2);
+          const search = full.getByTestId('staff-module-search');
+          await search.fill('no-module-matches-this-test');
+          await full.getByText('No modules match this filter or your current access.').waitFor();
+          await page.getByTestId('role-modules-back').click();
+          await summary.waitFor();
+        }
         await page.getByTestId('tab-more').click();
         await page.waitForFunction(() => document.querySelector('[data-testid="tab-more"]')?.getAttribute('aria-selected') === 'true');
         await page.getByTestId('staff-module-search').waitFor();

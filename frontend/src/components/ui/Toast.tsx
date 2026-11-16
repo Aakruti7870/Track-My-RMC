@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, { FadeInUp, FadeOutUp } from "react-native-reanimated";
@@ -14,10 +14,14 @@ type ToastState = { message: string; type: ToastType } | null;
 const ToastContext = createContext<(message: string, type?: ToastType) => void>(() => {});
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
-  const { colors } = useTheme();
+  const { colors, reduceMotion } = useTheme();
   const insets = useSafeAreaInsets();
   const [toast, setToast] = useState<ToastState>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+  }, []);
 
   const show = useCallback((message: string, type: ToastType = "info") => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -38,8 +42,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       {children}
       {toast ? (
         <Animated.View
-          entering={FadeInUp.duration(180)}
-          exiting={FadeOutUp.duration(150)}
+          entering={reduceMotion ? undefined : FadeInUp.duration(180)}
+          exiting={reduceMotion ? undefined : FadeOutUp.duration(150)}
           pointerEvents="none"
           accessibilityLiveRegion="polite"
           accessibilityRole="alert"
@@ -60,7 +64,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             </View>
             <View style={styles.copy}>
               <AppText style={{ fontFamily: fonts.semibold, fontSize: 12, lineHeight: 16, color: accent }}>{title}</AppText>
-              <AppText variant="body" style={{ fontFamily: fonts.medium }} numberOfLines={3}>{toast.message}</AppText>
+              <AppText variant="body" style={{ fontFamily: fonts.medium }} maxFontSizeMultiplier={0}>{toast.message}</AppText>
             </View>
           </View>
         </Animated.View>

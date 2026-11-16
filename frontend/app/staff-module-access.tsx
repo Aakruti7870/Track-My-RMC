@@ -152,8 +152,8 @@ export default function StaffModuleAccess() {
             {plants.map(item => (
               <Pressable key={item.id} testID={"permission-plant-" + item.id}
                 onPress={() => { if (dirty) { toast("Save or discard current changes first", "info"); return; } setPlant(item.id); }}
-                style={{ backgroundColor: plant === item.id ? p.accent : p.glass, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: p.border }}>
-                <AppText style={{ color: plant === item.id ? "#FFFFFF" : p.text }}>{item.name}</AppText>
+                style={{ backgroundColor: plant === item.id ? p.accent : p.panel, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: p.border }}>
+                <AppText style={{ color: plant === item.id ? p.onAccent : p.text }}>{item.name}</AppText>
               </Pressable>
             ))}
           </View>
@@ -162,8 +162,8 @@ export default function StaffModuleAccess() {
             {staff.map(member => (
               <Pressable key={member.id} testID={"permission-staff-" + member.id}
                 onPress={() => { if (dirty) { toast("Save or discard current changes first", "info"); return; } setStaffId(member.id); }}
-                style={{ backgroundColor: staffId === member.id ? p.accent : p.glass, padding: 11, borderRadius: 12, borderWidth: 1, borderColor: p.border }}>
-                <AppText style={{ color: staffId === member.id ? "#FFFFFF" : p.text }}>{member.name} · {member.role.replace(/_/g, " ")}</AppText>
+                style={{ backgroundColor: staffId === member.id ? p.accent : p.panel, padding: 11, borderRadius: 12, borderWidth: 1, borderColor: p.border }}>
+                <AppText style={{ color: staffId === member.id ? p.onAccent : p.text }}>{member.name} · {member.role.replace(/_/g, " ")}</AppText>
               </Pressable>
             ))}
           </View>
@@ -182,7 +182,7 @@ export default function StaffModuleAccess() {
             {grants.map(g => (
               <OwnerGlass key={g.key} style={{ padding: 14, gap: 12 }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <VectorSymbol name={MODULE_SYMBOLS[g.key] || "settings"} size={49} warmAccent />
+                  <VectorSymbol name={MODULE_SYMBOLS[g.key] || "settings"} size={49} />
                   <AppText style={{ color: p.text, fontSize: 15, fontWeight: "700", flex: 1 }}>{g.label}</AppText>
                   {g.overridden ? <AppText style={{ color: p.accent, fontSize: 11 }}>Customized</AppText> : null}
                 </View>

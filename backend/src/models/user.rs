@@ -88,6 +88,7 @@ pub struct UserProfile {
     pub gst_number: Option<String>,
     pub kyc_status: String,
     pub verified_name: Option<String>,
+    pub needs_kyc_name: bool,
     pub address_line: Option<String>,
     pub city: Option<String>,
     pub state: Option<String>,

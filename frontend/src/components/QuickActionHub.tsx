@@ -1,6 +1,5 @@
 import React from "react";
-import { Modal, Pressable, StyleSheet, View } from "react-native";
-import { BlurView } from "expo-blur";
+import { Modal, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 
@@ -8,7 +7,7 @@ import { AppText } from "@/src/components/ui/AppText";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { control, fonts, radius, spacing } from "@/src/theme/tokens";
 import type { TabDef } from "@/src/components/GlassTabBar";
-import { VectorSymbol } from "@/src/components/VectorSymbol";
+import { IconTile } from "@/src/components/IconTile";
 import { tabVectorSymbol } from "@/src/navigation/vectorSymbolAssignments";
 
 type Props = {
@@ -19,47 +18,36 @@ type Props = {
   navigation: any;
 };
 
-const ROLE_LABELS: Record<string, string> = {
-  customer: "Customer",
-  driver: "Driver",
-  plant_owner: "Plant Owner",
-  admin: "Admin",
-  dispatcher: "Dispatcher",
-  operator: "Operator",
-  supervisor: "Supervisor",
-  accountant: "Accounts",
-  quality_engineer: "Quality",
-  fleet_manager: "Fleet",
-  store_manager: "Store",
-};
-
 export function QuickActionHub({ visible, onClose, tabs, role, navigation }: Props) {
-  const { colors, scheme } = useTheme();
-  const roleLabel = ROLE_LABELS[role || ""] || "Quick";
+  const { colors, reduceMotion } = useTheme();
+  const { width, fontScale } = useWindowDimensions();
+  const singleColumn = width / fontScale < 330;
 
   const runAction = (tab: TabDef) => {
-    void Haptics.selectionAsync();
+    void Haptics.selectionAsync().catch(() => undefined);
     onClose();
     navigation.navigate(tab.name);
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={visible} transparent animationType={reduceMotion ? "none" : "fade"} onRequestClose={onClose} statusBarTranslucent>
       <View style={[styles.overlay, { backgroundColor: colors.scrim }]}>
         <Pressable
           style={StyleSheet.absoluteFill}
           onPress={onClose}
-          accessibilityRole="button"
-          accessibilityLabel="Close quick actions"
+          accessible={false}
+          aria-hidden
         />
-        <BlurView
-          intensity={scheme === "dark" ? 70 : 90}
-          tint={scheme === "dark" ? "dark" : "light"}
+        <ScrollView
+          accessibilityViewIsModal
+          onAccessibilityEscape={onClose}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.sheetContent}
           style={[
             styles.sheet,
             {
               backgroundColor: colors.surfaceElevated,
-              borderColor: colors.isDark ? "rgba(255,255,255,0.11)" : "rgba(17,19,21,0.09)",
+              borderColor: colors.divider,
               shadowColor: colors.shadow,
             },
           ]}
@@ -67,14 +55,12 @@ export function QuickActionHub({ visible, onClose, tabs, role, navigation }: Pro
           <View style={[styles.handle, { backgroundColor: colors.borderStrong }]} />
           <View style={styles.headingRow}>
             <View style={styles.headingCopy}>
-              <AppText variant="eyebrow">{roleLabel} COMMANDS</AppText>
-              <AppText variant="sectionTitle">Quick Actions</AppText>
-              <AppText variant="bodyMuted">Jump directly to the task you need without hunting through menus.</AppText>
+              <AppText variant="sectionTitle">Quick Access</AppText>
             </View>
             <Pressable
               onPress={onClose}
               accessibilityRole="button"
-              accessibilityLabel="Close quick actions"
+              accessibilityLabel="Close quick access"
               hitSlop={6}
               style={({ pressed }) => [
                 styles.closeButton,
@@ -89,34 +75,33 @@ export function QuickActionHub({ visible, onClose, tabs, role, navigation }: Pro
           </View>
 
           <View style={styles.grid}>
-            {tabs.map((tab, index) => (
-              <Pressable
-                key={tab.name}
-                onPress={() => runAction(tab)}
-                accessibilityRole="button"
-                accessibilityLabel={`${tab.label} quick action`}
-                accessibilityHint={`Open ${tab.label}`}
-                style={({ pressed }) => [
-                  styles.action,
-                  {
-                    backgroundColor: pressed ? colors.brandSoft : colors.surfaceSecondary,
-                    borderColor: pressed ? colors.brand + "4A" : colors.border,
-                    transform: [{ scale: pressed ? 0.985 : 1 }],
-                  },
-                ]}
-              >
-                <View style={styles.actionTopRow}>
-                  {tabVectorSymbol(tab.label, role) ? <VectorSymbol name={tabVectorSymbol(tab.label, role)!} size={75} /> : <Ionicons name={tab.active} size={75} color={colors.brand} />}
-                  <AppText style={[styles.index, { color: colors.onSurfaceTertiary }]}>{String(index + 1).padStart(2, "0")}</AppText>
-                </View>
-                <View style={styles.actionCopy}>
-                  <AppText style={[styles.actionLabel, { color: colors.onSurface }]} numberOfLines={1}>{tab.label}</AppText>
-                  <Ionicons name="arrow-forward" size={16} color={colors.onSurfaceTertiary} />
-                </View>
-              </Pressable>
-            ))}
+            {tabs.map(tab => {
+              const symbol = tabVectorSymbol(tab.label, role);
+              return (
+                <Pressable
+                  key={tab.name}
+                  onPress={() => runAction(tab)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${tab.label} quick action`}
+                  accessibilityHint={`Open ${tab.label}`}
+                  style={({ pressed }) => [
+                    styles.action,
+                    singleColumn && styles.fullWidth,
+                    {
+                      backgroundColor: pressed ? colors.brandSoft : colors.surfaceSecondary,
+                      borderColor: colors.divider,
+                      transform: [{ scale: pressed ? 0.985 : 1 }],
+                    },
+                  ]}
+                >
+                  {symbol ? <IconTile symbol={symbol} width={38} /> : <IconTile icon={tab.icon} width={38} />}
+                  <AppText style={[styles.actionLabel, { color: colors.onSurface }]}>{tab.label}</AppText>
+                  <Ionicons name="chevron-forward" size={16} color={colors.onSurfaceTertiary} />
+                </Pressable>
+              );
+            })}
           </View>
-        </BlurView>
+        </ScrollView>
       </View>
     </Modal>
   );
@@ -133,14 +118,16 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     borderWidth: 1,
     overflow: "hidden",
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xl,
+    flexGrow: 0,
+    flexShrink: 1,
+    maxHeight: "100%",
     shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.26,
-    shadowRadius: 32,
-    elevation: 20,
+    shadowOpacity: 0.14,
+    shadowRadius: 16,
+    elevation: 6,
   },
+  sheetContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xl },
+  fullWidth: { width: "100%" },
   handle: {
     alignSelf: "center",
     width: 42,
@@ -171,19 +158,13 @@ const styles = StyleSheet.create({
   },
   action: {
     width: "48%",
-    minHeight: 144,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    padding: spacing.md,
-    justifyContent: "space-between",
-  },
-  actionTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
-  index: { fontFamily: fonts.bold, fontSize: 9, letterSpacing: 0.6 },
-  actionCopy: {
+    minHeight: 64,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     gap: spacing.sm,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    padding: spacing.sm,
   },
   actionLabel: { fontFamily: fonts.semibold, fontSize: 14, flex: 1 },
 });

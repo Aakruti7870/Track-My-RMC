@@ -92,7 +92,7 @@ export default function DispatchOrder() {
           <Card style={{ gap: spacing.xs }}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
               <AppText variant="heading">{o.order_number}</AppText>
-              <Badge label={(o.status || "").replace(/_/g, " ")} status={o.status} />
+              <Badge label={(o.status || "").replace(/_/g, " ")} status={o.status} orderStatus />
             </View>
             <AppText style={{ fontFamily: fonts.displayBold, fontSize: fontSize["2xl"], color: colors.onSurface }}>
               {o.grade} · {o.quantity} m³
@@ -112,7 +112,7 @@ export default function DispatchOrder() {
           <Card style={{ gap: spacing.sm }} testID="staff-dispatch-whatsapp-contact">
             <AppText variant="heading">WhatsApp Dispatch Contact</AppText>
             <AppText variant="caption">
-              Record the customer's explicit permission for delivery updates.
+              Record the customer&apos;s explicit permission for delivery updates.
               Delivery messages require customer permission. App promotions require a separate
               opt-in; never assume consent from a concrete purchase.
             </AppText>

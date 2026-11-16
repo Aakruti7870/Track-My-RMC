@@ -78,86 +78,24 @@ for (const role of requiredRoles) {
 assert.equal(customerHomeModules().length, 8, "All eight customer Home-eligible modules remain available in the full directory.");
 
 const customerHome = read("app/customer/index.tsx");
-const homeKeysBlock = customerHome.match(/const HOME_MODULE_KEYS = \[([\s\S]*?)\](?: as const)?;/);
-assert.ok(homeKeysBlock, "Customer Home must declare an explicit eight-module shortlist.");
-const homeKeys = [...homeKeysBlock[1].matchAll(/"([a-z-]+)"/g)].map(match => match[1]);
-assert.deepEqual(homeKeys, [
-  "projects", "pour-planner", "receiving-guide", "cube-tests",
-  "saved-sites", "customer-support", "compare-plants", "free-tools",
-], "Customer Home must show eight shortcuts in the requested order.");
-for (const key of homeKeys) {
-  const module = modulesForRole("customer").find(entry => entry.key === key);
-  assert.ok(module && module.symbol, `Customer Home must use a registered vector symbol for ${key}`);
+const homeLinks = read("src/navigation/customerHome.ts");
+const planningBuffer = homeLinks.match(/const planningKeys = \[([\s\S]+?)\] as const;/)?.[1] || "";
+const previewKeys = [...planningBuffer.matchAll(/"([a-z-]+)"/g)].map(match => match[1]);
+assert.deepEqual(previewKeys, ["free-tools", "pour-planner", "projects", "saved-sites", "cube-tests", "receiving-guide"]);
+const extraPlanningBuffer = homeLinks.match(/const morePlanningKeys = \[([^\]]+)\]/)?.[1] || "";
+const extraPlanning = [...extraPlanningBuffer.matchAll(/"([a-z-]+)"/g)].map(match => match[1]);
+for (const key of [...previewKeys, ...extraPlanning]) {
+  assert.ok(modulesForRole("customer").some(module => module.key === key && module.symbol), "Missing customer vector/route: " + key);
 }
-assert.ok(customerHome.includes('const DIRECTORY = modulesForRole("customer");'));
-assert.ok(customerHome.includes("const CUSTOMER_MODULES = HOME_MODULE_KEYS.flatMap(key => DIRECTORY.filter(module => module.key === key));"));
-for (const name of ["home-quick-actions", "home-other-services"]) {
-  assert.ok(customerHome.includes(`testID="${name}"`), `Missing grouped Home card: ${name}`);
+assert.equal(new Set([...previewKeys, ...extraPlanning]).size, previewKeys.length + extraPlanning.length);
+for (const id of ["home-quick-actions", "home-bulk-quote", "customer-module-grid", "home-other-services", "home-planning-see-all", "home-materials-see-all"]) {
+  assert.ok(customerHome.includes('"' + id + '"'), "Missing customer Home control: " + id);
 }
-assert.ok(customerHome.includes('testID={testID}') &&
-  customerHome.includes('"customer-module-grid"') &&
-  customerHome.includes('"home-advice-grid"'),
-  "Both four-item customer groups must use the shared module renderer with stable test IDs.");
-assert.ok(customerHome.includes('<HomeCarousel style={{ width: Math.min(viewportWidth, 720), borderRadius: 0, borderWidth: 0 }} />'), "Preserve five-slide carousel and make the customer banner edge-to-edge.");
-assert.ok(customerHome.includes('<KycBanner status={data.kyc_status} />'), "Preserve KYC state machine.");
-assert.ok(customerHome.includes('<ActiveTransitMixerCard'), "Preserve real order and demo tracking.");
-assert.ok(customerHome.includes('homeAboveFold: { width: "100%", gap: 10 }'), "Home sections must be separated by 10 dp.");
-assert.ok(customerHome.includes('scrollContent: { paddingHorizontal: 16, paddingTop: 0, paddingBottom: 88, gap: 10,'), "Home sections need 10dp gaps and safe bottom padding.");
-assert.ok(customerHome.includes('groupCard: { width: "100%", maxWidth: 620, alignSelf: "center", paddingHorizontal: 0, paddingVertical: 0, gap: 0 }'), "Avoid stacked internal gaps.");
-assert.ok(customerHome.includes('justifyContent: "space-between", rowGap: 10 }'), "Home grid rows must use 10 dp spacing.");
-assert.ok(customerHome.includes('tightGroup: { paddingVertical: 0, gap: 0 }'), "Unheaded groups must have no extra vertical padding.");
-assert.ok(customerHome.includes('>Quick Actions</AppText>'), "The four circular quick actions need a visible heading.");
-assert.ok(!customerHome.includes('>RMC Tools</AppText>'), "RMC Tools heading must be removed.");
-assert.ok(customerHome.includes('>Supply & Workforce</AppText>'), "Supply & Workforce heading must replace Other Services.");
-assert.ok(customerHome.includes('>Active Projects & Planning</AppText>') || customerHome.includes('"Active Projects & Planning", "customer-module-grid"'), "Planning section heading required.");
-assert.ok(customerHome.includes('"Free Tools & Expert Advice", "home-advice-grid"'), "Four-item advice section required.");
-assert.ok(customerHome.includes('>Built Better</AppText>') && customerHome.includes('name="shield-checkmark"'), "Built Better green shield slogan required.");
-assert.ok(customerHome.includes('sectionTitle: { fontFamily: fonts.bold, fontSize: 15, lineHeight: 20'), "Home mobile headings use Jakarta Bold 15dp / compact 20dp line.");
-assert.ok(customerHome.includes('customerHomeSizes(viewportWidth, Platform.OS)'), "Use viewport and platform to size the Home consistently.");
-const responsiveHome = read("src/theme/tokens.ts");
-assert.ok(responsiveHome.includes('platform !== "web" || viewportWidth < 600') && responsiveHome.includes("viewportWidth < 1024"), "Only tablet and desktop web may scale the approved native/mobile design.");
-for (const mobile of ["quickSymbol: 52", "toolSymbol: 52", "serviceSymbol: 58", "sectionGap: 10", "headerSize: 15", "pumpWidth: 240", "pumpHeight: 50"]) {
-  assert.ok(responsiveHome.includes(mobile), `Missing locked PR #152 mobile design token: ${mobile}`);
-}
-assert.ok(customerHome.includes('quickGrid: { marginTop: 10 }') && customerHome.includes('toolGrid: { marginTop: 10 }') && customerHome.includes('serviceGrid: { marginTop: 10 }'), "Keep a 10dp gap between each section header and row.");
-assert.ok(customerHome.includes('promoPrimaryCard: { width: 240 }') && customerHome.includes('height: 50'), "Pump CTA must retain its 240x50dp dimensions.");
-assert.ok(customerHome.includes("Streamline Your Pour") && customerHome.includes("Request a Pump Quote"), "Pump CTA copy mismatch.");
-assert.ok(customerHome.includes('["pour-planner", "compare-plants", "projects", "saved-sites"]'), "Planning tools must be presented in the requested order.");
-assert.ok(customerHome.includes('["free-tools", "receiving-guide", "cube-tests", "customer-support"]'), "Expert advice must use the four existing authorized routes.");
-assert.ok(customerHome.includes('testID="home-pump-rental-promo"') && customerHome.includes('pathname: "/customer/service-enquiry"') && customerHome.includes('service: "pump"'), "Pump-rental callout must open the dedicated pump service enquiry, not unrelated support.");
-assert.ok(!customerHome.includes('On Time,') && !customerHome.includes('Everytime') && !customerHome.includes('promoSecondaryCard'), "Remove the old On Time promotional card entirely.");
-assert.ok(customerHome.includes('quickCircle: { width: 56, height: 56, borderRadius: 28'), "52 dp action artwork must have a circular, clipping frame.");
-assert.ok(customerHome.includes('{ key: "plants", label: "Plants"'), "The third action label must remain Plants.");
-assert.ok(customerHome.includes('fourQuickColumns ? "24.25%" : "49%"'), "Quick Actions must use four compact columns when wide and two when narrow for full 52-unit icons.");
-assert.ok(customerHome.includes('fourToolColumns ? "24.25%" : "49%"'), "RMC Tools must use four compact columns when they fit or two on narrow displays.");
-assert.ok(customerHome.includes('width: "32.5%"'), "Other Services must use three compact columns.");
-assert.ok(!customerHome.includes('<Card testID="customer-module-grid"'), "Redundant RMC Tools outer border must be removed.");
-assert.ok(!customerHome.includes('<Card testID="home-quick-actions"'), "Redundant Quick Actions outer border must be removed.");
-assert.ok(!customerHome.includes('<Card testID="home-other-services"'), "Redundant Other Services outer border must be removed.");
-for (const key of ["quickTile: { minHeight: 82", "toolTile: { minHeight: 101", "serviceTile: { minHeight: 103", "maxWidth: 620"]) {
-  assert.ok(customerHome.includes(key), `Compact card sizing missing: ${key}`);
-}
-// Newly uploaded Other Services SVG masters must render on the actual home cards.
-for (const [key, symbol] of [
-  ["cement", "cement"],
-  ["labour", "labour-contractor"],
-  ["material", "building-material"],
-]) {
-  assert.ok(
-    customerHome.includes(`{ key: "${key}", label: `) && customerHome.includes(`symbol: "${symbol}"`),
-    `Missing Other Services SVG assignment for ${key}`,
-  );
-}
-assert.ok(customerHome.includes('<VectorSymbol name={service.symbol} size={homeSize.serviceSymbol} />'), "Other Services must use responsive uploaded SVG artwork.");
-assert.ok(!customerHome.includes('<Ionicons name={service.icon}'), "Do not regress to generic service icons.");
-assert.ok(customerHome.includes('<VectorSymbol name={action.symbol} size={homeSize.quickSymbol} />'), "Quick Actions must use responsive assigned vector artwork.");
-assert.ok(customerHome.includes('<VectorSymbol name={module.symbol} size={homeSize.toolSymbol} />'), "RMC Tools must use responsive assigned vector artwork.");
-for (const wrapper of ["styles.actionIcon", "styles.toolIcon", "styles.serviceIcon"]) {
-  assert.ok(!customerHome.includes(wrapper), `Decorative icon plate must be removed: ${wrapper}`);
-}
-assert.ok(!customerHome.includes('contentContainerStyle={styles.moduleGrid}'), "Remove old horizontal shortcut strip.");
+assert.match(customerHome, /<KycBanner status=\{data\?\.kyc_status \?\? user\?\.kyc_status/);
+assert.match(customerHome, /<ActiveTransitMixerCard/);
+assert.match(customerHome, /router\.push\(enquiryRoute\("bulk"\)\)/);
 const serviceForm = read("app/customer/service-enquiry.tsx");
-for (const kind of ["CEMENT", "LABOUR_CONTRACTOR", "BUILDING_MATERIAL", "PUMP_RENTAL"]) {
+for (const kind of ["CEMENT", "LABOUR_CONTRACTOR", "BUILDING_MATERIAL", "PUMP_RENTAL", "BULK_CONCRETE"]) {
   assert.ok(serviceForm.includes(`service_type: "${kind}"`), `Missing enquiry schema: ${kind}`);
 }
 assert.ok(serviceForm.includes('"/customer/service-enquiries"'), "Enquiry API integration missing.");
@@ -189,14 +127,14 @@ const connected = [
 ];
 for (const file of connected) {
   const source = read(file);
-  assert.ok(source.includes("moduleCatalog") || source.includes("<RoleModuleDirectory"),
+  assert.ok(source.includes("moduleCatalog") || source.includes("navigation/customerHome") || source.includes("<RoleModuleDirectory"),
     `Shared module catalog not connected: ${file}`);
 }
 assert.ok(read("app/driver/index.tsx").includes("<OperationalHomeTopBar") &&
   !read("app/driver/index.tsx").includes("<RoleModuleDirectory") &&
   read("app/driver/more.tsx").includes('<RoleModuleDirectory role={user?.role}'),
   "Driver Home removes duplicate module tiles; More retains the role-aware directory.");
-for (const file of ["src/screens/StaffHome.tsx", "src/screens/StaffMore.tsx"]) {
+for (const file of ["app/role-modules.tsx", "src/screens/StaffMore.tsx"]) {
   assert.ok(read(file).includes("<StaffModuleDirectory"),
     `Staff module catalog not connected through staff-only directory: ${file}`);
 }

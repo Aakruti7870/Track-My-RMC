@@ -18,40 +18,40 @@ describe('final login and customer hero guards', () => {
     assert.doesNotMatch(login, /source=\{heroSource\}[\s\S]{0,160}contentFit="cover"/);
   });
 
-  it('keeps the required login legal/footer order and removes Contact Us', () => {
+  it('keeps reviewer access and the login legal/footer order', () => {
     const terms = login.indexOf('Terms & Conditions');
     const privacy = login.indexOf('Privacy Policy');
     const deletion = login.indexOf('Delete Account');
     const secured = login.indexOf('Secured with 6-digit OTP verification');
-    const review = login.indexOf('REVIEW APP · Google Play reviewer access');
+    const review = login.indexOf('testID="login-review-access"');
     const powered = login.indexOf('Powered by');
 
     for (const value of [terms, privacy, deletion, secured, review, powered]) assert.ok(value >= 0);
     assert.ok(terms < privacy);
     assert.ok(privacy < deletion);
-    assert.ok(deletion < secured);
     assert.ok(secured < review);
-    assert.ok(review < powered);
+    assert.ok(deletion < powered);
+    assert.ok(review < terms);
     assert.doesNotMatch(login, /Contact Us/);
-    assert.doesNotMatch(login, /textDecorationLine\s*:\s*["']underline["']/);
+    assert.match(login, /legalLink: \{[^\n]*textDecorationLine: "underline"/);
   });
 
-  it('renders exactly five new banners in the approved order', () => {
+  it('renders the six uploaded banners in carousel order', () => {
     assert.ok(home.includes('HomeCarousel'));
     assert.ok(carousel.includes('const AUTO_MS = 4500'));
     assert.ok(carousel.includes('const SLIDE_COUNT = SLIDES.length'));
     assert.ok(carousel.includes('pagingEnabled'));
     assert.ok(carousel.includes('aspectRatio: 16 / 9'));
-    const filenames = ['Mixer.webp', 'KYC-verification.webp', 'Free-Calculator.webp', 'Cashfree.webp', 'CountryMap.webp'];
+    const filenames = ['order-concrete.webp', 'track-order.webp', 'nearby-plants.webp', 'rmc-calculator.webp', 'bulk-concrete.webp', 'delivery-challans.webp'];
     const imports = carousel.split("\n").filter(line => line.includes('source: require('))
       .map(line => line.split('assets/images/')[1]?.split('"')[0]);
     assert.deepEqual(imports.map(file => path.basename(file)), filenames);
-    for (const file of imports) assert.ok(fs.existsSync(path.resolve(root, 'src/components', file)), file);
+    for (const file of imports) assert.ok(fs.existsSync(path.join(root, 'assets/images', file)), file);
     assert.ok(carousel.includes('contentFit="contain"'));
     assert.ok(!carousel.includes('support.png'));
   });
 
-  it('uses two theme backgrounds with a 35 percent image layer and glass card surfaces', () => {
+  it('uses two theme backgrounds with a subdued image layer and matte card surfaces', () => {
     const layout = fs.readFileSync(path.join(root, 'app/_layout.tsx'), 'utf8');
     const scene = fs.readFileSync(path.join(root, 'src/theme/sceneBackground.ts'), 'utf8');
     const activePage = fs.readFileSync(path.join(root, 'src/components/ThemedScreen.tsx'), 'utf8');
@@ -63,12 +63,12 @@ describe('final login and customer hero guards', () => {
       assert.ok(fs.existsSync(path.join(root, 'assets/images', image)));
     }
     assert.ok(fs.existsSync(path.join(root, 'assets/images', 'Background Light Theme.PNG')));
-    assert.ok(activePage.includes('opacity: 0.35'));
-    assert.ok(scene.includes('rgba(247,248,249,0.65)'));
-    assert.ok(scene.includes('rgba(14,17,22,0.65)'));
+    assert.ok(activePage.includes('opacity: 0.15'));
+    assert.ok(scene.includes('rgba(233,228,222,0.85)'));
+    assert.ok(scene.includes('rgba(7,8,13,0.85)'));
     assert.ok(layout.includes('contentStyle: getThemedSceneStyle(colors)'));
     assert.ok(!layout.includes('contentStyle: { backgroundColor: "transparent" }'));
-    assert.ok(colors.includes('surfaceSecondary: "rgba('));
+    assert.match(colors, /surfaceSecondary: "#[0-9A-F]{6}"/);
     assert.ok(card.includes('backgroundColor: colors.surfaceSecondary'));
   });
 

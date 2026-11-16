@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ActivityIndicator, AppState, FlatList, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
+import { IconTile } from "@/src/components/IconTile";
 import * as Location from "expo-location";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -17,14 +18,16 @@ import { Button } from "@/src/components/ui/Button";
 import { usePermissions } from "@/src/permissions/PermissionProvider";
 import { AppText } from "@/src/components/ui/AppText";
 import { Card } from "@/src/components/ui/Card";
+import { Badge } from "@/src/components/ui/Badge";
 import { Skeleton } from "@/src/components/ui/Skeleton";
 import { PlantMap } from "@/src/components/PlantMap";
-import { PlantCard, PlantData } from "@/src/components/PlantCard";
+import type { PlantData } from "@/src/components/PlantCard";
+import { plantOrderRoute } from "@/src/domain/plant";
 import { ErrorView } from "@/src/components/StateViews";
 import { requestNearbyPlantsLocationConsent } from "@/src/location/BackgroundLocationConsent";
 import { distanceKm, LatLng, validLatLng } from "@/src/maps/geo";
 import { EMPTY_PLANT_GEO, cleanPlantGeo, hasPlantGeoFilters, isValidPlantGeo, plantGeoLocationLabel, PlantGeoFilters } from "@/src/domain/plantGeoFilters";
-import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
+import { control, fonts, homeArtwork, radius, spacing } from "@/src/theme/tokens";
 
 type NearbyLocationStatus = "ok" | "denied" | "services-disabled" | "timeout" | "unavailable";
 type NearbyLocationResult = { status: NearbyLocationStatus; coords: LatLng | null; fromCache?: boolean; canAskAgain?: boolean };
@@ -138,6 +141,7 @@ export default function CustomerPlants() {
   const [filters, setFilters] = useState({q:"",grade:"",radius_km:50,verified:false,...EMPTY_PLANT_GEO});
   const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null);
   const [details,setDetails] = useState<PlantData | null>(null);
+  const requestVisit = useRef(0);
   useEffect(() => { setSelectedPlantId(null); }, [userLocation?.lat, userLocation?.lng]);
   const manualLocation = useRef(false);
   const geoLookupVersion = useRef(0);
@@ -298,43 +302,68 @@ export default function CustomerPlants() {
     return ranked;
   }, [ranked]);
 
-  // Google-sourced data remains separate from the app's approved, order-enabled directory.
-  const googleEntries = useMemo(() => {
+  const googleListings = useMemo<PlantData[]>(() => {
     const registered = data?.plants || [];
-    return (googleNearby?.places || []).filter((place) => {
-      return !registered.some((plant) => plant.name.trim().toLowerCase() === place.name.trim().toLowerCase()
-        && validLatLng(plant) && distanceKm({lat:plant.lat!,lng:plant.lng!},place) < 0.15);
-    });
+    return (googleNearby?.places || []).filter(place => !registered.some(plant =>
+      plant.google_place_id === place.place_id || (place.registered_plant
+        ? plant.id === place.registered_plant.id
+        : plant.name.trim().toLowerCase() === place.name.trim().toLowerCase()
+          && validLatLng(plant) && distanceKm({lat:plant.lat!,lng:plant.lng!},place) < 0.15),
+    )).map(place => ({
+      id: place.registered_plant?.id ?? `google:${place.place_id}`,
+      google_place_id: place.place_id,
+      name: place.name,
+      city: "",
+      address: place.address,
+      lat: place.lat,
+      lng: place.lng,
+      grades: [],
+      contact_phone: "",
+      service_area_km: 0,
+      status: place.registered_plant ? "active" : "google_listing",
+      verified: Boolean(place.verified),
+      order_enabled: Boolean(place.order_enabled),
+      order_intake_mode: place.registered_plant?.order_intake_mode,
+      distance_km: place.distance_km,
+    }));
   }, [googleNearby, data]);
 
-  const googleMapPlants = useMemo<PlantData[]>(() => googleEntries.map(place => ({
-    id: `google:${place.place_id}`,
-    name: place.name,
-    city: "",
-    address: place.address,
-    lat: place.lat,
-    lng: place.lng,
-    grades: [],
-    contact_phone: "",
-    service_area_km: 0,
-    status: "google_listing",
-    verified: false,
-    order_enabled: false,
-    distance_km: place.distance_km,
-  })), [googleEntries]);
-
-  const mappedPlants = useMemo(() => [...filtered, ...googleMapPlants], [filtered, googleMapPlants]);
+  const mappedPlants = useMemo(() => [...filtered, ...googleListings], [filtered, googleListings]);
   const openGooglePlace = useCallback((place: GoogleNearbyPlant) => {
     const fallback = `https://www.google.com/maps/search/?api=1&query=${place.lat}%2C${place.lng}&query_place_id=${encodeURIComponent(place.place_id)}`;
     void Linking.openURL(place.google_maps_uri || fallback);
   }, []);
+
+  function openSupplierRequest(plant: PlantData, orderReview: boolean, googlePlaceId?: string | null) {
+    const supplier = googlePlaceId
+      ? { googlePlaceId }
+      : { plantId: plant.id };
+    router.push({
+      pathname: "/customer/request-quotation",
+      params: {
+        ...supplier, plantName: plant.name, orderReview: orderReview ? "1" : "0",
+        visit: String(++requestVisit.current),
+      },
+    });
+  }
+
+  function openPlantOrder(plant: PlantData) {
+    const destination = plantOrderRoute(plant);
+    if (destination === "unavailable") return;
+    setDetails(null);
+    if (destination === "direct") {
+      router.push({ pathname: "/new-order", params: { plantId: plant.id } });
+    } else {
+      openSupplierRequest(plant, true, plant.status === "google_listing" ? plant.google_place_id : null);
+    }
+  }
 
   return (
     <ThemedScreen>
     <View style={{ flex: 1, backgroundColor: colors.isDark ? "transparent" : colors.surface }}>
       <View style={{ height: insets.top }} />
       <View style={styles.titleRow}>
-        <AppText variant="title">Nearby <AppText color={colors.brand}>Plants</AppText></AppText>
+        <AppText variant="title">Nearby <AppText color={colors.accentText}>Plants</AppText></AppText>
         <AppText variant="caption">Find registered plants and nearby RMC businesses listed on Google Maps.</AppText>
       </View>
 
@@ -347,25 +376,19 @@ export default function CustomerPlants() {
           showsVerticalScrollIndicator={false}
           onRefresh={() => {void refetch();refreshGoogle();}}
           refreshing={loading && !!data}
-          contentContainerStyle={{ width:"100%",maxWidth:1100,alignSelf:"center",paddingHorizontal: 16, paddingTop: 12, paddingBottom: 120, gap: 14, flexGrow: 1 }}
+          contentContainerStyle={{ width:"100%",maxWidth:1100,alignSelf:"center",paddingHorizontal: 16, paddingTop: 12, paddingBottom: spacing.xl, gap: spacing.md, flexGrow: 1 }}
           ListHeaderComponent={
             <View style={{ gap: spacing.sm, marginBottom: spacing.xs }}>
               <View style={[styles.mapShell, { borderColor: colors.isDark ? "rgba(255,154,61,0.36)" : colors.border, shadowColor: colors.isDark ? "#FF9A3D" : colors.shadow, shadowOpacity: colors.isDark ? 0.14 : 0.04 }]}>
                 <PlantMap plants={mappedPlants} userLocation={userLocation} selectedPlantId={selectedPlantId} onSelectPlant={(plant) => {
                   setSelectedPlantId(plant.id);
-                  if (plant.id.startsWith("google:")) {
-                    const place = googleEntries.find((entry) => `google:${entry.place_id}` === plant.id);
-                    const listing = googleMapPlants.find((entry) => entry.id === plant.id);
-                    if (listing) setDetails(listing);
-                  } else {
-                    setDetails(plant);
-                  }
+                  setDetails(plant);
                 }} onRegionChange={coords => { if (!userLocation || distanceKm(userLocation,coords)>1) { manualLocation.current=true;setUserLocation(coords); setPage(1); } }} />
               </View>
 
               <View style={styles.searchRow}>
-                <View style={[styles.searchBar,{backgroundColor:colors.surfaceSecondary,borderColor:colors.isDark ? "rgba(255,154,61,0.32)" : colors.border,shadowColor:colors.isDark ? "#FF9A3D" : colors.shadow}]}>
-                  <VectorSymbol name="search" size={29} />
+                <View style={[styles.searchBar,{backgroundColor:colors.surfaceSecondary,borderColor:colors.controlOutline}]}>
+                  <VectorSymbol name="search" size={20} />
                   <TextInput testID="plants-search" value={q}
                     onChangeText={value=>{setQ(value);setPage(1);setFilters(current=>({...current,q:value}));}}
                     placeholder="Search plant by name" placeholderTextColor={colors.onSurfaceTertiary}
@@ -373,7 +396,7 @@ export default function CustomerPlants() {
                   {q ? <Pressable onPress={()=>{setQ("");setPage(1);setFilters(current=>({...current,q:""}));}} accessibilityLabel="Clear search"><Ionicons name="close" size={20} color={colors.onSurfaceTertiary} /></Pressable> : null}
                 </View>
                 <Pressable testID="plants-filter-toggle" accessibilityLabel={showFilters ? "Hide location filters" : "Location filters"} onPress={()=>setShowFilters(v=>!v)} style={[styles.orangeFilter,{backgroundColor:colors.brand,borderColor:colors.isDark ? "#FF9A3D" : colors.brand}]} accessibilityRole="button">
-                  <VectorSymbol name="filter" size={28} /><AppText style={styles.orangeFilterText}>Filters</AppText>
+                  <VectorSymbol name="filter" size={20} color={colors.onBrand} /><AppText color={colors.onBrand} style={styles.orangeFilterText}>Filters</AppText>
                 </Pressable>
               </View>
               {showFilters ? <Card testID="plants-geo-filters" style={{gap:12}}>
@@ -383,28 +406,28 @@ export default function CustomerPlants() {
                     <TextInput testID="plants-filter-state" accessibilityLabel="State" placeholder="State, e.g. Maharashtra"
                       value={geoDraft.state}
                       onChangeText={state=>setGeoDraft({state,district:"",taluka:"",city:""})}
-                      style={[styles.geoFilterInput,{backgroundColor:colors.surfaceSecondary,borderColor:colors.border,color:colors.onSurface}]} placeholderTextColor={colors.onSurfaceTertiary} autoCapitalize="words" maxLength={80} />
+                      style={[styles.geoFilterInput,{backgroundColor:colors.surfaceSecondary,borderColor:colors.controlOutline,color:colors.onSurface}]} placeholderTextColor={colors.onSurfaceTertiary} autoCapitalize="words" maxLength={80} />
                   </View>
                   <View style={styles.geoFilterField}>
                     <AppText variant="caption">District</AppText>
                     <TextInput testID="plants-filter-district" accessibilityLabel="District" placeholder="District, e.g. Pune"
                       value={geoDraft.district}
                       onChangeText={district=>setGeoDraft(previous=>({...previous,district,taluka:"",city:""}))}
-                      style={[styles.geoFilterInput,{backgroundColor:colors.surfaceSecondary,borderColor:colors.border,color:colors.onSurface}]} placeholderTextColor={colors.onSurfaceTertiary} autoCapitalize="words" maxLength={80} />
+                      style={[styles.geoFilterInput,{backgroundColor:colors.surfaceSecondary,borderColor:colors.controlOutline,color:colors.onSurface}]} placeholderTextColor={colors.onSurfaceTertiary} autoCapitalize="words" maxLength={80} />
                   </View>
                   <View style={styles.geoFilterField}>
                     <AppText variant="caption">Taluka</AppText>
                     <TextInput testID="plants-filter-taluka" accessibilityLabel="Taluka" placeholder="Taluka, e.g. Haveli"
                       value={geoDraft.taluka}
                       onChangeText={taluka=>setGeoDraft(previous=>({...previous,taluka,city:""}))}
-                      style={[styles.geoFilterInput,{backgroundColor:colors.surfaceSecondary,borderColor:colors.border,color:colors.onSurface}]} placeholderTextColor={colors.onSurfaceTertiary} autoCapitalize="words" maxLength={80} />
+                      style={[styles.geoFilterInput,{backgroundColor:colors.surfaceSecondary,borderColor:colors.controlOutline,color:colors.onSurface}]} placeholderTextColor={colors.onSurfaceTertiary} autoCapitalize="words" maxLength={80} />
                   </View>
                   <View style={styles.geoFilterField}>
                     <AppText variant="caption">City</AppText>
                     <TextInput testID="plants-filter-city" accessibilityLabel="City" placeholder="City, e.g. Ravet"
                       value={geoDraft.city}
                       onChangeText={city=>setGeoDraft(previous=>({...previous,city}))}
-                      style={[styles.geoFilterInput,{backgroundColor:colors.surfaceSecondary,borderColor:colors.border,color:colors.onSurface}]} placeholderTextColor={colors.onSurfaceTertiary} autoCapitalize="words" maxLength={80} />
+                      style={[styles.geoFilterInput,{backgroundColor:colors.surfaceSecondary,borderColor:colors.controlOutline,color:colors.onSurface}]} placeholderTextColor={colors.onSurfaceTertiary} autoCapitalize="words" maxLength={80} />
                   </View>
                 </View>
               </Card> : null}
@@ -422,7 +445,7 @@ export default function CustomerPlants() {
                     </AppText>
                   </View>
                   <AppText variant="caption">
-                    Google Maps results within {Math.min(filters.radius_km,50)} km of the selected location. Google may return only some matching businesses per page; use Next when more are available. Listings are not TrackMyRMC-verified and cannot accept orders here.
+                    Google Maps results within {Math.min(filters.radius_km,50)} km of the selected location.
                   </AppText>
                   {googleLoading ? <ActivityIndicator accessibilityLabel="Finding live Google Places listings" color={colors.brand} /> : null}
                   {googleError ? (
@@ -431,20 +454,18 @@ export default function CustomerPlants() {
                       <Button label="Retry Google Places search" variant="outline" onPress={refreshGoogle} />
                     </View>
                   ) : null}
-                  {!googleLoading && !googleError && googleNearby && !googleEntries.length ? (
+                  {!googleLoading && !googleError && googleNearby && !googleListings.length ? (
                     <AppText variant="caption">No matching RMC businesses found on Google Maps in this radius. Try moving the map or increasing the radius.</AppText>
                   ) : null}
-                  {googleEntries.map((place) => {
-                    const listing = googleMapPlants.find((plant) => plant.id === `google:${place.place_id}`);
-                    if (!listing) return null;
+                  {googleListings.map((listing) => {
                     return (
-                      <View key={place.place_id} testID="google-places-plant">
-                        <ScreenshotPlantCard
+                      <View key={listing.id} testID="google-places-plant">
+                        <NearbyPlantCard
                           plant={listing}
-                          onQuotation={() => router.push({pathname:"/customer/request-quotation",params:{googlePlaceId:place.place_id,plantName:place.name}} as any)}
+                          onQuotation={() => openSupplierRequest(listing, false, listing.google_place_id)}
                           onSelect={() => setSelectedPlantId(listing.id)}
                           onDetails={() => {setSelectedPlantId(listing.id);setDetails(listing);}}
-                          onOrder={() => toast("Ordering is available once this supplier completes TrackMyRMC verification.", "info")}
+                          onOrder={() => openPlantOrder(listing)}
                         />
                       </View>
                     );
@@ -463,9 +484,9 @@ export default function CustomerPlants() {
             </View>
           }
           renderItem={({ item }) => loading && !data ? null : (
-            <ScreenshotPlantCard plant={item} onSelect={()=>setSelectedPlantId(item.id)} onDetails={()=>{setSelectedPlantId(item.id);setDetails(item);}}
-              onQuotation={()=>router.push({pathname:"/customer/request-quotation",params:{plantId:item.id,plantName:item.name}} as any)}
-              onOrder={()=>router.push(`/new-order?plantId=${item.id}` as any)} />
+            <NearbyPlantCard plant={item} onSelect={()=>setSelectedPlantId(item.id)} onDetails={()=>{setSelectedPlantId(item.id);setDetails(item);}}
+              onQuotation={() => openSupplierRequest(item, false)}
+              onOrder={() => openPlantOrder(item)} />
           )}
           ListFooterComponent={
             ((userLocation && !filters.verified && !filters.grade.trim() && (googleNearby || googleHasPreviousPage))
@@ -505,8 +526,8 @@ export default function CustomerPlants() {
         />
       )}
       <Modal visible={!!details} animationType="slide" onRequestClose={() => setDetails(null)}>
-        <ScrollView contentContainerStyle={{padding:24,paddingTop:56,gap:16,backgroundColor:colors.isDark ? "#0E1116" : "#F7F8F9",flexGrow:1}}>
-          {details ? <><AppText variant="title">{"Plant Profile"}</AppText><AppText style={{color:colors.brand}}>{details.name}</AppText><AppText>{details.address}</AppText>
+        <ScrollView contentContainerStyle={{padding:24,paddingTop:56,gap:16,backgroundColor:colors.canvas,flexGrow:1}}>
+          {details ? <><AppText variant="title">{"Plant Profile"}</AppText><AppText style={{color:colors.accentText}}>{details.name}</AppText><AppText>{details.address}</AppText>
           {details.status === "google_listing" ? (
             <AppText accessibilityLabel="Google Maps" style={{fontSize:14,color:colors.onSurfaceTertiary}}>
               Google Maps · Public business listing · Not TrackMyRMC verified
@@ -521,18 +542,17 @@ export default function CustomerPlants() {
             <>
               <DetailLine label="Distance from selected site" value={details.distance_km != null ? `${details.distance_km.toFixed(1)} km` : "Not available"} />
               <Button label="View on Google Maps" variant="outline" onPress={()=>{
-                const place=googleEntries.find(entry=>`google:${entry.place_id}` === details.id);
+                const place=googleNearby?.places.find(entry=>entry.place_id === details.google_place_id);
                 if (place) openGooglePlace(place);
               }} />
-              <AppText variant="caption">A submitted enquiry for this unregistered supplier is saved for TrackMyRMC admin assistance. The business is not automatically contacted.</AppText>
-              <Button label="Place Order" disabled onPress={()=>{}} />
             </>
           ) : (
             <>
-              <Button label="Open Plant Profile" variant="outline" onPress={()=>{const id=details.id;setDetails(null);router.push({pathname:"/plant-profile",params:{plantId:id}});}} />
-            <Button label="Place Order" disabled={!details.order_enabled} onPress={()=>{setDetails(null);router.push(`/new-order?plantId=${details.id}` as any);}} />
+              <Button label="Open Plant Profile" variant="successTint" onPress={()=>{const id=details.id;setDetails(null);router.push({pathname:"/plant-profile",params:{plantId:id}});}} />
             </>
           )}
+          {plantOrderRoute(details) === "review" ? <AppText variant="caption">TrackMyRMC will review your order request.</AppText> : null}
+          <Button label="Place Order" disabled={plantOrderRoute(details) === "unavailable"} onPress={() => openPlantOrder(details)} />
           </> : null}
           <Button label="Close details" onPress={() => setDetails(null)} />
         </ScrollView>
@@ -546,77 +566,41 @@ function DetailLine({label,value}:{label:string;value:string}) {
   const { colors } = useTheme();
   return <View style={{gap:4,borderBottomWidth:1,borderColor:colors.divider,paddingVertical:10}}><AppText variant="caption">{label}</AppText><AppText>{value}</AppText></View>;
 }
-function ScreenshotPlantCard({plant,onDetails,onQuotation,onOrder,quoteSubmitting=false,onSelect}:{plant:PlantData;onSelect:()=>void;onDetails:()=>void;onQuotation:()=>void;onOrder:()=>void;quoteSubmitting?:boolean}) {
+function NearbyPlantCard({ plant, onDetails, onQuotation, onOrder, onSelect }: {
+  plant: PlantData;
+  onSelect: () => void;
+  onDetails: () => void;
+  onQuotation: () => void;
+  onOrder: () => void;
+}) {
   const { colors } = useTheme();
-  const active = (plant.status || "active").toLowerCase() === "active";
-  const isGoogleListing = plant.status === "google_listing";
-  const eligible = plant.order_enabled ?? (active && plant.verified);
-  const orange = colors.isDark ? "#FF9A3D" : colors.brand;
-  const secondary = colors.onSurfaceTertiary;
-  const outlineText = colors.isDark ? "#FFFFFF" : colors.brand;
+  const googleListing = plant.status === "google_listing";
+  const orderRoute = plantOrderRoute(plant);
+
   return (
-    <View style={[styles.screenshotCard, {
-      backgroundColor: colors.surfaceSecondary,
-      borderColor: colors.isDark ? "rgba(255,154,61,0.36)" : colors.border,
-      shadowColor: colors.isDark ? "#FF9A3D" : colors.shadow,
-      shadowOpacity: colors.isDark ? 0.15 : 0.06,
-    }]}>
-      <View style={styles.plantTopRow}>
-        <Pressable onPress={onSelect} accessibilityRole="button" accessibilityLabel={`Show ${plant.name} on map`}
-          style={[styles.plantGlyphPlate,{backgroundColor:colors.isDark ? "rgba(184,193,204,0.12)" : colors.surfaceTertiary,borderColor:colors.isDark ? "rgba(255,154,61,0.52)" : colors.border}]}>
-          <Ionicons name="business-outline" size={27} color={colors.onSurfaceSecondary} />
-        </Pressable>
+    <Card testID={`nearby-plant-${plant.id}`} style={styles.plantCard}>
+      <Pressable onPress={onSelect} accessibilityRole="button" accessibilityLabel={`Show ${plant.name} on map`} style={styles.plantTopRow}>
+        <IconTile symbol="nearby-rmc-plants" width={38} />
         <View style={styles.plantTitleGroup}>
-          <Pressable onPress={onSelect} accessibilityRole="button" accessibilityLabel={`Show ${plant.name} on map`}>
-            <AppText style={[styles.screenshotPlantName,{color:colors.onSurface}]}>{plant.name}</AppText>
-          </Pressable>
-          <View style={styles.plantAddressRow}>
-            <Ionicons name="location" size={15} color={secondary} />
-            <AppText style={[styles.screenshotAddress,{color:secondary}]}>{plant.address || [plant.city,plant.district].filter(Boolean).join(", ")}</AppText>
-          </View>
+          <AppText variant="heading">{plant.name}</AppText>
+          <AppText variant="bodyMuted">{plant.address || [plant.city, plant.district].filter(Boolean).join(", ")}</AppText>
         </View>
-        <Ionicons name={plant.verified ? "shield-checkmark-outline" : "shield-outline"}
-          size={24} color={plant.verified ? colors.verified : secondary}
-          accessibilityLabel={plant.verified ? "TrackMyRMC verified" : "Not TrackMyRMC verified"} />
-      </View>
+      </Pressable>
       <View style={styles.plantChipRow}>
-        {plant.distance_km != null ? (
-          <View style={[styles.plantChip,{backgroundColor:"rgba(255,138,0,0.18)",borderColor:"rgba(255,154,61,0.28)"}]}>
-            <Ionicons name="location-outline" size={16} color={orange}/>
-            <AppText style={[styles.plantChipText,{color:colors.isDark ? "#FFD3A6" : "#9A4800"}]}>{plant.distance_km.toFixed(1)} km away</AppText>
-          </View>
-        ) : null}
-        {isGoogleListing ? (
-          <View style={[styles.plantChip,{backgroundColor:"rgba(37,99,235,0.18)",borderColor:"rgba(37,99,235,0.26)"}]}>
-            <Ionicons name="map-outline" size={16} color={colors.isDark ? "#93C5FD" : "#2563EB"}/>
-            <AppText style={[styles.plantChipText,{color:colors.isDark ? "#DBEAFE" : "#1D4ED8"}]}>Google Maps</AppText>
-          </View>
-        ) : null}
-        <View style={[styles.plantChip,{backgroundColor:plant.verified ? colors.verifiedSoft : "rgba(100,116,139,0.18)",borderColor:plant.verified ? colors.verified : "rgba(148,163,184,0.28)"}]}>
-          <Ionicons name={plant.verified ? "shield-checkmark-outline" : "shield-outline"} size={15} color={plant.verified ? colors.verified : secondary}/>
-          <AppText style={[styles.plantChipText,{color:plant.verified ? colors.verified : secondary}]}>{plant.verified ? "TrackMyRMC verified" : isGoogleListing ? "Not TrackMyRMC verified" : "Verification pending"}</AppText>
-        </View>
+        {plant.distance_km != null ? <AppText variant="caption">{plant.distance_km.toFixed(1)} km away</AppText> : null}
+        <Badge size="sm" status={plant.verified ? "VERIFIED" : "PENDING"}
+          label={plant.verified ? "TrackMyRMC verified" : googleListing ? "Not TrackMyRMC verified" : "Verification pending"} />
       </View>
-      <View style={styles.screenshotActions}>
-        <Pressable accessibilityRole="button" accessibilityState={{disabled:quoteSubmitting}}
-          disabled={quoteSubmitting} onPress={onQuotation}
-          style={[styles.screenshotOutline,{backgroundColor:colors.isDark ? "rgba(255,138,0,0.08)" : "rgba(255,255,255,0.85)",borderColor:orange}]}>
-          <Ionicons name="chatbubble-ellipses-outline" size={17} color={outlineText}/>
-          <AppText numberOfLines={2} style={[styles.screenshotOutlineText,{color:outlineText}]}>{quoteSubmitting ? "Saving…" : "Request Quotation"}</AppText>
-        </Pressable>
-        <Pressable accessibilityRole="button" onPress={onDetails} accessibilityLabel="View Details"
-          style={[styles.screenshotOutline,{backgroundColor:colors.isDark ? "rgba(255,138,0,0.08)" : "rgba(255,255,255,0.85)",borderColor:orange}]}>
-          <Ionicons name="document-text-outline" size={17} color={outlineText}/>
-          <AppText numberOfLines={2} style={[styles.screenshotOutlineText,{color:outlineText}]}>Plant Profile</AppText>
-        </Pressable>
-        <Pressable accessibilityRole="button" disabled={!eligible} accessibilityState={{disabled:!eligible}}
-          accessibilityLabel={!eligible ? "Place Order unavailable until plant is verified" : "Place Order"}
-          onPress={onOrder} style={[styles.screenshotSolid,{backgroundColor:eligible ? colors.brand : colors.disabledSurface,borderColor:eligible ? orange : colors.border}]}>
-          <Ionicons name="cart-outline" size={17} color={eligible ? "#FFFFFF" : colors.disabledContent}/>
-          <AppText numberOfLines={2} style={[styles.screenshotSolidText,{color:eligible ? "#FFFFFF" : colors.disabledContent}]}>Place Order</AppText>
-        </Pressable>
+      <View style={styles.plantActions}>
+        <Button testID="nearby-place-order" size="sm" fullWidth={false}
+          label="Place Order" onPress={onOrder} disabled={orderRoute === "unavailable"} style={styles.plantAction} />
+        <Button size="sm" variant="outline" fullWidth={false} label="Request Quotation"
+          onPress={onQuotation} style={styles.plantAction} />
+        <Button size="sm" variant="successTint" fullWidth={false} label="Plant Profile" onPress={onDetails}
+          style={styles.plantAction} />
       </View>
-    </View>
+      {orderRoute === "review" ? <AppText variant="caption" color={colors.onSurfaceTertiary}>TrackMyRMC will review your order request.</AppText> : null}
+    </Card>
   );
 }
 
@@ -676,9 +660,9 @@ function LocationBanner({ status, locating, onEnable, onRetry }: {
         accessibilityRole="button"
         accessibilityLabel={c.label}
         onPress={c.onPress}
-        style={({ pressed }) => [styles.locationBannerBtn, { backgroundColor: colors.brand, opacity: pressed ? 0.75 : 1 }]}
+        style={({ pressed }) => [styles.locationBannerBtn, { backgroundColor: c.label === "Enable Location" ? homeArtwork.positiveAction : colors.brand, opacity: pressed ? 0.75 : 1 }]}
       >
-        <AppText style={{ fontFamily: fonts.semibold, fontSize: 12, color: colors.onBrand }}>{c.label}</AppText>
+        <AppText style={{ fontFamily: fonts.semibold, fontSize: 12, color: c.label === "Enable Location" ? "#FFFFFF" : colors.onBrand }}>{c.label}</AppText>
       </Pressable>
     </View>
   );
@@ -691,27 +675,18 @@ const styles = StyleSheet.create({
   mapPillText:{color:"#1E293B",fontFamily:fonts.bold,fontSize:13},
   searchRow:{flexDirection:"row",gap:10,alignItems:"center"},
   geoFilterField:{flexGrow:1,flexBasis:"45%",minWidth:130,gap:5},
-  geoFilterInput:{minHeight:44,borderWidth:1,borderColor:"#E2E8F0",backgroundColor:"#FFFFFF",borderRadius:10,paddingHorizontal:10,fontFamily:fonts.medium,fontSize:13,color:"#1E293B"},
+  geoFilterInput:{minHeight:44,borderWidth:1,borderRadius:10,paddingHorizontal:10,fontFamily:fonts.medium,fontSize:13},
   orangeFilter:{borderRadius:12,minHeight:46,paddingHorizontal:14,flexDirection:"row",alignItems:"center",justifyContent:"center",gap:6,borderWidth:1},
-  orangeFilterText:{fontFamily:fonts.semibold,fontSize:14,color:"#FFFFFF"},
-  screenshotCard:{borderWidth:1,borderRadius:20,padding:16,gap:12,elevation:2,shadowOffset:{width:0,height:8},shadowRadius:18},
-  plantTopRow:{flexDirection:"row",alignItems:"flex-start",gap:10},
-  plantGlyphPlate:{width:48,height:48,borderWidth:1,borderRadius:13,alignItems:"center",justifyContent:"center"},
-  plantTitleGroup:{minWidth:0,flex:1,gap:5},
-  plantAddressRow:{flexDirection:"row",alignItems:"flex-start",gap:5},
-  plantChipRow:{flexDirection:"row",alignItems:"center",flexWrap:"wrap",gap:7},
-  plantChip:{minHeight:28,borderWidth:1,borderRadius:9,paddingHorizontal:8,paddingVertical:4,flexDirection:"row",alignItems:"center",gap:5},
-  plantChipText:{fontFamily:fonts.medium,fontSize:11,lineHeight:15},
+  orangeFilterText:{fontFamily:fonts.semibold,fontSize:14},
+  plantCard: { gap: spacing.md },
+  plantTopRow: { minHeight: 48, flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
+  plantTitleGroup: { minWidth: 0, flex: 1, gap: spacing.xs },
+  plantChipRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: spacing.sm },
+  plantActions: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start", gap: spacing.sm },
+  plantAction: { flexBasis: "16%", flexShrink: 0, minWidth: 136, maxWidth: "100%", minHeight: control.minTouch, paddingHorizontal: spacing.sm },
   googleListingCard:{backgroundColor:"#FFFFFF",borderWidth:1,borderColor:"#E2E8F0",borderRadius:16,padding:14,gap:8},
   googleListingCaption:{fontFamily:fonts.medium,fontSize:12,color:"#64748B",marginBottom:5},
   googlePlaceLink:{minHeight:42,flexDirection:"row",gap:7,alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:"#F25C05",borderRadius:10},
-  screenshotPlantName:{fontFamily:fonts.bold,fontSize:17,lineHeight:23},
-  screenshotAddress:{flex:1,fontFamily:fonts.medium,fontSize:13,lineHeight:19},
-  screenshotActions:{flexDirection:"row",gap:8},
-  screenshotOutline:{flex:1,minHeight:46,borderWidth:1.25,borderRadius:12,alignItems:"center",justifyContent:"center",flexDirection:"row",gap:4,paddingHorizontal:4},
-  screenshotOutlineText:{fontFamily:fonts.semibold,fontSize:11,textAlign:"center",flexShrink:1},
-  screenshotSolid:{flex:1,minHeight:46,borderWidth:1.25,borderRadius:12,alignItems:"center",justifyContent:"center",flexDirection:"row",gap:4,paddingHorizontal:4},
-  screenshotSolidText:{fontFamily:fonts.semibold,fontSize:11,textAlign:"center",flexShrink:1},
   searchBar: { flex:1,minHeight:46, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", gap: 8, shadowOffset:{width:0,height:4},shadowRadius:12,shadowOpacity:0.08 },
   searchInput: { flex: 1, minHeight: 44, fontFamily: fonts.medium, fontSize: 14, paddingVertical: 0 },
   refreshButton: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center" },

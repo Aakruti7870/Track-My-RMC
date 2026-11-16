@@ -11,9 +11,9 @@ import {
 import * as Haptics from "expo-haptics";
 
 import { useTheme } from "@/src/theme/ThemeProvider";
-import { control, fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
+import { control, fonts, fontSize, homeArtwork, palette, radius, spacing } from "@/src/theme/tokens";
 
-type Variant = "primary" | "secondary" | "outline" | "ghost" | "danger";
+type Variant = "primary" | "secondary" | "outline" | "ghost" | "danger" | "success" | "successTint";
 type Size = "lg" | "md" | "sm";
 
 type Props = {
@@ -30,6 +30,7 @@ type Props = {
   testID?: string;
   accessibilityLabel?: string;
   accessibilityHint?: string;
+  expanded?: boolean;
 };
 
 export function Button({
@@ -46,6 +47,7 @@ export function Button({
   testID,
   accessibilityLabel,
   accessibilityHint,
+  expanded,
 }: Props) {
   const { colors } = useTheme();
   const isDisabled = Boolean(disabled || loading);
@@ -55,7 +57,9 @@ export function Button({
     secondary: colors.surfaceElevated,
     outline: "transparent",
     ghost: "transparent",
-    danger: colors.error,
+    danger: palette.errorDark,
+    success: homeArtwork.positiveAction,
+    successTint: homeArtwork.positiveTint,
   }[variant];
 
   const pressedBackground = {
@@ -64,22 +68,28 @@ export function Button({
     outline: colors.surfaceTertiary,
     ghost: colors.brandSoft,
     danger: colors.isDark ? "#C6363B" : "#C83239",
+    success: homeArtwork.positivePressed,
+    successTint: "#22C55E48",
   }[variant];
 
   const foreground = {
     primary: colors.onBrand,
     secondary: colors.onSurface,
     outline: colors.onSurface,
-    ghost: colors.brand,
+    ghost: colors.accentText,
     danger: "#FFFFFF",
+    success: "#FFFFFF",
+    successTint: colors.verified,
   }[variant];
 
   const borderColor = {
     primary: colors.brand,
     secondary: colors.border,
-    outline: colors.borderStrong,
+    outline: colors.controlOutline,
     ghost: "transparent",
-    danger: colors.error,
+    danger: palette.errorDark,
+    success: homeArtwork.positiveAction,
+    successTint: colors.verified + "66",
   }[variant];
 
   return (
@@ -88,7 +98,7 @@ export function Button({
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel || label}
       accessibilityHint={accessibilityHint}
-      accessibilityState={{ disabled: isDisabled, busy: Boolean(loading) }}
+      accessibilityState={{ disabled: isDisabled, busy: Boolean(loading), expanded }}
       hitSlop={size === "sm" ? 4 : 2}
       onPress={() => {
         if (isDisabled) return;
@@ -96,7 +106,7 @@ export function Button({
           variant === "danger"
             ? Haptics.ImpactFeedbackStyle.Medium
             : Haptics.ImpactFeedbackStyle.Light,
-        );
+        ).catch(() => undefined);
         onPress?.();
       }}
       disabled={isDisabled}
@@ -111,19 +121,14 @@ export function Button({
               ? pressedBackground
               : background,
           borderColor: isDisabled ? colors.border : borderColor,
-          transform: [{ scale: pressed && !isDisabled ? 0.985 : 1 }],
           shadowColor: variant === "primary" ? colors.brand : colors.shadow,
           shadowOpacity:
-            variant === "primary" && !isDisabled
-              ? colors.isDark
-                ? 0.26
-                : 0.16
-              : variant === "secondary" && !isDisabled
+            variant === "secondary" && !isDisabled
                 ? colors.isDark
                   ? 0.2
                   : 0.07
                 : 0,
-          elevation: variant === "primary" && !isDisabled ? 4 : variant === "secondary" ? 2 : 0,
+          elevation: variant === "secondary" && !isDisabled ? 2 : 0,
         },
         style,
       ]}
@@ -135,7 +140,6 @@ export function Button({
           icon
         )}
         <Text
-          numberOfLines={1}
           style={[
             styles.label,
             size === "lg" ? styles.largeLabel : size === "sm" ? styles.smallLabel : null,
@@ -151,6 +155,7 @@ export function Button({
 
 const styles = StyleSheet.create({
   base: {
+    minWidth: 0,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
@@ -161,18 +166,23 @@ const styles = StyleSheet.create({
     minHeight: control.buttonHeightLarge,
     borderRadius: radius.lg,
     paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.sm,
   },
   medium: {
     minHeight: control.buttonHeight,
     borderRadius: radius.md,
     paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.sm,
   },
   small: {
     minHeight: control.buttonHeightSmall,
     paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
     borderRadius: radius.sm,
   },
   content: {
+    minWidth: 0,
+    maxWidth: "100%",
     minHeight: 24,
     flexDirection: "row",
     alignItems: "center",
@@ -180,6 +190,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   label: {
+    flexShrink: 1,
+    textAlign: "center",
     fontFamily: fonts.semibold,
     fontSize: fontSize.base,
     lineHeight: 20,

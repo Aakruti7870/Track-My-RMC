@@ -50,7 +50,7 @@ export default function PlansPromotions() {
       <Card style={{ gap: spacing.md }}>
         <AppText variant="heading">Individual plant onboarding and offers</AppText>
         <AppText variant="bodyMuted">
-          TrackMyRMC reviews each RMC plant's registration documents, operational requirements,
+          TrackMyRMC reviews each RMC plant&apos;s registration documents, operational requirements,
           subscription duration and any promotional requirements before proposing commercial terms.
         </AppText>
         <AppText variant="bodyMuted">
