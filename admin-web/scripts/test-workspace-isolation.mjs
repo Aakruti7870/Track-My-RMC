@@ -194,9 +194,12 @@ try {
       blur: getComputedStyle(el).backdropFilter,
       surface: getComputedStyle(el).backgroundColor,
       icon: el.querySelector('svg')?.getAttribute('width'),
+      iconInk: getComputedStyle(el.querySelector('.tm-module-icon')).color,
     }));
     assert(visual.width > 0 && visual.right <= width + 1, 'Workspace rows fit the viewport');
-    assert.equal(visual.gradient, 'none', 'Workspace rows use a flat surface');
+    assert.match(visual.gradient, /radial-gradient.*208, 165, 110.*220, 156, 82.*rgb\(56, 49, 41\)/,
+      'Dark workspace cards have a localized amber highlight into charcoal');
+    assert.equal(visual.iconInk, 'rgb(255, 240, 226)', 'Copper tiles use cream icon ink');
     assert.equal(visual.blur, 'none', 'Workspace rows do not blur their backdrop');
     assert.equal(visual.surface, 'rgb(18, 18, 18)', 'Workspace rows use opaque graphite');
     assert.equal(visual.icon, '20', 'Workspace icons use a consistent small size');
@@ -207,6 +210,8 @@ try {
     assert.match(await page.locator('main').getAttribute('class')||'',/tm-light/,'light theme should use warm app tokens');
     await adminNav('Dashboard').click();
     assert.equal(await workspace.evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(250, 249, 245)','Light workspace cards use a light surface');
+    assert.match(await workspace.evaluate(el=>getComputedStyle(el).backgroundImage), /radial-gradient.*rgb\(252, 251, 247\)/,
+      'Light workspace cards fade into ivory');
     await adminNav('Plant Master').click();
     await adminNav('Settings').click();
     for (const mode of ['Light','Dark']) {
