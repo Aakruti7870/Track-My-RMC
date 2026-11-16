@@ -116,9 +116,8 @@ for (const forbiddenRole of ["authority", "central_admin", "super_admin"]) {
   }
 }
 
-const directRoleRouteCount = login.split("router.replace(roleRouteFor(me.role) as any)").length - 1;
-if (directRoleRouteCount < 2) {
-  failures.push("Successful login flows must route using the server-provided me.role");
+if (!login.includes("return roleRouteFor(user.role)") || !login.includes("router.replace(signedInRoute(me))")) {
+  failures.push("Successful login flows must route using the server-provided account role");
 }
 
 if (!['login-user-tab', 'login-plant-tab'].every(testID => login.includes(`"${testID}"`))) {
@@ -129,7 +128,7 @@ if (!login.includes('testID="login-mobile-input"')) {
   failures.push("User Login must keep the mobile OTP input");
 }
 
-if (!login.includes('testID="login-plant-email-input"') || !login.includes('testID="login-plant-send-otp"')) {
+if (!login.includes('testID="login-plant-email-input"') || !login.includes('renderContinue("login-plant-send-otp"')) {
   failures.push("Plant Staff Login must start from the approved work email");
 }
 
@@ -227,7 +226,7 @@ if (login.includes('router.replace("/")')) {
   failures.push("Login must not route successful authentication through /");
 }
 
-if (!login.includes("if (!hydrating && token && user)")) {
+if (!login.includes("!hydrating && token && user") || !login.includes("router.replace(signedInRoute(user))")) {
   failures.push("Login must redirect an already authenticated session");
 }
 

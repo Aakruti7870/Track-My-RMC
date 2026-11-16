@@ -61,6 +61,7 @@ type AuthContextValue = {
   requestOtp: typeof requestOtp;
   requestStaffOtp: typeof requestStaffOtp;
   staffAuthMethod: typeof staffAuthMethod;
+  clearStaffChallenge: () => void;
   verify: (identifier: string, code: string) => Promise<Me>;
   verifyStaff: (identifier: string, code: string) => Promise<import("@/src/api/client").StaffMfaChallengeResponse>;
   verifyStaffAuthenticator: (identifier: string, code: string) => Promise<Me>;
@@ -416,6 +417,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         requestOtp,
         requestStaffOtp,
         staffAuthMethod,
+        clearStaffChallenge: () => setStaffMfaChallenge(null),
         verify,
         verifyStaff,
         verifyStaffAuthenticator,

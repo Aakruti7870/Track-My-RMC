@@ -46,7 +46,7 @@ describe("optimized login banner assets and non-cropping layout", () => {
   it("links the Plant Staff work email to the new Plant Owner registration form", () => {
     const label = screen.indexOf('label="Enter Registered Work Email"');
     const link = screen.indexOf('testID="login-open-onboarding-form"');
-    const submit = screen.indexOf('testID="login-plant-send-otp"');
+    const submit = screen.indexOf('renderContinue("login-plant-send-otp"');
     assert.ok(label >= 0, "Plant Staff email label should be updated");
     assert.ok(label < link && link < submit, "Onboarding link must appear directly after the email field and before login submit");
     assert.ok(screen.includes('accessibilityRole="button"'));
