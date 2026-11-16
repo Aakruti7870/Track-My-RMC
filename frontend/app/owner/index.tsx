@@ -37,7 +37,8 @@ export default function OwnerHome() {
   const { width: viewportWidth, fontScale } = useWindowDimensions();
   const contentWidth = Math.max(0, Math.min(viewportWidth, 820) - 32);
   const shortcutWidth = (Math.min(contentWidth, 620) - 20) / fontScale >= 320 ? "24%" : "49%";
-  const metricColumns = contentWidth >= 700 ? 4 : 2;
+  const readableWidth = contentWidth / fontScale;
+  const metricColumns = readableWidth >= 700 ? 4 : readableWidth >= 275 ? 2 : 1;
   const metricWidth = (contentWidth - (metricColumns - 1) * 9) / metricColumns;
   const { user } = useAuth();
   const router = useRouter();

@@ -63,7 +63,7 @@ const styles = StyleSheet.create({
   action: { minHeight: 91, padding: 11, flexDirection: "row", alignItems: "center", gap: 9 },
   actionCopy: { flex: 1, minWidth: 0, gap: 3 },
   title: { fontFamily: fonts.semibold, fontSize: 13, lineHeight: 17 },
-  subtitle: { fontSize: 11, lineHeight: 15 },
+  subtitle: { fontSize: 12, lineHeight: 16 },
   signOut: { minHeight: 49, borderRadius: 14, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, marginTop: 11 },
   signOutText: { fontFamily: fonts.bold, fontSize: 14, color: "#FFFFFF" },
 });

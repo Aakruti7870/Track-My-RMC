@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, AppState, FlatList, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { IconTile } from "@/src/components/IconTile";
@@ -576,6 +577,9 @@ function NearbyPlantCard({ plant, onDetails, onQuotation, onOrder, onSelect }: {
   const { colors } = useTheme();
   const googleListing = plant.status === "google_listing";
   const orderRoute = plantOrderRoute(plant);
+  const { width, fontScale } = useWindowDimensions();
+  const stackActions = width / fontScale < 320;
+  const actionStyle = [styles.plantAction, stackActions && styles.plantActionStacked];
 
   return (
     <Card testID={`nearby-plant-${plant.id}`} style={styles.plantCard}>
@@ -591,13 +595,13 @@ function NearbyPlantCard({ plant, onDetails, onQuotation, onOrder, onSelect }: {
         <Badge size="sm" status={plant.verified ? "VERIFIED" : "PENDING"}
           label={plant.verified ? "TrackMyRMC verified" : googleListing ? "Not TrackMyRMC verified" : "Verification pending"} />
       </View>
-      <View style={styles.plantActions}>
+      <View style={[styles.plantActions, stackActions && styles.plantActionsStacked]}>
         <Button testID="nearby-place-order" size="sm" fullWidth={false}
-          label="Place Order" onPress={onOrder} disabled={orderRoute === "unavailable"} style={styles.plantAction} />
+          label="Place Order" onPress={onOrder} disabled={orderRoute === "unavailable"} style={actionStyle} />
         <Button size="sm" variant="outline" fullWidth={false} label="Request Quotation"
-          onPress={onQuotation} style={styles.plantAction} />
+          onPress={onQuotation} style={actionStyle} />
         <Button size="sm" variant="successTint" fullWidth={false} label="Plant Profile" onPress={onDetails}
-          style={styles.plantAction} />
+          style={actionStyle} />
       </View>
       {orderRoute === "review" ? <AppText variant="caption" color={colors.onSurfaceTertiary}>TrackMyRMC will review your order request.</AppText> : null}
     </Card>
@@ -682,8 +686,10 @@ const styles = StyleSheet.create({
   plantTopRow: { minHeight: 48, flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
   plantTitleGroup: { minWidth: 0, flex: 1, gap: spacing.xs },
   plantChipRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: spacing.sm },
-  plantActions: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start", gap: spacing.sm },
-  plantAction: { flexBasis: "16%", flexShrink: 0, minWidth: 136, maxWidth: "100%", minHeight: control.minTouch, paddingHorizontal: spacing.sm },
+  plantActions: { flexDirection: "row", gap: spacing.sm },
+  plantActionsStacked: { flexDirection: "column" },
+  plantAction: { alignSelf: "stretch", flex: 1, minWidth: 0, maxWidth: 154, minHeight: control.minTouch, paddingHorizontal: spacing.xs },
+  plantActionStacked: { flex: 0, maxWidth: "100%" },
   googleListingCard:{backgroundColor:"#FFFFFF",borderWidth:1,borderColor:"#E2E8F0",borderRadius:16,padding:14,gap:8},
   googleListingCaption:{fontFamily:fonts.medium,fontSize:12,color:"#64748B",marginBottom:5},
   googlePlaceLink:{minHeight:42,flexDirection:"row",gap:7,alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:"#F25C05",borderRadius:10},
