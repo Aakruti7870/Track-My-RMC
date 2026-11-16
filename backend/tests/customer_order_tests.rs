@@ -1684,6 +1684,31 @@ async fn support_threads_bind_orders_retries_messages_and_mutations_to_the_custo
 async fn actual_customer_and_owner_dashboards_return_the_mobile_contract_and_scoped_quantities(
     db: PgPool,
 ) {
+    // Force a PostgreSQL session date that differs from the plant's date.
+    let (today, session_timezone): (chrono::NaiveDate, String) = sqlx::query_as(
+        "SELECT (NOW() AT TIME ZONE 'Asia/Kolkata')::date,
+           CASE WHEN (NOW() AT TIME ZONE 'Pacific/Pago_Pago')::date =
+                     (NOW() AT TIME ZONE 'Asia/Kolkata')::date
+                THEN 'Pacific/Kiritimati' ELSE 'Pacific/Pago_Pago' END",
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    let options = db
+        .connect_options()
+        .as_ref()
+        .clone()
+        .options([("TimeZone", session_timezone)]);
+    let db = sqlx::postgres::PgPoolOptions::new()
+        .connect_with(options)
+        .await
+        .unwrap();
+    let session_date: chrono::NaiveDate = sqlx::query_scalar("SELECT CURRENT_DATE")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_ne!(session_date, today);
+
     let (state, app, _, plant, token) = fixture(&db).await;
     let (_, placed) = call(
         &app,
@@ -1693,8 +1718,9 @@ async fn actual_customer_and_owner_dashboards_return_the_mobile_contract_and_sco
     )
     .await;
     let id = placed["id"].as_str().unwrap().parse::<Uuid>().unwrap();
-    sqlx::query("UPDATE orders SET delivery_date=CURRENT_DATE WHERE id=$1")
+    sqlx::query("UPDATE orders SET delivery_date=$2 WHERE id=$1")
         .bind(id)
+        .bind(today)
         .execute(&db)
         .await
         .unwrap();
@@ -1729,14 +1755,27 @@ async fn actual_customer_and_owner_dashboards_return_the_mobile_contract_and_sco
     assert_eq!(home["cards"]["delivered_qty"], 0.0);
     assert_eq!(home["pending_orders"][0]["quantity"], 6.0);
     assert_eq!(home["pending_orders"][0]["status"], "PENDING");
+    let (status, orders) = call(&app, "/api/owner/orders?today=true", None, &owner_token).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(orders["orders"].as_array().unwrap().len(), 1);
+    assert_eq!(orders["orders"][0]["id"], placed["id"]);
     let load:Uuid=sqlx::query_scalar("INSERT INTO order_loads(order_id,load_number,quantity_m3,status,dispatched_at) VALUES($1,1,6,'delivered',NOW()) RETURNING id").bind(id).fetch_one(&db).await.unwrap();
-    sqlx::query("INSERT INTO proof_of_deliveries(load_id,receiver_name,receiver_phone,delivered_quantity) VALUES($1,'Synthetic receiver','0',5.5)").bind(load).execute(&db).await.unwrap();
+    sqlx::query(
+        "INSERT INTO proof_of_deliveries(load_id,receiver_name,receiver_phone,delivered_quantity,delivered_at)
+         VALUES($1,'Synthetic receiver','0',5.5,$2::date::timestamp AT TIME ZONE 'Asia/Kolkata')",
+    )
+    .bind(load)
+    .bind(today)
+    .execute(&db)
+    .await
+    .unwrap();
     let (_, home) = call(&app, "/api/owner/home", None, &owner_token).await;
     assert_eq!(home["cards"]["dispatched_qty"], 6.0);
     assert_eq!(home["cards"]["delivered_qty"], 5.5);
     let (status, insights) = call(&app, "/api/owner/insights", None, &owner_token).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(insights["labels"].as_array().unwrap().len(), 7);
+    assert_eq!(insights["dates"][6], json!(today));
     assert_eq!(insights["ordered"][6], 6.0);
     assert_eq!(insights["delivered"][6], 5.5);
     assert_eq!(insights["totals"]["payments"], 0.0);

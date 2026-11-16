@@ -219,7 +219,7 @@ pub async fn list_owner_orders(
         AND ($6::date IS NULL OR o.delivery_date <= $6)
         AND ($7::uuid IS NULL OR o.plant_id=$7)
         AND ($8::text IS NULL OR lower(o.concrete_grade)=lower($8))
-        AND (NOT $9::boolean OR o.delivery_date=CURRENT_DATE)
+        AND (NOT $9::boolean OR o.delivery_date=(NOW() AT TIME ZONE 'Asia/Kolkata')::date)
         ORDER BY o.created_at DESC,o.id DESC LIMIT $10 OFFSET $11"#,
         crate::services::order_service::MOBILE_ORDER_SELECT
     );
@@ -715,11 +715,19 @@ pub async fn get_owner_insights(
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
     let ids = visible_plant_ids(&state, &auth_user).await?;
     let days:Vec<(chrono::NaiveDate,f64,f64,f64)>=sqlx::query_as(r#"
-        SELECT day::date,
-            (SELECT coalesce(sum(total_quantity_m3),0)::double precision FROM orders WHERE plant_id=ANY($1) AND delivery_date=day::date AND lower(status) NOT IN('draft','cancelled','rejected')),
-            (SELECT coalesce(sum(d.delivered_quantity),0)::double precision FROM proof_of_deliveries d JOIN order_loads l ON l.id=d.load_id JOIN orders o ON o.id=l.order_id WHERE o.plant_id=ANY($1) AND d.delivered_at::date=day::date),
-            (SELECT coalesce(sum(amount),0)::double precision FROM plant_payments WHERE plant_id=ANY($1) AND invoice_id IS NOT NULL AND payment_date=day::date)
-        FROM generate_series(CURRENT_DATE-6,CURRENT_DATE,INTERVAL '1 day') day ORDER BY day
+        WITH reporting_days AS (
+            SELECT (NOW() AT TIME ZONE 'Asia/Kolkata')::date - days_ago AS day
+            FROM generate_series(0,6) AS offsets(days_ago)
+        )
+        SELECT day,
+            (SELECT coalesce(sum(total_quantity_m3),0)::double precision FROM orders WHERE plant_id=ANY($1) AND delivery_date=day AND lower(status) NOT IN('draft','cancelled','rejected')),
+            (SELECT coalesce(sum(d.delivered_quantity),0)::double precision
+             FROM proof_of_deliveries d JOIN order_loads l ON l.id=d.load_id JOIN orders o ON o.id=l.order_id
+             WHERE o.plant_id=ANY($1)
+               AND d.delivered_at >= (day::timestamp AT TIME ZONE 'Asia/Kolkata')
+               AND d.delivered_at < ((day+1)::timestamp AT TIME ZONE 'Asia/Kolkata')),
+            (SELECT coalesce(sum(amount),0)::double precision FROM plant_payments WHERE plant_id=ANY($1) AND invoice_id IS NOT NULL AND payment_date=day)
+        FROM reporting_days ORDER BY day
     "#).bind(&ids).fetch_all(&state.db).await?;
     let labels: Vec<String> = days.iter().map(|d| d.0.format("%a").to_string()).collect();
     let ordered: Vec<f64> = days.iter().map(|d| d.1).collect();
