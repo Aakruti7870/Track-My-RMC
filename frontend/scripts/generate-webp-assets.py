@@ -12,7 +12,6 @@ ASSETS = {
     "TrackMyRMC_Login_Top_Banner_Dark.png": 90,
     "Background Light Theme.png": 89,
     "Background Dark Theme.png": 89,
-    "support-agent-mascot.png": 91,
     "Plant _Owner_All_staff_top_card.png": 100,
 }
 LOSSLESS_ASSETS = {

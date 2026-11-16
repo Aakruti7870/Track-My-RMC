@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Image, Modal, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { usePathname, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -10,16 +10,9 @@ import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { fonts, radius, spacing } from "@/src/theme/tokens";
 
-const SUPPORT_AGENT_MASCOT = require("../../assets/images/support-agent-mascot.webp");
-
-
 type CustomerSupportFlow = "order" | "tracking" | null;
 type PublicSupportFlow = "login" | "onboarding" | "delete" | null;
 type DeliveryWindow = "today" | "tomorrow" | "week";
-
-function compactPanelWidth(viewportWidth: number) {
-  return Math.min(340, Math.max(240, viewportWidth * 0.72), Math.max(0, viewportWidth - 16));
-}
 
 function deliveryDateFor(window: DeliveryWindow) {
   const date = new Date();
@@ -36,7 +29,6 @@ function deliveryDateFor(window: DeliveryWindow) {
  *
  * Quick issue choices expand inside the support sheet. Navigation only
  * occurs after a second explicit action such as Start Assisted Order or Open My Orders.
- * All overlay wrappers use box-none so only visible support controls receive touches.
  */
 export function SupportWidgetBridge({ customerHeaderTarget }: { customerHeaderTarget?: number } = {}) {
   const { hydrating, token, user } = useAuth();
@@ -44,7 +36,6 @@ export function SupportWidgetBridge({ customerHeaderTarget }: { customerHeaderTa
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
-  const { height: viewportHeight, width: viewportWidth } = useWindowDimensions();
   const [publicHelpOpen, setPublicHelpOpen] = useState(false);
   const [customerHelpOpen, setCustomerHelpOpen] = useState(false);
   const [customerFlow, setCustomerFlow] = useState<CustomerSupportFlow>(null);
@@ -285,156 +276,146 @@ export function SupportWidgetBridge({ customerHeaderTarget }: { customerHeaderTa
     );
   }
 
-  const anchorTop = Math.max(insets.top + spacing.sm, 16);
-  const panelWidth = compactPanelWidth(viewportWidth);
-  const availableHeight = Math.max(190, viewportHeight - anchorTop - 20);
-  const panelMaxHeight = Math.min(380, Math.max(250, viewportHeight * 0.4), availableHeight);
+  const closePublicHelp = () => {
+    setPublicHelpOpen(false);
+    setPublicFlow(null);
+  };
 
   return (
-    <View style={styles.publicAnchor}>
-      {publicHelpOpen ? (
-        <ScrollView
-          testID="login-help-panel"
-          accessibilityLiveRegion="polite"
-          style={[
-            styles.supportPanel,
-            styles.publicPanel,
-            {
-              width: panelWidth,
-              maxHeight: panelMaxHeight,
-              backgroundColor: colors.surfaceSecondary,
-              borderColor: colors.border,
-            },
-          ]}
-          contentContainerStyle={styles.panelContent}
-          nestedScrollEnabled
-          showsVerticalScrollIndicator
-        >
-          <View style={styles.panelHeader}>
-            <View style={styles.panelIcon}>
-              <VectorSymbol name="support" size={40} />
-            </View>
-            <View style={{ flex: 1, gap: 2 }}>
-              <AppText variant="heading">TrackMyRMC Support</AppText>
-              <AppText variant="caption">Safe quick help before sign-in. No customer, order, tracking or payment data is available here.</AppText>
-            </View>
-            <Pressable
-              testID="login-help-close"
-              accessibilityRole="button"
-              accessibilityLabel="Close login help"
-              hitSlop={10}
-              onPress={() => {
-                setPublicHelpOpen(false);
-                setPublicFlow(null);
-              }}
-              style={[styles.closeButton, { borderColor: colors.border }]}
-            >
-              <Ionicons name="close" size={18} color={colors.onSurface} />
-            </Pressable>
-          </View>
-
-          <View style={[styles.actionSection, publicFlow === "login" && { borderColor: colors.brand + "88", backgroundColor: colors.brandSoft }]}>
-            <Pressable
-              testID="login-help-login-issue"
-              accessibilityRole="button"
-              accessibilityState={{ expanded: publicFlow === "login" }}
-              onPress={() => setPublicFlow((current) => (current === "login" ? null : "login"))}
-              style={styles.actionRow}
-            >
-              <Ionicons name="log-in-outline" size={18} color={colors.brand} />
-              <View style={{ flex: 1 }}><AppText variant="label">Login Issue</AppText><AppText variant="caption">OTP and approved staff login guidance.</AppText></View>
-              <Ionicons name={publicFlow === "login" ? "chevron-up" : "chevron-down"} size={17} color={colors.onSurfaceTertiary} />
-            </Pressable>
-            {publicFlow === "login" ? (
-              <View testID="login-help-login-card" style={styles.compactFlow}>
-                <View style={styles.guidanceRow}>
-                  <Ionicons name="phone-portrait-outline" size={17} color={colors.brand} />
-                  <View style={{ flex: 1, gap: 2 }}><AppText variant="label">Customer</AppText><AppText variant="caption">Use your registered 10-digit mobile number and 6-digit SMS OTP.</AppText></View>
-                </View>
-                <View style={styles.guidanceRow}>
-                  <Ionicons name="business-outline" size={17} color={colors.brand} />
-                  <View style={{ flex: 1, gap: 2 }}><AppText variant="label">Plant Staff</AppText><AppText variant="caption">Use your approved work email and the secure verification method requested.</AppText></View>
-                </View>
-                <AppText variant="caption">Never share OTPs, passwords, passkeys, recovery codes or payment credentials.</AppText>
-              </View>
-            ) : null}
-          </View>
-
-          <View style={[styles.actionSection, publicFlow === "onboarding" && { borderColor: colors.brand + "88", backgroundColor: colors.brandSoft }]}>
-            <Pressable
-              testID="login-help-onboarding"
-              accessibilityRole="button"
-              accessibilityState={{ expanded: publicFlow === "onboarding" }}
-              onPress={() => setPublicFlow((current) => (current === "onboarding" ? null : "onboarding"))}
-              style={styles.actionRow}
-            >
-              <Ionicons name="business-outline" size={18} color={colors.brand} />
-              <View style={{ flex: 1 }}><AppText variant="label">Plant email not approved?</AppText><AppText variant="caption">See onboarding guidance without leaving login.</AppText></View>
-              <Ionicons name={publicFlow === "onboarding" ? "chevron-up" : "chevron-down"} size={17} color={colors.onSurfaceTertiary} />
-            </Pressable>
-            {publicFlow === "onboarding" ? (
-              <View testID="login-help-onboarding-card" style={styles.compactFlow}>
-                <AppText variant="caption">Submit owner, contact and plant details for Authority review. Submission creates a pending request only.</AppText>
-                <Pressable
-                  testID="login-help-open-onboarding"
-                  onPress={() => router.push("/plant-onboarding" as never)}
-                  style={({ pressed }) => [styles.primaryCompactAction, { backgroundColor: colors.brand, opacity: pressed ? 0.82 : 1 }]}
-                >
-                  <AppText style={[styles.primaryCompactActionText, { color: colors.onBrand }]}>Open Onboarding Form</AppText>
-                  <Ionicons name="arrow-forward" size={16} color={colors.onBrand} />
-                </Pressable>
-              </View>
-            ) : null}
-          </View>
-
-          <View style={[styles.actionSection, publicFlow === "delete" && { borderColor: colors.brand + "88", backgroundColor: colors.brandSoft }]}>
-            <Pressable
-              testID="login-help-delete-account"
-              accessibilityRole="button"
-              accessibilityState={{ expanded: publicFlow === "delete" }}
-              onPress={() => setPublicFlow((current) => (current === "delete" ? null : "delete"))}
-              style={styles.actionRow}
-            >
-              <Ionicons name="person-remove-outline" size={18} color={colors.brand} />
-              <View style={{ flex: 1 }}><AppText variant="label">Delete Account</AppText><AppText variant="caption">Review the safe ownership-verification step first.</AppText></View>
-              <Ionicons name={publicFlow === "delete" ? "chevron-up" : "chevron-down"} size={17} color={colors.onSurfaceTertiary} />
-            </Pressable>
-            {publicFlow === "delete" ? (
-              <View testID="login-help-delete-card" style={styles.compactFlow}>
-                <AppText variant="caption">Account deletion requires ownership verification. The support widget never asks for your OTP or password.</AppText>
-                <Pressable
-                  testID="login-help-open-delete-account"
-                  onPress={() => router.push("/account-deletion-public" as never)}
-                  style={({ pressed }) => [styles.primaryCompactAction, { backgroundColor: colors.brand, opacity: pressed ? 0.82 : 1 }]}
-                >
-                  <AppText style={[styles.primaryCompactActionText, { color: colors.onBrand }]}>Start Verified Deletion</AppText>
-                  <Ionicons name="arrow-forward" size={16} color={colors.onBrand} />
-                </Pressable>
-              </View>
-            ) : null}
-          </View>
-        </ScrollView>
-      ) : null}
-
+    <>
       <Pressable
         testID="login-help-widget"
         accessibilityRole="button"
         accessibilityLabel="Need help logging in?"
-        accessibilityHint="Opens safe compact help without accessing customer, order, tracking or payment data"
+        accessibilityHint="Opens sign-in, onboarding, and account help"
         accessibilityState={{ expanded: publicHelpOpen }}
-        onPress={() => setPublicHelpOpen((value) => !value)}
+        onPress={() => setPublicHelpOpen(true)}
         style={({ pressed }) => [
           styles.supportButton,
           {
-            backgroundColor: colors.surfaceSecondary,
-            borderColor: colors.brand,
-            opacity: pressed ? 0.84 : 1,
+            backgroundColor: pressed ? colors.surfaceTertiary : colors.surfaceSecondary,
+            borderColor: colors.controlOutline,
           },
         ]}
       >
-        <Image source={SUPPORT_AGENT_MASCOT} style={styles.supportMascot} resizeMode="contain" accessible={false} />
+        <VectorSymbol name="support" color={colors.onSurface} />
       </Pressable>
-    </View>
+      <Modal visible={publicHelpOpen} transparent animationType={reduceMotion ? "none" : "fade"} onRequestClose={closePublicHelp}>
+        <View style={[styles.customerModal, { backgroundColor: colors.scrim, paddingBottom: Math.max(spacing.lg, insets.bottom) }]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={closePublicHelp} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+          <ScrollView
+            testID="login-help-panel"
+            accessibilityViewIsModal
+            onAccessibilityEscape={closePublicHelp}
+            style={[styles.supportPanel, styles.publicPanel, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}
+            contentContainerStyle={styles.panelContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator
+          >
+            <View style={styles.panelHeader}>
+              <View style={styles.panelIcon}>
+                <VectorSymbol name="support" size={40} />
+              </View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <AppText variant="heading">TrackMyRMC Support</AppText>
+                <AppText variant="caption">Safe quick help before sign-in. No customer, order, tracking or payment data is available here.</AppText>
+              </View>
+              <Pressable
+                testID="login-help-close"
+                accessibilityRole="button"
+                accessibilityLabel="Close login help"
+                hitSlop={10}
+                onPress={closePublicHelp}
+                style={[styles.closeButton, { borderColor: colors.border }]}
+              >
+                <Ionicons name="close" size={18} color={colors.onSurface} />
+              </Pressable>
+            </View>
+
+            <View style={[styles.actionSection, publicFlow === "login" && { borderColor: colors.brand + "88", backgroundColor: colors.brandSoft }]}>
+              <Pressable
+                testID="login-help-login-issue"
+                accessibilityRole="button"
+                accessibilityState={{ expanded: publicFlow === "login" }}
+                onPress={() => setPublicFlow((current) => (current === "login" ? null : "login"))}
+                style={styles.actionRow}
+              >
+                <Ionicons name="log-in-outline" size={18} color={colors.brand} />
+                <View style={{ flex: 1 }}><AppText variant="label">Login Issue</AppText><AppText variant="caption">OTP and approved staff login guidance.</AppText></View>
+                <Ionicons name={publicFlow === "login" ? "chevron-up" : "chevron-down"} size={17} color={colors.onSurfaceTertiary} />
+              </Pressable>
+              {publicFlow === "login" ? (
+                <View testID="login-help-login-card" style={styles.compactFlow}>
+                  <View style={styles.guidanceRow}>
+                    <Ionicons name="phone-portrait-outline" size={17} color={colors.brand} />
+                    <View style={{ flex: 1, gap: 2 }}><AppText variant="label">Customer</AppText><AppText variant="caption">Use your registered 10-digit mobile number and 6-digit WhatsApp OTP.</AppText></View>
+                  </View>
+                  <View style={styles.guidanceRow}>
+                    <Ionicons name="business-outline" size={17} color={colors.brand} />
+                    <View style={{ flex: 1, gap: 2 }}><AppText variant="label">Plant Staff</AppText><AppText variant="caption">Use your approved work email and the secure verification method requested.</AppText></View>
+                  </View>
+                  <AppText variant="caption">Never share OTPs, passwords, passkeys, recovery codes or payment credentials.</AppText>
+                </View>
+              ) : null}
+            </View>
+
+            <View style={[styles.actionSection, publicFlow === "onboarding" && { borderColor: colors.brand + "88", backgroundColor: colors.brandSoft }]}>
+              <Pressable
+                testID="login-help-onboarding"
+                accessibilityRole="button"
+                accessibilityState={{ expanded: publicFlow === "onboarding" }}
+                onPress={() => setPublicFlow((current) => (current === "onboarding" ? null : "onboarding"))}
+                style={styles.actionRow}
+              >
+                <Ionicons name="business-outline" size={18} color={colors.brand} />
+                <View style={{ flex: 1 }}><AppText variant="label">Plant email not approved?</AppText><AppText variant="caption">See onboarding guidance without leaving login.</AppText></View>
+                <Ionicons name={publicFlow === "onboarding" ? "chevron-up" : "chevron-down"} size={17} color={colors.onSurfaceTertiary} />
+              </Pressable>
+              {publicFlow === "onboarding" ? (
+                <View testID="login-help-onboarding-card" style={styles.compactFlow}>
+                  <AppText variant="caption">Submit owner, contact and plant details for Authority review. Submission creates a pending request only.</AppText>
+                  <Pressable
+                    testID="login-help-open-onboarding"
+                    onPress={() => { closePublicHelp(); router.push("/plant-onboarding"); }}
+                    style={({ pressed }) => [styles.primaryCompactAction, { backgroundColor: colors.brand, opacity: pressed ? 0.82 : 1 }]}
+                  >
+                    <AppText style={[styles.primaryCompactActionText, { color: colors.onBrand }]}>Open Onboarding Form</AppText>
+                    <Ionicons name="arrow-forward" size={16} color={colors.onBrand} />
+                  </Pressable>
+                </View>
+              ) : null}
+            </View>
+
+            <View style={[styles.actionSection, publicFlow === "delete" && { borderColor: colors.brand + "88", backgroundColor: colors.brandSoft }]}>
+              <Pressable
+                testID="login-help-delete-account"
+                accessibilityRole="button"
+                accessibilityState={{ expanded: publicFlow === "delete" }}
+                onPress={() => setPublicFlow((current) => (current === "delete" ? null : "delete"))}
+                style={styles.actionRow}
+              >
+                <Ionicons name="person-remove-outline" size={18} color={colors.brand} />
+                <View style={{ flex: 1 }}><AppText variant="label">Delete Account</AppText><AppText variant="caption">Review the safe ownership-verification step first.</AppText></View>
+                <Ionicons name={publicFlow === "delete" ? "chevron-up" : "chevron-down"} size={17} color={colors.onSurfaceTertiary} />
+              </Pressable>
+              {publicFlow === "delete" ? (
+                <View testID="login-help-delete-card" style={styles.compactFlow}>
+                  <AppText variant="caption">Account deletion requires ownership verification. The support widget never asks for your OTP or password.</AppText>
+                  <Pressable
+                    testID="login-help-open-delete-account"
+                    onPress={() => { closePublicHelp(); router.push("/account-deletion-public"); }}
+                    style={({ pressed }) => [styles.primaryCompactAction, { backgroundColor: colors.brand, opacity: pressed ? 0.82 : 1 }]}
+                  >
+                    <AppText style={[styles.primaryCompactActionText, { color: colors.onBrand }]}>Start Verified Deletion</AppText>
+                    <Ionicons name="arrow-forward" size={16} color={colors.onBrand} />
+                  </Pressable>
+                </View>
+              ) : null}
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -459,30 +440,15 @@ const styles = StyleSheet.create({
     maxHeight: "85%",
     alignSelf: "flex-end",
   },
-  publicAnchor: { alignItems: "flex-start" },
-  publicPanel: { position: "absolute", bottom: 50, left: 0 },
+  publicPanel: { flexGrow: 0, flexShrink: 1, width: "100%", maxWidth: 360, maxHeight: "80%", alignSelf: "center" },
   supportButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    borderWidth: 1.5,
+    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.16,
-    shadowRadius: 12,
-    elevation: 7,
-  },
-  supportMascot: { width: 48, height: 48 },
-  customerButton: {
-    minHeight: 44,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    flexShrink: 0,
   },
   supportPanel: {
     borderWidth: 1,

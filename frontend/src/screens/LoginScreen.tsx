@@ -64,7 +64,7 @@ const validEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.tr
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export default function LoginScreen() {
-  const { colors, toggle, reduceMotion } = useTheme();
+  const { colors, reduceMotion } = useTheme();
   const { width, height } = useWindowDimensions();
   const look = loginAppearance[colors.isDark ? "dark" : "light"];
   const heroSource = colors.isDark ? HERO_DARK : HERO_LIGHT;
@@ -644,7 +644,7 @@ export default function LoginScreen() {
   const naturalHeroWidth = Math.min(width, 760);
   const cardWidth = Math.min(width - 24, Math.max(366, naturalHeroWidth * (678 / (colors.isDark ? 1229 : 1227))));
   const pageBottom = Math.max(insets.bottom, spacing.sm);
-  const availableHeroHeight = height - insets.top - cardHeight - 44 - 2 * spacing.sm - pageBottom - 4;
+  const availableHeroHeight = height - insets.top - cardHeight - spacing.sm - pageBottom - 4;
   const fitHeroWidth = availableHeroHeight * heroAspect;
   const canFitEntry = phase === "enter" && cardHeight > 0 && fitHeroWidth >= naturalHeroWidth * 0.75;
   const heroWidth = canFitEntry ? Math.min(naturalHeroWidth, fitHeroWidth) : naturalHeroWidth;
@@ -763,19 +763,22 @@ export default function LoginScreen() {
                 <AppText variant="caption" color={look.securityText} style={{ flexShrink: 1 }}>Secured with 6-digit OTP verification</AppText>
               </View>
 
-              <Pressable
-                testID="login-review-access"
-                accessibilityRole="button"
-                accessibilityLabel="Google Play Reviewer Access"
-                disabled={loading}
-                onPress={() => router.push("/review-access")}
-                style={styles.reviewAccess}
-              >
-                <View style={[styles.reviewPill, { backgroundColor: look.reviewerFill, borderColor: look.reviewerOutline }]}>
-                  <Ionicons name="shield-checkmark-outline" size={18} color={look.reviewer} />
-                  <AppText variant="caption" style={[styles.reviewAccessLabel, { color: look.reviewerLabel }]}>Google Play Reviewer Access</AppText>
-                </View>
-              </Pressable>
+              <View style={styles.reviewerRow}>
+                <Pressable
+                  testID="login-review-access"
+                  accessibilityRole="button"
+                  accessibilityLabel="Google Play Reviewer Access"
+                  disabled={loading}
+                  onPress={() => router.push("/review-access")}
+                  style={styles.reviewAccess}
+                >
+                  <View style={[styles.reviewPill, { backgroundColor: look.reviewerFill, borderColor: look.reviewerOutline }]}>
+                    <Ionicons name="shield-checkmark-outline" size={18} color={look.reviewer} />
+                    <AppText variant="caption" style={[styles.reviewAccessLabel, { color: look.reviewerLabel }]}>Google Play Reviewer Access</AppText>
+                  </View>
+                </Pressable>
+                <SupportWidgetBridge />
+              </View>
 
               <View style={styles.legalArea}>
                 <AppText variant="caption" center color={look.consent}>
@@ -794,16 +797,8 @@ export default function LoginScreen() {
                 </Pressable>
               </View>
 
-              <AppText variant="caption" center color={look.footer} style={styles.poweredBy}>Powered by <AppText variant="label" color={look.footerBrand}>Gold e Tech</AppText></AppText>
+              <AppText testID="login-powered-by" variant="caption" center color={look.footer} style={styles.poweredBy}>Powered by <AppText variant="label" color={look.footerBrand}>Gold e Tech</AppText></AppText>
             </View>
-          </View>
-          <View style={[styles.utilityRow, { width: cardWidth }]}>
-            <SupportWidgetBridge />
-            <Pressable accessibilityRole="button" accessibilityLabel="Switch light or dark mode"
-              testID="login-theme-toggle" onPress={toggle}
-              style={[styles.themeButton, { backgroundColor: look.rail, borderColor: look.railOutline }]}>
-              <Ionicons name={colors.isDark ? "sunny-outline" : "moon-outline"} size={19} color={look.inactive} />
-            </Pressable>
           </View>
         </View>
       </KeyboardAwareScrollView>
@@ -838,9 +833,6 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   sheetFill: { ...StyleSheet.absoluteFillObject, borderRadius: 28 },
-  utilityRow: { marginTop: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between", zIndex: 1 },
-  themeButton: { marginLeft: "auto", width: 44, height: 44, borderRadius: 22, borderWidth: 1,
-    alignItems: "center", justifyContent: "center" },
   segmented: {
     flexDirection: "row",
     borderWidth: 1,
@@ -970,7 +962,9 @@ const styles = StyleSheet.create({
   legalLink: { fontFamily: fonts.semibold, textDecorationLine: "underline" },
   deleteLink: { minHeight: 44, alignSelf: "center", paddingHorizontal: 10, flexDirection: "row",
     alignItems: "center", justifyContent: "center", gap: 5 },
+  reviewerRow: { flexDirection: "row", alignSelf: "center", alignItems: "center", maxWidth: "100%", gap: spacing.sm },
   reviewAccess: {
+    flexShrink: 1,
     alignSelf: "center",
     maxWidth: "100%",
     minHeight: 44,

@@ -35,6 +35,7 @@ async function openLogin(browser, { width = 390, colorScheme = 'dark', role = 'c
     if (endpoint === '/driver/identity') return route.fulfill({
       json: { driver_name: 'Test User', employment: {} },
     });
+    if (endpoint === '/auth/logout') return route.fulfill({ status: 204 });
     if (endpoint === '/auth/refresh') return route.fulfill({ status: 401, json: { message: 'Sign in required' } });
     if (endpoint.startsWith('/auth/')) return route.fulfill({ status: 500, json: { message: 'Unexpected authentication request' } });
     return route.fulfill({ json: {} });
@@ -74,21 +75,35 @@ async function checkLayout(browser) {
       assert(reviewer.height >= 44 && reviewer.y + reviewer.height <= legal.y);
       const pill = await page.getByTestId('login-review-access').locator(':scope > div').boundingBox();
       assert(pill.height >= 39 && pill.height <= 41);
-      const theme = await page.getByTestId('login-theme-toggle').boundingBox();
-      assert(theme.y + theme.height <= 900, 'Sign-in controls fit the normal-height viewport');
+      const support = page.getByTestId('login-help-widget');
+      const supportBox = await support.boundingBox();
+      await assertFits(page, 'login-help-widget');
+      assert(supportBox.x >= reviewer.x + reviewer.width, 'Support is to the right of the reviewer pill');
+      assert(Math.abs(supportBox.y + supportBox.height / 2 - reviewer.y - reviewer.height / 2) <= 1, 'Support and reviewer share a row');
+      assert.equal(supportBox.width, 44);
+      assert.equal(supportBox.height, 44);
+      const supportStyle = await support.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { radius: style.borderTopLeftRadius, border: style.borderTopWidth, fill: style.backgroundColor };
+      });
+      assert.deepEqual(supportStyle, {
+        radius: '22px', border: '1px', fill: colorScheme === 'dark' ? 'rgb(18, 18, 18)' : 'rgb(250, 249, 245)',
+      });
+      assert.equal(await support.locator('svg').count(), 1);
+      assert.equal(await support.locator('img').count(), 0);
+      assert.equal(await page.getByTestId('login-theme-toggle').count(), 0);
+      assert.equal(await page.getByRole('button', { name: /switch light or dark mode/i }).count(), 0);
+      const credit = await page.getByTestId('login-powered-by').boundingBox();
+      assert(credit.y + credit.height <= 900, 'The full login footer fits the normal-height viewport');
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width);
       await page.screenshot({ path: `${previewDir}/login-${colorScheme}-${width}.png`, fullPage: true });
       if (width === 390 && colorScheme === 'dark') {
-        await page.getByTestId('login-help-widget').click();
+        await support.click();
         await page.getByTestId('login-help-panel').waitFor();
+        await page.getByTestId('login-help-login-issue').click();
+        await page.getByTestId('login-help-login-card').getByText(/6-digit WhatsApp OTP/).waitFor();
         await page.getByTestId('login-help-close').click();
         await page.getByTestId('login-help-panel').waitFor({ state: 'hidden' });
-        const originalImage = await image.getAttribute('src');
-        await page.getByTestId('login-theme-toggle').click();
-        await page.waitForFunction((original) => {
-          const current = document.querySelector('[data-testid="login-hero"] img');
-          return current?.complete && current.naturalWidth === 1227 && current.getAttribute('src') !== original;
-        }, originalImage);
         await page.getByTestId('login-review-access').click();
         await page.waitForURL((url) => url.pathname === '/review-access');
       }
@@ -147,6 +162,33 @@ async function checkWhatsApp(browser, role, resumeKyc = false) {
     await more.click({ clickCount: 3 });
     assert.equal(await more.getAttribute('aria-selected'), 'true');
     assert.equal(new URL(page.url()).pathname, '/' + role + '/more');
+    if (role === 'customer') {
+      await page.getByTestId('tab-home').click();
+      await page.waitForURL((url) => url.pathname === '/customer');
+      const headerSymbol = page.getByTestId('header-help').locator('svg');
+      await headerSymbol.waitFor();
+      const supportShape = await headerSymbol.innerHTML();
+      await page.getByTestId('header-theme').click();
+      await page.waitForFunction(() => localStorage.getItem('tmrmc_theme_mode') === JSON.stringify('light'));
+      await page.getByTestId('tab-more').click();
+      await page.getByTestId('logout-button').click();
+      await page.waitForURL((url) => url.pathname === '/login');
+
+      async function checkSavedLightLogin() {
+        await page.waitForFunction(() => {
+          const hero = document.querySelector('[data-testid="login-hero"] img');
+          const support = document.querySelector('[data-testid="login-help-widget"]');
+          return hero?.complete && hero.naturalWidth === 1227
+            && support && getComputedStyle(support).backgroundColor === 'rgb(250, 249, 245)';
+        });
+        assert.equal(await page.getByTestId('login-help-widget').locator('svg').innerHTML(), supportShape);
+        assert.equal(await page.getByTestId('login-theme-toggle').count(), 0);
+      }
+
+      await checkSavedLightLogin();
+      await page.reload();
+      await checkSavedLightLogin();
+    }
   }
   await page.close();
 }
@@ -256,7 +298,7 @@ async function checkOnboarding(browser) {
     await checkStaff(browser, true);
     await checkStaff(browser, false);
     await checkOnboarding(browser);
-    console.log('Login layout and customer, driver, KYC, staff and onboarding journeys passed.');
+    console.log('Login layout, shared support, saved theme, and customer, driver, KYC, staff and onboarding journeys passed.');
   } finally {
     await browser.close();
   }
