@@ -42,7 +42,8 @@ class ProductionReleaseApprovalTests(unittest.TestCase):
         self.assertIn("workflow_dispatch:", triggers)
         self.assertNotIn("push:", triggers)
         self.assertIn("vars.TRACKMYRMC_APPROVED_RELEASE_SHA == github.sha", content)
-        self.assertIn('select(.name == "Verify, Build and Deploy to AWS") | .conclusion] == ["success"]', content)
+        self.assertIn('.name=="Verify, Build and Deploy to AWS" and .conclusion=="success"', content)
+        self.assertIn('.name=="Verify production release via trusted origin and Cloudflare edge" and .conclusion=="success"', content)
         self.assertLess(content.index("Verify approval and successful AWS deployment"),
                         content.index("Verify required signing secrets"))
 

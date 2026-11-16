@@ -108,6 +108,10 @@ pub fn build_app_router(state: AppState) -> Router {
             get(admin_governance::held_google_places)
                 .post(admin_governance::decide_google_place_visibility),
         )
+        .route(
+            "/api/control-center/plant-order-requests/:id/decision",
+            post(plant_order_review::decide),
+        )
         // Phase 2: explicit MFA-gated plant decisions and consent-only CRM.
         .route(
             "/api/control-center/plants/:plant_id/governance",
@@ -537,7 +541,15 @@ pub fn build_app_router(state: AppState) -> Router {
         )
         .route(
             "/api/staff/supplier-enquiries",
-            post(customer_services::create_supplier),
+            get(customer_services::list_supplier).post(customer_services::create_supplier),
+        )
+        .route(
+            "/api/control-center/service-enquiries/assignees",
+            get(customer_services::list_assignees),
+        )
+        .route(
+            "/api/control-center/service-enquiries/:id/assignment",
+            patch(customer_services::assign),
         )
         .route(
             "/api/admin/service-enquiries",
@@ -656,6 +668,18 @@ pub fn build_app_router(state: AppState) -> Router {
         .route(
             "/api/customer/orders/:id/challan",
             get(customer_routes::get_order_challan),
+        )
+        .route(
+            "/api/customer/orders/:id/challan/:load_id",
+            get(customer_routes::get_load_challan),
+        )
+        .route(
+            "/api/owner/orders/:id/challan",
+            get(customer_routes::get_order_challan),
+        )
+        .route(
+            "/api/owner/orders/:id/challan/:load_id",
+            get(customer_routes::get_load_challan),
         )
         .route(
             "/api/customer/rfqs",

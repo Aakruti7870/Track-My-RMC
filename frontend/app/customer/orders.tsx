@@ -28,6 +28,10 @@ const FILTERS: { key: string; label: string; match: (s: string) => boolean }[] =
 type PlantOrderRequest = {
   id: string;
   plant_name: string | null;
+  status: "PENDING_ADMIN_REVIEW" | "AWAITING_PLANT" | "READY_FOR_QUOTATION" | "DECLINED";
+  decision_note?: string;
+  quotation_plant_id?: string;
+  quotation_requested?: boolean;
   grade: string;
   quantity_m3: number;
   delivery_date: string;
@@ -54,9 +58,11 @@ export default function CustomerOrders() {
   const visibleDrafts = showDrafts ? drafts.data?.drafts || [] : [];
   const draftsLoading = showDrafts && drafts.loading && !drafts.data;
   const draftsError = showDrafts && drafts.error;
-  const reviewRequests = showDrafts ? review.data?.requests ?? [] : [];
-  const reviewError = showDrafts && review.error;
-  const reviewLoading = showDrafts && review.loading && !review.data;
+  const showReview = showDrafts || active === "cancelled";
+  const reviewRequests = showReview ? (review.data?.requests ?? []).filter(request =>
+    active === "all" || (active === "cancelled" ? request.status === "DECLINED" : request.status !== "DECLINED")) : [];
+  const reviewError = showReview && review.error;
+  const reviewLoading = showReview && review.loading && !review.data;
 
   const refresh = async () => {
     setRefreshing(true);
@@ -135,13 +141,23 @@ export default function CustomerOrders() {
           refreshing={refreshing}
           ListHeaderComponent={<View style={{ gap: spacing.md }}>
           {reviewRequests.length || reviewError || reviewLoading ? <View style={{ gap: spacing.sm }}>
-            <AppText variant="heading">Requests Awaiting Review</AppText>
+            <AppText variant="heading">Plant Order Requests</AppText>
             {reviewLoading ? <ActivityIndicator color={colors.brand} accessibilityLabel="Loading order requests" /> : null}
             {reviewError ? <Button label="Retry loading order requests" size="sm" variant="outline" fullWidth={false} onPress={() => void review.reload()} /> : null}
             {reviewRequests.map(request => <Card key={request.id} style={{ gap: spacing.xs }}>
               <AppText variant="label">{request.plant_name || "Plant order request"}</AppText>
               <AppText>{request.site_address}</AppText>
               <AppText variant="caption">{request.grade} · {request.quantity_m3} m³ · {request.delivery_date}</AppText>
+              <AppText variant="caption">{({
+                PENDING_ADMIN_REVIEW: "Awaiting Super Admin review",
+                AWAITING_PLANT: "Awaiting plant onboarding",
+                READY_FOR_QUOTATION: request.quotation_requested ? "Quotation requested" : "Ready to request a quotation",
+                DECLINED: "Declined",
+              })[request.status] ?? "Awaiting Super Admin review"}</AppText>
+              {request.decision_note ? <AppText>{request.decision_note}</AppText> : null}
+              {request.quotation_requested ? <Button label="View Quotations" size="sm" onPress={() => router.push("/customer/quotations")} /> : null}
+              {request.quotation_plant_id && !request.quotation_requested ? <Button label="Review and Request Quotation" size="sm"
+                onPress={() => router.push({ pathname: "/customer/request-quotation", params: { reviewId: request.id } })} /> : null}
               <AppText variant="caption">Reference {request.id}</AppText>
             </Card>)}
           </View> : null}

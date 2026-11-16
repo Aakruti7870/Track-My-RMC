@@ -71,7 +71,7 @@ export function ActiveTransitMixerCard({ order, onNewOrder, onRefreshHome }: {
           {location ? <AppText variant="caption">{new Date(location.at).toLocaleString()} · {location.lat.toFixed(5)}, {location.lng.toFixed(5)}</AppText> : null}
           {error ? <AppText variant="caption">{t.retry}</AppText> : null}
         </View> : null}
-        <Pressable accessibilityRole="button" accessibilityHint={t.noChallan} testID="home-print-challan" onPress={() => order && tracking?.challan_available ? router.push(`/challan/${order.id}` as any) : toast(t.noChallan, "info")} style={styles.print}><Ionicons name="print-outline" size={20} color={colors.onSurfaceSecondary} /><AppText style={{ fontFamily: fonts.semibold }}>{t.printChallan}</AppText></Pressable>
+        <Pressable accessibilityRole="button" accessibilityHint={t.noChallan} testID="home-print-challan" onPress={() => order && tracking?.challan_available ? router.push({ pathname: "/challan/[id]", params: { id: order.id, ...(load?.challan_available ? { loadId: load.id } : {}) } }) : toast(t.noChallan, "info")} style={styles.print}><Ionicons name="print-outline" size={20} color={colors.onSurfaceSecondary} /><AppText style={{ fontFamily: fonts.semibold }}>{t.printChallan}</AppText></Pressable>
       </View>
       <View style={{ minWidth: 0 }}>
         <Pressable testID="home-toggle-tracking-map" accessibilityRole="button" accessibilityLabel={mapExpanded ? "Hide tracking route" : "View tracking route"}

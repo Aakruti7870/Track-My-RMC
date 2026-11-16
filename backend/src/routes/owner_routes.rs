@@ -119,18 +119,22 @@ pub async fn get_owner_home(
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
     let ids = visible_plant_ids(&state, &auth_user).await?;
     let plants:Vec<serde_json::Value>=sqlx::query_scalar("SELECT jsonb_build_object('id',id,'name',name) FROM rmc_plants WHERE id=ANY($1) ORDER BY name,id").bind(&ids).fetch_all(&state.db).await?;
-    let cards:serde_json::Value=sqlx::query_scalar(r#"SELECT jsonb_build_object(
+    let cards:serde_json::Value=sqlx::query_scalar(r#"WITH reporting AS (
+        SELECT (NOW() AT TIME ZONE 'Asia/Kolkata')::date AS today,
+           date_trunc('day', NOW() AT TIME ZONE 'Asia/Kolkata') AS midnight
+      )
+      SELECT jsonb_build_object(
         'pending_approvals',(SELECT count(*) FROM orders WHERE plant_id=ANY($1) AND lower(status)='pending'),
-        'todays_orders',(SELECT count(*) FROM orders WHERE plant_id=ANY($1) AND delivery_date=CURRENT_DATE AND lower(status) NOT IN('draft','cancelled','rejected')),
-        'ordered_qty',(SELECT coalesce(sum(total_quantity_m3),0)::double precision FROM orders WHERE plant_id=ANY($1) AND delivery_date=CURRENT_DATE AND lower(status) NOT IN('draft','cancelled','rejected')),
-        'dispatched_qty',(SELECT coalesce(sum(l.quantity_m3),0)::double precision FROM order_loads l JOIN orders o ON o.id=l.order_id WHERE o.plant_id=ANY($1) AND l.dispatched_at::date=CURRENT_DATE),
-        'delivered_qty',(SELECT coalesce(sum(d.delivered_quantity),0)::double precision FROM proof_of_deliveries d JOIN order_loads l ON l.id=d.load_id JOIN orders o ON o.id=l.order_id WHERE o.plant_id=ANY($1) AND d.delivered_at::date=CURRENT_DATE),
-        'dispatched_loads',(SELECT count(*) FROM order_loads l JOIN orders o ON o.id=l.order_id WHERE o.plant_id=ANY($1) AND l.dispatched_at::date=CURRENT_DATE),
+        'todays_orders',(SELECT count(*) FROM orders WHERE plant_id=ANY($1) AND delivery_date=reporting.today AND lower(status) NOT IN('draft','cancelled','rejected')),
+        'ordered_qty',(SELECT coalesce(sum(total_quantity_m3),0)::double precision FROM orders WHERE plant_id=ANY($1) AND delivery_date=reporting.today AND lower(status) NOT IN('draft','cancelled','rejected')),
+        'dispatched_qty',(SELECT coalesce(sum(l.quantity_m3),0)::double precision FROM order_loads l JOIN orders o ON o.id=l.order_id WHERE o.plant_id=ANY($1) AND l.dispatched_at>=(reporting.midnight AT TIME ZONE 'Asia/Kolkata') AND l.dispatched_at<((reporting.midnight+INTERVAL '1 day') AT TIME ZONE 'Asia/Kolkata')),
+        'delivered_qty',(SELECT coalesce(sum(d.delivered_quantity),0)::double precision FROM proof_of_deliveries d JOIN order_loads l ON l.id=d.load_id JOIN orders o ON o.id=l.order_id WHERE o.plant_id=ANY($1) AND d.delivered_at>=(reporting.midnight AT TIME ZONE 'Asia/Kolkata') AND d.delivered_at<((reporting.midnight+INTERVAL '1 day') AT TIME ZONE 'Asia/Kolkata')),
+        'dispatched_loads',(SELECT count(*) FROM order_loads l JOIN orders o ON o.id=l.order_id WHERE o.plant_id=ANY($1) AND l.dispatched_at>=(reporting.midnight AT TIME ZONE 'Asia/Kolkata') AND l.dispatched_at<((reporting.midnight+INTERVAL '1 day') AT TIME ZONE 'Asia/Kolkata')),
         'active_staff',(SELECT count(DISTINCT user_id) FROM plant_staff WHERE plant_id=ANY($1) AND is_active=TRUE),
-        'plant_attendance_today',(SELECT count(*) FROM workforce_attendance wa WHERE wa.plant_id=ANY($1) AND wa.attendance_date=CURRENT_DATE AND wa.check_in_time IS NOT NULL),
-        'plant_expenses_today',(SELECT count(*) FROM plant_expenses e WHERE e.plant_id=ANY($1) AND e.expense_date=CURRENT_DATE),
+        'plant_attendance_today',(SELECT count(*) FROM workforce_attendance wa WHERE wa.plant_id=ANY($1) AND wa.attendance_date=reporting.today AND wa.check_in_time IS NOT NULL),
+        'plant_expenses_today',(SELECT count(*) FROM plant_expenses e WHERE e.plant_id=ANY($1) AND e.expense_date=reporting.today),
         'active_mixers',(SELECT count(*) FROM transit_mixers WHERE plant_id=ANY($1) AND status IN('dispatched','in_transit','pouring'))
-    )"#).bind(&ids).fetch_one(&state.db).await?;
+    ) FROM reporting"#).bind(&ids).fetch_one(&state.db).await?;
     let query=format!("{} WHERE o.plant_id=ANY($1) AND lower(o.status)='pending' ORDER BY o.created_at,o.id LIMIT 50",crate::services::order_service::MOBILE_ORDER_SELECT);
     let pending: Vec<serde_json::Value> = sqlx::query_scalar(&query)
         .bind(&ids)
@@ -138,7 +142,7 @@ pub async fn get_owner_home(
         .await?;
     let received:f64=sqlx::query_scalar("SELECT coalesce(sum(amount),0)::double precision FROM plant_payments WHERE plant_id=ANY($1) AND invoice_id IS NOT NULL AND payment_date>=date_trunc('month',CURRENT_DATE)::date").bind(&ids).fetch_one(&state.db).await?;
     Ok(Json(
-        json!({"plant_count":plants.len(),"plants":plants,"cards":cards,"pending_orders":pending,"window_date":chrono::Utc::now().date_naive(),"kpis":{"total_plants":ids.len(),"pending_orders":cards["pending_approvals"],"in_transit_mixers":cards["active_mixers"],"month_revenue":received}}),
+        json!({"plant_count":plants.len(),"plants":plants,"cards":cards,"pending_orders":pending,"window_date":(chrono::Utc::now() + chrono::TimeDelta::minutes(330)).date_naive(),"kpis":{"total_plants":ids.len(),"pending_orders":cards["pending_approvals"],"in_transit_mixers":cards["active_mixers"],"month_revenue":received}}),
     ))
 }
 

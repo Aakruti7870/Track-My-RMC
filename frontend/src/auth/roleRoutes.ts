@@ -3,7 +3,7 @@ export const ROLE_ROUTES = {
   plant_owner: "/owner",
   owner: "/owner",
   driver: "/driver",
-  admin: "/admin",
+  admin: "/plant-admin",
   dispatcher: "/dispatcher",
   operator: "/operator",
   supervisor: "/supervisor",

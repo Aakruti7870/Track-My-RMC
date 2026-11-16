@@ -27,7 +27,7 @@ export default function OwnerDispatchesToday() {
     `/owner/dispatches/today?limit=30&offset=${page * 30}`,
   );
 
-  return <OwnerFrame title="Dispatches Today" subtitle="Each load actually dispatched on the database reporting date, including completed deliveries.">
+  return <OwnerFrame title="Dispatches Today" subtitle="Each load actually dispatched today in India, including completed deliveries.">
     <View style={{ paddingHorizontal: 16, paddingBottom: 8, gap: 4 }}>
       <AppText style={{ color: p.text, fontFamily: fonts.semibold }}>
         {data ? `${data.total} loads · ${data.window_date}` : "Loading dispatch register"}
@@ -62,7 +62,7 @@ export default function OwnerDispatchesToday() {
             {[item.plant_name, item.site_name, item.mixer_number, item.driver_name].filter(Boolean).join(" · ")}
           </AppText>
           <AppText style={{ color: p.muted, fontSize: 11 }}>
-            Dispatched {new Date(item.dispatched_at).toLocaleString("en-IN")}
+            Dispatched {new Date(item.dispatched_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
           </AppText>
         </OwnerGlass>
       </Pressable>}

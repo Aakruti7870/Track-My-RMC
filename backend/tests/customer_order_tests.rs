@@ -2865,3 +2865,87 @@ async fn prepared_order_uses_owned_site_details_and_detects_later_site_edits(db:
         0
     );
 }
+
+#[sqlx::test]
+async fn compare_uses_one_current_verified_rate(db: PgPool) {
+    let (_, app, _, plant, token) = fixture(&db).await;
+    sqlx::query(
+        "INSERT INTO plant_rate_cards(plant_id,grade,rate_per_m3,effective_from,effective_to) VALUES
+         ($1,'M25',1111,CURRENT_DATE-5,CURRENT_DATE-1),
+         ($1,'M25',2222,CURRENT_DATE+1,NULL)",
+    ).bind(plant).execute(&db).await.unwrap();
+    let path = "/api/customer/compare-plants?grade=M-25&quantity=6";
+    let (status, body) = call(&app, path, None, &token).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["count"], 1);
+    assert_eq!(body["estimates"][0]["rate_per_m3"], 5000.0);
+    assert_eq!(body["estimates"][0]["verified"], true);
+    assert_eq!(body["estimates"][0]["order_enabled"], true);
+    assert!(body["estimates"][0]["service_area_km"].is_null());
+
+    sqlx::query("UPDATE plant_listing_requests SET status='PENDING' WHERE plant_id=$1")
+        .bind(plant)
+        .execute(&db)
+        .await
+        .unwrap();
+    let (status, body) = call(&app, path, None, &token).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["count"], 0);
+}
+
+#[sqlx::test]
+async fn challan_is_load_specific_and_staff_is_plant_scoped(db: PgPool) {
+    let (state, app, _, plant, token) = fixture(&db).await;
+    let (status, created) = call(
+        &app,
+        "/api/customer/orders",
+        Some(order(plant, "multiple-challans")),
+        &token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{created}");
+    let order_id = Uuid::parse_str(created["id"].as_str().unwrap()).unwrap();
+    let mut first_load = None;
+    for number in [1, 2] {
+        let load: Uuid = sqlx::query_scalar(
+            "INSERT INTO order_loads(order_id,load_number,quantity_m3,status)
+             VALUES($1,$2,3,'delivered') RETURNING id",
+        )
+        .bind(order_id)
+        .bind(number)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO challans(load_id,challan_number,plant_code,customer_name,site_address,concrete_grade,quantity_m3,mixer_number,driver_name)
+             VALUES($1,$2,'TEST','Customer','Fixture site','M25',3,$3,'Fixture driver')",
+        ).bind(load).bind(format!("CH-{number}")).bind(format!("TM-{number}"))
+            .execute(&db).await.unwrap();
+        first_load.get_or_insert(load);
+    }
+
+    let path = format!("/api/customer/orders/{order_id}/challan");
+    let (status, body) = call(&app, &path, None, &token).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["challans"].as_array().unwrap().len(), 2);
+
+    let (status, body) = call(
+        &app,
+        &format!("{path}/{}", first_load.unwrap()),
+        None,
+        &token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["challan"]["mixer_number"], "TM-1");
+    assert_eq!(body["challan"]["quantity_m3"], 3.0);
+    assert_eq!(body["challan"]["plant_name"], "Test");
+
+    let outsider = identity(&db, "admin").await;
+    let outsider_token =
+        generate_token(outsider, "admin", "", None, &state.config.jwt_secret, 1).unwrap();
+    assert_eq!(
+        call(&app, &path, None, &outsider_token).await.0,
+        StatusCode::FORBIDDEN
+    );
+}

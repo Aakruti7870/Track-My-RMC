@@ -324,6 +324,11 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
   const [supportReply,setSupportReply]=useState('');
   const [supportInternal,setSupportInternal]=useState(false);
   const [supportStepUp,setSupportStepUp]=useState('');
+  const [orderReviewNote,setOrderReviewNote]=useState('');
+  const [orderReviewCode,setOrderReviewCode]=useState('');
+  const [orderReviewSelection,setOrderReviewSelection]=useState('');
+  const [serviceAssignees,setServiceAssignees]=useState<{id:string;name:string}[]>([]);
+  const [serviceAssignment,setServiceAssignment]=useState<Record<string,string>>({});
   const [serviceReason,setServiceReason]=useState('');
   const [serviceStepUp,setServiceStepUp]=useState('');
 
@@ -753,13 +758,21 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
 
   async function loadWorkspace(kind:string,offset=0) {
     setBusy(true);setError('');setWorkspace(kind);setRecords([]);setWorkspaceOffset(offset);
+    setOrderReviewSelection('');setOrderReviewCode('');setOrderReviewNote('');
     setWorkspaceLoading(true);setWorkspaceError('');
     setSupportCase(null);setSupportAlerts([]);setSupportAlertsLoaded(false);
     setSupportReply('');setSupportInternal(false);setSupportStepUp('');
+    setServiceAssignees([]);setServiceAssignment({});
     try {
       const prefix=user?.role==='authority'?'/api/authority/collections/':'/api/control-center/collections/';
       const response=await apiClient.get(prefix+encodeURIComponent(kind),{params:{limit:25,offset}});
       setRecords(response.data.items || []);setWorkspaceOffset(offset);
+      if(kind==='service_enquiries' && permissions.includes('support.manage')){
+        try {
+          const assignees=await apiClient.get('/api/control-center/service-enquiries/assignees');
+          setServiceAssignees(assignees.data.items||[]);
+        } catch (err) {setError(errorMessage(err));}
+      }
       if(kind==='support' && permissions.includes('support.reply')) {
         try {
           const alerts=await apiClient.get('/api/assistant/support/staff/alerts');
@@ -900,6 +913,34 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
       setSupportCase(response.data?.case||null);
     } catch(err){setError(errorMessage(err));setSupportStepUp('');}
     finally {setBusy(false);}
+  }
+
+  async function decidePlantOrderRequest(outcome: 'await_plant' | 'approve_quotation' | 'decline') {
+    if (!orderReviewSelection || orderReviewNote.trim().length < 10 || !/^[0-9]{6}$/.test(orderReviewCode)) return;
+    setBusy(true);setError('');
+    try {
+      await apiClient.post('/api/control-center/step-up',{code:orderReviewCode});
+      await apiClient.post('/api/control-center/plant-order-requests/'+encodeURIComponent(orderReviewSelection)+'/decision',{
+        outcome, note:orderReviewNote.trim(),
+      });
+      await loadWorkspace('plant_order_requests',workspaceOffset);
+      setNotice('Plant order request updated.');
+    } catch (err) {setError(errorMessage(err));}
+    finally {setOrderReviewCode('');setBusy(false);}
+  }
+
+  async function assignServiceEnquiry(id:string, assignee:string) {
+    if(serviceReason.trim().length<10||!/^[0-9]{6}$/.test(serviceStepUp.trim())) return;
+    setBusy(true);setError('');
+    try {
+      await apiClient.post('/api/control-center/step-up',{code:serviceStepUp.trim()});
+      await apiClient.patch('/api/control-center/service-enquiries/'+encodeURIComponent(id)+'/assignment',{
+        assignee:assignee||null, reason:serviceReason.trim(),
+      });
+      await loadWorkspace('service_enquiries',workspaceOffset);
+      setServiceReason('');setNotice('Service enquiry assignment updated.');
+    } catch(err){setError(errorMessage(err));}
+    finally {setServiceStepUp('');setBusy(false);}
   }
 
   async function updateServiceEnquiry(id:string,status:string) {
@@ -2278,6 +2319,32 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                         : value===null?'—':typeof value==='object'?JSON.stringify(value):String(value)}
                   </td>)}</tr>)}</tbody>
                 </table></div>
+                {workspace==='plant_order_requests' && permissions.includes('plant_owners.manage') && (
+                  <section aria-label="Review plant order request" style={{display:'grid',gap:10,marginTop:14}}>
+                    <label>Request to review
+                      <select value={orderReviewSelection} disabled={busy} style={inputStyle} onChange={event=>{
+                        setOrderReviewSelection(event.target.value);setOrderReviewNote('');setOrderReviewCode('');
+                      }}>
+                        <option value="">Select a pending request</option>
+                        {records.filter(row=>['PENDING_ADMIN_REVIEW','AWAITING_PLANT'].includes(String(row.status))).map(row=>
+                          <option key={String(row.id)} value={String(row.id)}>{String(row.plant_name || 'Google-listed plant')} · {String(row.grade)} · {String(row.id)}</option>)}
+                      </select>
+                    </label>
+                    {orderReviewSelection && <>
+                      <label>Customer-visible note<input value={orderReviewNote} minLength={10} maxLength={500}
+                        disabled={busy} onChange={event=>setOrderReviewNote(event.target.value)} style={inputStyle}/></label>
+                      <label>Fresh authenticator code<input value={orderReviewCode} maxLength={6}
+                        type="password" autoComplete="off" inputMode="numeric" disabled={busy}
+                        onChange={event=>setOrderReviewCode(event.target.value.replace(/[^0-9]/g,''))} style={inputStyle}/></label>
+                      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                        {([['await_plant','Await plant onboarding'],['approve_quotation','Allow customer to request quotation'],['decline','Decline request']] as const).map(([outcome,label])=>
+                          <button key={outcome} type="button" style={{...buttonStyle,width:'auto'}}
+                            disabled={busy||orderReviewNote.trim().length<10||orderReviewCode.length!==6}
+                            onClick={()=>void decidePlantOrderRequest(outcome)}>{label}</button>)}
+                      </div>
+                    </>}
+                  </section>
+                )}
                 {supportWorkspace}
                 {workspace === 'service_enquiries' && permissions.includes('support.manage') && (
                   <section aria-label="Service enquiry approvals" style={{border:'1px solid var(--tm-border)',borderRadius:12,padding:14,marginTop:14,display:'grid',gap:10}}>
@@ -2286,6 +2353,21 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                     <label>Fresh authenticator code<input type="password" maxLength={6} value={serviceStepUp} onChange={e=>setServiceStepUp(e.target.value)} style={inputStyle} disabled={busy}/></label>
                     {records.map(row=><div key={String(row.id)} style={{padding:10,border:'1px solid var(--tm-border)',borderRadius:8}}>
                       <strong>{String(row.service_type||'Service')} · {String(row.status||'NEW')}</strong>
+                      <p>{String(row.contact_name||'Contact')} · {String(row.location||'')} · {String(row.id)}</p>
+                      <label>Assigned to
+                        <select style={inputStyle} disabled={busy}
+                          value={serviceAssignment[String(row.id)] ?? String(row.assigned_to ?? '')}
+                          onChange={event=>setServiceAssignment({...serviceAssignment,[String(row.id)]:event.target.value})}>
+                          <option value="">Unassigned</option>
+                          {row.assigned_to && !serviceAssignees.some(person=>person.id===row.assigned_to)
+                            ? <option value={String(row.assigned_to)} disabled>{String(row.assignee||'Previous assignee')}</option> : null}
+                          {serviceAssignees.map(person=><option value={person.id} key={person.id}>{person.name}</option>)}
+                        </select>
+                      </label>
+                      <button type="button" disabled={busy||serviceReason.trim().length<10||serviceStepUp.length!==6
+                        || (serviceAssignment[String(row.id)] ?? String(row.assigned_to ?? ''))===String(row.assigned_to ?? '')}
+                        onClick={()=>void assignServiceEnquiry(String(row.id),serviceAssignment[String(row.id)] ?? '')}
+                        style={{...buttonStyle,width:'auto'}}>Save assignment</button>
                       <div style={{display:'flex',gap:7,flexWrap:'wrap'}}>
                         {['CONTACTED','QUOTED','CLOSED'].filter(x=>x!==row.status).map(status=>
                           <button key={status} type="button" disabled={busy||serviceReason.trim().length<10||serviceStepUp.length!==6}

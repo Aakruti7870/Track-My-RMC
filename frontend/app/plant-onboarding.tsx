@@ -1,5 +1,5 @@
 import { VectorSymbol } from "@/src/components/VectorSymbol";
-import React, { useMemo, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -62,16 +62,11 @@ export default function PlantOnboarding() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const toast = useToast();
-  const params = useLocalSearchParams<{ email?: string; mode?: string }>();
-
-  const initialEmail = useMemo(() => {
-    const raw = Array.isArray(params.email) ? params.email[0] : params.email;
-    return (raw || "").trim().toLowerCase();
-  }, [params.email]);
+  const params = useLocalSearchParams<{ mode?: string }>();
 
   const compactRegistration = params.mode === "owner_registration";
   const [ownerName, setOwnerName] = useState("");
-  const [email, setEmail] = useState(initialEmail);
+  const [email, setEmail] = useState("");
   const [mobile, setMobile] = useState("");
   const [plantName, setPlantName] = useState("");
   const [address, setAddress] = useState("");
@@ -301,7 +296,7 @@ export default function PlantOnboarding() {
             <Input testID="onboarding-business-name" label="Registered Business Name"
               value={plantName} onChangeText={setPlantName} placeholder="Registered company or firm name" />
             <AppText variant="label">Registered Business Address</AppText>
-            <TextInput testID="onboarding-business-address" value={address}
+            <TextInput testID="onboarding-business-address" accessibilityLabel="Registered Business Address" value={address}
               onChangeText={setAddress} placeholder="Full registered business address"
               placeholderTextColor={colors.onSurfaceTertiary} multiline
               style={[styles.addressInput, { color: colors.onSurface, borderColor: colors.border, backgroundColor: colors.surfaceSecondary }]} />
@@ -313,7 +308,7 @@ export default function PlantOnboarding() {
               <View style={[styles.prefix, { borderRightColor: colors.border }]}>
                 <AppText style={styles.prefixText}>+91</AppText>
               </View>
-              <TextInput testID="onboarding-mobile" value={mobile}
+              <TextInput testID="onboarding-mobile" accessibilityLabel="WhatsApp Number" value={mobile}
                 onChangeText={(value) => setMobile(value.replace(/\D/g, "").slice(0, 10))}
                 placeholder="10 Digit WhatsApp Number" placeholderTextColor={colors.onSurfaceTertiary}
                 keyboardType="number-pad" maxLength={10}

@@ -323,7 +323,7 @@ export default function LoginScreen() {
   const openOnboarding = () => {
     router.push({
       pathname: "/plant-onboarding",
-      params: { email: plantEmail.trim().toLowerCase(), mode: "owner_registration" },
+      params: { mode: "owner_registration" },
     });
   };
 

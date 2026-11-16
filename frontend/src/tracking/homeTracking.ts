@@ -2,7 +2,7 @@
 export const trackingCardStrings = {
   title: "Active Transit Mixer Live Tracking", firstOrder: "Place Your First order",
   demoSite: "Project site 1", dispatched: "Dispatched", grade: "M-25 Grade",
-  eta: "ETA", live: "Live", quantity: "Quantity", printChallan: "Print Challan",
+  eta: "ETA", live: "Live", quantity: "Quantity", printChallan: "View Challan",
   liveTracking: "LIVE TRACKING", trackTM: "Track TM", callDriver: "Call Driver",
   callPlant: "Call Plant", enRoute: "En Route", waitingForDispatch: "Waiting for dispatch",
   locationUnavailable: "Vehicle location unavailable", trackingUnavailable: "Live tracking is not available yet",
@@ -23,6 +23,7 @@ export type Point = { lat: number; lng: number };
 export type GPS = Point & { at: string };
 export type TrackedLoad = {
   id: string; status: string; tm_number?: string; driver_name?: string; driver_mobile?: string;
+  challan_available?: boolean;
   location?: GPS | null; route?: { eta_text?: string; polyline?: string } | null;
 };
 export type HomeTracking = {

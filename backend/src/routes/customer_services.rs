@@ -1,5 +1,5 @@
 //! Authenticated customer and plant supplier enquiries with a shared follow-up queue.
-//! These are leads, not orders, payments, supplier assignments or official quotations.
+//! Customer and staff enquiry intake, follow-up status and operator assignment.
 use crate::{
     auth::{middleware::check_role, AuthUser},
     error::AppError,
@@ -441,6 +441,104 @@ async fn save_enquiry(
             json!({"success": true, "id": id, "status": "NEW", "message": "Enquiry submitted. Our team will contact you."}),
         ),
     ))
+}
+
+pub async fn list_supplier(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> Result<Json<Value>, AppError> {
+    let plants: Vec<Uuid> = super::owner_routes::assigned_plants(&state, &auth)
+        .await?
+        .into_iter()
+        .map(|(id, _, _)| id)
+        .collect();
+    let enquiries: Vec<Value> = sqlx::query_scalar(
+        "SELECT jsonb_build_object('id',id,'plant_name',details->>'plant_name',
+          'materials',details->'materials','required_date',required_date,'status',status)
+         FROM customer_service_enquiries WHERE customer_id=$1 AND service_type='PLANT_SUPPLIER'
+           AND details->>'plant_id'=ANY($2)
+         ORDER BY created_at DESC,id DESC LIMIT 100",
+    )
+    .bind(auth.user_id)
+    .bind(plants.iter().map(Uuid::to_string).collect::<Vec<_>>())
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(json!({"enquiries":enquiries})))
+}
+
+pub async fn list_assignees(
+    State(state): State<AppState>,
+    admin: crate::auth::control_center::WebAdmin,
+) -> Result<Json<Value>, AppError> {
+    admin.require("support.manage")?;
+    let items: Vec<Value> = sqlx::query_scalar(
+        "SELECT jsonb_build_object('id',u.id,'name',u.full_name)
+         FROM users u JOIN control_center_access a ON a.user_id=u.id
+         WHERE u.is_active AND u.role='central_admin' AND a.approved
+           AND 'support.manage'=ANY(a.permissions) ORDER BY u.full_name,u.id",
+    )
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(json!({"items":items})))
+}
+
+#[derive(Deserialize)]
+pub struct AssignEnquiry {
+    assignee: Option<Uuid>,
+    reason: String,
+}
+
+pub async fn assign(
+    State(state): State<AppState>,
+    admin: crate::auth::control_center::WebAdmin,
+    headers: axum::http::HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(input): Json<AssignEnquiry>,
+) -> Result<Json<Value>, AppError> {
+    admin.require("support.manage")?;
+    let reason = input.reason.trim();
+    if !(10..=500).contains(&reason.chars().count()) {
+        return Err(AppError::BadRequest(
+            "Enter an assignment reason (10–500 characters)".into(),
+        ));
+    }
+    let mut tx = state.db.begin().await?;
+    let previous: (Option<Uuid>,) =
+        sqlx::query_as("SELECT assigned_to FROM customer_service_enquiries WHERE id=$1 FOR UPDATE")
+            .bind(id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Enquiry not found".into()))?;
+    super::control_center_routes::require_recent_step_up_using(&mut *tx, &admin, &headers).await?;
+    if let Some(assignee) = input.assignee {
+        let allowed: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM users u JOIN control_center_access a ON a.user_id=u.id
+             WHERE u.id=$1 AND u.is_active AND u.role='central_admin' AND a.approved
+             AND 'support.manage'=ANY(a.permissions))",
+        )
+        .bind(assignee)
+        .fetch_one(&mut *tx)
+        .await?;
+        if !allowed {
+            return Err(AppError::BadRequest(
+                "Select an active Super Admin with support management access".into(),
+            ));
+        }
+    }
+    if previous.0 != input.assignee {
+        sqlx::query(
+            "UPDATE customer_service_enquiries SET assigned_to=$2,updated_at=NOW() WHERE id=$1",
+        )
+        .bind(id)
+        .bind(input.assignee)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'control_center.service_enquiry.assign','service_enquiry',$2,$3)")
+            .bind(admin.user_id).bind(id.to_string()).bind(json!({"previous":previous.0,"assignee":input.assignee,"reason":reason}))
+            .execute(&mut *tx).await?;
+    }
+    tx.commit().await?;
+    Ok(Json(json!({"success":true})))
 }
 
 pub async fn list_customer(

@@ -217,35 +217,35 @@
       "id": "admin",
       "label": "Legacy Operations Admin",
       "referenceRoute": "admin",
-      "targetRoute": "/admin",
+      "targetRoute": "/plant-admin",
       "surface": "mobile_legacy_review",
       "screens": [
         {
-          "path": "frontend/app/admin/_layout.tsx",
+          "path": "frontend/app/plant-admin/_layout.tsx",
           "sourceSha": "51335a0bbe8295d25a41f910a8f74c7e04c48c14",
           "targetSha": "51335a0bbe8295d25a41f910a8f74c7e04c48c14",
           "sourceToTarget": "identical"
         },
         {
-          "path": "frontend/app/admin/fleet.tsx",
+          "path": "frontend/app/plant-admin/fleet.tsx",
           "sourceSha": "91190d5e5a919a6d4b2864ec6dfdb817b036f222",
           "targetSha": "91190d5e5a919a6d4b2864ec6dfdb817b036f222",
           "sourceToTarget": "identical"
         },
         {
-          "path": "frontend/app/admin/index.tsx",
+          "path": "frontend/app/plant-admin/index.tsx",
           "sourceSha": "e75ef6af99f73de63e0e0fb20ffe5986855a20bd",
           "targetSha": "e75ef6af99f73de63e0e0fb20ffe5986855a20bd",
           "sourceToTarget": "identical"
         },
         {
-          "path": "frontend/app/admin/more.tsx",
+          "path": "frontend/app/plant-admin/more.tsx",
           "sourceSha": "f48b33e2e25512006ce350491833556da2887af1",
           "targetSha": "f48b33e2e25512006ce350491833556da2887af1",
           "sourceToTarget": "identical"
         },
         {
-          "path": "frontend/app/admin/orders.tsx",
+          "path": "frontend/app/plant-admin/orders.tsx",
           "sourceSha": "fb115208f2f5541fde9d42ca2d8318b9ab4291e9",
           "targetSha": "fb115208f2f5541fde9d42ca2d8318b9ab4291e9",
           "sourceToTarget": "identical"

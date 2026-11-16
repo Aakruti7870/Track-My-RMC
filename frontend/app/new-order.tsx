@@ -70,7 +70,7 @@ export default function NewOrder() {
   const { hydrating, token, user } = useAuth();
   const formOwner = useRef<string | null>(user?.id || null);
   if (!formOwner.current && user?.id) formOwner.current = user.id;
-  const params = useLocalSearchParams<{ assistant?: string; draftId?: string; plantId?: string; quantity?: string; grade?: string; quotationId?: string; siteId?: string; siteName?: string; siteAddress?: string; deliveryDate?: string; deliveryTime?: string }>();
+  const params = useLocalSearchParams<{ assistant?: string; draftId?: string; plantId?: string; quantity?: string; grade?: string; quotationId?: string; siteId?: string; siteName?: string; siteAddress?: string; deliveryDate?: string; deliveryTime?: string; pumpRequired?: string }>();
   const { data: plantsData, loading: loadingPlants, error: plantsError, reload: reloadPlants } = useGet<{ plants: PlantData[] }>("/customer/plants");
   const { data: savedDraft, loading: loadingDraft, error: draftError, reload: reloadDraft } = useGet<SavedDraft>(
     params.draftId ? `/customer/order-drafts/${encodeURIComponent(params.draftId)}` : null,
@@ -97,7 +97,7 @@ export default function NewOrder() {
   const [contact, setContact] = useState(user?.verified_name || (user?.needs_kyc_name ? "" : user?.name || ""));
   const [mobile, setMobile] = useState(user?.phone || "");
   const [notes, setNotes] = useState("");
-  const [pumpRequired, setPumpRequired] = useState(false);
+  const [pumpRequired, setPumpRequired] = useState(params.pumpRequired === "1");
   const [submitting, setSubmitting] = useState<Submission | null>(null);
   const submissionInFlight = useRef(false);
   const [plantQuery, setPlantQuery] = useState("");
@@ -133,6 +133,23 @@ export default function NewOrder() {
     setCoords(f.lat != null && f.lng != null ? { lat: f.lat, lng: f.lng } : null);
     setDraftReady(true);
   }, [savedDraft]);
+
+  const { data: comparisonSites } = useGet<{ sites: { id: string; name: string; address: string; lat?: number; lng?: number }[] }>(
+    params.siteId && !params.siteAddress && !params.draftId ? "/master/customer/sites" : null,
+  );
+  const comparisonSite = comparisonSites?.sites.find(site => site.id === params.siteId);
+
+  useEffect(() => {
+    if (!comparisonSite || siteId !== comparisonSite.id) return;
+    setSiteName(current => current || comparisonSite.name);
+    if (!address) {
+      pickedAddress.current = comparisonSite.address;
+      setAddress(comparisonSite.address);
+      if (comparisonSite.lat != null && comparisonSite.lng != null) {
+        setCoords({ lat: comparisonSite.lat, lng: comparisonSite.lng });
+      }
+    }
+  }, [address, comparisonSite, siteId]);
 
   // A reviewed summary is tied to the exact form used to prepare it.
   useEffect(() => {

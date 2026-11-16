@@ -13,12 +13,17 @@ import { Card } from "@/src/components/ui/Card";
 import { DateField, localDate } from "@/src/components/ui/DateField";
 import { RadioChoice } from "@/src/components/ui/RadioChoice";
 import { Input } from "@/src/components/ui/Input";
+import { useGet } from "@/src/hooks/useApi";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { layout, spacing } from "@/src/theme/tokens";
 
 const GRADES = ["M10","M15","M20","M25","M30","M35","M40","M45","M50","M55","M60"];
 type CreatedLead = { id: string; status: string; message?: string; canonical_request_id?: string };
-type RequestParams = { googlePlaceId?: string; plantId?: string; plantName?: string; orderReview?: string; visit?: string };
+type ReviewRequest = {
+  id: string; quotation_plant_id?: string; plant_name?: string; grade: string; quantity_m3: number;
+  site_address: string; delivery_lat?: number; delivery_lng?: number; delivery_date: string; pump_required: boolean;
+};
+type RequestParams = { reviewId?: string; siteId?: string; grade?: string; quantity?: string; pumpRequired?: string; googlePlaceId?: string; plantId?: string; plantName?: string; orderReview?: string; visit?: string };
 type FieldName = "customerName" | "email" | "gstin" | "quantity" | "address" | "date" | "phone" | "consent";
 type FieldErrors = Partial<Record<FieldName, string>>;
 const uuid = () => {
@@ -30,28 +35,50 @@ const uuid = () => {
 export default function RequestQuotation() {
   const params = useLocalSearchParams<RequestParams>();
   const { user } = useAuth();
-  const formKey = JSON.stringify([user?.id, params.plantId, params.googlePlaceId, params.orderReview, params.visit]);
-  return <SupplierRequestForm key={formKey} params={params} />;
+  const router = useRouter();
+  const review = useGet<{ requests: ReviewRequest[] }>(params.reviewId
+    ? `/customer/plant-order-requests?id=${encodeURIComponent(params.reviewId)}` : null);
+  const sites = useGet<{ sites: { id: string; address: string; lat?: number; lng?: number }[] }>(params.siteId ? "/master/customer/sites" : null);
+  const request = review.data?.requests[0];
+  const site = sites.data?.sites.find(entry => entry.id === params.siteId);
+  const formKey = JSON.stringify([user?.id, params.plantId, params.googlePlaceId, params.orderReview, params.visit, params.reviewId, params.siteId]);
+  if (params.reviewId && !request?.quotation_plant_id) {
+    return <View style={{ padding: spacing.lg }}><AppText>
+      {review.loading ? "Loading order request…" : review.error ?? "This order request is unavailable for quotation."}
+    </AppText>
+      {review.error ? <Button label="Retry" onPress={review.reload} /> : null}
+      <Button label="My Orders" variant="outline" onPress={() => router.replace("/customer/orders")} />
+    </View>;
+  }
+  if (params.siteId && sites.loading && !sites.data) return <AppText>Loading saved site…</AppText>;
+  const effectiveParams = request ? { ...params, plantId: request.quotation_plant_id, plantName: request.plant_name } : params;
+  const address = request?.site_address ?? site?.address ?? "";
+  const lat = request?.delivery_lat ?? site?.lat;
+  const lng = request?.delivery_lng ?? site?.lng;
+  return <SupplierRequestForm key={formKey} params={effectiveParams} request={request} address={address}
+    coords={lat != null && lng != null ? { lat, lng } : null} />;
 }
 
-function SupplierRequestForm({ params }: { params: RequestParams }) {
+function SupplierRequestForm({ params, request, address, coords }: {
+  params: RequestParams; request?: ReviewRequest; address: string; coords: { lat: number; lng: number } | null;
+}) {
   const router = useRouter();
   const { token, user } = useAuth();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const reviewOrder = params.orderReview === "1";
+  const reviewOrder = !request && params.orderReview === "1";
   const requestLabel = reviewOrder ? "Order Request" : "Quotation Request";
-  const [requestKey] = useState(uuid);
+  const [requestKey] = useState(() => request?.id ?? uuid());
   const [customerName, setCustomerName] = useState(user?.verified_name || user?.name || "");
   const [email, setEmail] = useState(user?.email || "");
   const [gstin, setGstin] = useState("");
-  const [grade, setGrade] = useState("M25");
-  const [quantity, setQuantity] = useState("");
-  const [siteAddress, setSiteAddress] = useState("");
-  const [siteCoords, setSiteCoords] = useState<{lat: number; lng: number} | null>(null);
-  const [deliveryDate, setDeliveryDate] = useState(localDate());
+  const [grade, setGrade] = useState(request?.grade || (GRADES.includes(params.grade ?? "") ? params.grade! : "M25"));
+  const [quantity, setQuantity] = useState(request ? String(request.quantity_m3) : params.quantity ?? "");
+  const [siteAddress, setSiteAddress] = useState(address);
+  const [siteCoords, setSiteCoords] = useState(coords);
+  const [deliveryDate, setDeliveryDate] = useState(request && request.delivery_date >= localDate() ? request.delivery_date : localDate());
   const [sitePhone, setSitePhone] = useState(user?.phone || "");
-  const [pump, setPump] = useState(false);
+  const [pump, setPump] = useState(request?.pump_required ?? (params.pumpRequired === "1"));
   const [shareConsent, setShareConsent] = useState(false);
   const [gradeOpen, setGradeOpen] = useState(false);
   const [suggestions, setSuggestions] = useState<PlacePrediction[]>([]);

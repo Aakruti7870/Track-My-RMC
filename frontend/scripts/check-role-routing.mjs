@@ -14,7 +14,7 @@ const roleRoutes = read("src/auth/roleRoutes.ts");
 // UI regardless of where the code physically lives.
 const readLoginSource = () => {
   const entry = read("app/login.tsx");
-  const reexport = entry.match(/from ["']@\/(src\/[^"']+)["']/);
+  const reexport = entry.match(/from ["']@\/(src\/screens\/[^"']+)["']/);
   if (reexport) {
     const rel = reexport[1].endsWith(".tsx") ? reexport[1] : `${reexport[1]}.tsx`;
     return `${entry}\n${read(rel)}`;
@@ -33,7 +33,7 @@ const expectedRoutes = {
   plant_owner: "/owner",
   owner: "/owner",
   driver: "/driver",
-  admin: "/admin",
+  admin: "/plant-admin",
   dispatcher: "/dispatcher",
   operator: "/operator",
   supervisor: "/supervisor",
@@ -58,7 +58,7 @@ const navBlueprint = read("src/constants/roles.ts");
 if (!ownerLayout.includes('user.role !== "plant_owner" && user.role !== "owner"')) {
   failures.push("Owner workspace must recognize both canonical plant_owner and legacy owner role");
 }
-if (!roleHome.includes('owner: "/owner"')) {
+if (!roleHome.includes('ROLE_ROUTES[user.role') || !roleRoutes.includes('owner: "/owner"')) {
   failures.push("Role-home fallback must route existing owner aliases to the owner workspace");
 }
 for (const role of ["customer", "driver", "plant_owner", "admin", "dispatcher", "operator", "supervisor", "accountant", "quality_engineer", "fleet_manager", "store_manager"]) {

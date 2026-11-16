@@ -28,6 +28,7 @@ fs.mkdirSync(out, { recursive: true });
         else if (path.endsWith('/plant-profile/plant-one/editor')) return route.fulfill({ status: 403, json: { message: 'No edit grant' } });
         else if (path.endsWith('/plant-profile/plant-one')) json = { plant_name: 'Fixture Plant', sections: [], documents: [] };
         else if (path.endsWith('/staff/supplier-enquiries')) {
+          if (route.request().method() === 'GET') return route.fulfill({ json: { enquiries: [] } });
           supplierRequests.push(route.request().postDataJSON());
           if (supplierRequests.length === 1) return route.fulfill({ status: 503, json: { message: 'Fixture retry' } });
           return route.fulfill({ status: 201, json: { success: true, id: 'isolated-enquiry', status: 'NEW' } });

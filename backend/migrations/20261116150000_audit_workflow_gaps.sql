@@ -1,0 +1,9 @@
+ALTER TABLE plant_order_review_requests
+    ADD COLUMN status TEXT NOT NULL DEFAULT 'PENDING_ADMIN_REVIEW'
+        CHECK (status IN ('PENDING_ADMIN_REVIEW', 'AWAITING_PLANT', 'READY_FOR_QUOTATION', 'DECLINED')),
+    ADD COLUMN reviewed_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    ADD COLUMN reviewed_at TIMESTAMPTZ,
+    ADD COLUMN decision_note VARCHAR(500);
+
+ALTER TABLE customer_service_enquiries
+    ADD COLUMN assigned_to UUID REFERENCES users(id) ON DELETE SET NULL;

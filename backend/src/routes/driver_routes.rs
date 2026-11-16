@@ -134,8 +134,8 @@ pub async fn get_driver_home(
                 FROM proof_of_deliveries pod
                 JOIN order_loads ol ON ol.id = pod.load_id
                 WHERE ol.driver_id = u.id
-                  AND pod.delivered_at >= date_trunc('day', NOW())
-                  AND pod.delivered_at < date_trunc('day', NOW()) + INTERVAL '1 day'
+                  AND pod.delivered_at >= date_trunc('day', NOW() AT TIME ZONE 'Asia/Kolkata') AT TIME ZONE 'Asia/Kolkata'
+                  AND pod.delivered_at < (date_trunc('day', NOW() AT TIME ZONE 'Asia/Kolkata') + INTERVAL '1 day') AT TIME ZONE 'Asia/Kolkata'
             ) AS completed_today,
             EXISTS (
                 SELECT 1

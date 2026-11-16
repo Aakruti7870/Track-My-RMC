@@ -58,7 +58,7 @@ export default function Notifications() {
       await apiPost(`/notifications/${id}/read`, token!);
       void refetch();
     }
-    if (["provisional_request", "provisional_response", "provisional_reminder"].includes(event)) {
+    if (["provisional_request", "provisional_response", "provisional_reminder", "plant_order_review_update"].includes(event)) {
       if (user?.role === "customer") router.push("/customer/orders");
       else if (user?.role === "owner" || user?.role === "plant_owner") router.push("/owner/provisional-requests");
     }

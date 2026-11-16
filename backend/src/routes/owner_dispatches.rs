@@ -1,4 +1,4 @@
-//! One load per row, using the exact same database date and scope as the
+//! One load per row, using the exact same India reporting date and scope as the
 //! Plant Owner "Dispatches" KPI. Includes loads later delivered or returned.
 use crate::{
     auth::{middleware::check_role, AuthUser},
@@ -32,9 +32,10 @@ pub async fn today(
 
     // These two predicates deliberately match get_owner_home.dispatched_loads.
     let (date, total): (NaiveDate, i64) = sqlx::query_as(
-        "SELECT CURRENT_DATE, COUNT(*)
+        "SELECT (NOW() AT TIME ZONE 'Asia/Kolkata')::date, COUNT(*)
          FROM order_loads l JOIN orders o ON o.id=l.order_id
-         WHERE o.plant_id=ANY($1) AND l.dispatched_at::date=CURRENT_DATE",
+         WHERE o.plant_id=ANY($1) AND l.dispatched_at >= date_trunc('day', NOW() AT TIME ZONE 'Asia/Kolkata') AT TIME ZONE 'Asia/Kolkata'
+           AND l.dispatched_at < (date_trunc('day', NOW() AT TIME ZONE 'Asia/Kolkata') + INTERVAL '1 day') AT TIME ZONE 'Asia/Kolkata'",
     )
     .bind(&plants)
     .fetch_one(&state.db)
@@ -56,13 +57,15 @@ pub async fn today(
          LEFT JOIN transit_mixers m ON m.id=l.mixer_id
          LEFT JOIN users d ON d.id=l.driver_id
          LEFT JOIN customer_sites s ON s.id=o.site_id
-         WHERE o.plant_id=ANY($1) AND l.dispatched_at::date=CURRENT_DATE
+         WHERE o.plant_id=ANY($1) AND l.dispatched_at >= $4::date::timestamp AT TIME ZONE 'Asia/Kolkata'
+           AND l.dispatched_at < ($4::date::timestamp + INTERVAL '1 day') AT TIME ZONE 'Asia/Kolkata'
          ORDER BY l.dispatched_at DESC,l.id DESC
          LIMIT $2 OFFSET $3",
     )
     .bind(&plants)
     .bind(limit)
     .bind(offset)
+    .bind(date)
     .fetch_all(&state.db)
     .await?;
 

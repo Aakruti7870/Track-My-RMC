@@ -17,7 +17,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      await route.fulfill({json:{id:'admin-review-fixture',status:'PENDING_ADMIN_REVIEW'}});
    } else {
      await route.fulfill({json:{requests:reviewSubmission ? [{
-       id:'admin-review-fixture',grade:reviewSubmission.grade,quantity_m3:reviewSubmission.quantity_m3,
+       id:'admin-review-fixture',status:'PENDING_ADMIN_REVIEW',grade:reviewSubmission.grade,quantity_m3:reviewSubmission.quantity_m3,
        site_address:reviewSubmission.site_address,delivery_date:reviewSubmission.delivery_date,
      }] : []}});
    }
@@ -150,7 +150,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  assert.equal(Math.round((await page.getByTestId('customer-home-header').boundingBox()).y), Math.round(homeHeader.y));
  if(!m||Math.abs(m.width/m.height-2)>0.05)throw Error('map ratio');
  if(b.x<0||b.x+b.width>width+1)throw Error('overflow');
- for(const text of ['Place Your First order','M-25 Grade · 6 m³','Project site 1','Print Challan','Track TM','Call Driver','Call Plant'])if(!await card.getByText(text,{exact:true}).count())throw Error(text);
+ for(const text of ['Place Your First order','M-25 Grade · 6 m³','Project site 1','View Challan','Track TM','Call Driver','Call Plant'])if(!await card.getByText(text,{exact:true}).count())throw Error(text);
  await card.screenshot({path:`tracking-previews/tracking-${width}.png`});
  console.log(JSON.stringify({width,card:b,map:m}));
  await card.getByRole('button',{name:'Track TM',exact:true}).click();
@@ -396,7 +396,8 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      assert.equal(reviewSubmission.plant_id,null);
      assert.equal(reviewSubmission.share_with_supplier,undefined);
      await page.getByRole('button',{name:'View My Orders',exact:true}).click();
-     await page.getByText('Requests Awaiting Review',{exact:true}).waitFor();
+     await page.getByText('Plant Order Requests',{exact:true}).waitFor();
+     await page.getByText('Awaiting Super Admin review',{exact:true}).waitFor();
      await page.getByText('Reference admin-review-fixture',{exact:true}).waitFor();
      console.log('PASS 320px '+theme+' enlarged labels, header Support and matte RFQ calendar');
    }
