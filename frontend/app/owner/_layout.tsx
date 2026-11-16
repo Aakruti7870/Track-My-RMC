@@ -24,7 +24,7 @@ export default function OwnerLayout() {
   if (user.role !== "plant_owner" && user.role !== "owner") return <Redirect href="/role-home" />;
 
   return (
-    <Tabs screenOptions={{ headerShown: false, sceneStyle: getThemedSceneStyle(colors) }} tabBar={(props) => <OwnerTabBar {...props} tabs={TABS} />}>
+    <Tabs backBehavior="history" screenOptions={{ headerShown: false, sceneStyle: getThemedSceneStyle(colors) }} tabBar={(props) => <OwnerTabBar {...props} tabs={TABS} />}>
       {TABS.map((t) => (
         <Tabs.Screen key={t.name} name={t.name} />
       ))}

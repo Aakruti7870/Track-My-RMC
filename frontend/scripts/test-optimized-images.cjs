@@ -11,7 +11,6 @@ const files = [
   ["TrackMyRMC_Login_Top_Banner_Dark", "src/screens/LoginScreen.tsx"],
   ["Background Light Theme", "src/components/ThemedScreen.tsx"],
   ["Background Dark Theme", "src/components/ThemedScreen.tsx"],
-  ["support-agent-mascot", "src/support/SupportWidgetBridge.tsx"],
 ];
 
 test("shared WebP artwork preserves PNG dimensions and reduces the bundle transfer bytes", () => {

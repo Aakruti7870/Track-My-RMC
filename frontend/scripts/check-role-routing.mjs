@@ -148,7 +148,7 @@ collectTestIds(loginTree);
 const card = byTestId.get("login-card");
 const reviewer = byTestId.get("login-review-access");
 const terms = byTestId.get("login-terms-link");
-if (!card || !reviewer || !terms || reviewer.parent !== card || reviewer.end >= terms.getStart(loginTree) || terms.end >= card.end) {
+if (!card || !reviewer || !terms || reviewer.getStart(loginTree) <= card.getStart(loginTree) || reviewer.end >= terms.getStart(loginTree) || terms.end >= card.end) {
   failures.push("Google Play reviewer access must be inside the login card and before legal terms");
 }
 const reviewerAction = reviewer?.getText(loginTree) ?? "";

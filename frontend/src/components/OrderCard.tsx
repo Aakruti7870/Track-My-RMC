@@ -1,5 +1,6 @@
 import React from "react";
 import { Pressable, StyleSheet, View } from "react-native";
+import { IconTile } from "./IconTile";
 import { Ionicons } from "@expo/vector-icons";
 
 import type { Order } from "@/src/domain/order";
@@ -37,9 +38,7 @@ export function OrderCard({ order, onPress }: { order: Order; onPress?: () => vo
     >
       <Card variant="elevated" style={styles.card}>
         <View style={styles.headerRow}>
-          <View style={[styles.orderGlyph, { backgroundColor: colors.brandSoft, borderColor: colors.brand + "30" }]}>
-            <Ionicons name="cube-outline" size={20} color={colors.brand} />
-          </View>
+          <IconTile icon="cube-outline" size={20} width={42} height={42} homeShortcut />
           <View style={styles.headerText}>
             <AppText variant="eyebrow">RMC ORDER</AppText>
             <AppText
@@ -102,14 +101,6 @@ const styles = StyleSheet.create({
   pressable: { borderRadius: radius.lg },
   card: { gap: spacing.lg },
   headerRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  orderGlyph: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   headerText: { minWidth: 0, flex: 1, gap: 1 },
   headerStatus: { alignItems: "flex-end", gap: spacing.sm },
   metaPanel: {

@@ -36,7 +36,7 @@ describe("optimized login banner assets and non-cropping layout", () => {
   });
 
   it("retains login card width, hero seam, and existing options", () => {
-    assert.match(screen, /cardWidth = Math\.min\(width - 24, Math\.max\(366, artworkScale \* 678\)\)/);
+    assert.match(screen, /cardWidth = Math\.min\(width - 24, Math\.max\(366, naturalHeroWidth \* \(678 \/ \(colors\.isDark \? 1229 : 1227\)\)\)\)/);
     assert.match(screen, /width: cardWidth, marginTop: artworkScale \* 4/);
     assert.match(screen, /testID="login-backdrop"[\s\S]*?colors=\{look\.page\}[\s\S]*?testID="login-hero-edge"[\s\S]*?colors=\{look\.heroEdge\}[\s\S]*?colors=\{look\.heroBlend\}[\s\S]*?testID="login-card"/);
     assert.match(screen, /key: "user", testID: "login-user-tab".*label: "USER LOGIN"/);

@@ -10,7 +10,7 @@ const order = readFileSync(`${process.cwd()}/app/new-order.tsx`, "utf8");
 const staff = readFileSync(`${process.cwd()}/app/support-cases.tsx`, "utf8");
 const more = readFileSync(`${process.cwd()}/src/screens/StaffMore.tsx`, "utf8");
 const widget = readFileSync(`${process.cwd()}/src/support/SupportWidgetBridge.tsx`, "utf8");
-const layout = readFileSync(`${process.cwd()}/app/_layout.tsx`, "utf8");
+const login = readFileSync(`${process.cwd()}/src/screens/LoginScreen.tsx`, "utf8");
 
 test("support actions route only to existing secure screens", () => {
   for (const route of ["/kyc", "/customer/orders", "/account-deletion", "/plant-onboarding"]) {
@@ -96,7 +96,7 @@ test("legacy support operations remain available to privileged roles until the w
 
 test("login help widget stays compact and public issue choices expand before navigation", () => {
   const publicWidget = widget.slice(widget.indexOf('testID="login-help-panel"'));
-  assert.ok(layout.includes("<SupportWidgetBridge />"));
+  assert.match(login, /style=\{styles.reviewerRow\}[\s\S]*?testID="login-review-access"[\s\S]*?<\/Pressable>\s*<SupportWidgetBridge \/>/);
   assert.ok(widget.includes('normalizedPath === "/login"'));
   assert.ok(widget.includes("!token && !user"));
   assert.ok(widget.includes("Safe quick help before sign-in"));
@@ -112,26 +112,13 @@ test("login help widget stays compact and public issue choices expand before nav
   assert.ok(!publicWidget.includes('"/assistant/') && !publicWidget.includes('"/customer/orders'));
 });
 
-test("customer support uses a Material Symbol and public login retains its optimized launcher", () => {
-  const asset = readFileSync(`${process.cwd()}/assets/images/support-agent-mascot.webp`);
-  assert.equal(asset.toString("ascii", 0, 4), "RIFF");
-  assert.equal(asset.toString("ascii", 8, 12), "WEBP", "mascot asset must be a WebP");
-  assert.ok(widget.includes('import { VectorSymbol } from "@/src/components/VectorSymbol";'));
-  assert.equal(widget.split('<VectorSymbol name="support" size={40} />').length - 1, 2, "both support panels must render the shared support symbol");
-  assert.ok(!widget.includes('name="chatbubbles-outline"'), "do not show the old generic chat icon");
-  assert.ok(widget.includes('require("../../assets/images/support-agent-mascot.webp")'));
-  assert.equal((widget.match(/<Image source={SUPPORT_AGENT_MASCOT}/g) || []).length, 1, "the public login launcher retains its mascot");
-  assert.match(widget, /testID="header-help"[\s\S]*?<VectorSymbol name="support"/);
-  assert.ok(widget.includes('resizeMode="contain"'));
-  assert.ok(!widget.includes("AnimatedPuppy"));
-  assert.ok(widget.includes("width: 56"));
-  assert.ok(widget.includes("height: 56"));
-  assert.ok(widget.includes("width: 48, height: 48"));
-  assert.ok(widget.includes("compactPanelWidth(viewportWidth)"));
-  assert.ok(widget.includes("viewportWidth * 0.72"));
-  assert.ok((widget.match(/pointerEvents=\"box-none\"/g) || []).length >= 2);
-  assert.ok(widget.includes("insets.top + spacing.sm"));
-  assert.ok(widget.includes("flexDirection: \"column-reverse\""));
+test("the login and customer header share the support symbol", () => {
+  assert.match(widget, /testID="header-help"[\s\S]*?<VectorSymbol name="support" color=\{colors.onSurface\}/);
+  assert.match(widget, /testID="login-help-widget"[\s\S]*?<VectorSymbol name="support" color=\{colors.onSurface\}/);
+  assert.match(widget, /supportButton: \{[\s\S]*?width: 44,[\s\S]*?height: 44,[\s\S]*?borderRadius: 22/);
+  assert.match(widget, /testID="login-help-widget"[\s\S]*?colors.surfaceSecondary,[\s\S]*?borderColor: colors.controlOutline/);
+  assert.doesNotMatch(widget, /support-agent-mascot/);
+  assert.doesNotMatch(login, /testID="login-theme-toggle"/);
 });
 
 test("authenticated Place Order and Track Delivery expand inside the support sheet before navigation", () => {

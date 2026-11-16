@@ -7,12 +7,14 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
+import { CardHighlight } from "@/src/components/ui/CardHighlight";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
 import Svg, { Defs, LinearGradient as SvgGradient, Rect, Stop } from "react-native-svg";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { StatusBar } from "expo-status-bar";
+import { useIsFocused } from "@react-navigation/native";
 import { type Href, useRouter } from "expo-router";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -31,7 +33,7 @@ import { Input } from "@/src/components/ui/Input";
 import { useToast } from "@/src/components/ui/Toast";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { SupportWidgetBridge } from "@/src/support/SupportWidgetBridge";
-import { fonts, fontSize, loginAppearance, radius, spacing } from "@/src/theme/tokens";
+import { fonts, fontSize, homeArtwork, loginAppearance, radius, spacing } from "@/src/theme/tokens";
 
 // Theme-specific, lossless crops of the approved login artwork.
 const HERO_LIGHT = require("../../assets/images/TrackMyRMC_Login_Top_Banner_light.webp");
@@ -62,11 +64,12 @@ const validEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.tr
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export default function LoginScreen() {
-  const { colors, toggle, reduceMotion } = useTheme();
-  const { width } = useWindowDimensions();
+  const { colors, reduceMotion } = useTheme();
+  const { width, height } = useWindowDimensions();
   const look = loginAppearance[colors.isDark ? "dark" : "light"];
   const heroSource = colors.isDark ? HERO_DARK : HERO_LIGHT;
   const router = useRouter();
+  const isFocused = useIsFocused();
   const toast = useToast();
   const insets = useSafeAreaInsets();
   const {
@@ -90,6 +93,7 @@ export default function LoginScreen() {
   const [phase, setPhase] = useState<LoginPhase>("enter");
   const [mobile, setMobile] = useState("");
   const [phoneFocused, setPhoneFocused] = useState(false);
+  const [cardHeight, setCardHeight] = useState(0);
   const [plantEmail, setPlantEmail] = useState("");
   const [identifier, setIdentifier] = useState("");
   const [code, setCode] = useState("");
@@ -115,10 +119,10 @@ export default function LoginScreen() {
   }, [resendAt]);
 
   useEffect(() => {
-    if (!hydrating && token && user && phase === "enter" && !loading && otpVisual !== "success") {
+    if (isFocused && !hydrating && token && user && phase === "enter" && !loading && otpVisual !== "success") {
       router.replace(signedInRoute(user));
     }
-  }, [hydrating, loading, otpVisual, phase, router, token, user]);
+  }, [hydrating, isFocused, loading, otpVisual, phase, router, token, user]);
 
   const startCountdown = () => {
     setCountdown(RESEND_DELAY_MS / 1000);
@@ -344,8 +348,8 @@ export default function LoginScreen() {
 
   const renderHeading = (icon: keyof typeof Ionicons.glyphMap, title: string, subtitle: string) => (
     <View style={styles.headingBlock}>
-      <View style={[styles.iconBubble, { backgroundColor: look.iconSurface }]}>
-        <Ionicons name={icon} size={24} color={icon === "phone-portrait-outline" ? look.phoneIcon : look.selectedIcon} />
+      <View style={[styles.iconBubble, { backgroundColor: homeArtwork.quickFill[1] }]}>
+        <Ionicons name={icon} size={24} color={homeArtwork.iconInk} />
       </View>
       <AppText accessibilityRole="header" variant="heading" center>{title}</AppText>
       <AppText variant="bodyMuted" center color={colors.onSurfaceSecondary}>{subtitle}</AppText>
@@ -637,9 +641,14 @@ export default function LoginScreen() {
   };
 
   const heroAspect = (colors.isDark ? 1229 : 1227) / 615;
-  const heroWidth = Math.min(width, 760);
+  const naturalHeroWidth = Math.min(width, 760);
+  const cardWidth = Math.min(width - 24, Math.max(366, naturalHeroWidth * (678 / (colors.isDark ? 1229 : 1227))));
+  const pageBottom = Math.max(insets.bottom, spacing.sm);
+  const availableHeroHeight = height - insets.top - cardHeight - spacing.sm - pageBottom - 4;
+  const fitHeroWidth = availableHeroHeight * heroAspect;
+  const canFitEntry = phase === "enter" && cardHeight > 0 && fitHeroWidth >= naturalHeroWidth * 0.75;
+  const heroWidth = canFitEntry ? Math.min(naturalHeroWidth, fitHeroWidth) : naturalHeroWidth;
   const artworkScale = heroWidth / (colors.isDark ? 1229 : 1227);
-  const cardWidth = Math.min(width - 24, Math.max(366, artworkScale * 678));
 
   return (
     <View style={{ flex: 1, backgroundColor: look.canvas }}>
@@ -647,11 +656,11 @@ export default function LoginScreen() {
       <KeyboardAwareScrollView
         bottomOffset={24}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}
+        contentContainerStyle={[styles.content, { paddingBottom: pageBottom }]}
         showsVerticalScrollIndicator={false}
       >
         <View style={{ width: "100%", height: insets.top, backgroundColor: look.heroTop }} />
-        <View style={[styles.hero, { aspectRatio: heroAspect, backgroundColor: look.heroTop }]}>
+        <View style={[styles.hero, { width: heroWidth, aspectRatio: heroAspect, backgroundColor: look.heroTop }]}>
           <Image
             testID="login-hero"
             source={heroSource}
@@ -669,22 +678,19 @@ export default function LoginScreen() {
           <LinearGradient pointerEvents="none" colors={look.page} locations={[0, 0.45, 1]}
             style={StyleSheet.absoluteFill} />
           <View pointerEvents="none" testID="login-hero-edge"
-            style={[styles.heroExtension, { height: artworkScale * 72 }]}>
+            style={[styles.heroExtension, { height: artworkScale * 72, width: heroWidth }]}>
             <LinearGradient colors={look.heroEdge} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
               style={StyleSheet.absoluteFill} />
             <LinearGradient colors={look.heroBlend} locations={[0, 0.21, 0.45, 0.69, 1]}
               style={StyleSheet.absoluteFill} />
           </View>
 
-          <View testID="login-card" style={[styles.loginShell, {
+          <View testID="login-card" onLayout={({ nativeEvent }) => setCardHeight(nativeEvent.layout.height)} style={[styles.loginShell, {
             width: cardWidth, marginTop: artworkScale * 4, backgroundColor: look.card[0], shadowColor: look.shadow,
           }]}>
             <LinearGradient pointerEvents="none" colors={look.card} style={styles.sheetFill}
               start={{ x: 0, y: 0 }} end={{ x: 0.9, y: 1 }} />
-            <View pointerEvents="none" style={styles.cardHighlight}>
-              <LinearGradient colors={[look.gleam + (colors.isDark ? "55" : "47"), look.gleam + "00"]}
-                start={{ x: 0.08, y: 0 }} end={{ x: 0.56, y: 1 }} style={StyleSheet.absoluteFill} />
-            </View>
+            <CardHighlight radius={28} />
             <Svg width="100%" height="100%" pointerEvents="none" style={StyleSheet.absoluteFill} aria-hidden accessible={false}>
               <Defs>
                 <SvgGradient id="loginCardRim" x1="0%" y1="0%" x2="25%" y2="100%">
@@ -709,15 +715,15 @@ export default function LoginScreen() {
                     onPress={() => { if (!selected) resetEntry(key); }}
                     style={styles.segment}>
                     {selected ? (
-                      <LinearGradient pointerEvents="none" colors={look.tabRim}
+                      <LinearGradient pointerEvents="none" colors={homeArtwork.copperEdge}
                         start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill}>
-                        <LinearGradient colors={look.tab} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                        <LinearGradient colors={homeArtwork.quickFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
                           style={styles.segmentFill} />
                       </LinearGradient>
                     ) : null}
                     <View style={styles.segmentContent} pointerEvents="none">
-                      <VectorSymbol name={icon} size={18} color={selected ? look.selectedIcon : look.inactiveIcon} />
-                      <AppText style={styles.segmentLabel} color={selected ? look.selectedText : look.inactive}>{label}</AppText>
+                      <VectorSymbol name={icon} size={18} color={selected ? homeArtwork.iconInk : look.inactiveIcon} />
+                      <AppText style={styles.segmentLabel} color={selected ? homeArtwork.iconInk : look.inactive}>{label}</AppText>
                     </View>
                   </Pressable>
                 );
@@ -751,49 +757,48 @@ export default function LoginScreen() {
               </View>
             ) : null}
 
-            <View style={styles.securityNote}>
-              <Ionicons name="lock-closed-outline" size={14} color={look.securityLock} />
-              <AppText variant="caption" color={look.securityText} style={{ flexShrink: 1 }}>Secured with 6-digit OTP verification</AppText>
+            <View style={styles.loginFooter}>
+              <View style={styles.securityNote}>
+                <Ionicons name="lock-closed-outline" size={14} color={look.securityLock} />
+                <AppText variant="caption" color={look.securityText} style={{ flexShrink: 1 }}>Secured with 6-digit OTP verification</AppText>
+              </View>
+
+              <View style={styles.reviewerRow}>
+                <Pressable
+                  testID="login-review-access"
+                  accessibilityRole="button"
+                  accessibilityLabel="Google Play Reviewer Access"
+                  disabled={loading}
+                  onPress={() => router.push("/review-access")}
+                  style={styles.reviewAccess}
+                >
+                  <View style={[styles.reviewPill, { backgroundColor: look.reviewerFill, borderColor: look.reviewerOutline }]}>
+                    <Ionicons name="shield-checkmark-outline" size={18} color={look.reviewer} />
+                    <AppText variant="caption" style={[styles.reviewAccessLabel, { color: look.reviewerLabel }]}>Google Play Reviewer Access</AppText>
+                  </View>
+                </Pressable>
+                <SupportWidgetBridge />
+              </View>
+
+              <View style={styles.legalArea}>
+                <AppText variant="caption" center color={look.consent}>
+                  {"By clicking on Login, I accept the "}
+                  <AppText testID="login-terms-link" variant="caption" style={styles.legalLink} color={look.link}
+                    accessibilityRole="link" onPress={() => { if (!requestInFlight.current) router.push("/terms"); }}>Terms & Conditions</AppText>
+                  {" & "}
+                  <AppText testID="login-privacy-link" variant="caption" style={styles.legalLink} color={look.privacy}
+                    accessibilityRole="link" onPress={() => { if (!requestInFlight.current) void openExternal(PRIVACY_POLICY_URL); }}>Privacy Policy</AppText>
+                </AppText>
+
+                <Pressable testID="login-delete-account" accessibilityRole="link" accessibilityLabel="Delete Account"
+                  style={styles.deleteLink} disabled={loading} onPress={() => void openExternal(ACCOUNT_DELETION_URL)}>
+                  <Ionicons name="trash-outline" size={16} color={look.deleteIcon} />
+                  <AppText variant="caption" color={look.delete}>Delete Account</AppText>
+                </Pressable>
+              </View>
+
+              <AppText testID="login-powered-by" variant="caption" center color={look.footer} style={styles.poweredBy}>Powered by <AppText variant="label" color={look.footerBrand}>Gold e Tech</AppText></AppText>
             </View>
-
-            <Pressable
-              testID="login-review-access"
-              accessibilityRole="button"
-              accessibilityLabel="Google Play Reviewer Access"
-              disabled={loading}
-              onPress={() => router.push("/review-access")}
-              style={[styles.reviewAccess, { backgroundColor: look.reviewerFill, borderColor: look.reviewerOutline }]}
-            >
-              <Ionicons name="shield-checkmark-outline" size={20} color={look.reviewer} />
-              <AppText variant="caption" style={[styles.reviewAccessLabel, { color: look.reviewerLabel }]}>Google Play Reviewer Access</AppText>
-            </Pressable>
-
-            <View style={styles.legalArea}>
-              <AppText variant="caption" center color={look.consent}>
-                {"By clicking on Login, I accept the "}
-                <AppText testID="login-terms-link" variant="caption" style={styles.legalLink} color={look.link}
-                  accessibilityRole="link" onPress={() => { if (!requestInFlight.current) router.push("/terms"); }}>Terms & Conditions</AppText>
-                {" & "}
-                <AppText testID="login-privacy-link" variant="caption" style={styles.legalLink} color={look.privacy}
-                  accessibilityRole="link" onPress={() => { if (!requestInFlight.current) void openExternal(PRIVACY_POLICY_URL); }}>Privacy Policy</AppText>
-              </AppText>
-
-              <Pressable testID="login-delete-account" accessibilityRole="link" accessibilityLabel="Delete Account"
-                style={styles.deleteLink} disabled={loading} onPress={() => void openExternal(ACCOUNT_DELETION_URL)}>
-                <Ionicons name="trash-outline" size={16} color={look.deleteIcon} />
-                <AppText variant="caption" color={look.delete}>Delete Account</AppText>
-              </Pressable>
-            </View>
-
-            <AppText variant="caption" center color={look.footer}>Powered by <AppText variant="label" color={look.footerBrand}>Gold e Tech</AppText></AppText>
-          </View>
-          <View style={[styles.utilityRow, { width: cardWidth }]}>
-            <SupportWidgetBridge />
-            <Pressable accessibilityRole="button" accessibilityLabel="Switch light or dark mode"
-              testID="login-theme-toggle" onPress={toggle}
-              style={[styles.themeButton, { backgroundColor: look.rail, borderColor: look.railOutline }]}>
-              <Ionicons name={colors.isDark ? "sunny-outline" : "moon-outline"} size={19} color={look.inactive} />
-            </Pressable>
           </View>
         </View>
       </KeyboardAwareScrollView>
@@ -814,23 +819,20 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
-  backdrop: { width: "100%", flexGrow: 1, alignItems: "center", paddingBottom: spacing.lg },
+  backdrop: { width: "100%", flexGrow: 1, alignItems: "center", paddingBottom: spacing.sm },
   heroExtension: { position: "absolute", top: 0, width: "100%", maxWidth: 760, alignSelf: "center" },
   loginShell: {
     borderRadius: 28,
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.lg,
-    paddingTop: spacing.lg,
-    gap: spacing.lg,
+    paddingBottom: spacing.md,
+    paddingTop: spacing.md,
+    gap: spacing.sm,
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.14,
     shadowRadius: 28,
     elevation: 8,
   },
   sheetFill: { ...StyleSheet.absoluteFillObject, borderRadius: 28 },
-  utilityRow: { marginTop: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between", zIndex: 1 },
-  themeButton: { marginLeft: "auto", width: 44, height: 44, borderRadius: 22, borderWidth: 1,
-    alignItems: "center", justifyContent: "center" },
   segmented: {
     flexDirection: "row",
     borderWidth: 1,
@@ -840,7 +842,7 @@ const styles = StyleSheet.create({
   },
   segment: {
     flex: 1,
-    minHeight: 48,
+    minHeight: 44,
     borderRadius: 14,
     overflow: "hidden",
     flexDirection: "row",
@@ -849,7 +851,6 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     paddingHorizontal: spacing.sm,
   },
-  cardHighlight: { position: "absolute", top: 1, left: 1, right: 1, height: 28, borderTopLeftRadius: 27, borderTopRightRadius: 27, overflow: "hidden" },
   segmentContent: { zIndex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.xs },
   segmentFill: { ...StyleSheet.absoluteFillObject, top: 1, right: 1, bottom: 1, left: 1, borderRadius: 13 },
   segmentLabel: { flexShrink: 1, textAlign: "center", fontFamily: fonts.semibold, fontSize: fontSize.sm, letterSpacing: 0.2 },
@@ -904,12 +905,13 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: fontSize.base,
   },
+  loginFooter: { gap: 6 },
+  poweredBy: { marginTop: 1 },
   securityNote: {
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
     gap: 6,
-    marginTop: -2,
   },
   onboardingLink: {
     width: "100%",
@@ -956,17 +958,23 @@ const styles = StyleSheet.create({
   demoBox: { borderWidth: 1, borderRadius: radius.lg, padding: spacing.md, gap: spacing.sm },
   demoRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, justifyContent: "center" },
   demoChip: { borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  legalArea: { gap: spacing.xs },
+  legalArea: { gap: 6 },
   legalLink: { fontFamily: fonts.semibold, textDecorationLine: "underline" },
   deleteLink: { minHeight: 44, alignSelf: "center", paddingHorizontal: 10, flexDirection: "row",
     alignItems: "center", justifyContent: "center", gap: 5 },
+  reviewerRow: { flexDirection: "row", alignSelf: "center", alignItems: "center", maxWidth: "100%", gap: spacing.sm },
   reviewAccess: {
+    flexShrink: 1,
     alignSelf: "center",
     maxWidth: "100%",
     minHeight: 44,
+    justifyContent: "center",
+  },
+  reviewPill: {
+    minHeight: 39.6,
     borderWidth: 1,
     borderRadius: radius.pill,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.md * 0.9,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -975,6 +983,8 @@ const styles = StyleSheet.create({
   reviewAccessLabel: {
     flexShrink: 1,
     fontFamily: fonts.semibold,
+    fontSize: fontSize.sm * 0.9,
+    lineHeight: 16,
     textAlign: "center",
   },
 });

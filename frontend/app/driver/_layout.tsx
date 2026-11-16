@@ -21,7 +21,7 @@ export default function DriverLayout() {
   if (user.role !== "driver") return <Redirect href="/role-home" />;
 
   return (
-    <Tabs screenOptions={{ headerShown: false, sceneStyle: getThemedSceneStyle(colors) }} tabBar={(props) => <GlassTabBar {...props} tabs={TABS} />}>
+    <Tabs backBehavior="history" screenOptions={{ headerShown: false, sceneStyle: getThemedSceneStyle(colors) }} tabBar={(props) => <GlassTabBar {...props} tabs={TABS} />}>
       {TABS.map((t) => (
         <Tabs.Screen key={t.name} name={t.name} />
       ))}

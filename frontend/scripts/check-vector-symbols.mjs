@@ -99,11 +99,10 @@ assert.match(nav, /<VectorSymbol name=\{symbol\} color=\{ink\} active=\{focused\
 assert.ok(nav.includes('{leftRoutes.map(renderTab)}') && nav.includes('{rightRoutes.map(renderTab)}'), "Two symmetric side groups must flank New Order");
 assert.ok(!nav.includes("styles.iconWrap"), "Navigation icon plates must be absent");
 const kyc = read("src/components/KycBanner.tsx");
-assert.match(kyc, /<VectorSymbol name="kyc-verified" size=\{size.kycSymbol\} color=\{tone\}/);
-assert.match(kyc, /<IdentityVerificationSymbol size=\{size.kycSymbol \+ 6\}/);
+assert.match(kyc, /<IdentityVerificationSymbol size=\{size.kycSymbol \+ 6\} verified=\{isVerified\}/);
 const verificationSymbol = read("src/components/vector-symbols/IdentityVerificationSymbol.tsx");
 assert.match(verificationSymbol, /backgroundColor: homeArtwork.kycIconFill/);
-assert.match(verificationSymbol, /name="restricted-access" variant="browser-shield"[\s\S]*color="#FFFFFF"/);
+assert.match(verificationSymbol, /verified \? "kyc-verified" : "restricted-access"[\s\S]*color="#FFFFFF"/);
 const header = read("src/components/customer/CustomerHomeHeader.tsx");
 for (const expected of ['name="chevron-down" size={size.headerChevron}', 'name="notifications" size={size.headerBell}']) {
   assert.ok(header.includes(expected), `Header symbol missing responsive dimension: ${expected}`);

@@ -15,10 +15,10 @@ type Props = {
   onClose: () => void;
   tabs: TabDef[];
   role?: string | null;
-  navigation: any;
+  onSelect: (name: string) => void;
 };
 
-export function QuickActionHub({ visible, onClose, tabs, role, navigation }: Props) {
+export function QuickActionHub({ visible, onClose, tabs, role, onSelect }: Props) {
   const { colors, reduceMotion } = useTheme();
   const { width, fontScale } = useWindowDimensions();
   const singleColumn = width / fontScale < 330;
@@ -26,7 +26,7 @@ export function QuickActionHub({ visible, onClose, tabs, role, navigation }: Pro
   const runAction = (tab: TabDef) => {
     void Haptics.selectionAsync().catch(() => undefined);
     onClose();
-    navigation.navigate(tab.name);
+    onSelect(tab.name);
   };
 
   return (
@@ -94,7 +94,7 @@ export function QuickActionHub({ visible, onClose, tabs, role, navigation }: Pro
                     },
                   ]}
                 >
-                  {symbol ? <IconTile symbol={symbol} width={38} /> : <IconTile icon={tab.icon} width={38} />}
+                  {symbol ? <IconTile symbol={symbol} homeShortcut /> : <IconTile icon={tab.icon} homeShortcut />}
                   <AppText style={[styles.actionLabel, { color: colors.onSurface }]}>{tab.label}</AppText>
                   <Ionicons name="chevron-forward" size={16} color={colors.onSurfaceTertiary} />
                 </Pressable>

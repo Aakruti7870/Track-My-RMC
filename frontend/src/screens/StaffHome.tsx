@@ -1,4 +1,4 @@
-import { getThemedCanvasColor, screenOverflow } from "@/src/theme/sceneBackground";
+import { screenOverflow } from "@/src/theme/sceneBackground";
 import React, { useState } from "react";
 import { Pressable, RefreshControl, StyleSheet, useWindowDimensions, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -6,6 +6,7 @@ import { type VectorSymbolName } from "@/src/components/VectorSymbol";
 import { IconTile } from "@/src/components/IconTile";
 import { useFocusEffect, useRouter, type Href } from "expo-router";
 import { HomeModuleSection, HomeSectionHeader } from "@/src/components/HomeModuleSection";
+import { CardHighlight } from "@/src/components/ui/CardHighlight";
 import { HomeScroll } from "@/src/components/HomeScroll";
 import { OperationalHomeTopBar } from "@/src/components/OperationalHomeTopBar";
 import { PlantHomeActions, PlantHomeHero } from "@/src/components/PlantHomeCards";
@@ -72,7 +73,7 @@ export function StaffHome() {
   const { user, token } = useAuth();
   const toast = useToast();
   const router = useRouter();
-  const { width: viewportWidth, fontScale } = useWindowDimensions();
+  const { width: viewportWidth } = useWindowDimensions();
   const contentWidth = Math.max(0, Math.min(viewportWidth, 980) - 2 * spacing.lg);
   const kpiColumns = contentWidth >= 680 ? 4 : contentWidth >= 460 ? 3 : 2;
   const kpiWidth = (contentWidth - (kpiColumns - 1) * 10) / kpiColumns;
@@ -126,6 +127,7 @@ export function StaffHome() {
           style={({ pressed }) => [styles.summary, {
             backgroundColor: colors.surfaceSecondary, borderColor: colors.divider, opacity: pressed ? 0.82 : 1,
           }]}>
+          <CardHighlight radius={10} />
           <IconTile symbol="plant-dashboard" homeShortcut />
           <View style={styles.summaryCopy}>
             <AppText style={styles.summaryTitle}>{data.primary.title}</AppText>
@@ -138,7 +140,7 @@ export function StaffHome() {
             accessible={false} aria-hidden />
         </Pressable>
       ) : null}
-      <PlantHomeActions action="supplier-enquiry" homeShortcut />
+      <PlantHomeActions action="supplier-enquiry" />
     </View>
   );
 
@@ -148,14 +150,14 @@ export function StaffHome() {
 
       <HomeScroll testID="staff-home-scroll"
         gap={spacing.md} paddingHorizontal={spacing.lg} paddingTop={spacing.lg}
-        backgroundColor={getThemedCanvasColor(colors)} tabBarOverlay={fontScale >= 1.3 ? 0 : 110}
         contentContainerStyle={{ paddingBottom: 130, width: "100%", maxWidth: 980, alignSelf: "center" }}
         refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={refresh} tintColor={colors.brand} />}
-        lead={<View style={styles.topCards}>
+      >
+        <View style={styles.topCards}>
           <PlantHomeHero label={data?.role_label || user?.role_label || "Plant Staff"} testID="staff-home-hero-banner" />
-        </View>}
-        shortcuts={shortcuts}>
-        <PlantHomeActions action="profile" homeShortcut />
+        </View>
+        {shortcuts}
+        <PlantHomeActions action="profile" />
         {error && !data ? (
           <>
             <ErrorView message={error} onRetry={reload} />
@@ -176,6 +178,7 @@ export function StaffHome() {
                     ? colors.divider
                     : operationalStatus(kpiTone(c), colors.isDark) + "60",
                 }]}>
+                  <CardHighlight radius={16} />
                   <View style={styles.kpiIcon}>
                     {KPI_ARTWORK[c.label] ? <IconTile symbol={KPI_ARTWORK[c.label]} width={38} /> :
                       <IconTile icon={c.icon} width={38} />}
@@ -194,6 +197,7 @@ export function StaffHome() {
             <View testID="staff-workday-card" style={[styles.workday, {
               backgroundColor: colors.surfaceSecondary, borderColor: colors.border,
             }]}>
+              <CardHighlight radius={16} />
               <View style={{ flex: 1, gap: 4 }}>
                 <AppText variant="heading">My Workday</AppText>
                 <AppText variant="caption">{shiftComplete ? "Shift complete" : checkedIn ? "On duty · checked in" : "Check in daily after signing in. Permission approval alone does not record attendance."}</AppText>

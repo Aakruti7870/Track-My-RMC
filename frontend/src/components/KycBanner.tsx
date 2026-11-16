@@ -1,12 +1,12 @@
 import React from "react";
 import { Platform, Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { VectorSymbol } from "./VectorSymbol";
+import { CardHighlight } from "./ui/CardHighlight";
 import { IdentityVerificationSymbol } from "./vector-symbols/IdentityVerificationSymbol";
 import { useRouter } from "expo-router";
 
 import { useTheme } from "@/src/theme/ThemeProvider";
-import { customerHomeSizes, fonts, homeArtwork } from "@/src/theme/tokens";
+import { customerHomeSizes, fonts } from "@/src/theme/tokens";
 import { AppText } from "./ui/AppText";
 
 const CONFIG: Record<
@@ -48,14 +48,14 @@ export function KycBanner({ status }: { status: string }) {
         styles.wrap,
         { gap: size.kycGap, paddingHorizontal: size.kycPadding, paddingVertical: size.kycPadding, borderRadius: size.kycRadius },
         {
-          backgroundColor: isVerified ? colors.verifiedSoft : homeArtwork.kycSurface,
-          borderColor: isVerified ? colors.verified + "66" : "#6334FA50",
+          backgroundColor: isVerified ? colors.verifiedSoft : colors.surfaceSecondary,
+          borderColor: isVerified ? colors.verified + "66" : colors.divider,
           transform: [{ scale: pressed && !isVerified ? 0.992 : 1 }],
         },
       ]}
     >
-      {isVerified ? <VectorSymbol name="kyc-verified" size={size.kycSymbol} color={tone} />
-        : <IdentityVerificationSymbol size={size.kycSymbol + 6} />}
+      <CardHighlight radius={size.kycRadius} />
+      <IdentityVerificationSymbol size={size.kycSymbol + 6} verified={isVerified} />
       <View style={styles.copy}>
         <AppText style={{ fontFamily: fonts.bold, fontSize: size.kycTitle, lineHeight: size.kycTitleLine, color: tone }}>
           {cfg.title}

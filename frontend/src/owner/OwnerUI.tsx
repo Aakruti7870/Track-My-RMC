@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { OperationalHomeTopBar } from "@/src/components/OperationalHomeTopBar";
 import { AppText } from "@/src/components/ui/AppText";
+import { CardHighlight } from "@/src/components/ui/CardHighlight";
 import { IconTile } from "@/src/components/IconTile";
 import { fonts } from "@/src/theme/tokens";
 import type { RoleModule } from "@/src/navigation/moduleCatalog";
@@ -18,9 +19,13 @@ export function useOwnerPalette() {
   return { dark, accent: colors.brand, pressed: colors.brandPressed, onAccent: colors.onBrand, text: colors.onSurface, muted: colors.onSurfaceTertiary, canvas: colors.canvas, panel: colors.surfaceSecondary, border: colors.divider };
 }
 export function useOwnerBottomSpace() { return 112 + useSafeAreaInsets().bottom; }
-export function OwnerGlass({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
+export function OwnerGlass({ children, style, testID, highlighted = true }: { children: React.ReactNode; style?: StyleProp<ViewStyle>; testID?: string; highlighted?: boolean }) {
   const p = useOwnerPalette();
-  return <View style={[ui.panel, { backgroundColor: p.panel, borderColor: p.border }, style]}>{children}</View>;
+  const customRadius = StyleSheet.flatten(style)?.borderRadius;
+  return <View testID={testID} style={[ui.panel, { backgroundColor: p.panel, borderColor: p.border }, style]}>
+    {highlighted ? <CardHighlight radius={typeof customRadius === "number" ? customRadius : 12} /> : null}
+    {children}
+  </View>;
 }
 export function OwnerHeader() { return <OperationalHomeTopBar />; }
 export function OwnerFrame({ children, title, subtitle }: { children: React.ReactNode; title?: string; subtitle?: string }) {

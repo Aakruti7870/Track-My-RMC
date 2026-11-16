@@ -59,26 +59,25 @@ fs.mkdirSync(out, { recursive: true });
           assert.equal(await page.getByTestId('role-module-payroll-closure').count(), 0);
           assert.equal(await page.getByTestId('role-module-owner-drivers').count(), 1);
           const hero = page.getByTestId('owner-home-hero-banner');
-          const fixed = page.getByTestId('owner-home-scroll-fixed');
-          await fixed.getByTestId('plant-home-supplier-enquiry').waitFor();
-          await fixed.getByTestId('owner-quick-access').waitFor();
           const scroll = page.getByTestId('owner-home-scroll');
-          const profile = scroll.getByTestId('plant-home-profile');
-          assert.equal(await profile.count(), 1, 'Owner profile remains in the scroll area');
+          const supplierCard = scroll.getByTestId('plant-home-supplier-enquiry');
+          const profileCard = scroll.getByTestId('plant-home-profile');
+          await supplierCard.waitFor();
+          await scroll.getByTestId('owner-quick-access').waitFor();
+          assert.equal(await supplierCard.getByText('Request quotes for up to 3 materials').count(), 0);
+          await profileCard.getByText('Open your plant Profile', { exact: true }).waitFor();
+          assert(Math.abs((await supplierCard.boundingBox()).height - 54.4) <= 1);
+          assert(Math.abs((await profileCard.boundingBox()).height - 54.4) <= 1);
           if (width === 390) {
-            await page.setViewportSize({ width, height: 760 });
-            await fixed.getByTestId('plant-home-supplier-enquiry').waitFor();
+            await page.setViewportSize({ width, height: 660 });
             const movement = await scroll.evaluate(node => {
-              const profile = node.querySelector('[data-testid="plant-home-profile"]');
-              const supplier = document.querySelector('[data-testid="plant-home-supplier-enquiry"]');
-              const profileTop = profile.getBoundingClientRect().top;
-              const supplierTop = supplier.getBoundingClientRect().top;
-              node.scrollTop = 100;
-              return { offset: node.scrollTop, profile: profile.getBoundingClientRect().top - profileTop,
-                supplier: supplier.getBoundingClientRect().top - supplierTop };
+              const supplier = node.querySelector('[data-testid="plant-home-supplier-enquiry"]');
+              node.scrollTop = 0;
+              const top = supplier.getBoundingClientRect().top;
+              node.scrollTop = 120;
+              return { offset: node.scrollTop, moved: top - supplier.getBoundingClientRect().top };
             });
-            assert(movement.offset > 0 && movement.profile < 0, 'Owner profile scrolls with the dashboard');
-            assert.equal(movement.supplier, 0, 'Owner supplier enquiry stays fixed');
+            assert(movement.offset > 0 && Math.abs(movement.moved - movement.offset) <= 1);
             await page.setViewportSize({ width, height: 920 });
             await scroll.evaluate(node => { node.scrollTop = 0; });
           }
@@ -93,6 +92,9 @@ fs.mkdirSync(out, { recursive: true });
         }
         if (name === 'operations') assert.equal(await page.getByTestId('owner-operations-module-directory').locator('[data-testid^="role-module-"]').count(), 8);
         if (name === 'more') {
+          await tab.click({ clickCount: 3 });
+          await page.waitForURL(/\/owner\/more\/?$/);
+          assert.equal(await tab.getAttribute('aria-selected'), 'true');
           assert.equal(await page.getByTestId('role-module-directory').locator('[data-testid^="role-module-"]').count(), 4);
           assert.equal(await page.getByText('Appearance', { exact: true }).count(), 0);
           assert.equal(await page.getByTestId('owner-staff-module-access').count(), 1);

@@ -487,7 +487,7 @@ try {
       const personalKeys = ['public-plant-profile', 'my-payslip'];
       const expectedHome = modulesForRole(user.role).filter(({ key }) =>
         visibleKeys.includes(key) && !nativeTabKeys.includes(key) && !personalKeys.includes(key));
-      const staffHome = page.getByTestId('staff-home-scroll-frame');
+      const staffHome = page.getByTestId('staff-home-scroll');
       phase = 'staff Home permission resolution';
       await expect.poll(() => successfulPaths.has('/api/staff/module-permissions')).toBe(true);
 

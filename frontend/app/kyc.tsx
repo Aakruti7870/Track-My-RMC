@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { AppState, Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { IdentityVerificationSymbol } from "@/src/components/vector-symbols/IdentityVerificationSymbol";
-import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -257,10 +256,9 @@ export default function KycScreen() {
         ) : (
           <>
             <Card testID={providerUnavailable ? "kyc-unavailable" : "kyc-status"} style={{ gap: spacing.md, paddingVertical: spacing.xl, borderColor: tone + "66" }}>
-              <View style={[styles.statusIcon, { backgroundColor: status === "VERIFIED" || providerUnavailable ? tone : colors.surfaceTertiary }]}>
+              <View style={[styles.statusIcon, { backgroundColor: providerUnavailable ? tone : colors.surfaceTertiary }]}>
                 {providerUnavailable ? <Ionicons name={meta.icon} size={34} color={scheme === "dark" ? "#121212" : "#FFFFFF"} />
-                  : status === "VERIFIED" ? <VectorSymbol name="kyc-verified" size={34} color={scheme === "dark" ? "#121212" : "#FFFFFF"} />
-                  : <IdentityVerificationSymbol size={51} />}
+                  : <IdentityVerificationSymbol size={51} verified={status === "VERIFIED"} />}
               </View>
               <AppText variant="heading" center>{meta.title}</AppText>
               <AppText variant="bodyMuted" center>{meta.body}</AppText>
