@@ -63,6 +63,7 @@ async function checkLayout(browser) {
       await page.waitForFunction((element) => element.complete && element.naturalWidth > 0, await image.elementHandle());
       const heroBounds = await hero.boundingBox();
       const shell = await page.getByTestId('login-card').boundingBox();
+      assert(Math.abs(heroBounds.width - Math.min(width, 760)) <= 1, 'User Login renders the full hero width');
       assert(Math.abs(heroBounds.width / heroBounds.height - (colorScheme === 'dark' ? 1229 : 1227) / 615) < 0.02);
       assert(shell.y >= heroBounds.y + heroBounds.height - 1, 'The card sits below the uncropped hero');
       assert(Math.abs(shell.x + shell.width / 2 - width / 2) <= 1, 'The card is centered');
@@ -97,6 +98,22 @@ async function checkLayout(browser) {
       assert(credit.y + credit.height <= 900, 'The full login footer fits the normal-height viewport');
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width);
       await page.screenshot({ path: `${previewDir}/login-${colorScheme}-${width}.png`, fullPage: true });
+      if (width === 390) {
+        await page.setViewportSize({ width, height: 700 });
+        const assertHeroWidth = async (tab) => {
+          const bounds = await hero.boundingBox();
+          assert(Math.abs(bounds.width - width) <= 1 && Math.abs(bounds.x) <= 1, tab + ' uses the full mobile hero width');
+          assert.equal(await page.getByTestId('login-card').locator('radialGradient').count(), colorScheme === 'dark' ? 1 : 0);
+        };
+        await assertHeroWidth('User Login');
+        await page.getByTestId('login-plant-tab').click();
+        await page.getByTestId('login-plant-send-otp').waitFor();
+        await assertHeroWidth('Plant Staff');
+        await page.getByTestId('login-user-tab').click();
+        await page.getByTestId('login-send-otp').waitFor();
+        await assertHeroWidth('User Login after tab switch');
+        await page.setViewportSize({ width, height: 900 });
+      }
       if (width === 390 && colorScheme === 'dark') {
         await support.click();
         await page.getByTestId('login-help-panel').waitFor();

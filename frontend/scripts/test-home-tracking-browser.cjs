@@ -222,9 +222,17 @@ fs.mkdirSync('tracking-previews',{recursive:true});
        assert.equal(background, secondaryTile, `${id} uses its ${theme} icon shade`);
      }
      const quickSection = page.getByTestId('home-quick-actions');
-     assert.equal(await quickSection.locator('radialGradient').count(), theme === 'light' ? 0 : 1,
-       `${theme} Quick Access corner highlight`);
+     for (const id of ['home-quick-actions', 'kyc-banner', 'customer-module-grid']) {
+       assert.equal(await page.getByTestId(id).locator('radialGradient').count(), theme === 'light' ? 0 : 1,
+         `${theme} ${id} corner highlight`);
+     }
      const quickIcons = quickSection.locator('[data-testid^="action-"] svg');
+     const expectedArtworkInk = theme === 'light' ? 'rgb(254, 248, 239)' : 'rgb(255, 255, 255)';
+     for (const id of ['home-bulk-quote', 'kyc-banner']) {
+       const symbol = page.getByTestId(id).locator('svg:not(:has(radialGradient))').first();
+       assert.equal(await symbol.evaluate(icon => getComputedStyle(icon).color), expectedArtworkInk,
+         `${theme} ${id} icon ink`);
+     }
      const quickPaints = await quickIcons.evaluateAll(icons => icons.map(icon => {
        const fill = icon.parentElement;
        const copper = fill.parentElement;

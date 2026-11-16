@@ -94,7 +94,7 @@ export default function CustomerHome() {
           width: tileWidth, minHeight: kind === "quick" ? size.quickTile : material ? 70 : 82,
           opacity: pressed ? 0.72 : 1,
         }, material && { backgroundColor: colors.surfaceSecondary, borderColor: colors.divider, borderWidth: 1, borderRadius: 10 }]}>
-        <IconTile symbol={symbol} size={iconSize} width={kind === "quick" ? size.quickIconBox : 44} quickAccess={kind === "quick"} />
+        <IconTile symbol={symbol} size={iconSize} width={kind === "quick" ? size.quickIconBox : 44} homeShortcut={kind === "quick"} />
         <AppText center style={[styles.label, { color: colors.onSurfaceSecondary, fontSize: labelSize, lineHeight: Math.max(16, labelSize + 3) }]}>{label}</AppText>
       </Pressable>
     );
@@ -120,7 +120,7 @@ export default function CustomerHome() {
         >
           <HomeCarousel style={styles.carousel} onAction={openAction} />
           <View testID="home-quick-actions" style={panel}>
-            {colors.isDark ? <CardHighlight radius={10} /> : null}
+            <CardHighlight radius={10} />
             <AppText accessibilityRole="header" style={heading}>Quick Access</AppText>
             <View style={styles.grid}>
               {ACTIONS.map(action => tile({ id: "action-" + action.key, label: action.label,

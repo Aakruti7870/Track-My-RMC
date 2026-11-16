@@ -37,7 +37,7 @@ export function HomeModuleSection({ id, title, modules, seeAll, homeShortcut = f
   if (!modules.length) return null;
   return (
     <View testID={`home-modules-${id}`} style={[styles.section, { backgroundColor: colors.surfaceSecondary, borderColor: colors.divider }]}>
-      {(!homeShortcut || colors.isDark) ? <CardHighlight radius={radius.lg} /> : null}
+      <CardHighlight radius={radius.lg} />
       <HomeSectionHeader title={title} seeAll={seeAll} testID={`home-see-all-${id}`} />
       <View style={styles.grid}>
         {modules.map(module => (
@@ -45,7 +45,7 @@ export function HomeModuleSection({ id, title, modules, seeAll, homeShortcut = f
             accessibilityLabel={module.label} accessibilityHint={module.description}
             onPress={() => router.push(module.route)}
             style={({ pressed }) => [styles.tile, { width: compact ? "48%" : "23.5%", opacity: pressed ? 0.74 : 1 }]}>
-            {module.symbol ? <IconTile symbol={module.symbol} quickAccess={homeShortcut} /> : <IconTile icon={module.icon} quickAccess={homeShortcut} />}
+            {module.symbol ? <IconTile symbol={module.symbol} homeShortcut={homeShortcut} /> : <IconTile icon={module.icon} homeShortcut={homeShortcut} />}
             <AppText center style={[styles.label, homeShortcut && styles.quickLabel]}>{module.label}</AppText>
           </Pressable>
         ))}

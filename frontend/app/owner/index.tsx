@@ -65,7 +65,7 @@ export default function OwnerHome() {
         <PlantHomeHero label="Plant Owner" testID="owner-home-hero-banner" />
       </View>
       <View style={styles.homeCards}>
-        <OwnerGlass testID="owner-quick-access" style={styles.quickAccess} highlighted={p.dark}>
+        <OwnerGlass testID="owner-quick-access" style={styles.quickAccess}>
           <HomeSectionHeader title="Quick Access" seeAll="/owner/operations" testID="home-see-all-owner-operations" />
           <View style={styles.modules}>
             {modules.map(module => <Pressable testID={`owner-shortcut-${module.key}`} key={module.key}
@@ -73,7 +73,7 @@ export default function OwnerHome() {
               accessibilityHint={module.description}
               onPress={() => router.push(ownerDestination(module))}
               style={({ pressed }) => [styles.shortcut, { width: shortcutWidth, opacity: pressed ? 0.74 : 1 }]}>
-              {module.symbol ? <IconTile symbol={module.symbol} quickAccess /> : <IconTile icon={module.icon} quickAccess />}
+              {module.symbol ? <IconTile symbol={module.symbol} homeShortcut /> : <IconTile icon={module.icon} homeShortcut />}
               <AppText center style={styles.quickLabel}>{module.key === "business-staff" ? "Workforce" : module.label}</AppText>
             </Pressable>)}
           </View>

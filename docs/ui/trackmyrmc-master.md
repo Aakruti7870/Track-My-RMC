@@ -23,13 +23,13 @@ Keep the hero uncropped, centered, and proportional. Continue the sampled last r
 | Surface | Dark | Light |
 | --- | --- | --- |
 | Login card | #0E0E0E–#151515, with #121212 in the middle and #111111 near the bottom | #F8F7F3–#FCFBF7, chiefly #FAF9F5 |
-| Upper-left highlight | #D0A56E / #DC9C52 into #383129 | #BCA07B / #D8CAAF into #FCFBF7 |
-| Top and side edge | #DCDCDC / #616161 / #404040 | #FEFDF9 / #FFF1E7 / #C9C4BE |
-| Bottom edge and shadow | #7E7E7E over near-black | #D5D0CA / #BFB8B0, shadow #D1CFCA into #F2EFEA |
+| Upper-left highlight | #D0A56E / #DC9C52 into #383129 | None |
+| Top and side edge | #DCDCDC / #616161 / #404040 | #C9C4BE |
+| Bottom edge and shadow | #7E7E7E over near-black | #C9C4BE edge with a soft neutral shadow |
 | Tab rail and inactive Plant Staff fill | #0E0E0E–#131313, rim #363636–#535353 | #F0EDE6, rim #D9D6CF–#E0DDD8 |
-| Selected tab fill | #603813 → #472D13 → #3A2611 | #FEE7CD → #FDE9D0 → #FEEDD9 |
-| Selected tab rim | #9D6930 → #815530 | #B4906E, #C9A17D, #D1B08F |
-| Phone circle | #452D15–#483019 | #FAE5CD–#FBE6CC |
+| Selected tab fill | #603813 → #472D13 → #3A2611 | #E8970A → #C6790D → #B3650E |
+| Selected tab rim | #9D6930 → #815530 | #2A2A2C around #AD6C24 → #CC7926 → #F68E2D |
+| Phone circle | #472D13 | Same amber artwork as the selected tab |
 | Phone prefix / field / rim / divider | #121212 / #171717–#1A1A1A / #3D3D3D–#5F5F5F / #414141 | #FCFCF8 / #FCFBF7 / #B5B2AD–#C4BFB9 / #D1CDCA |
 | Empty Continue fill / rim | #252525–#262626 / #373737–#3E3E3E | #E9E6DF–#EAE7E0 / #DBD8D1–#DFDCD5 |
 | Reviewer pill fill / rim | #141414–#181818 / #535353–#6B6B6B | #FBFAF6 / #BFBCB7–#CEC9C3 |
@@ -55,6 +55,6 @@ The screenshots show User Login selected with an empty field. Plant Staff select
 
 ## Shared app artwork
 
-The top four Home Quick Access tiles in light mode use a charcoal rim (#2A2A2C), a copper border (#AD6C24 → #CC7926 → #F68E2D), a narrow right-edge glow (#F98F2D → #FF9833), an amber fill (#E8970A → #C6790D → #B3650E at 0%, 50%, and 100%), and #FEF8EF glyphs. The light-mode Quick Access panel has no upper-left highlight. Dark-mode Quick Access and selected login tabs use a copper rim (#9D6930 → #815530), an amber-brown fill (#603813 → #472D13 → #3A2611), and #FFF0E2 glyphs. Bulk enquiry uses #452D15 → #483019 with a green icon tile at 70% opacity and white artwork. Pending KYC uses a neutral card, a solid green tile and white linework. Shared card highlights blend #D0A56E and #DC9C52 into #383129 in dark mode and #FCFBF7 in light mode. Home content scrolls in one flow, including the hero and Quick Access. Verified KYC, Enable Location and the Plant Profile tint use green. Order stages use red for Pending, blue for Accepted, yellow for Preparing, green for Dispatched and orange for Delivered. Keep the text labels visible with the color cues.
+Light-mode colored icon tiles use a charcoal rim (#2A2A2C), a copper border (#AD6C24 → #CC7926 → #F68E2D), a narrow right-edge glow (#F98F2D → #FF9833), an amber fill (#E8970A → #C6790D → #B3650E at 0%, 50%, and 100%), and #FEF8EF glyphs. This covers the colored Home shortcuts, the Bulk Enquiry and KYC icon tiles, login tabs and heading icons, and Super Admin module tiles. Selected login tab text uses graphite for contrast in light mode. Shared card highlights blend #D0A56E and #DC9C52 into #383129 in dark mode only. Dark-mode Quick Access and selected login tabs use a copper rim (#9D6930 → #815530), an amber-brown fill (#603813 → #472D13 → #3A2611), and #FFF0E2 glyphs. Bulk enquiry uses #452D15 → #483019 with a green icon tile at 70% opacity in dark mode. KYC retains its status text and surface colors. Home content scrolls in one flow, including the hero and Quick Access. Verified KYC, Enable Location and the Plant Profile tint use green. Order stages use red for Pending, blue for Accepted, yellow for Preparing, green for Dispatched and orange for Delivered. Keep the text labels visible with the color cues.
 
 The shared artwork comes from [PR #222](https://github.com/Aakruti7870/Track-My-RMC/pull/222). The Customer Home carousel uses the six uploaded banners from [PR #223](https://github.com/Aakruti7870/Track-My-RMC/pull/223).
