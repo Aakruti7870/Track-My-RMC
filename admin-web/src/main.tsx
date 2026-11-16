@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import './admin-theme.css';
-import trackMyRmcMark from './trackmyrmc-mark.svg';
+import trackMyRmcMark from './trackmyrmc-mark.svg?no-inline';
 import orderStages from '../../frontend/src/domain/order-status-colors.json';
 import { Building2, ClipboardCheck, Factory, Megaphone, ShieldCheck, Workflow, MessageCircle, LayoutDashboard, BarChart3, Eye, Users, UserRoundPlus, UserCog, Database, Grid2X2, LogOut, Settings, ChevronRight, ArrowLeft, Check, KeyRound, Mail, LockKeyhole, Moon, Sun, UserRound } from 'lucide-react';
 import { AuthenticatorQr } from './AuthenticatorQr';
