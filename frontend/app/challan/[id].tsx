@@ -26,14 +26,12 @@ type Challan = {
   site_name: string;
   site_address: string;
   grade: string;
-  quantity: number;
-  tm_number: string;
-  driver_name: string;
-  driver_mobile: string;
-  batcher?: string;
-  supervisor?: string;
-  quality_engineer?: string;
-  remarks?: string;
+  quantity_m3: number;
+  mixer_number?: string;
+  driver_name?: string;
+  load_id: string;
+  load_number: number;
+  whatsapp_automatic?: boolean;
   created_at?: string;
 };
 
@@ -43,20 +41,23 @@ export default function ChallanScreen() {
   const toast = useToast();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, loadId } = useLocalSearchParams<{ id: string; loadId?: string }>();
 
-  const base = user?.role === "plant_owner" ? "/owner/orders/" : "/customer/orders/";
-  const { data, loading, error, reload } = useGet<{ challan: Challan }>(`${base}${id}/challan`);
-  const c = data?.challan;
+  const [selected, setSelected] = React.useState<string>();
+  const base = ["plant_owner", "owner", "admin"].includes(user?.role ?? "") ? "/owner/orders/" : "/customer/orders/";
+  const { data, loading, error, reload } = useGet<{ challan: Challan; challans: Challan[] }>(
+    id ? base + encodeURIComponent(id) + "/challan" + (loadId ? "/" + encodeURIComponent(loadId) : "") : null,
+  );
+  const c = data?.challans?.find(challan => challan.load_id === selected) ?? data?.challan;
 
   const share = async () => {
     if (!c) return;
     const text =
       `DELIVERY CHALLAN ${c.challan_number}\n` +
       `Order: ${c.order_number}\nPlant: ${c.plant_name}\n` +
-      `Customer: ${c.customer_name}\nSite: ${c.site_name}, ${c.site_address}\n` +
-      `Grade: ${c.grade} · Qty: ${c.quantity} m³\n` +
-      `TM: ${c.tm_number} · Driver: ${c.driver_name} (${c.driver_mobile})`;
+      `Customer: ${c.customer_name}\nSite: ${[c.site_name, c.site_address].filter(Boolean).join(", ")}\n` +
+      `Grade: ${c.grade} · Qty: ${c.quantity_m3} m³\n` +
+      `TM: ${c.mixer_number || "Unavailable"} · Driver: ${c.driver_name || "Unavailable"}`;
     try {
       await Share.share({ message: text });
     } catch {
@@ -69,7 +70,7 @@ export default function ChallanScreen() {
       <StatusBar style={scheme === "dark" ? "light" : "dark"} />
       <View style={{ height: insets.top }} />
       <View style={[styles.header, { borderBottomColor: colors.divider }]}>
-        <Pressable testID="challan-back" onPress={() => router.back()} style={[styles.iconBtn, { borderColor: colors.border }]}>
+        <Pressable testID="challan-back" accessibilityRole="button" accessibilityLabel="Back" onPress={() => router.canGoBack() ? router.back() : router.replace("/")} style={[styles.iconBtn, { borderColor: colors.border }]}>
           <VectorSymbol name="back" size={29} />
         </Pressable>
         <VectorSymbol name="delivery-challan" size={33} /><AppText variant="title">Challan</AppText>
@@ -83,6 +84,13 @@ export default function ChallanScreen() {
         </View>
       ) : c ? (
         <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40, gap: spacing.lg }} showsVerticalScrollIndicator={false}>
+          {(data?.challans?.length ?? 0) > 1 ? <Card style={{ gap: spacing.sm }}>
+            <AppText variant="heading">Delivery loads</AppText>
+            {data?.challans.map(challan => <Button key={challan.load_id}
+              label={"Load " + challan.load_number + " · " + challan.challan_number}
+              variant={c.load_id === challan.load_id ? "primary" : "outline"}
+              onPress={() => setSelected(challan.load_id)} />)}
+          </Card> : null}
           <Card style={{ padding: 0, overflow: "hidden" }}>
             {/* Challan header band */}
             <View style={[styles.band, { backgroundColor: colors.surfaceInverse }]}>
@@ -99,24 +107,15 @@ export default function ChallanScreen() {
               <Field label="Order No." value={c.order_number} colors={colors} />
               <Field label="Plant" value={c.plant_name} colors={colors} />
               <Field label="Customer" value={c.customer_name} colors={colors} />
-              <Field label="Delivery Site" value={`${c.site_name}, ${c.site_address}`} colors={colors} />
+              <Field label="Delivery Site" value={`${[c.site_name, c.site_address].filter(Boolean).join(", ")}`} colors={colors} />
               <View style={styles.two}>
                 <Field label="Grade" value={c.grade} colors={colors} half />
-                <Field label="Quantity" value={`${c.quantity} m³`} colors={colors} half />
+                <Field label="Quantity" value={`${c.quantity_m3} m³`} colors={colors} half />
               </View>
               <View style={styles.two}>
-                <Field label="Transit Mixer" value={c.tm_number} colors={colors} half />
+                <Field label="Transit Mixer" value={c.mixer_number} colors={colors} half />
                 <Field label="Driver" value={c.driver_name} colors={colors} half />
               </View>
-              <Field label="Driver Mobile" value={c.driver_mobile} colors={colors} />
-              {c.batcher || c.supervisor || c.quality_engineer ? (
-                <View style={styles.two}>
-                  {c.batcher ? <Field label="Batcher" value={c.batcher} colors={colors} half /> : null}
-                  {c.supervisor ? <Field label="Supervisor" value={c.supervisor} colors={colors} half /> : null}
-                </View>
-              ) : null}
-              {c.quality_engineer ? <Field label="Quality Engineer" value={c.quality_engineer} colors={colors} /> : null}
-              {c.remarks ? <Field label="Remarks" value={c.remarks} colors={colors} /> : null}
               {c.created_at ? (
                 <AppText variant="caption" style={{ marginTop: spacing.sm }}>
                   Generated {new Date(c.created_at).toLocaleString()}
@@ -125,18 +124,18 @@ export default function ChallanScreen() {
             </View>
           </Card>
 
-          <Button testID="challan-share" label="Share Challan" onPress={share} icon={<Ionicons name="share-social-outline" size={18} color={colors.onBrand} />} />
+          {!c.whatsapp_automatic ? <Button testID="challan-share" label="Share Challan" onPress={share} icon={<Ionicons name="share-social-outline" size={18} color={colors.onBrand} />} /> : null}
         </ScrollView>
       ) : null}
     </View>
   );
 }
 
-function Field({ label, value, colors, half }: any) {
+function Field({ label, value, colors, half }: { label: string; value?: string; colors: ReturnType<typeof useTheme>["colors"]; half?: boolean }) {
   return (
     <View style={{ gap: 2, flex: half ? 1 : undefined }}>
       <AppText style={{ fontFamily: fonts.regular, fontSize: 11, color: colors.onSurfaceTertiary }}>{label}</AppText>
-      <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: colors.onSurface }}>{value}</AppText>
+      <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: colors.onSurface }}>{value || "Unavailable"}</AppText>
     </View>
   );
 }

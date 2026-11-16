@@ -44,12 +44,16 @@ jobs:
           main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq '.sha')"
           test "$GITHUB_SHA" = "$main_sha"
           run_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/deploy-aws-production.yml/runs?branch=main&head_sha=${GITHUB_SHA}&status=success" |
-            jq -er --arg sha "$GITHUB_SHA" '
-              [.workflow_runs[] | select(.head_sha == $sha and .head_branch == "main" and .conclusion == "success")]
-              | sort_by(.run_number, .run_attempt) | last | .id // error("No matching deployment run")
-            ')"
-          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/jobs?filter=latest" |
-            jq -e '[.jobs[] | select(.name == "Verify, Build and Deploy to AWS") | .conclusion] == ["success"]' >/dev/null
+            jq -r '.workflow_runs[].id')"
+          for candidate in $run_id; do
+            jobs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${candidate}/jobs?filter=latest")"
+            if jq -e 'any(.jobs[]; .name=="Verify, Build and Deploy to AWS" and .conclusion=="success" and
+              any(.steps[]; .name=="Verify production release via trusted origin and Cloudflare edge" and .conclusion=="success"))' <<< "$jobs" >/dev/null; then
+              exit 0
+            fi
+          done
+          echo "::error::No successful EC2 verification for this release SHA."
+          exit 1
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -400,7 +404,11 @@ jobs:
           test "$cert256" = "$expected256"
           echo "Signed APK upload-certificate SHA256 verified"
           "$build_tools/zipalign" -c -P 16 4 "$signed"
-          "$build_tools/aapt" dump badging "$signed" | grep -F "package: name='$PACKAGE_NAME' versionCode='$VERSION_CODE' versionName='$VERSION_NAME'"
+          badging="$("$build_tools/aapt" dump badging "$signed")"
+          if ! grep -Fq "package: name='$PACKAGE_NAME' versionCode='$VERSION_CODE' versionName='$VERSION_NAME'" <<< "$badging"; then
+            echo "::error::Signed APK package or version does not match the release."
+            exit 1
+          fi
           echo "Signed APK SHA256: $(sha256sum "$signed" | awk '{print $1}')"
 
       - name: Upload signed APK for direct-device testing

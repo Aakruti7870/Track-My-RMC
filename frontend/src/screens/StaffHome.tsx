@@ -35,7 +35,7 @@ type HomeData = {
   primary: { title: string; kind: string };
 };
 const ROLE_WORKSPACE: Record<string, { help: string; href: Href; key: string }> = {
-  admin: { help: "Orders and fleet for your assigned plant", href: "/admin/orders", key: "dispatch_queue" },
+  admin: { help: "Orders and fleet for your assigned plant", href: "/plant-admin/orders", key: "dispatch_queue" },
   dispatcher: { help: "Allocate loads, mixers and delivery schedules", href: "/dispatcher/dispatch", key: "dispatch_queue" },
   operator: { help: "Production queue and approved material recipes", href: "/operator/production", key: "production_queue" },
   supervisor: { help: "Follow incidents and operational exceptions", href: "/supervisor/incidents", key: "incidents" },

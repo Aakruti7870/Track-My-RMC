@@ -6,7 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { apiGet, apiPost } from "@/src/api/client";
+import { apiGet } from "@/src/api/client";
 import { useAuth } from "@/src/auth/AuthContext";
 import { AppText } from "@/src/components/ui/AppText";
 import { Badge } from "@/src/components/ui/Badge";
@@ -25,7 +25,7 @@ type Site = { id: string; name: string; address: string; lat?: number | null; ln
 type Saved = { id: string; name: string; quantity: number; grade?: string };
 type Estimate = {
   plant_id: string; plant_name: string; city?: string | null; district?: string | null;
-  verified?: boolean; grade: string; rate_per_m3: number; gst_rate: number;
+  verified?: boolean; order_enabled?: boolean; order_intake_mode?: string; grade: string; rate_per_m3: number; gst_rate: number;
   distance_km?: number | null; service_area_km?: number | null; within_service_area?: boolean | null;
   base_amount: number; transport_amount?: number | null; pumping_amount?: number | null;
   gst_amount: number; estimated_total: number; transport_included: boolean;
@@ -52,7 +52,7 @@ export default function ComparePlants() {
   const [results, setResults] = useState<Estimate[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
-  const [requesting, setRequesting] = useState<string | null>(null);
+  const [quotedInput, setQuotedInput] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -67,6 +67,8 @@ export default function ComparePlants() {
   }, [siteData, siteId]);
 
   const site = (siteData?.sites || []).find((v) => v.id === siteId);
+  const currentInput = JSON.stringify([grade, quantity, pump, siteId, site?.lat, site?.lng]);
+  const comparisonCurrent = quotedInput === currentInput;
   const compared = useMemo(() => results.filter((v) => selected.includes(v.plant_id)), [results, selected]);
 
   const runComparison = async () => {
@@ -74,6 +76,7 @@ export default function ComparePlants() {
     const qty = Number(quantity);
     if (!Number.isFinite(qty) || qty <= 0) return toast("Enter a valid quantity", "error");
     setLoading(true);
+    setQuotedInput(null);
     setError(null);
     setSelected([]);
     try {
@@ -88,6 +91,7 @@ export default function ComparePlants() {
       }
       const response = await apiGet<CompareResponse>(`/customer/compare-plants?${params.toString()}`, token);
       const estimates = response.estimates || [];
+      setQuotedInput(currentInput);
       const selectedPlant = targetPlantId ? estimates.find(item => item.plant_id === targetPlantId) : undefined;
       setResults(selectedPlant
         ? [selectedPlant, ...estimates.filter(item => item.plant_id !== targetPlantId)]
@@ -117,27 +121,14 @@ export default function ComparePlants() {
     });
   };
 
-  const requestQuote = async (item: Estimate) => {
-    if (!token) return;
-    setRequesting(item.plant_id);
-    try {
-      await apiPost("/customer/quotation-requests", token, {
-        plant_id: item.plant_id,
-        site_id: siteId,
-        site_name: site?.name || "Delivery site",
-        site_address: site?.address || "Address to be confirmed with customer",
-        grade,
-        quantity: Number(quantity),
-        pump_required: pump,
-        estimated_total: item.estimated_total,
-      });
-      toast("Official quotation request sent to the plant", "success");
-    } catch (e: any) {
-      toast(e.detail || "Could not request quotation", "error");
-    } finally {
-      setRequesting(null);
-    }
-  };
+  const orderParams = (item: Estimate) => ({
+    plantId: item.plant_id,
+    plantName: item.plant_name,
+    grade,
+    quantity,
+    pumpRequired: pump ? "1" : "0",
+    ...(site ? { siteId: site.id } : {}),
+  });
 
   const applySaved = (item: Saved) => {
     setQuantity(String(item.quantity));
@@ -192,7 +183,8 @@ export default function ComparePlants() {
 
         {error ? <Card><AppText color={colors.error}>{error}</AppText></Card> : null}
 
-        {compared.length > 1 ? (
+        {results.length > 0 && !comparisonCurrent ? <AppText variant="caption">Run the comparison again to update pricing and continue.</AppText> : null}
+        {comparisonCurrent && compared.length > 1 ? (
           <Card style={{ gap: spacing.md }}>
             <View style={styles.between}><AppText variant="heading">Side-by-side comparison</AppText><Badge label={`${compared.length}/3`} color={colors.brand} /></View>
             {compared.map((item) => <View key={item.plant_id} style={[styles.compareRow, { borderColor: colors.border }]}>
@@ -216,15 +208,22 @@ export default function ComparePlants() {
             <View style={{ gap: 6 }}>
               <Cost label="Concrete base" value={item.base_amount} />
               <Cost label="Transport" value={item.transport_included ? item.transport_amount : null} warning={!item.transport_included} />
-              {pump ? <Cost label="Pumping" value={item.pumping_amount} warning={item.pumping_amount == null} /> : null}
+              {item.pumping_amount != null ? <Cost label="Pumping" value={item.pumping_amount} warning={item.pumping_amount == null} /> : null}
               <Cost label={`GST (${item.gst_rate}%)`} value={item.gst_amount} />
             </View>
             {item.within_service_area === false ? <AppText variant="caption" color={colors.warning}>Outside the plant’s stated service radius. Confirm delivery availability.</AppText> : null}
             {!item.transport_included ? <AppText variant="caption" color={colors.warning}>Transport is excluded because a usable site/plant map location or transport rate is unavailable.</AppText> : null}
             <Button label={isSelected ? "Remove from Comparison" : "Add to Comparison"} variant="outline" onPress={() => togglePlant(item.plant_id)} />
             <View style={styles.actionRow}>
-              <View style={{ flex: 1 }}><Button label="Request Quote" onPress={() => requestQuote(item)} loading={requesting === item.plant_id} /></View>
-              <View style={{ flex: 1 }}><Button label="New Order" variant="outline" onPress={() => router.push({ pathname: "/new-order", params: { plantId: item.plant_id, grade, quantity } } as any)} /></View>
+              <View style={{ flex: 1 }}><Button label="Request Quote"
+                disabled={!comparisonCurrent || loading || item.order_intake_mode === "DISABLED"}
+                onPress={() => router.push({ pathname: "/customer/request-quotation", params: orderParams(item) })} /></View>
+              {item.order_enabled || item.order_intake_mode === "ADMIN_REVIEW" ? <View style={{ flex: 1 }}>
+                <Button label="New Order" variant="outline" disabled={!comparisonCurrent || loading}
+                  onPress={() => item.order_enabled
+                    ? router.push({ pathname: "/new-order", params: orderParams(item) })
+                    : router.push({ pathname: "/customer/request-quotation", params: { ...orderParams(item), orderReview: "1" } })} />
+              </View> : null}
             </View>
           </Card>;
         })}

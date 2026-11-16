@@ -1,11 +1,16 @@
 use crate::{
-    auth::{middleware::check_role, AuthUser},
+    auth::{control_center::WebAdmin, middleware::check_role, AuthUser},
     error::AppError,
     routes::rmc_rfq_leads::{validate_requirements, verify_google_place, NewRmcRfq},
     services::customer_order::canonical_grade,
     state::AppState,
 };
-use axum::{extract::State, Json};
+use axum::{
+    extract::{Path, Query, State},
+    http::HeaderMap,
+    Json,
+};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use sqlx::PgConnection;
 use uuid::Uuid;
@@ -65,9 +70,9 @@ async fn existing_id(
     conn: &mut PgConnection,
     customer: Uuid,
     key: Uuid,
-) -> Result<Option<Uuid>, AppError> {
-    Ok(sqlx::query_scalar(
-        "SELECT id FROM plant_order_review_requests WHERE customer_id=$1 AND request_key=$2",
+) -> Result<Option<(Uuid, String)>, AppError> {
+    Ok(sqlx::query_as(
+        "SELECT id,status FROM plant_order_review_requests WHERE customer_id=$1 AND request_key=$2",
     )
     .bind(customer)
     .bind(key)
@@ -75,8 +80,8 @@ async fn existing_id(
     .await?)
 }
 
-fn receipt(id: Uuid) -> Json<Value> {
-    Json(json!({"id": id, "status": "PENDING_ADMIN_REVIEW"}))
+fn receipt(id: Uuid, status: &str) -> Json<Value> {
+    Json(json!({"id": id, "status": status}))
 }
 
 pub async fn create(
@@ -86,8 +91,8 @@ pub async fn create(
 ) -> Result<Json<Value>, AppError> {
     check_role(&auth, &["customer"])?;
     let mut conn = state.db.acquire().await?;
-    if let Some(id) = existing_id(&mut conn, auth.user_id, request.request_key).await? {
-        return Ok(receipt(id));
+    if let Some((id, status)) = existing_id(&mut conn, auth.user_id, request.request_key).await? {
+        return Ok(receipt(id, &status));
     }
     validate_requirements(&request)?;
     let initial_plant_id = review_plant(&mut conn, auth.user_id, &request).await?;
@@ -102,8 +107,8 @@ pub async fn create(
         .bind(auth.user_id)
         .fetch_one(&mut *tx)
         .await?;
-    if let Some(id) = existing_id(&mut tx, auth.user_id, request.request_key).await? {
-        return Ok(receipt(id));
+    if let Some((id, status)) = existing_id(&mut tx, auth.user_id, request.request_key).await? {
+        return Ok(receipt(id, &status));
     }
     let recent: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM plant_order_review_requests
@@ -158,23 +163,117 @@ pub async fn create(
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
-    Ok(receipt(id))
+    Ok(receipt(id, "PENDING_ADMIN_REVIEW"))
+}
+
+#[derive(Deserialize)]
+pub struct ReviewFilter {
+    id: Option<Uuid>,
 }
 
 pub async fn list_customer(
     State(state): State<AppState>,
     auth: AuthUser,
+    Query(filter): Query<ReviewFilter>,
 ) -> Result<Json<Value>, AppError> {
     check_role(&auth, &["customer"])?;
     let requests: Vec<Value> = sqlx::query_scalar(
         "SELECT jsonb_build_object('id',r.id,'plant_name',p.name,'grade',r.grade,
           'quantity_m3',r.quantity_m3::double precision,'delivery_date',r.delivery_date,
-          'site_address',r.site_address)
+          'site_address',r.site_address,'status',r.status,'decision_note',r.decision_note,
+          'pump_required',r.pump_required,'delivery_lat',r.site_lat,'delivery_lng',r.site_lng,
+          'quotation_requested', EXISTS(SELECT 1 FROM rmc_rfq_leads q WHERE q.customer_id=r.customer_id AND q.request_key=r.id AND q.canonical_request_id IS NOT NULL),
+          'quotation_plant_id', CASE WHEN r.status='READY_FOR_QUOTATION' AND p.is_active
+            AND EXISTS(SELECT 1 FROM plant_listing_requests l WHERE l.plant_id=p.id AND l.status='APPROVED')
+            AND NOT EXISTS(SELECT 1 FROM plant_admin_controls c WHERE c.plant_id=p.id AND (NOT c.discovery_visible OR c.order_intake_mode='DISABLED'))
+            AND NOT EXISTS(SELECT 1 FROM google_plant_visibility_exclusions x WHERE x.place_id IN (p.google_place_id, r.google_place_id) AND NOT x.is_visible)
+            THEN p.id ELSE NULL END)
          FROM plant_order_review_requests r LEFT JOIN rmc_plants p ON p.id=r.plant_id
-         WHERE r.customer_id=$1 ORDER BY r.created_at DESC,r.id DESC LIMIT 100",
+         WHERE r.customer_id=$1 AND ($2::uuid IS NULL OR r.id=$2) ORDER BY r.created_at DESC,r.id DESC LIMIT 100",
     )
     .bind(auth.user_id)
+    .bind(filter.id)
     .fetch_all(&state.db)
     .await?;
     Ok(Json(json!({"requests":requests})))
+}
+
+#[derive(Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReviewOutcome {
+    AwaitPlant,
+    ApproveQuotation,
+    Decline,
+}
+
+#[derive(Deserialize)]
+pub struct ReviewDecision {
+    outcome: ReviewOutcome,
+    note: String,
+}
+
+pub async fn decide(
+    State(state): State<AppState>,
+    admin: WebAdmin,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(decision): Json<ReviewDecision>,
+) -> Result<Json<Value>, AppError> {
+    admin.require("order.view")?;
+    admin.require("plant_owners.manage")?;
+    let note = decision.note.trim();
+    if !(10..=500).contains(&note.chars().count()) {
+        return Err(AppError::BadRequest(
+            "Enter a customer-visible note (10–500 characters)".into(),
+        ));
+    }
+    let status = match decision.outcome {
+        ReviewOutcome::AwaitPlant => "AWAITING_PLANT",
+        ReviewOutcome::ApproveQuotation => "READY_FOR_QUOTATION",
+        ReviewOutcome::Decline => "DECLINED",
+    };
+
+    let mut tx = state.db.begin().await?;
+    let (customer, existing, previous_note, original_plant, google_place): (Uuid, String, Option<String>, Option<Uuid>, Option<String>) =
+        sqlx::query_as("SELECT customer_id,status,decision_note,plant_id,google_place_id FROM plant_order_review_requests WHERE id=$1 FOR UPDATE")
+            .bind(id).fetch_optional(&mut *tx).await?
+            .ok_or_else(|| AppError::NotFound("Order request not found".into()))?;
+    super::control_center_routes::require_recent_step_up_using(&mut *tx, &admin, &headers).await?;
+    if existing == status && previous_note.as_deref() == Some(note) {
+        return Ok(receipt(id, status));
+    }
+    if !matches!(existing.as_str(), "PENDING_ADMIN_REVIEW" | "AWAITING_PLANT") {
+        return Err(AppError::Conflict(
+            "This order request already has a final decision".into(),
+        ));
+    }
+
+    let plant_id = if matches!(decision.outcome, ReviewOutcome::ApproveQuotation) {
+        let ready: Option<Uuid> = sqlx::query_scalar(
+            "SELECT p.id FROM rmc_plants p
+             WHERE (p.id=$1 OR ($1 IS NULL AND p.google_place_id=$2)) AND p.is_active
+             AND EXISTS(SELECT 1 FROM plant_listing_requests l WHERE l.plant_id=p.id AND l.status='APPROVED')
+             AND NOT EXISTS(SELECT 1 FROM plant_admin_controls c WHERE c.plant_id=p.id AND (NOT c.discovery_visible OR c.order_intake_mode='DISABLED'))
+             AND NOT EXISTS(SELECT 1 FROM google_plant_visibility_exclusions x WHERE x.place_id IN (p.google_place_id,$2) AND NOT x.is_visible)
+             AND EXISTS(SELECT 1 FROM play_review_fixtures f WHERE f.plant_id=p.id AND f.role='customer' AND f.enabled)
+                 = EXISTS(SELECT 1 FROM play_review_fixtures f WHERE f.user_id=$3 AND f.role='customer' AND f.enabled)",
+        ).bind(original_plant).bind(google_place).bind(customer).fetch_optional(&mut *tx).await?;
+        Some(ready.ok_or_else(|| AppError::Conflict("An active, verified plant accepting requests is required. Mark the request awaiting plant first.".into()))?)
+    } else {
+        original_plant
+    };
+    sqlx::query("UPDATE plant_order_review_requests SET status=$2,decision_note=$3,reviewed_by=$4,reviewed_at=NOW(),plant_id=$5 WHERE id=$1")
+        .bind(id).bind(status).bind(note).bind(admin.user_id).bind(plant_id).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO audit_logs(user_id,action,resource_type,resource_id,metadata) VALUES($1,'control_center.plant_order_request.decide','plant_order_request',$2,$3)")
+        .bind(admin.user_id).bind(id.to_string()).bind(json!({"previous_status":existing,"status":status,"plant_id":plant_id}))
+        .execute(&mut *tx).await?;
+    let message = match status {
+        "READY_FOR_QUOTATION" => "You can now confirm a quotation request in My Orders.",
+        "AWAITING_PLANT" => "Your order request is awaiting plant onboarding.",
+        _ => "Your order request was declined. Open My Orders for details.",
+    };
+    sqlx::query("INSERT INTO notifications(user_id,title,body,notification_type,reference_id) VALUES($1,'Plant order request updated',$2,'plant_order_review_update',$3)")
+        .bind(customer).bind(message).bind(id.to_string()).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(receipt(id, status))
 }

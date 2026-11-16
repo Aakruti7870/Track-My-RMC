@@ -1,0 +1,7 @@
+User-agent: *
+Disallow: /api/
+Disallow: /admin/
+Disallow: /plant-admin
+Disallow: /share/
+Disallow: /kyc/return
+Sitemap: https://trackmyrmc.com/sitemap.xml

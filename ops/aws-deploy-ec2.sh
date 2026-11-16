@@ -90,6 +90,16 @@ server {
         proxy_set_header Host $host;
     }
 
+    location = /sitemap.xml {
+        root /opt/trackmyrmc/frontend;
+        try_files $uri =404;
+    }
+
+    location = /robots.txt {
+        root /opt/trackmyrmc/frontend;
+        try_files $uri =404;
+    }
+
     location /_expo/static/ {
         root /opt/trackmyrmc/frontend;
         try_files $uri =404;
@@ -98,7 +108,7 @@ server {
     location / {
         root /opt/trackmyrmc/frontend;
         index index.html;
-        try_files $uri /index.html;
+        try_files $uri $uri.html /index.html;
     }
 }
 NGINX_BOOTSTRAP
@@ -199,7 +209,12 @@ server {
         add_header Cache-Control "public, max-age=31536000, immutable";
     }
 
-    location ^~ /admin/ {
+    # Legacy plant-staff deep links now use the Expo route prefix.
+    location ~ ^/admin/(orders|fleet|more)/?$ {
+        return 308 /plant-admin/$1$is_args$args;
+    }
+
+    location /admin/ {
         # The alias maps dashboard files directly; missing files naturally 404.
         alias /opt/trackmyrmc/admin-web/;
         add_header Strict-Transport-Security "max-age=31536000" always;
@@ -253,6 +268,16 @@ server {
     # A location-level add_header stops inheritance of the server-level HSTS
     # on Nginx versions without add_header_inherit. Keep mandatory security
     # headers explicit on both the app shell and hashed assets.
+    location = /sitemap.xml {
+        root /opt/trackmyrmc/frontend;
+        try_files $uri =404;
+    }
+
+    location = /robots.txt {
+        root /opt/trackmyrmc/frontend;
+        try_files $uri =404;
+    }
+
     location /_expo/static/ {
         try_files $uri =404;
         expires 1y;
@@ -264,7 +289,7 @@ server {
     }
 
     location / {
-        try_files $uri /index.html;
+        try_files $uri $uri.html /index.html;
         add_header Cache-Control "no-cache, no-store, must-revalidate" always;
         add_header Strict-Transport-Security "max-age=31536000" always;
         add_header X-Content-Type-Options "nosniff" always;

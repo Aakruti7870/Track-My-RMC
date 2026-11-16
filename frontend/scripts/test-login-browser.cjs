@@ -298,7 +298,8 @@ async function checkOnboarding(browser) {
   await page.waitForURL((url) => url.pathname === '/plant-onboarding'
     && url.searchParams.get('email') === email && url.searchParams.get('mode') === 'owner_registration');
   await page.getByTestId('onboarding-register-official-email').waitFor();
-  assert.equal(await page.getByTestId('onboarding-email').inputValue(), email);
+  assert.equal(await page.getByTestId('onboarding-email').inputValue(), '');
+  assert.equal(new URL(page.url()).searchParams.has('email'), false);
   await page.close();
 }
 

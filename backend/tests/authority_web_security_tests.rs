@@ -189,6 +189,17 @@ async fn plant_supplier_enquiry_uses_assigned_plant_and_deduplicates_retries(db:
         assert_eq!(details["materials"], body["materials"]);
         assert_eq!(details["submitted_by_role"], role);
     }
+    let (status, history) = call(&app, path, Some(staff_token), None).await;
+    assert_eq!(status, StatusCode::OK, "{history}");
+    assert_eq!(history["enquiries"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        history["enquiries"][0]["plant_name"],
+        "Supplier Fixture Plant"
+    );
+    assert_eq!(
+        call(&app, path, Some(customer_token), None).await.0,
+        StatusCode::FORBIDDEN
+    );
     let mut invalid = body.clone();
     invalid["plant_id"] = json!(Uuid::new_v4());
     assert_eq!(
@@ -974,4 +985,77 @@ async fn concurrent_privileged_login_accepts_only_one_possession_proof(db: PgPoo
     .await
     .unwrap();
     assert_eq!(sessions, 1);
+}
+
+#[sqlx::test]
+async fn plant_order_review_requires_step_up_and_records_customer_decision(db: PgPool) {
+    let state = state(db.clone());
+    let (admin_id, email, secret) =
+        identity(&db, "central_admin", &["order.view", "plant_owners.manage"]).await;
+    let (customer, _, _) = identity(&db, "customer", &[]).await;
+    let (owner, _, _) = identity(&db, "owner", &[]).await;
+    let plant: Uuid = sqlx::query_scalar(
+        "INSERT INTO rmc_plants(owner_id,name,code,latitude,longitude,address_line,city,state,pincode,contact_phone)
+         VALUES($1,'Review Plant','REVIEW-PLANT',19,73,'Fixture address','Panvel','MH','410206','0') RETURNING id",
+    ).bind(owner).fetch_one(&db).await.unwrap();
+    let request: Uuid = sqlx::query_scalar(
+        "INSERT INTO plant_order_review_requests(customer_id,request_key,plant_id,customer_name,grade,quantity_m3,site_address,delivery_date,pump_required,site_contact_phone)
+         VALUES($1,$2,$3,'Fixture Customer','M25',6,'Fixture delivery site',CURRENT_DATE+1,TRUE,'919876543210') RETURNING id",
+    ).bind(customer).bind(Uuid::new_v4()).bind(plant).fetch_one(&db).await.unwrap();
+    let customer_token =
+        generate_token(customer, "customer", "", None, &state.config.jwt_secret, 1).unwrap();
+    let app = build_app_router(state);
+    let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
+    let (status, signed_in) = call(
+        &app,
+        "/api/admin/auth/verify-totp",
+        None,
+        Some(json!({"challenge_token":admin_challenge(&db, &email).await,"code":code})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{signed_in}");
+    let admin_token = signed_in["token"].as_str().unwrap();
+    let path = format!("/api/control-center/plant-order-requests/{request}/decision");
+    let decision = json!({"outcome":"approve_quotation","note":"The plant is ready for the quotation request."});
+    assert_eq!(
+        call(&app, &path, Some(admin_token), Some(decision.clone()))
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+
+    let hash = format!("{:x}", Sha256::digest(admin_token.as_bytes()));
+    sqlx::query("INSERT INTO control_center_step_ups(user_id,token_hash,expires_at) VALUES($1,$2,NOW()+INTERVAL '5 minutes')")
+        .bind(admin_id).bind(hash).execute(&db).await.unwrap();
+    assert_eq!(
+        call(&app, &path, Some(admin_token), Some(decision.clone()))
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    let (status, awaiting) = call(&app, &path, Some(admin_token),
+        Some(json!({"outcome":"await_plant","note":"The selected supplier needs to finish onboarding."}))).await;
+    assert_eq!(status, StatusCode::OK, "{awaiting}");
+    assert_eq!(awaiting["status"], "AWAITING_PLANT");
+
+    sqlx::query("INSERT INTO plant_listing_requests(name,address,lat,lng,status,plant_id) VALUES('Review Plant','Fixture address',19,73,'APPROVED',$1)")
+        .bind(plant).execute(&db).await.unwrap();
+    for _ in 0..2 {
+        let (status, body) = call(&app, &path, Some(admin_token), Some(decision.clone())).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["status"], "READY_FOR_QUOTATION");
+    }
+
+    let (status, history) = call(
+        &app,
+        &format!("/api/customer/plant-order-requests?id={request}"),
+        Some(&customer_token),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{history}");
+    assert_eq!(history["requests"][0]["quotation_plant_id"], json!(plant));
+    let notifications: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM notifications WHERE user_id=$1 AND notification_type='plant_order_review_update'")
+        .bind(customer).fetch_one(&db).await.unwrap();
+    assert_eq!(notifications, 2);
 }

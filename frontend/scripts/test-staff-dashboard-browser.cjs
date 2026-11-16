@@ -60,7 +60,7 @@ fs.mkdirSync(out, { recursive: true });
           };
           await route.fulfill({ json });
         });
-        await page.goto('http://127.0.0.1:8765/' + role + '/');
+        await page.goto('http://127.0.0.1:8765/' + (role === 'admin' ? 'plant-admin' : role) + '/');
         const summary = page.getByTestId('staff-home-summary');
         await summary.waitFor({ timeout: 25000 });
         await page.getByTestId('staff-home-hero-banner').waitFor();

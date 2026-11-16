@@ -87,36 +87,56 @@ pub async fn compare_plants(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["customer", "admin", "owner", "plant_owner"])?;
 
-    if query.quantity <= 0.0 {
+    if !query.quantity.is_finite() || !(0.01..=10_000.0).contains(&query.quantity) {
         return Err(AppError::BadRequest(
-            "Quantity must be greater than zero".to_string(),
+            "Quantity must be 0.01–10000 m³".into(),
         ));
     }
+    let coordinates = match (query.lat, query.lng) {
+        (None, None) => None,
+        (Some(lat), Some(lng))
+            if (-90.0..=90.0).contains(&lat) && (-180.0..=180.0).contains(&lng) =>
+        {
+            Some((lat, lng))
+        }
+        _ => {
+            return Err(AppError::BadRequest(
+                "Supply valid latitude and longitude together".into(),
+            ))
+        }
+    };
+    let grade = crate::services::customer_order::canonical_grade(&query.grade);
 
     let rows = sqlx::query(
         r#"
-        SELECT 
-            p.id as plant_id,
-            p.name as plant_name,
-            p.city,
-            p.state as district,
-            p.latitude,
-            p.longitude,
-            rc.grade,
-            CAST(rc.rate_per_m3 AS DOUBLE PRECISION) as rate_per_m3,
-            CAST(rc.gst_rate AS DOUBLE PRECISION) as gst_rate,
-            CAST(rc.transport_rate_per_km AS DOUBLE PRECISION) as transport_rate_per_km,
-            CAST(rc.pumping_rate_per_m3 AS DOUBLE PRECISION) as pumping_rate_per_m3
-        FROM plant_rate_cards rc
-        JOIN rmc_plants p ON p.id = rc.plant_id
-        WHERE rc.active = TRUE
-          AND p.is_active = TRUE
-          AND NOT EXISTS(SELECT 1 FROM plant_admin_controls c WHERE c.plant_id=p.id AND NOT c.discovery_visible)
+        SELECT p.id AS plant_id, p.name AS plant_name, p.city, p.state AS district,
+               p.latitude, p.longitude, rc.grade,
+               rc.rate_per_m3::double precision AS rate_per_m3,
+               rc.gst_rate::double precision AS gst_rate,
+               rc.transport_rate_per_km::double precision AS transport_rate_per_km,
+               rc.pumping_rate_per_m3::double precision AS pumping_rate_per_m3,
+               COALESCE(c.order_intake_mode,'DIRECT') AS intake_mode
+        FROM rmc_plants p
+        LEFT JOIN plant_admin_controls c ON c.plant_id=p.id
+        JOIN LATERAL (
+            SELECT * FROM plant_rate_cards r
+            WHERE r.plant_id=p.id AND r.active
+              AND upper(regexp_replace(r.grade, '[-_ ]', '', 'g')) = $1
+              AND r.effective_from <= CURRENT_DATE
+              AND (r.effective_to IS NULL OR r.effective_to >= CURRENT_DATE)
+            ORDER BY r.effective_from DESC, r.updated_at DESC, r.id
+            LIMIT 1
+        ) rc ON TRUE
+        WHERE p.is_active AND COALESCE(c.discovery_visible, TRUE)
+          AND COALESCE(c.order_intake_mode, 'DIRECT') <> 'DISABLED'
+          AND EXISTS (SELECT 1 FROM plant_listing_requests r WHERE r.plant_id=p.id AND r.status='APPROVED')
           AND NOT EXISTS(SELECT 1 FROM google_plant_visibility_exclusions x WHERE x.place_id=p.google_place_id AND NOT x.is_visible)
-          AND LOWER(rc.grade) = LOWER($1)
+          AND EXISTS(SELECT 1 FROM play_review_fixtures f WHERE f.plant_id=p.id AND f.role='customer' AND f.enabled)
+            = EXISTS(SELECT 1 FROM play_review_fixtures f WHERE f.user_id=$2 AND f.role='customer' AND f.enabled)
         "#,
     )
-    .bind(&query.grade)
+    .bind(grade)
+    .bind(auth_user.user_id)
     .fetch_all(&state.db)
     .await?;
 
@@ -135,8 +155,8 @@ pub async fn compare_plants(
         let transport_rate_per_km: f64 = row.get("transport_rate_per_km");
         let pumping_rate_per_m3: f64 = row.get("pumping_rate_per_m3");
 
-        let distance_km = match (query.lat, query.lng) {
-            (Some(ulat), Some(ulng)) => Some(crate::utils::geo::haversine_distance_km(
+        let distance_km = match coordinates {
+            Some((ulat, ulng)) => Some(crate::utils::geo::haversine_distance_km(
                 ulat, ulng, plat, plng,
             )),
             _ => None,
@@ -155,8 +175,7 @@ pub async fn compare_plants(
             base_amount + transport_amount.unwrap_or(0.0) + pumping_amount.unwrap_or(0.0);
         let gst_amount = ((subtotal * gst_rate / 100.0) * 100.0).round() / 100.0;
         let estimated_total = ((subtotal + gst_amount) * 100.0).round() / 100.0;
-        let service_area_km = 50.0;
-        let within_service_area = distance_km.map(|d| d <= service_area_km);
+        let intake_mode: String = row.get("intake_mode");
 
         estimates.push(json!({
             "plant_id": plant_id.to_string(),
@@ -164,12 +183,14 @@ pub async fn compare_plants(
             "city": city,
             "district": district,
             "verified": true,
+            "order_enabled": intake_mode == "DIRECT",
+            "order_intake_mode": intake_mode,
             "grade": grade,
             "rate_per_m3": rate_per_m3,
             "gst_rate": gst_rate,
             "distance_km": distance_km.map(|d| (d * 100.0).round() / 100.0),
-            "service_area_km": service_area_km,
-            "within_service_area": within_service_area,
+            "service_area_km": null,
+            "within_service_area": null,
             "base_amount": base_amount,
             "transport_amount": transport_amount,
             "pumping_amount": pumping_amount,
@@ -183,8 +204,15 @@ pub async fn compare_plants(
         let total_a = a["estimated_total"].as_f64().unwrap_or(f64::MAX);
         let total_b = b["estimated_total"].as_f64().unwrap_or(f64::MAX);
         total_a
-            .partial_cmp(&total_b)
-            .unwrap_or(std::cmp::Ordering::Equal)
+            .total_cmp(&total_b)
+            .then_with(|| {
+                a["distance_km"]
+                    .as_f64()
+                    .unwrap_or(f64::MAX)
+                    .total_cmp(&b["distance_km"].as_f64().unwrap_or(f64::MAX))
+            })
+            .then_with(|| a["plant_name"].as_str().cmp(&b["plant_name"].as_str()))
+            .then_with(|| a["plant_id"].as_str().cmp(&b["plant_id"].as_str()))
     });
 
     let count = estimates.len();
@@ -526,6 +554,7 @@ pub async fn get_order_tracking(
         r#"
         SELECT l.id as load_id, l.load_number, l.status, l.quantity_m3::double precision AS quantity_m3,
                l.dispatched_at, l.arrived_at, l.pour_started_at, l.pour_completed_at,
+               EXISTS(SELECT 1 FROM challans c WHERE c.load_id=l.id) AS challan_available,
                m.registration_number, t.latitude AS last_latitude, t.longitude AS last_longitude, t.recorded_at AS last_ping_at,
                u.full_name as driver_name, u.phone as driver_phone
         FROM order_loads l
@@ -566,6 +595,7 @@ pub async fn get_order_tracking(
                 "id": load_id,
                 "quantity_m3": l.get::<f64,_>("quantity_m3"),
                 "load_number": load_number,
+                "challan_available": l.get::<bool,_>("challan_available"),
                 "status": load_status,
                 "mixer_number": mixer_number,
                 "tm_number": mixer_number,
@@ -612,66 +642,72 @@ pub async fn get_order_challan(
     auth_user: AuthUser,
     Path(order_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    let order_customer: Uuid = sqlx::query_scalar("SELECT customer_id FROM orders WHERE id = $1")
-        .bind(order_id)
-        .fetch_optional(&state.db)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Order not found".to_string()))?;
+    order_challans(&state, &auth_user, order_id, None).await
+}
 
-    if order_customer != auth_user.user_id && auth_user.role != "admin" {
-        return Err(AppError::Forbidden("Unauthorized".to_string()));
+pub async fn get_load_challan(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Path((order_id, load_id)): Path<(Uuid, Uuid)>,
+) -> Result<impl IntoResponse, AppError> {
+    order_challans(&state, &auth_user, order_id, Some(load_id)).await
+}
+
+async fn order_challans(
+    state: &AppState,
+    user: &AuthUser,
+    order_id: Uuid,
+    load_id: Option<Uuid>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let (customer, plant): (Uuid, Uuid) =
+        sqlx::query_as("SELECT customer_id,plant_id FROM orders WHERE id=$1")
+            .bind(order_id)
+            .fetch_optional(&state.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Order not found".into()))?;
+
+    if user.role != "customer" || customer != user.user_id {
+        check_role(user, &["admin", "owner", "plant_owner"])?;
+        super::staff_module_permissions::require(
+            state,
+            user,
+            plant,
+            "challan_gate_pass",
+            super::staff_module_permissions::Action::View,
+        )
+        .await?;
     }
-
-    let challan = sqlx::query(
-        r#"
-        SELECT c.id, c.challan_number, c.plant_code, c.customer_name, c.site_address,
-               c.concrete_grade, c.quantity_m3, c.slump_mm, c.water_cement_ratio,
-               c.batch_time, c.mixer_number, c.driver_name, c.digital_signature,
-               c.status, c.created_at
-        FROM challans c
-        INNER JOIN order_loads l ON l.id = c.load_id
-        WHERE l.order_id = $1
-        ORDER BY c.created_at DESC
-        LIMIT 1
-        "#,
+    let automatic_enabled = std::env::var("DISPATCH_WHATSAPP_ENABLED").as_deref() == Ok("true");
+    let challans: Vec<serde_json::Value> = sqlx::query_scalar(
+        "SELECT jsonb_build_object(
+            'id',c.id,'load_id',l.id,'load_number',l.load_number,'challan_number',c.challan_number,
+            'order_number',o.order_number,'plant_name',p.name,'plant_code',c.plant_code,
+            'customer_name',c.customer_name,'site_name',s.name,'site_address',c.site_address,
+            'grade',c.concrete_grade,'quantity_m3',c.quantity_m3::double precision,
+            'mixer_number',c.mixer_number,'driver_name',c.driver_name,'created_at',c.created_at,
+            'slump_mm',c.slump_mm,'batch_time',c.batch_time,'signature',c.digital_signature,'status',c.status,
+            'whatsapp_automatic',($3 AND COALESCE(w.enabled,FALSE)
+                AND COALESCE(d.opted_in,FALSE)
+                AND COALESCE(e.status IN ('waiting_dispatch','pending','sending','accepted','sent','delivered','read'),FALSE))
+        )
+        FROM challans c JOIN order_loads l ON l.id=c.load_id
+        JOIN orders o ON o.id=l.order_id
+        JOIN rmc_plants p ON p.id=o.plant_id
+        LEFT JOIN customer_sites s ON s.id=o.site_id
+        LEFT JOIN dispatch_whatsapp_plant_settings w ON w.plant_id=o.plant_id
+        LEFT JOIN dispatch_whatsapp_contacts d ON d.order_id=o.id
+        LEFT JOIN dispatch_whatsapp_events e ON e.load_id=l.id
+        WHERE l.order_id=$1 AND ($2::uuid IS NULL OR l.id=$2)
+        ORDER BY c.created_at DESC,c.id DESC",
     )
-    .bind(order_id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Challan not yet generated for this order".to_string()))?;
-
-    let cid: Uuid = challan.get("id");
-    let cnum: String = challan.get("challan_number");
-    let pcode: String = challan.get("plant_code");
-    let cname: String = challan.get("customer_name");
-    let saddr: String = challan.get("site_address");
-    let grade: String = challan.get("concrete_grade");
-    let qty: bigdecimal::BigDecimal = challan.get("quantity_m3");
-    let slump: Option<i32> = challan.get("slump_mm");
-    let btime: Option<chrono::DateTime<chrono::Utc>> = challan.get("batch_time");
-    let mnum: Option<String> = challan.get("mixer_number");
-    let dname: Option<String> = challan.get("driver_name");
-    let sig: Option<String> = challan.get("digital_signature");
-    let cstatus: String = challan.get("status");
-
-    Ok(Json(json!({
-        "success": true,
-        "challan": {
-            "id": cid,
-            "challan_number": cnum,
-            "plant_code": pcode,
-            "customer_name": cname,
-            "site_address": saddr,
-            "grade": grade,
-            "quantity_m3": qty,
-            "slump_mm": slump,
-            "batch_time": btime,
-            "mixer_number": mnum,
-            "driver_name": dname,
-            "signature": sig,
-            "status": cstatus
-        }
-    })))
+    .bind(order_id).bind(load_id).bind(automatic_enabled)
+    .fetch_all(&state.db).await?;
+    let latest = challans
+        .first()
+        .ok_or_else(|| AppError::NotFound("Challan not yet generated for this delivery".into()))?;
+    Ok(Json(
+        json!({"success":true,"challan":latest,"challans":challans}),
+    ))
 }
 
 #[derive(Debug, Deserialize, Serialize)]

@@ -20,6 +20,7 @@ import { radius, spacing } from "@/src/theme/tokens";
 
 const MATERIALS = ["OPC Cement", "PPC Cement", "Aggregate", "Crushed Sand", "Water Tank", "Chemical", "Fly Ash"] as const;
 type Material = typeof MATERIALS[number];
+type EnquiryReceipt = { id: string; status: string; plant_name?: string; materials?: string[]; required_date?: string };
 type Plant = { id: string; name: string; city: string };
 
 export default function SupplierEnquiry() {
@@ -35,6 +36,7 @@ function SupplierEnquiryForm({ user, token }: { user: Me; token: string }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const plants = useGet<{ plants: Plant[] }>("/master/my-plants");
+  const history = useGet<{ enquiries: EnquiryReceipt[] }>("/staff/supplier-enquiries");
   const [selectedPlant, setSelectedPlant] = useState("");
   const [materials, setMaterials] = useState<Material[]>([]);
   const [materialsOpen, setMaterialsOpen] = useState(false);
@@ -44,7 +46,7 @@ function SupplierEnquiryForm({ user, token }: { user: Me; token: string }) {
   const [date, setDate] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [submitted, setSubmitted] = useState(false);
+  const [submitted, setSubmitted] = useState<EnquiryReceipt | null>(null);
   const sending = useRef(false);
   const request = useRef<{ payload: string; key: string } | null>(null);
   const options = plants.data?.plants ?? [];
@@ -72,8 +74,9 @@ function SupplierEnquiryForm({ user, token }: { user: Me; token: string }) {
     setError("");
     setMaterialsOpen(false);
     try {
-      await apiPost("/staff/supplier-enquiries", token, { ...payload, request_key: request.current.key });
-      setSubmitted(true);
+      const receipt = await apiPost<EnquiryReceipt>("/staff/supplier-enquiries", token, { ...payload, request_key: request.current.key });
+      setSubmitted(receipt);
+      void history.refetch();
     } catch (err) {
       setError(apiErrorDetail(err, "Could not submit your enquiry. Try again."));
     } finally {
@@ -102,6 +105,7 @@ function SupplierEnquiryForm({ user, token }: { user: Me; token: string }) {
           <Card style={styles.form} testID="supplier-enquiry-success">
             <AppText accessibilityLiveRegion="polite" variant="heading" color={colors.success}>Enquiry submitted</AppText>
             <AppText>Our team will contact you on the number you provided.</AppText>
+            {submitted.id ? <AppText variant="caption">Reference {submitted.id}</AppText> : null}
             <Button label="Done" onPress={goBack} />
           </Card>
         ) : plants.error ? (
@@ -161,6 +165,17 @@ function SupplierEnquiryForm({ user, token }: { user: Me; token: string }) {
               <Button label="Submit Enquiry" loading={busy} onPress={() => void submit()} />
             </Card>
           )}
+        <Card style={styles.form}>
+          <AppText variant="heading">My supplier enquiries</AppText>
+          {history.error ? <Button label="Retry enquiry history" variant="outline" onPress={history.reload} /> : null}
+          {history.loading && !history.data ? <AppText>Loading enquiries…</AppText> : null}
+          {history.data?.enquiries?.length === 0 ? <AppText>No supplier enquiries submitted.</AppText> : null}
+          {history.data?.enquiries?.map(item => <View key={item.id} style={{ gap: 3 }}>
+            <AppText>{item.plant_name} · {item.status}</AppText>
+            <AppText variant="caption">{item.materials?.join(", ")} · {item.required_date}</AppText>
+            <AppText variant="caption">Reference {item.id}</AppText>
+          </View>)}
+        </Card>
       </ScrollView>
     </ThemedScreen>
   );

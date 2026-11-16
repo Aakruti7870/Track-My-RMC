@@ -54,8 +54,8 @@ assert.match(read("src/components/vector-symbols/LICENSE-Material-Symbols"), /Ap
 
 const { MODULE_CATALOG } = await importTypescript("src/navigation/moduleCatalog.ts");
 assert.equal(MODULE_CATALOG.length, 62, "Global RFQ administration is web-only; legitimate plant modules remain");
-assert.ok(!MODULE_CATALOG.some(m => m.key === "admin-rmc-rfq-leads" || m.route === "/admin/rmc-rfq-leads"), "Global customer leads must not be advertised to plant admins");
-assert.doesNotMatch(read("app/admin/rmc-rfq-leads.tsx"), /useGet|apiPatch|apiPost/, "Legacy global RFQ deep link must not send mobile credentials");
+assert.ok(!MODULE_CATALOG.some(m => m.key === "admin-rmc-rfq-leads" || m.route === "/plant-admin/rmc-rfq-leads"), "Global customer leads must not be advertised to plant admins");
+assert.doesNotMatch(read("app/plant-admin/rmc-rfq-leads.tsx"), /useGet|apiPatch|apiPost/, "Legacy global RFQ deep link must not send mobile credentials");
 let mapped = 0;
 for (const m of MODULE_CATALOG) {
   if (m.symbol) {

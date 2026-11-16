@@ -150,7 +150,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  assert.equal(Math.round((await page.getByTestId('customer-home-header').boundingBox()).y), Math.round(homeHeader.y));
  if(!m||Math.abs(m.width/m.height-2)>0.05)throw Error('map ratio');
  if(b.x<0||b.x+b.width>width+1)throw Error('overflow');
- for(const text of ['Place Your First order','M-25 Grade · 6 m³','Project site 1','Print Challan','Track TM','Call Driver','Call Plant'])if(!await card.getByText(text,{exact:true}).count())throw Error(text);
+ for(const text of ['Place Your First order','M-25 Grade · 6 m³','Project site 1','View Challan','Track TM','Call Driver','Call Plant'])if(!await card.getByText(text,{exact:true}).count())throw Error(text);
  await card.screenshot({path:`tracking-previews/tracking-${width}.png`});
  console.log(JSON.stringify({width,card:b,map:m}));
  await card.getByRole('button',{name:'Track TM',exact:true}).click();

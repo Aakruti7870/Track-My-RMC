@@ -44,7 +44,7 @@ describe("optimized login banner assets and non-cropping layout", () => {
     assert.match(screen, /key: "plant", testID: "login-plant-tab".*label: "PLANT STAFF"/);
     assert.ok(screen.includes('testID="login-review-access"'));
   });
-  it("links the Plant Staff work email to the new Plant Owner registration form", () => {
+  it("opens Plant Owner registration without putting the work email in the URL", () => {
     const label = screen.indexOf('label="Enter Registered Work Email"');
     const link = screen.indexOf('testID="login-open-onboarding-form"');
     const submit = screen.indexOf('renderContinue("login-plant-send-otp"');
@@ -54,7 +54,8 @@ describe("optimized login banner assets and non-cropping layout", () => {
     assert.ok(screen.includes('accessibilityLabel="Register As Plant Owner"'));
     assert.ok(screen.includes("onPress={openOnboarding}"));
     assert.ok(screen.includes('pathname: "/plant-onboarding"'));
-    assert.ok(screen.includes("email: plantEmail.trim().toLowerCase()"));
+    assert.ok(screen.includes('params: { mode: "owner_registration" }'));
+    assert.ok(!screen.includes("email: plantEmail.trim().toLowerCase()"));
     assert.ok(screen.includes("onboardingLinkContent: {"));
     assert.ok(screen.includes("onboardingLinkLabel: {"));
     assert.ok(screen.includes("fontFamily: fonts.bold"));

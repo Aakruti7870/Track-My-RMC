@@ -15,8 +15,13 @@ on:
         description: 'Exact independently approved 40-character main commit SHA'
         required: true
         type: string
+      redeploy:
+        description: Reapply a release that already passed production verification
+        required: false
+        default: false
+        type: boolean
   workflow_run:
-    # Both completions can re-open the gate (including CI reruns).
+    # Any required workflow completion can re-open the gate (including CI reruns).
     # The production concurrency group prevents overlapping deployments.
     workflows:
       - "Backend CI"
@@ -85,7 +90,32 @@ jobs:
           --health-retries 5
 
     steps:
+      - name: Check for an already verified release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE_REDEPLOY: ${{ inputs.redeploy || false }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Release SHA must contain exactly 40 lowercase hexadecimal characters."
+            exit 1
+          fi
+          if [[ "$FORCE_REDEPLOY" != true ]]; then
+            runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/deploy-aws-production.yml/runs?branch=main&head_sha=${RELEASE_SHA}&status=success&per_page=100")"
+            for id in $(jq -r '.workflow_runs[].id' <<< "$runs"); do
+              jobs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/$id/jobs?filter=latest")"
+              if jq -e 'any(.jobs[]; .name=="Verify, Build and Deploy to AWS" and
+                any(.steps[]; .name=="Verify production release via trusted origin and Cloudflare edge" and .conclusion=="success"))' <<< "$jobs" >/dev/null; then
+                echo "This SHA already passed production verification in run $id."
+                echo "needed=false" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+            done
+          fi
+          echo "needed=true" >> "$GITHUB_OUTPUT"
       - name: Verify all CI and dependency-security workflows
+        if: steps.release.outputs.needed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TRACKMYRMC_APPROVED_RELEASE_SHA: ${{ vars.TRACKMYRMC_APPROVED_RELEASE_SHA }}
@@ -93,7 +123,7 @@ jobs:
           set -euo pipefail
 
           # Reverify the exact operator-pinned SHA inside the job.
-          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Invalid exact release SHA."; exit 1; }
           test "$TRACKMYRMC_APPROVED_RELEASE_SHA" = "$RELEASE_SHA" || {
             echo "Exact SHA release approval missing or mismatched."
             exit 1
@@ -185,12 +215,14 @@ jobs:
           echo "All required CI and dependency-security workflows passed."
 
       - name: Checkout verified commit
+        if: steps.release.outputs.needed == 'true'
         uses: actions/checkout@v4
         with:
           ref: ${{ env.RELEASE_SHA }}
           persist-credentials: false
 
       - name: Install Rust toolchain
+        if: steps.release.outputs.needed == 'true'
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
@@ -198,6 +230,7 @@ jobs:
           targets: x86_64-unknown-linux-gnu
 
       - name: Validate deployment script
+        if: steps.release.outputs.needed == 'true'
         run: |
           set -euo pipefail
           bash -n ops/aws-deploy-ec2.sh
@@ -207,16 +240,20 @@ jobs:
           python3 -m unittest discover -s ops/tests -p 'test_digilocker_live_activation.py' -v
 
       - name: Rust formatting
+        if: steps.release.outputs.needed == 'true'
         working-directory: backend
         run: cargo fmt --all -- --check
 
       - name: Rust check
+        if: steps.release.outputs.needed == 'true'
         run: cargo check --all-targets --manifest-path backend/Cargo.toml
 
       - name: Rust clippy
+        if: steps.release.outputs.needed == 'true'
         run: cargo clippy --all-targets --manifest-path backend/Cargo.toml -- -D warnings
 
       - name: Rust tests
+        if: steps.release.outputs.needed == 'true'
         env:
           DATABASE_URL: postgres://trackmyrmc_user:securepassword@localhost:5432/trackmyrmc_test
           JWT_SECRET: test_jwt_secret_key_at_least_32_characters_long
@@ -224,9 +261,11 @@ jobs:
         run: cargo test --manifest-path backend/Cargo.toml --verbose
 
       - name: Build Rust backend
+        if: steps.release.outputs.needed == 'true'
         run: cargo build --release --manifest-path backend/Cargo.toml
 
       - name: Configure AWS credentials
+        if: steps.release.outputs.needed == 'true'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
@@ -234,6 +273,7 @@ jobs:
           audience: sts.amazonaws.com
 
       - name: Load production runtime secrets from AWS Secrets Manager
+        if: steps.release.outputs.needed == 'true'
         run: |
           set -euo pipefail
 
@@ -295,6 +335,7 @@ jobs:
           unset SECRET_JSON TRACKMYRMC_SECRET_JSON
 
       - name: Setup Node.js
+        if: steps.release.outputs.needed == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -302,6 +343,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Build Expo web
+        if: steps.release.outputs.needed == 'true'
         working-directory: frontend
         env:
           EXPO_PUBLIC_BACKEND_URL: https://trackmyrmc.com
@@ -317,6 +359,7 @@ jobs:
           test -s dist/index.html
 
       - name: Build admin dashboard
+        if: steps.release.outputs.needed == 'true'
         working-directory: admin-web
         env:
           VITE_API_URL: https://trackmyrmc.com
@@ -327,6 +370,7 @@ jobs:
           test -s dist/index.html
 
       - name: Package release artifacts
+        if: steps.release.outputs.needed == 'true'
         run: |
           set -euo pipefail
 
@@ -347,6 +391,7 @@ jobs:
           test -s backend/target/release/trackmyrmc-backend
 
       - name: Upload release artifacts to S3
+        if: steps.release.outputs.needed == 'true'
         run: |
           set -euo pipefail
 
@@ -369,12 +414,14 @@ jobs:
           echo "Release artifacts uploaded."
 
       - name: Upload deployment script to S3 (safer than raw.githubusercontent)
+        if: steps.release.outputs.needed == 'true'
         run: |
           set -euo pipefail
           aws s3 cp ops/aws-deploy-ec2.sh "s3://${ARTIFACT_BUCKET}/ops/aws-deploy-ec2-${RELEASE_SHA}.sh"
           echo "Deployment script uploaded to s3://${ARTIFACT_BUCKET}/ops/aws-deploy-ec2-${RELEASE_SHA}.sh"
 
       - name: Recheck main before production deployment
+        if: steps.release.outputs.needed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -390,6 +437,7 @@ jobs:
           }
 
       - name: Deploy EC2 through AWS SSM
+        if: steps.release.outputs.needed == 'true'
         run: |
           set -euo pipefail
 
@@ -440,10 +488,11 @@ jobs:
           echo "SSM deployment completed."
 
       - name: Verify production release via trusted origin and Cloudflare edge
+        if: steps.release.outputs.needed == 'true'
         run: bash ops/verify-production-health.sh
 
       - name: Deployment summary
-        if: success()
+        if: steps.release.outputs.needed == 'true' && (success())
         run: |
           echo "## TrackMyRMC AWS Deployment" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"

@@ -20,7 +20,7 @@
     "check:android-layout": "node ./scripts/check-android-responsive-layout.mjs",
     "check:kyc-availability": "node scripts/check-kyc-provider-availability.mjs",
     "doctor": "expo-doctor",
-    "build:preview": "expo export --platform web --output-dir dist",
+    "build:preview": "expo export --platform web --output-dir dist && node scripts/finalize-web-metadata.cjs",
     "check:vector-symbols": "node ./scripts/check-vector-symbols.mjs",
     "check:single-font": "node ./scripts/check-single-font.mjs",
     "test:maps": "node --test scripts/test-google-maps.cjs scripts/test-android-map-config.cjs"
