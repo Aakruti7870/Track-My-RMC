@@ -7,6 +7,7 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
+import { LightArtworkSurface } from "@/src/components/IconTile";
 import { CardHighlight } from "@/src/components/ui/CardHighlight";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
 import Svg, { Defs, LinearGradient as SvgGradient, Rect, Stop } from "react-native-svg";
@@ -33,7 +34,7 @@ import { Input } from "@/src/components/ui/Input";
 import { useToast } from "@/src/components/ui/Toast";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { SupportWidgetBridge } from "@/src/support/SupportWidgetBridge";
-import { fonts, fontSize, homeArtwork, loginAppearance, radius, spacing } from "@/src/theme/tokens";
+import { fonts, fontSize, homeArtwork, lightQuickAccessArtwork, loginAppearance, radius, spacing } from "@/src/theme/tokens";
 
 // Theme-specific, lossless crops of the approved login artwork.
 const HERO_LIGHT = require("../../assets/images/TrackMyRMC_Login_Top_Banner_light.webp");
@@ -65,7 +66,7 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export default function LoginScreen() {
   const { colors, reduceMotion } = useTheme();
-  const { width, height } = useWindowDimensions();
+  const { width } = useWindowDimensions();
   const look = loginAppearance[colors.isDark ? "dark" : "light"];
   const heroSource = colors.isDark ? HERO_DARK : HERO_LIGHT;
   const router = useRouter();
@@ -93,7 +94,6 @@ export default function LoginScreen() {
   const [phase, setPhase] = useState<LoginPhase>("enter");
   const [mobile, setMobile] = useState("");
   const [phoneFocused, setPhoneFocused] = useState(false);
-  const [cardHeight, setCardHeight] = useState(0);
   const [plantEmail, setPlantEmail] = useState("");
   const [identifier, setIdentifier] = useState("");
   const [code, setCode] = useState("");
@@ -348,9 +348,15 @@ export default function LoginScreen() {
 
   const renderHeading = (icon: keyof typeof Ionicons.glyphMap, title: string, subtitle: string) => (
     <View style={styles.headingBlock}>
-      <View style={[styles.iconBubble, { backgroundColor: homeArtwork.quickFill[1] }]}>
-        <Ionicons name={icon} size={24} color={homeArtwork.iconInk} />
-      </View>
+      {colors.isDark ? (
+        <View style={styles.iconBubble}>
+          <Ionicons name={icon} size={24} color={homeArtwork.iconInk} />
+        </View>
+      ) : (
+        <LightArtworkSurface style={styles.lightIconBubble} cornerRadius={24}>
+          <Ionicons name={icon} size={24} color={lightQuickAccessArtwork.iconInk} />
+        </LightArtworkSurface>
+      )}
       <AppText accessibilityRole="header" variant="heading" center>{title}</AppText>
       <AppText variant="bodyMuted" center color={colors.onSurfaceSecondary}>{subtitle}</AppText>
     </View>
@@ -641,14 +647,11 @@ export default function LoginScreen() {
   };
 
   const heroAspect = (colors.isDark ? 1229 : 1227) / 615;
-  const naturalHeroWidth = Math.min(width, 760);
-  const cardWidth = Math.min(width - 24, Math.max(366, naturalHeroWidth * (678 / (colors.isDark ? 1229 : 1227))));
+  const heroWidth = Math.min(width, 760);
+  const cardWidth = Math.min(width - 24, Math.max(366, heroWidth * (678 / (colors.isDark ? 1229 : 1227))));
   const pageBottom = Math.max(insets.bottom, spacing.sm);
-  const availableHeroHeight = height - insets.top - cardHeight - spacing.sm - pageBottom - 4;
-  const fitHeroWidth = availableHeroHeight * heroAspect;
-  const canFitEntry = phase === "enter" && cardHeight > 0 && fitHeroWidth >= naturalHeroWidth * 0.75;
-  const heroWidth = canFitEntry ? Math.min(naturalHeroWidth, fitHeroWidth) : naturalHeroWidth;
   const artworkScale = heroWidth / (colors.isDark ? 1229 : 1227);
+  const darkRim = loginAppearance.dark.rim;
 
   return (
     <View style={{ flex: 1, backgroundColor: look.canvas }}>
@@ -685,22 +688,23 @@ export default function LoginScreen() {
               style={StyleSheet.absoluteFill} />
           </View>
 
-          <View testID="login-card" onLayout={({ nativeEvent }) => setCardHeight(nativeEvent.layout.height)} style={[styles.loginShell, {
+          <View testID="login-card" style={[styles.loginShell, {
             width: cardWidth, marginTop: artworkScale * 4, backgroundColor: look.card[0], shadowColor: look.shadow,
           }]}>
             <LinearGradient pointerEvents="none" colors={look.card} style={styles.sheetFill}
               start={{ x: 0, y: 0 }} end={{ x: 0.9, y: 1 }} />
             <CardHighlight radius={28} />
             <Svg width="100%" height="100%" pointerEvents="none" style={StyleSheet.absoluteFill} aria-hidden accessible={false}>
-              <Defs>
+              {colors.isDark ? <Defs>
                 <SvgGradient id="loginCardRim" x1="0%" y1="0%" x2="25%" y2="100%">
-                  <Stop offset="0" stopColor={look.rim[0]} />
-                  <Stop offset="0.10" stopColor={look.rim[1]} />
-                  <Stop offset="0.60" stopColor={look.rim[2]} />
-                  <Stop offset="1" stopColor={look.rim[3]} />
+                  <Stop offset="0" stopColor={darkRim[0]} />
+                  <Stop offset="0.10" stopColor={darkRim[1]} />
+                  <Stop offset="0.60" stopColor={darkRim[2]} />
+                  <Stop offset="1" stopColor={darkRim[3]} />
                 </SvgGradient>
-              </Defs>
-              <Rect width="100%" height="100%" rx={28} fill="none" stroke="url(#loginCardRim)" strokeWidth={1.5} />
+              </Defs> : null}
+              <Rect width="100%" height="100%" rx={28} fill="none"
+                stroke={colors.isDark ? "url(#loginCardRim)" : loginAppearance.light.rim} strokeWidth={1.5} />
             </Svg>
 
             <View accessibilityRole="tablist" style={[styles.segmented, { backgroundColor: look.rail, borderColor: look.railOutline }]}>
@@ -709,21 +713,28 @@ export default function LoginScreen() {
                 { key: "plant", testID: "login-plant-tab", icon: "plant-staff", label: "PLANT STAFF" },
               ] as const).map(({ key, testID, icon, label }) => {
                 const selected = mode === key;
+                const selectedIcon = colors.isDark ? homeArtwork.iconInk : lightQuickAccessArtwork.iconInk;
+                const selectedLabel = colors.isDark ? homeArtwork.iconInk : colors.onSurface;
                 return (
                   <Pressable key={key} testID={testID}
                     accessibilityRole="tab" accessibilityLabel={label} accessibilityState={{ selected, disabled: loading }} aria-selected={selected} disabled={loading}
                     onPress={() => { if (!selected) resetEntry(key); }}
                     style={styles.segment}>
-                    {selected ? (
+                    {selected && colors.isDark ? (
                       <LinearGradient pointerEvents="none" colors={homeArtwork.copperEdge}
                         start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill}>
                         <LinearGradient colors={homeArtwork.quickFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
                           style={styles.segmentFill} />
                       </LinearGradient>
                     ) : null}
+                    {selected && !colors.isDark ? (
+                      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+                        <LightArtworkSurface style={styles.segmentArtwork} cornerRadius={14} />
+                      </View>
+                    ) : null}
                     <View style={styles.segmentContent} pointerEvents="none">
-                      <VectorSymbol name={icon} size={18} color={selected ? homeArtwork.iconInk : look.inactiveIcon} />
-                      <AppText style={styles.segmentLabel} color={selected ? homeArtwork.iconInk : look.inactive}>{label}</AppText>
+                      <VectorSymbol name={icon} size={18} color={selected ? selectedIcon : look.inactiveIcon} />
+                      <AppText style={styles.segmentLabel} color={selected ? selectedLabel : look.inactive}>{label}</AppText>
                     </View>
                   </Pressable>
                 );
@@ -852,6 +863,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
   },
   segmentContent: { zIndex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.xs },
+  segmentArtwork: { flex: 1 },
   segmentFill: { ...StyleSheet.absoluteFillObject, top: 1, right: 1, bottom: 1, left: 1, borderRadius: 13 },
   segmentLabel: { flexShrink: 1, textAlign: "center", fontFamily: fonts.semibold, fontSize: fontSize.sm, letterSpacing: 0.2 },
   formGap: { gap: spacing.md },
@@ -876,10 +888,12 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 24,
     borderWidth: 1,
+    backgroundColor: homeArtwork.quickFill[1],
     alignItems: "center",
     justifyContent: "center",
     marginBottom: spacing.xs,
   },
+  lightIconBubble: { width: 48, height: 48, marginBottom: spacing.xs },
   phoneInputWrap: {
     height: 56,
     maxHeight: 56,

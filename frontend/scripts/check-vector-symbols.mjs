@@ -102,7 +102,8 @@ const kyc = read("src/components/KycBanner.tsx");
 assert.match(kyc, /<IdentityVerificationSymbol size=\{size.kycSymbol \+ 6\} verified=\{isVerified\}/);
 const verificationSymbol = read("src/components/vector-symbols/IdentityVerificationSymbol.tsx");
 assert.match(verificationSymbol, /backgroundColor: homeArtwork.kycIconFill/);
-assert.match(verificationSymbol, /verified \? "kyc-verified" : "restricted-access"[\s\S]*color="#FFFFFF"/);
+assert.match(verificationSymbol, /verified \? "kyc-verified" : "restricted-access"/);
+assert.match(verificationSymbol, /color=\{colors.isDark \? "#FFFFFF" : lightQuickAccessArtwork.iconInk\}/);
 const header = read("src/components/customer/CustomerHomeHeader.tsx");
 for (const expected of ['name="chevron-down" size={size.headerChevron}', 'name="notifications" size={size.headerBell}']) {
   assert.ok(header.includes(expected), `Header symbol missing responsive dimension: ${expected}`);

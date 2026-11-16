@@ -18,7 +18,6 @@ body { margin: 0; }
   --tm-selected-ink: #FFB16A;
   --tm-selected-surface: #432A10;
   --tm-focus: #FFB47D;
-  --tm-card-fade: #383129;
   --tm-warning-text: #FBBF24;
   --tm-success-text: #72D59B;
   --tm-error-text: #FF9997;
@@ -45,13 +44,10 @@ body { margin: 0; }
   --tm-muted: #504D47;
   --tm-border: #C9C4BE;
   --tm-control-outline: #827C74;
-  --tm-login-rim: #FEFDF9;
-  --tm-login-edge: #BCA07B;
   --tm-orange-action: #FF8201;
   --tm-selected-ink: #5D3719;
   --tm-selected-surface: #FDE9D0;
   --tm-focus: #A43D00;
-  --tm-card-fade: #FCFBF7;
   --tm-warning-text: #92400E;
   --tm-success-text: #276749;
   --tm-error-text: #9B2C2C;
@@ -90,6 +86,10 @@ body { margin: 0; }
   background: linear-gradient(145deg, var(--tm-raised), var(--tm-panel) 55%) padding-box,
     linear-gradient(115deg, var(--tm-login-edge), var(--tm-login-rim) 36%, var(--tm-border)) border-box;
   box-shadow: 0 16px 48px #0000001f;
+}
+.tm-light .tm-login-shell {
+  border-color: var(--tm-border);
+  background: linear-gradient(145deg, var(--tm-raised), var(--tm-panel) 55%);
 }
 .tm-login-toolbar { display: flex; justify-content: flex-end; }
 .tm-theme-button, .tm-workspace-button {
@@ -365,6 +365,25 @@ body { margin: 0; }
   color: #FFF0E2;
   flex: none;
 }
+.tm-light .tm-module-icon {
+  border-color: #2A2A2C;
+  color: #FEF8EF;
+  position: relative;
+  background: none;
+}
+.tm-light .tm-module-icon::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(90deg, #F98F2D00 85%, #F98F2D26 97%, #FF983366) padding-box,
+    linear-gradient(90deg, #E8970A, #C6790D 50%, #B3650E) padding-box,
+    linear-gradient(90deg, #AD6C24, #CC7926 50%, #F68E2D) border-box;
+  pointer-events: none;
+}
+.tm-light .tm-module-icon > svg { position: relative; }
 .tm-module-arrow { color: var(--tm-muted); }
 .tm-account-panel, .tm-settings-panel {
   padding: clamp(14px, 3vw, 22px);
@@ -438,7 +457,7 @@ body { margin: 0; }
   }
 }
 
-.tm-admin-root :is(.tm-module-card, .tm-kpi-card, .tm-account-panel, .tm-settings-panel, .tm-notifications-panel) {
+.tm-admin-root.tm-dark :is(.tm-module-card, .tm-kpi-card, .tm-account-panel, .tm-settings-panel, .tm-notifications-panel) {
   background-image: radial-gradient(ellipse 125px 24px at top left, #D0A56E80, #DC9C5244 35%, transparent),
-    radial-gradient(ellipse 145px 37px at top left, var(--tm-card-fade), transparent);
+    radial-gradient(ellipse 145px 37px at top left, #383129, transparent);
 }

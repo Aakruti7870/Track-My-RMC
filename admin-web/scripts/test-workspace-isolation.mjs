@@ -218,8 +218,20 @@ try {
     assert.match(await page.locator('main').getAttribute('class')||'',/tm-light/,'light theme should use warm app tokens');
     await adminNav('Dashboard').click();
     assert.equal(await workspace.evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(250, 249, 245)','Light workspace cards use a light surface');
-    assert.match(await workspace.evaluate(el=>getComputedStyle(el).backgroundImage), /radial-gradient.*rgb\(252, 251, 247\)/,
-      'Light workspace cards fade into ivory');
+    const lightArtwork = await workspace.evaluate(el=>{
+      const tile = el.querySelector('.tm-module-icon');
+      return {
+        highlight: getComputedStyle(el).backgroundImage,
+        rim: getComputedStyle(tile).borderTopColor,
+        ink: getComputedStyle(tile).color,
+        gradient: getComputedStyle(tile, '::before').backgroundImage,
+      };
+    });
+    assert.equal(lightArtwork.highlight, 'none', 'Light workspace cards omit the corner highlight');
+    assert.equal(lightArtwork.rim, 'rgb(42, 42, 44)');
+    assert.equal(lightArtwork.ink, 'rgb(254, 248, 239)');
+    assert.match(lightArtwork.gradient, /rgb\(232, 151, 10\).*rgb\(198, 121, 13\) 50%.*rgb\(179, 101, 14\)/);
+    assert.match(lightArtwork.gradient, /rgb\(173, 108, 36\).*rgb\(204, 121, 38\) 50%.*rgb\(246, 142, 45\)/);
     await adminNav('Plant Master').click();
     await adminNav('Settings').click();
     for (const mode of ['Light','Dark']) {

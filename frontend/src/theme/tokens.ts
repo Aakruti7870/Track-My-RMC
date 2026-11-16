@@ -202,10 +202,7 @@ export const lightQuickAccessArtwork = {
   iconInk: "#FEF8EF",
 } as const;
 
-export const cardHighlight = {
-  dark: ["#D0A56E90", "#DC9C5255", "#38312973", "#38312900"],
-  light: ["#D0A56E99", "#DC9C5255", "#FCFBF799", "#FCFBF700"],
-} as const;
+export const cardHighlight = ["#D0A56E90", "#DC9C5255", "#38312973", "#38312900"] as const;
 
 export const loginAppearance = {
   dark: {
@@ -231,7 +228,7 @@ export const loginAppearance = {
     heroEdge: ["#7E7D7B", "#7E7D7B", "#807F7D", "#777374", "#717173", "#72716F", "#737270", "#73726E", "#7F7E7C", "#7E7D7B", "#81807E"],
     heroBlend: ["#E9E4DE00", "#E9E4DE4D", "#E9E4DEBF", "#E9E4DEFA", "#E9E4DEFF"],
     card: ["#FCFBF7", "#FAF9F5", "#F8F7F3"],
-    rim: ["#BCA07B", "#FEFDF9", "#C9C4BE", "#BFB8B0"],
+    rim: "#C9C4BE",
     shadow: "#68625A",
     rail: "#F0EDE6", railOutline: "#D9D6CF",
     inactive: "#504D47", inactiveIcon: "#5B5853",

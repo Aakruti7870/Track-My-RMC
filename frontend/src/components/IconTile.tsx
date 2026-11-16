@@ -1,5 +1,5 @@
 import React from "react";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
@@ -11,33 +11,43 @@ type Artwork = { symbol: VectorSymbolName; icon?: never } | { symbol?: never; ic
 const horizontal = { start: { x: 0, y: 0.5 }, end: { x: 1, y: 0.5 } };
 const standardStops = [0, 0.5, 1] as const;
 
-export function IconTile({ symbol, icon, quickAccess = false, homeShortcut = quickAccess, bulk = false, size = homeShortcut ? 28 : 24, width = homeShortcut ? 52 : 44, height = homeShortcut ? Math.min(width, 48) : width }: Artwork & {
+export function LightArtworkSurface({ children, style, cornerRadius = radius.sm }: {
+  children?: React.ReactNode;
+  style?: StyleProp<ViewStyle>;
+  cornerRadius?: number;
+}) {
+  const artwork = lightQuickAccessArtwork;
+  return (
+    <View style={[styles.lightRim, { borderRadius: cornerRadius, backgroundColor: artwork.rim }, style]}>
+      <LinearGradient {...horizontal} colors={artwork.copperEdge} locations={standardStops}
+        style={[styles.lightEdge, { borderRadius: cornerRadius - 1 }]}>
+        <LinearGradient {...horizontal} colors={artwork.fill} locations={standardStops}
+          style={[styles.lightFill, { borderRadius: cornerRadius - 2 }]}>
+          <LinearGradient {...horizontal} colors={artwork.rightGlow} locations={[0.85, 0.97, 1]}
+            pointerEvents="none" style={StyleSheet.absoluteFill} />
+          {children}
+        </LinearGradient>
+      </LinearGradient>
+    </View>
+  );
+}
+
+export function IconTile({ symbol, icon, homeShortcut = false, bulk = false, size = homeShortcut ? 28 : 24, width = homeShortcut ? 52 : 44, height = homeShortcut ? Math.min(width, 48) : width }: Artwork & {
   size?: number;
   width?: number;
   height?: number;
-  quickAccess?: boolean;
   homeShortcut?: boolean;
   bulk?: boolean;
 }) {
   const { colors } = useTheme();
-  const lightArtwork = quickAccess && !colors.isDark && !bulk ? lightQuickAccessArtwork : null;
-  const shortcutInk = lightArtwork?.iconInk ?? homeArtwork.iconInk;
-  const foreground = bulk ? "#FFFFFF" : homeShortcut ? shortcutInk : colors.onSurfaceSecondary;
+  const lightArtwork = !colors.isDark && (homeShortcut || bulk);
+  const foreground = lightArtwork ? lightQuickAccessArtwork.iconInk
+    : bulk ? "#FFFFFF" : homeShortcut ? homeArtwork.iconInk : colors.onSurfaceSecondary;
   const glyph = symbol
     ? <VectorSymbol name={symbol} size={size} color={foreground} />
     : <Ionicons name={icon} size={size} color={foreground} accessible={false} aria-hidden />;
   if (lightArtwork) {
-    return (
-      <View style={[styles.tile, styles.lightRim, { width, height, backgroundColor: lightArtwork.rim }]}>
-        <LinearGradient {...horizontal} colors={lightArtwork.copperEdge} locations={standardStops} style={styles.lightEdge}>
-          <LinearGradient {...horizontal} colors={lightArtwork.fill} locations={standardStops} style={styles.lightFill}>
-            <LinearGradient {...horizontal} colors={lightArtwork.rightGlow} locations={[0.85, 0.97, 1]}
-              pointerEvents="none" style={StyleSheet.absoluteFill} />
-            {glyph}
-          </LinearGradient>
-        </LinearGradient>
-      </View>
-    );
+    return <LightArtworkSurface style={{ width, height }}>{glyph}</LightArtworkSurface>;
   }
   if (homeShortcut && !bulk) {
     return (
@@ -60,8 +70,8 @@ export function IconTile({ symbol, icon, quickAccess = false, homeShortcut = qui
 
 const styles = StyleSheet.create({
   inner: { flex: 1, width: "100%", borderRadius: radius.sm - 1, alignItems: "center", justifyContent: "center" },
-  lightRim: { padding: 1 },
-  lightEdge: { flex: 1, width: "100%", padding: 1, borderRadius: radius.sm - 1 },
-  lightFill: { flex: 1, borderRadius: radius.sm - 2, alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  lightRim: { padding: 1, flexShrink: 0 },
+  lightEdge: { flex: 1, padding: 1 },
+  lightFill: { flex: 1, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   tile: { borderRadius: radius.sm, alignItems: "center", justifyContent: "center", flexShrink: 0 },
 });

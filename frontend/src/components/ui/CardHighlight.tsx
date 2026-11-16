@@ -10,7 +10,7 @@ const highlightStops = [0, 0.15, 0.46, 1];
 export function CardHighlight({ radius }: { radius: number }) {
   const { colors } = useTheme();
   const id = useId();
-  const palette = colors.isDark ? cardHighlight.dark : cardHighlight.light;
+  if (!colors.isDark) return null;
 
   return (
     <View pointerEvents="none" aria-hidden accessible={false}
@@ -19,7 +19,7 @@ export function CardHighlight({ radius }: { radius: number }) {
       <Svg width="100%" height="100%">
         <Defs>
           <RadialGradient id={id} cx="0%" cy="0%" rx="100%" ry="100%">
-            {palette.map((color, index) => (
+            {cardHighlight.map((color, index) => (
               <Stop key={color} offset={highlightStops[index]} stopColor={color.slice(0, 7)}
                 stopOpacity={parseInt(color.slice(7), 16) / 255} />
             ))}
