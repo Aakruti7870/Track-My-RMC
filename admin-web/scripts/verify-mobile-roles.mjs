@@ -46,6 +46,24 @@ const authenticators = new Map(manifest.users.filter(user => user.email).map(use
 const captureToken = randomBytes(32).toString('hex');
 const deliveries = new Map();
 const approved = new Set(manifest.users.map(user => user.email ?? user.phone.replace(/^\+/, '')));
+async function takeOtp(destination) {
+  assert.ok(approved.has(destination));
+  await expect.poll(() => deliveries.has(destination)).toBe(true);
+  // The transport capture precedes the Rust transaction that makes the code usable.
+  await expect.poll(() => new Promise((resolve, reject) => {
+    const query = spawn('psql', [process.env.DATABASE_URL, '-XAtq', '-v', 'ON_ERROR_STOP=1', '-v', `destination=${destination}`], {
+      stdio: ['pipe', 'pipe', 'ignore'],
+    });
+    let output = '';
+    query.stdout.on('data', chunk => { output += chunk; });
+    query.on('error', reject);
+    query.on('close', status => status === 0 ? resolve(output.trim()) : reject(new Error('OTP fixture state query failed')));
+    query.stdin.end("SELECT NOT EXISTS(SELECT 1 FROM otp_verifications WHERE destination=:'destination' AND is_pending);\n");
+  })).toBe('t');
+  const code = deliveries.get(destination);
+  deliveries.delete(destination);
+  return code;
+}
 const sink = createServer(async (req, res) => {
   if (req.method !== 'POST' || req.url !== '/capture' || req.headers.authorization !== `Bearer ${captureToken}`) {
     res.writeHead(403).end(); return;
@@ -219,9 +237,7 @@ try {
     const otpInput = page.getByTestId(user.email ? 'login-plant-otp-input' : 'login-user-otp-input');
     phase = 'email/WhatsApp OTP';
     await expect(otpInput).toBeEditable();
-    assert.ok(deliveries.has(destination), 'Approved in-memory OTP delivery missing');
-    const otp = deliveries.get(destination);
-    deliveries.delete(destination);
+    const otp = await takeOtp(destination);
     await otpInput.fill(otp, { force: true });
     if (user.email) {
       phase = 'authenticator';
@@ -740,8 +756,7 @@ try {
       await page.getByTestId('login-mobile-input').fill(user.phone);
       await page.getByRole('button',{name:'CONTINUE',exact:true}).click();
       await expect(page.getByTestId('login-user-otp-input')).toBeEditable();
-      const firstCode=deliveries.get(destination);deliveries.delete(destination);
-      assert.ok(firstCode);
+      const firstCode = await takeOtp(destination);
       await page.getByTestId('login-user-otp-input').fill(firstCode,{force:true});
       await expect(page.getByTestId('customer-home-scroll')).toBeVisible();
       await respectOtpCooldown();
@@ -749,7 +764,7 @@ try {
       try {
         const sent=await replacement.request.post('http://127.0.0.1:8301/api/auth/otp/whatsapp/send',{data:{phone:user.phone}});
         assert.equal(sent.status(),200);
-        const nextCode=deliveries.get(destination);deliveries.delete(destination);assert.ok(nextCode);
+        const nextCode = await takeOtp(destination);
         const completed=await replacement.request.post('http://127.0.0.1:8301/api/auth/otp/whatsapp/verify',{data:{phone:user.phone,otp:nextCode}});
         assert.equal(completed.status(),200);
         const fresh=await completed.json();

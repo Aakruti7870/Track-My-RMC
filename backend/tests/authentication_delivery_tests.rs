@@ -12,6 +12,10 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
 };
+use tokio::{
+    sync::Notify,
+    time::{sleep, timeout, Duration},
+};
 use tower::ServiceExt;
 use trackmyrmc_backend::{
     auth::{
@@ -70,7 +74,7 @@ async fn signed_in_deletion_requires_fresh_purpose_and_account_bound_otp(db: PgP
         .0,
         StatusCode::OK
     );
-    let login_code = delivery.take_code(phone);
+    let login_code = delivery.take_code(&db, phone).await;
     assert!(!call(
         &app,
         path,
@@ -93,7 +97,7 @@ async fn signed_in_deletion_requires_fresh_purpose_and_account_bound_otp(db: PgP
         .0,
         StatusCode::OK
     );
-    let other_code = delivery.take_code(other_phone);
+    let other_code = delivery.take_code(&db, other_phone).await;
     assert!(!call(
         &app,
         path,
@@ -122,7 +126,7 @@ async fn signed_in_deletion_requires_fresh_purpose_and_account_bound_otp(db: PgP
         .0,
         StatusCode::OK
     );
-    let code = delivery.take_code(phone);
+    let code = delivery.take_code(&db, phone).await;
     let payload = json!({"confirm":"DELETE","code":code});
     assert_eq!(
         call(&app, path, Some(payload.clone()), Some(&token))
@@ -147,16 +151,31 @@ async fn signed_in_deletion_requires_fresh_purpose_and_account_bound_otp(db: PgP
 struct MemoryDelivery {
     messages: Mutex<Vec<(String, String, String)>>,
     reject: AtomicBool,
+    pause: Option<Arc<Notify>>,
+    started: Notify,
 }
 
 impl MemoryDelivery {
-    fn take_code(&self, destination: &str) -> String {
-        let mut messages = self.messages.lock().unwrap();
-        let index = messages
-            .iter()
-            .position(|(_, to, _)| to == destination)
-            .unwrap();
-        messages.remove(index).2
+    async fn take_code(&self, db: &PgPool, destination: &str) -> String {
+        timeout(Duration::from_secs(5), async {
+            let code = loop {
+                let code = {
+                    let mut messages = self.messages.lock().unwrap();
+                    messages
+                        .iter()
+                        .position(|(_, to, _)| to == destination)
+                        .map(|index| messages.remove(index).2)
+                };
+                if let Some(code) = code {
+                    break code;
+                }
+                sleep(Duration::from_millis(10)).await;
+            };
+            wait_for_otp_delivery(db, destination).await;
+            code
+        })
+        .await
+        .expect("OTP did not arrive before the test deadline")
     }
 }
 
@@ -173,6 +192,10 @@ impl OtpDelivery for MemoryDelivery {
         otp: &str,
         _: &str,
     ) -> Result<(), AppError> {
+        self.started.notify_one();
+        if let Some(pause) = &self.pause {
+            pause.notified().await;
+        }
         if self.reject.load(Ordering::SeqCst) {
             return Err(AppError::InternalError(
                 "Synthetic delivery rejection".into(),
@@ -184,6 +207,23 @@ impl OtpDelivery for MemoryDelivery {
             .push((channel.into(), destination.into(), otp.into()));
         Ok(())
     }
+}
+
+async fn wait_for_otp_delivery(db: &PgPool, destination: &str) {
+    timeout(Duration::from_secs(5), async {
+        while sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(SELECT 1 FROM otp_verifications WHERE destination=$1 AND is_pending)",
+        )
+        .bind(destination)
+        .fetch_one(db)
+        .await
+        .unwrap()
+        {
+            sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("Pending OTP was not finalized before the test deadline");
 }
 
 fn state(db: PgPool) -> AppState {
@@ -249,7 +289,12 @@ async fn identity(db: &PgPool, role: &str, email: Option<&str>, phone: Option<&s
         .bind(phone.unwrap_or(&generated_phone)).bind(email).bind(role).fetch_one(db).await.unwrap()
 }
 
-async fn email_challenge(app: &Router, delivery: &MemoryDelivery, email: &str) -> Value {
+async fn email_challenge(
+    db: &PgPool,
+    app: &Router,
+    delivery: &MemoryDelivery,
+    email: &str,
+) -> Value {
     assert_eq!(
         call(
             app,
@@ -261,7 +306,7 @@ async fn email_challenge(app: &Router, delivery: &MemoryDelivery, email: &str) -
         .0,
         StatusCode::OK
     );
-    let otp = delivery.take_code(email);
+    let otp = delivery.take_code(db, email).await;
     let (status, challenge) = call(
         app,
         "/api/auth/otp/email/verify",
@@ -317,7 +362,7 @@ async fn approved_staff_fixtures_complete_email_enrollment_mfa_recovery_and_logo
             .await
             .unwrap();
         }
-        let challenge = email_challenge(&app, &delivery, email).await;
+        let challenge = email_challenge(&db, &app, &delivery, email).await;
         assert_eq!(challenge["status"], "MFA_ENROLLMENT_REQUIRED");
         assert_eq!(
             call(
@@ -390,7 +435,7 @@ async fn approved_staff_fixtures_complete_email_enrollment_mfa_recovery_and_logo
             .0,
             StatusCode::UNAUTHORIZED
         );
-        let replay = email_challenge(&app, &delivery, email).await;
+        let replay = email_challenge(&db, &app, &delivery, email).await;
         assert_eq!(
             call(
                 &app,
@@ -413,7 +458,7 @@ async fn approved_staff_fixtures_complete_email_enrollment_mfa_recovery_and_logo
             StatusCode::UNAUTHORIZED
         );
 
-        let challenge = email_challenge(&app, &delivery, email).await;
+        let challenge = email_challenge(&db, &app, &delivery, email).await;
         assert_eq!(challenge["status"], "MFA_REQUIRED");
         let recovery = &enrollment["recovery_codes"][1];
         let (status, recovered) = call(
@@ -434,7 +479,7 @@ async fn approved_staff_fixtures_complete_email_enrollment_mfa_recovery_and_logo
             call(&app, "/api/me", None, Some(token)).await.0,
             StatusCode::UNAUTHORIZED
         );
-        let challenge = email_challenge(&app, &delivery, email).await;
+        let challenge = email_challenge(&db, &app, &delivery, email).await;
         assert_eq!(
             call(
                 &app,
@@ -469,7 +514,7 @@ async fn approved_customer_driver_fixtures_complete_generated_whatsapp_otp_once(
             .0,
             StatusCode::OK
         );
-        let code = delivery.take_code(phone);
+        let code = delivery.take_code(&db, phone).await;
         let payload = json!({"phone":format!("+{phone}"),"otp":code});
         let (status, auth) = call(
             &app,
@@ -551,6 +596,7 @@ async fn missing_or_rejected_delivery_never_activates_email_and_preserves_previo
         .0,
         StatusCode::OK
     );
+    wait_for_otp_delivery(&db, email).await;
     let counts: (i64, i64) = sqlx::query_as("SELECT COUNT(*),COUNT(*) FILTER (WHERE is_pending) FROM otp_verifications WHERE destination=$1").bind(email).fetch_one(&db).await.unwrap();
     assert_eq!(counts, (2, 0));
     assert_eq!(
@@ -567,6 +613,51 @@ async fn missing_or_rejected_delivery_never_activates_email_and_preserves_previo
 }
 
 #[sqlx::test]
+async fn public_otp_responses_do_not_wait_for_the_delivery_provider(db: PgPool) {
+    let mut state = state(db.clone());
+    let pause = Arc::new(Notify::new());
+    let delivery = Arc::new(MemoryDelivery {
+        pause: Some(pause.clone()),
+        ..MemoryDelivery::default()
+    });
+    state.otp_delivery = delivery.clone();
+    let email = "slow-otp@example.invalid";
+    identity(&db, "owner", Some(email), None).await;
+    let app = build_app_router(state);
+    let path = "/api/auth/otp/email/send";
+
+    let eligible = timeout(
+        Duration::from_secs(5),
+        call(&app, path, Some(json!({"email":email})), None),
+    )
+    .await
+    .expect("Public OTP request waited for a blocked provider");
+    let unknown_email = "unknown-otp@example.invalid";
+    let unknown = call(&app, path, Some(json!({"email":unknown_email})), None).await;
+    assert_eq!(eligible, unknown);
+    assert_eq!(eligible.0, StatusCode::OK);
+    timeout(Duration::from_secs(5), delivery.started.notified())
+        .await
+        .unwrap();
+    wait_for_otp_delivery(&db, unknown_email).await;
+    assert!(delivery.messages.lock().unwrap().is_empty());
+
+    pause.notify_one();
+    let code = delivery.take_code(&db, email).await;
+    assert_eq!(
+        call(
+            &app,
+            "/api/auth/otp/email/verify",
+            Some(json!({"email":email,"otp":code})),
+            None,
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+}
+
+#[sqlx::test]
 async fn staff_challenges_cannot_be_reused_after_role_becomes_privileged(db: PgPool) {
     let mut state = state(db.clone());
     let delivery = Arc::new(MemoryDelivery::default());
@@ -574,7 +665,7 @@ async fn staff_challenges_cannot_be_reused_after_role_becomes_privileged(db: PgP
     let app = build_app_router(state);
     let email = "staging-owner@example.invalid";
     let id = identity(&db, "owner", Some(email), None).await;
-    let challenge = email_challenge(&app, &delivery, email).await;
+    let challenge = email_challenge(&db, &app, &delivery, email).await;
     // A database role change is a negative test, never a persistent account enrollment.
     sqlx::query("UPDATE users SET role='central_admin' WHERE id=$1")
         .bind(id)
@@ -634,36 +725,44 @@ async fn staff_challenges_cannot_be_reused_after_role_becomes_privileged(db: PgP
 }
 
 #[sqlx::test]
-async fn staff_can_restart_expired_enrollment_and_keep_enabled_authenticator(db: PgPool) {
+async fn staff_enrollment_retries_are_stable_and_fresh_proof_replaces_old_challenges(db: PgPool) {
     let mut state = state(db.clone());
     let delivery = Arc::new(MemoryDelivery::default());
     state.otp_delivery = delivery.clone();
     let app = build_app_router(state);
     let email = "mfa-restart@example.invalid";
-    let user = identity(&db, "owner", Some(email), None).await;
-    let first = email_challenge(&app, &delivery, email).await;
+    let user_id = identity(&db, "owner", Some(email), None).await;
+    let first = email_challenge(&db, &app, &delivery, email).await;
     let begin = "/api/auth/staff/mfa/enroll/start";
-    let (status, first_setup) = call(
-        &app,
-        begin,
-        Some(json!({"challenge_token":first["challenge_token"]})),
-        None,
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
+    let first_payload = json!({"challenge_token":first["challenge_token"]});
+    let (first_start, retry) = tokio::join!(
+        call(&app, begin, Some(first_payload.clone()), None),
+        call(&app, begin, Some(first_payload.clone()), None),
+    );
+    assert_eq!(first_start.0, StatusCode::OK);
+    assert_eq!(retry.0, StatusCode::OK);
+    let first_setup = first_start.1;
+    for key in ["manual_key", "otpauth_uri", "recovery_codes"] {
+        assert_eq!(first_setup[key], retry.1[key]);
+    }
+    let has_credential: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM user_totp_credentials WHERE user_id=$1)")
+            .bind(user_id)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert!(!has_credential);
 
-    sqlx::query(
-        "UPDATE staff_mfa_challenges SET expires_at=NOW()-INTERVAL '1 second' WHERE user_id=$1",
-    )
-    .bind(user)
-    .execute(&db)
-    .await
-    .unwrap();
-    let next = email_challenge(&app, &delivery, email).await;
+    let next = email_challenge(&db, &app, &delivery, email).await;
     let payload = json!({"challenge_token":next["challenge_token"]});
     let (status, new_setup) = call(&app, begin, Some(payload.clone()), None).await;
     assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        call(&app, begin, Some(first_payload), None).await.0,
+        StatusCode::UNAUTHORIZED
+    );
     assert_ne!(first_setup["manual_key"], new_setup["manual_key"]);
+    assert_ne!(first_setup["recovery_codes"], new_setup["recovery_codes"]);
     let code = TotpEngine::compute_code(
         new_setup["manual_key"].as_str().unwrap(),
         chrono::Utc::now().timestamp() as u64,
@@ -969,7 +1068,7 @@ async fn registered_email_invitation_claim_lifecycle_and_rehire_are_atomic(db: P
         .0,
         StatusCode::OK
     );
-    let challenge = email_challenge(&app, &delivery, "new-dispatcher@example.invalid").await;
+    let challenge = email_challenge(&db, &app, &delivery, "new-dispatcher@example.invalid").await;
     assert_eq!(
         sqlx::query_scalar::<_, String>(
             "SELECT employment_status FROM plant_staff WHERE user_id=$1"
@@ -1441,7 +1540,7 @@ async fn manager_limits_fleet_driver_verification_and_inventory_approval_fail_cl
         .0,
         StatusCode::OK
     );
-    let code = delivery.take_code("12025550999");
+    let code = delivery.take_code(&db, "12025550999").await;
     let (status, driver_login) = call(
         &app,
         "/api/auth/otp/whatsapp/verify",
@@ -1554,7 +1653,7 @@ async fn incomplete_staff_login_preserves_session_until_final_mfa(db: PgPool) {
         call(&app, "/api/me", None, Some(&first.token)).await.0,
         StatusCode::OK
     );
-    let otp = delivery.take_code(email);
+    let otp = delivery.take_code(&db, email).await;
     let (status, challenge) = call(
         &app,
         "/api/auth/otp/email/verify",
@@ -2099,7 +2198,7 @@ async fn driver_employment_reserves_pending_and_suspended_until_explicit_release
         .0,
         StatusCode::OK
     );
-    let code = delivery.take_code("12025550996");
+    let code = delivery.take_code(&db, "12025550996").await;
     let (status, login) = call(
         &app,
         "/api/auth/otp/whatsapp/verify",
@@ -2562,7 +2661,7 @@ async fn primary_central_admin_email_enrollment_login_and_recovery_are_role_boun
                 .0,
             StatusCode::OK
         );
-        delivery.take_code(PRIMARY_EMAIL)
+        delivery.take_code(&db, PRIMARY_EMAIL).await
     };
     let clear_cooldown = || async {
         sqlx::query(
@@ -2609,7 +2708,7 @@ async fn primary_central_admin_email_enrollment_login_and_recovery_are_role_boun
         (first_send.0, second_send.0),
         (StatusCode::OK, StatusCode::BAD_REQUEST) | (StatusCode::BAD_REQUEST, StatusCode::OK)
     ));
-    let expired = delivery.take_code(PRIMARY_EMAIL);
+    let expired = delivery.take_code(&db, PRIMARY_EMAIL).await;
     sqlx::query(
         "UPDATE otp_verifications SET expires_at=NOW()-INTERVAL '1 second' WHERE destination=$1",
     )
@@ -2784,7 +2883,8 @@ async fn parallel_first_whatsapp_requests_preserve_customer_registration(db: PgP
     let mut results = [first.0, second.0];
     results.sort();
     assert_eq!(results, [StatusCode::OK, StatusCode::BAD_REQUEST]);
-    assert_eq!(delivery.messages.lock().unwrap().len(), 1);
+    let otp = delivery.take_code(&db, phone).await;
+    assert!(delivery.messages.lock().unwrap().is_empty());
 
     let account_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE phone=$1")
         .bind(phone)
@@ -2796,7 +2896,7 @@ async fn parallel_first_whatsapp_requests_preserve_customer_registration(db: PgP
     let (status, auth) = call(
         &app,
         "/api/auth/otp/whatsapp/verify",
-        Some(json!({"phone":local_phone,"otp":delivery.take_code(phone)})),
+        Some(json!({"phone":local_phone,"otp":otp})),
         None,
     )
     .await;

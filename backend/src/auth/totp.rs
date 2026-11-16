@@ -37,6 +37,27 @@ impl TotpEngine {
         Self::base32_encode(&mac.finalize().into_bytes()[..20])
     }
 
+    pub(crate) fn staff_enrollment_secret(pepper: &str, challenge: &str) -> String {
+        let mut mac = Hmac::<Sha256>::new_from_slice(pepper.as_bytes()).expect("valid HMAC key");
+        mac.update(b"trackmyrmc:staff-enrollment:v1:");
+        mac.update(challenge.as_bytes());
+        Self::base32_encode(&mac.finalize().into_bytes()[..20])
+    }
+
+    pub(crate) fn staff_enrollment_recovery(pepper: &str, challenge: &str) -> Vec<String> {
+        let mut mac = Hmac::<Sha256>::new_from_slice(pepper.as_bytes()).expect("valid HMAC key");
+        mac.update(b"trackmyrmc:staff-recovery:v1:");
+        mac.update(challenge.as_bytes());
+        (0..8)
+            .map(|index| {
+                let mut code_mac = mac.clone();
+                code_mac.update(&[index]);
+                let code = Self::base32_encode(&code_mac.finalize().into_bytes()[..8]);
+                format!("{}-{}-{}", &code[..4], &code[4..8], &code[8..12])
+            })
+            .collect()
+    }
+
     /// Generates standard otpauth URI for QR code generators
     pub fn get_otpauth_uri(secret: &str, user_label: &str) -> String {
         format!(
@@ -180,9 +201,7 @@ pub async fn setup_totp_for_user(
         r#"
         INSERT INTO user_totp_credentials (user_id, secret_key, is_enabled, backup_codes, updated_at)
         VALUES ($1, $2, FALSE, $3, NOW())
-        ON CONFLICT (user_id) DO UPDATE SET secret_key=EXCLUDED.secret_key,
-            backup_codes=EXCLUDED.backup_codes, updated_at=NOW()
-        WHERE NOT user_totp_credentials.is_enabled
+        ON CONFLICT (user_id) DO NOTHING
         "#,
     )
     .bind(user_id)
@@ -206,16 +225,6 @@ pub async fn verify_and_enable_totp(
     user_id: Uuid,
     submitted_code: &str,
 ) -> Result<(), AppError> {
-    let mut conn = state.db.acquire().await?;
-    verify_and_enable_totp_using(state, &mut conn, user_id, submitted_code).await
-}
-
-pub(crate) async fn verify_and_enable_totp_using(
-    state: &AppState,
-    conn: &mut sqlx::PgConnection,
-    user_id: Uuid,
-    submitted_code: &str,
-) -> Result<(), AppError> {
     let rec = sqlx::query_as::<_, UserTotpRecord>(
         r#"
         SELECT secret_key, is_enabled, backup_codes
@@ -224,7 +233,7 @@ pub(crate) async fn verify_and_enable_totp_using(
         "#,
     )
     .bind(user_id)
-    .fetch_optional(&mut *conn)
+    .fetch_optional(&state.db)
     .await?
     .ok_or_else(|| AppError::NotFound("TOTP setup not initialized".to_string()))?;
 
@@ -241,7 +250,7 @@ pub(crate) async fn verify_and_enable_totp_using(
     .bind(user_id)
     .bind(step)
     .bind(&rec.secret_key)
-    .execute(conn)
+    .execute(&state.db)
     .await?;
     if updated.rows_affected() != 1 {
         return Err(AppError::Conflict(

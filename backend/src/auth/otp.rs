@@ -25,13 +25,6 @@ pub struct OtpVerificationRecord {
 
 pub struct OtpEngine;
 
-#[derive(Clone, Copy)]
-enum DispatchPolicy {
-    ReportDeliveryFailure,
-    AcknowledgePublicRequest,
-    SuppressDelivery,
-}
-
 pub struct OtpSessionInput<'a> {
     pub destination: &'a str,
     pub channel: &'a str,
@@ -73,43 +66,95 @@ impl OtpEngine {
         purpose: &str,
         portal: &str,
     ) -> Result<(), AppError> {
-        Self::deliver_code(
+        let (session_id, code) =
+            Self::reserve_delivery(state, destination, channel, purpose).await?;
+        if let Err(error) = Self::send_pending(
             state,
+            session_id,
             destination,
             channel,
             purpose,
             portal,
-            DispatchPolicy::ReportDeliveryFailure,
+            &code,
         )
         .await
+        {
+            let _ = Self::discard_pending_session(&state.db, session_id).await;
+            return Err(error);
+        }
+        Ok(())
     }
 
-    /// Public login endpoints share cooldown and responses across eligible and
-    /// ineligible destinations. Suppressed requests never create usable codes.
+    /// Every public request reserves an unusable pending code and leaves identity
+    /// lookup and provider I/O to a bounded background task.
     pub(crate) async fn deliver_login(
         state: &AppState,
-        destination: &str,
-        channel: &str,
-        purpose: &str,
-        portal: &str,
-        eligible: bool,
+        destination: String,
+        channel: &'static str,
+        purpose: String,
+        portal: &'static str,
     ) -> Result<(), AppError> {
-        let policy = if eligible {
-            DispatchPolicy::AcknowledgePublicRequest
-        } else {
-            DispatchPolicy::SuppressDelivery
-        };
-        Self::deliver_code(state, destination, channel, purpose, portal, policy).await
+        let slot = state
+            .public_otp_delivery_slots
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| {
+                AppError::RateLimited(
+                    "Verification delivery is busy. Please try again shortly.".into(),
+                )
+            })?;
+        let (session_id, code) =
+            Self::reserve_delivery(state, &destination, channel, &purpose).await?;
+        let state = state.clone();
+        tokio::spawn(async move {
+            let _slot = slot;
+            let delivery = async {
+                if !crate::services::auth_service::public_otp_eligible(
+                    &state,
+                    &destination,
+                    channel,
+                )
+                .await?
+                {
+                    return Ok(false);
+                }
+                Self::send_pending(
+                    &state,
+                    session_id,
+                    &destination,
+                    channel,
+                    &purpose,
+                    portal,
+                    &code,
+                )
+                .await?;
+                Ok::<_, AppError>(true)
+            };
+            let result = tokio::time::timeout(std::time::Duration::from_secs(20), delivery).await;
+            if !matches!(result, Ok(Ok(true))) {
+                if !matches!(result, Ok(Ok(false))) {
+                    tracing::warn!(channel, "Public OTP delivery did not complete");
+                }
+                // Preserve the cooldown and the last successfully delivered code.
+                if sqlx::query("UPDATE otp_verifications SET is_pending=FALSE,is_verified=TRUE WHERE id=$1 AND is_pending")
+                    .bind(session_id)
+                    .execute(&state.db)
+                    .await
+                    .is_err()
+                {
+                    tracing::warn!(channel, "Could not close a pending public OTP record");
+                }
+            }
+        });
+        Ok(())
     }
 
-    async fn deliver_code(
+    async fn reserve_delivery(
         state: &AppState,
         destination: &str,
         channel: &str,
         purpose: &str,
-        portal: &str,
-        policy: DispatchPolicy,
-    ) -> Result<(), AppError> {
+    ) -> Result<(Uuid, String), AppError> {
         state.otp_delivery.validate(channel)?;
         let (code, salt, hashed_otp) = Self::generate_secure_otp(&state.config.otp_pepper);
         let mut tx = state.db.begin().await?;
@@ -118,22 +163,6 @@ impl OtpEngine {
             .execute(&mut *tx)
             .await?;
         Self::check_rate_limit(&mut tx, destination, state.config.otp_cooldown_seconds).await?;
-        if matches!(policy, DispatchPolicy::SuppressDelivery) {
-            sqlx::query(
-                "INSERT INTO otp_verifications
-                 (destination,channel,purpose,hashed_otp,salt,is_verified,expires_at)
-                 VALUES ($1,$2,$3,$4,$5,TRUE,clock_timestamp())",
-            )
-            .bind(destination)
-            .bind(channel)
-            .bind(purpose)
-            .bind(&hashed_otp)
-            .bind(&salt)
-            .execute(&mut *tx)
-            .await?;
-            tx.commit().await?;
-            return Ok(());
-        }
         let session_id = Self::create_pending_session(
             &mut *tx,
             OtpSessionInput {
@@ -148,30 +177,23 @@ impl OtpEngine {
         )
         .await?;
         tx.commit().await?;
+        Ok((session_id, code))
+    }
 
-        if let Err(error) = state
+    async fn send_pending(
+        state: &AppState,
+        session_id: Uuid,
+        destination: &str,
+        channel: &str,
+        purpose: &str,
+        portal: &str,
+        code: &str,
+    ) -> Result<(), AppError> {
+        state
             .otp_delivery
-            .send(channel, destination, &code, portal)
-            .await
-        {
-            if matches!(policy, DispatchPolicy::AcknowledgePublicRequest) {
-                sqlx::query("UPDATE otp_verifications SET is_pending=FALSE,is_verified=TRUE WHERE id=$1 AND is_pending")
-                    .bind(session_id)
-                    .execute(&state.db)
-                    .await?;
-                return Ok(());
-            }
-            let _ = Self::discard_pending_session(&state.db, session_id).await;
-            return Err(error);
-        }
-        if let Err(error) =
-            Self::activate_pending_session(&state.db, session_id, destination, channel, purpose)
-                .await
-        {
-            let _ = Self::discard_pending_session(&state.db, session_id).await;
-            return Err(error);
-        }
-        Ok(())
+            .send(channel, destination, code, portal)
+            .await?;
+        Self::activate_pending_session(&state.db, session_id, destination, channel, purpose).await
     }
 
     async fn check_rate_limit(

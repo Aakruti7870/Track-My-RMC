@@ -86,7 +86,7 @@ pub async fn get_staff_home(
     .fetch_one(&state.db)
     .await?;
     let today_attendance: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM workforce_attendance WHERE plant_id = $1 AND attendance_date = CURRENT_DATE AND status = 'present'",
+        "SELECT COUNT(*) FROM workforce_attendance WHERE plant_id = $1 AND attendance_date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date AND status = 'present'",
     )
     .bind(plant_id)
     .fetch_one(&state.db)

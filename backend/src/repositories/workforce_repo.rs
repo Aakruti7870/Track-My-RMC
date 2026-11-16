@@ -6,6 +6,14 @@ use chrono::NaiveDate;
 use sqlx::PgPool;
 use uuid::Uuid;
 
+pub(crate) async fn attendance_today(pool: &PgPool) -> Result<NaiveDate, AppError> {
+    Ok(
+        sqlx::query_scalar("SELECT (NOW() AT TIME ZONE 'Asia/Kolkata')::date")
+            .fetch_one(pool)
+            .await?,
+    )
+}
+
 pub async fn record_attendance(
     pool: &PgPool,
     plant_id: Uuid,

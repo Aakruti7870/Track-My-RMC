@@ -431,6 +431,103 @@ async fn attendance_register_requires_active_plant_assignment_and_preserves_chec
 }
 
 #[sqlx::test]
+async fn driver_and_owner_attendance_use_the_plant_date_when_postgres_uses_another_day(
+    pool: PgPool,
+) {
+    use axum::{body::to_bytes, extract::State, response::IntoResponse, Json};
+    use trackmyrmc_backend::{
+        auth::AuthUser,
+        routes::{driver_routes, workforce_routes},
+    };
+
+    let (driver, order, _, _) = fixture(&pool).await;
+    let plant: Uuid = sqlx::query_scalar("SELECT plant_id FROM orders WHERE id=$1")
+        .bind(order)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let owner: Uuid = sqlx::query_scalar(
+        "INSERT INTO users (phone,hashed_password,full_name,role)
+         VALUES ('attendance-owner','unused','Attendance Owner','owner') RETURNING id",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    sqlx::query("UPDATE rmc_plants SET owner_id=$1 WHERE id=$2")
+        .bind(owner)
+        .bind(plant)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let local_pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .connect_with(pool.connect_options().as_ref().clone())
+        .await
+        .unwrap();
+    let (today, server_date): (chrono::NaiveDate, chrono::NaiveDate) = sqlx::query_as(
+        "SELECT (NOW() AT TIME ZONE 'Asia/Kolkata')::date,
+           (NOW() AT TIME ZONE set_config('TimeZone', CASE WHEN
+              (NOW() AT TIME ZONE 'Pacific/Pago_Pago')::date=(NOW() AT TIME ZONE 'Asia/Kolkata')::date
+              THEN 'Pacific/Kiritimati' ELSE 'Pacific/Pago_Pago' END, FALSE))::date",
+    )
+    .fetch_one(&local_pool)
+    .await
+    .unwrap();
+    assert_ne!(today, server_date);
+
+    let state = state(local_pool);
+    let location = || {
+        Json(driver_routes::DriverAttendanceLocation {
+            lat: 19.0,
+            lng: 73.0,
+        })
+    };
+    driver_routes::check_in_driver(State(state.clone()), driver_user(driver), location())
+        .await
+        .unwrap();
+
+    let read_json = |response: axum::response::Response| async move {
+        serde_json::from_slice::<serde_json::Value>(
+            &to_bytes(response.into_body(), 32_768).await.unwrap(),
+        )
+        .unwrap()
+    };
+    let driver_home = driver_routes::get_driver_home(State(state.clone()), driver_user(driver))
+        .await
+        .unwrap();
+    assert_eq!(
+        read_json(driver_home.into_response()).await["checked_in"],
+        true
+    );
+
+    let control = workforce_routes::get_owner_control(
+        State(state.clone()),
+        AuthUser {
+            user_id: owner,
+            role: "owner".into(),
+            phone: "attendance-owner".into(),
+            email: None,
+        },
+    )
+    .await
+    .unwrap();
+    let control = read_json(control.into_response()).await;
+    assert_eq!(control["attendance"][0]["date"], today.to_string());
+
+    driver_routes::check_out_driver(State(state.clone()), driver_user(driver), location())
+        .await
+        .unwrap();
+    let attendance = driver_routes::get_driver_attendance(State(state), driver_user(driver))
+        .await
+        .unwrap();
+    let attendance = read_json(attendance.into_response()).await;
+    assert_eq!(attendance["date"], today.to_string());
+    assert!(attendance["check_in"].is_string());
+    assert!(attendance["check_out"].is_string());
+}
+
+#[sqlx::test]
 async fn transitions_are_owned_ordered_and_idempotent(pool: PgPool) {
     let (driver, _, load, _) = fixture(&pool).await;
     assert!(matches!(

@@ -2,6 +2,7 @@ use crate::{
     auth::{middleware::check_role, AuthUser},
     error::AppError,
     models::workforce::MarkAttendanceRequest,
+    repositories::workforce_repo,
     services::payroll_service,
     state::AppState,
 };
@@ -125,11 +126,7 @@ pub async fn get_roster(
 
     let date = match query.date {
         Some(date) => date,
-        None => {
-            sqlx::query_scalar("SELECT (NOW() AT TIME ZONE 'Asia/Kolkata')::date")
-                .fetch_one(&state.db)
-                .await?
-        }
+        None => workforce_repo::attendance_today(&state.db).await?,
     };
     let roster = payroll_service::fetch_daily_roster(&state, query.plant_id, date).await?;
     Ok(Json(
@@ -664,7 +661,7 @@ pub async fn get_owner_control(
           FROM workforce_attendance a
           JOIN users u ON u.id=a.user_id
           JOIN rmc_plants p ON p.id=a.plant_id
-          WHERE a.plant_id=ANY($1) AND a.attendance_date=CURRENT_DATE
+          WHERE a.plant_id=ANY($1) AND a.attendance_date=(NOW() AT TIME ZONE 'Asia/Kolkata')::date
           ORDER BY a.check_in_time DESC NULLS LAST,a.id
           LIMIT 500"#,
     )
@@ -1266,7 +1263,7 @@ pub async fn get_my_roster_me(
     .await?;
 
     let pid = plant_id.unwrap_or(Uuid::nil());
-    let today = chrono::Utc::now().date_naive();
+    let today = workforce_repo::attendance_today(&state.db).await?;
     let end_date = today + chrono::Duration::days(14);
 
     let rows = sqlx::query(

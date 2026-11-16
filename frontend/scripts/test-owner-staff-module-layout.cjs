@@ -109,7 +109,7 @@ for (const field of ['"plant_ids": plant_ids', '"attendance": attendance', '"lea
   assert(workforceBackend.includes(field), "Owner workforce response is missing " + field);
 }
 assert(workforceBackend.includes("a.plant_id=ANY($1)") &&
-       workforceBackend.includes("a.attendance_date=CURRENT_DATE"),
+       workforceBackend.includes("a.attendance_date=(NOW() AT TIME ZONE 'Asia/Kolkata')::date"),
   "Owner attendance must select only today's records from owned plants");
 assert(workforceBackend.includes("WHERE workforce_attendance.check_in_time IS NULL") &&
        workforceBackend.includes("updated.rows_affected() != 1"),
