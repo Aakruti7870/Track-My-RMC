@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, FlatList, Linking, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 
@@ -28,6 +28,7 @@ const FILTERS: { key: string; label: string; match: (s: string) => boolean }[] =
 type PlantOrderRequest = {
   id: string;
   plant_name: string | null;
+  google_place_id?: string | null;
   status: "PENDING_ADMIN_REVIEW" | "AWAITING_PLANT" | "READY_FOR_QUOTATION" | "DECLINED";
   decision_note?: string;
   quotation_plant_id?: string;
@@ -145,7 +146,13 @@ export default function CustomerOrders() {
             {reviewLoading ? <ActivityIndicator color={colors.brand} accessibilityLabel="Loading order requests" /> : null}
             {reviewError ? <Button label="Retry loading order requests" size="sm" variant="outline" fullWidth={false} onPress={() => void review.reload()} /> : null}
             {reviewRequests.map(request => <Card key={request.id} style={{ gap: spacing.xs }}>
-              <AppText variant="label">{request.plant_name || "Plant order request"}</AppText>
+              <AppText variant="label">{request.plant_name || (request.google_place_id ? "Google-listed plant" : "Plant order request")}</AppText>
+              {request.google_place_id ? <Button label="View on Google Maps" size="sm" variant="outline" fullWidth={false}
+                onPress={() => {
+                  const placeId = encodeURIComponent(request.google_place_id ?? "");
+                  void Linking.openURL(`https://www.google.com/maps/search/?api=1&query=RMC%20plant&query_place_id=${placeId}`)
+                    .catch(() => undefined);
+                }} /> : null}
               <AppText>{request.site_address}</AppText>
               <AppText variant="caption">{request.grade} · {request.quantity_m3} m³ · {request.delivery_date}</AppText>
               <AppText variant="caption">{({

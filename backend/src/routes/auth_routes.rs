@@ -115,7 +115,7 @@ pub async fn send_whatsapp_otp(
     auth_service::send_whatsapp_otp(&state, payload).await?;
     Ok(Json(json!({
         "success": true,
-        "message": "Verification code dispatched via WhatsApp"
+        "message": "If this number is eligible, a code will be sent via WhatsApp"
     })))
 }
 
@@ -139,7 +139,7 @@ pub async fn send_email_otp(
         "success": true,
         "status": "OTP_SENT",
         "channel": "email",
-        "message": "Verification code dispatched to your email address"
+        "message": "If this email is eligible, a verification code will be sent"
     })))
 }
 

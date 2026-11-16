@@ -175,6 +175,25 @@ pub async fn upload_file(
     let ext = safe_upload_extension(&orig_name);
     let stored_path = format!("trackmyrmc/{}/{}.{}", purpose, Uuid::new_v4().simple(), ext);
 
+    let mut tx = state.db.begin().await?;
+    sqlx::query("SELECT id FROM users WHERE id=$1 FOR NO KEY UPDATE")
+        .bind(auth_user.user_id)
+        .fetch_one(&mut *tx)
+        .await?;
+    let (count, bytes): (i64, i64) = sqlx::query_as(
+        "SELECT COUNT(*),COALESCE(SUM(file_size_bytes),0)::bigint FROM stored_files
+         WHERE uploaded_by=$1 AND storage_provider='postgres'
+           AND created_at>clock_timestamp()-INTERVAL '1 hour'",
+    )
+    .bind(auth_user.user_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    if count >= 60 || bytes.saturating_add(data.len() as i64) > 60 * 1024 * 1024 {
+        return Err(AppError::RateLimited(
+            "Hourly upload limit reached. Please try again later.".into(),
+        ));
+    }
+
     sqlx::query(
         r#"
         INSERT INTO stored_files (uploaded_by, file_path, file_name, content_type, file_size_bytes, storage_provider, file_data, load_id)
@@ -188,8 +207,9 @@ pub async fn upload_file(
     .bind(data.len() as i64)
     .bind(&data)
     .bind(load_id)
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await?;
+    tx.commit().await?;
 
     Ok(Json(json!({
         "success": true,
@@ -211,14 +231,18 @@ pub async fn get_file(
                  JOIN order_loads l ON l.id = pod.load_id
                  JOIN orders o ON o.id = l.order_id
                  JOIN rmc_plants p ON p.id = o.plant_id
-                 WHERE pod.photo_url = f.file_path
+                 WHERE (pod.photo_url = f.file_path
+                    OR (pod.signature_url = f.file_path AND f.load_id = l.id
+                        AND f.uploaded_by = l.driver_id))
                  AND (o.customer_id = $2 OR p.owner_id = $2 OR EXISTS(
                      SELECT 1 FROM plant_staff ps WHERE ps.plant_id = o.plant_id
-                     AND ps.user_id = $2 AND ps.is_active = TRUE))
+                     AND ps.user_id = $2 AND ps.is_active AND ps.role = $3
+                     AND ps.removed_at IS NULL AND ps.employment_status = 'ACTIVE'))
              ))",
     )
     .bind(&path)
     .bind(auth_user.user_id)
+    .bind(&auth_user.role)
     .fetch_optional(&state.db)
     .await?
     .ok_or_else(|| AppError::NotFound("File not found".to_string()))?;

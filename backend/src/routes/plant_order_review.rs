@@ -178,7 +178,7 @@ pub async fn list_customer(
 ) -> Result<Json<Value>, AppError> {
     check_role(&auth, &["customer"])?;
     let requests: Vec<Value> = sqlx::query_scalar(
-        "SELECT jsonb_build_object('id',r.id,'plant_name',p.name,'grade',r.grade,
+        "SELECT jsonb_build_object('id',r.id,'plant_name',p.name,'google_place_id',r.google_place_id,'grade',r.grade,
           'quantity_m3',r.quantity_m3::double precision,'delivery_date',r.delivery_date,
           'site_address',r.site_address,'status',r.status,'decision_note',r.decision_note,
           'pump_required',r.pump_required,'delivery_lat',r.site_lat,'delivery_lng',r.site_lng,

@@ -55,11 +55,21 @@ for (const role of staff.STAFF_ROLES) {
   assert(home.length > 0, role + " must expose operational modules on Home");
   assert(home.every(m => !staff.STAFF_MORE_KEYS.includes(m.key)), role + " Home must not repeat personal More cards");
   assert(more.every(m => staff.STAFF_MORE_KEYS.includes(m.key)), role + " More must remain personal/account focused");
-  const protectedModules = home.filter(module => staff.STAFF_MODULE_PERMISSIONS[module.key]);
-  const denied = staff.visibleStaffModules(home, protectedModules.map(module => ({ key: staff.STAFF_MODULE_PERMISSIONS[module.key], view: false })));
-  assert(denied.every(module => !staff.STAFF_MODULE_PERMISSIONS[module.key]), role + " rendered a denied shortcut");
-  const allowed = staff.visibleStaffModules(home, protectedModules.map(module => ({ key: staff.STAFF_MODULE_PERMISSIONS[module.key], view: true })));
-  assert.deepEqual(allowed, home);
+  const moduleGrants = home.flatMap(module => {
+    const key = staff.STAFF_MODULE_PERMISSIONS[module.key];
+    return key ? [{ key, view: true }] : [];
+  });
+  const deniedKeys = staff.visibleStaffModules(home, moduleGrants.map(grant => ({ ...grant, view: false })))
+    .map(module => module.key);
+  assert.deepEqual(deniedKeys, home
+    .filter(module => module.key !== "business-staff" && !staff.STAFF_MODULE_PERMISSIONS[module.key])
+    .map(module => module.key), role + " must hide shortcuts without effective access");
+  assert.deepEqual(staff.visibleStaffModules(home, moduleGrants), home.filter(module => module.key !== "business-staff"),
+    role + " must hide staff management without delegation even when module grants are present");
+  assert.deepEqual(staff.visibleStaffModules(home, moduleGrants, true), home,
+    role + " with delegation and module grants must see all catalog shortcuts in scope");
+  assert(!staff.visibleStaffModules(home, [], true).some(module => module.key === "business-attendance"),
+    role + " must have a workforce view grant to see plant attendance");
   for (const module of [...home, ...more]) assert(catalogKeys.includes(module.key), role + " exposes unauthorized catalog module " + module.key);
   for (const viewportWidth of [320, 360, 390, 480, 680, 768, 980, 1440]) {
     const cols = viewportWidth >= 950 ? 5 : viewportWidth >= 680 ? 4 : viewportWidth >= 470 ? 3 : 2;
@@ -99,7 +109,7 @@ for (const field of ['"plant_ids": plant_ids', '"attendance": attendance', '"lea
   assert(workforceBackend.includes(field), "Owner workforce response is missing " + field);
 }
 assert(workforceBackend.includes("a.plant_id=ANY($1)") &&
-       workforceBackend.includes("a.attendance_date=CURRENT_DATE"),
+       workforceBackend.includes("a.attendance_date=(NOW() AT TIME ZONE 'Asia/Kolkata')::date"),
   "Owner attendance must select only today's records from owned plants");
 assert(workforceBackend.includes("WHERE workforce_attendance.check_in_time IS NULL") &&
        workforceBackend.includes("updated.rows_affected() != 1"),

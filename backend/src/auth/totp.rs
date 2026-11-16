@@ -37,6 +37,27 @@ impl TotpEngine {
         Self::base32_encode(&mac.finalize().into_bytes()[..20])
     }
 
+    pub(crate) fn staff_enrollment_secret(pepper: &str, challenge: &str) -> String {
+        let mut mac = Hmac::<Sha256>::new_from_slice(pepper.as_bytes()).expect("valid HMAC key");
+        mac.update(b"trackmyrmc:staff-enrollment:v1:");
+        mac.update(challenge.as_bytes());
+        Self::base32_encode(&mac.finalize().into_bytes()[..20])
+    }
+
+    pub(crate) fn staff_enrollment_recovery(pepper: &str, challenge: &str) -> Vec<String> {
+        let mut mac = Hmac::<Sha256>::new_from_slice(pepper.as_bytes()).expect("valid HMAC key");
+        mac.update(b"trackmyrmc:staff-recovery:v1:");
+        mac.update(challenge.as_bytes());
+        (0..8)
+            .map(|index| {
+                let mut code_mac = mac.clone();
+                code_mac.update(&[index]);
+                let code = Self::base32_encode(&code_mac.finalize().into_bytes()[..8]);
+                format!("{}-{}-{}", &code[..4], &code[4..8], &code[8..12])
+            })
+            .collect()
+    }
+
     /// Generates standard otpauth URI for QR code generators
     pub fn get_otpauth_uri(secret: &str, user_label: &str) -> String {
         format!(
@@ -222,10 +243,8 @@ pub async fn verify_and_enable_totp(
     })?;
 
     let updated = sqlx::query(
-        "UPDATE user_totp_credentials t SET is_enabled=TRUE, updated_at=NOW(),
-         last_login_totp_step=CASE WHEN EXISTS(
-           SELECT 1 FROM users u WHERE u.id=t.user_id AND u.role IN ('central_admin','authority'))
-           THEN $2 ELSE last_login_totp_step END
+        "UPDATE user_totp_credentials SET is_enabled=TRUE,updated_at=NOW(),
+         last_login_totp_step=$2
          WHERE user_id=$1 AND secret_key=$3 AND is_enabled=FALSE",
     )
     .bind(user_id)

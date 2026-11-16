@@ -5,6 +5,7 @@ use crate::{
         challan::{SignChallanRequest, SubmitPodRequest},
         telemetry::LocationUpdateRequest,
     },
+    repositories::workforce_repo,
     services::{dispatch_service, tracking_service},
     state::AppState,
 };
@@ -141,7 +142,7 @@ pub async fn get_driver_home(
                 SELECT 1
                 FROM workforce_attendance wa
                 WHERE wa.user_id = u.id
-                  AND wa.attendance_date = CURRENT_DATE
+                  AND wa.attendance_date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date
                   AND wa.check_in_time IS NOT NULL
                   AND wa.check_out_time IS NULL
             ) AS checked_in
@@ -180,7 +181,7 @@ pub async fn get_driver_attendance(
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["driver"])?;
-    let today = Utc::now().date_naive();
+    let today = workforce_repo::attendance_today(&state.db).await?;
 
     let attendance = sqlx::query_as::<_, (Option<DateTime<Utc>>, Option<DateTime<Utc>>)>(
         r#"
@@ -213,7 +214,7 @@ pub async fn check_in_driver(
     check_role(&auth_user, &["driver"])?;
     validate_attendance_location(&payload)?;
     let plant_id = resolve_driver_plant(&state, auth_user.user_id).await?;
-    let today = Utc::now().date_naive();
+    let today = workforce_repo::attendance_today(&state.db).await?;
 
     let inserted = sqlx::query(
         r#"
@@ -251,7 +252,7 @@ pub async fn check_out_driver(
     check_role(&auth_user, &["driver"])?;
     validate_attendance_location(&payload)?;
     let plant_id = resolve_driver_plant(&state, auth_user.user_id).await?;
-    let today = Utc::now().date_naive();
+    let today = workforce_repo::attendance_today(&state.db).await?;
 
     let updated = sqlx::query(
         r#"

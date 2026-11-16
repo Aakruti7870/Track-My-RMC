@@ -2,6 +2,7 @@ use crate::{
     auth::{middleware::check_role, AuthUser},
     error::AppError,
     models::workforce::MarkAttendanceRequest,
+    repositories::workforce_repo,
     services::payroll_service,
     state::AppState,
 };
@@ -123,9 +124,10 @@ pub async fn get_roster(
 
     ensure_plant_access(&state, &auth_user, query.plant_id).await?;
 
-    let date = query
-        .date
-        .unwrap_or_else(|| chrono::Utc::now().date_naive());
+    let date = match query.date {
+        Some(date) => date,
+        None => workforce_repo::attendance_today(&state.db).await?,
+    };
     let roster = payroll_service::fetch_daily_roster(&state, query.plant_id, date).await?;
     Ok(Json(
         json!({ "success": true, "date": date, "roster": roster }),
@@ -137,42 +139,64 @@ pub async fn mark_attendance(
     auth_user: AuthUser,
     Json(payload): Json<MarkAttendanceRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    match auth_user.role.as_str() {
-        "admin" => {}
-        "owner" | "plant_owner" => {
-            ensure_plant_access(&state, &auth_user, payload.plant_id).await?;
-        }
-        _ => {
-            let self_assigned: bool = sqlx::query_scalar(
-                "SELECT EXISTS(SELECT 1 FROM plant_staff WHERE plant_id = $1 AND user_id = $2 AND is_active = TRUE)",
-            )
-            .bind(payload.plant_id)
-            .bind(auth_user.user_id)
-            .fetch_one(&state.db)
-            .await?;
-            if !self_assigned {
-                return Err(AppError::Forbidden(
-                    "You are not assigned to this plant".to_string(),
-                ));
-            }
+    if !matches!(payload.check_type.as_str(), "in" | "out") {
+        return Err(AppError::BadRequest("Choose check-in or check-out".into()));
+    }
+    if payload
+        .latitude
+        .is_some_and(|value| !(-90.0..=90.0).contains(&value))
+        || payload
+            .longitude
+            .is_some_and(|value| !(-180.0..=180.0).contains(&value))
+    {
+        return Err(AppError::BadRequest(
+            "Attendance coordinates are out of range".into(),
+        ));
+    }
+
+    if matches!(auth_user.role.as_str(), "owner" | "plant_owner") {
+        ensure_plant_access(&state, &auth_user, payload.plant_id).await?;
+    } else {
+        let self_assigned: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM plant_staff ps JOIN rmc_plants p ON p.id=ps.plant_id
+             WHERE ps.plant_id=$1 AND ps.user_id=$2 AND ps.role=$3 AND p.is_active
+               AND ps.is_active AND ps.removed_at IS NULL AND ps.employment_status='ACTIVE')",
+        )
+        .bind(payload.plant_id)
+        .bind(auth_user.user_id)
+        .bind(&auth_user.role)
+        .fetch_one(&state.db)
+        .await?;
+        if !self_assigned {
+            return Err(AppError::Forbidden(
+                "You are not assigned to this plant".into(),
+            ));
         }
     }
 
-    if let Some(target_user_id) = payload.user_id {
-        if target_user_id != auth_user.user_id {
-            check_role(&auth_user, &["supervisor", "owner", "plant_owner", "admin"])?;
-            let target_assigned: bool = sqlx::query_scalar(
-                "SELECT EXISTS(SELECT 1 FROM plant_staff WHERE plant_id = $1 AND user_id = $2 AND is_active = TRUE)",
-            )
-            .bind(payload.plant_id)
-            .bind(target_user_id)
-            .fetch_one(&state.db)
-            .await?;
-            if !target_assigned {
-                return Err(AppError::BadRequest(
-                    "Target user is not assigned to this plant".to_string(),
-                ));
-            }
+    if let Some(target_user_id) = payload.user_id.filter(|id| *id != auth_user.user_id) {
+        check_role(&auth_user, &["supervisor", "owner", "plant_owner", "admin"])?;
+        super::staff_module_permissions::require(
+            &state,
+            &auth_user,
+            payload.plant_id,
+            "workforce",
+            super::staff_module_permissions::Action::Edit,
+        )
+        .await?;
+        let target_assigned: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM plant_staff ps JOIN users u ON u.id=ps.user_id
+             WHERE ps.plant_id=$1 AND ps.user_id=$2 AND ps.role=u.role AND u.is_active
+               AND ps.is_active AND ps.removed_at IS NULL AND ps.employment_status='ACTIVE')",
+        )
+        .bind(payload.plant_id)
+        .bind(target_user_id)
+        .fetch_one(&state.db)
+        .await?;
+        if !target_assigned {
+            return Err(AppError::BadRequest(
+                "Target user is not assigned to this plant".into(),
+            ));
         }
     }
 
@@ -192,7 +216,7 @@ pub async fn get_workforce_me(
         r#"
         SELECT id, check_in_time, check_out_time, status
         FROM workforce_attendance
-        WHERE plant_id = $1 AND user_id = $2 AND attendance_date = CURRENT_DATE
+        WHERE plant_id = $1 AND user_id = $2 AND attendance_date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date
         "#,
     )
     .bind(plant_id)
@@ -205,7 +229,7 @@ pub async fn get_workforce_me(
         SELECT s.name as shift_name, s.start_time, s.end_time
         FROM workforce_roster_schedules rs
         INNER JOIN workforce_shifts s ON s.id = rs.shift_id
-        WHERE rs.plant_id = $1 AND rs.user_id = $2 AND rs.date_key = CURRENT_DATE
+        WHERE rs.plant_id = $1 AND rs.user_id = $2 AND rs.date_key = (NOW() AT TIME ZONE 'Asia/Kolkata')::date
         "#,
     )
     .bind(plant_id)
@@ -257,7 +281,7 @@ pub async fn punch_in(
     let inserted = sqlx::query(
         r#"
         INSERT INTO workforce_attendance (plant_id, user_id, attendance_date, check_in_time, check_in_lat, check_in_lng, status)
-        VALUES ($1, $2, CURRENT_DATE, NOW(), $3, $4, 'present')
+        VALUES ($1, $2, (NOW() AT TIME ZONE 'Asia/Kolkata')::date, NOW(), $3, $4, 'present')
         ON CONFLICT (plant_id, user_id, attendance_date) DO UPDATE SET
             check_in_time = EXCLUDED.check_in_time,
             check_in_lat = EXCLUDED.check_in_lat,
@@ -295,7 +319,7 @@ pub async fn punch_out(
         r#"
         UPDATE workforce_attendance
         SET check_out_time = NOW()
-        WHERE plant_id = $1 AND user_id = $2 AND attendance_date = CURRENT_DATE
+        WHERE plant_id = $1 AND user_id = $2 AND attendance_date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date
           AND check_in_time IS NOT NULL AND check_out_time IS NULL
         "#,
     )
@@ -637,7 +661,7 @@ pub async fn get_owner_control(
           FROM workforce_attendance a
           JOIN users u ON u.id=a.user_id
           JOIN rmc_plants p ON p.id=a.plant_id
-          WHERE a.plant_id=ANY($1) AND a.attendance_date=CURRENT_DATE
+          WHERE a.plant_id=ANY($1) AND a.attendance_date=(NOW() AT TIME ZONE 'Asia/Kolkata')::date
           ORDER BY a.check_in_time DESC NULLS LAST,a.id
           LIMIT 500"#,
     )
@@ -1239,7 +1263,7 @@ pub async fn get_my_roster_me(
     .await?;
 
     let pid = plant_id.unwrap_or(Uuid::nil());
-    let today = chrono::Utc::now().date_naive();
+    let today = workforce_repo::attendance_today(&state.db).await?;
     let end_date = today + chrono::Duration::days(14);
 
     let rows = sqlx::query(

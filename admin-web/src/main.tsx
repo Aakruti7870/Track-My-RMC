@@ -2314,6 +2314,8 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                   <tbody>{records.map((row,index)=><tr key={String(row.id||index)}>{Object.entries(row).map(([key,value])=><td key={key} style={{padding:8,borderTop:'1px solid var(--tm-border)'}}>
                     {workspace==='plant_order_requests' && key==='google_place_id' && typeof value==='string'
                       ? <a style={{color:'var(--tm-selected-ink)'}} href={'https://www.google.com/maps/search/?api=1&query=RMC%20plant&query_place_id='+encodeURIComponent(value)} target="_blank" rel="noreferrer">View on Google Maps</a>
+                      : workspace==='plant_order_requests' && key==='plant_name' && value===null && typeof row.google_place_id==='string'
+                        ? 'Google-listed plant'
                       : workspace === 'orders' && key === 'status' && typeof value === 'string'
                         ? <strong style={{color:orderStatusColor(value, isDark)}}>{value}</strong>
                         : value===null?'—':typeof value==='object'?JSON.stringify(value):String(value)}

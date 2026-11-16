@@ -42,6 +42,7 @@ export const STAFF_MODULE_PERMISSIONS: Readonly<Record<string, string>> = {
   "business-expenses": "expenses",
   "business-payroll": "payroll",
   "business-reports": "plant_reports",
+  "business-attendance": "workforce",
   "workforce-reports": "workforce",
   "employee-master": "employee_master",
   "payroll-closure": "payroll",
@@ -99,9 +100,10 @@ export function staffModulesForScope(role: string | null | undefined, scope: Sta
 // into new routes without an accompanying API, permission and data contract.
 export const STAFF_MODULE_GROUPS: ModuleGroup[] = ["Operations", "Commercial", "Workforce", "Tools", "Account"];
 export type StaffModuleGrant = { key: string; view: boolean };
-export function visibleStaffModules(modules: RoleModule[], grants?: readonly StaffModuleGrant[]) {
+export function visibleStaffModules(modules: RoleModule[], grants?: readonly StaffModuleGrant[], canManageStaff = false) {
   const allowed = new Set(grants?.filter(grant => grant.view).map(grant => grant.key));
   return modules.filter(module => {
+    if (module.key === "business-staff") return canManageStaff;
     const permission = STAFF_MODULE_PERMISSIONS[module.key];
     return !permission || allowed.has(permission);
   });
@@ -115,12 +117,14 @@ export function StaffModuleDirectory({
   const { token } = useAuth();
   const { width } = useWindowDimensions();
   const [allowed, setAllowed] = useState<StaffModuleGrant[] | null>(null);
+  const [canManageStaff, setCanManageStaff] = useState(false);
   const [permissionError, setPermissionError] = useState(false);
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState<ModuleGroup | "All">("All");
   const staffRole = STAFF_ROLES.find(value => value === role);
 
   useFocusEffect(useCallback(() => {
+    setCanManageStaff(false);
     if (!staffRole || !token) {
       setAllowed([]);
       setPermissionError(true);
@@ -139,12 +143,21 @@ export function StaffModuleDirectory({
           setPermissionError(true);
         }
       });
+    if (modulesForRole(staffRole).some(module => module.key === "business-staff")) {
+      apiGet<{ enabled: boolean; can_manage_staff?: boolean }>("/staff/manager-access", token)
+        .then(result => {
+          if (active) setCanManageStaff(result.enabled && result.can_manage_staff === true);
+        })
+        .catch(() => {
+          if (active) setCanManageStaff(false);
+        });
+    }
     return () => { active = false; };
   }, [token, staffRole]));
 
   const selectedGroup = category ?? group;
-  const allVisible = useMemo(() => visibleStaffModules(staffModulesForScope(role, scope), allowed ?? undefined)
-    .filter(module => !category || module.group === category), [role, scope, allowed, category]);
+  const allVisible = useMemo(() => visibleStaffModules(staffModulesForScope(role, scope), allowed ?? undefined, canManageStaff)
+    .filter(module => !category || module.group === category), [role, scope, allowed, canManageStaff, category]);
   const needle = query.trim().toLowerCase();
   const modules = allVisible.filter(module => (selectedGroup === "All" || module.group === selectedGroup)
     && (!needle || (module.label + " " + module.description).toLowerCase().includes(needle)));

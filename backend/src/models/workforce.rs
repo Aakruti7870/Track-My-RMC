@@ -18,6 +18,7 @@ pub struct WorkforceAttendance {
     pub id: Uuid,
     pub plant_id: Uuid,
     pub user_id: Uuid,
+    pub user_name: String,
     pub attendance_date: NaiveDate,
     pub shift_id: Option<Uuid>,
     pub check_in_time: Option<DateTime<Utc>>,

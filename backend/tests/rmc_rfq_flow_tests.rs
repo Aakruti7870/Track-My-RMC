@@ -188,6 +188,30 @@ async fn plant_order_review_dispatches_only_to_central_admin_and_replays_once(db
         json!([])
     );
 
+    // A historical Google-only request stores the Place ID and keeps the
+    // customer and central review views usable without the Places provider.
+    let review_id: Uuid = first.1["id"].as_str().unwrap().parse().unwrap();
+    sqlx::query(
+        "UPDATE plant_order_review_requests SET plant_id=NULL,google_place_id=$2 WHERE id=$1",
+    )
+    .bind(review_id)
+    .bind("ChIJ_fixture_unregistered")
+    .execute(&db)
+    .await
+    .unwrap();
+    for (path, token, property) in [
+        (route, customer_token.as_str(), "requests"),
+        (queue, admin_token.as_str(), "items"),
+    ] {
+        let (status, response) = call(&app, path, "GET", None, token).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            response[property][0]["google_place_id"],
+            "ChIJ_fixture_unregistered"
+        );
+        assert_eq!(response[property][0]["plant_name"], Value::Null);
+    }
+
     sqlx::query("INSERT INTO plant_admin_controls(plant_id,discovery_visible,changed_by,change_reason) VALUES($1,FALSE,$2,'Hold this fixture plant')")
         .bind(plant_id).bind(admin).execute(&db).await.unwrap();
     payload["request_key"] = json!(Uuid::new_v4());
