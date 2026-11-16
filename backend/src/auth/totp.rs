@@ -180,7 +180,9 @@ pub async fn setup_totp_for_user(
         r#"
         INSERT INTO user_totp_credentials (user_id, secret_key, is_enabled, backup_codes, updated_at)
         VALUES ($1, $2, FALSE, $3, NOW())
-        ON CONFLICT (user_id) DO NOTHING
+        ON CONFLICT (user_id) DO UPDATE SET secret_key=EXCLUDED.secret_key,
+            backup_codes=EXCLUDED.backup_codes, updated_at=NOW()
+        WHERE NOT user_totp_credentials.is_enabled
         "#,
     )
     .bind(user_id)
@@ -204,6 +206,16 @@ pub async fn verify_and_enable_totp(
     user_id: Uuid,
     submitted_code: &str,
 ) -> Result<(), AppError> {
+    let mut conn = state.db.acquire().await?;
+    verify_and_enable_totp_using(state, &mut conn, user_id, submitted_code).await
+}
+
+pub(crate) async fn verify_and_enable_totp_using(
+    state: &AppState,
+    conn: &mut sqlx::PgConnection,
+    user_id: Uuid,
+    submitted_code: &str,
+) -> Result<(), AppError> {
     let rec = sqlx::query_as::<_, UserTotpRecord>(
         r#"
         SELECT secret_key, is_enabled, backup_codes
@@ -212,7 +224,7 @@ pub async fn verify_and_enable_totp(
         "#,
     )
     .bind(user_id)
-    .fetch_optional(&state.db)
+    .fetch_optional(&mut *conn)
     .await?
     .ok_or_else(|| AppError::NotFound("TOTP setup not initialized".to_string()))?;
 
@@ -222,16 +234,14 @@ pub async fn verify_and_enable_totp(
     })?;
 
     let updated = sqlx::query(
-        "UPDATE user_totp_credentials t SET is_enabled=TRUE, updated_at=NOW(),
-         last_login_totp_step=CASE WHEN EXISTS(
-           SELECT 1 FROM users u WHERE u.id=t.user_id AND u.role IN ('central_admin','authority'))
-           THEN $2 ELSE last_login_totp_step END
+        "UPDATE user_totp_credentials SET is_enabled=TRUE,updated_at=NOW(),
+         last_login_totp_step=$2
          WHERE user_id=$1 AND secret_key=$3 AND is_enabled=FALSE",
     )
     .bind(user_id)
     .bind(step)
     .bind(&rec.secret_key)
-    .execute(&state.db)
+    .execute(conn)
     .await?;
     if updated.rows_affected() != 1 {
         return Err(AppError::Conflict(

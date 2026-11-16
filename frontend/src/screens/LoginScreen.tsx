@@ -409,7 +409,7 @@ export default function LoginScreen() {
             onComplete={handleVerifyUser}
             state={otpVisual}
             title="Verify your number"
-            subtitle={`Enter the 6-digit code sent to ${maskedPhone}.`}
+            subtitle={`Enter the 6-digit code if you receive one at ${maskedPhone}.`}
             errorText={error}
             countdown={countdown}
             onResend={resendCurrentOtp}
@@ -431,7 +431,7 @@ export default function LoginScreen() {
             onComplete={handleVerifyStaffEmail}
             state={otpVisual}
             title="Verify approved email"
-            subtitle={`Enter the 6-digit code sent to ${identifier}.`}
+            subtitle={`Enter the 6-digit code if you receive one at ${identifier}.`}
             errorText={error}
             countdown={countdown}
             onResend={resendCurrentOtp}
@@ -506,7 +506,7 @@ export default function LoginScreen() {
             onComplete={handleVerifyAuthenticator}
             state={otpVisual}
             title="Authenticator verification"
-            subtitle="Enter the current 6-digit code from your Authenticator app."
+            subtitle="Enter the current 6-digit code from your authenticator. After setup, wait for the code to change."
             errorText={error}
             colors={otpColors}
             successSubtitle="Authenticator verification completed."

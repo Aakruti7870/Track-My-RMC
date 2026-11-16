@@ -279,6 +279,158 @@ async fn fixture(pool: &PgPool) -> (Uuid, Uuid, Uuid, Uuid) {
 }
 
 #[sqlx::test]
+async fn signed_challan_survives_parallel_submission_and_accepts_identical_retries(pool: PgPool) {
+    use trackmyrmc_backend::{
+        models::challan::SignChallanRequest, services::dispatch_service::sign_digital_challan,
+    };
+    let (driver, _, load, _) = fixture(&pool).await;
+    let id: Uuid = sqlx::query_scalar(
+        "INSERT INTO challans (load_id,challan_number,plant_code,customer_name,site_address,
+         concrete_grade,quantity_m3,mixer_number,driver_name)
+         VALUES ($1,'TEST-SIGNED','TEST','Test','Test','M25',6,'TEST-MIXER','Test') RETURNING id",
+    )
+    .bind(load)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let request = |signature: &str| SignChallanRequest {
+        receiver_name: "Fixture Receiver".into(),
+        receiver_phone: String::new(),
+        digital_signature: signature.into(),
+        notes: None,
+    };
+    let state = state(pool.clone());
+    let (first, second) = tokio::join!(
+        sign_digital_challan(&state, load, driver, request("fixture-one")),
+        sign_digital_challan(&state, load, driver, request("fixture-two")),
+    );
+    let recorded = match (first, second) {
+        (Ok(()), Err(AppError::Conflict(_))) => "fixture-one",
+        (Err(AppError::Conflict(_)), Ok(())) => "fixture-two",
+        other => panic!("expected a single signing event, got {other:?}"),
+    };
+    let saved: String = sqlx::query_scalar("SELECT digital_signature FROM challans WHERE id=$1")
+        .bind(id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(saved, recorded);
+    sign_digital_challan(&state, load, driver, request(recorded))
+        .await
+        .unwrap();
+    let audit_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM audit_logs WHERE action='challan.signed' AND resource_id=$1",
+    )
+    .bind(id.to_string())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(audit_count, 1);
+}
+
+#[sqlx::test]
+async fn attendance_register_requires_active_plant_assignment_and_preserves_check_in(pool: PgPool) {
+    use axum::{extract::State, Json};
+    use trackmyrmc_backend::{
+        auth::AuthUser, models::workforce::MarkAttendanceRequest, routes::workforce_routes,
+    };
+    let (_, order, _, _) = fixture(&pool).await;
+    let plant: Uuid = sqlx::query_scalar("SELECT plant_id FROM orders WHERE id=$1")
+        .bind(order)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let user: Uuid = sqlx::query_scalar(
+        "INSERT INTO users (phone,hashed_password,full_name,role)
+         VALUES ('attendance-fixture','unused','Fixture Admin','admin') RETURNING id",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let admin = AuthUser {
+        user_id: user,
+        role: "admin".into(),
+        phone: "attendance-fixture".into(),
+        email: None,
+    };
+    let request = |check_type: &str, latitude: Option<f64>| {
+        Json(MarkAttendanceRequest {
+            user_id: None,
+            plant_id: plant,
+            check_type: check_type.into(),
+            latitude,
+            longitude: None,
+        })
+    };
+    let state = state(pool.clone());
+    assert!(matches!(
+        workforce_routes::mark_attendance(State(state.clone()), admin.clone(), request("in", None))
+            .await,
+        Err(AppError::Forbidden(_)),
+    ));
+    sqlx::query(
+        "INSERT INTO plant_staff (plant_id,user_id,role,is_active) VALUES ($1,$2,'admin',TRUE)",
+    )
+    .bind(plant)
+    .bind(user)
+    .execute(&pool)
+    .await
+    .unwrap();
+    assert!(matches!(
+        workforce_routes::mark_attendance(
+            State(state.clone()),
+            admin.clone(),
+            request("in", Some(91.0))
+        )
+        .await,
+        Err(AppError::BadRequest(_)),
+    ));
+    workforce_routes::mark_attendance(State(state.clone()), admin.clone(), request("in", None))
+        .await
+        .unwrap();
+    assert!(matches!(
+        workforce_routes::mark_attendance(
+            State(state.clone()),
+            admin.clone(),
+            request("in", Some(19.0))
+        )
+        .await,
+        Err(AppError::Conflict(_)),
+    ));
+    workforce_routes::mark_attendance(State(state.clone()), admin.clone(), request("out", None))
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO plant_staff_module_permissions (plant_id,user_id,module_key,can_view,can_edit,updated_by)
+         VALUES ($1,$2,'workforce',TRUE,FALSE,$2) ON CONFLICT (plant_id,user_id,module_key)
+         DO UPDATE SET can_view=TRUE",
+    )
+    .bind(plant)
+    .bind(user)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let roster = workforce_routes::get_roster(
+        State(state),
+        admin,
+        axum::extract::Query(workforce_routes::RosterQuery {
+            plant_id: plant,
+            date: None,
+        }),
+    )
+    .await
+    .unwrap();
+    use axum::response::IntoResponse;
+    let body = axum::body::to_bytes(roster.into_response().into_body(), 16_384)
+        .await
+        .unwrap();
+    let roster: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(roster["roster"][0]["user_name"], "Fixture Admin");
+    assert_eq!(roster["roster"][0]["check_in_lat"], serde_json::Value::Null);
+    assert!(roster["roster"][0]["check_out_time"].is_string());
+}
+
+#[sqlx::test]
 async fn transitions_are_owned_ordered_and_idempotent(pool: PgPool) {
     let (driver, _, load, _) = fixture(&pool).await;
     assert!(matches!(

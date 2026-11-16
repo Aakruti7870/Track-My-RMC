@@ -102,27 +102,16 @@ pub async fn send_whatsapp_otp(
         ));
     }
 
-    // Check if user exists and verify role restrictions
-    if let Some(user) = user_repo::find_by_phone_or_email(&state.db, &destination).await? {
-        let is_review_fixture: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM play_review_fixtures WHERE user_id = $1 AND enabled = TRUE)",
-        )
-        .bind(user.id)
-        .fetch_one(&state.db)
-        .await?;
-        if is_review_fixture {
-            return Err(AppError::Forbidden(
-                "Play review accounts must use the dedicated reviewer access flow.".to_string(),
-            ));
+    let eligible = match user_repo::find_by_phone_or_email(&state.db, &destination).await? {
+        Some(user) => {
+            user.is_active
+                && matches!(user.role.as_str(), "customer" | "driver")
+                && !crate::services::play_review::is_review_fixture(state, user.id).await?
         }
-        if user.role != "customer" && user.role != "driver" {
-            return Err(AppError::Forbidden(
-                "WhatsApp OTP is restricted to Customer and Driver accounts. Plant staff and Administrators must use Email OTP or Authenticator App.".to_string(),
-            ));
-        }
-    }
+        None => true,
+    };
 
-    OtpEngine::deliver(state, &destination, "whatsapp", &purpose, "Login").await
+    OtpEngine::deliver_login(state, &destination, "whatsapp", &purpose, "Login", eligible).await
 }
 
 /// Verifies WhatsApp OTP and authenticates User or Driver
@@ -244,68 +233,40 @@ pub async fn verify_whatsapp_otp(
 pub async fn send_email_otp(state: &AppState, req: SendEmailOtpRequest) -> Result<(), AppError> {
     let destination = req.email.trim().to_lowercase();
 
-    let user = user_repo::find_by_phone_or_email(&state.db, &destination)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Staff/Admin account not found".to_string()))?;
-
-    // Central Admin enrollment intentionally starts inactive. Never route it
-    // through the Plant Staff OTP handler: the dedicated web flow validates
-    // the reserved identity and activates only after email OTP + TOTP.
-    if user.role == "central_admin" {
-        return Err(AppError::Forbidden(
-            "Central Admin must use the dedicated web sign-in at /admin/.".to_string(),
+    if destination.len() > 254 || !destination.contains('@') {
+        return Err(AppError::BadRequest(
+            "Enter a valid work email address".into(),
         ));
+    }
+    let mut eligible = false;
+    if let Some(user) = user_repo::find_by_phone_or_email(&state.db, &destination).await? {
+        if user.is_active
+            && is_email_login_role(&user.role)
+            && user.email.as_deref() == Some(destination.as_str())
+            && !crate::services::play_review::is_review_fixture(state, user.id).await?
+            && (user.role != "authority" || approved_authority(state, user.id).await?)
+        {
+            eligible = match crate::routes::staff_lifecycle::require_login_eligible(
+                state, user.id, &user.role,
+            )
+            .await
+            {
+                Ok(()) => true,
+                Err(AppError::Forbidden(_)) => false,
+                Err(error) => return Err(error),
+            };
+        }
     }
 
-    if !user.is_active {
-        return Err(AppError::Forbidden(
-            "Account is inactive. Contact support.".to_string(),
-        ));
-    }
-    if crate::services::play_review::is_review_fixture(state, user.id).await? {
-        return Err(AppError::Forbidden(
-            "Play review accounts must use the dedicated reviewer access flow.".to_string(),
-        ));
-    }
-    if user
-        .email
-        .as_deref()
-        .map(|e| e.eq_ignore_ascii_case(&destination))
-        != Some(true)
-    {
-        return Err(AppError::Forbidden(
-            "Email OTP must be sent to the account's registered email.".to_string(),
-        ));
-    }
-
-    const STAFF_ROLES: &[&str] = &[
-        "dispatcher",
-        "operator",
-        "supervisor",
-        "quality_engineer",
-        "store_manager",
-        "accountant",
-        "fleet_manager",
-        "owner",
-        "plant_owner",
-        "admin",
-        "authority",
-    ];
-    if !STAFF_ROLES.contains(&user.role.as_str()) {
-        return Err(AppError::Forbidden(
-            "Email OTP is restricted to staff, owner, and administrator accounts.".to_string(),
-        ));
-    }
-
-    if user.role == "authority" && !approved_authority(state, user.id).await? {
-        return Err(AppError::Forbidden(
-            "Authority requires Central Admin approval".into(),
-        ));
-    }
-    crate::routes::staff_lifecycle::require_login_eligible(state, user.id, &user.role).await?;
-
-    let _ = req.plant_code.as_deref();
-    deliver_email_otp(state, &destination, "staff_login", "Staff/Admin Portal").await
+    OtpEngine::deliver_login(
+        state,
+        &destination,
+        "email",
+        "staff_login",
+        "Staff/Admin Portal",
+        eligible,
+    )
+    .await
 }
 
 pub(crate) async fn deliver_email_otp(
@@ -366,48 +327,18 @@ pub async fn verify_email_otp(
     req: VerifyEmailOtpRequest,
 ) -> Result<StaffMfaChallengeResponse, AppError> {
     let destination = req.email.trim().to_lowercase();
+    let invalid = || AppError::Unauthorized("Invalid email or verification code".into());
+    OtpEngine::verify_otp(state, &destination, "email", "staff_login", &req.otp).await?;
     let user = user_repo::find_by_phone_or_email(&state.db, &destination)
         .await?
-        .ok_or_else(|| AppError::Unauthorized("Invalid email or verification code".to_string()))?;
-    if !user.is_active {
-        return Err(AppError::Forbidden(
-            "Account is inactive. Contact support.".to_string(),
-        ));
-    }
-    if crate::services::play_review::is_review_fixture(state, user.id).await? {
-        return Err(AppError::Forbidden(
-            "Play review accounts must use the dedicated reviewer access flow.".to_string(),
-        ));
-    }
-    if user
-        .email
-        .as_deref()
-        .map(|e| e.eq_ignore_ascii_case(&destination))
-        != Some(true)
+        .ok_or_else(invalid)?;
+    if !user.is_active
+        || !is_email_login_role(&user.role)
+        || user.email.as_deref() != Some(destination.as_str())
+        || crate::services::play_review::is_review_fixture(state, user.id).await?
     {
-        return Err(AppError::Unauthorized(
-            "Invalid email or verification code".to_string(),
-        ));
+        return Err(invalid());
     }
-    const STAFF_ROLES: &[&str] = &[
-        "dispatcher",
-        "operator",
-        "supervisor",
-        "quality_engineer",
-        "store_manager",
-        "accountant",
-        "fleet_manager",
-        "owner",
-        "plant_owner",
-        "admin",
-        "authority",
-    ];
-    if !STAFF_ROLES.contains(&user.role.as_str()) {
-        return Err(AppError::Forbidden(
-            "Email OTP is restricted to staff accounts.".to_string(),
-        ));
-    }
-    OtpEngine::verify_otp(state, &destination, "email", "staff_login", &req.otp).await?;
     if user.role == "authority" && !approved_authority(state, user.id).await? {
         return Err(AppError::Forbidden(
             "Authority requires Central Admin approval".into(),
@@ -491,6 +422,7 @@ pub async fn start_staff_mfa_enrollment(
             "Account is not authorized for staff enrollment.".to_string(),
         ));
     }
+    crate::routes::staff_lifecycle::require_login_eligible(state, user.id, &user.role).await?;
     let (secret, otpauth_uri, recovery_codes) = crate::auth::totp::setup_totp_for_user(
         state,
         user.id,
@@ -534,17 +466,45 @@ pub async fn confirm_staff_mfa_enrollment(
             "Account is not authorized for staff enrollment.".into(),
         ));
     }
-    if let Err(err) = crate::auth::totp::verify_and_enable_totp(state, user_id, code).await {
-        let _ = sqlx::query("UPDATE staff_mfa_challenges SET attempts=attempts+1 WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>NOW()").bind(&digest).execute(&state.db).await;
+    crate::routes::staff_lifecycle::require_login_eligible(state, user.id, &user.role).await?;
+    let mut tx = state.db.begin().await?;
+    let usable: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM staff_mfa_challenges
+         WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>clock_timestamp()
+           AND attempts<max_attempts FOR UPDATE",
+    )
+    .bind(&digest)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let id = usable.ok_or_else(|| {
+        AppError::Unauthorized("MFA enrollment challenge was already used or expired".into())
+    })?;
+    if let Err(err) =
+        crate::auth::totp::verify_and_enable_totp_using(state, &mut tx, user_id, code).await
+    {
+        if matches!(err, AppError::Unauthorized(_)) {
+            sqlx::query("UPDATE staff_mfa_challenges SET attempts=attempts+1 WHERE id=$1")
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+            tx.commit().await?;
+        }
         return Err(err);
     }
-    let consumed = sqlx::query("UPDATE staff_mfa_challenges SET consumed_at=NOW() WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>NOW() AND attempts<max_attempts").bind(&digest).execute(&state.db).await?;
+    let consumed = sqlx::query(
+        "UPDATE staff_mfa_challenges SET consumed_at=clock_timestamp()
+         WHERE id=$1 AND expires_at>clock_timestamp()",
+    )
+    .bind(id)
+    .execute(&mut *tx)
+    .await?;
     if consumed.rows_affected() != 1 {
         return Err(AppError::Unauthorized(
-            "MFA enrollment challenge was already used or expired".to_string(),
+            "MFA enrollment challenge expired".into(),
         ));
     }
-    let (challenge_token, _) = create_staff_challenge(&state.db, user_id, "login").await?;
+    let (challenge_token, _) = create_staff_challenge(&mut *tx, user_id, "login").await?;
+    tx.commit().await?;
     Ok(StaffMfaEnrollmentConfirmResponse {
         status: "MFA_ENABLED",
         recovery_codes: Vec::new(),

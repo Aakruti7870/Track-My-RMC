@@ -2,7 +2,7 @@ use crate::{
     error::AppError,
     models::workforce::{PayrollClosure, WorkforceAttendance},
 };
-use chrono::{NaiveDate, Utc};
+use chrono::NaiveDate;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -14,39 +14,40 @@ pub async fn record_attendance(
     lat: Option<f64>,
     lng: Option<f64>,
 ) -> Result<(), AppError> {
-    let today = Utc::now().date_naive();
-
-    if check_type == "in" {
+    let updated = if check_type == "in" {
         sqlx::query(
-            r#"
-            INSERT INTO workforce_attendance (plant_id, user_id, attendance_date, check_in_time, check_in_lat, check_in_lng, status)
-            VALUES ($1, $2, $3, NOW(), $4, $5, 'present')
-            ON CONFLICT (plant_id, user_id, attendance_date) DO UPDATE
-            SET check_in_time = NOW(), check_in_lat = EXCLUDED.check_in_lat, check_in_lng = EXCLUDED.check_in_lng
-            "#,
+            "INSERT INTO workforce_attendance
+             (plant_id,user_id,attendance_date,check_in_time,check_in_lat,check_in_lng,status)
+             VALUES ($1,$2,(NOW() AT TIME ZONE 'Asia/Kolkata')::date,NOW(),$3,$4,'present')
+             ON CONFLICT (plant_id,user_id,attendance_date) DO UPDATE SET
+               check_in_time=EXCLUDED.check_in_time,check_in_lat=EXCLUDED.check_in_lat,
+               check_in_lng=EXCLUDED.check_in_lng,status='present'
+             WHERE workforce_attendance.check_in_time IS NULL
+               AND workforce_attendance.check_out_time IS NULL",
         )
         .bind(plant_id)
         .bind(user_id)
-        .bind(today)
         .bind(lat)
         .bind(lng)
         .execute(pool)
-        .await?;
+        .await?
     } else {
         sqlx::query(
-            r#"
-            UPDATE workforce_attendance
-            SET check_out_time = NOW()
-            WHERE plant_id = $1 AND user_id = $2 AND attendance_date = $3
-            "#,
+            "UPDATE workforce_attendance SET check_out_time=NOW()
+             WHERE plant_id=$1 AND user_id=$2
+               AND attendance_date=(NOW() AT TIME ZONE 'Asia/Kolkata')::date
+               AND check_in_time IS NOT NULL AND check_out_time IS NULL",
         )
         .bind(plant_id)
         .bind(user_id)
-        .bind(today)
         .execute(pool)
-        .await?;
+        .await?
+    };
+    if updated.rows_affected() != 1 {
+        return Err(AppError::Conflict(
+            "Attendance is already recorded or the workday is not open".into(),
+        ));
     }
-
     Ok(())
 }
 
@@ -57,9 +58,11 @@ pub async fn get_daily_roster(
 ) -> Result<Vec<WorkforceAttendance>, AppError> {
     let roster = sqlx::query_as::<_, WorkforceAttendance>(
         r#"
-        SELECT id, plant_id, user_id, attendance_date, shift_id, check_in_time, check_out_time, status, check_in_lat, check_in_lng, created_at
-        FROM workforce_attendance
-        WHERE plant_id = $1 AND attendance_date = $2
+        SELECT a.id,a.plant_id,a.user_id,u.full_name AS user_name,a.attendance_date,a.shift_id,
+               a.check_in_time,a.check_out_time,a.status,a.check_in_lat,a.check_in_lng,a.created_at
+        FROM workforce_attendance a JOIN users u ON u.id=a.user_id
+        WHERE a.plant_id=$1 AND a.attendance_date=$2
+        ORDER BY u.full_name,a.id
         "#,
     )
     .bind(plant_id)

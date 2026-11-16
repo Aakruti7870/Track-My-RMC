@@ -6,25 +6,6 @@ use crate::{
 };
 use uuid::Uuid;
 
-async fn ensure_driver_owns_load(
-    state: &AppState,
-    load_id: Uuid,
-    driver_id: Uuid,
-) -> Result<(), AppError> {
-    let owns: (bool,) =
-        sqlx::query_as("SELECT EXISTS(SELECT 1 FROM order_loads WHERE id = $1 AND driver_id = $2)")
-            .bind(load_id)
-            .bind(driver_id)
-            .fetch_one(&state.db)
-            .await?;
-    if !owns.0 {
-        return Err(AppError::Forbidden(
-            "This load is not assigned to the authenticated driver".to_string(),
-        ));
-    }
-    Ok(())
-}
-
 pub async fn complete_delivery_pod(
     state: &AppState,
     load_id: Uuid,
@@ -68,40 +49,93 @@ pub async fn sign_digital_challan(
     driver_id: Uuid,
     req: SignChallanRequest,
 ) -> Result<(), AppError> {
-    ensure_driver_owns_load(state, load_id, driver_id).await?;
-    let load_status: Option<String> =
-        sqlx::query_scalar("SELECT status FROM order_loads WHERE id = $1")
-            .bind(load_id)
-            .fetch_optional(&state.db)
-            .await?;
-    if !matches!(
-        load_status.as_deref(),
-        Some("dispatched") | Some("en_route") | Some("arrived") | Some("pouring")
-    ) {
+    let signature = req.digital_signature.trim();
+    let receiver = req.receiver_name.trim();
+    let phone = req.receiver_phone.trim();
+    if signature.is_empty()
+        || signature.len() > 65_536
+        || receiver.is_empty()
+        || receiver.chars().count() > 150
+        || phone.chars().count() > 20
+        || [signature, receiver, phone]
+            .iter()
+            .any(|value| value.contains('\0'))
+    {
         return Err(AppError::BadRequest(
-            "Challan can only be signed for an active delivery".to_string(),
+            "Invalid challan signature or receiver details".into(),
         ));
     }
-    let challan = dispatch_repo::get_challan_by_load(&state.db, load_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Challan not found for this load".to_string()))?;
+
+    let mut tx = state.db.begin().await?;
+    let load_status: String = sqlx::query_scalar(
+        "SELECT status FROM order_loads WHERE id=$1 AND driver_id=$2 FOR UPDATE",
+    )
+    .bind(load_id)
+    .bind(driver_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| {
+        AppError::Forbidden("This load is not assigned to the authenticated driver".into())
+    })?;
+
+    let (id, status, previous_signature, previous_receiver, previous_phone): (
+        Uuid,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    ) = sqlx::query_as(
+        "SELECT id,status,digital_signature,receiver_name,receiver_phone
+         FROM challans WHERE load_id=$1 FOR UPDATE",
+    )
+    .bind(load_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Challan not found for this load".into()))?;
+
+    if status == "signed"
+        || previous_signature
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+    {
+        if previous_signature.as_deref().map(str::trim) == Some(signature)
+            && previous_receiver.as_deref().map(str::trim) == Some(receiver)
+            && previous_phone.as_deref().unwrap_or_default().trim() == phone
+        {
+            return Ok(());
+        }
+        return Err(AppError::Conflict(
+            "The signed challan already has receiver details".into(),
+        ));
+    }
+    if !matches!(
+        load_status.as_str(),
+        "dispatched" | "en_route" | "arrived" | "pouring"
+    ) {
+        return Err(AppError::BadRequest(
+            "Challan can only be signed for an active delivery".into(),
+        ));
+    }
 
     sqlx::query(
-        r#"
-        UPDATE challans
-        SET digital_signature = $1,
-            receiver_name = $2,
-            receiver_phone = $3,
-            status = 'signed'
-        WHERE id = $4
-        "#,
+        "UPDATE challans SET digital_signature=$1,receiver_name=$2,receiver_phone=$3,status='signed'
+         WHERE id=$4",
     )
-    .bind(&req.digital_signature)
-    .bind(&req.receiver_name)
-    .bind(&req.receiver_phone)
-    .bind(challan.id)
-    .execute(&state.db)
+    .bind(signature)
+    .bind(receiver)
+    .bind(phone)
+    .bind(id)
+    .execute(&mut *tx)
     .await?;
-
+    sqlx::query(
+        "INSERT INTO audit_logs (user_id,action,resource_type,resource_id,metadata)
+         VALUES ($1,'challan.signed','challan',$2,$3)",
+    )
+    .bind(driver_id)
+    .bind(id.to_string())
+    .bind(serde_json::json!({"load_id":load_id}))
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
     Ok(())
 }

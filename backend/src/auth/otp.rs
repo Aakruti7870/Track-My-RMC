@@ -25,6 +25,13 @@ pub struct OtpVerificationRecord {
 
 pub struct OtpEngine;
 
+#[derive(Clone, Copy)]
+enum DispatchPolicy {
+    ReportDeliveryFailure,
+    AcknowledgePublicRequest,
+    SuppressDelivery,
+}
+
 pub struct OtpSessionInput<'a> {
     pub destination: &'a str,
     pub channel: &'a str,
@@ -66,6 +73,43 @@ impl OtpEngine {
         purpose: &str,
         portal: &str,
     ) -> Result<(), AppError> {
+        Self::deliver_code(
+            state,
+            destination,
+            channel,
+            purpose,
+            portal,
+            DispatchPolicy::ReportDeliveryFailure,
+        )
+        .await
+    }
+
+    /// Public login endpoints share cooldown and responses across eligible and
+    /// ineligible destinations. Suppressed requests never create usable codes.
+    pub(crate) async fn deliver_login(
+        state: &AppState,
+        destination: &str,
+        channel: &str,
+        purpose: &str,
+        portal: &str,
+        eligible: bool,
+    ) -> Result<(), AppError> {
+        let policy = if eligible {
+            DispatchPolicy::AcknowledgePublicRequest
+        } else {
+            DispatchPolicy::SuppressDelivery
+        };
+        Self::deliver_code(state, destination, channel, purpose, portal, policy).await
+    }
+
+    async fn deliver_code(
+        state: &AppState,
+        destination: &str,
+        channel: &str,
+        purpose: &str,
+        portal: &str,
+        policy: DispatchPolicy,
+    ) -> Result<(), AppError> {
         state.otp_delivery.validate(channel)?;
         let (code, salt, hashed_otp) = Self::generate_secure_otp(&state.config.otp_pepper);
         let mut tx = state.db.begin().await?;
@@ -74,6 +118,22 @@ impl OtpEngine {
             .execute(&mut *tx)
             .await?;
         Self::check_rate_limit(&mut tx, destination, state.config.otp_cooldown_seconds).await?;
+        if matches!(policy, DispatchPolicy::SuppressDelivery) {
+            sqlx::query(
+                "INSERT INTO otp_verifications
+                 (destination,channel,purpose,hashed_otp,salt,is_verified,expires_at)
+                 VALUES ($1,$2,$3,$4,$5,TRUE,clock_timestamp())",
+            )
+            .bind(destination)
+            .bind(channel)
+            .bind(purpose)
+            .bind(&hashed_otp)
+            .bind(&salt)
+            .execute(&mut *tx)
+            .await?;
+            tx.commit().await?;
+            return Ok(());
+        }
         let session_id = Self::create_pending_session(
             &mut *tx,
             OtpSessionInput {
@@ -94,6 +154,13 @@ impl OtpEngine {
             .send(channel, destination, &code, portal)
             .await
         {
+            if matches!(policy, DispatchPolicy::AcknowledgePublicRequest) {
+                sqlx::query("UPDATE otp_verifications SET is_pending=FALSE,is_verified=TRUE WHERE id=$1 AND is_pending")
+                    .bind(session_id)
+                    .execute(&state.db)
+                    .await?;
+                return Ok(());
+            }
             let _ = Self::discard_pending_session(&state.db, session_id).await;
             return Err(error);
         }

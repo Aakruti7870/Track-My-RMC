@@ -351,10 +351,18 @@ async fn approved_staff_fixtures_complete_email_enrollment_mfa_recovery_and_logo
         )
         .await;
         assert_eq!(status, StatusCode::OK);
-        let (status, auth) = call(
+        let replay = call(
             &app,
             "/api/auth/staff/mfa/verify-totp",
             Some(json!({"challenge_token":enabled["challenge_token"],"code":code})),
+            None,
+        )
+        .await;
+        assert_eq!(replay.0, StatusCode::UNAUTHORIZED);
+        let (status, auth) = call(
+            &app,
+            "/api/auth/staff/mfa/verify-totp",
+            Some(json!({"challenge_token":enabled["challenge_token"],"code":enrollment["recovery_codes"][0]})),
             None,
         )
         .await;
@@ -407,7 +415,7 @@ async fn approved_staff_fixtures_complete_email_enrollment_mfa_recovery_and_logo
 
         let challenge = email_challenge(&app, &delivery, email).await;
         assert_eq!(challenge["status"], "MFA_REQUIRED");
-        let recovery = &enrollment["recovery_codes"][0];
+        let recovery = &enrollment["recovery_codes"][1];
         let (status, recovered) = call(
             &app,
             "/api/auth/staff/mfa/verify-recovery",
@@ -491,7 +499,7 @@ async fn approved_customer_driver_fixtures_complete_generated_whatsapp_otp_once(
             )
             .await
             .0,
-            StatusCode::FORBIDDEN
+            StatusCode::BAD_REQUEST
         );
     }
 }
@@ -541,10 +549,10 @@ async fn missing_or_rejected_delivery_never_activates_email_and_preserves_previo
         )
         .await
         .0,
-        StatusCode::INTERNAL_SERVER_ERROR
+        StatusCode::OK
     );
     let counts: (i64, i64) = sqlx::query_as("SELECT COUNT(*),COUNT(*) FILTER (WHERE is_pending) FROM otp_verifications WHERE destination=$1").bind(email).fetch_one(&db).await.unwrap();
-    assert_eq!(counts, (1, 0));
+    assert_eq!(counts, (2, 0));
     assert_eq!(
         call(
             &app,
@@ -584,41 +592,98 @@ async fn staff_challenges_cannot_be_reused_after_role_becomes_privileged(db: PgP
         .0,
         StatusCode::FORBIDDEN
     );
-    assert_eq!(
-        call(
-            &app,
-            "/api/auth/otp/email/send",
-            Some(json!({"email":email})),
-            None
-        )
-        .await
-        .0,
-        StatusCode::FORBIDDEN
-    );
+    let public_request = |email: &str| json!({"email":email});
+    let existing = call(
+        &app,
+        "/api/auth/otp/email/send",
+        Some(public_request(email)),
+        None,
+    )
+    .await;
+    let unknown = call(
+        &app,
+        "/api/auth/otp/email/send",
+        Some(public_request("absent@example.invalid")),
+        None,
+    )
+    .await;
+    assert_eq!(existing, unknown);
+    assert_eq!(existing.0, StatusCode::OK);
+    assert!(delivery.messages.lock().unwrap().is_empty());
 
-    // The reserved first administrator starts inactive by design. The staff
-    // endpoint must still tell the caller to use dedicated web enrollment,
-    // without creating a staff OTP or activating this privileged identity.
     sqlx::query("UPDATE users SET is_active=FALSE,is_verified=FALSE WHERE id=$1")
         .bind(id)
         .execute(&db)
         .await
         .unwrap();
-    let (status, detail) = call(
+    let disabled = call(
         &app,
         "/api/auth/otp/email/send",
-        Some(json!({"email":email})),
+        Some(public_request(email)),
         None,
     )
     .await;
-    assert_eq!(status, StatusCode::FORBIDDEN);
-    assert!(detail.to_string().contains("dedicated web sign-in"));
+    assert_eq!(disabled, unknown);
+    assert!(delivery.messages.lock().unwrap().is_empty());
     let remains_inactive: bool = sqlx::query_scalar("SELECT NOT is_active FROM users WHERE id=$1")
         .bind(id)
         .fetch_one(&db)
         .await
         .unwrap();
     assert!(remains_inactive);
+}
+
+#[sqlx::test]
+async fn staff_can_restart_expired_enrollment_and_keep_enabled_authenticator(db: PgPool) {
+    let mut state = state(db.clone());
+    let delivery = Arc::new(MemoryDelivery::default());
+    state.otp_delivery = delivery.clone();
+    let app = build_app_router(state);
+    let email = "mfa-restart@example.invalid";
+    let user = identity(&db, "owner", Some(email), None).await;
+    let first = email_challenge(&app, &delivery, email).await;
+    let begin = "/api/auth/staff/mfa/enroll/start";
+    let (status, first_setup) = call(
+        &app,
+        begin,
+        Some(json!({"challenge_token":first["challenge_token"]})),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    sqlx::query(
+        "UPDATE staff_mfa_challenges SET expires_at=NOW()-INTERVAL '1 second' WHERE user_id=$1",
+    )
+    .bind(user)
+    .execute(&db)
+    .await
+    .unwrap();
+    let next = email_challenge(&app, &delivery, email).await;
+    let payload = json!({"challenge_token":next["challenge_token"]});
+    let (status, new_setup) = call(&app, begin, Some(payload.clone()), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_ne!(first_setup["manual_key"], new_setup["manual_key"]);
+    let code = TotpEngine::compute_code(
+        new_setup["manual_key"].as_str().unwrap(),
+        chrono::Utc::now().timestamp() as u64,
+    )
+    .unwrap();
+    assert_eq!(
+        call(
+            &app,
+            "/api/auth/staff/mfa/enroll/confirm",
+            Some(json!({"challenge_token":next["challenge_token"],"code":code})),
+            None
+        )
+        .await
+        .0,
+        StatusCode::OK,
+    );
+    assert_eq!(
+        call(&app, begin, Some(payload), None).await.0,
+        StatusCode::UNAUTHORIZED
+    );
 }
 
 #[sqlx::test]
@@ -902,7 +967,7 @@ async fn registered_email_invitation_claim_lifecycle_and_rehire_are_atomic(db: P
         )
         .await
         .0,
-        StatusCode::NOT_FOUND
+        StatusCode::OK
     );
     let challenge = email_challenge(&app, &delivery, "new-dispatcher@example.invalid").await;
     assert_eq!(
@@ -939,7 +1004,7 @@ async fn registered_email_invitation_claim_lifecycle_and_rehire_are_atomic(db: P
     let (status, login) = call(
         &app,
         "/api/auth/staff/mfa/verify-totp",
-        Some(json!({"challenge_token":enabled["challenge_token"],"code":code})),
+        Some(json!({"challenge_token":enabled["challenge_token"],"code":enrollment["recovery_codes"][0]})),
         None,
     )
     .await;
@@ -998,8 +1063,8 @@ async fn registered_email_invitation_claim_lifecycle_and_rehire_are_atomic(db: P
         )
         .await
         .0,
-        StatusCode::FORBIDDEN,
-        "Suspension must block further staff authentication"
+        StatusCode::OK,
+        "Suspension requests receive the standard public reply"
     );
     assert_eq!(
         call(&app, &invite, Some(body.clone()), owner_token).await.0,
@@ -1040,8 +1105,9 @@ async fn registered_email_invitation_claim_lifecycle_and_rehire_are_atomic(db: P
         )
         .await
         .0,
-        StatusCode::FORBIDDEN
+        StatusCode::OK
     );
+    assert!(delivery.messages.lock().unwrap().is_empty());
     let (status, rehire) = call(&app, &invite, Some(body), owner_token).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(rehire["staff_user_id"], employee.to_string());
@@ -1544,7 +1610,7 @@ async fn incomplete_staff_login_preserves_session_until_final_mfa(db: PgPool) {
     let (status, second) = call(
         &app,
         "/api/auth/staff/mfa/verify-totp",
-        Some(json!({"challenge_token":enabled["challenge_token"],"code":code})),
+        Some(json!({"challenge_token":enabled["challenge_token"],"code":enrollment["recovery_codes"][0]})),
         None,
     )
     .await;

@@ -36,7 +36,7 @@ const MATERIAL_CATEGORIES = {
   shuttering: { title: "Shuttering Material Enquiry", symbol: "material-inventory", options: ["Shuttering Material"] },
 } as const;
 const MATERIALS = ["10 MM", "20 MM", "40 MM", ...SAND_OPTIONS, "Cement Bag",
-  ...Object.values(MATERIAL_CATEGORIES).flatMap(category => [...category.options])] as const;
+  ...Object.entries(MATERIAL_CATEGORIES).flatMap(([key, category]) => key === "sand" ? [] : [...category.options])] as const;
 const GRADES = ["M10", "M15", "M20", "M25", "M30", "M35", "M40", "M45", "M50", "M55", "M60"] as const;
 const TITLES: Record<Service, string> = {
   cement: "Cement Enquiry",

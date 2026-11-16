@@ -233,6 +233,9 @@ const numericFields = new Set([
   "basic_amount", "allowances", "overtime_amount", "deductions", "paid_days", "capacity_m3", "stock", "reorder",
 ]);
 
+const attendanceTime = (value: string) =>
+  new Date(value).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" });
+
 function today() { return new Date().toISOString().slice(0, 10); }
 function monthNow() { return new Date().toISOString().slice(0, 7); }
 
@@ -246,7 +249,7 @@ function dataPath(kind: string, plantId: string) {
   if (kind === "diesel") return `/ops/plants/${plantId}/diesel`;
   if (kind === "purchases") return `/ops/plants/${plantId}/purchases`;
   if (kind === "payroll") return `/ops/plants/${plantId}/payroll/${monthNow()}`;
-  if (kind === "attendance") return `/ops/plants/${plantId}/attendance/${today()}`;
+  if (kind === "attendance") return `/workforce/roster?plant_id=${plantId}`;
   if (kind === "staff") return `/master/plants/${plantId}/people`;
   if (kind === "customers") return `/business/plants/${plantId}/customers`;
   if (kind === "reports") return `/master/plants/${plantId}/summary`;
@@ -263,7 +266,7 @@ function unpackRows(kind: string, data: any): Row[] {
     : kind === "diesel" ? data?.transactions
     : kind === "purchases" ? data?.purchases
     : kind === "payroll" ? data?.payroll
-    : kind === "attendance" ? data?.attendance
+    : kind === "attendance" ? data?.roster
     : kind === "staff" ? data?.people
     : kind === "customers" ? data?.customers
     : kind === "fleet" ? data?.vehicles
@@ -280,7 +283,7 @@ function unpackRows(kind: string, data: any): Row[] {
     else if (kind === "diesel") row = { id: d.id, title: `${d.transaction_type} · ${d.litres} L`, subtitle: d.vehicle_id ? `Vehicle ${d.vehicle_id}` : (d.reference || "Diesel stock"), meta: d.created_at };
     else if (kind === "purchases") row = { id: d.id, title: `${d.receipt_number} · ${d.supplier_name || "Supplier"}`, subtitle: `₹${Math.round(d.total || 0)} · ${d.status}`, meta: d.receipt_date };
     else if (kind === "payroll") row = { id: d.id, title: d.user_name || d.user_id, subtitle: `${d.month} · ₹${Math.round(d.net_amount || 0)}`, meta: d.status };
-    else if (kind === "attendance") row = { id: d.id || `${idx}`, title: d.user_name || "Staff", subtitle: d.check_in ? `In ${String(d.check_in).slice(11, 16)}` : "Not checked in", meta: d.check_out ? `Out ${String(d.check_out).slice(11, 16)}` : "Open" };
+    else if (kind === "attendance") row = { id: d.id || `${idx}`, title: d.user_name || "Staff", subtitle: d.check_in_time ? `In ${attendanceTime(d.check_in_time)}` : "Not checked in", meta: d.check_out_time ? `Out ${attendanceTime(d.check_out_time)}` : "Open" };
     else if (kind === "staff") row = { id: d.id, title: d.name, subtitle: d.role_label || d.role, meta: `${d.phone || d.email || ""}${d.status ? ` · ${d.status}` : ""}` };
     else if (kind === "customers") row = { id: d.id, title: d.name, subtitle: d.phone || d.email || "Customer", meta: `${d.orders || 0} orders · ${d.delivered_m3 || 0} m³ delivered` };
     else if (kind === "fleet") row = { id: d.id, title: d.tm_number, subtitle: `${d.capacity_m3} m³ capacity`, meta: d.status };
@@ -514,7 +517,10 @@ export function BusinessModule({ kind }: { kind: string }) {
     if (!token || !plantId) return;
     setSaving(true);
     try {
-      await apiPost(`/ops/plants/${plantId}/attendance/${action}`, token, {});
+      await apiPost("/workforce/attendance/mark", token, {
+        plant_id: plantId,
+        check_type: action === "checkin" ? "in" : "out",
+      });
       toast(action === "checkin" ? "Checked in" : "Checked out", "success");
       await load();
     } catch (e: any) { toast(e.detail || "Attendance action failed", "error"); }
