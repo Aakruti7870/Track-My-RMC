@@ -221,13 +221,36 @@ fs.mkdirSync('tracking-previews',{recursive:true});
        const background=await page.getByTestId(id).locator('svg').first().evaluate(el=>getComputedStyle(el.parentElement).backgroundColor);
        assert.equal(background, secondaryTile, `${id} uses its ${theme} icon shade`);
      }
-     const quickPaint = await page.getByTestId('action-new').locator('svg').first().evaluate(el => {
-       const box = el.parentElement;
-       return { fill: getComputedStyle(box).backgroundImage, rim: getComputedStyle(box.parentElement).backgroundImage, ink: getComputedStyle(el).color };
-     });
-     assert.match(quickPaint.fill, /rgb\(96, 56, 19\).*rgb\(71, 45, 19\).*rgb\(58, 38, 17\)/);
-     assert.match(quickPaint.rim, /rgb\(157, 105, 48\).*rgb\(129, 85, 48\)/);
-     assert.equal(quickPaint.ink, 'rgb(255, 240, 226)');
+     const quickSection = page.getByTestId('home-quick-actions');
+     assert.equal(await quickSection.locator('radialGradient').count(), theme === 'light' ? 0 : 1,
+       `${theme} Quick Access corner highlight`);
+     const quickIcons = quickSection.locator('[data-testid^="action-"] svg');
+     const quickPaints = await quickIcons.evaluateAll(icons => icons.map(icon => {
+       const fill = icon.parentElement;
+       const copper = fill.parentElement;
+       return {
+         fill: getComputedStyle(fill).backgroundImage,
+         copper: getComputedStyle(copper).backgroundImage,
+         rim: getComputedStyle(copper.parentElement).backgroundColor,
+         glow: getComputedStyle(fill.firstElementChild).backgroundImage,
+         ink: getComputedStyle(icon).color,
+       };
+     }));
+     assert.equal(quickPaints.length, 4);
+     for (const paint of quickPaints) {
+       if (theme === 'light') {
+         assert.match(paint.fill, /rgb\(232, 151, 10\).*rgb\(198, 121, 13\) 50%.*rgb\(179, 101, 14\) 100%/);
+         assert.match(paint.copper, /rgb\(173, 108, 36\).*rgb\(204, 121, 38\).*rgb\(246, 142, 45\)/);
+         assert.equal(paint.rim, 'rgb(42, 42, 44)');
+         assert.match(paint.glow, /rgba\(249, 143, 45, .*\) 97%.*rgba\(255, 152, 51, 0.4\) 100%/);
+         assert.equal(paint.ink, 'rgb(254, 248, 239)');
+       } else {
+         assert.match(paint.fill, /rgb\(96, 56, 19\).*rgb\(71, 45, 19\).*rgb\(58, 38, 17\)/);
+         assert.match(paint.copper, /rgb\(157, 105, 48\).*rgb\(129, 85, 48\)/);
+         assert.equal(paint.glow, 'none');
+         assert.equal(paint.ink, 'rgb(255, 240, 226)');
+       }
+     }
      const clipped=await page.evaluate(()=>{
        const labels=[...document.querySelectorAll('[data-testid^="action-"],[data-testid^="customer-module-"],[data-testid^="service-"],[data-testid="home-pump-rental"],[data-testid="home-order-request"],[role="tab"]')]
          .filter(el=>el.matches('[role="button"],[role="tab"]'))

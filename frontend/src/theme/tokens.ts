@@ -194,6 +194,14 @@ export const homeArtwork = {
   positivePressed: "#14532D",
 } as const;
 
+export const lightQuickAccessArtwork = {
+  fill: ["#E8970A", "#C6790D", "#B3650E"],
+  copperEdge: ["#AD6C24", "#CC7926", "#F68E2D"],
+  rightGlow: ["#F98F2D00", "#F98F2D26", "#FF983366"],
+  rim: "#2A2A2C",
+  iconInk: "#FEF8EF",
+} as const;
+
 export const cardHighlight = {
   dark: ["#D0A56E90", "#DC9C5255", "#38312973", "#38312900"],
   light: ["#D0A56E99", "#DC9C5255", "#FCFBF799", "#FCFBF700"],
