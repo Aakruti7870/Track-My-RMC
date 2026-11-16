@@ -160,6 +160,12 @@ try {
     await page.goto(origin+'/admin/');
     if(width===390)await page.setViewportSize({width:320,height:700});
     await page.getByRole('heading',{name:'Central Admin sign in',exact:true}).waitFor();
+    const officialLogo=page.getByRole('img',{name:'TrackMyRMC official logo'});
+    const signInLogoSource=await officialLogo.evaluate(async img=>{
+      await img.decode();
+      return img.currentSrc;
+    });
+    assert.match(signInLogoSource,/trackmyrmc-mark\.svg(?:\?|$)/,'Sign-in uses the public login brand mark');
     await button('Switch to light theme').click();
     assert.equal(await page.locator('main').evaluate(el=>getComputedStyle(el).colorScheme),'light');
     assert.equal(await checkViewportFit(),true,'Light sign-in fits the viewport');
@@ -179,9 +185,11 @@ try {
     await page.reload();
     await page.getByRole('region',{name:'Account details',exact:true}).getByText('first@example.invalid',{exact:true}).waitFor();
     assert.equal(await adminNav('Account').getAttribute('aria-current'),'page','Account route survives session restoration');
-    const officialLogo=page.locator('img[alt="TrackMyRMC official logo"]').first();
-    await officialLogo.waitFor();
-    assert.equal(await officialLogo.evaluate(img=>img.complete&&img.naturalWidth>0),true,'official repository logo must render');
+    const sidebarLogo=page.getByRole('complementary',{name:'Super Admin sidebar'}).getByRole('img',{name:'TrackMyRMC official logo'});
+    assert.equal(await sidebarLogo.evaluate(async img=>{
+      await img.decode();
+      return img.currentSrc;
+    }),signInLogoSource,'The dashboard sidebar uses the same brand mark as sign-in');
     await adminNav('Dashboard').click();
     await page.getByLabel('Dashboard module cards').waitFor();
     assert.match(await page.locator('main').getAttribute('class')||'',/tm-dark/,'graphite theme should be the default');
