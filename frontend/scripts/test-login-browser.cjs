@@ -26,6 +26,9 @@ async function openLogin(browser, { width = 390, colorScheme = 'dark', role = 'c
     const endpoint = new URL(route.request().url()).pathname.replace(/^\/api/, '');
     if (endpoints[endpoint]) return endpoints[endpoint](route);
     if (endpoint === '/me') return route.fulfill({ json: fixtureAccount(role) });
+    if (endpoint === '/customer/home') return route.fulfill({
+      json: { name: 'Test User', kyc_status: 'VERIFIED', active_order: null, recent_orders: [] },
+    });
     if (endpoint === '/auth/refresh') return route.fulfill({ status: 401, json: { message: 'Sign in required' } });
     if (endpoint.startsWith('/auth/')) return route.fulfill({ status: 500, json: { message: 'Unexpected authentication request' } });
     return route.fulfill({ json: {} });
