@@ -21,6 +21,8 @@ const out=process.env.HEADER_PREVIEW_DIR||'header-previews';fs.mkdirSync(out,{re
    if(path.endsWith('/me'))json={id:'header-customer',name:'Test Customer',role:'customer',roles:['customer'],phone:'12025550171',status:'active',kyc_status:kyc,plant_id:null};
    else if(path.endsWith('/permission-consent'))json={consent:{version:1,location_choice:'manual',notification_choice:'manual'}};
    else if(path.endsWith('/customer/home'))json={name:'Test Customer',kyc_status:kyc,active_order:null,recent_orders:[],nearby_plants:[],unread_notifications:unread};
+   else if(path.endsWith('/customer/plants/search'))json={plants:[],page:1,has_more:false};
+   else if(path.endsWith('/customer/plants/google-nearby'))json={places:[]};
    else if(path.endsWith('/notifications/read-all')||/\/notifications\/[^/]+\/read$/.test(path)){unread=0;json={success:true};}
    else if(path.endsWith('/notifications'))json={unread,items:[{id:'test-notification',event:'dispatched',title:'Test dispatch update',body:'Synthetic notification fixture',read:!unread,created_at:null}]};
    else if(path.endsWith('/maps/geocode')){if(locationFailure)return route.fulfill({status:503,json:{detail:'Location lookup unavailable. Please retry.'}});json={locality:'Panvel',formatted_address:'Panvel, Maharashtra',lat:18.99,lng:73.11};}
@@ -66,8 +68,14 @@ const out=process.env.HEADER_PREVIEW_DIR||'header-previews';fs.mkdirSync(out,{re
    await page.getByTestId('header-manual-location').fill('Panvel');locationFailure=true;
    await page.getByRole('button',{name:'Use selected location',exact:true}).click();
    await page.getByText('The service is temporarily unavailable. Please try again.',{exact:true}).waitFor();locationFailure=false;
+   const plantSearch = page.waitForRequest(request => {
+     if (!new URL(request.url()).pathname.endsWith('/customer/plants/search')) return false;
+     const body = request.postDataJSON();
+     return body.lat === 18.99 && body.lng === 73.11 && body.page_size === 8;
+   });
    await page.getByRole('button',{name:'Use selected location',exact:true}).click();
    await page.getByTestId('header-location').getByText('Panvel',{exact:true}).waitFor();
+   await plantSearch;
    await header.screenshot({path:`${out}/header-${scheme}-selected-location.png`});
    // The location label itself remains selectable and opens the same sheet.
    await page.getByTestId('header-location').click();

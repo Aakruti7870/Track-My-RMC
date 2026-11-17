@@ -7,9 +7,9 @@ import { LatLng } from "@/src/maps/geo";
 import { PlantGeoFilters } from "@/src/domain/plantGeoFilters";
 
 type Result = { plants: PlantData[]; page: number; has_more: boolean };
-export function usePlantSearch(location: LatLng | null, filters: { q: string; grade: string; radius_km: number; verified: boolean } & PlantGeoFilters, page: number) {
+export function usePlantSearch(location: LatLng | null, filters: { q: string; grade: string; radius_km: number; verified: boolean } & PlantGeoFilters, page: number, pageSize = 30) {
   const { token } = useAuth();
-  const body = JSON.stringify({ ...filters, lat: location?.lat, lng: location?.lng, page, page_size: 30 });
+  const body = JSON.stringify({ ...filters, lat: location?.lat, lng: location?.lng, page, page_size: pageSize });
   const key = `${token}\0${body}`;
   const [state, setState] = useState<{key: string; data: Result | null; loading: boolean; error: string | null}>({key:"",data:null,loading:true,error:null});
   const sequence = useRef(0);

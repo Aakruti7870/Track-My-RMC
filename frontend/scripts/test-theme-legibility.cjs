@@ -46,10 +46,9 @@ test("matte light and dark surfaces keep body and secondary text readable", () =
   assert.match(read("src/theme/sceneBackground.ts"), /0\.85/);
 });
 
-test("customer Plants quick action uses the uploaded nearby RMC plants glyph", () => {
-  assert.match(read("app/customer/index.tsx"), /key: "plants", label: "Nearby Plants", symbol: "nearby-rmc-plants"/);
-  const icons = JSON.parse(read("src/components/vector-symbols/track-icons.json"));
-  assert.ok(icons["nearby-rmc-plants"].compact.length);
+test("customer plant discovery uses the uploaded nearby RMC plants glyph", () => {
+  assert.match(read("app/customer/supply.tsx"), /label: "Plant Map & Filters", symbol: "nearby-rmc-plants"/);
+  assert.match(read("app/customer/plants.tsx"), /<IconTile symbol="nearby-rmc-plants"/);
 });
 
 test("tab bars do not add transparent web padding below navigation", () => {

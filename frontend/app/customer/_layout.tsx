@@ -1,5 +1,5 @@
 import React from "react";
-import { Redirect, Tabs, useRouter } from "expo-router";
+import { Redirect, Tabs } from "expo-router";
 
 import { useAuth } from "@/src/auth/AuthContext";
 import { GlassTabBar, TabDef } from "@/src/components/GlassTabBar";
@@ -10,14 +10,14 @@ import { getThemedCanvasColor } from "@/src/theme/sceneBackground";
 const TABS: TabDef[] = [
   { name: "index", label: "Home", icon: "home-outline", active: "home" },
   { name: "orders", label: "Orders", icon: "cube-outline", active: "cube" },
-  { name: "plants", label: "Plants", icon: "business-outline", active: "business" },
-  { name: "more", label: "More", icon: "grid-outline", active: "grid" },
+  { name: "plan", label: "Plan", icon: "calendar-outline", active: "calendar" },
+  { name: "supply", label: "Supply", icon: "business-outline", active: "business" },
+  { name: "more", label: "Account", icon: "person-outline", active: "person" },
 ];
 
 export default function CustomerLayout() {
   const { hydrating, token, user } = useAuth();
   const { ready } = usePermissions();
-  const router = useRouter();
   const { colors } = useTheme();
   if (hydrating) return null;
   if (!token || !user) return <Redirect href="/login" />;
@@ -25,7 +25,7 @@ export default function CustomerLayout() {
   if (!ready) return null;
 
   return (
-    <Tabs backBehavior="history" screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: getThemedCanvasColor(colors) } }} tabBar={(props) => <GlassTabBar {...props} tabs={TABS} centerLabel="New" onCenterPress={() => router.push("/new-order")} />}>
+    <Tabs backBehavior="history" screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: getThemedCanvasColor(colors) } }} tabBar={(props) => <GlassTabBar {...props} tabs={TABS} hideCenterAction />}>
       {TABS.map((tab) => (
         <Tabs.Screen key={tab.name} name={tab.name} />
       ))}

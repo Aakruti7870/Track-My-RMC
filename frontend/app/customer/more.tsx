@@ -33,10 +33,8 @@ const KYC_LABELS: Record<string, string> = {
 };
 
 const CUSTOMER_MORE_KEYS = [
-  "account-deletion",
   "customer-support",
-  "quotations",
-  "documents",
+  "account-deletion",
 ] as const;
 
 export default function CustomerMore() {
@@ -75,14 +73,12 @@ export default function CustomerMore() {
         >
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
             <VectorSymbol name="settings" size={35} />
-            <AppText variant="title" style={{ flex: 1 }}>More</AppText>
+            <AppText variant="title" style={{ flex: 1 }}>My Account</AppText>
             <Pressable testID="customer-more-theme" accessibilityRole="button" accessibilityLabel="Switch light or dark mode"
               onPress={toggle} style={styles.themeTarget}>
               <Ionicons name={scheme === "dark" ? "sunny-outline" : "moon-outline"} size={25} color={colors.onSurface} />
             </Pressable>
           </View>
-          <Pressable accessibilityRole="button" onPress={review} style={{minHeight:48,justifyContent:"center"}}><View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><VectorSymbol name="permission-settings" size={33} /><AppText variant="heading">Permission settings</AppText></View></Pressable>
-
           <Card testID="customer-account-profile" style={{ gap: spacing.md }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
               <View style={[styles.avatar, { backgroundColor: colors.brand }]}>
@@ -138,6 +134,8 @@ export default function CustomerMore() {
               </Pressable>
             ))}
           </View>
+
+          <Pressable accessibilityRole="button" onPress={review} style={{minHeight:48,justifyContent:"center"}}><View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><VectorSymbol name="permission-settings" size={33} /><AppText variant="heading">Permission settings</AppText></View></Pressable>
 
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.md }}>
             <Button label="Privacy Policy" variant="outline" fullWidth={false} onPress={() => router.push("/privacy")} />

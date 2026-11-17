@@ -246,7 +246,7 @@ function EnquiryForm({ selected, categoryKey }: { selected: Service; categoryKey
         </Pressable>
         <VectorSymbol name={category?.symbol ?? ENQUIRY_SYMBOLS[selected]} size={24} />
         <View style={{ flex: 1 }}>
-          <AppText style={[styles.heading, { color: colors.onSurface }]}>{category?.title ?? TITLES[selected]}</AppText>
+          <AppText accessibilityRole="header" style={[styles.heading, { color: colors.onSurface }]}>{category?.title ?? TITLES[selected]}</AppText>
           <AppText variant="caption">Request a call or quotation. No payment required.</AppText>
         </View>
       </View>
@@ -261,6 +261,22 @@ function EnquiryForm({ selected, categoryKey }: { selected: Service; categoryKey
           </Card>
         ) : (
           <Card style={{ gap: spacing.md }} testID="service-enquiry-form">
+            {selected === "cement" || selected === "material" || selected === "labour" ? (
+              <View testID="service-area-notice" style={{
+                flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, padding: spacing.md,
+                borderWidth: 1, borderRadius: 10, backgroundColor: colors.brandSoft, borderColor: colors.border,
+              }}>
+                <Ionicons name="information-circle-outline" size={20} color={colors.accentText} accessible={false} aria-hidden />
+                <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+                  <AppText variant="label">Service availability</AppText>
+                  <AppText variant="caption" color={colors.onSurfaceSecondary}>
+                    We can help where your site is within our service area and an onboarded vendor is available.
+                    If coverage is limited, we may follow up as we onboard vendors and add services.
+                    Submitting an enquiry does not confirm availability.
+                  </AppText>
+                </View>
+              </View>
+            ) : null}
             {selected === "cement" ? (
               <>
                 {field("customer_name", "Customer Name")}

@@ -93,15 +93,8 @@ async fn only_step_up_control_center_can_issue_and_revoke_plant_owner_access(db:
         .fetch_one(&db).await.unwrap();
     let path = format!("/api/plant-discovery/requests/{pending}/approve");
     let body = json!({"city":"Test City","state":"Test Region","pincode":"400001"});
-    let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
-    let (status, login) = request(
-        &router,
-        "/api/admin/auth/verify-totp",
-        None,
-        Some(json!({"challenge_token":admin_challenge(&db, &email).await,"code":TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp()-30) as u64).unwrap()})),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
+    let login =
+        login_before_step_up(&router, "/api/admin/auth/verify-totp", &db, &email, &secret).await;
     let token = login["token"].as_str().unwrap();
     assert_eq!(
         request(&router, &path, Some(token), Some(body.clone()))
@@ -109,6 +102,7 @@ async fn only_step_up_control_center_can_issue_and_revoke_plant_owner_access(db:
             .0,
         StatusCode::FORBIDDEN
     );
+    let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
     assert_eq!(
         request(
             &router,
@@ -230,15 +224,8 @@ async fn support_staff_requires_recorded_web_mfa_grants_and_fresh_status_step_up
     );
     let staff_path = format!("/api/assistant/support/staff/cases/{case_id}");
     let (admin, email, secret) = identity(&db, "central_admin", true, vec!["support.view"]).await;
-    let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
-    let (status, login) = request(
-        &router,
-        "/api/admin/auth/verify-totp",
-        None,
-        Some(json!({"challenge_token":admin_challenge(&db, &email).await,"code":TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp()-30) as u64).unwrap()})),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
+    let login =
+        login_before_step_up(&router, "/api/admin/auth/verify-totp", &db, &email, &secret).await;
     let token = login["token"].as_str().unwrap();
     assert_eq!(
         request(
@@ -397,6 +384,7 @@ async fn support_staff_requires_recorded_web_mfa_grants_and_fresh_status_step_up
         .0,
         StatusCode::FORBIDDEN
     );
+    let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
     assert_eq!(
         request(
             &router,
@@ -486,6 +474,46 @@ async fn request(
     (status, serde_json::from_slice(&bytes).unwrap())
 }
 
+async fn login_before_step_up(
+    router: &Router,
+    path: &str,
+    db: &PgPool,
+    email: &str,
+    secret: &str,
+) -> Value {
+    // Login uses the previous TOTP window so that the current code remains
+    // available for step-up. A clock rollover during login can otherwise make
+    // the previous code two windows old before the handler verifies it.
+    let challenge = admin_challenge(db, email).await;
+    let login_now = chrono::Utc::now().timestamp();
+    let login_code = TotpEngine::compute_code(secret, (login_now - 30) as u64).unwrap();
+    let (mut status, mut login) = request(
+        router,
+        path,
+        None,
+        Some(json!({"challenge_token":challenge,"code":login_code})),
+    )
+    .await;
+    if status == StatusCode::UNAUTHORIZED
+        && chrono::Utc::now().timestamp().div_euclid(30) != login_now.div_euclid(30)
+    {
+        // Retry only when a real 30-second boundary occurred. All other
+        // authentication failures remain hard failures of this security test.
+        let challenge = admin_challenge(db, email).await;
+        let retry_now = chrono::Utc::now().timestamp();
+        let retry_code = TotpEngine::compute_code(secret, (retry_now - 30) as u64).unwrap();
+        (status, login) = request(
+            router,
+            path,
+            None,
+            Some(json!({"challenge_token":challenge,"code":retry_code})),
+        )
+        .await;
+    }
+    assert_eq!(status, StatusCode::OK, "Control Center login must succeed");
+    login
+}
+
 async fn identity(
     db: &PgPool,
     role: &str,
@@ -527,7 +555,7 @@ async fn central_admin_requires_approval_web_provenance_and_explicit_permission(
                 &router,
                 "/login",
                 None,
-                Some(json!({"challenge_token":admin_challenge(&db, &email).await,"code":TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp()-30) as u64).unwrap()}))
+                Some(json!({"challenge_token":admin_challenge(&db, &email).await,"code":TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap()}))
             )
             .await
             .0,
@@ -548,7 +576,7 @@ async fn central_admin_requires_approval_web_provenance_and_explicit_permission(
             &router,
             "/login",
             None,
-            Some(json!({"challenge_token":admin_challenge(&db, &email).await,"code":TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp()-30) as u64).unwrap()}))
+            Some(json!({"challenge_token":admin_challenge(&db, &email).await,"code":TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap()}))
         )
         .await
         .0,
@@ -576,7 +604,7 @@ async fn central_admin_requires_approval_web_provenance_and_explicit_permission(
         &router,
         "/login",
         None,
-        Some(json!({"challenge_token":admin_challenge(&db, &email).await,"code":TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp()-30) as u64).unwrap()})),
+        Some(json!({"challenge_token":admin_challenge(&db, &email).await,"code":TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap()})),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -615,37 +643,7 @@ async fn step_up_is_session_bound_expiring_and_logout_revokes_sessions(db: PgPoo
     let router = app(state.clone());
     let (id, email, secret) =
         identity(&db, "central_admin", true, vec!["reviewer_access.manage"]).await;
-    // Login uses the previous TOTP window so that the current code remains
-    // available for step-up. A clock rollover during login can otherwise make
-    // the previous code two windows old before the handler verifies it.
-    let challenge = admin_challenge(&db, &email).await;
-    let login_now = chrono::Utc::now().timestamp();
-    let login_code = TotpEngine::compute_code(&secret, (login_now - 30) as u64).unwrap();
-    let (mut status, mut login) = request(
-        &router,
-        "/login",
-        None,
-        Some(json!({"challenge_token":challenge,"code":login_code})),
-    )
-    .await;
-    if status == StatusCode::UNAUTHORIZED
-        && chrono::Utc::now().timestamp().div_euclid(30) != login_now.div_euclid(30)
-    {
-        // Retry only when a real 30-second boundary occurred. All other
-        // authentication failures remain hard failures of this security test.
-        let challenge = admin_challenge(&db, &email).await;
-        let retry_code =
-            TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp() - 30) as u64)
-                .unwrap();
-        (status, login) = request(
-            &router,
-            "/login",
-            None,
-            Some(json!({"challenge_token":challenge,"code":retry_code})),
-        )
-        .await;
-    }
-    assert_eq!(status, StatusCode::OK, "Control Center login must succeed");
+    let login = login_before_step_up(&router, "/login", &db, &email, &secret).await;
     let token = login["token"]
         .as_str()
         .expect("Successful Control Center login must contain a token");
@@ -734,15 +732,17 @@ async fn stale_role_claims_are_rejected_and_otp_replay_does_not_mint_session(db:
     let (id, email, secret) = identity(&db, "central_admin", true, vec![]).await;
     // Replay must submit the exact same code. Recomputing across a 30-second
     // TOTP rollover would accidentally test a distinct, valid code instead.
-    let used_code =
-        TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp() - 30) as u64).unwrap();
-    let (_, login) = request(
+    let challenge = admin_challenge(&db, &email).await;
+    let now = chrono::Utc::now().timestamp() as u64;
+    let used_code = TotpEngine::compute_code(&secret, now).unwrap();
+    let (status, login) = request(
         &router,
         "/login",
         None,
-        Some(json!({"challenge_token":admin_challenge(&db, &email).await,"code":used_code})),
+        Some(json!({"challenge_token":challenge,"code":used_code})),
     )
     .await;
+    assert_eq!(status, StatusCode::OK);
     let token = login["token"].as_str().unwrap();
     assert_eq!(
         request(
@@ -788,7 +788,7 @@ async fn read_workspaces_execute_and_enforce_individual_permissions(db: PgPool) 
         &router,
         "/login",
         None,
-        Some(json!({"challenge_token":admin_challenge(&db, &email).await,"code":TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp()-30) as u64).unwrap()})),
+        Some(json!({"challenge_token":admin_challenge(&db, &email).await,"code":TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap()})),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -837,7 +837,7 @@ async fn central_admin_rejects_unbound_jwt_and_logout_revokes_active_session(db:
         &router,
         "/login",
         None,
-        Some(json!({"challenge_token":admin_challenge(&db, &email).await,"code":TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp()-30) as u64).unwrap()})),
+        Some(json!({"challenge_token":admin_challenge(&db, &email).await,"code":TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap()})),
     )
     .await;
     let first = result["token"].as_str().unwrap();
@@ -962,16 +962,9 @@ async fn reviewer_disable_revokes_current_replaced_and_legacy_access(db: PgPool)
 
     let (_, email, secret) =
         identity(&db, "central_admin", true, vec!["reviewer_access.manage"]).await;
-    let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
-    let (status, login) = request(
-        &console,
-        "/login",
-        None,
-        Some(json!({"challenge_token":admin_challenge(&db, &email).await,"code":TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp()-30) as u64).unwrap()})),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
+    let login = login_before_step_up(&console, "/login", &db, &email, &secret).await;
     let admin = login["token"].as_str().unwrap();
+    let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
     assert_eq!(
         request(
             &console,
@@ -1071,15 +1064,8 @@ async fn native_automation_global_policy_requires_explicit_grant_and_recent_mfa(
         vec!["system.view", "audit.view"],
     )
     .await;
-    let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
-    let (status, logged_in) = request(
-        &router,
-        "/api/admin/auth/verify-totp",
-        None,
-        Some(json!({"challenge_token":admin_challenge(&db, &email).await,"code":TotpEngine::compute_code(&secret, (chrono::Utc::now().timestamp()-30) as u64).unwrap()})),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
+    let logged_in =
+        login_before_step_up(&router, "/api/admin/auth/verify-totp", &db, &email, &secret).await;
     let token = logged_in["token"].as_str().unwrap();
     assert_eq!(
         request(
@@ -1119,6 +1105,7 @@ async fn native_automation_global_policy_requires_explicit_grant_and_recent_mfa(
             .0,
         StatusCode::FORBIDDEN,
     );
+    let code = TotpEngine::compute_code(&secret, chrono::Utc::now().timestamp() as u64).unwrap();
     assert_eq!(
         request(
             &router,

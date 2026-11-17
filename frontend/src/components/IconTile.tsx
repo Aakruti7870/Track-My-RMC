@@ -9,19 +9,21 @@ import { homeArtwork, lightQuickAccessArtwork, radius } from "@/src/theme/tokens
 type Artwork = { symbol: VectorSymbolName; icon?: never } | { symbol?: never; icon: keyof typeof Ionicons.glyphMap };
 
 const horizontal = { start: { x: 0, y: 0.5 }, end: { x: 1, y: 0.5 } };
+const diagonal = { start: { x: 0, y: 0 }, end: { x: 1, y: 1 } };
 const standardStops = [0, 0.5, 1] as const;
 
-export function LightArtworkSurface({ children, style, cornerRadius = radius.sm }: {
+export function LightArtworkSurface({ children, style, cornerRadius = radius.sm, diagonalFill = false }: {
   children?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   cornerRadius?: number;
+  diagonalFill?: boolean;
 }) {
   const artwork = lightQuickAccessArtwork;
   return (
     <View style={[styles.lightRim, { borderRadius: cornerRadius, backgroundColor: artwork.rim }, style]}>
       <LinearGradient {...horizontal} colors={artwork.copperEdge} locations={standardStops}
         style={[styles.lightEdge, { borderRadius: cornerRadius - 1 }]}>
-        <LinearGradient {...horizontal} colors={artwork.fill} locations={standardStops}
+        <LinearGradient {...(diagonalFill ? diagonal : horizontal)} colors={artwork.fill} locations={standardStops}
           style={[styles.lightFill, { borderRadius: cornerRadius - 2 }]}>
           <LinearGradient {...horizontal} colors={artwork.rightGlow} locations={[0.85, 0.97, 1]}
             pointerEvents="none" style={StyleSheet.absoluteFill} />
@@ -32,12 +34,13 @@ export function LightArtworkSurface({ children, style, cornerRadius = radius.sm 
   );
 }
 
-export function IconTile({ symbol, icon, homeShortcut = false, bulk = false, size = homeShortcut ? 28 : 24, width = homeShortcut ? 52 : 44, height = homeShortcut ? Math.min(width, 48) : width }: Artwork & {
+export function IconTile({ symbol, icon, homeShortcut = false, bulk = false, diagonalFill = false, size = homeShortcut ? 28 : 24, width = homeShortcut ? 52 : 44, height = homeShortcut ? Math.min(width, 48) : width }: Artwork & {
   size?: number;
   width?: number;
   height?: number;
   homeShortcut?: boolean;
   bulk?: boolean;
+  diagonalFill?: boolean;
 }) {
   const { colors } = useTheme();
   const lightArtwork = !colors.isDark && (homeShortcut || bulk);
@@ -47,13 +50,13 @@ export function IconTile({ symbol, icon, homeShortcut = false, bulk = false, siz
     ? <VectorSymbol name={symbol} size={size} color={foreground} />
     : <Ionicons name={icon} size={size} color={foreground} accessible={false} aria-hidden />;
   if (lightArtwork) {
-    return <LightArtworkSurface style={{ width, height }}>{glyph}</LightArtworkSurface>;
+    return <LightArtworkSurface style={{ width, height }} diagonalFill={diagonalFill}>{glyph}</LightArtworkSurface>;
   }
   if (homeShortcut && !bulk) {
     return (
       <LinearGradient {...horizontal} colors={homeArtwork.copperEdge}
         style={[styles.tile, { width, height, padding: 1 }]}>
-        <LinearGradient {...horizontal} colors={homeArtwork.quickFill} locations={standardStops} style={styles.inner}>
+        <LinearGradient {...(diagonalFill ? diagonal : horizontal)} colors={homeArtwork.quickFill} locations={standardStops} style={styles.inner}>
           {glyph}
         </LinearGradient>
       </LinearGradient>
