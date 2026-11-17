@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { Keyboard, Platform, Pressable, StyleSheet, View, useWindowDimensions, type TextStyle } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 
 import { CustomerHomeHeader } from "@/src/components/customer/CustomerHomeHeader";
 import { HomeCarousel, type CarouselAction } from "@/src/components/HomeCarousel";
@@ -85,7 +85,7 @@ export default function CustomerHome() {
             <View style={[styles.bulkCard, { backgroundColor: colors.brandSoft, borderColor: colors.border }]}>
               <Pressable testID="home-bulk-quote" accessibilityRole="button" accessibilityLabel="Bulk order? Request a quote"
                 onPress={() => { setShowBulk(false); openAction("bulk"); }} style={styles.bulkAction}>
-                <IconTile symbol="quotation-requests" width={32} size={20} bulk />
+                <IconTile symbol="bulk-quote" width={32} size={20} bulk />
                 <View style={styles.bulkCopy}>
                   <AppText variant="label">Bulk Order?</AppText>
                   <AppText variant="caption">Tap for best price</AppText>
@@ -93,7 +93,7 @@ export default function CustomerHome() {
               </Pressable>
               <Pressable testID="dismiss-home-bulk-quote" accessibilityRole="button" accessibilityLabel="Dismiss bulk order prompt"
                 onPress={() => setShowBulk(false)} style={styles.bulkDismiss}>
-                <Ionicons name="close" size={19} color={colors.onSurfaceSecondary} accessible={false} aria-hidden />
+                <VectorSymbol name="close" size={19} color={colors.onSurfaceSecondary} />
               </Pressable>
             </View>
           </View>

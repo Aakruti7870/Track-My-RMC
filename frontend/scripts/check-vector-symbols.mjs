@@ -15,6 +15,18 @@ async function importTypescript(relative) {
 
 const renderer = read("src/components/VectorSymbol.tsx");
 const trackIcons = JSON.parse(read("src/components/vector-symbols/track-icons.json"));
+const { symbols: generated, customerOverrides } = JSON.parse(read("src/components/vector-symbols/generated-icons.json"));
+assert.equal(Object.keys(generated).length, 165, "Import all distinct glyphs from both packs");
+assert.equal(Object.keys(customerOverrides).length, 5, "Preserve different customer and operations artwork");
+for (const [name, icon] of Object.entries({ ...generated, ...customerOverrides })) {
+  assert.ok(icon.length, `Missing generated artwork for ${name}`);
+}
+for (const shapes of [...Object.values(generated), ...Object.values(customerOverrides)]) checkShapes(shapes);
+for (const [name, icon] of Object.entries(customerOverrides)) {
+  assert.ok(Object.hasOwn(generated, name));
+  assert.notDeepEqual(icon, generated[name]);
+}
+assert.notDeepEqual(generated.home, generated["home-selected"]);
 const aliases = Object.fromEntries([...renderer.matchAll(/^  "([a-z-]+)": "([a-z-]+)",$/gm)].map(([, key, value]) => [key, value]));
 assert.equal(Object.keys(trackIcons).length, 88);
 for (const [name, icon] of Object.entries(trackIcons)) {
@@ -23,7 +35,7 @@ for (const [name, icon] of Object.entries(trackIcons)) {
 }
 function checkShapes(shapes) {
   for (const [tag, attributes, children] of shapes) {
-    assert.ok(["path", "circle", "g", "line", "rect"].includes(tag), `Unexpected SVG element: ${tag}`);
+    assert.ok(["path", "circle", "ellipse", "g", "line", "rect"].includes(tag), `Unexpected SVG element: ${tag}`);
     for (const [key, value] of Object.entries(attributes)) {
       if (key === "stroke" || key === "fill") assert.ok(["none", "currentColor"].includes(value));
       if (key === "d") assert.match(value, /^[Mm][0-9.,+ eEMmLlHhVvCcSsQqTtAaZz-]+$/);
@@ -43,7 +55,7 @@ for (const name of ["avatar-shield", "browser-shield", "compact-lock"]) {
 const { materialSymbolNames, materialSymbolPaths } = await importTypescript(
   "src/components/vector-symbols/materialSymbols.ts",
 );
-const supported = new Set([...Object.keys(trackIcons), ...Object.keys(aliases), ...Object.keys(materialSymbolNames)]);
+const supported = new Set([...Object.keys(trackIcons), ...Object.keys(generated), ...Object.keys(aliases), ...Object.keys(materialSymbolNames)]);
 for (const [name, icon] of Object.entries(materialSymbolNames)) {
   assert.ok(Object.hasOwn(materialSymbolPaths, icon), `Unknown Material Symbol ${icon} for ${name}`);
 }
@@ -56,17 +68,10 @@ const { MODULE_CATALOG } = await importTypescript("src/navigation/moduleCatalog.
 assert.equal(MODULE_CATALOG.length, 62, "Global RFQ administration is web-only; legitimate plant modules remain");
 assert.ok(!MODULE_CATALOG.some(m => m.key === "admin-rmc-rfq-leads" || m.route === "/plant-admin/rmc-rfq-leads"), "Global customer leads must not be advertised to plant admins");
 assert.doesNotMatch(read("app/plant-admin/rmc-rfq-leads.tsx"), /useGet|apiPatch|apiPost/, "Legacy global RFQ deep link must not send mobile credentials");
-let mapped = 0;
 for (const m of MODULE_CATALOG) {
-  if (m.symbol) {
-    mapped++;
-    assert.ok(supported.has(m.symbol), `Unknown SVG ${m.symbol} for module ${m.key}`);
-  } else {
-    assert.equal(m.key, "account-deletion", "No unsuitable substitute SVGs for destructive account deletion");
-    assert.equal(m.icon, "trash-outline");
-  }
+  assert.ok(supported.has(m.symbol), `Unknown SVG ${m.symbol} for module ${m.key}`);
 }
-assert.equal(mapped, 61, "All non-destructive mobile modules retain a registered SVG");
+assert.equal(MODULE_CATALOG.find(m => m.key === "account-deletion").symbol, "account-deletion");
 const tabs = read("src/navigation/vectorSymbolAssignments.ts");
 for (const [, key] of tabs.matchAll(/(?:"[^"]+":\s*|return\s+)"([a-z0-9-]+)"/g)) {
   assert.ok(supported.has(key), `Tab references an unregistered SVG: ${key}`);
@@ -81,7 +86,8 @@ const integrationFiles = [
 for (const filename of integrationFiles) {
   assert.match(read(filename), /<(?:VectorSymbol|IconTile\b[^>]*\bsymbol=)/, `SVG not rendered by ${filename}`);
 }
-assert.match(renderer, /track-icons\.json/);
+assert.match(renderer, /generated-icons\.json/);
+assert.match(renderer, /customer && active && canonical === "home" \? "home-selected"/);
 assert.match(renderer, /"0 0 64 64" : "0 -960 960 960"/);
 assert.match(renderer, /<Path d=\{materialSymbolPaths\[fallback\]\} fill=/);
 assert.match(renderer, /\baria-hidden\b/);
@@ -89,7 +95,7 @@ assert.doesNotMatch(renderer, /SvgXml|dangerouslySetInnerHTML/);
 
 const home = read("src/navigation/customerHome.ts");
 const homeIcons = ["new-order", "live-order-tracking", "nearby-rmc-plants", "my-orders", "cement", "labour-contractor", "building-material"];
-const geometries = homeIcons.map(name => JSON.stringify(trackIcons[name]?.full ?? materialSymbolPaths[materialSymbolNames[name]]));
+const geometries = homeIcons.map(name => JSON.stringify(generated[name]));
 assert.ok(geometries.every(Boolean));
 assert.equal(new Set(geometries).size, homeIcons.length, "Order actions and service categories need distinct symbols");
 assert.match(home, /key: "pump-rental"[^\n]*symbol: "pump-rental"/);
@@ -111,4 +117,13 @@ for (const expected of ['name="chevron-down" size={size.headerChevron}', 'name="
 assert.ok(!header.includes('header-qr-disabled') && !header.includes('testID="header-kyc"') && !header.includes('header-location-refresh'), "Deprecated QR, shield, and refresh controls must not appear in the header");
 assert.equal((header.match(/name="chevron-down"/g) || []).length, 1, "Exactly one location dropdown chevron must remain");
 assert.ok(header.includes('testID="header-location-chevron"') && header.includes('onPress={() => setSheet("location")}'), "Left chevron must open the existing selector");
-console.log(`PASS: ${Object.keys(trackIcons).length} supplied vectors, ${Object.keys(materialSymbolPaths).length} licensed Material Symbols and ${mapped}/${MODULE_CATALOG.length} mapped role modules`);
+const admin = read("../admin-web/src/main.tsx");
+const menu = admin.slice(admin.indexOf("const ADMIN_MENU ="), admin.indexOf("const ADMINISTRATION_PAGES ="));
+const webIcons = [...menu.matchAll(/page:'([^']+)'.*?icon:'([^']+)'/g)];
+assert.equal(webIcons.length, 18, "Every administration menu entry needs the supplied artwork");
+assert.equal(new Set(webIcons.map(([, , name]) => name)).size, webIcons.length);
+for (const [, page, name] of webIcons) {
+  assert.ok(Object.hasOwn(generated, name), `Unknown administration SVG ${name} for ${page}`);
+}
+assert.match(read("../admin-web/src/TrackIcon.tsx"), /generated-icons\.json/);
+console.log(`PASS: ${Object.keys(generated).length} generated glyphs, ${Object.keys(customerOverrides).length} customer variants and ${MODULE_CATALOG.length} mapped mobile modules`);

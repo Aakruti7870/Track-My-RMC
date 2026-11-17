@@ -29,11 +29,11 @@ type FormKey =
 
 const SAND_OPTIONS = ["Crushed Sand", "Gujrat Washed Sand"] as const;
 const MATERIAL_CATEGORIES = {
-  sand: { title: "Sand Enquiry", symbol: "stock-register", options: SAND_OPTIONS },
-  bricks: { title: "Bricks Enquiry", symbol: "building-material", options: ["Bricks"] },
-  steel: { title: "Steel Enquiry", symbol: "material-receipts", options: ["Steel"] },
-  "office-cabin": { title: "Office Cabin Enquiry", symbol: "store-dashboard", options: ["Office Cabin"] },
-  shuttering: { title: "Shuttering Material Enquiry", symbol: "material-inventory", options: ["Shuttering Material"] },
+  sand: { title: "Sand Enquiry", symbol: "sand", options: SAND_OPTIONS },
+  bricks: { title: "Bricks Enquiry", symbol: "bricks", options: ["Bricks"] },
+  steel: { title: "Steel Enquiry", symbol: "steel", options: ["Steel"] },
+  "office-cabin": { title: "Office Cabin Enquiry", symbol: "office-cabin", options: ["Office Cabin"] },
+  shuttering: { title: "Shuttering Material Enquiry", symbol: "shuttering", options: ["Shuttering Material"] },
 } as const;
 const MATERIALS = ["10 MM", "20 MM", "40 MM", ...SAND_OPTIONS, "Cement Bag",
   ...Object.entries(MATERIAL_CATEGORIES).flatMap(([key, category]) => key === "sand" ? [] : [...category.options])] as const;
@@ -49,7 +49,7 @@ const TYPES: Record<Service, string> = {
   cement: "CEMENT", labour: "LABOUR_CONTRACTOR", material: "BUILDING_MATERIAL", pump: "PUMP_RENTAL", bulk: "BULK_CONCRETE",
 };
 const ENQUIRY_SYMBOLS: Record<Service, VectorSymbolName> = {
-  cement: "cement", labour: "labour-contractor", material: "building-material", pump: "pump-rental", bulk: "quotation-requests",
+  cement: "cement", labour: "labour-contractor", material: "building-material", pump: "pump-rental", bulk: "bulk-quote",
 };
 type Enquiry = { id: string; service_type: string; status: string; required_date: string; details?: { material_type?: string } };
 type EnquiryResponse = { enquiries: Enquiry[] };
@@ -242,7 +242,7 @@ function EnquiryForm({ selected, categoryKey }: { selected: Service; categoryKey
       <View style={{ height: insets.top }} />
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
         <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => router.canGoBack() ? router.back() : router.replace("/customer")} style={styles.back}>
-          <Ionicons name="arrow-back" size={24} color={colors.onSurface} />
+          <VectorSymbol name="chevron-left" size={24} color={colors.onSurface} />
         </Pressable>
         <VectorSymbol name={category?.symbol ?? ENQUIRY_SYMBOLS[selected]} size={24} />
         <View style={{ flex: 1 }}>
@@ -253,7 +253,7 @@ function EnquiryForm({ selected, categoryKey }: { selected: Service; categoryKey
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
         {successId ? (
           <Card style={{ gap: spacing.md }}>
-            <Ionicons name="checkmark-circle" size={46} color={colors.verified} />
+            <VectorSymbol name="success" size={46} color={colors.verified} />
             <AppText variant="heading">Enquiry received</AppText>
             <AppText>Your request has been saved with status NEW. Our team can review it and contact you.</AppText>
             <AppText variant="caption">Reference: {successId}</AppText>

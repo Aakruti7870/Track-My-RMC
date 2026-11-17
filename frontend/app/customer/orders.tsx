@@ -11,6 +11,7 @@ import { AppText } from "@/src/components/ui/AppText";
 import { Button } from "@/src/components/ui/Button";
 import { Card } from "@/src/components/ui/Card";
 import { Skeleton } from "@/src/components/ui/Skeleton";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { OrderCard, OrderData } from "@/src/components/OrderCard";
 import { EmptyView, ErrorView } from "@/src/components/StateViews";
 import { fonts, palette, radius, spacing } from "@/src/theme/tokens";
@@ -96,12 +97,12 @@ export default function CustomerOrders() {
       <View style={{ borderBottomColor: colors.divider, borderBottomWidth: StyleSheet.hairlineWidth }}>
         <View style={styles.titleRow}>
           <AppText variant="title" accessibilityRole="header">My Orders</AppText>
-          <Button label="New Order" size="sm" fullWidth={false} testID="orders-new-order" onPress={() => router.push("/new-order")} />
+          <Button label="New Order" icon={<VectorSymbol name="new-order" size={18} color={colors.onBrand} />} size="sm" fullWidth={false} testID="orders-new-order" onPress={() => router.push("/new-order")} />
         </View>
         <View style={styles.records}>
-          <Button label="Quotations" variant="outline" size="sm" fullWidth={false} testID="orders-quotations"
+          <Button label="Quotations" icon={<VectorSymbol name="quotations" size={18} color={colors.accentText} />} variant="outline" size="sm" fullWidth={false} testID="orders-quotations"
             onPress={() => router.push("/customer/quotations")} />
-          <Button label="Documents" variant="outline" size="sm" fullWidth={false} testID="orders-documents"
+          <Button label="Documents" icon={<VectorSymbol name="documents" size={18} color={colors.accentText} />} variant="outline" size="sm" fullWidth={false} testID="orders-documents"
             onPress={() => router.push("/customer/documents")} />
         </View>
         <FlatList
@@ -163,7 +164,10 @@ export default function CustomerOrders() {
           refreshing={refreshing}
           ListFooterComponent={<View style={{ gap: spacing.md }}>
           {reviewRequests.length || reviewError || reviewLoading ? <View style={{ gap: spacing.sm }}>
-            <AppText variant="heading">Plant Order Requests</AppText>
+            <View style={styles.sectionHeading}>
+              <VectorSymbol name="order-requests" />
+              <AppText variant="heading">Plant Order Requests</AppText>
+            </View>
             {reviewLoading ? <ActivityIndicator color={colors.brand} accessibilityLabel="Loading order requests" /> : null}
             {reviewError ? <Button label="Retry loading order requests" size="sm" variant="outline" fullWidth={false} onPress={() => void review.reload()} /> : null}
             {reviewRequests.map(request => <Card key={request.id} style={{ gap: spacing.xs }}>
@@ -190,7 +194,10 @@ export default function CustomerOrders() {
             </Card>)}
           </View> : null}
           {visibleDrafts.length || draftsLoading || draftsError ? <View style={{ gap: spacing.sm }}>
-            <AppText variant="heading">Saved Drafts</AppText>
+            <View style={styles.sectionHeading}>
+              <VectorSymbol name="order-drafts" />
+              <AppText variant="heading">Saved Drafts</AppText>
+            </View>
             {draftsLoading ? (
               <View style={styles.draftLoading} accessibilityLiveRegion="polite">
                 <ActivityIndicator color={colors.brand} />
@@ -222,7 +229,7 @@ export default function CustomerOrders() {
                 onPress={() => router.push({ pathname: "/order/[id]", params: { id: item.id } })}
               />
               {TRACKABLE_STATUSES.has(item.status.toUpperCase()) ? (
-                <Button label="Track Delivery" variant="outline" size="sm" testID={`orders-track-${item.id}`}
+                <Button label="Track Delivery" icon={<VectorSymbol name="live-order-tracking" size={18} color={colors.accentText} />} variant="outline" size="sm" testID={`orders-track-${item.id}`}
                   onPress={() => router.push({ pathname: "/track/[id]", params: { id: item.id } })} />
               ) : null}
             </View>
@@ -253,6 +260,7 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.md },
   records: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
   chipRow: { flexGrow: 0, marginBottom: spacing.sm },
+  sectionHeading: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   draftLoading: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   chip: {
     minHeight: 48,

@@ -1,4 +1,3 @@
-import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { Image, Pressable, StyleSheet, View } from "react-native";
@@ -6,7 +5,7 @@ import { Image, Pressable, StyleSheet, View } from "react-native";
 import { CardHighlight } from "@/src/components/ui/CardHighlight";
 import { IconTile } from "@/src/components/IconTile";
 import { AppText } from "@/src/components/ui/AppText";
-import type { VectorSymbolName } from "@/src/components/VectorSymbol";
+import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { fonts } from "@/src/theme/tokens";
 
@@ -30,7 +29,7 @@ export function PlantHomeActions({ action }: { action?: "supplier-enquiry" | "pr
   const { colors } = useTheme();
   const actions = [
     { key: "supplier-enquiry", title: "Connect With Best Material Supplier",
-      symbol: "suppliers", highlight: true, onPress: () => router.push("/supplier-enquiry") },
+      symbol: "supplier-enquiry", highlight: true, onPress: () => router.push("/supplier-enquiry") },
     { key: "profile", title: "Add Plant Profile Details", detail: "Open your plant Profile",
       symbol: "plant-profile", highlight: false,
       onPress: () => router.push({ pathname: "/plant-profile", params: { assigned: "1" } }) },
@@ -51,8 +50,7 @@ export function PlantHomeActions({ action }: { action?: "supplier-enquiry" | "pr
             <AppText style={styles.actionTitle}>{title}</AppText>
             {detail ? <AppText variant="caption">{detail}</AppText> : null}
           </View>
-          <Ionicons name="chevron-forward" size={20} color={highlight ? colors.accentText : colors.onSurfaceTertiary}
-            accessible={false} aria-hidden />
+          <VectorSymbol name="chevron-right" size={20} color={highlight ? colors.accentText : colors.onSurfaceTertiary} />
         </Pressable>
       ))}
     </View>

@@ -35,14 +35,14 @@ export const homeShortcuts: readonly HomeLink[] = [
 
 export const materialPreview: readonly HomeLink[] = [
   { key: "cement", label: "Cement", symbol: "cement", route: enquiryRoute("cement") },
-  { key: "sand", label: "Sand", symbol: "stock-register", route: enquiryRoute("material", "sand") },
-  { key: "bricks", label: "Bricks", symbol: "building-material", route: enquiryRoute("material", "bricks") },
+  { key: "sand", label: "Sand", symbol: "sand", route: enquiryRoute("material", "sand") },
+  { key: "bricks", label: "Bricks", symbol: "bricks", route: enquiryRoute("material", "bricks") },
 ];
 
 export const moreMaterials: readonly HomeLink[] = [
-  { key: "steel", label: "Purchase Steel", symbol: "material-receipts", route: enquiryRoute("material", "steel") },
+  { key: "steel", label: "Purchase Steel", symbol: "steel", route: enquiryRoute("material", "steel") },
   { key: "labour", label: "Hire Labour Contractor", symbol: "labour-contractor", route: enquiryRoute("labour") },
-  { key: "office-cabin", label: "Buy Office Cabin", symbol: "store-dashboard", route: enquiryRoute("material", "office-cabin") },
-  { key: "shuttering", label: "Shuttering Material", symbol: "material-inventory", route: enquiryRoute("material", "shuttering") },
+  { key: "office-cabin", label: "Buy Office Cabin", symbol: "office-cabin", route: enquiryRoute("material", "office-cabin") },
+  { key: "shuttering", label: "Shuttering Material", symbol: "shuttering", route: enquiryRoute("material", "shuttering") },
   { key: "material", label: "Building Materials", symbol: "building-material", route: enquiryRoute("material") },
 ];

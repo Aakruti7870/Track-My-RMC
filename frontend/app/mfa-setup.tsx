@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Pressable, ScrollView, Share, StyleSheet, View } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { StatusBar } from "expo-status-bar";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -113,7 +114,7 @@ export default function MfaSetup() {
         <StatusBar style="dark" />
         <ScrollView contentContainerStyle={styles.content}>
           <View style={[styles.heroIcon, { backgroundColor: colors.brand + "16" }]}>
-            <Ionicons name="shield-checkmark" size={34} color={colors.brand} />
+            <VectorSymbol name="recovery-codes" size={34} color={colors.brand} />
           </View>
           <AppText variant="heading" center>Authenticator activated</AppText>
           <AppText variant="bodyMuted" center>Save these one-time recovery codes before continuing. They will not be shown again.</AppText>
@@ -125,7 +126,7 @@ export default function MfaSetup() {
           </View>
 
           <Button label="Share / Save Recovery Codes" onPress={shareRecoveryCodes} icon={<Ionicons name="share-outline" size={18} color={colors.onBrand} />} />
-          <Button label="I Saved Them — Continue" onPress={finish} icon={<Ionicons name="checkmark-circle-outline" size={18} color={colors.onBrand} />} />
+          <Button label="I Saved Them — Continue" onPress={finish} icon={<VectorSymbol name="success" size={18} color={colors.onBrand} />} />
           <AppText variant="caption" center>Keep recovery codes outside the phone when possible. Each code is invalidated after one use.</AppText>
         </ScrollView>
       </View>
@@ -137,7 +138,7 @@ export default function MfaSetup() {
       <StatusBar style="dark" />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={[styles.heroIcon, { backgroundColor: colors.brand + "16" }]}>
-          <Ionicons name="lock-closed-outline" size={32} color={colors.brand} />
+          <VectorSymbol name="authenticator" size={32} color={colors.brand} />
         </View>
         <AppText variant="heading" center>Secure your Plant Staff account</AppText>
         <AppText variant="bodyMuted" center>Set up Google Authenticator, Microsoft Authenticator, Authy, 1Password, or another TOTP-compatible app.</AppText>

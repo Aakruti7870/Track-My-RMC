@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -103,12 +103,12 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge label={status.replaceAll("_", " ")} color={negative ? colors.error : positive ? colors.success : colors.warning} />;
 }
 
-function SectionTitle({ icon, title, subtitle }: { icon: keyof typeof Ionicons.glyphMap; title: string; subtitle?: string }) {
+function SectionTitle({ icon, title, subtitle }: { icon: VectorSymbolName; title: string; subtitle?: string }) {
   const { colors } = useTheme();
   return (
     <View style={styles.sectionTitle}>
       <View style={[styles.sectionIcon, { backgroundColor: colors.surfaceSecondary }]}>
-        <Ionicons name={icon} size={20} color={colors.brand} />
+        <VectorSymbol name={icon} size={20} color={colors.brand} />
       </View>
       <View style={{ flex: 1 }}>
         <AppText variant="heading">{title}</AppText>
@@ -301,7 +301,7 @@ export default function WorkforceScreen() {
       <View style={{ height: insets.top }} />
       <View style={styles.header}>
         <Pressable testID="workforce-back" onPress={() => router.back()} style={[styles.back, { backgroundColor: colors.surfaceSecondary }]}>
-          <Ionicons name="chevron-back" size={22} color={colors.onSurface} />
+          <VectorSymbol name="back" size={22} color={colors.onSurface} />
         </Pressable>
         <View style={{ flex: 1 }}>
           <AppText variant="title">Workforce & Field</AppText>
@@ -317,14 +317,14 @@ export default function WorkforceScreen() {
             <AttendanceCard attendance={employee.attendance} busy={busy} onPunch={attendanceAction} />
 
             <View style={styles.quickRow}>
-              <QuickAction icon="calendar-outline" label="Apply Leave" active={form === "leave"} onPress={() => setForm(form === "leave" ? null : "leave")} />
-              <QuickAction icon="navigate-outline" label="Client Visit" active={form === "visit"} onPress={() => setForm(form === "visit" ? null : "visit")} />
-              <QuickAction icon="wallet-outline" label="Expense" active={form === "expense"} onPress={() => setForm(form === "expense" ? null : "expense")} />
+              <QuickAction icon="leave" label="Apply Leave" active={form === "leave"} onPress={() => setForm(form === "leave" ? null : "leave")} />
+              <QuickAction icon="gps-live-location" label="Client Visit" active={form === "visit"} onPress={() => setForm(form === "visit" ? null : "visit")} />
+              <QuickAction icon="expenses" label="Expense" active={form === "expense"} onPress={() => setForm(form === "expense" ? null : "expense")} />
             </View>
 
             {form === "leave" ? (
               <Card style={{ gap: spacing.md }}>
-                <SectionTitle icon="calendar-outline" title="Apply for leave" subtitle="Plant Owner approval is required" />
+                <SectionTitle icon="leave" title="Apply for leave" subtitle="Plant Owner approval is required" />
                 <Input label="Leave type" value={leaveType} onChangeText={setLeaveType} placeholder="CASUAL / SICK / PAID / UNPAID / OTHER" autoCapitalize="characters" />
                 <Input label="Start date" value={leaveStart} onChangeText={setLeaveStart} placeholder="YYYY-MM-DD" />
                 <Input label="End date" value={leaveEnd} onChangeText={setLeaveEnd} placeholder="YYYY-MM-DD" />
@@ -335,7 +335,7 @@ export default function WorkforceScreen() {
 
             {form === "visit" ? (
               <Card style={{ gap: spacing.md }}>
-                <SectionTitle icon="navigate-outline" title="Schedule client visit" subtitle="Start and complete actions record live location" />
+                <SectionTitle icon="gps-live-location" title="Schedule client visit" subtitle="Start and complete actions record live location" />
                 <Input label="Client / site" value={clientName} onChangeText={setClientName} placeholder="Client name" autoCapitalize="words" />
                 <Input label="Purpose" value={visitPurpose} onChangeText={setVisitPurpose} placeholder="Purpose of visit" autoCapitalize="sentences" />
                 <Input label="Scheduled time" value={visitWhen} onChangeText={setVisitWhen} placeholder="YYYY-MM-DDTHH:mm" />
@@ -346,7 +346,7 @@ export default function WorkforceScreen() {
 
             {form === "expense" ? (
               <Card style={{ gap: spacing.md }}>
-                <SectionTitle icon="wallet-outline" title="Submit expense claim" subtitle="Accountant verification → Owner approval → Finance ledger" />
+                <SectionTitle icon="expenses" title="Submit expense claim" subtitle="Accountant verification → Owner approval → Finance ledger" />
                 <Input label="Category" value={expenseCategory} onChangeText={setExpenseCategory} placeholder="TRAVEL / FUEL / FOOD / OTHER" autoCapitalize="characters" />
                 <Input label="Amount (₹)" value={expenseAmount} onChangeText={setExpenseAmount} placeholder="0.00" keyboardType="decimal-pad" />
                 <Input label="Expense date" value={expenseDate} onChangeText={setExpenseDate} placeholder="YYYY-MM-DD" />
@@ -360,7 +360,7 @@ export default function WorkforceScreen() {
 
             {user?.role === "accountant" ? (
               <Card style={{ gap: spacing.md }}>
-                <SectionTitle icon="checkmark-done-outline" title="Expense verification" subtitle="Verify before Plant Owner final approval" />
+                <SectionTitle icon="approve" title="Expense verification" subtitle="Verify before Plant Owner final approval" />
                 <Input label="Review note" value={decisionNote} onChangeText={setDecisionNote} placeholder="Required when returning a claim" autoCapitalize="sentences" />
                 {accountantClaims.filter((claim) => ["SUBMITTED", "RETURNED"].includes(claim.status)).length === 0 ? (
                   <AppText variant="caption">No expense claims waiting for verification.</AppText>
@@ -394,7 +394,7 @@ function AttendanceCard({ attendance, busy, onPunch }: { attendance: Attendance 
   const done = !!attendance?.check_out;
   return (
     <Card style={{ gap: spacing.md }}>
-      <SectionTitle icon="finger-print-outline" title="My Workday" subtitle="Location-evidenced attendance" />
+      <SectionTitle icon="attendance" title="My Workday" subtitle="Location-evidenced attendance" />
       <View style={[styles.attendanceState, { backgroundColor: colors.surfaceSecondary }]}>
         <View style={[styles.statusDot, { backgroundColor: done || checkedIn ? colors.success : colors.warning }]} />
         <View style={{ flex: 1 }}>
@@ -402,17 +402,17 @@ function AttendanceCard({ attendance, busy, onPunch }: { attendance: Attendance 
           <AppText variant="caption">In: {fmtDateTime(attendance?.check_in)} · Out: {fmtDateTime(attendance?.check_out)}</AppText>
         </View>
       </View>
-      {!checkedIn && !done ? <Button label="Punch In with Location" loading={busy} onPress={() => onPunch("punch-in")} icon={<Ionicons name="location-outline" size={18} color={colors.onBrand} />} /> : null}
+      {!checkedIn && !done ? <Button label="Punch In with Location" loading={busy} onPress={() => onPunch("punch-in")} icon={<VectorSymbol name="check-in" size={18} color={colors.onBrand} />} /> : null}
       {checkedIn ? <Button label="Punch Out with Location" variant="outline" loading={busy} onPress={() => onPunch("punch-out")} /> : null}
     </Card>
   );
 }
 
-function QuickAction({ icon, label, active, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; active: boolean; onPress: () => void }) {
+function QuickAction({ icon, label, active, onPress }: { icon: VectorSymbolName; label: string; active: boolean; onPress: () => void }) {
   const { colors } = useTheme();
   return (
     <Pressable onPress={onPress} style={[styles.quick, { backgroundColor: active ? colors.brand : colors.surfaceSecondary, borderColor: active ? colors.brand : colors.border }]}>
-      <Ionicons name={icon} size={22} color={active ? colors.onBrand : colors.brand} />
+      <VectorSymbol name={icon} size={22} color={active ? colors.onBrand : colors.brand} />
       <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.sm, color: active ? colors.onBrand : colors.onSurface, textAlign: "center" }}>{label}</AppText>
     </Pressable>
   );
@@ -423,7 +423,7 @@ function MyActivity({ data, busy, onVisitAction }: { data: EmployeeData; busy: b
   return (
     <View style={{ gap: spacing.lg }}>
       <Card style={{ gap: spacing.md }}>
-        <SectionTitle icon="calendar-number-outline" title="Leave requests" />
+        <SectionTitle icon="leave" title="Leave requests" />
         {data.leave_requests.length === 0 ? <AppText variant="caption">No leave requests yet.</AppText> : data.leave_requests.slice(0, 5).map((item) => (
           <View key={item.id} style={[styles.listRow, { borderColor: colors.divider }]}>
             <View style={{ flex: 1, gap: 3 }}>
@@ -436,7 +436,7 @@ function MyActivity({ data, busy, onVisitAction }: { data: EmployeeData; busy: b
       </Card>
 
       <Card style={{ gap: spacing.md }}>
-        <SectionTitle icon="navigate-circle-outline" title="Client visits" />
+        <SectionTitle icon="gps-live-location" title="Client visits" />
         {data.client_visits.length === 0 ? <AppText variant="caption">No client visits yet.</AppText> : data.client_visits.slice(0, 6).map((item) => (
           <View key={item.id} style={[styles.listRow, { borderColor: colors.divider }]}>
             <View style={{ flex: 1, gap: 3 }}>
@@ -451,7 +451,7 @@ function MyActivity({ data, busy, onVisitAction }: { data: EmployeeData; busy: b
       </Card>
 
       <Card style={{ gap: spacing.md }}>
-        <SectionTitle icon="receipt-outline" title="Expense claims" />
+        <SectionTitle icon="expenses" title="Expense claims" />
         {data.expense_claims.length === 0 ? <AppText variant="caption">No expense claims yet.</AppText> : data.expense_claims.slice(0, 6).map((item) => (
           <View key={item.id} style={[styles.listRow, { borderColor: colors.divider }]}>
             <View style={{ flex: 1, gap: 3 }}>
@@ -464,7 +464,7 @@ function MyActivity({ data, busy, onVisitAction }: { data: EmployeeData; busy: b
       </Card>
 
       <Card style={{ gap: spacing.sm }}>
-        <SectionTitle icon="time-outline" title="Attendance history" />
+        <SectionTitle icon="attendance" title="Attendance history" />
         {data.attendance_history.slice(0, 7).map((item) => (
           <View key={item.id} style={styles.historyRow}>
             <AppText style={{ flex: 1, fontFamily: fonts.medium, color: colors.onSurface }}>{item.date}</AppText>
@@ -487,7 +487,7 @@ function OwnerControl({ data, decisionNote, setDecisionNote, busy, onDecision }:
   return (
     <>
       <Card style={{ gap: spacing.md }}>
-        <SectionTitle icon="people-circle-outline" title="Workforce Control" subtitle="Owner approval and attendance visibility" />
+        <SectionTitle icon="workforce" title="Workforce Control" subtitle="Owner approval and attendance visibility" />
         <View style={styles.metricRow}>
           <Metric label="Present today" value={String(data.attendance.filter((a) => a.check_in).length)} />
           <Metric label="Leave pending" value={String(data.leave_requests.length)} />
@@ -498,7 +498,7 @@ function OwnerControl({ data, decisionNote, setDecisionNote, busy, onDecision }:
       </Card>
 
       <Card style={{ gap: spacing.md }}>
-        <SectionTitle icon="finger-print-outline" title="Today’s attendance" />
+        <SectionTitle icon="attendance" title="Today’s attendance" />
         {data.attendance.length === 0 ? <AppText variant="caption">No staff has punched in yet.</AppText> : data.attendance.map((item) => (
           <View key={item.id} style={[styles.listRow, { borderColor: colors.divider }]}>
             <View style={{ flex: 1 }}>
@@ -510,7 +510,7 @@ function OwnerControl({ data, decisionNote, setDecisionNote, busy, onDecision }:
         ))}
       </Card>
 
-      <ApprovalSection title="Leave approvals" icon="calendar-outline" empty="No leave requests waiting." items={data.leave_requests.map((item) => ({
+      <ApprovalSection title="Leave approvals" icon="leave" empty="No leave requests waiting." items={data.leave_requests.map((item) => ({
         id: item.id,
         title: `${item.user_name || "Staff"} · ${item.leave_type}`,
         detail: `${item.start_date} → ${item.end_date} · ${item.reason}`,
@@ -519,7 +519,7 @@ function OwnerControl({ data, decisionNote, setDecisionNote, busy, onDecision }:
         canApprove: true,
       }))} busy={busy} onDecision={onDecision} />
 
-      <ApprovalSection title="Client visit approvals" icon="navigate-outline" empty="No client visits waiting." items={data.client_visits.map((item) => ({
+      <ApprovalSection title="Client visit approvals" icon="gps-live-location" empty="No client visits waiting." items={data.client_visits.map((item) => ({
         id: item.id,
         title: `${item.user_name || "Staff"} · ${item.client_name}`,
         detail: `${fmtDateTime(item.scheduled_for)} · ${item.site_address}`,
@@ -528,7 +528,7 @@ function OwnerControl({ data, decisionNote, setDecisionNote, busy, onDecision }:
         canApprove: true,
       }))} busy={busy} onDecision={onDecision} />
 
-      <ApprovalSection title="Expense approvals" icon="wallet-outline" empty="No expense claims waiting." items={data.expense_claims.map((item) => ({
+      <ApprovalSection title="Expense approvals" icon="expenses" empty="No expense claims waiting." items={data.expense_claims.map((item) => ({
         id: item.id,
         title: `${item.user_name || "Staff"} · ₹${item.amount.toFixed(2)}`,
         detail: `${item.category} · ${item.expense_date} · ${item.description}`,
@@ -542,7 +542,7 @@ function OwnerControl({ data, decisionNote, setDecisionNote, busy, onDecision }:
 
 function ApprovalSection({ title, icon, empty, items, busy, onDecision }: {
   title: string;
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: VectorSymbolName;
   empty: string;
   items: { id: string; title: string; detail: string; status: string; kind: "leave" | "visits" | "expenses"; canApprove: boolean }[];
   busy: boolean;

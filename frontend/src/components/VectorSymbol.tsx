@@ -1,7 +1,9 @@
-import Svg, { Circle, G, Line, Path, Rect } from "react-native-svg";
+import Svg, { Circle, Ellipse, G, Line, Path, Rect } from "react-native-svg";
 
+import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { materialSymbolNames, materialSymbolPaths } from "./vector-symbols/materialSymbols";
+import generatedIcons from "./vector-symbols/generated-icons.json";
 import trackIcons from "./vector-symbols/track-icons.json";
 
 const aliases = {
@@ -13,10 +15,14 @@ const aliases = {
   "receiving-quality-guide": "receiving-and-quality-guide",
 } as const satisfies Record<string, keyof typeof trackIcons>;
 
-export type VectorSymbolName = keyof typeof trackIcons | keyof typeof aliases | keyof typeof materialSymbolNames;
+export type VectorSymbolName = keyof typeof generatedIcons.symbols | keyof typeof trackIcons
+  | keyof typeof aliases | keyof typeof materialSymbolNames;
 
 type Shape = [keyof typeof shapes, Record<string, string>, Shape[]?];
-const shapes = { path: Path, circle: Circle, g: G, line: Line, rect: Rect };
+const shapes = { path: Path, circle: Circle, ellipse: Ellipse, g: G, line: Line, rect: Rect };
+const supplied = generatedIcons.symbols as unknown as Partial<Record<VectorSymbolName, Shape[]>>;
+const customerOverrides = generatedIcons.customerOverrides as unknown as Partial<Record<VectorSymbolName, Shape[]>>;
+const legacy = trackIcons as unknown as Partial<Record<VectorSymbolName, Record<string, Shape[]>>>;
 
 function renderShapes(nodes: readonly Shape[]): React.JSX.Element[] {
   return nodes.map(([tag, props, children], index) => {
@@ -36,11 +42,18 @@ type Props = {
 /** The surrounding control or status text supplies the accessible name. */
 export function VectorSymbol({ name, size = 24, color, active, variant }: Props) {
   const { colors } = useTheme();
+  const { user } = useAuth();
   const canonical = name in aliases ? aliases[name as keyof typeof aliases] : name;
-  const art = (trackIcons as unknown as Partial<Record<VectorSymbolName, Record<string, Shape[]>>>)[canonical];
+  const art = legacy[canonical];
   const ink = color ?? (colors.isDark ? "#E4EEF0" : "#16232A");
-  const selected = variant ?? (active ? "active" : name === "restricted-access" && size <= 24 ? "compact-lock" : undefined);
-  const nodes = art && ((selected && art[selected]) || art[size <= 24 ? "compact" : "full"]);
+  const customer = user?.role === "customer";
+  const selectedHome = customer && active && canonical === "home" ? "home-selected" : canonical;
+  const specialVariant = variant ?? (canonical === "restricted-access" && size <= 24 ? "compact-lock" : undefined);
+  const nodes = (specialVariant && art?.[specialVariant])
+    || (customer && customerOverrides[selectedHome])
+    || supplied[selectedHome]
+    || (active && art?.active)
+    || art?.[size <= 24 ? "compact" : "full"];
   const fallback = materialSymbolNames[name as keyof typeof materialSymbolNames];
 
   return (
