@@ -738,7 +738,7 @@ try {
       console.log('PASS: real Expo tabs share one rotating credential and adopt renewed access');
     }
     phase = 'logout';
-    await page.getByText('More', { exact: true }).last().click();
+    await page.getByTestId(user.role === 'customer' ? 'tab-account' : 'tab-more').click();
     const logout = user.role === 'plant_owner' ? 'owner-logout' : user.role === 'driver' ? 'driver-logout' : 'logout-button';
     await page.getByTestId(logout).click();
     await expect(page.getByTestId('login-user-tab')).toBeVisible();
