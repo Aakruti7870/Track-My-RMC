@@ -98,7 +98,7 @@ function SupplierEnquiryForm({ user, token }: { user: Me; token: string }) {
         <Button label="Back" variant="ghost" fullWidth={false} onPress={goBack}
           icon={<Ionicons name="arrow-back" size={18} color={colors.accentText} />} />
         <View style={styles.heading}>
-          <IconTile symbol="suppliers" />
+          <IconTile symbol="supplier-enquiry" />
           <AppText accessibilityRole="header" variant="heading" style={styles.copy}>Material Supplier Enquiry</AppText>
         </View>
         {submitted ? (

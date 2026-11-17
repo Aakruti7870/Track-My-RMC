@@ -127,7 +127,7 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick", on
                   },
                 ]}
               >
-                {centerLabel === "New" ? <VectorSymbol name="new-order" size={26} color={colors.onBrand} /> : <Ionicons name="add" size={26} color={colors.onBrand} />}
+                {centerLabel === "New" ? <VectorSymbol name="new-order" size={26} color={colors.onBrand} /> : <VectorSymbol name="add" size={26} color={colors.onBrand} />}
               </Pressable>
               <AppText maxFontSizeMultiplier={0} style={[styles.centerLabel, { color: colors.onSurfaceTertiary }]}>{centerLabel}</AppText>
             </View>

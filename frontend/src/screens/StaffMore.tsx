@@ -1,6 +1,5 @@
 import React from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Constants from "expo-constants";
@@ -75,7 +74,7 @@ export function StaffMore() {
               <AppText variant="heading">Plant Manager · Staff Management</AppText>
               <AppText variant="caption">Manage assigned employees and their role permissions</AppText>
             </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceTertiary} />
+            <VectorSymbol name="chevron-right" size={18} color={colors.onSurfaceTertiary} />
           </Pressable>
         ) : null}
 
@@ -88,7 +87,7 @@ export function StaffMore() {
         {managerResources.permissions ? <Pressable accessibilityRole="button"
           onPress={() => router.push("/staff-module-access")}
           style={[styles.manage, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-          <IconTile symbol="permission-settings" width={38} />
+          <IconTile symbol="staff-module-access" width={38} />
           <AppText variant="heading">Manage delegated permissions</AppText>
         </Pressable> : null}
         <StaffModuleDirectory role={user?.role} title="Other modules" scope="more" searchable />
@@ -101,7 +100,7 @@ export function StaffMore() {
             <AppText variant="heading">App permissions</AppText>
             <AppText variant="caption">Review Android location and notification access</AppText>
           </View>
-          <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceTertiary} />
+          <VectorSymbol name="chevron-right" size={18} color={colors.onSurfaceTertiary} />
         </Pressable>
 
         <Pressable testID="logout-button" accessibilityRole="button" accessibilityLabel="Sign out of staff account" onPress={doLogout} style={[styles.logout, { backgroundColor: colors.isDark ? "#96352D" : "#B42318" }]}><VectorSymbol name="logout" size={20} color="#FFFFFF" /><AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: "#FFFFFF" }}>Sign out</AppText></Pressable>

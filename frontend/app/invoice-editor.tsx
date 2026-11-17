@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Alert, ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { WebView } from "react-native-webview";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -216,7 +217,7 @@ export default function InvoiceEditor() {
           <AppText variant="title">Generate Invoice</AppText>
           <AppText variant="caption">Standard TrackMyRMC tax invoice</AppText>
         </View>
-        <Ionicons name="receipt-outline" color={colors.brand} size={26}/>
+        <VectorSymbol name="invoice-editor" color={colors.brand} size={26}/>
       </View>
       {loading ? <ActivityIndicator style={{marginTop:40}} color={colors.brand}/> :
       error ? <View style={{padding:spacing.lg,gap:spacing.md}}><AppText>{error}</AppText><Button label="Retry" onPress={()=>{void refresh();}}/></View> :

@@ -405,7 +405,7 @@ export function CustomerPlantDiscovery({ homeHeader, homeLocation = null, onHome
         onChangeText={updateSearch}
         placeholder="Search plant by name" placeholderTextColor={colors.onSurfaceTertiary}
         returnKeyType="search" style={[styles.searchInput,{color:colors.onSurface}]} />
-      {q ? <Pressable onPress={() => updateSearch("")} accessibilityLabel="Clear search"><Ionicons name="close" size={20} color={colors.onSurfaceTertiary} /></Pressable> : null}
+      {q ? <Pressable onPress={() => updateSearch("")} accessibilityLabel="Clear search"><VectorSymbol name="close" size={20} color={colors.onSurfaceTertiary} /></Pressable> : null}
     </View>
   );
 

@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
-import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import * as Location from "expo-location";
 
@@ -103,7 +102,7 @@ export function OperationalHomeTopBar() {
     <View testID="operational-home-top-bar" style={[styles.row, { backgroundColor: colors.surfaceSecondary, borderColor: colors.divider }]}>
       <Pressable testID="operational-location-refresh" accessibilityRole="button" accessibilityLabel="Refresh current location"
         onPress={() => void refreshLocation()} disabled={busy} style={styles.target}>
-        <Ionicons name="chevron-down" size={23} color={colors.onSurface} />
+        <VectorSymbol name="chevron-down" size={23} color={colors.onSurface} />
       </Pressable>
       <Pressable onPress={() => void refreshLocation()} accessibilityRole="button" accessibilityLabel="Current location, refresh"
         style={styles.location}>
@@ -119,11 +118,11 @@ export function OperationalHomeTopBar() {
       </Pressable>
       <Pressable testID="operational-theme" accessibilityRole="button" accessibilityLabel="Switch light or dark mode"
         onPress={toggle} style={styles.target}>
-        <Ionicons name={scheme === "dark" ? "sunny-outline" : "moon-outline"} size={22} color={colors.onSurface} />
+        <VectorSymbol name={scheme === "dark" ? "theme-light" : "theme-dark"} size={22} color={colors.onSurface} />
       </Pressable>
       <Pressable testID="operational-help" accessibilityRole="button" accessibilityLabel="Help for your role"
         onPress={() => setHelpOpen(true)} style={styles.target}>
-        <Ionicons name="help-circle-outline" size={23} color={colors.onSurface} />
+        <VectorSymbol name="support" size={23} color={colors.onSurface} />
       </Pressable>
     </View>
     {!!message ? <AppText accessibilityLiveRegion="polite" style={{ paddingHorizontal: 16, color: colors.onSurfaceSecondary, fontSize: 11 }}>{message}</AppText> : null}
@@ -135,7 +134,7 @@ export function OperationalHomeTopBar() {
           <AppText variant="heading">Role Help</AppText>
           <AppText variant="bodyMuted">{helpText}</AppText>
           <Pressable accessibilityRole="button" onPress={() => { setHelpOpen(false); router.push("/support"); }} style={styles.helpAction}>
-            <Ionicons name="help-circle-outline" size={20} color={colors.brand} />
+            <VectorSymbol name="support" size={20} color={colors.brand} />
             <AppText color={colors.accentText}>Open Support</AppText>
           </Pressable>
           <Pressable accessibilityRole="button" onPress={() => setHelpOpen(false)} style={styles.helpAction}>

@@ -158,10 +158,10 @@ if (!reviewerAction.includes('router.push("/review-access")') ||
   failures.push("Google Play reviewer access must be an accessible action that opens the dedicated route");
 }
 if ((reviewerAction.match(/Google Play Reviewer Access/g) || []).length !== 2 ||
-    !reviewerAction.includes('name="shield-checkmark-outline"') ||
+    !reviewerAction.includes('name="play-review-access"') ||
     !reviewerAction.includes('color={look.reviewer}') ||
     !reviewerAction.includes('color: look.reviewerLabel')) {
-  failures.push("Reviewer action must retain a green shield and theme-aware label");
+  failures.push("Reviewer action must retain the green reviewer symbol and theme-aware label");
 }
 const reviewerStyle = login.match(/reviewAccess: \{([\s\S]*?)\n  \},/)?.[1] ?? "";
 if (!reviewerAction.includes("styles.reviewAccess") ||

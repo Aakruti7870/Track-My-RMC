@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { LightArtworkSurface } from "@/src/components/IconTile";
 import { CardHighlight } from "@/src/components/ui/CardHighlight";
-import { VectorSymbol } from "@/src/components/VectorSymbol";
+import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
 import Svg, { Defs, LinearGradient as SvgGradient, Rect, Stop } from "react-native-svg";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
@@ -346,15 +346,15 @@ export default function LoginScreen() {
     setOtpVisual("idle");
   };
 
-  const renderHeading = (icon: keyof typeof Ionicons.glyphMap, title: string, subtitle: string) => (
+  const renderHeading = (icon: VectorSymbolName, title: string, subtitle: string) => (
     <View style={styles.headingBlock}>
       {colors.isDark ? (
         <View style={styles.iconBubble}>
-          <Ionicons name={icon} size={24} color={homeArtwork.iconInk} />
+          <VectorSymbol name={icon} size={24} color={homeArtwork.iconInk} />
         </View>
       ) : (
         <LightArtworkSurface style={styles.lightIconBubble} cornerRadius={24}>
-          <Ionicons name={icon} size={24} color={lightQuickAccessArtwork.iconInk} />
+          <VectorSymbol name={icon} size={24} color={lightQuickAccessArtwork.iconInk} />
         </LightArtworkSurface>
       )}
       <AppText accessibilityRole="header" variant="heading" center>{title}</AppText>
@@ -446,7 +446,7 @@ export default function LoginScreen() {
     if (phase === "staff_enroll") {
       return (
         <View style={styles.formGap}>
-          {renderHeading("shield-checkmark-outline", "Set up Authenticator", "Add TrackMyRMC to your authenticator app using the setup key.")}
+          {renderHeading("authenticator", "Set up Authenticator", "Add TrackMyRMC to your authenticator app using the setup key.")}
           {mfaEnrollment ? (
             <>
               <AppText selectable center variant="label" style={styles.setupKey}>{mfaEnrollment.manual_key}</AppText>
@@ -481,7 +481,7 @@ export default function LoginScreen() {
     if (phase === "staff_save_recovery") {
       return (
         <View style={styles.formGap}>
-          {renderHeading("key-outline", "Save your recovery codes", "Keep these one-time codes somewhere safe.")}
+          {renderHeading("recovery-codes", "Save your recovery codes", "Keep these one-time codes somewhere safe.")}
           <View style={styles.recoveryCodes}>
             {mfaEnrollment?.recovery_codes.map((item) => (
               <AppText key={item} selectable variant="label" style={styles.setupKey}>{item}</AppText>
@@ -525,7 +525,7 @@ export default function LoginScreen() {
     if (phase === "staff_recovery") {
       return (
         <View style={styles.formGap}>
-          {renderHeading("key-outline", "Recovery code", "Use one saved one-time recovery code.")}
+          {renderHeading("recovery-codes", "Recovery code", "Use one saved one-time recovery code.")}
           <Input
             testID="login-plant-recovery-input"
             label="Recovery code"
@@ -540,7 +540,7 @@ export default function LoginScreen() {
           />
           <Button label="Recover & Login" onPress={handleVerifyRecovery} loading={loading}
             disabled={recoveryCode.replace(/[^A-Z0-9]/gi, "").length < 8}
-            icon={<Ionicons name="key-outline" size={18} color={colors.onBrand} />} />
+            icon={<VectorSymbol name="recovery-codes" size={18} color={colors.onBrand} />} />
           <Pressable accessibilityRole="button" style={styles.stepAction} disabled={loading} onPress={() => changePhase("staff_totp")}>
             <AppText variant="label" center color={look.link}>Back to Authenticator</AppText>
           </Pressable>
@@ -551,7 +551,7 @@ export default function LoginScreen() {
     if (mode === "user") {
       return (
         <View style={styles.formGap}>
-          {renderHeading("phone-portrait-outline", "Welcome back", "Secure access to Track My RMC")}
+          {renderHeading("staff-phone", "Welcome back", "Secure access to Track My RMC")}
           <View style={[
             styles.phoneInputWrap,
             { borderColor: error ? colors.error : phoneFocused ? colors.accentText : look.fieldOutline, backgroundColor: look.field },
@@ -586,7 +586,7 @@ export default function LoginScreen() {
 
     return (
       <View style={styles.formGap}>
-        {renderHeading("business-outline", "Plant Staff Secure Login", "Use your approved work email.")}
+        {renderHeading("plant-staff", "Plant Staff Secure Login", "Use your approved work email.")}
         <Input
           testID="login-plant-email-input"
           label="Enter Registered Work Email"
@@ -631,7 +631,7 @@ export default function LoginScreen() {
             <AppText style={[styles.onboardingLinkLabel, { color: colors.isDark ? "#BBF7D0" : "#166534" }]}>
               Register As Plant Owner
             </AppText>
-            <Ionicons name="arrow-forward" size={18} color={colors.isDark ? "#BBF7D0" : "#166534"} />
+            <VectorSymbol name="arrow-right" size={18} color={colors.isDark ? "#BBF7D0" : "#166534"} />
           </LinearGradient>
         </Pressable>
         {renderContinue("login-plant-send-otp", "Continue Securely", validEmail(plantEmail), handleStartPlantLogin)}
@@ -770,7 +770,7 @@ export default function LoginScreen() {
 
             <View style={styles.loginFooter}>
               <View style={styles.securityNote}>
-                <Ionicons name="lock-closed-outline" size={14} color={look.securityLock} />
+                <VectorSymbol name="restricted-access" size={14} color={look.securityLock} />
                 <AppText variant="caption" color={look.securityText} style={{ flexShrink: 1 }}>Secured with 6-digit OTP verification</AppText>
               </View>
 
@@ -784,7 +784,7 @@ export default function LoginScreen() {
                   style={styles.reviewAccess}
                 >
                   <View style={[styles.reviewPill, { backgroundColor: look.reviewerFill, borderColor: look.reviewerOutline }]}>
-                    <Ionicons name="shield-checkmark-outline" size={18} color={look.reviewer} />
+                    <VectorSymbol name="play-review-access" size={18} color={look.reviewer} />
                     <AppText variant="caption" style={[styles.reviewAccessLabel, { color: look.reviewerLabel }]}>Google Play Reviewer Access</AppText>
                   </View>
                 </Pressable>
@@ -803,7 +803,7 @@ export default function LoginScreen() {
 
                 <Pressable testID="login-delete-account" accessibilityRole="link" accessibilityLabel="Delete Account"
                   style={styles.deleteLink} disabled={loading} onPress={() => void openExternal(ACCOUNT_DELETION_URL)}>
-                  <Ionicons name="trash-outline" size={16} color={look.deleteIcon} />
+                  <VectorSymbol name="account-deletion" size={16} color={look.deleteIcon} />
                   <AppText variant="caption" color={look.delete}>Delete Account</AppText>
                 </Pressable>
               </View>

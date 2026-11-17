@@ -1,6 +1,5 @@
 import React, { useCallback } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -72,11 +71,11 @@ export default function CustomerMore() {
           showsVerticalScrollIndicator={false}
         >
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-            <VectorSymbol name="settings" size={35} />
+            <VectorSymbol name="profile" size={35} />
             <AppText variant="title" style={{ flex: 1 }}>My Account</AppText>
             <Pressable testID="customer-more-theme" accessibilityRole="button" accessibilityLabel="Switch light or dark mode"
               onPress={toggle} style={styles.themeTarget}>
-              <Ionicons name={scheme === "dark" ? "sunny-outline" : "moon-outline"} size={25} color={colors.onSurface} />
+              <VectorSymbol name={scheme === "dark" ? "sun" : "moon"} size={25} color={colors.onSurface} />
             </Pressable>
           </View>
           <Card testID="customer-account-profile" style={{ gap: spacing.md }}>
@@ -130,7 +129,7 @@ export default function CustomerMore() {
                   <AppText style={{ fontFamily: fonts.semibold, color: colors.onSurface }}>{module.label}</AppText>
                   <AppText variant="caption" numberOfLines={2}>{module.description}</AppText>
                 </View>
-                <Ionicons name="chevron-forward" size={16} color={colors.onSurfaceTertiary} />
+                <VectorSymbol name="chevron-right" size={16} color={colors.onSurfaceTertiary} />
               </Pressable>
             ))}
           </View>
@@ -138,8 +137,8 @@ export default function CustomerMore() {
           <Pressable accessibilityRole="button" onPress={review} style={{minHeight:48,justifyContent:"center"}}><View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><VectorSymbol name="permission-settings" size={33} /><AppText variant="heading">Permission settings</AppText></View></Pressable>
 
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.md }}>
-            <Button label="Privacy Policy" variant="outline" fullWidth={false} onPress={() => router.push("/privacy")} />
-            <Button label="Terms of Service" variant="outline" fullWidth={false} onPress={() => router.push("/terms")} />
+            <Button label="Privacy Policy" variant="outline" fullWidth={false} icon={<VectorSymbol name="privacy-policy" size={18} color={colors.accentText} />} onPress={() => router.push("/privacy")} />
+            <Button label="Terms of Service" variant="outline" fullWidth={false} icon={<VectorSymbol name="terms-of-service" size={18} color={colors.accentText} />} onPress={() => router.push("/terms")} />
           </View>
 
           <Pressable testID="logout-button" onPress={doLogout} style={[styles.logout, { backgroundColor: colors.isDark ? "#96352D" : "#B42318" }]}>

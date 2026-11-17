@@ -8,8 +8,8 @@ const TAB_SYMBOLS: Readonly<Record<string, VectorSymbolName>> = {
   "Home": "home",
   "Orders": "orders",
   "Plants": "plants",
-  "Plan": "concrete-pour-planner",
-  "Supply": "plants",
+  "Plan": "plan",
+  "Supply": "supply",
   "Account": "profile",
   "More": "more",
   "Trips": "assigned-trips",
@@ -38,7 +38,6 @@ export function tabVectorSymbol(label: string, role?: string | null): VectorSymb
     if (role === "store_manager") return "store-dashboard";
   }
   if (label === "Orders") {
-    if (role === "customer") return "my-orders";
     if (role === "plant_owner" || role === "owner") return "plant-orders";
     if (role === "admin") return "plant-order-management";
   }

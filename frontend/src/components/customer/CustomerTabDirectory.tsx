@@ -1,4 +1,4 @@
-import { Ionicons } from "@expo/vector-icons";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { useRouter } from "expo-router";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -40,7 +40,7 @@ export function CustomerTabDirectory({ title, testID, sections }: {
                     <AppText variant="label">{link.label}</AppText>
                     {link.hint ? <AppText variant="caption">{link.hint}</AppText> : null}
                   </View>
-                  <Ionicons name="chevron-forward" size={17} color={colors.onSurfaceTertiary} accessible={false} aria-hidden />
+                  <VectorSymbol name="chevron-right" size={17} color={colors.onSurfaceTertiary} />
                 </Pressable>
               ))}
             </View>

@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, AppState, Modal, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
-import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useIsFocused } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
@@ -212,7 +211,7 @@ export function CustomerHomeHeader({ onRefreshHome, onDiscoveryLocationChange }:
         <Pressable testID="header-location-chevron" accessibilityRole="button" accessibilityLabel="Choose location"
           accessibilityHint="Opens the location selector and refresh options"
           onPress={() => setSheet("location")} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(44, size.headerTarget) }]}>
-          <Ionicons name="chevron-down" size={size.headerChevron} color={colors.onSurface} />
+          <VectorSymbol name="chevron-down" size={size.headerChevron} color={colors.onSurface} />
         </Pressable>
         <Pressable testID="header-location" accessibilityRole="button" accessibilityLabel={`Location: ${label}. Select location`} onPress={() => setSheet("location")} style={[styles.location, { minHeight: Math.max(44, size.headerTarget) }]}>
           <IndianFlag size={size.headerFlag} />
@@ -224,7 +223,7 @@ export function CustomerHomeHeader({ onRefreshHome, onDiscoveryLocationChange }:
         </Pressable>
         <Pressable testID="header-theme" accessibilityRole="button" accessibilityLabel="Switch light or dark mode"
           onPress={toggle} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(44, size.headerTarget) }]}>
-          <Ionicons name={scheme === "dark" ? "sunny-outline" : "moon-outline"} size={size.headerBell} color={colors.onSurface} />
+          <VectorSymbol name={scheme === "dark" ? "sun" : "moon"} size={size.headerBell} color={colors.onSurface} />
         </Pressable>
         <SupportWidgetBridge customerHeaderTarget={size.headerTarget} />
       </View>
@@ -235,7 +234,7 @@ export function CustomerHomeHeader({ onRefreshHome, onDiscoveryLocationChange }:
         <View accessibilityViewIsModal onAccessibilityEscape={close} style={[styles.sheet, { backgroundColor: surface, borderColor: colors.divider, shadowColor: colors.shadow, paddingBottom: Math.max(insets.bottom, 16) }]}>
           <View style={styles.sheetTitle}>
             <AppText variant="heading">Choose Location</AppText>
-            <Pressable accessibilityRole="button" accessibilityLabel="Close dialog" onPress={close} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(44, size.headerTarget) }]}><Ionicons name="close" size={24} color={colors.onSurface} /></Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="Close dialog" onPress={close} style={[styles.target, { width: size.headerTarget, minHeight: Math.max(44, size.headerTarget) }]}><VectorSymbol name="close" size={24} color={colors.onSurface} /></Pressable>
           </View>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.sheetContent}>
             <AppText>Use your location once, or search for a city or locality.</AppText>

@@ -18,6 +18,7 @@ import { ErrorView } from "@/src/components/StateViews";
 import { DriverIdentityCard } from "@/src/components/DriverIdentityCard";
 import { PlantHomeActions, PlantHomeHero } from "@/src/components/PlantHomeCards";
 import { fonts, fontSize, radius, spacing, operationalStatus } from "@/src/theme/tokens";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { IconTile } from "@/src/components/IconTile";
 
 type Trip = { id: string; order_number: string; status: string; grade: string; quantity: number; tm_number: string; site_name: string };
@@ -103,7 +104,7 @@ export default function DriverHome() {
                   onPress={() => data.active_trip ? router.push(`/trip/${data.active_trip.id}` as any) : router.push("/driver/shift-attendance")}
                   style={styles.summaryAction}
                 >
-                  <IconTile icon={data.active_trip ? "navigate" : shiftComplete ? "checkmark-done" : "finger-print"} width={48} size={20} />
+                  <IconTile symbol={data.active_trip ? "assigned-trips" : shiftComplete ? "success" : "check-in"} width={48} size={20} />
                 </Pressable>
               </Card>
               <View style={{ flexDirection: "row", gap: spacing.sm }}>
@@ -124,7 +125,7 @@ export default function DriverHome() {
               {isPlayReviewDriver ? (
                 <Card testID="play-review-location-hint" style={{ gap: spacing.sm, backgroundColor: colors.brandSoft, borderColor: colors.brand + "44" }}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-                    <Ionicons name="shield-checkmark-outline" size={20} color={colors.brand} />
+                    <VectorSymbol name="driver-license" size={20} color={colors.brand} />
                     <AppText variant="label">Google Play background-location review</AppText>
                   </View>
                   <AppText variant="bodyMuted">
@@ -144,12 +145,12 @@ export default function DriverHome() {
                     </View>
                     <AppText variant="caption">{data.active_trip.grade} · {data.active_trip.quantity} m³ · {data.active_trip.tm_number}</AppText>
                     <View style={styles.siteRow}>
-                      <Ionicons name="location-outline" size={16} color={colors.brand} />
+                      <VectorSymbol name="gps-live-location" size={16} color={colors.brand} />
                       <AppText variant="body" style={{ flex: 1 }} numberOfLines={1}>{data.active_trip.site_name}</AppText>
                     </View>
                     <View style={[styles.openBtn, { backgroundColor: colors.brand }]}>
                       <AppText style={{ fontFamily: fonts.semibold, color: colors.onBrand }}>Open Trip</AppText>
-                      <Ionicons name="arrow-forward" size={16} color={colors.onBrand} />
+                      <VectorSymbol name="arrow-right" size={16} color={colors.onBrand} />
                     </View>
                   </Card>
                 </Pressable>

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -96,7 +97,7 @@ export default function OwnerBillingHistory() {
           <AppText style={[styles.headerTitle, { color: colors.onSurface }]}>Billing & Payment History</AppText>
           <AppText style={[styles.headerSub, { color: colors.onSurfaceSecondary }]}>Cashfree-verified plan transactions</AppText>
         </View>
-        <Ionicons name="receipt-outline" size={26} color={colors.brand} />
+        <VectorSymbol name="billing-history" size={26} color={colors.brand} />
       </View>
 
       <ScrollView
@@ -189,7 +190,7 @@ export default function OwnerBillingHistory() {
           </View>
         ) : (
           <Card style={{ alignItems: "center", gap: spacing.sm, paddingVertical: spacing["2xl"] }}>
-            <Ionicons name="receipt-outline" size={34} color={colors.onSurfaceTertiary} />
+            <VectorSymbol name="billing-history" size={34} color={colors.onSurfaceTertiary} />
             <AppText variant="heading">No payments found</AppText>
             <AppText variant="caption" center>New Premium and Promotion payments will appear here.</AppText>
           </Card>

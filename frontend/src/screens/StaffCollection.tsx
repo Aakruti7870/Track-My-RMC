@@ -67,7 +67,7 @@ function ItemRow({ item, onAction, onPress, symbol, orderStatus }: { orderStatus
         {item.meta ? <AppText style={{ fontFamily: fonts.regular, fontSize: 11, color: colors.onSurfaceTertiary }} numberOfLines={1}>{item.meta}</AppText> : null}
       </View>
       {item.badge ? <Badge label={item.badge} status={item.badge_status || item.badge} orderStatus={orderStatus} /> : null}
-      {onPress ? <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceTertiary} /> : null}
+      {onPress ? <VectorSymbol name="chevron-right" size={18} color={colors.onSurfaceTertiary} /> : null}
     </>
   );
 
@@ -313,14 +313,14 @@ export function StaffCollection({ kind, embedded = false, limit, onItemPress }: 
             <AppText variant="title">{data?.title || "List"}</AppText>
             {data?.create ? (
               <Pressable testID="staff-create" onPress={openCreate} style={[styles.addBtn, { backgroundColor: colors.brand }]}>
-                <Ionicons name="add" size={18} color={colors.onBrand} />
+                <VectorSymbol name="add" size={18} color={colors.onBrand} />
                 <AppText style={{ fontFamily: fonts.semibold, fontSize: 13, color: colors.onBrand }}>{data.create.label}</AppText>
               </Pressable>
             ) : null}
           </View>
           {allItems.length >= 4 ? (
             <View style={[styles.search, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-              <Ionicons name="search" size={18} color={colors.onSurfaceTertiary} />
+              <VectorSymbol name="search" size={18} color={colors.onSurfaceTertiary} />
               <TextInput
                 testID="staff-search"
                 value={query}
@@ -331,7 +331,7 @@ export function StaffCollection({ kind, embedded = false, limit, onItemPress }: 
               />
               {query ? (
                 <Pressable testID="staff-search-clear" onPress={() => setQuery("")}>
-                  <Ionicons name="close-circle" size={18} color={colors.onSurfaceTertiary} />
+                  <VectorSymbol name="close" size={18} color={colors.onSurfaceTertiary} />
                 </Pressable>
               ) : null}
             </View>

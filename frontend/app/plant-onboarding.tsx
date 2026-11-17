@@ -323,7 +323,7 @@ export default function PlantOnboarding() {
           ) : null}
           <Button testID="onboarding-register-official-email" label="Register Official Email"
             onPress={submit} loading={submitting}
-            icon={<Ionicons name="mail-outline" size={18} color={colors.onBrand} />} />
+            icon={<VectorSymbol name="staff-email" size={18} color={colors.onBrand} />} />
           <AppText variant="caption" center>
             A pending registration lead is created for review. No payment or account activation occurs on submission.
           </AppText>
@@ -351,7 +351,7 @@ export default function PlantOnboarding() {
         </View>
 
         <View style={[styles.infoBanner, { backgroundColor: colors.brandSoft, borderColor: colors.brand + "55" }]}>
-          <Ionicons name="hand-left-outline" size={22} color={colors.brand} />
+          <VectorSymbol name="register-owner" size={22} color={colors.brand} />
           <View style={{ flex: 1, gap: 2 }}>
             <AppText style={{ fontFamily: fonts.semibold, color: colors.onSurface }}>Welcome to TrackMyRMC</AppText>
             <AppText variant="caption">Submit your RMC plant details. The Authority team reviews the request before any Owner account is activated.</AppText>

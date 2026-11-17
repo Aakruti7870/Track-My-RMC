@@ -5,7 +5,7 @@ const materials = [...materialPreview, ...moreMaterials];
 const siteServices = new Set(["labour", "office-cabin"]);
 const sourcing: readonly HomeLink[] = [
   { key: "plant-map", label: "Plant Map & Filters", symbol: "nearby-rmc-plants", route: "/customer/plants" },
-  { key: "bulk-quote", label: "Bulk Concrete Enquiry", symbol: "quotation-requests", route: enquiryRoute("bulk") },
+  { key: "bulk-quote", label: "Bulk Concrete Enquiry", symbol: "bulk-quote", route: enquiryRoute("bulk") },
   pumpLink,
 ];
 const sections = [

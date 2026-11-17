@@ -3,9 +3,9 @@ import ReactDOM from 'react-dom/client';
 import './admin-theme.css';
 import trackMyRmcMark from './trackmyrmc-mark.svg?no-inline';
 import orderStages from '../../frontend/src/domain/order-status-colors.json';
-import { Building2, ClipboardCheck, Factory, Megaphone, ShieldCheck, Workflow, MessageCircle, LayoutDashboard, BarChart3, Eye, Users, UserRoundPlus, UserCog, Database, Grid2X2, LogOut, Settings, ChevronRight, ArrowLeft, Check, KeyRound, Mail, LockKeyhole, Moon, Sun, UserRound } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { AuthenticatorQr } from './AuthenticatorQr';
-import { TrackIcon, type TrackIconName } from './TrackIcon';
+import { TrackIcon } from './TrackIcon';
 import { PlantVisibility } from './PlantVisibility';
 import { WhatsAppChats } from './WhatsAppChats';
 import { AdminSecurity } from './AdminSecurity';
@@ -125,41 +125,25 @@ function currentScreen(): AdminScreen {
   return SCREENS.find(item=>item===value)||'dashboard';
 }
 const ADMIN_MENU = [
-  {page:'dashboard',label:'Dashboard',caption:'Operations overview',icon:LayoutDashboard,permissions:[]},
-  {page:'overview',label:'Platform KPIs',caption:'Live metrics and service health',icon:BarChart3,permissions:['system.view']},
-  {page:'plants',label:'Plant Master',caption:'Plant owner, staff and verification',icon:Factory,permissions:['plant.view','user.view']},
-  {page:'visibility',label:'Plant Visibility',caption:'Hold and restore app discovery',icon:Eye,permissions:['plant.view','plant_owners.manage','user.view']},
-  {page:'approvals',label:'Approval Queue',caption:'Onboarding, plant order requests, KYC and RFQs',icon:ClipboardCheck,permissions:[]},
-  {page:'marketing',label:'Marketing CRM',caption:'Channels, contacts and campaigns',icon:Megaphone,permissions:['support.manage']},
-  {page:'chats',label:'Chats',caption:'Verified inbound Meta WhatsApp inbox',icon:MessageCircle,permissions:['support.manage']},
-  {page:'automation',label:'Automation',caption:'Native workflow and execution health',icon:Workflow,permissions:['system.view']},
-  {page:'governance',label:'Governance',caption:'Authority, permissions and audit',icon:ShieldCheck,permissions:['admin_access.manage']},
-  {page:'reviewer',label:'Reviewer Access',caption:'Google Play reviewer test access',icon:Users,permissions:['reviewer_access.manage']},
-  {page:'admin-access',label:'Admin Access',caption:'Existing Central Admin accounts',icon:UserCog,permissions:['admin_access.manage']},
-  {page:'unowned',label:'Unowned Plants',caption:'View plants without eligible owners',icon:Building2,permissions:['plant.view']},
-  {page:'assign-owner',label:'Assign Plant Owner',caption:'Audited owner assignment',icon:UserRoundPlus,permissions:['owner.assign','plant.view']},
-  {page:'diagnostics',label:'AI Command',caption:'Database connectivity check',icon:Database,permissions:['ai.diagnose']},
-  {page:'capabilities',label:'Capabilities',caption:'Authorized feature permissions',icon:Grid2X2,permissions:[]},
-  {page:'sessions',label:'Logout All Sessions',caption:'Revoke my Super Admin sessions',icon:LogOut,permissions:[]},
-  {page:'settings',label:'Settings',caption:'Portal appearance',icon:Settings,permissions:[]},
-  {page:'account',label:'Account',caption:'Identity and session',icon:UserRound,permissions:[]},
+  {page:'dashboard',label:'Dashboard',caption:'Operations overview',icon:'admin-dashboard',permissions:[]},
+  {page:'overview',label:'Platform KPIs',caption:'Live metrics and service health',icon:'platform-kpis',permissions:['system.view']},
+  {page:'plants',label:'Plant Master',caption:'Plant owner, staff and verification',icon:'plants',permissions:['plant.view','user.view']},
+  {page:'visibility',label:'Plant Visibility',caption:'Hold and restore app discovery',icon:'plant-visibility',permissions:['plant.view','plant_owners.manage','user.view']},
+  {page:'approvals',label:'Approval Queue',caption:'Onboarding, plant order requests, KYC and RFQs',icon:'pending-approval',permissions:[]},
+  {page:'marketing',label:'Marketing CRM',caption:'Channels, contacts and campaigns',icon:'marketing-crm',permissions:['support.manage']},
+  {page:'chats',label:'Chats',caption:'Verified inbound Meta WhatsApp inbox',icon:'whatsapp-chats',permissions:['support.manage']},
+  {page:'automation',label:'Automation',caption:'Native workflow and execution health',icon:'automation',permissions:['system.view']},
+  {page:'governance',label:'Governance',caption:'Authority, permissions and audit',icon:'governance',permissions:['admin_access.manage']},
+  {page:'reviewer',label:'Reviewer Access',caption:'Google Play reviewer test access',icon:'reviewer-access',permissions:['reviewer_access.manage']},
+  {page:'admin-access',label:'Admin Access',caption:'Existing Central Admin accounts',icon:'admin-access',permissions:['admin_access.manage']},
+  {page:'unowned',label:'Unowned Plants',caption:'View plants without eligible owners',icon:'unowned-plants',permissions:['plant.view']},
+  {page:'assign-owner',label:'Assign Plant Owner',caption:'Audited owner assignment',icon:'assign-owner',permissions:['owner.assign','plant.view']},
+  {page:'diagnostics',label:'AI Command',caption:'Database connectivity check',icon:'diagnostics',permissions:['ai.diagnose']},
+  {page:'capabilities',label:'Capabilities',caption:'Authorized feature permissions',icon:'capabilities',permissions:[]},
+  {page:'sessions',label:'Logout All Sessions',caption:'Revoke my Super Admin sessions',icon:'logout-all-sessions',permissions:[]},
+  {page:'settings',label:'Settings',caption:'Portal appearance',icon:'settings',permissions:[]},
+  {page:'account',label:'Account',caption:'Identity and session',icon:'profile',permissions:[]},
 ] as const;
-const ADMIN_VECTORS: Partial<Record<AdminScreen, TrackIconName>> = {
-  dashboard: 'admin-dashboard',
-  plants: 'plants',
-  approvals: 'pending-approval',
-  governance: 'permission-settings',
-  reviewer: 'restricted-access',
-  'admin-access': 'restricted-access',
-  'assign-owner': 'plant-staff',
-  sessions: 'logout',
-  settings: 'settings',
-  account: 'profile',
-};
-function AdminMenuIcon({ item, size }: { item: typeof ADMIN_MENU[number]; size: number }) {
-  const name = ADMIN_VECTORS[item.page];
-  return name ? <TrackIcon name={name} size={size} /> : <item.icon size={size} strokeWidth={1.5} aria-hidden="true" />;
-}
 const ADMINISTRATION_PAGES: ReadonlySet<AdminScreen> = new Set(['governance','reviewer','admin-access','diagnostics','capabilities','sessions','settings','account']);
 const ADMIN_SECURITY_SCREENS: AdminScreen[]=['reviewer','admin-access','unowned','assign-owner','diagnostics','capabilities','sessions'];
 const CENTRAL_STEP: Partial<Record<Stage, { label: string; step: number }>> = {
@@ -1387,7 +1371,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
             <button type="button" className="tm-theme-button"
               aria-label={isDark?'Switch to light theme':'Switch to dark theme'}
               onClick={()=>setAppearance(isDark?'light':'dark')}>
-              {isDark?<Sun size={19} aria-hidden="true"/>:<Moon size={19} aria-hidden="true"/>}
+              {isDark?<TrackIcon name="theme-light" size={19} />:<TrackIcon name="theme-dark" size={19} />}
             </button>
           </div>}
           <header className="tm-titlebar">
@@ -1402,9 +1386,9 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
         </>}
 
         {centralStep && stage !== 'central-recovery-codes' && <ol className="tm-signin-steps" aria-label="Sign-in progress">
-          {[{label:'Email',icon:Mail},{label:'Email code',icon:LockKeyhole},{label:'Authenticator',icon:KeyRound}].map(({label,icon:Icon},index)=>
+          {([{label:'Email',icon:'staff-email'},{label:'Email code',icon:'otp'},{label:'Authenticator',icon:'authenticator'}] as const).map(({label,icon},index)=>
             <li key={label} aria-current={centralStep.step===index+1?'step':undefined}>
-              {centralStep.step>index+1?<Check size={16} aria-hidden="true"/>:<Icon size={16} aria-hidden="true"/>}
+              {centralStep.step>index+1?<TrackIcon name="success" size={16} />:<TrackIcon name={icon} size={16} />}
               <span>{label}</span>
             </li>)}
         </ol>}
@@ -1436,7 +1420,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
               value={otp} onChange={e=>setOtp(e.target.value)} style={inputStyle} disabled={busy} />
             <button type="submit" disabled={busy} style={buttonStyle}>{busy?'Verifying…':'Verify email code'}</button>
             <button type="button" disabled={busy} onClick={restartCentralLogin}
-              className="tm-auth-back"><ArrowLeft size={16} aria-hidden="true"/>Start over or request a new code</button>
+              className="tm-auth-back"><TrackIcon name="back" size={16} />Start over or request a new code</button>
           </form>
         )}
 
@@ -1455,7 +1439,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                 style={{...buttonStyle,background:'transparent',color:'var(--tm-focus)',border:'1px solid var(--tm-border)'}}>Recover with a saved code</button>
             )}
             <button type="button" disabled={busy} onClick={stage==='central-recover' ? ()=>{setMfaCode('');setError('');setStage('central-mfa');} : restartCentralLogin}
-              className="tm-auth-back"><ArrowLeft size={16} aria-hidden="true"/>{stage==='central-recover'?'Back to authenticator':'Start over'}</button>
+              className="tm-auth-back"><TrackIcon name="back" size={16} />{stage==='central-recover'?'Back to authenticator':'Start over'}</button>
           </form>
         )}
 
@@ -1596,7 +1580,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                         className={'tm-sidebar-link '+(adminScreen===item.page?'is-current':'')}
                         aria-current={adminScreen===item.page?'page':undefined}
                         onClick={()=>navigateAdmin(item.page)}>
-                        <AdminMenuIcon item={item} size={18} />
+                        <TrackIcon name={item.icon} size={18} />
                         <span>{item.label}</span>{item.page==='chats'&&chatUnread>0&&<em className="tm-unread">{chatUnread}</em>}
                       </button>
                     )}
@@ -1604,7 +1588,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                 )}
               </nav>
               <button type="button" className="tm-sidebar-logout" disabled={busy} onClick={()=>void logout()}>
-                <LogOut size={17} aria-hidden="true"/> Sign out
+                <TrackIcon name="logout" size={17} /> Sign out
               </button>
             </aside>}
             <div className={'tm-workspace-content tm-view-'+adminScreen}>
@@ -1615,7 +1599,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
               </div>
               <div className="tm-workspace-actions">
                 {adminScreen!=='dashboard' && <button type="button" className="tm-workspace-button" onClick={()=>navigateAdmin('dashboard')}>
-                  <ArrowLeft size={16} aria-hidden="true"/>Back to dashboard
+                  <TrackIcon name="back" size={16} />Back to dashboard
                 </button>}
                 <button type="button" onClick={()=>setShowAdminNotices(value=>!value)}
                   className="tm-workspace-button" aria-expanded={showAdminNotices}
@@ -1705,7 +1689,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                       {cards.map(item=><button type="button" key={item.page}
                         className="tm-module-card" onClick={()=>navigateAdmin(item.page)}
                         aria-label={'Open '+item.label}>
-                        <span className="tm-module-icon" aria-hidden="true"><AdminMenuIcon item={item} size={20} /></span>
+                        <span className="tm-module-icon" aria-hidden="true"><TrackIcon name={item.icon} size={20} /></span>
                         <span className="tm-module-copy"><strong>{item.label}</strong><span className="tm-module-desc">{item.caption}</span></span>
                         <ChevronRight size={16} strokeWidth={1.5} aria-hidden="true" className="tm-module-arrow"/>
                       </button>)}
@@ -1741,7 +1725,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
             {user.role === 'central_admin' && adminScreen==='plants' && permissions.includes('plant.view') && permissions.includes('user.view') && (
               <section id="plant-master" aria-label="Central Admin Plant Master" style={{marginTop:18,padding:14,border:'1px solid var(--tm-border)',borderRadius:12}}>
                 <div style={{display:'flex',alignItems:'center',gap:10}}>
-                  <Factory size={24} aria-hidden="true"/>
+                  <TrackIcon name="plants" size={24} />
                   <div>
                     <h2 style={{margin:0,fontSize:19}}>Plant Master</h2>
                     <p style={{fontSize:12,color:'var(--tm-muted)',margin:'4px 0 0'}}>A joined directory of first-party plant, owner and staff records. Google-listed places are separate.</p>
@@ -1897,7 +1881,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
               <section id="marketing-center" aria-label="Marketing CRM and broadcast drafts"
                 style={{marginTop:18,padding:14,border:'1px solid var(--tm-border)',borderRadius:12}}>
                 <div style={{display:'flex',gap:10,alignItems:'center'}}>
-                  <Megaphone size={22} aria-hidden="true"/>
+                  <TrackIcon name="marketing-crm" size={22} />
                   <div>
                     <h2 style={{margin:0,fontSize:19}}>Marketing & Broadcast Center</h2>
                     <p style={{fontSize:12,color:'var(--tm-muted)',margin:'4px 0 0'}}>
@@ -2450,7 +2434,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
             {isCentral && adminScreen==='account' && (
               <section className="tm-account-panel" aria-label="Account details">
                 <div className="tm-account-heading">
-                  <span className="tm-module-icon"><UserRound size={20} aria-hidden="true"/></span>
+                  <span className="tm-module-icon"><TrackIcon name="profile" size={20} /></span>
                   <h3>Identity and session</h3>
                 </div>
                 <dl className="tm-detail-list">
@@ -2459,7 +2443,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                   <div><dt>Session</dt><dd>One-hour web session with authenticator verification</dd></div>
                 </dl>
                 <button type="button" className="tm-workspace-button" onClick={()=>navigateAdmin('sessions')}>
-                  <ShieldCheck size={17} aria-hidden="true"/> Manage sessions
+                  <TrackIcon name="authority-access" size={17} /> Manage sessions
                 </button>
               </section>
             )}
