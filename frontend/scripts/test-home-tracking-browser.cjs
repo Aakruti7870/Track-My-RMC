@@ -29,9 +29,13 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  }
  const me={id:'test-customer',name:'Customer',role:'customer',roles:['customer'],status:'active',kyc_status:'VERIFIED',phone:'9000000000',plant_id:null};
  const home={name:'Customer',kyc_status:'VERIFIED',active_order:null,recent_orders:[],nearby_plants:[],unread_notifications:0};
- const order={id:'isolated-order',order_number:'CUSTOMER-ORDER',status:mode==='pending'?'PENDING':mode==='delivered'?'DELIVERED':'DISPATCHED',grade:'M30',quantity:8,site_name:'Actual project'};
+ const order={
+   id:'isolated-order',order_number:'CUSTOMER-ORDER',plant_name:'Registered Concrete',
+   status:mode==='pending'?'PENDING':mode==='delivered'?'DELIVERED':'DISPATCHED',
+   grade:'M30',quantity:8,site_name:'Actual project',delivery_date:'2026-11-17',payment_status:'PENDING',
+ };
  if(mode!=='demo'){home.recent_orders=[order];home.active_order=mode==='delivered'?null:order;}
- const tracking={active:mode==='live',status:order.status,active_loads:mode==='live'?[{id:'load-a',status:'en_route',tm_number:'ASSIGNED-MIXER',location:{lat:19.1,lng:73.1,at:new Date(Date.now()-1000).toISOString()}}]:[],destination:{lat:19.2,lng:73.2}};
+ const tracking={active:mode==='live',status:order.status,active_loads:mode==='live'?[{id:'load-a',status:'en_route',tm_number:'ASSIGNED-MIXER',location:{lat:19.1,lng:73.1,at:new Date(Date.now()-1000).toISOString()}}]:[],destination:{site_name:'Actual project',lat:19.2,lng:73.2},location:null};
  const plants=[{id:'fixture-plant',name:'Panvel Ready-Mix Concrete and Infrastructure Supply',address:'Industrial Estate, Panvel',status:'active',verified:true,order_enabled:true,grades:['M30'],distance_km:4.2}];
  const linkedPlant={...plants[0],id:'fixture-plant-off-page',name:'Registered Linked Concrete'};
  if (path.endsWith('/customer/plants/search')) {
@@ -136,6 +140,11 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    await track.click();
    await page.waitForURL('**/track/isolated-order');
    await page.getByText('Live Tracking', {exact:true}).waitFor();
+   await page.getByText('ASSIGNED-MIXER',{exact:true}).waitFor();
+   await page.goto('http://127.0.0.1:8765/customer/');
+   await bulk.click();
+   await page.waitForURL(url => url.pathname.replace(/\/$/, '') + url.search === '/customer/service-enquiry?service=bulk');
+   await page.getByRole('heading',{name:'Bulk Concrete Enquiry',exact:true}).waitFor();
  }
  if (width === 390) {
    await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -148,8 +157,10 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      ['orders', 'My Orders', '/customer/orders'],
    ]) {
      mode = 'live';
+     const homeResponse = page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/customer/home') && response.ok());
      await page.goto('http://127.0.0.1:8765/customer/');
      await page.getByTestId('action-new').waitFor();
+     await homeResponse;
      const dot = page.getByTestId(`carousel-page-${id}`);
      await dot.click();
      const banner = page.getByTestId('home-promotional-carousel').getByRole('button', { name: label, exact: true });
