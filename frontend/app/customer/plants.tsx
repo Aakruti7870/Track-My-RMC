@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ActivityIndicator, AppState, FlatList, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
-import { useWindowDimensions } from "react-native";
+import { ActivityIndicator, AppState, FlatList, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { IconTile } from "@/src/components/IconTile";
@@ -127,8 +126,9 @@ export default function CustomerPlants() {
   return <CustomerPlantDiscovery />;
 }
 
-export function CustomerPlantDiscovery({ homeHeader, onHomeRefresh }: {
+export function CustomerPlantDiscovery({ homeHeader, homeLocation = null, onHomeRefresh }: {
   homeHeader?: ReactNode;
+  homeLocation?: LatLng | null;
   onHomeRefresh?: () => Promise<void>;
 }) {
   const compact = homeHeader !== undefined;
@@ -141,7 +141,8 @@ export function CustomerPlantDiscovery({ homeHeader, onHomeRefresh }: {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [q, setQ] = useState("");
-  const [userLocation, setUserLocation] = useState<LatLng | null>(null);
+  const [mapLocation, setUserLocation] = useState<LatLng | null>(null);
+  const userLocation = compact ? homeLocation : mapLocation;
   const [locating, setLocating] = useState(false);
   const [locationStatus, setLocationStatus] = useState<NearbyLocationStatus | null>(null);
   const [showFilters,setShowFilters] = useState(false);
@@ -156,7 +157,10 @@ export function CustomerPlantDiscovery({ homeHeader, onHomeRefresh }: {
   const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null);
   const [details,setDetails] = useState<PlantData | null>(null);
   const requestVisit = useRef(0);
-  useEffect(() => { setSelectedPlantId(null); }, [userLocation?.lat, userLocation?.lng]);
+  useEffect(() => {
+    setSelectedPlantId(null);
+    if (compact) setPage(1);
+  }, [compact, userLocation?.lat, userLocation?.lng]);
   const manualLocation = useRef(false);
   const geoLookupVersion = useRef(0);
   const lastAppliedGeoLocation = useRef("");
@@ -192,6 +196,7 @@ export function CustomerPlantDiscovery({ homeHeader, onHomeRefresh }: {
   },[refetch,clearCache]);
 
   useEffect(() => {
+    if (compact) return;
     if (!locationEnabled) {
       didInit.current=false;
       nearbyLocationCache=null;
@@ -201,9 +206,10 @@ export function CustomerPlantDiscovery({ homeHeader, onHomeRefresh }: {
     if (didInit.current) return;
     didInit.current = true;
     void applyLocation({ forceRefresh: false, allowPrompt: false, refetchPlants: false });
-  }, [applyLocation,locationEnabled]);
+  }, [applyLocation, compact, locationEnabled]);
 
   useEffect(() => {
+    if (compact) return;
     const subscription = AppState.addEventListener("change", state => {
       if (state === "active" && locationEnabled) void applyLocation({forceRefresh:true,allowPrompt:false});
     });
@@ -217,7 +223,7 @@ export function CustomerPlantDiscovery({ homeHeader, onHomeRefresh }: {
       }).catch(() => { /* Browser without permission-status support: use resume refresh. */ });
     }
     return () => {disposed=true;subscription.remove();permission?.removeEventListener("change",changed);};
-  }, [applyLocation,locationEnabled]);
+  }, [applyLocation, compact, locationEnabled]);
 
   // Geographical filters are the only controls in the expanded Filters panel.
   // Debounce changes so a field is never geocoded on every keystroke.
@@ -319,7 +325,7 @@ export function CustomerPlantDiscovery({ homeHeader, onHomeRefresh }: {
   const homeQueryKey = JSON.stringify([filters.q, userLocation?.lat, userLocation?.lng]);
   const homeRegistered = useRef({ key: "", ids: new Set<string>(), places: new Set<string>() });
   useEffect(() => {
-    if (!compact || !data) return;
+    if (!compact || !data?.plants) return;
     if (homeRegistered.current.key !== homeQueryKey) {
       homeRegistered.current = { key: homeQueryKey, ids: new Set(), places: new Set() };
     }

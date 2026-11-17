@@ -13,6 +13,7 @@ import { apiGet, apiErrorDetail } from "@/src/api/client";
 import { useAuth } from "@/src/auth/AuthContext";
 import { useGet } from "@/src/hooks/useApi";
 import { getCurrentDeviceLocation, currentLocationFailureMessage } from "@/src/location/currentLocation";
+import { validLatLng, type LatLng } from "@/src/maps/geo";
 import { usePermissions } from "@/src/permissions/PermissionProvider";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { AppText } from "@/src/components/ui/AppText";
@@ -21,7 +22,7 @@ import { Input } from "@/src/components/ui/Input";
 import { customerHomeSizes, fonts } from "@/src/theme/tokens";
 
 import { SupportWidgetBridge } from "@/src/support/SupportWidgetBridge";
-type Geocode = { locality: string; formatted_address: string };
+type Geocode = { locality: string; formatted_address: string; lat?: number; lng?: number };
 
 function IndianFlag({ size }: { size: number }) {
   return <Svg width={size} height={size} viewBox="0 0 24 24" accessible={false}>
@@ -49,7 +50,10 @@ async function deviceCoordinates(): Promise<{ lat: number; lng: number }> {
   return result.location;
 }
 
-export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Promise<void> }) {
+export function CustomerHomeHeader({ onRefreshHome, onDiscoveryLocationChange }: {
+  onRefreshHome: () => Promise<void>;
+  onDiscoveryLocationChange: (location: LatLng | null) => void;
+}) {
   const { token } = useAuth();
   const { colors, scheme, toggle, reduceMotion } = useTheme();
   const router = useRouter();
@@ -60,7 +64,7 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
   const permissions = usePermissions();
   const { data: feed, error: feedError, refetch: refreshFeed } = useGet<{ unread: number }>("/notifications?limit=1");
   const [sheet, setSheet] = useState<"location" | null>(null);
-  const [selection, setSelection] = useState<{ token: string; label: string } | null>(null);
+  const [selection, setSelection] = useState<{ token: string; label: string; source: "manual" | "device" } | null>(null);
   const [manual, setManual] = useState("");
   const [locationBusy, setLocationBusy] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
@@ -111,11 +115,12 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
   useEffect(() => {
     setSheet(null);
     setSelection(null);
+    onDiscoveryLocationChange(null);
     setManual("");
     setLocationBusy(false);
     setLocationError(null);
     return cancelLocation;
-  }, [token, cancelLocation]);
+  }, [token, cancelLocation, onDiscoveryLocationChange]);
 
   const lookup = useCallback(async (address?: string) => {
     if (!token || busy.current) return;
@@ -134,7 +139,9 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
       const result = await apiGet<Geocode>(`/maps/geocode?${query}`, token, controller.signal);
       if (!result.locality?.trim()) throw new Error("Could not resolve a city. Select a location manually.");
       if (id !== request.current) return;
-      setSelection({ token, label: result.locality });
+      const point = coordinates ?? { lat: result.lat ?? NaN, lng: result.lng ?? NaN };
+      setSelection({ token, label: result.locality, source: address ? "manual" : "device" });
+      onDiscoveryLocationChange(validLatLng(point) ? point : null);
       setSheet(null);
     } catch (error) {
       if (id === request.current) {
@@ -144,7 +151,7 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
       if (timeout) clearTimeout(timeout);
       if (id === request.current) { busy.current = false; setLocationBusy(false); }
     }
-  }, [token]);
+  }, [token, onDiscoveryLocationChange]);
 
   useEffect(() => {
     let active = true;
@@ -162,6 +169,39 @@ export function CustomerHomeHeader({ onRefreshHome }: { onRefreshHome: () => Pro
     }
     return () => { active = false; };
   }, [focused, token, permissions.ready, permissions.locationEnabled, lookup]);
+
+  useEffect(() => {
+    if (selection?.source !== "device") return;
+    let disposed = false;
+    const clearDeviceLocation = () => {
+      if (disposed) return;
+      setSelection(current => current?.source === "device" ? null : current);
+      onDiscoveryLocationChange(null);
+    };
+    if (Platform.OS === "web") {
+      let permission: PermissionStatus | undefined;
+      const handleChange = () => { if (permission?.state !== "granted") clearDeviceLocation(); };
+      void navigator.permissions?.query({ name: "geolocation" }).then(status => {
+        if (disposed) return;
+        permission = status;
+        permission.addEventListener("change", handleChange);
+      }).catch(() => undefined);
+      return () => {
+        disposed = true;
+        permission?.removeEventListener("change", handleChange);
+      };
+    }
+    const subscription = AppState.addEventListener("change", state => {
+      if (state !== "active") return;
+      void Location.getForegroundPermissionsAsync().then(status => {
+        if (status.status !== "granted") clearDeviceLocation();
+      }).catch(() => undefined);
+    });
+    return () => {
+      disposed = true;
+      subscription.remove();
+    };
+  }, [selection, onDiscoveryLocationChange]);
 
   const close = () => setSheet(null);
   const surface = colors.surfaceSecondary;

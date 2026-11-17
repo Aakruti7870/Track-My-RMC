@@ -10,6 +10,7 @@ import type { OrderData } from "@/src/components/OrderCard";
 import { ThemedScreen } from "@/src/components/ThemedScreen";
 import { AppText } from "@/src/components/ui/AppText";
 import { useGet } from "@/src/hooks/useApi";
+import type { LatLng } from "@/src/maps/geo";
 import { enquiryRoute, homeShortcuts } from "@/src/navigation/customerHome";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { control, fonts, radius } from "@/src/theme/tokens";
@@ -21,6 +22,7 @@ export default function CustomerHome() {
   const router = useRouter();
   const { data, refetch } = useGet<{ active_order: OrderData | null }>("/customer/home");
   const [showBulk, setShowBulk] = useState(false);
+  const [discoveryLocation, setDiscoveryLocation] = useState<LatLng | null>(null);
   const bulkShown = useRef(false);
   const wrapShortcuts = width / fontScale < 310;
 
@@ -57,8 +59,8 @@ export default function CustomerHome() {
   return (
     <ThemedScreen>
       <View style={styles.root}>
-        <CustomerHomeHeader onRefreshHome={refetch} />
-        <CustomerPlantDiscovery onHomeRefresh={refetch} homeHeader={
+        <CustomerHomeHeader onRefreshHome={refetch} onDiscoveryLocationChange={setDiscoveryLocation} />
+        <CustomerPlantDiscovery onHomeRefresh={refetch} homeLocation={discoveryLocation} homeHeader={
           <>
             <HomeCarousel style={styles.carousel} onAction={openAction} />
             <View testID="home-quick-actions" style={[
