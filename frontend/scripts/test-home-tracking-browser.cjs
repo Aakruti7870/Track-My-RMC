@@ -231,7 +231,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      await page.goBack();
      await page.getByTestId('tab-supply').click();
      await page.getByTestId('customer-directory-bulk-quote').click();
-     await page.getByText('Bulk Concrete Enquiry',{exact:true}).waitFor();
+     await page.getByRole('heading',{name:'Bulk Concrete Enquiry',exact:true}).waitFor();
      await page.getByTestId('submit-service-enquiry').click();
      assert.equal(await page.getByTestId('enquiry-quantity_m3').getAttribute('aria-invalid'), 'true');
      await page.getByTestId('enquiry-quantity_m3').fill('125.25');

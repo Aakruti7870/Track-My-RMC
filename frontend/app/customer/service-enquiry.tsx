@@ -246,7 +246,7 @@ function EnquiryForm({ selected, categoryKey }: { selected: Service; categoryKey
         </Pressable>
         <VectorSymbol name={category?.symbol ?? ENQUIRY_SYMBOLS[selected]} size={24} />
         <View style={{ flex: 1 }}>
-          <AppText style={[styles.heading, { color: colors.onSurface }]}>{category?.title ?? TITLES[selected]}</AppText>
+          <AppText accessibilityRole="header" style={[styles.heading, { color: colors.onSurface }]}>{category?.title ?? TITLES[selected]}</AppText>
           <AppText variant="caption">Request a call or quotation. No payment required.</AppText>
         </View>
       </View>

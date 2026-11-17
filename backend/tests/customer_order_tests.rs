@@ -1694,12 +1694,18 @@ async fn actual_customer_and_owner_dashboards_return_the_mobile_contract_and_sco
     .fetch_one(&db)
     .await
     .unwrap();
-    let options = db
-        .connect_options()
-        .as_ref()
-        .clone()
-        .options([("TimeZone", session_timezone)]);
+    let options = db.connect_options().as_ref().clone();
     let db = sqlx::postgres::PgPoolOptions::new()
+        .after_connect(move |connection, _| {
+            let session_timezone = session_timezone.clone();
+            Box::pin(async move {
+                sqlx::query("SELECT set_config('TimeZone', $1, false)")
+                    .bind(session_timezone)
+                    .execute(connection)
+                    .await?;
+                Ok(())
+            })
+        })
         .connect_with(options)
         .await
         .unwrap();
