@@ -265,7 +265,8 @@ try {
     assert.ok(currentIdentity.name && token);
     if (user.role === 'customer') {
       phase = 'automatic nearby discovery with optional location off';
-      await page.getByTestId('tab-plants').click();
+      await page.getByTestId('tab-supply').click();
+      await page.getByTestId('customer-directory-plant-map').click();
       await expect(page.getByTestId('plants-list')).toBeVisible();
       await expect.poll(() => successfulPaths.has('/api/customer/plants/search')).toBe(true);
       await expect(page.getByRole('button',{name:'Show Browser staging plant on map',exact:true})).toBeVisible();
@@ -367,18 +368,18 @@ try {
     // Verify the rendered Expo menu against the same typed catalog that CI
     // checks for existing routes. Do not capture response bodies or credentials.
     if (user.role === 'customer') {
-      await expect(page.getByTestId('customer-module-grid')).toBeVisible();
+      await expect(page.getByTestId('home-quick-actions')).toBeVisible();
       // Customer Notifications are accessed from the Home header, not More.
       await expect(page.getByTestId('notifications-bell')).toBeVisible();
-      await page.getByTestId('tab-more').click();
-      await expect(page.getByTestId('tab-more')).toHaveAttribute('aria-selected', 'true');
+      await page.getByTestId('tab-account').click();
+      await expect(page.getByTestId('tab-account')).toHaveAttribute('aria-selected', 'true');
     }
     // Verify each unique module destination across the redesigned tab surfaces.
     // The old single-page catalog assertion must not duplicate Home cards.
     // The dispatcher fixture has neither a plant_reports nor a workforce grant.
     const disabledKeys = user.role === 'dispatcher' ? ['business-reports', 'business-attendance'] : [];
     const visibleKeys = user.role === 'customer'
-      ? ['account-deletion', 'customer-support', 'quotations', 'documents']
+      ? ['account-deletion', 'customer-support']
       : modulesForRole(user.role).map(module => module.key)
         .filter(key => key !== 'notifications' && !disabledKeys.includes(key));
     // Staff and Driver notifications are exclusively in the shared header.
@@ -591,7 +592,7 @@ try {
       console.log('PASS: real Expo Owner seven-slot directory, Manager appointment/revocation and five-action permission editor');
     }
     if (user.role === 'customer') {
-      await expect(page.getByTestId('role-module-directory').locator('[data-testid^="role-module-"]')).toHaveCount(4);
+      await expect(page.getByTestId('role-module-directory').locator('[data-testid^="role-module-"]')).toHaveCount(2);
       await expect(page.getByTestId('role-module-notifications')).toHaveCount(0);
       await expect(page.getByText('All Customer Modules', { exact: true })).toHaveCount(0);
     }
@@ -605,21 +606,21 @@ try {
       await expect(page.getByTestId('orders-list')).toBeVisible();
       await expect(page.getByText('Browser site', { exact: true }).first()).toBeVisible();
       assert.ok(successfulPaths.has('/api/customer/orders'));
-      phase = 'project hub: open Home';
-      await page.getByText('Home', { exact: true }).last().click();
-      phase = 'project hub: open Home shortcut';
-      await page.getByTestId('customer-module-projects').click();
+      phase = 'project hub: open Plan';
+      await page.getByTestId('tab-plan').click();
+      await page.getByTestId('customer-directory-projects').click();
       phase = 'project hub: route navigation';
       await page.waitForURL(url => url.pathname === '/customer/projects' || url.pathname === '/customer/projects/');
       phase = 'project hub: route heading';
       await expect(page.getByTestId('project-hub-heading')).toBeVisible();
       phase = 'project hub: authorized API';
       await expect.poll(() => successfulPaths.has('/api/customer/project-sites')).toBe(true);
-      phase = 'project hub: return to Home';
+      phase = 'project hub: return to Plan';
       // The native header back button uses expo-router's history, which is
       // not necessarily equivalent to browser history in Expo web tests.
       await page.getByTestId('project-hub-back').click();
-      await expect(page.getByTestId('customer-module-grid')).toBeVisible();
+      await expect(page.getByTestId('customer-plan')).toBeVisible();
+      await page.getByTestId('tab-home').click();
       phase = 'support create';
       await page.getByTestId('header-help').click();
       await page.getByTestId('customer-support-open-center').click();

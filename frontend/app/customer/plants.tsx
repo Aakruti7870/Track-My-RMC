@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ActivityIndicator, AppState, FlatList, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -121,7 +121,17 @@ async function resolveNearbyLocation(opts?: { forceRefresh?: boolean; allowPromp
   }
 }
 
+const HOME_PAGE_SIZE = 8;
+
 export default function CustomerPlants() {
+  return <CustomerPlantDiscovery />;
+}
+
+export function CustomerPlantDiscovery({ homeHeader, onHomeRefresh }: {
+  homeHeader?: ReactNode;
+  onHomeRefresh?: () => Promise<void>;
+}) {
+  const compact = homeHeader !== undefined;
   const { locationEnabled, enableDiscoveryLocation } = usePermissions();
   const enablePreference = useRef(enableDiscoveryLocation);
   enablePreference.current = enableDiscoveryLocation;
@@ -137,6 +147,9 @@ export default function CustomerPlants() {
   const [showFilters,setShowFilters] = useState(false);
   const [page, setPage] = useState(1);
   const listRef = useRef<FlatList<PlantData>>(null);
+  const homeResultsOffset = useRef(0);
+  const [homeRefreshing, setHomeRefreshing] = useState(false);
+  const [homeGoogle, setHomeGoogle] = useState<{ key: string; offset: number | "last"; displayPage: number } | null>(null);
   const scrollToResults = () => listRef.current?.scrollToOffset({ offset: 0, animated: true });
   const [geoDraft, setGeoDraft] = useState<PlantGeoFilters>({...EMPTY_PLANT_GEO});
   const [filters, setFilters] = useState({q:"",grade:"",radius_km:50,verified:false,...EMPTY_PLANT_GEO});
@@ -147,7 +160,7 @@ export default function CustomerPlants() {
   const manualLocation = useRef(false);
   const geoLookupVersion = useRef(0);
   const lastAppliedGeoLocation = useRef("");
-  const { data, loading, error, refetch, reload, clearCache } = usePlantSearch(userLocation, filters, page);
+  const { data, loading, error, refetch, reload, clearCache } = usePlantSearch(userLocation, filters, page, compact ? HOME_PAGE_SIZE : undefined);
   const {
     data: googleNearby, loading: googleLoading, error: googleError, refresh: refreshGoogle,
     page: googlePage, nextPage: nextGooglePage, previousPage: previousGooglePage,
@@ -303,6 +316,19 @@ export default function CustomerPlants() {
     return ranked;
   }, [ranked]);
 
+  const homeQueryKey = JSON.stringify([filters.q, userLocation?.lat, userLocation?.lng]);
+  const homeRegistered = useRef({ key: "", ids: new Set<string>(), places: new Set<string>() });
+  useEffect(() => {
+    if (!compact || !data) return;
+    if (homeRegistered.current.key !== homeQueryKey) {
+      homeRegistered.current = { key: homeQueryKey, ids: new Set(), places: new Set() };
+    }
+    for (const plant of data.plants) {
+      homeRegistered.current.ids.add(plant.id);
+      if (plant.google_place_id) homeRegistered.current.places.add(plant.google_place_id);
+    }
+  }, [compact, data, homeQueryKey]);
+
   const googleListings = useMemo<PlantData[]>(() => {
     const registered = data?.plants || [];
     return (googleNearby?.places || []).filter(place => !registered.some(plant =>
@@ -359,6 +385,167 @@ export default function CustomerPlants() {
     }
   }
 
+  function updateSearch(value: string) {
+    setQ(value);
+    setPage(1);
+    setHomeGoogle(null);
+    setFilters(current => ({ ...current, q: value }));
+  }
+
+  const searchField = (
+    <View style={[styles.searchBar,{backgroundColor:colors.surfaceSecondary,borderColor:colors.controlOutline}]}>
+      <VectorSymbol name="search" size={20} />
+      <TextInput testID={compact ? "home-plant-search" : "plants-search"} accessibilityLabel="Search plant by name" value={q}
+        onChangeText={updateSearch}
+        placeholder="Search plant by name" placeholderTextColor={colors.onSurfaceTertiary}
+        returnKeyType="search" style={[styles.searchInput,{color:colors.onSurface}]} />
+      {q ? <Pressable onPress={() => updateSearch("")} accessibilityLabel="Clear search"><Ionicons name="close" size={20} color={colors.onSurfaceTertiary} /></Pressable> : null}
+    </View>
+  );
+
+  const detailsModal = (
+    <Modal visible={!!details} animationType="slide" onRequestClose={() => setDetails(null)}>
+      <ScrollView contentContainerStyle={{padding:24,paddingTop:56,gap:16,backgroundColor:colors.canvas,flexGrow:1}}>
+        {details ? <><AppText variant="title">{"Plant Profile"}</AppText><AppText style={{color:colors.accentText}}>{details.name}</AppText><AppText>{details.address}</AppText>
+        {details.status === "google_listing" ? (
+          <AppText accessibilityLabel="Google Maps" style={{fontSize:14,color:colors.onSurfaceTertiary}}>
+            Google Maps · Public business listing · Not TrackMyRMC verified
+          </AppText>
+        ) : null}
+        <DetailLine label="Available concrete grades" value={details.grades?.join(", ") || "Not provided"} />
+        <DetailLine label="Delivery radius" value={details.service_area_km ? `${details.service_area_km} km` : "Not provided"} />
+        <DetailLine label="Contact" value={details.contact_phone || "Not provided"} />
+        <DetailLine label="Verification" value={details.verified ? "Verified listing" : "Verification pending"} />
+        <AppText variant="caption">Plant capacity, available mixers, laboratory, loading hours and government approvals are shown only when verified records are available. Customers cannot edit plant data.</AppText>
+        {details.status === "google_listing" ? (
+          <>
+            <DetailLine label="Distance from selected site" value={details.distance_km != null ? `${details.distance_km.toFixed(1)} km` : "Not available"} />
+            <Button label="View on Google Maps" variant="outline" onPress={()=>{
+              const place=googleNearby?.places.find(entry=>entry.place_id === details.google_place_id);
+              if (place) openGooglePlace(place);
+            }} />
+          </>
+        ) : (
+          <>
+            <Button label="Open Plant Profile" variant="successTint" onPress={()=>{const id=details.id;setDetails(null);router.push({pathname:"/plant-profile",params:{plantId:id}});}} />
+          </>
+        )}
+        {plantOrderRoute(details) === "review" ? <AppText variant="caption">TrackMyRMC will review your order request.</AppText> : null}
+        <Button label="Place Order" disabled={plantOrderRoute(details) === "unavailable"} onPress={() => openPlantOrder(details)} />
+        </> : null}
+        <Button label="Close details" onPress={() => setDetails(null)} />
+      </ScrollView>
+    </Modal>
+  );
+
+  if (compact) {
+    const key = homeQueryKey;
+    const seen = homeRegistered.current;
+    const externalPlants = seen.key === key ? googleListings.filter(plant =>
+      !seen.ids.has(plant.id) && (!plant.google_place_id || !seen.places.has(plant.google_place_id)),
+    ) : googleListings;
+    const browsing = homeGoogle?.key === key ? homeGoogle : null;
+    const hasRegistered = filtered.length > 0;
+    const showGoogle = Boolean(browsing || (data && !hasRegistered && !data.has_more && userLocation));
+    const offset = browsing?.offset === "last"
+      ? Math.max(0, Math.floor((externalPlants.length - 1) / HOME_PAGE_SIZE) * HOME_PAGE_SIZE)
+      : browsing?.offset ?? 0;
+    const displayPage = browsing?.displayPage ?? page;
+    const visiblePlants = showGoogle ? externalPlants.slice(offset, offset + HOME_PAGE_SIZE) : filtered;
+    const hasLaterGoogle = offset + HOME_PAGE_SIZE < externalPlants.length || googleHasNextPage;
+    const canGoNext = showGoogle ? hasLaterGoogle : Boolean(data?.has_more || externalPlants.length || googleHasNextPage);
+    const canGoBack = showGoogle ? offset > 0 || googleHasPreviousPage || hasRegistered : page > 1;
+    const busy = showGoogle ? googleLoading : loading;
+    const errorMessage = showGoogle ? googleError : error;
+
+    function changePage(direction: 1 | -1) {
+      if (showGoogle) {
+        const display = displayPage + direction;
+        if (direction === 1 && offset + HOME_PAGE_SIZE < externalPlants.length) {
+          setHomeGoogle({ key, offset: offset + HOME_PAGE_SIZE, displayPage: display });
+        } else if (direction === 1) {
+          nextGooglePage();
+          setHomeGoogle({ key, offset: 0, displayPage: display });
+        } else if (offset > 0) {
+          setHomeGoogle({ key, offset: offset - HOME_PAGE_SIZE, displayPage: display });
+        } else if (googleHasPreviousPage) {
+          previousGooglePage();
+          setHomeGoogle({ key, offset: "last", displayPage: display });
+        } else {
+          setHomeGoogle(null);
+        }
+      } else if (direction === 1 && !data?.has_more) {
+        setHomeGoogle({ key, offset: 0, displayPage: page + 1 });
+      } else {
+        setPage(current => current + direction);
+      }
+      listRef.current?.scrollToOffset({ offset: homeResultsOffset.current, animated: false });
+    }
+
+    async function refreshHome() {
+      setHomeRefreshing(true);
+      try {
+        await Promise.all([refetch(), onHomeRefresh?.()]);
+        refreshGoogle();
+        setHomeGoogle(null);
+      } finally {
+        setHomeRefreshing(false);
+      }
+    }
+
+    return (
+      <>
+        <FlatList
+          ref={listRef}
+          testID="customer-home-scroll"
+          style={styles.homeList}
+          contentContainerStyle={styles.homeListContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          refreshing={homeRefreshing}
+          onRefresh={refreshHome}
+          data={visiblePlants}
+          keyExtractor={plant => plant.id}
+          ListHeaderComponent={
+            <View style={styles.homeListHeading}>
+              {homeHeader}
+              <View onLayout={event => { homeResultsOffset.current = event.nativeEvent.layout.y; }}>
+                {searchField}
+              </View>
+              <AppText accessibilityRole="header" variant="heading">Nearby Plants</AppText>
+              {showGoogle ? <AppText variant="caption">Google Maps</AppText> : null}
+              {!showGoogle && !data?.has_more && googleError ? (
+                <Button label="Retry Google Maps results" size="sm" variant="outline" onPress={refreshGoogle} />
+              ) : null}
+            </View>
+          }
+          renderItem={({ item }) => (
+            <NearbyPlantCard compact plant={item} onSelect={() => setDetails(item)} onDetails={() => setDetails(item)}
+              onQuotation={() => openSupplierRequest(item, false, showGoogle ? item.google_place_id : null)}
+              onOrder={() => openPlantOrder(item)} />
+          )}
+          ListEmptyComponent={busy ? (
+            <ActivityIndicator accessibilityLabel="Searching nearby plants" color={colors.brand} />
+          ) : errorMessage ? (
+            <ErrorView message={errorMessage} onRetry={showGoogle ? () => { refreshGoogle(); setHomeGoogle(null); } : reload} />
+          ) : (
+            <AppText variant="caption">No plants found. Try another plant name or location.</AppText>
+          )}
+          ListFooterComponent={
+            <View testID="home-plant-pagination" style={styles.homePager}>
+              <Button testID="home-plants-previous" label="Previous" size="sm" variant="outline" fullWidth={false}
+                disabled={busy || !canGoBack} onPress={() => changePage(-1)} style={styles.homePagerButton} />
+              <AppText variant="caption" accessibilityLiveRegion="polite">Page {displayPage}</AppText>
+              <Button testID="home-plants-next" label="Next" size="sm" variant="outline" fullWidth={false}
+                disabled={busy || !canGoNext} onPress={() => changePage(1)} style={styles.homePagerButton} />
+            </View>
+          }
+        />
+        {detailsModal}
+      </>
+    );
+  }
+
   return (
     <ThemedScreen>
     <View style={{ flex: 1, backgroundColor: colors.isDark ? "transparent" : colors.surface }}>
@@ -388,14 +575,7 @@ export default function CustomerPlants() {
               </View>
 
               <View style={styles.searchRow}>
-                <View style={[styles.searchBar,{backgroundColor:colors.surfaceSecondary,borderColor:colors.controlOutline}]}>
-                  <VectorSymbol name="search" size={20} />
-                  <TextInput testID="plants-search" value={q}
-                    onChangeText={value=>{setQ(value);setPage(1);setFilters(current=>({...current,q:value}));}}
-                    placeholder="Search plant by name" placeholderTextColor={colors.onSurfaceTertiary}
-                    returnKeyType="search" style={[styles.searchInput,{color:colors.onSurface}]} />
-                  {q ? <Pressable onPress={()=>{setQ("");setPage(1);setFilters(current=>({...current,q:""}));}} accessibilityLabel="Clear search"><Ionicons name="close" size={20} color={colors.onSurfaceTertiary} /></Pressable> : null}
-                </View>
+                {searchField}
                 <Pressable testID="plants-filter-toggle" accessibilityLabel={showFilters ? "Hide location filters" : "Location filters"} onPress={()=>setShowFilters(v=>!v)} style={[styles.orangeFilter,{backgroundColor:colors.brand,borderColor:colors.isDark ? "#FF9A3D" : colors.brand}]} accessibilityRole="button">
                   <VectorSymbol name="filter" size={20} color={colors.onBrand} /><AppText color={colors.onBrand} style={styles.orangeFilterText}>Filters</AppText>
                 </Pressable>
@@ -526,38 +706,7 @@ export default function CustomerPlants() {
           ) : null}
         />
       )}
-      <Modal visible={!!details} animationType="slide" onRequestClose={() => setDetails(null)}>
-        <ScrollView contentContainerStyle={{padding:24,paddingTop:56,gap:16,backgroundColor:colors.canvas,flexGrow:1}}>
-          {details ? <><AppText variant="title">{"Plant Profile"}</AppText><AppText style={{color:colors.accentText}}>{details.name}</AppText><AppText>{details.address}</AppText>
-          {details.status === "google_listing" ? (
-            <AppText accessibilityLabel="Google Maps" style={{fontSize:14,color:colors.onSurfaceTertiary}}>
-              Google Maps · Public business listing · Not TrackMyRMC verified
-            </AppText>
-          ) : null}
-          <DetailLine label="Available concrete grades" value={details.grades?.join(", ") || "Not provided"} />
-          <DetailLine label="Delivery radius" value={details.service_area_km ? `${details.service_area_km} km` : "Not provided"} />
-          <DetailLine label="Contact" value={details.contact_phone || "Not provided"} />
-          <DetailLine label="Verification" value={details.verified ? "Verified listing" : "Verification pending"} />
-          <AppText variant="caption">Plant capacity, available mixers, laboratory, loading hours and government approvals are shown only when verified records are available. Customers cannot edit plant data.</AppText>
-          {details.status === "google_listing" ? (
-            <>
-              <DetailLine label="Distance from selected site" value={details.distance_km != null ? `${details.distance_km.toFixed(1)} km` : "Not available"} />
-              <Button label="View on Google Maps" variant="outline" onPress={()=>{
-                const place=googleNearby?.places.find(entry=>entry.place_id === details.google_place_id);
-                if (place) openGooglePlace(place);
-              }} />
-            </>
-          ) : (
-            <>
-              <Button label="Open Plant Profile" variant="successTint" onPress={()=>{const id=details.id;setDetails(null);router.push({pathname:"/plant-profile",params:{plantId:id}});}} />
-            </>
-          )}
-          {plantOrderRoute(details) === "review" ? <AppText variant="caption">TrackMyRMC will review your order request.</AppText> : null}
-          <Button label="Place Order" disabled={plantOrderRoute(details) === "unavailable"} onPress={() => openPlantOrder(details)} />
-          </> : null}
-          <Button label="Close details" onPress={() => setDetails(null)} />
-        </ScrollView>
-      </Modal>
+      {detailsModal}
     </View>
     </ThemedScreen>
   );
@@ -567,7 +716,8 @@ function DetailLine({label,value}:{label:string;value:string}) {
   const { colors } = useTheme();
   return <View style={{gap:4,borderBottomWidth:1,borderColor:colors.divider,paddingVertical:10}}><AppText variant="caption">{label}</AppText><AppText>{value}</AppText></View>;
 }
-function NearbyPlantCard({ plant, onDetails, onQuotation, onOrder, onSelect }: {
+function NearbyPlantCard({ plant, onDetails, onQuotation, onOrder, onSelect, compact = false }: {
+  compact?: boolean;
   plant: PlantData;
   onSelect: () => void;
   onDetails: () => void;
@@ -578,16 +728,16 @@ function NearbyPlantCard({ plant, onDetails, onQuotation, onOrder, onSelect }: {
   const googleListing = plant.status === "google_listing";
   const orderRoute = plantOrderRoute(plant);
   const { width, fontScale } = useWindowDimensions();
-  const stackActions = width / fontScale < 320;
+  const stackActions = width / fontScale < (compact ? 304 : 320);
   const actionStyle = [styles.plantAction, stackActions && styles.plantActionStacked];
 
   return (
-    <Card testID={`nearby-plant-${plant.id}`} style={styles.plantCard}>
-      <Pressable onPress={onSelect} accessibilityRole="button" accessibilityLabel={`Show ${plant.name} on map`} style={styles.plantTopRow}>
-        <IconTile symbol="nearby-rmc-plants" width={38} />
+    <Card testID={`nearby-plant-${plant.id}`} style={[styles.plantCard, compact && styles.compactPlantCard]}>
+      <Pressable onPress={onSelect} accessibilityRole="button" accessibilityLabel={compact ? `View ${plant.name} profile` : `Show ${plant.name} on map`} style={styles.plantTopRow}>
+        <IconTile symbol="nearby-rmc-plants" width={compact ? 34 : 38} />
         <View style={styles.plantTitleGroup}>
-          <AppText variant="heading">{plant.name}</AppText>
-          <AppText variant="bodyMuted">{plant.address || [plant.city, plant.district].filter(Boolean).join(", ")}</AppText>
+          <AppText variant={compact ? "label" : "heading"}>{plant.name}</AppText>
+          <AppText variant={compact ? "caption" : "bodyMuted"} numberOfLines={compact ? 2 : undefined}>{plant.address || [plant.city, plant.district].filter(Boolean).join(", ")}</AppText>
         </View>
       </Pressable>
       <View style={styles.plantChipRow}>
@@ -598,9 +748,9 @@ function NearbyPlantCard({ plant, onDetails, onQuotation, onOrder, onSelect }: {
       <View style={[styles.plantActions, stackActions && styles.plantActionsStacked]}>
         <Button testID="nearby-place-order" size="sm" fullWidth={false}
           label="Place Order" onPress={onOrder} disabled={orderRoute === "unavailable"} style={actionStyle} />
-        <Button size="sm" variant="outline" fullWidth={false} label="Request Quotation"
+        <Button size="sm" variant="outline" fullWidth={false} label={compact ? "Quotation" : "Request Quotation"}
           onPress={onQuotation} style={actionStyle} />
-        <Button size="sm" variant="successTint" fullWidth={false} label="Plant Profile" onPress={onDetails}
+        <Button size="sm" variant={compact ? "outline" : "successTint"} fullWidth={false} label="Plant Profile" onPress={onDetails}
           style={actionStyle} />
       </View>
       {orderRoute === "review" ? <AppText variant="caption" color={colors.onSurfaceTertiary}>TrackMyRMC will review your order request.</AppText> : null}
@@ -673,6 +823,12 @@ function LocationBanner({ status, locating, onEnable, onRetry }: {
 }
 
 const styles = StyleSheet.create({
+  homeList: { flex: 1, minHeight: 0 },
+  homeListContent: { width: "100%", maxWidth: 839, alignSelf: "center", paddingHorizontal: 12, paddingVertical: 10, gap: 8 },
+  homeListHeading: { gap: 10 },
+  homePager: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 6 },
+  homePagerButton: { minHeight: control.minTouch },
+  compactPlantCard: { padding: 8, gap: 6 },
   titleRow: { paddingHorizontal: 18, paddingTop: 16, paddingBottom: 8, gap: 3 },
   mapShell:{height:242,borderRadius:20,overflow:"hidden",borderWidth:1,position:"relative",shadowOffset:{width:0,height:6},shadowRadius:16,elevation:2},
   mapPill:{position:"absolute",top:10,right:10,backgroundColor:"#FFFFFF",borderRadius:24,paddingVertical:7,paddingHorizontal:13,flexDirection:"row",alignItems:"center",gap:6,elevation:3},

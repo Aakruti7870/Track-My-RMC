@@ -9,33 +9,28 @@ export function enquiryRoute(service: EnquiryService, material?: string): Href {
 }
 
 const catalog = modulesForRole("customer");
-export const planningKeys = [
-  "free-tools", "pour-planner", "projects", "saved-sites", "cube-tests", "receiving-guide",
-] as const;
-const morePlanningKeys = ["compare-plants", "quotations", "documents"] as const;
-
 export type HomeLink = { key: string; label: string; symbol: VectorSymbolName; route: Href; hint?: string };
 
-function planningLinks(keys: readonly string[]): HomeLink[] {
+export function planningLinks(keys: readonly string[]): HomeLink[] {
   return keys.flatMap(key => {
     const item = catalog.find(module => module.key === key);
     if (!item?.symbol) return [];
     const label = key === "free-tools" ? "RMC Calculator"
-      : key === "projects" ? "Project Hub"
-      : key === "receiving-guide" ? "Quality Guide" : item.label;
+      : item.label;
     return [{ key, label, symbol: item.symbol, route: item.route }];
   });
 }
 
-export const planningPreview: readonly HomeLink[] = [
-  ...planningLinks(planningKeys),
-  { key: "pump-rental", label: "Rent a Concrete Pump", symbol: "pump-rental", route: enquiryRoute("pump") },
-];
+export const pumpLink: HomeLink = {
+  key: "pump-rental", label: "Rent a Concrete Pump", symbol: "pump-rental", route: enquiryRoute("pump"),
+};
 
-export const morePlanning: readonly HomeLink[] = [
-  { key: "order-request", label: "Start an Order Request", symbol: "new-order", route: "/new-order",
+export const homeShortcuts: readonly HomeLink[] = [
+  { key: "new", label: "New Order", symbol: "new-order", route: "/new-order",
     hint: "Build and save a request without completing KYC first" },
-  ...planningLinks(morePlanningKeys),
+  ...planningLinks(["saved-sites", "free-tools"]),
+  { ...pumpLink, label: "Concrete Pump" },
+  ...planningLinks(["pour-planner"]).map(link => ({ ...link, label: "Pour Planner" })),
 ];
 
 export const materialPreview: readonly HomeLink[] = [

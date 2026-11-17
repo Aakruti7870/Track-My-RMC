@@ -172,7 +172,7 @@ async function checkWhatsApp(browser, role, resumeKyc = false) {
     : url.pathname === '/' + role);
   assert.equal(attempts, role === 'customer' && !resumeKyc ? 2 : 1);
   if (!resumeKyc) {
-    const more = page.getByTestId('tab-more');
+    const more = page.getByTestId(role === 'customer' ? 'tab-account' : 'tab-more');
     await more.click();
     await page.waitForURL(url => url.pathname === '/' + role + '/more');
     if (role === 'customer') await page.getByTestId('customer-account-profile').waitFor();
@@ -187,7 +187,7 @@ async function checkWhatsApp(browser, role, resumeKyc = false) {
       const supportShape = await headerSymbol.innerHTML();
       await page.getByTestId('header-theme').click();
       await page.waitForFunction(() => localStorage.getItem('tmrmc_theme_mode') === JSON.stringify('light'));
-      await page.getByTestId('tab-more').click();
+      await page.getByTestId('tab-account').click();
       await page.getByTestId('logout-button').click();
       await page.waitForURL((url) => url.pathname === '/login');
 

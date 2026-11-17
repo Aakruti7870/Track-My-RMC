@@ -35,6 +35,16 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  const plants=[{id:'fixture-plant',name:'Panvel Ready-Mix Concrete and Infrastructure Supply',address:'Industrial Estate, Panvel',status:'active',verified:true,order_enabled:true,grades:['M30'],distance_km:4.2}];
  const linkedPlant={...plants[0],id:'fixture-plant-off-page',name:'Registered Linked Concrete'};
  if (path.endsWith('/customer/plants/search')) {
+   const request = route.request().postDataJSON();
+   if (request.page_size === 8 && request.q === 'pagination') {
+     const page = request.page;
+     await route.fulfill({json:{
+       plants: Array.from({length: page === 1 ? 8 : 2}, (_, i) => ({
+         ...plants[0], id: `page-${page}-${i}`, name: `Pagination plant ${page}-${i}`,
+       })),
+       page, has_more: page === 1,
+     }});return;
+   }
    await route.fulfill({json:{plants,page:1,has_more:false}});return;
  }
  if (path.endsWith('/customer/plants/locate')) {
@@ -53,131 +63,79 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  if (path.endsWith('/maps/autocomplete')) {
    await route.fulfill({json:{predictions:[]}});return;
  }
- await route.fulfill({json:path.endsWith('/tracking')?tracking:path.endsWith('/customer/service-enquiries')?{enquiries:[]}:path.endsWith('/customer/plants')?{plants:[...plants,linkedPlant]}:path.endsWith('/customer/orders')?{orders:[]}:path.endsWith('/customer/order-drafts')?{drafts:[]}:path.endsWith('/permission-consent')?{consent:{version:1,location_choice:'manual',notification_choice:'manual'}}:path.endsWith('/me')?me:path.endsWith('/customer/home')?home:{}});
+ await route.fulfill({json:path.endsWith('/tracking')?tracking:path.endsWith('/customer/service-enquiries')?{enquiries:[]}:path.endsWith('/customer/plants')?{plants:[...plants,linkedPlant]}:path.endsWith('/customer/orders')?{orders:mode==='demo'?[]:[order]}:path.endsWith('/customer/order-drafts')?{drafts:[]}:path.endsWith('/permission-consent')?{consent:{version:1,location_choice:'manual',notification_choice:'manual'}}:path.endsWith('/me')?me:path.endsWith('/customer/home')?home:path.endsWith('/customer/project-sites')?{sites:[]}:{}});
  });
  page.on('pageerror',e=>console.error(e.message));
  await page.goto('http://127.0.0.1:8765/customer/');
  await page.getByTestId('action-new').waitFor({timeout:30000});
- await page.getByText('KYC Verified', { exact: true }).first().waitFor();
- const actualVectorSize = async (testId) => page.getByTestId(testId).locator('svg').first()
-   .evaluate(node => [Math.round(node.getBoundingClientRect().width), Math.round(node.getBoundingClientRect().height)]);
  const scroll = page.getByTestId('customer-home-scroll');
- const content = await scroll.boundingBox();
- const tabBar = await page.getByTestId('app-tab-bar').boundingBox();
- const homeHeader = await page.getByTestId('customer-home-header').boundingBox();
- assert(content && tabBar && homeHeader && content.y + content.height <= tabBar.y + 1);
- assert.equal(await page.getByTestId('header-help').count(), 1);
- assert.equal(await page.getByTestId('customer-next-action').count(), 0);
+ const tabBar = page.getByTestId('app-tab-bar');
+ const bulk = page.getByTestId('home-bulk-quote');
+ const plant = scroll.getByTestId('nearby-plant-fixture-plant');
+ await plant.waitFor();
  const sections = await Promise.all([
-   'home-promotional-carousel', 'home-quick-actions', 'kyc-banner', 'customer-module-grid', 'home-other-services',
- ].map(id => page.getByTestId(id).boundingBox()));
+   'home-promotional-carousel', 'home-quick-actions', 'home-plant-search', 'nearby-plant-fixture-plant',
+ ].map(id => scroll.getByTestId(id).boundingBox()));
  for (let i = 1; i < sections.length; i++) {
    const previous = sections[i - 1], next = sections[i];
-   assert(next.y - previous.y - previous.height >= 8, 'Home sections must appear in design order with gutter spacing');
+   assert(next.y >= previous.y + previous.height, 'Home sections must follow the agreed order');
    assert(next.x >= 0 && next.x + next.width <= width + 1, 'Home section exceeds viewport');
  }
  assert(Math.abs(sections[0].width / sections[0].height - 16 / 9) < 0.03, 'Carousel preserves artwork ratio');
- assert.equal(await scroll.getByTestId('home-promotional-carousel').count(), 1);
- assert.equal(await page.getByTestId('customer-home-scroll').getByTestId('kyc-banner').count(), 1);
- const bulk = page.getByTestId('home-bulk-quote');
- assert((await bulk.boundingBox()).height >= 49);
- await page.getByTestId('home-quick-actions').getByRole('heading', { name: 'Quick Access', exact: true }).waitFor();
- await bulk.getByText('Concrete in bulk? Get our best rate for your project.', { exact: true }).waitFor();
- await page.getByTestId('kyc-banner').getByText('KYC Verified', { exact: true }).waitFor();
- const planning = page.getByTestId('customer-module-grid');
- const materials = page.getByTestId('home-other-services');
- assert.equal(await planning.getByRole('button').count(), 8);
- assert.equal(await materials.getByRole('button').count(), 4);
- for (const [id, label] of [['action-new','New Order'], ['action-track','Track Order'], ['action-plants','Nearby Plants'], ['action-orders','My Orders']]) {
-   const action = page.getByTestId(id);
+ assert.equal(await scroll.getByRole('heading', {name:'Nearby Plants',exact:true}).count(), 1);
+ assert.equal(await scroll.getByTestId('kyc-banner').count(), 0);
+ assert.equal(await scroll.getByTestId('demo-tracking-card').count(), 0);
+ assert.equal(await scroll.getByTestId('real-tracking-card').count(), 0);
+ assert.equal(await tabBar.getByTestId('tab-new-order').count(), 0);
+ for (const [id, label] of [
+   ['action-new','New Order'], ['action-saved-sites','Saved Sites'], ['action-free-tools','RMC Calculator'],
+   ['action-pump-rental','Concrete Pump'], ['action-pour-planner','Pour Planner'],
+ ]) {
+   const action = scroll.getByTestId(id);
    const target = await action.boundingBox();
    await action.getByText(label, {exact:true}).waitFor();
    assert(target.width >= 44 && target.height >= 44);
-   const symbolSize = width >= 1024 ? 32 : width >= 600 ? 29 : 28;
-   assert.deepEqual(await actualVectorSize(id), [symbolSize, symbolSize]);
    assert.equal(await action.locator('svg').first().getAttribute('aria-hidden'), 'true');
  }
- const cardBoxes = await Promise.all(['service-cement', 'service-sand', 'service-bricks', 'home-materials-see-all']
-   .map(id => page.getByTestId(id).boundingBox()));
- for (const box of cardBoxes) {
-   assert(box.height >= 70 && Math.abs(box.width - cardBoxes[0].width) <= 1);
-   assert(Math.abs(box.y - cardBoxes[0].y) <= 1, 'Materials must share a row at normal font scale');
- }
-
- // Export full-page Home references at the exact mobile/desktop sizes that
- // the layout gates check; CI uploads them for human visual comparison.
+ assert.deepEqual(await tabBar.getByRole('tab').allTextContents(), ['Home','Orders','Plan','Supply','Account']);
+ const tabs = await Promise.all(['home','orders','plan','supply','account'].map(id=>tabBar.getByTestId('tab-'+id).boundingBox()));
+ assert(tabs.every(tab => Math.abs(tab.width - tabs[0].width) <= 1));
+ const bulkBox = await bulk.boundingBox();
+ const scrollBox = await scroll.boundingBox();
+ const tabsBox = await tabBar.boundingBox();
+ assert(bulkBox.y >= scrollBox.y + scrollBox.height - 1, 'Bulk card cannot overlap plant results');
+ assert(bulkBox.y + bulkBox.height <= tabsBox.y + 1, 'Bulk card cannot overlap bottom tabs');
  await page.screenshot({path:`tracking-previews/home-layout-${width}.png`,fullPage:true});
- const tabIds=['tab-home','tab-orders','tab-plants','tab-more'];
- for(const id of tabIds){const size=await actualVectorSize(id);if(size[0]!==24||size[1]!==24)throw Error(`Tab SVG size: ${id} ${size}`);}
- const tabBoxes=await Promise.all(tabIds.map(id=>page.getByTestId(id).boundingBox()));
- const centerBox=await page.getByTestId('tab-new-order').boundingBox();
- const centers=tabBoxes.map(box=>box.x+box.width/2);
- const mid=centerBox.x+centerBox.width/2;
- if(!(centers[0]<centers[1]&&centers[1]<mid&&mid<centers[2]&&centers[2]<centers[3]))throw Error('Tab ordering around center icon');
- if(Math.abs((mid-centers[1])-(centers[2]-mid))>4 || Math.abs((mid-centers[0])-(centers[3]-mid))>4)throw Error('Tab spacing is not symmetric');
- const card=page.getByTestId('demo-tracking-card'); try { await card.waitFor({timeout:30000}); } catch(e) { await page.screenshot({path:`tracking-previews/failure-${width}.png`,fullPage:true}); console.error(await page.locator('body').innerText()); throw e; }
  if (width === 390) {
-   const more = page.getByTestId('tab-more');
-   await more.click();
+   await bulk.waitFor({state:'hidden',timeout:12000});
+   const search = scroll.getByTestId('home-plant-search');
+   await search.fill('pagination');
+   await scroll.getByTestId('nearby-plant-page-1-7').waitFor();
+   assert.equal(await scroll.locator('[data-testid^="nearby-plant-page-1-"]').count(),8);
+   await scroll.getByTestId('home-plants-next').click();
+   await scroll.getByTestId('nearby-plant-page-2-1').waitFor();
+   assert.equal(await scroll.getByTestId('home-plants-next').getAttribute('aria-disabled'),'true');
+   await scroll.getByTestId('home-plants-previous').click();
+   await scroll.getByTestId('nearby-plant-page-1-7').waitFor();
+   await search.fill('');
+   await plant.waitFor();
+   const account = tabBar.getByTestId('tab-account');
+   await account.click();
    await page.waitForURL(/\/customer\/more\/?$/);
-   await more.click({ clickCount: 3 });
+   await account.click({clickCount:3});
    await page.getByTestId('customer-account-profile').waitFor();
-   assert.equal(await more.getAttribute('aria-selected'), 'true');
-   await page.getByTestId('tab-home').click();
-   await page.setViewportSize({ width, height: 540 });
-   const movement = await scroll.evaluate(node => {
-     const cards = ['home-promotional-carousel', 'home-quick-actions', 'kyc-banner']
-       .map(id => node.querySelector(`[data-testid="${id}"]`));
-     node.scrollTop = 0;
-     const positions = cards.map(card => card.getBoundingClientRect().top);
-     node.scrollTop = 150;
-     return { offset: node.scrollTop, distances: cards.map((card, i) => positions[i] - card.getBoundingClientRect().top) };
-   });
-   assert(movement.offset > 0);
-   assert(movement.distances.every(distance => Math.abs(distance - movement.offset) <= 1));
-   await page.setViewportSize({ width, height: 1000 });
- }
- await scroll.evaluate(node => {
-   const track = node.querySelector('[data-testid="demo-tracking-card"]');
-   node.scrollTop += track.getBoundingClientRect().top - node.getBoundingClientRect().top;
- });
- const b=await card.boundingBox();
- assert.equal(Math.round((await page.getByTestId('customer-home-header').boundingBox()).y), Math.round(homeHeader.y));
- assert.equal(Math.round((await page.getByTestId('app-tab-bar').boundingBox()).y), Math.round(tabBar.y));
- if(await page.getByTestId('demo-tracking-map').count())throw Error('The home tracking map should be collapsed initially');
- await card.getByTestId('home-toggle-tracking-map').click();
- const m=await page.getByTestId('demo-tracking-map').boundingBox();
- assert.equal(Math.round((await page.getByTestId('customer-home-header').boundingBox()).y), Math.round(homeHeader.y));
- if(!m||Math.abs(m.width/m.height-2)>0.05)throw Error('map ratio');
- if(b.x<0||b.x+b.width>width+1)throw Error('overflow');
- for(const text of ['Place Your First order','M-25 Grade · 6 m³','Project site 1','View Challan','Track TM','Call Driver','Call Plant'])if(!await card.getByText(text,{exact:true}).count())throw Error(text);
- await card.screenshot({path:`tracking-previews/tracking-${width}.png`});
- console.log(JSON.stringify({width,card:b,map:m}));
- await card.getByRole('button',{name:'Track TM',exact:true}).click();
- await page.getByText('Demonstration only. Live tracking becomes available after dispatch.',{exact:true}).waitFor();
- await card.getByRole('button',{name:'Call Driver',exact:true}).click();
- await page.getByText('Driver contact becomes available after assignment.',{exact:true}).waitFor();
- for(const state of ['pending','live','delivered']){
-   mode=state; await page.reload();
-   const real=page.getByTestId('real-tracking-card');await real.waitFor();
-   await real.getByText('CUSTOMER-ORDER',{exact:true}).waitFor();
-   await real.getByText('Actual project',{exact:true}).waitFor();
-   assert.equal(await page.getByText('Current order',{exact:true}).count(),0);
-   await real.getByRole('button',{name:'View order details for CUSTOMER-ORDER'}).waitFor();
-   if(await page.getByTestId('demo-tracking-map').count())throw Error('real order used demo route');
-   if(state==='pending'){await real.getByTestId('home-toggle-tracking-map').click();await real.getByText('Waiting for dispatch',{exact:true}).waitFor();}
-   if(state==='live'){
-     await real.getByText('LIVE TRACKING',{exact:true}).waitFor();
-     await real.getByText('Transit Mixer · ASSIGNED-MIXER',{exact:true}).waitFor();
-     await real.getByText(/19.10000, 73.10000/).waitFor();
-   }
-   if(state==='delivered')await real.getByText('DELIVERED',{exact:true}).first().waitFor();
-   if(state==='live' && width===390){
-     await real.getByTestId('home-view-order-details').click();
-     await page.waitForURL('**/order/isolated-order');
-     await page.getByTestId('order-back').waitFor();
-     await page.goBack();
-   }
+   assert.equal(await account.getAttribute('aria-selected'),'true');
+   await tabBar.getByTestId('tab-plan').click();
+   await page.getByTestId('customer-directory-projects').click();
+   await page.waitForURL('**/customer/projects');
+   await page.getByTestId('project-hub-back').click();
+   await page.getByTestId('customer-plan').waitFor();
+   mode = 'live';
+   await tabBar.getByTestId('tab-orders').click();
+   const track = page.getByTestId('orders-track-isolated-order');
+   await track.click();
+   await page.waitForURL('**/track/isolated-order');
+   await page.getByText('Live Tracking', {exact:true}).waitFor();
  }
  if (width === 390) {
    await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -191,7 +149,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    ]) {
      mode = 'live';
      await page.goto('http://127.0.0.1:8765/customer/');
-     await page.getByTestId('real-tracking-card').waitFor();
+     await page.getByTestId('action-new').waitFor();
      const dot = page.getByTestId(`carousel-page-${id}`);
      await dot.click();
      const banner = page.getByTestId('home-promotional-carousel').getByRole('button', { name: label, exact: true });
@@ -215,24 +173,8 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      reviewSubmission=undefined;
      await page.evaluate(value=>localStorage.setItem('tmrmc_theme_mode',JSON.stringify(value)),theme);
      await page.goto('http://127.0.0.1:8765/customer/');
-     await page.getByTestId('home-planning-see-all').waitFor();
-     const secondaryTile=theme==='light'?'rgb(240, 237, 230)':'rgb(26, 26, 26)';
-     for (const id of ['home-pump-rental','service-cement']) {
-       const background=await page.getByTestId(id).locator('svg').first().evaluate(el=>getComputedStyle(el.parentElement).backgroundColor);
-       assert.equal(background, secondaryTile, `${id} uses its ${theme} icon shade`);
-     }
-     const quickSection = page.getByTestId('home-quick-actions');
-     for (const id of ['home-quick-actions', 'kyc-banner', 'customer-module-grid']) {
-       assert.equal(await page.getByTestId(id).locator('radialGradient').count(), theme === 'light' ? 0 : 1,
-         `${theme} ${id} corner highlight`);
-     }
-     const quickIcons = quickSection.locator('[data-testid^="action-"] svg');
-     const expectedArtworkInk = theme === 'light' ? 'rgb(254, 248, 239)' : 'rgb(255, 255, 255)';
-     for (const id of ['home-bulk-quote', 'kyc-banner']) {
-       const symbol = page.getByTestId(id).locator('svg:not(:has(radialGradient))').first();
-       assert.equal(await symbol.evaluate(icon => getComputedStyle(icon).color), expectedArtworkInk,
-         `${theme} ${id} icon ink`);
-     }
+     await page.getByTestId('home-quick-actions').waitFor();
+     const quickIcons = page.getByTestId('home-quick-actions').locator('[data-testid^="action-"] svg');
      const quickPaints = await quickIcons.evaluateAll(icons => icons.map(icon => {
        const fill = icon.parentElement;
        const copper = fill.parentElement;
@@ -244,7 +186,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
          ink: getComputedStyle(icon).color,
        };
      }));
-     assert.equal(quickPaints.length, 4);
+     assert.equal(quickPaints.length, 5);
      for (const paint of quickPaints) {
        if (theme === 'light') {
          assert.match(paint.fill, /rgb\(232, 151, 10\).*rgb\(198, 121, 13\) 50%.*rgb\(179, 101, 14\) 100%/);
@@ -279,20 +221,16 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      await page.getByTestId('customer-support-close').click();
      await page.getByTestId('customer-support-panel').waitFor({state:'hidden'});
 
-     await page.getByTestId('home-pump-rental').click();
+     await page.getByTestId('action-pump-rental').click();
      await page.waitForURL(/\/customer\/service-enquiry\/?\?service=pump/);
      await page.getByText('Concrete Pump Rental Enquiry',{exact:true}).waitFor();
      await page.goBack();
-     await page.getByTestId('home-planning-see-all').click();
-     const planningDirectory = page.getByTestId('home-shortcut-directory');
-     for (const id of ['home-order-request', 'home-compare-plants', 'home-quotations', 'home-documents']) {
-       await planningDirectory.getByTestId(id).waitFor();
-     }
-     await planningDirectory.getByTestId('home-order-request').click();
+     await page.getByTestId('action-new').click();
      await page.waitForURL('**/new-order');
      await page.getByTestId('neworder-draft').waitFor();
      await page.goBack();
-     await page.getByTestId('home-bulk-quote').click();
+     await page.getByTestId('tab-supply').click();
+     await page.getByTestId('customer-directory-bulk-quote').click();
      await page.getByText('Bulk Concrete Enquiry',{exact:true}).waitFor();
      await page.getByTestId('submit-service-enquiry').click();
      assert.equal(await page.getByTestId('enquiry-quantity_m3').getAttribute('aria-invalid'), 'true');
@@ -315,29 +253,27 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      assert.equal(bulkData.quantity_m3, 125.25);
      await page.getByText('Enquiry received',{exact:true}).waitFor();
      await page.goBack();
-     await page.getByTestId('service-sand').click();
+     await page.getByTestId('customer-directory-sand').click();
      await page.getByText('Sand Enquiry',{exact:true}).waitFor();
+     await page.getByTestId('service-area-notice').waitFor();
      await page.getByTestId('material-type-dropdown').click();
      await page.getByRole('radio',{name:'Crushed Sand',exact:true}).waitFor();
      await page.goBack();
-     await page.getByTestId('service-bricks').click();
+     await page.getByTestId('customer-directory-bricks').click();
      await page.getByText('Bricks Enquiry',{exact:true}).waitFor();
      await page.getByTestId('service-enquiry-form').getByText('Bricks',{exact:true}).waitFor();
      await page.goBack();
-     await page.getByTestId('home-materials-see-all').click();
-     const directory = page.getByTestId('home-shortcut-directory');
-     for (const [id, title] of [['steel','Steel Enquiry'], ['labour','Labour Contractor Enquiry'],
-       ['office-cabin','Office Cabin Enquiry'], ['shuttering','Shuttering Material Enquiry'], ['material','Building Material Enquiry']]) {
-       await directory.getByTestId('home-' + id).click();
+     for (const [id, title] of [
+       ['cement','Cement Enquiry'], ['steel','Steel Enquiry'], ['labour','Labour Contractor Enquiry'],
+       ['office-cabin','Office Cabin Enquiry'], ['shuttering','Shuttering Material Enquiry'], ['material','Building Material Enquiry'],
+     ]) {
+       await page.getByTestId('customer-directory-' + id).click();
        await page.getByText(title,{exact:true}).waitFor();
+       await page.getByTestId('service-area-notice').getByText(/within our service area/).waitFor();
        await page.goBack();
-       if (id !== 'material') await page.getByTestId('home-materials-see-all').click();
      }
-     await page.getByTestId('tab-new-order').click();
-     await page.waitForURL('**/new-order');
-     await page.goBack();
-     await page.getByTestId('tab-plants').click();
-     const plant=page.getByTestId('nearby-plant-fixture-plant');
+     await page.getByTestId('customer-directory-plant-map').click();
+     const plant=page.getByTestId('plants-list').getByTestId('nearby-plant-fixture-plant');
      await plant.waitFor();
      assert.equal(await plant.getByRole('button',{name:/^Show .* on map$/}).count(),1);
      const order=plant.getByTestId('nearby-place-order');

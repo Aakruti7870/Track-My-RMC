@@ -32,18 +32,21 @@ type GlassTabBarProps = {
   tabs: TabDef[];
   centerLabel?: string;
   onCenterPress?: () => void;
+  hideCenterAction?: boolean;
 };
 
-export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick", onCenterPress }: GlassTabBarProps) {
+export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick", onCenterPress, hideCenterAction = false }: GlassTabBarProps) {
   const { colors } = useTheme();
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const { fontScale } = useWindowDimensions();
-  const stackedTabs = fontScale >= 1.3;
-  const inFlow = stackedTabs || onCenterPress != null;
+  const stackedTabs = !hideCenterAction && fontScale >= 1.3;
+  const inFlow = hideCenterAction || stackedTabs || onCenterPress != null;
   const [hubOpen, setHubOpen] = useState(false);
 
-  const visibleRoutes = state.routes.filter((route) => tabs.some((tab) => tab.name === route.name));
+  const visibleRoutes = hideCenterAction
+    ? tabs.flatMap(tab => state.routes.filter(route => route.name === tab.name))
+    : state.routes.filter(route => tabs.some(tab => tab.name === route.name));
   const leftRoutes = visibleRoutes.slice(0, 2);
   const rightRoutes = visibleRoutes.slice(2, 4);
 
@@ -102,37 +105,39 @@ export function GlassTabBar({ state, navigation, tabs, centerLabel = "Quick", on
             },
           ]}
         >
-          <View style={[styles.tabSide, stackedTabs && styles.stackedSide]}>{leftRoutes.map(renderTab)}</View>
+          {hideCenterAction ? visibleRoutes.map(renderTab) : <>
+            <View style={[styles.tabSide, stackedTabs && styles.stackedSide]}>{leftRoutes.map(renderTab)}</View>
 
-          <View style={[styles.centerSlot, inFlow && styles.centerInFlow]}>
-            <Pressable
-              testID={onCenterPress ? "tab-new-order" : "tab-quick-actions"}
-              accessibilityRole="button"
-              accessibilityLabel={onCenterPress ? "New order" : `Open ${centerLabel.toLowerCase()} actions`}
-              onPress={() => {
-                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
-                if (onCenterPress) onCenterPress();
-                else setHubOpen(true);
-              }}
-              style={({ pressed }) => [
-                styles.centerButton,
-                {
-                  backgroundColor: pressed ? colors.brandPressed : colors.brand,
-                  borderColor: colors.surfaceSecondary,
-                  transform: [{ scale: pressed ? 0.93 : 1 }],
-                },
-              ]}
-            >
-              {centerLabel === "New" ? <VectorSymbol name="new-order" size={26} color={colors.onBrand} /> : <Ionicons name="add" size={26} color={colors.onBrand} />}
-            </Pressable>
-            <AppText maxFontSizeMultiplier={0} style={[styles.centerLabel, { color: colors.onSurfaceTertiary }]}>{centerLabel}</AppText>
-          </View>
+            <View style={[styles.centerSlot, inFlow && styles.centerInFlow]}>
+              <Pressable
+                testID={onCenterPress ? "tab-new-order" : "tab-quick-actions"}
+                accessibilityRole="button"
+                accessibilityLabel={onCenterPress ? "New order" : `Open ${centerLabel.toLowerCase()} actions`}
+                onPress={() => {
+                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
+                  if (onCenterPress) onCenterPress();
+                  else setHubOpen(true);
+                }}
+                style={({ pressed }) => [
+                  styles.centerButton,
+                  {
+                    backgroundColor: pressed ? colors.brandPressed : colors.brand,
+                    borderColor: colors.surfaceSecondary,
+                    transform: [{ scale: pressed ? 0.93 : 1 }],
+                  },
+                ]}
+              >
+                {centerLabel === "New" ? <VectorSymbol name="new-order" size={26} color={colors.onBrand} /> : <Ionicons name="add" size={26} color={colors.onBrand} />}
+              </Pressable>
+              <AppText maxFontSizeMultiplier={0} style={[styles.centerLabel, { color: colors.onSurfaceTertiary }]}>{centerLabel}</AppText>
+            </View>
 
-          <View style={[styles.tabSide, stackedTabs && styles.stackedSide]}>{rightRoutes.map(renderTab)}</View>
+            <View style={[styles.tabSide, stackedTabs && styles.stackedSide]}>{rightRoutes.map(renderTab)}</View>
+          </>}
         </View>
       </View>
 
-      {!onCenterPress ? <QuickActionHub visible={hubOpen} onClose={() => setHubOpen(false)} tabs={tabs} role={user?.role} onSelect={(name) => {
+      {!hideCenterAction && !onCenterPress ? <QuickActionHub visible={hubOpen} onClose={() => setHubOpen(false)} tabs={tabs} role={user?.role} onSelect={(name) => {
         const route = state.routes.find(item => item.name === name);
         if (route) pressRoleTab(state, navigation, route);
       }} /> : null}

@@ -15,6 +15,18 @@ import { OrderCard, OrderData } from "@/src/components/OrderCard";
 import { EmptyView, ErrorView } from "@/src/components/StateViews";
 import { fonts, palette, radius, spacing } from "@/src/theme/tokens";
 
+const TRACKABLE_STATUSES = new Set(["DISPATCHED", "EN_ROUTE", "AT_SITE", "UNLOADING", "POD_PENDING"]);
+const OPEN_STATUSES = new Set([
+  ...TRACKABLE_STATUSES, "PENDING", "ACCEPTED", "SCHEDULED", "IN_PRODUCTION",
+  "PRODUCTION_COMPLETE", "TM_ASSIGNED", "DRIVER_ASSIGNED", "READY_TO_DISPATCH",
+]);
+
+function orderPriority(order: OrderData) {
+  const status = order.status.toUpperCase();
+  if (TRACKABLE_STATUSES.has(status)) return 0;
+  return OPEN_STATUSES.has(status) ? 1 : 2;
+}
+
 const FILTERS: { key: string; label: string; match: (s: string) => boolean }[] = [
   { key: "all", label: "All", match: () => true },
   { key: "pending", label: "Pending", match: (s) => ["PENDING", "DRAFT"].includes(s) },
@@ -54,7 +66,9 @@ export default function CustomerOrders() {
   }, [refetch, drafts.refetch, review.refetch]));
 
   const filter = FILTERS.find((f) => f.key === active)!;
-  const filtered = (data?.orders || []).filter((order) => filter.match(order.status.toUpperCase()));
+  const filtered = (data?.orders || [])
+    .filter(order => filter.match(order.status.toUpperCase()))
+    .sort((first, second) => orderPriority(first) - orderPriority(second));
   const showDrafts = active === "all" || active === "pending";
   const visibleDrafts = showDrafts ? drafts.data?.drafts || [] : [];
   const draftsLoading = showDrafts && drafts.loading && !drafts.data;
@@ -81,7 +95,14 @@ export default function CustomerOrders() {
       {/* Sticky header + chip row */}
       <View style={{ borderBottomColor: colors.divider, borderBottomWidth: StyleSheet.hairlineWidth }}>
         <View style={styles.titleRow}>
-          <AppText variant="title">My Orders</AppText>
+          <AppText variant="title" accessibilityRole="header">My Orders</AppText>
+          <Button label="New Order" size="sm" fullWidth={false} testID="orders-new-order" onPress={() => router.push("/new-order")} />
+        </View>
+        <View style={styles.records}>
+          <Button label="Quotations" variant="outline" size="sm" fullWidth={false} testID="orders-quotations"
+            onPress={() => router.push("/customer/quotations")} />
+          <Button label="Documents" variant="outline" size="sm" fullWidth={false} testID="orders-documents"
+            onPress={() => router.push("/customer/documents")} />
         </View>
         <FlatList
           data={FILTERS}
@@ -136,11 +157,11 @@ export default function CustomerOrders() {
           testID="orders-list"
           data={filtered}
           keyExtractor={(o) => o.id}
-          contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120, gap: spacing.md, flexGrow: 1 }}
+          contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xl, gap: spacing.md, flexGrow: 1 }}
           showsVerticalScrollIndicator={false}
           onRefresh={() => void refresh()}
           refreshing={refreshing}
-          ListHeaderComponent={<View style={{ gap: spacing.md }}>
+          ListFooterComponent={<View style={{ gap: spacing.md }}>
           {reviewRequests.length || reviewError || reviewLoading ? <View style={{ gap: spacing.sm }}>
             <AppText variant="heading">Plant Order Requests</AppText>
             {reviewLoading ? <ActivityIndicator color={colors.brand} accessibilityLabel="Loading order requests" /> : null}
@@ -195,10 +216,16 @@ export default function CustomerOrders() {
           </View> : null}
           </View>}
           renderItem={({ item }) => (
-            <OrderCard
-              order={item}
-              onPress={() => router.push({ pathname: "/order/[id]", params: { id: item.id } })}
-            />
+            <View style={{ gap: spacing.sm }}>
+              <OrderCard
+                order={item}
+                onPress={() => router.push({ pathname: "/order/[id]", params: { id: item.id } })}
+              />
+              {TRACKABLE_STATUSES.has(item.status.toUpperCase()) ? (
+                <Button label="Track Delivery" variant="outline" size="sm" testID={`orders-track-${item.id}`}
+                  onPress={() => router.push({ pathname: "/track/[id]", params: { id: item.id } })} />
+              ) : null}
+            </View>
           )}
           ListEmptyComponent={
             visibleDrafts.length || draftsLoading || draftsError || reviewRequests.length || reviewError || reviewLoading ? null : (
@@ -223,7 +250,8 @@ export default function CustomerOrders() {
 }
 
 const styles = StyleSheet.create({
-  titleRow: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.md },
+  titleRow: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.md },
+  records: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
   chipRow: { flexGrow: 0, marginBottom: spacing.sm },
   draftLoading: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   chip: {

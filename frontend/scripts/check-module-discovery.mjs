@@ -79,42 +79,48 @@ assert.equal(customerHomeModules().length, 8, "All eight customer Home-eligible 
 
 const customerHome = read("app/customer/index.tsx");
 const homeLinks = read("src/navigation/customerHome.ts");
-const planningBuffer = homeLinks.match(/const planningKeys = \[([\s\S]+?)\] as const;/)?.[1] || "";
-const previewKeys = [...planningBuffer.matchAll(/"([a-z-]+)"/g)].map(match => match[1]);
-assert.deepEqual(previewKeys, ["free-tools", "pour-planner", "projects", "saved-sites", "cube-tests", "receiving-guide"]);
-const extraPlanningBuffer = homeLinks.match(/const morePlanningKeys = \[([^\]]+)\]/)?.[1] || "";
-const extraPlanning = [...extraPlanningBuffer.matchAll(/"([a-z-]+)"/g)].map(match => match[1]);
-for (const key of [...previewKeys, ...extraPlanning]) {
-  assert.ok(modulesForRole("customer").some(module => module.key === key && module.symbol), "Missing customer vector/route: " + key);
-}
-assert.equal(new Set([...previewKeys, ...extraPlanning]).size, previewKeys.length + extraPlanning.length);
-for (const id of ["home-quick-actions", "home-bulk-quote", "customer-module-grid", "home-other-services", "home-planning-see-all", "home-materials-see-all"]) {
-  assert.ok(customerHome.includes('"' + id + '"'), "Missing customer Home control: " + id);
-}
-assert.match(customerHome, /<KycBanner status=\{data\?\.kyc_status \?\? user\?\.kyc_status/);
-assert.match(customerHome, /<ActiveTransitMixerCard/);
+const plan = read("app/customer/plan.tsx");
+const supply = read("app/customer/supply.tsx");
+const layout = read("app/customer/_layout.tsx");
+assert.deepEqual([...layout.matchAll(/label: "([^"]+)"/g)].map(match => match[1]),
+  ["Home", "Orders", "Plan", "Supply", "Account"]);
+assert.match(layout, /hideCenterAction/);
+assert.match(customerHome, /homeShortcuts\.map/);
+assert.match(homeLinks, /key: "new"[^\n]*route: "\/new-order"/);
+assert.match(homeLinks, /planningLinks\(\["saved-sites", "free-tools"\]\)/);
+assert.match(homeLinks, /label: "Concrete Pump"/);
+assert.match(homeLinks, /label: "Pour Planner"/);
 assert.match(customerHome, /router\.push\(enquiryRoute\("bulk"\)\)/);
+for (const key of ["projects", "saved-sites", "pour-planner", "free-tools", "compare-plants", "receiving-guide", "cube-tests"]) {
+  assert.ok(plan.includes('"' + key + '"') && modulesForRole("customer").some(module => module.key === key && module.symbol),
+    "Missing Plan route or vector: " + key);
+}
+assert.match(supply, /route: "\/customer\/plants"/);
+assert.match(supply, /materialPreview, \.\.\.moreMaterials/);
+const orders = read("app/customer/orders.tsx");
+assert.match(orders, /router\.push\("\/customer\/quotations"\)/);
+assert.match(orders, /router\.push\("\/customer\/documents"\)/);
 const serviceForm = read("app/customer/service-enquiry.tsx");
 for (const kind of ["CEMENT", "LABOUR_CONTRACTOR", "BUILDING_MATERIAL", "PUMP_RENTAL", "BULK_CONCRETE"]) {
   assert.ok(serviceForm.includes(`service_type: "${kind}"`), `Missing enquiry schema: ${kind}`);
 }
 assert.ok(serviceForm.includes('"/customer/service-enquiries"'), "Enquiry API integration missing.");
 
-// The customer More page intentionally surfaces only these five routes, in order.
+// Account keeps identity and settings separate from order records.
 const customerMore = read("app/customer/more.tsx");
 const moreKeysBlock = customerMore.match(/const CUSTOMER_MORE_KEYS = \[([\s\S]*?)\] as const;/);
 assert.ok(moreKeysBlock, "Customer More must declare an explicit settings shortlist.");
 const moreKeys = [...moreKeysBlock[1].matchAll(/"([a-z-]+)"/g)].map(match => match[1]);
 assert.deepEqual(moreKeys, [
-  "account-deletion", "customer-support", "quotations", "documents",
-], "Customer More must contain exactly the requested five links in order.");
+  "customer-support", "account-deletion",
+], "Account must keep support and deletion links.");
 const customerRoleModules = modulesForRole("customer");
 for (const key of moreKeys) {
   assert.ok(customerRoleModules.some(module => module.key === key),
     "Customer More destination must exist and be customer-authorized: " + key);
 }
 assert.ok(customerMore.includes("CUSTOMER_MORE_KEYS.flatMap(key => customerModules.filter(module => module.key === key))"),
-  "Customer More must render only its five approved catalog entries.");
+  "Account must render its selected role-authorized catalog entries.");
 assert.ok(customerMore.includes('testID="role-module-directory"'),
   "Customer More destination container must remain covered by role browser tests.");
 assert.ok(!customerMore.includes("<RoleModuleDirectory") && !customerMore.includes("All Customer Modules"),
