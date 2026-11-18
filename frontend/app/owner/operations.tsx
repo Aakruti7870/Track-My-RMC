@@ -202,7 +202,7 @@ function OwnerAutomation({ plantId, showWhatsapp = false }: { plantId: string; s
             const disabled = (!available && !rule.enabled) || Boolean(busyRule);
             const status = !rule.published ? "Pending" : rule.globally_paused ? "Paused" : on ? "Active" : "Ready";
             return <OwnerGlass key={rule.key} style={{
-              width: tileWidth, minHeight: 96, paddingHorizontal: 4, paddingVertical: 6,
+              width: tileWidth, minHeight: 96, paddingHorizontal: 4, paddingVertical: 3,
               borderRadius: 12, borderColor: selectedRuleKey === rule.key ? p.accent : p.border,
               justifyContent: "space-between", alignItems: "center", gap: 2,
             }}>
@@ -210,7 +210,7 @@ function OwnerAutomation({ plantId, showWhatsapp = false }: { plantId: string; s
                 accessibilityLabel={"Show details and settings for " + rule.label}
                 accessibilityState={{ selected: selectedRuleKey === rule.key }}
                 onPress={() => setSelectedRuleKey(current => current === rule.key ? null : rule.key)}
-                style={{ flex: 1, alignItems: "center", alignSelf: "stretch", justifyContent: "center", gap: 2, paddingVertical: 3 }}>
+                style={{ flex: 1, alignItems: "center", alignSelf: "stretch", justifyContent: "center", gap: 2, paddingVertical: 2 }}>
                 <Ionicons name={AUTOMATION_ICONS[rule.key] ?? "flash-outline"} size={17} color={p.accent} />
                 <AppText center style={{ fontSize: 10, lineHeight: 12, fontWeight: "700", color: p.text }}>
                   {COMPACT_AUTOMATION_LABELS[rule.key] ?? rule.label}

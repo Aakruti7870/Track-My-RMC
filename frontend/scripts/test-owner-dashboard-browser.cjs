@@ -309,7 +309,7 @@ fs.mkdirSync(out, { recursive: true });
         for (let i = first + 1; i <= last; i++) assert(Math.abs(boxes[i].y - boxes[first].y) < 2, 'Cards align on the same row');
       }
       assert(boxes[3].y > boxes[0].y && boxes[6].y > boxes[3].y, 'Grid wraps into three rows');
-      assert(boxes.every(box => box.height <= 116 && box.width > 0), 'Compact tiles must fit the compact grid');
+      assert(boxes.every(box => box.height <= 116 && box.width > 0), `Automation cards exceed the compact grid at ${width}px: ${JSON.stringify(boxes)}`);
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'No horizontal overflow');
       const publishedToggle = page.getByTestId('owner-automation-toggle-ORDER_ACCEPTED_NOTICE');
       assert.match(await publishedToggle.innerText(), /OFF/, 'Published automation begins disabled');
