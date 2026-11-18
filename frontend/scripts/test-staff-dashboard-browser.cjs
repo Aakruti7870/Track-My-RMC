@@ -43,8 +43,10 @@ fs.mkdirSync(out, { recursive: true });
               { label: 'Open Incidents', value: 0, icon: 'warning-outline' },
             ], primary: { title: role === 'quality_engineer' ? 'Quality Register' : "Today’s workspace", kind: role === 'quality_engineer' ? 'quality' : 'dispatch' },
           };
+          else if (path.endsWith('/master/my-plants')) json = { plants: [{ id: 'qa-plant', name: 'Fixture RMC Plant' }] };
+          else if (path.endsWith('/plant-operations/qa-plant/pipeline')) json = { counts: {}, total: 0, loads: [] };
           else if (path.endsWith('/staff/module-permissions')) json = {
-            permissions: grants.map(key => ({ key, view: true })),
+            plant_id: 'qa-plant', permissions: grants.map(key => ({ key, view: true })),
           };
           else if (path.endsWith('/staff/manager-access')) json = { enabled: false };
           else if (path.endsWith('/notifications')) json = { unread: 0, items: [] };
@@ -62,7 +64,7 @@ fs.mkdirSync(out, { recursive: true });
           await route.fulfill({ json });
         });
         await page.goto('http://127.0.0.1:8765/' + routeName + '/');
-        const summary = page.getByTestId('staff-home-summary');
+        const summary = role === 'admin' ? page.getByRole('button', { name: 'Open Operations', exact: true }) : page.getByTestId('staff-home-summary');
         await summary.waitFor({ timeout: 25000 });
         await page.getByTestId('staff-home-hero-banner').waitFor();
         await page.getByTestId('plant-home-supplier-enquiry').waitFor();
@@ -117,6 +119,15 @@ fs.mkdirSync(out, { recursive: true });
           await search.fill('no-module-matches-this-test');
           await full.getByText('No modules match this filter or your current access.').waitFor();
           await page.getByTestId('role-modules-back').click();
+          await summary.waitFor();
+        }
+        if (role === 'admin') {
+          await summary.click();
+          const operation = page.getByTestId('plant-admin-operations');
+          await operation.getByRole('button', { name: 'Track Fleet', exact: true }).waitFor();
+          assert.equal(await operation.getByText('Plant Records', { exact: true }).count(), 1);
+          assert.equal(await operation.getByText('Automation Centre', { exact: true }).count(), 0);
+          await operation.getByRole('button', { name: 'Back to Plant Admin Home' }).click();
           await summary.waitFor();
         }
         await page.getByTestId('tab-more').click();

@@ -4,10 +4,12 @@ import { useLocalSearchParams } from "expo-router";
 import { BusinessModule } from "@/src/screens/BusinessModule";
 
 export default function BusinessModuleRoute() {
-  const { kind } = useLocalSearchParams<{ kind?: string }>();
+  const { kind, plantId, material } = useLocalSearchParams<{ kind?: string; plantId?: string; material?: string }>();
   return (
     <View style={{ flex: 1 }}>
-      <BusinessModule kind={typeof kind === "string" ? kind : "reports"} />
+      <BusinessModule key={JSON.stringify([kind, plantId, material])} kind={typeof kind === "string" ? kind : "reports"}
+        preferredPlant={typeof plantId === "string" ? plantId : undefined}
+        material={typeof material === "string" ? material : undefined} />
     </View>
   );
 }

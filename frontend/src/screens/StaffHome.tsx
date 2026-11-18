@@ -23,6 +23,8 @@ import { Skeleton } from "@/src/components/ui/Skeleton";
 import { ErrorView } from "@/src/components/StateViews";
 import { StaffCollection } from "@/src/screens/StaffCollection";
 import { STAFF_MODULE_GROUPS, staffModulesForScope, visibleStaffModules, type StaffModuleGrant } from "@/src/screens/StaffModuleDirectory";
+import { LoadPipeline, WorkspaceTile, businessPath } from "@/src/owner/PlantOperations";
+import { modulesForRole } from "@/src/navigation/moduleCatalog";
 import { fonts, fontSize, radius, spacing, operationalStatus, type OperationalStatus } from "@/src/theme/tokens";
 
 type Kpi = { label: string; value: number; icon: keyof typeof Ionicons.glyphMap; unit?: string | null };
@@ -100,26 +102,47 @@ export function StaffHome() {
     }
   };
   const { data: grants, loading: grantsLoading, error: grantsError, refetch: refreshGrants } =
-    useGet<{ permissions: StaffModuleGrant[] }>("/staff/module-permissions");
+    useGet<{ plant_id?: string; permissions: StaffModuleGrant[] }>("/staff/module-permissions");
+  const admin = user?.role === "admin";
+  const adminPlant = admin && !grantsError ? grants?.plant_id : undefined;
+  const { data: manager, refetch: refreshManager } = useGet<{ enabled: boolean; can_manage_staff?: boolean }>(admin ? "/staff/manager-access" : null);
+  const canManageStaff = manager?.enabled === true && manager.can_manage_staff === true;
   useFocusEffect(React.useCallback(() => {
     void refreshWorkday();
     void refreshGrants();
-  }, [refreshWorkday, refreshGrants]));
+    void refreshManager();
+  }, [refreshWorkday, refreshGrants, refreshManager]));
   const workspace = ROLE_WORKSPACE[user?.role || ""] || ROLE_WORKSPACE.admin;
   const primaryAllowed = grants?.permissions.some(g => g.key === workspace.key && g.view) === true;
-  const refresh = () => { refetch(); refreshGrants(); refreshWorkday(); };
+  const refresh = () => { refetch(); refreshGrants(); refreshWorkday(); refreshManager(); };
   const modules = visibleStaffModules(staffModulesForScope(user?.role, "home"), grants?.permissions);
-  const quickModules = modules.slice(0, 4);
+  const adminKeys = ["admin-orders", "admin-fleet", "business-inventory", "business-staff"];
+  const adminShortcuts = admin && !grantsError
+    ? visibleStaffModules(adminKeys.flatMap(key => modulesForRole("admin").filter(module => module.key === key)),
+        grants?.permissions, canManageStaff)
+      .map(module => ({
+        ...module,
+        label: module.key === "admin-orders" ? "Plant Orders" : module.key === "admin-fleet" ? "Fleet"
+          : module.key === "business-inventory" ? "Inventory" : module.label,
+      }))
+    : [];
+  const quickModules = admin ? adminShortcuts : modules.slice(0, 4);
   const roleTools = STAFF_MODULE_GROUPS.map(category => {
     const entries = modules.filter(module => module.group === category);
-    const remaining = entries.filter(module => !quickModules.includes(module));
+    const remaining = entries.filter(module => !quickModules.some(quick => quick.key === module.key));
     return <HomeModuleSection key={category} id={category.toLowerCase()} title={category} modules={remaining.slice(0, 4)}
       seeAll={entries.length > 2 ? { pathname: "/role-modules", params: { category } } : undefined} />;
   });
   const shortcuts = (
     <View style={styles.topCards}>
       <HomeModuleSection id="quick-access" title="Quick Access" modules={quickModules} homeShortcut />
-      {data ? (
+      {admin ? <WorkspaceTile title="Open Operations" symbol="production-and-dispatch" tone="warning" destination="/plant-admin/operations" /> : null}
+      {adminPlant && primaryAllowed ? <LoadPipeline plantId={adminPlant} showAlert /> : null}
+      {adminPlant && grants?.permissions.some(grant => grant.key === "purchases" && grant.view) ?
+        <WorkspaceTile title="Material Purchases" symbol="material-receipts" destination={businessPath("purchases", adminPlant)} /> : null}
+      {adminPlant && grants?.permissions.some(grant => grant.key === "diesel_ledger" && grant.view) ?
+        <WorkspaceTile title="Diesel Ledger" symbol="diesel-ledger" destination={businessPath("diesel", adminPlant)} /> : null}
+      {data && !admin ? (
         <Pressable
           testID="staff-home-summary" accessibilityRole="button" accessibilityLabel={"Open " + data.primary.title}
           accessibilityState={{ disabled: !primaryAllowed }} disabled={!primaryAllowed}
@@ -145,7 +168,7 @@ export function StaffHome() {
   );
 
   return (
-    <View style={{ flex: 1, backgroundColor: "transparent", overflow: screenOverflow }}>
+    <View style={{ flex: 1, backgroundColor: admin ? colors.canvas : "transparent", overflow: screenOverflow }}>
       <OperationalHomeTopBar />
 
       <HomeScroll testID="staff-home-scroll"
@@ -154,10 +177,11 @@ export function StaffHome() {
         refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={refresh} tintColor={colors.brand} />}
       >
         <View style={styles.topCards}>
-          <PlantHomeHero label={data?.role_label || user?.role_label || "Plant Staff"} testID="staff-home-hero-banner" />
+          <PlantHomeHero label={admin ? "Plant Admin" : data?.role_label || user?.role_label || "Plant Staff"} testID="staff-home-hero-banner"
+            profile={admin && adminPlant ? { pathname: "/plant-profile", params: { assigned: "1", plantId: adminPlant } } : undefined} />
         </View>
         {shortcuts}
-        <PlantHomeActions action="profile" />
+        {!admin || !adminPlant ? <PlantHomeActions action="profile" /> : null}
         {error && !data ? (
           <>
             <ErrorView message={error} onRetry={reload} />

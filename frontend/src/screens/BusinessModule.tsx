@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Modal, Platform, Share, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -253,7 +253,8 @@ function dataPath(kind: string, plantId: string) {
   if (kind === "staff") return `/master/plants/${plantId}/people`;
   if (kind === "customers") return `/business/plants/${plantId}/customers`;
   if (kind === "reports") return `/master/plants/${plantId}/summary`;
-  if (kind === "fleet" || kind === "inventory") return `/master/plants/${plantId}/resources`;
+  if (kind === "fleet") return `/business/plants/${plantId}/vehicles`;
+  if (kind === "inventory") return `/business/plants/${plantId}/materials`;
   return `/master/plants/${plantId}/summary`;
 }
 
@@ -281,20 +282,29 @@ function unpackRows(kind: string, data: any): Row[] {
     else if (kind === "quotations") row = { id: d.id, title: `${d.quotation_number} · ${d.customer_name}`, subtitle: `${d.grade} · ${d.quantity_m3} m³ · ₹${Math.round(d.total || 0)}`, meta: `${d.site_name} · valid ${d.valid_until}` };
     else if (kind === "expenses") row = { id: d.id, title: `${d.category} · ₹${d.amount}`, subtitle: d.vendor || d.payment_method, meta: `${d.expense_date}${d.reference ? ` · ${d.reference}` : ""}` };
     else if (kind === "diesel") row = { id: d.id, title: `${d.transaction_type} · ${d.litres} L`, subtitle: d.vehicle_id ? `Vehicle ${d.vehicle_id}` : (d.reference || "Diesel stock"), meta: d.created_at };
-    else if (kind === "purchases") row = { id: d.id, title: `${d.receipt_number} · ${d.supplier_name || "Supplier"}`, subtitle: `₹${Math.round(d.total || 0)} · ${d.status}`, meta: d.receipt_date };
+    else if (kind === "purchases") row = { id: d.id, title: `${d.receipt_number} · ${d.supplier_name || "Supplier"}`, subtitle: `₹${Math.round(d.total_amount ?? d.total ?? 0)}${d.status ? ` · ${d.status}` : ""}`, meta: d.receipt_date };
     else if (kind === "payroll") row = { id: d.id, title: d.user_name || d.user_id, subtitle: `${d.month} · ₹${Math.round(d.net_amount || 0)}`, meta: d.status };
     else if (kind === "attendance") row = { id: d.id || `${idx}`, title: d.user_name || "Staff", subtitle: d.check_in_time ? `In ${attendanceTime(d.check_in_time)}` : "Not checked in", meta: d.check_out_time ? `Out ${attendanceTime(d.check_out_time)}` : "Open" };
     else if (kind === "staff") row = { id: d.id, title: d.name, subtitle: d.role_label || d.role, meta: `${d.phone || d.email || ""}${d.status ? ` · ${d.status}` : ""}` };
     else if (kind === "customers") row = { id: d.id, title: d.name, subtitle: d.phone || d.email || "Customer", meta: `${d.orders || 0} orders · ${d.delivered_m3 || 0} m³ delivered` };
-    else if (kind === "fleet") row = { id: d.id, title: d.tm_number, subtitle: `${d.capacity_m3} m³ capacity`, meta: d.status };
-    else if (kind === "inventory") row = { id: d.id, title: d.name, subtitle: `${d.stock} ${d.unit}`, meta: `Reorder ≤ ${d.reorder} ${d.unit}${d.code ? ` · ${d.code}` : ""}` };
+    else if (kind === "fleet") row = { id: d.id, title: d.registration_number || d.tm_number, subtitle: `${d.capacity_m3} m³ capacity`, meta: d.status };
+    else if (kind === "inventory") row = { id: d.id, title: d.name, subtitle: `${d.current_stock ?? d.stock} ${d.unit}`, meta: `Reorder ≤ ${d.minimum_stock ?? d.reorder} ${d.unit}` };
     else row = { id: d.id || `${idx}`, title: d.name || "Record", subtitle: d.status };
     row.raw = d;
     return row;
   });
 }
 
-export function BusinessModule({ kind }: { kind: string }) {
+const MATERIAL_VIEWS: Readonly<Record<string, { title: string; matches: RegExp }>> = {
+  aggregate: { title: "Aggregates & Sand", matches: /aggregate|sand|stone|gravel|crusher dust/ },
+  cement: { title: "Cement", matches: /\b(cement|opc|ppc|psc)\b/ },
+  "fly-ash": { title: "Fly Ash / GGBS", matches: /fly *ash|ggb[fs]s|blast furnace slag/ },
+  admixture: { title: "Admixtures / Silica Fume", matches: /admixture|silica fume|micro *silica|plasticizer|retarder/ },
+  water: { title: "Water / Ice", matches: /\b(water|ice)\b/ },
+};
+
+export function BusinessModule({ kind, preferredPlant, material }: { kind: string; preferredPlant?: string; material?: string }) {
+  const materialView = kind === "inventory" && material && Object.hasOwn(MATERIAL_VIEWS, material) ? MATERIAL_VIEWS[material] : undefined;
   const def = MODULES[kind] || MODULES.reports;
   const { token, user } = useAuth();
   const { colors, reduceMotion } = useTheme();
@@ -304,6 +314,7 @@ export function BusinessModule({ kind }: { kind: string }) {
 
   const [plants, setPlants] = useState<Plant[]>([]);
   const [plantId, setPlantId] = useState<string | null>(null);
+  const loadVersion = useRef(0);
   const [data, setData] = useState<any>(null);
   const [resources, setResources] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -365,16 +376,21 @@ export function BusinessModule({ kind }: { kind: string }) {
     try {
       const result = await apiGet<{ plants: Plant[] }>("/master/my-plants", token);
       setPlants(result.plants);
-      setPlantId((old) => old && result.plants.some((p) => p.id === old) ? old : result.plants[0]?.id || null);
-      if (result.plants.length === 0) setLoading(false);
+      const initial = preferredPlant ? result.plants.find(p => p.id === preferredPlant) : result.plants[0];
+      setPlantId(old => result.plants.find(p => p.id === old)?.id ?? initial?.id ?? null);
+      if (!initial) {
+        setLoading(false);
+        if (preferredPlant) setError("The selected plant is unavailable to this account.");
+      }
     } catch (e: any) {
       setError(e.detail || "Could not load plants");
       setLoading(false);
     }
-  }, [token]);
+  }, [preferredPlant, token]);
 
   const load = useCallback(async () => {
     if (!token || !plantId) return;
+    const version = ++loadVersion.current;
     setLoading(true);
     setError(null);
     try {
@@ -382,17 +398,21 @@ export function BusinessModule({ kind }: { kind: string }) {
         apiGet<any>(dataPath(kind, plantId), token),
         apiGet<any>(`/master/plants/${plantId}/resources`, token),
       ];
-      if (kind === "purchases" || kind === "diesel") tasks.push(apiGet<any>(`/master/plants/${plantId}/suppliers`, token));
+      if ((kind === "purchases" || kind === "diesel") && canEditModule) {
+        tasks.push(apiGet<any>(`/master/plants/${plantId}/suppliers`, token).catch(() => null));
+      }
       const results = await Promise.all(tasks);
-      if (kind === "staff") setStaffHistory(await apiGet(`/business/plants/${plantId}/staff/history`,token));
+      const history = kind === "staff" ? await apiGet<{ events: any[]; slots: any[] }>(`/business/plants/${plantId}/staff/history`, token) : null;
+      if (version !== loadVersion.current) return;
+      if (history) setStaffHistory(history);
       setData(results[0]);
-      setResources({ ...(results[1] || {}), suppliers: results[2]?.suppliers || [] });
+      setResources({ ...(results[1]?.resources ?? results[1] ?? {}), suppliers: results[2]?.suppliers || [] });
     } catch (e: any) {
-      setError(e.detail || "Could not load module");
+      if (version === loadVersion.current) setError(e.detail || "Could not load module");
     } finally {
-      setLoading(false);
+      if (version === loadVersion.current) setLoading(false);
     }
-  }, [kind, plantId, token]);
+  }, [canEditModule, kind, plantId, token]);
 
   const reloadWorkspace = async () => {
     setRefreshing(true);
@@ -420,8 +440,12 @@ export function BusinessModule({ kind }: { kind: string }) {
   const moduleRows = useMemo(() => unpackRows(kind, data), [kind, data]);
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return moduleRows.filter((row) => !q || [row.title, row.subtitle, row.meta].some((v) => (v || "").toLowerCase().includes(q)));
-  }, [moduleRows, query]);
+    return moduleRows.filter(row => {
+      const materialText = [row.raw?.material_type ?? row.raw?.type, row.title].join(" ").toLowerCase().replace(/[_/-]/g, " ");
+      return (!materialView || materialView.matches.test(materialText))
+        && (!q || [row.title, row.subtitle, row.meta].some(value => (value || "").toLowerCase().includes(q)));
+    });
+  }, [materialView, moduleRows, query]);
 
   const openForm = () => {
     const initial: Record<string, string> = {};
@@ -623,7 +647,7 @@ export function BusinessModule({ kind }: { kind: string }) {
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
           {moduleSymbol ? <VectorSymbol name={moduleSymbol} size={40} /> : null}
           <View style={{ flex: 1, gap: 3 }}>
-            <AppText variant="title">{def.title}</AppText>
+            <AppText variant="title">{materialView?.title ?? def.title}</AppText>
             <AppText variant="caption">{def.subtitle}</AppText>
           </View>
         </View>
@@ -649,7 +673,14 @@ export function BusinessModule({ kind }: { kind: string }) {
             {plants.map((p) => {
               const selected = plantId === p.id;
               return (
-                <Pressable key={p.id} onPress={() => setPlantId(p.id)} style={[styles.chip, { backgroundColor: selected ? colors.brand : colors.surfaceSecondary, borderColor: selected ? colors.brand : colors.border }]}>
+                <Pressable key={p.id} onPress={() => {
+                  if (selected) return;
+                  loadVersion.current += 1;
+                  setData(null);
+                  setResources(null);
+                  setQuery("");
+                  setPlantId(p.id);
+                }} style={[styles.chip, { backgroundColor: selected ? colors.brand : colors.surfaceSecondary, borderColor: selected ? colors.brand : colors.border }]}>
                   <AppText style={{ color: selected ? colors.onBrand : colors.onSurface, fontFamily: fonts.semibold, fontSize: 12 }}>{p.name}</AppText>
                 </Pressable>
               );

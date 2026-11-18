@@ -1,16 +1,55 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { Pressable, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useAuth } from "@/src/auth/AuthContext";
 import { apiErrorDetail, apiPost, apiPut } from "@/src/api/client";
 import { useGet } from "@/src/hooks/useApi";
+import { ErrorView } from "@/src/components/StateViews";
 import { AppText } from "@/src/components/ui/AppText";
 import { OwnerFrame, OwnerGlass, OwnerList, OwnerModuleRow, useOwnerPalette } from "@/src/owner/OwnerUI";
 import { operationalStatus } from "@/src/theme/tokens";
 import { OPERATIONS_KEYS, ownerModules } from "@/src/owner/modules";
 
-type Plant = { id: string; name: string };
+import {
+  OperationsTeam, OwnerRegisters, PlantSelector, WorkspaceAlert, WorkspaceTile,
+  pipelinePath, recordPath, usePipeline, usePlantWorkspace,
+} from "@/src/owner/PlantOperations";
+
+export default function OwnerOperations() {
+  const params = useLocalSearchParams<{ plantId?: string; section?: string }>();
+  const { plants, plant, setSelection, loading, error, reload } = usePlantWorkspace(params.plantId);
+  const { data: pipeline } = usePipeline(plant?.id, { summary: true });
+  const shortcuts = plant ? <>
+    <PlantSelector plants={plants} plant={plant} select={setSelection} />
+    <WorkspaceAlert plantId={plant.id} count={pipeline?.counts?.needs_mixer} />
+    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+      <WorkspaceTile stacked title="Track Fleet" symbol="gps-live-location" destination={recordPath("fleet", plant.id)} />
+      <WorkspaceTile stacked title="Needs Attention" symbol="notifications" destination={pipelinePath(plant.id, "needs_mixer")} />
+      <WorkspaceTile stacked title="SOS Alerts" symbol="incident-register" tone="critical" destination={recordPath("incidents", plant.id)} />
+    </View>
+  </> : null;
+  const automation = plant ? <OwnerAutomation key={`${plant.id}:${params.section}`} plantId={plant.id} showWhatsapp={params.section === "whatsapp"} /> : null;
+  const automationFirst = params.section === "automation" || params.section === "whatsapp";
+  return <OwnerFrame matte title="Operations" subtitle="Today’s work and plant records">
+    <OwnerList>
+      {error ? <ErrorView message={error} onRetry={reload} /> : null}
+      {loading && !plant ? <AppText variant="caption">Loading plants…</AppText> : null}
+      {!loading && !error && !plant ? <AppText variant="bodyMuted">No active plant is assigned.</AppText> : null}
+      {shortcuts}
+      {automationFirst ? automation : null}
+      {plant ? <>
+        <OperationsTeam key={plant.id} plantId={plant.id} />
+        <OwnerRegisters plantId={plant.id} />
+      </> : null}
+      {!automationFirst ? automation : null}
+      <View testID="owner-operations-module-directory" style={{ gap: 8 }}>
+        {ownerModules(OPERATIONS_KEYS).map(module => <OwnerModuleRow key={module.key} module={module} />)}
+      </View>
+    </OwnerList>
+  </OwnerFrame>;
+}
+
 type AutomationRule = {
   key: string;
   label: string;
@@ -24,7 +63,6 @@ type OwnerTask = { id: string; order_number: string; task_kind: string; status: 
 type AutomationHistory = { id: string; template_key: string; status: string; attempts: number };
 const REMINDER_MINUTES = [30, 60, 120, 240] as const;
 const SLA_MINUTES = [30, 60, 120, 240] as const;
-const AUTOMATION_GRID_COLUMNS = 4;
 const AUTOMATION_GRID_GAP = 6;
 // Short display labels only; the full API label is used for accessibility and details.
 const COMPACT_AUTOMATION_LABELS: Record<string, string> = {
@@ -65,25 +103,21 @@ function workspaceForTask(kind: string): AutomationWorkspace | null {
   }
 }
 
-export default function OwnerOperations() {
+function OwnerAutomation({ plantId, showWhatsapp = false }: { plantId: string; showWhatsapp?: boolean }) {
   const p = useOwnerPalette();
-  const { width: viewportWidth } = useWindowDimensions();
+  const { width: viewportWidth, fontScale } = useWindowDimensions();
   // OwnerFrame caps content at 820dp and OwnerList has 16dp padding per side.
   const gridWidth = Math.min(viewportWidth, 820) - 32;
-  const tileWidth = (gridWidth - AUTOMATION_GRID_GAP * (AUTOMATION_GRID_COLUMNS - 1)) / AUTOMATION_GRID_COLUMNS;
+  const columns = gridWidth / fontScale >= 280 ? 3 : 2;
+  const tileWidth = (gridWidth - AUTOMATION_GRID_GAP * (columns - 1)) / columns;
   const [selectedRuleKey, setSelectedRuleKey] = useState<string | null>(null);
   const router = useRouter();
   const { token } = useAuth();
-  const [plantId, setPlantId] = useState("");
   const [busyRule, setBusyRule] = useState<string | null>(null);
   const [busyTask, setBusyTask] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [requestError, setRequestError] = useState("");
-  const { data: plants, error: plantsError } = useGet<{ plants: Plant[] }>("/master/my-plants");
-  useEffect(() => {
-    const options = plants?.plants ?? [];
-    setPlantId(previous => options.some(plant => plant.id === previous) ? previous : options[0]?.id ?? "");
-  }, [plants]);
+  const [whatsappOpen, setWhatsappOpen] = useState(showWhatsapp);
   const base = plantId ? `/owner/plants/${encodeURIComponent(plantId)}/automation` : null;
   const { data: rules, error: ruleError, loading: rulesLoading, refetch: refreshRules } =
     useGet<{ rules: AutomationRule[]; worker_enabled: boolean }>(base ? `${base}/rules` : null);
@@ -93,7 +127,7 @@ export default function OwnerOperations() {
     useGet<{ jobs: AutomationHistory[] }>(base ? `${base}/history` : null);
   const selectedRule = (rules?.rules ?? []).find(rule => rule.key === selectedRuleKey);
   const dispatchUrl = plantId ? `/owner/plants/${encodeURIComponent(plantId)}/dispatch-whatsapp` : null;
-  const { data: whatsappSettings, refetch: refreshWhatsappSettings } =
+  const { data: whatsappSettings, refetch: refreshWhatsappSettings, error: whatsappError, reload: retryWhatsapp } =
     useGet<{ enabled: boolean; marketing_enabled: boolean; preference_exists: boolean;
       worker_enabled: boolean; marketing_worker_enabled: boolean;
       template_configured: boolean; marketing_template_configured: boolean;
@@ -152,23 +186,8 @@ export default function OwnerOperations() {
     }
   }
 
-  return <OwnerFrame title="Operations" subtitle="Manage day-to-day plant operations">
-    <OwnerList>
-      <View testID="owner-native-automation-center" style={{ gap: 10, marginBottom: 14 }}>
-        <AppText style={{ color: p.text, fontWeight: "700", fontSize: 16 }}>Native Automation Center</AppText>
-        <AppText style={{ color: p.muted, fontSize: 12, lineHeight: 18 }}>
-          Your plant can enable approved internal reminders and human review tasks. All order approvals remain manual.
-        </AppText>
-        {plantsError ? <AppText style={{ color: operationalStatus("critical", p.dark) }}>{plantsError}</AppText> : null}
-        {(plants?.plants ?? []).length > 1 ? <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-          {(plants?.plants ?? []).map(plant => <Pressable key={plant.id} accessibilityRole="button"
-            accessibilityState={{ selected: plant.id === plantId }} onPress={() => setPlantId(plant.id)}
-            style={{ paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12,
-              backgroundColor: plant.id === plantId ? p.accent : p.panel }}>
-            <AppText style={{ color: plant.id === plantId ? p.onAccent : p.text, fontSize: 12 }}>{plant.name}</AppText>
-          </Pressable>)}
-        </View> : null}
-        {!plantId && !plantsError ? <AppText style={{ color: p.muted }}>No approved plants are available for automation.</AppText> : null}
+  return <View testID="owner-native-automation-center" style={{ gap: 10, marginBottom: 14 }}>
+        <AppText style={{ color: p.text, fontWeight: "700", fontSize: 17 }}>Automation Centre</AppText>
         {ruleError ? <AppText style={{ color: operationalStatus("critical", p.dark) }}>{ruleError}</AppText> : null}
         {requestError ? <AppText accessibilityRole="alert" style={{ color: operationalStatus("critical", p.dark) }}>{requestError}</AppText> : null}
         {notice ? <AppText style={{ color: p.text }}>{notice}</AppText> : null}
@@ -176,7 +195,52 @@ export default function OwnerOperations() {
         {rules && !rules.worker_enabled ? <AppText accessibilityRole="alert" style={{ color: operationalStatus("warning", p.dark), fontSize: 12 }}>
           Automation engine not activated. Preferences are saved, but the background worker is currently off.
         </AppText> : null}
-        <OwnerGlass style={{ padding: 12, gap: 8, borderColor: p.border }}>
+        <View testID="owner-automation-grid" style={{ flexDirection: "row", flexWrap: "wrap", gap: AUTOMATION_GRID_GAP }}>
+          {(rules?.rules ?? []).map(rule => {
+            const available = rule.published && !rule.globally_paused;
+            const on = rule.enabled && available;
+            const disabled = (!available && !rule.enabled) || Boolean(busyRule);
+            const status = !rule.published ? "Pending" : rule.globally_paused ? "Paused" : on ? "Active" : "Ready";
+            return <OwnerGlass key={rule.key} style={{
+              width: tileWidth, minHeight: 96, paddingHorizontal: 4, paddingVertical: 6,
+              borderRadius: 12, borderColor: selectedRuleKey === rule.key ? p.accent : p.border,
+              justifyContent: "space-between", alignItems: "center", gap: 2,
+            }}>
+              <Pressable testID={"owner-automation-detail-" + rule.key} accessibilityRole="button"
+                accessibilityLabel={"Show details and settings for " + rule.label}
+                accessibilityState={{ selected: selectedRuleKey === rule.key }}
+                onPress={() => setSelectedRuleKey(current => current === rule.key ? null : rule.key)}
+                style={{ flex: 1, alignItems: "center", alignSelf: "stretch", justifyContent: "center", gap: 2, paddingVertical: 3 }}>
+                <Ionicons name={AUTOMATION_ICONS[rule.key] ?? "flash-outline"} size={17} color={p.accent} />
+                <AppText center style={{ fontSize: 10, lineHeight: 12, fontWeight: "700", color: p.text }}>
+                  {COMPACT_AUTOMATION_LABELS[rule.key] ?? rule.label}
+                </AppText>
+                <AppText numberOfLines={1} center style={{ fontSize: 9, lineHeight: 11, color: p.muted }}>{status}</AppText>
+              </Pressable>
+              <Pressable testID={"owner-automation-toggle-" + rule.key} accessibilityRole="switch"
+                accessibilityLabel={rule.label + ": " + (on ? "On" : "Off") + ". " + (
+                  !rule.published ? "Awaiting Central Admin publication" :
+                  rule.globally_paused ? "Paused by Central Admin" : "Plant automation preference")}
+                accessibilityState={{ checked: on, disabled }}
+                disabled={disabled} onPress={() => void updateRule(rule, !rule.enabled)}
+                style={{ minWidth: 44, alignSelf: "stretch", minHeight: 44, justifyContent: "center",
+                  borderRadius: 9, backgroundColor: on ? p.accent : p.canvas,
+                  opacity: disabled ? 0.65 : 1 }}>
+                <AppText center style={{ color: on ? p.onAccent : p.text, fontSize: 11, fontWeight: "700" }}>
+                  {busyRule === rule.key ? "..." : on ? "ON" : "OFF"}
+                </AppText>
+              </Pressable>
+            </OwnerGlass>;
+          })}
+        </View>
+        <Pressable accessibilityRole="button" accessibilityState={{ expanded: whatsappOpen }}
+          onPress={() => setWhatsappOpen(open => !open)}>
+          <OwnerGlass style={{ padding: 12, minHeight: 44, justifyContent: "center" }}>
+            <AppText>WhatsApp Dispatch settings</AppText>
+          </OwnerGlass>
+        </Pressable>
+        {whatsappOpen ? <OwnerGlass style={{ padding: 12, gap: 8, borderColor: p.border }}>
+          {whatsappError ? <ErrorView message={whatsappError} onRetry={retryWhatsapp} /> : null}
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
             <View style={{ flex: 1 }}>
               <AppText style={{ color: p.text, fontWeight: "700", fontSize: 14 }}>Automatic WhatsApp Dispatch</AppText>
@@ -243,54 +307,7 @@ export default function OwnerOperations() {
               Cooldown {whatsappSettings.marketing_summary.skipped}
             </AppText>
           ) : null}
-        </OwnerGlass>
-        <View testID="owner-automation-grid" style={{ flexDirection: "row", flexWrap: "wrap", gap: AUTOMATION_GRID_GAP }}>
-          {(rules?.rules ?? []).map(rule => {
-            const available = rule.published && !rule.globally_paused;
-            const on = rule.enabled && available;
-            const disabled = (!available && !rule.enabled) || Boolean(busyRule);
-            const status = !rule.published ? "Pending" : rule.globally_paused ? "Paused" : on ? "Active" : "Ready";
-            return <OwnerGlass key={rule.key} style={{
-              width: tileWidth, height: 116, paddingHorizontal: 4, paddingVertical: 6,
-              borderRadius: 12, borderColor: selectedRuleKey === rule.key ? p.accent : p.border,
-              justifyContent: "space-between", alignItems: "center", gap: 2,
-            }}>
-              <Pressable testID={"owner-automation-detail-" + rule.key} accessibilityRole="button"
-                accessibilityLabel={"Show details and settings for " + rule.label}
-                accessibilityState={{ selected: selectedRuleKey === rule.key }}
-                onPress={() => setSelectedRuleKey(current => current === rule.key ? null : rule.key)}
-                style={{ flex: 1, alignItems: "center", alignSelf: "stretch", justifyContent: "center", gap: 2 }}>
-                <Ionicons name={AUTOMATION_ICONS[rule.key] ?? "flash-outline"} size={17} color={p.accent} />
-                <AppText numberOfLines={2} center style={{ fontSize: 10, lineHeight: 12, fontWeight: "700", color: p.text }}>
-                  {COMPACT_AUTOMATION_LABELS[rule.key] ?? rule.label}
-                </AppText>
-                <AppText numberOfLines={1} center style={{ fontSize: 9, lineHeight: 11, color: p.muted }}>{status}</AppText>
-              </Pressable>
-              <Pressable testID={"owner-automation-toggle-" + rule.key} accessibilityRole="switch"
-                accessibilityLabel={rule.label + ": " + (on ? "On" : "Off") + ". " + (
-                  !rule.published ? "Awaiting Central Admin publication" :
-                  rule.globally_paused ? "Paused by Central Admin" : "Plant automation preference")}
-                accessibilityState={{ checked: on, disabled }}
-                disabled={disabled} onPress={() => void updateRule(rule, !rule.enabled)}
-                style={{ minWidth: 44, alignSelf: "stretch", minHeight: 44, justifyContent: "center",
-                  borderRadius: 9, backgroundColor: on ? p.accent : p.canvas,
-                  opacity: disabled ? 0.65 : 1 }}>
-                <AppText center style={{ color: on ? p.onAccent : p.text, fontSize: 11, fontWeight: "700" }}>
-                  {busyRule === rule.key ? "..." : on ? "ON" : "OFF"}
-                </AppText>
-              </Pressable>
-            </OwnerGlass>;
-          })}
-          {/* The backend currently supplies nine rules. This is a non-functional reserved slot, not a fake automation. */}
-          {rules?.rules.length === 9 ? <OwnerGlass style={{
-            width: tileWidth, height: 116, padding: 5, borderRadius: 12,
-            justifyContent: "center", alignItems: "center", gap: 6, opacity: 0.7,
-          }}>
-            <Ionicons name="add-circle-outline" size={20} color={p.muted} />
-            <AppText center style={{ color: p.text, fontSize: 10, lineHeight: 12, fontWeight: "700" }}>Reserved slot</AppText>
-            <AppText center style={{ color: p.muted, fontSize: 9 }}>Coming soon</AppText>
-          </OwnerGlass> : null}
-        </View>
+        </OwnerGlass> : null}
         {selectedRule ? <OwnerGlass style={{ padding: 12, gap: 8 }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
             <AppText style={{ flex: 1, color: p.text, fontWeight: "700", fontSize: 13 }}>{selectedRule.label}</AppText>
@@ -394,10 +411,5 @@ export default function OwnerOperations() {
         {plantId ? <AppText style={{ color: p.muted, fontSize: 11 }}>
           Recent automation: {(history?.jobs ?? []).slice(0, 5).map(job => `${job.template_key}: ${job.status}`).join(" · ") || "No executions yet"}
         </AppText> : null}
-      </View>
-      <View testID="owner-operations-module-directory" style={{ gap: 8 }}>
-        {ownerModules(OPERATIONS_KEYS).map(module => <OwnerModuleRow key={module.key} module={module} />)}
-      </View>
-    </OwnerList>
-  </OwnerFrame>;
+      </View>;
 }
