@@ -490,18 +490,38 @@ pub async fn list_owner_incidents(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
 
+    let mut plants: Vec<_> = assigned_plants(&state, &auth_user)
+        .await?
+        .into_iter()
+        .map(|(id, _, _)| id)
+        .collect();
+    if auth_user.role == "admin" {
+        let allowed = match plants.as_slice() {
+            [plant] => {
+                super::staff_module_permissions::viewable_modules(&state, &auth_user, *plant)
+                    .await?
+                    .contains("incidents")
+            }
+            _ => false,
+        };
+        if !allowed {
+            plants.clear();
+        }
+    }
+
     let rows = sqlx::query(
         r#"
         SELECT s.id, s.alert_type, s.message, s.status, s.latitude, s.longitude, s.created_at, s.resolved_at,
                u.full_name as driver_name, u.phone as driver_phone
         FROM driver_sos_alerts s
         INNER JOIN users u ON u.id = s.driver_id
-        WHERE EXISTS(SELECT 1 FROM rmc_plants p WHERE (p.owner_id=$1 OR ($2='admin' AND EXISTS(SELECT 1 FROM plant_staff a WHERE a.plant_id=p.id AND a.user_id=$1 AND a.is_active=TRUE))) AND (EXISTS(SELECT 1 FROM order_loads l JOIN orders o ON o.id=l.order_id WHERE l.id=s.load_id AND o.plant_id=p.id) OR (s.load_id IS NULL AND EXISTS(SELECT 1 FROM plant_staff d WHERE d.plant_id=p.id AND d.user_id=s.driver_id AND d.is_active=TRUE))))
+        INNER JOIN driver_sos_plant_scope scope ON scope.id = s.id
+        WHERE scope.plant_id = ANY($1)
         ORDER BY s.created_at DESC
         LIMIT 50
         "#,
     )
-    .bind(auth_user.user_id).bind(&auth_user.role)
+    .bind(&plants)
     .fetch_all(&state.db)
     .await?;
 
@@ -544,11 +564,38 @@ pub async fn resolve_incident(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
 
-    let updated=sqlx::query("UPDATE driver_sos_alerts s SET status='RESOLVED',resolved_by=$1,resolved_at=COALESCE(resolved_at,NOW()) WHERE s.id=$3 AND EXISTS(SELECT 1 FROM rmc_plants p WHERE (p.owner_id=$1 OR ($2='admin' AND EXISTS(SELECT 1 FROM plant_staff a WHERE a.plant_id=p.id AND a.user_id=$1 AND a.is_active=TRUE))) AND (EXISTS(SELECT 1 FROM order_loads l JOIN orders o ON o.id=l.order_id WHERE l.id=s.load_id AND o.plant_id=p.id) OR (s.load_id IS NULL AND EXISTS(SELECT 1 FROM plant_staff d WHERE d.plant_id=p.id AND d.user_id=s.driver_id AND d.is_active=TRUE))))").bind(auth_user.user_id).bind(&auth_user.role).bind(incident_id).execute(&state.db).await?;
+    let not_found = || AppError::NotFound("Incident not found in your plants".into());
+    let plant: Uuid = sqlx::query_scalar("SELECT plant_id FROM driver_sos_plant_scope WHERE id=$1")
+        .bind(incident_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(not_found)?;
+    super::staff_module_permissions::require(
+        &state,
+        &auth_user,
+        plant,
+        "incidents",
+        super::staff_module_permissions::Action::Edit,
+    )
+    .await
+    .map_err(|error| match error {
+        AppError::Forbidden(_) => not_found(),
+        other => other,
+    })?;
+
+    let updated = sqlx::query(
+        "UPDATE driver_sos_alerts s
+         SET status='RESOLVED', resolved_by=$1, resolved_at=COALESCE(s.resolved_at,NOW())
+         FROM driver_sos_plant_scope scope
+         WHERE s.id=$2 AND scope.id=s.id AND scope.plant_id=$3",
+    )
+    .bind(auth_user.user_id)
+    .bind(incident_id)
+    .bind(plant)
+    .execute(&state.db)
+    .await?;
     if updated.rows_affected() != 1 {
-        return Err(AppError::NotFound(
-            "Incident not found in your plants".into(),
-        ));
+        return Err(not_found());
     }
 
     Ok(Json(

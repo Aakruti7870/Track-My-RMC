@@ -167,10 +167,9 @@ pub async fn register(
                    concat(a.alert_type, ' · ', u.full_name) AS title,
                    concat(a.status, CASE WHEN a.message IS NOT NULL THEN ' · ' || a.message ELSE '' END) AS detail
             FROM driver_sos_alerts a JOIN users u ON u.id=a.driver_id
+            JOIN driver_sos_plant_scope s ON s.id=a.id
             LEFT JOIN order_loads l ON l.id=a.load_id LEFT JOIN orders o ON o.id=l.order_id
-            WHERE o.plant_id=$1 OR (a.load_id IS NULL AND EXISTS (
-                SELECT 1 FROM plant_staff ps WHERE ps.plant_id=$1 AND ps.user_id=a.driver_id
-                   AND ps.is_active AND ps.removed_at IS NULL AND ps.role='driver'))
+            WHERE s.plant_id=$1
         "#,
         ),
         "ledger" => (

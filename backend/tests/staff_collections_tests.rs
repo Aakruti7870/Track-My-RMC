@@ -11,8 +11,8 @@ use trackmyrmc_backend::{
     config::AppConfig,
     error::AppError,
     routes::{
-        customer_services, hr_routes, master_data_routes, owner_dispatches, owner_routes,
-        staff_collections, staff_routes, supervisor_incidents,
+        customer_services, driver_routes, hr_routes, master_data_routes, owner_dispatches,
+        owner_routes, staff_collections, staff_routes, supervisor_incidents,
     },
     state::AppState,
 };
@@ -635,6 +635,74 @@ async fn supervisor_can_acknowledge_only_assigned_incidents_and_owner_resolves(d
         .await
         .unwrap();
     assert_eq!(status, "RESOLVED");
+}
+
+#[sqlx::test]
+async fn standalone_sos_without_location_stays_with_the_reporting_plant(db: PgPool) {
+    let owner = create_user(&db, "owner").await;
+    let other_owner = create_user(&db, "owner").await;
+    let driver = create_user(&db, "driver").await;
+    let plant = create_plant(&db, owner).await;
+    let other_plant = create_plant(&db, other_owner).await;
+    sqlx::query("INSERT INTO driver_employment_profiles(plant_id,driver_id) VALUES($1,$2)")
+        .bind(plant)
+        .bind(driver)
+        .execute(&db)
+        .await
+        .unwrap();
+
+    let app = state(db.clone());
+    let payload = serde_json::from_value(serde_json::json!({
+        "type": "Breakdown",
+        "remark": "Mixer stopped in transit",
+        "lat": null,
+        "lng": null,
+    }))
+    .unwrap();
+    let response = driver_routes::trigger_driver_sos(
+        State(app.clone()),
+        user(driver, "driver"),
+        Json(payload),
+    )
+    .await
+    .unwrap()
+    .into_response();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    sqlx::query(
+        "UPDATE driver_employment_profiles SET is_active=FALSE,employment_status='TERMINATED',
+         released_at=NOW(),released_by=$1 WHERE driver_id=$2",
+    )
+    .bind(owner)
+    .bind(driver)
+    .execute(&db)
+    .await
+    .unwrap();
+    sqlx::query("INSERT INTO driver_employment_profiles(plant_id,driver_id) VALUES($1,$2)")
+        .bind(other_plant)
+        .bind(driver)
+        .execute(&db)
+        .await
+        .unwrap();
+
+    for (actor, expected_count) in [(owner, 1), (other_owner, 0)] {
+        let response = owner_routes::list_owner_incidents(State(app.clone()), user(actor, "owner"))
+            .await
+            .unwrap()
+            .into_response();
+        let body = axum::body::to_bytes(response.into_body(), 10000)
+            .await
+            .unwrap();
+        let data: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let incidents = data["incidents"].as_array().unwrap();
+        assert_eq!(incidents.len(), expected_count);
+        if let [incident] = incidents.as_slice() {
+            assert_eq!(incident["alert_type"], "Breakdown");
+            assert_eq!(incident["message"], "Mixer stopped in transit");
+            assert!(incident["latitude"].is_null());
+            assert!(incident["longitude"].is_null());
+        }
+    }
 }
 
 #[sqlx::test]

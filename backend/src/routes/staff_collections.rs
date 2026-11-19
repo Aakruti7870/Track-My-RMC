@@ -180,16 +180,10 @@ SELECT a.id::text id, 'warning-outline' icon,
             ELSE 'CRITICAL' END badge_status
 FROM driver_sos_alerts a
 JOIN users u ON u.id = a.driver_id
+JOIN driver_sos_plant_scope inc ON inc.id = a.id
+JOIN scope sc ON sc.id = inc.plant_id
 LEFT JOIN order_loads l ON l.id = a.load_id
 LEFT JOIN orders o ON o.id = l.order_id
-WHERE (o.plant_id IN (SELECT id FROM scope)
-       OR (a.load_id IS NULL AND EXISTS (
-           SELECT 1 FROM plant_staff ps JOIN scope sc ON sc.id = ps.plant_id
-           WHERE ps.user_id = a.driver_id AND ps.is_active = TRUE
-           UNION ALL
-           SELECT 1 FROM driver_employment_profiles ep JOIN scope sc ON sc.id = ep.plant_id
-           WHERE ep.driver_id = a.driver_id AND ep.is_active=TRUE AND ep.released_at IS NULL
-       )))
 ORDER BY a.created_at DESC LIMIT 300
 "#
         }
