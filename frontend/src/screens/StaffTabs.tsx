@@ -15,7 +15,8 @@ export function StaffTabs({ role, tabs }: { role: string; tabs: TabDef[] }) {
   if (user.role !== role) return <Redirect href="/role-home" />;
 
   return (
-    <Tabs backBehavior="history" screenOptions={{ headerShown: false, sceneStyle: getThemedSceneStyle(colors) }} tabBar={(props) => <GlassTabBar {...props} tabs={tabs} />}>
+    <Tabs backBehavior="history" screenOptions={{ headerShown: false, sceneStyle: getThemedSceneStyle(colors) }} tabBar={(props) => <GlassTabBar {...props} tabs={tabs} hideCenterAction={role === "admin"} />}>
+      {role === "admin" ? <Tabs.Screen name="operations" options={{ href: null }} /> : null}
       {tabs.map((t) => (
         <Tabs.Screen key={t.name} name={t.name} />
       ))}

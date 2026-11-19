@@ -38,6 +38,7 @@ pub mod owner_routes;
 pub mod payroll_routes;
 pub mod permission_consent;
 pub mod plant_onboarding;
+mod plant_operations;
 pub mod plant_order_review;
 pub mod plant_owner_registration;
 pub mod plant_plans_routes;
@@ -993,6 +994,14 @@ pub fn build_app_router(state: AppState) -> Router {
             get(owner_routes::get_billing_overview),
         )
         .route("/api/owner/home", get(owner_routes::get_owner_home))
+        .route(
+            "/api/plant-operations/:plant_id/pipeline",
+            get(plant_operations::pipeline),
+        )
+        .route(
+            "/api/plant-operations/:plant_id/registers/:kind",
+            get(plant_operations::register),
+        )
         .route("/api/owner/dispatches/today", get(owner_dispatches::today))
         .route(
             "/api/control-center/owners/:user_id/status",

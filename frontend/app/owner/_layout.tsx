@@ -9,8 +9,8 @@ import { getThemedSceneStyle } from "@/src/theme/sceneBackground";
 
 const TABS: TabDef[] = [
   { name: "index", label: "Home", icon: "home-outline", active: "home" },
-  { name: "orders", label: "Orders", icon: "cube-outline", active: "cube" },
   { name: "operations", label: "Operations", icon: "construct-outline", active: "construct" },
+  { name: "orders", label: "Orders", icon: "cube-outline", active: "cube" },
   { name: "more", label: "More", icon: "grid-outline", active: "grid" },
 ];
 

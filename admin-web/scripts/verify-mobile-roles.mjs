@@ -403,19 +403,20 @@ try {
     }
     if (user.role === 'plant_owner') {
       phase = 'owner Home shortcuts and metrics';
-      await expect(page.locator('[data-testid^="owner-shortcut-"]')).toHaveCount(5);
-      const homeKeys = await page.locator('[data-testid^="owner-shortcut-"]').filter({ visible: true })
+      await expect(page.getByTestId('owner-quick-access').locator('[data-testid^="owner-shortcut-"]')).toHaveCount(5);
+      const homeKeys = await page.getByTestId('owner-quick-access').locator('[data-testid^="owner-shortcut-"]').filter({ visible: true })
         .evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid').slice('owner-shortcut-'.length)));
       assert.deepEqual(new Set(homeKeys), new Set([
-        'owner-orders', 'owner-production-dispatch', 'business-inventory', 'business-staff', 'insights',
-      ]), 'Owner Home must have four unique routes plus the local Insights toggle');
+        'owner-orders', 'business-inventory', 'business-reports', 'business-fleet', 'business-quotations',
+      ]), 'Owner Home must expose the five current role shortcuts');
+      await expect(page.getByTestId('owner-shortcut-insights')).toBeVisible();
       await expect(page.locator('[data-testid^="owner-metric-"]')).toHaveCount(8);
       await expect(page.getByTestId('owner-metric-plant_attendance_today')).toBeVisible();
       await expect(page.getByTestId('role-module-owner-drivers')).toBeVisible();
 
       const directoryKeys = {};
       for (const [category, id, count, required] of [
-        ['Commercial', 'owner-commercial', 7, ['owner-billing', 'business-customers']],
+        ['Commercial', 'owner-commercial', 6, ['owner-billing', 'business-customers']],
         ['Workforce', 'owner-workforce', 9, ['business-attendance', 'payroll-closure', 'owner-drivers']],
       ]) {
         phase = `owner ${category} preview`;
@@ -433,8 +434,8 @@ try {
         await returnFromSection();
       }
 
-      phase = 'owner Quick Access See All';
-      await page.getByTestId('home-see-all-owner-operations').click();
+      phase = 'owner Operations tab';
+      await page.getByTestId('tab-operations').click();
       phase = 'owner automation center';
       await expect(page.getByTestId('owner-native-automation-center')).toBeVisible();
       phase = 'owner Operations module inventory';
@@ -453,7 +454,7 @@ try {
       await expect(page.getByTestId('owner-logout')).toBeVisible();
       const moreKeys = await visibleModuleCards(ownerMoreDirectory);
       phase = 'owner module catalog reconciliation';
-      const rendered = [...homeKeys.filter(key => key !== 'insights'), ...directoryKeys.Commercial,
+      const rendered = [...homeKeys, ...directoryKeys.Commercial,
         ...directoryKeys.Workforce, ...operationsKeys, ...moreKeys];
       const duplicates = rendered.filter((key, index) => rendered.indexOf(key) !== index);
       // Billing & Ledger is available in both Commercial and Operations.

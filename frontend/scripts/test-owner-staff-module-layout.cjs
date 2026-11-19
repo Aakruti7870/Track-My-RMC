@@ -30,8 +30,8 @@ const ownerWorkforce = owner.ownerModules(owner.WORKFORCE_KEYS).map(module => mo
 const ownerMore = owner.ownerModules(owner.ACCOUNT_KEYS).map(module => module.key);
 const ownerGlobal = ["notifications", owner.DRIVER_MODULE.key];
 const allOwner = [...ownerHome, ...ownerOperations, ...ownerCommercial, ...ownerWorkforce, ...ownerMore, ...ownerGlobal];
-assert.equal(ownerHome.length, 4);
-assert.equal(ownerCommercial.length, 6);
+assert.deepEqual(ownerHome, ["owner-orders", "business-inventory", "business-reports", "business-fleet", "business-quotations"]);
+assert.equal(ownerCommercial.length, 5);
 assert.equal(ownerWorkforce.length, 8);
 assert(ownerWorkforce.includes("business-payroll") && ownerWorkforce.includes("payroll-closure"));
 for (const [preview, directory] of [[owner.OWNER_HOME_COMMERCIAL, ownerCommercial], [owner.OWNER_HOME_WORKFORCE, ownerWorkforce]]) {

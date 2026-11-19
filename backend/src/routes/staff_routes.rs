@@ -160,7 +160,7 @@ pub async fn get_staff_home(
         ]);
     } else if role == "supervisor" {
         let open_incidents: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM driver_sos_alerts a JOIN order_loads l ON l.id = a.load_id JOIN orders o ON o.id = l.order_id WHERE o.plant_id = $1 AND upper(a.status) <> 'RESOLVED'",
+            "SELECT COUNT(*) FROM driver_sos_alerts a JOIN driver_sos_plant_scope s ON s.id = a.id WHERE s.plant_id = $1 AND upper(a.status) <> 'RESOLVED'",
         )
         .bind(plant_id).fetch_one(&state.db).await?;
         kpis = json!([

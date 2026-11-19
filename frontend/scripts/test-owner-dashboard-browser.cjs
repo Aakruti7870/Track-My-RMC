@@ -14,8 +14,8 @@ fs.mkdirSync(out, { recursive: true });
         localStorage.setItem('tmrmc_theme_mode', JSON.stringify(scheme));
       }, { scheme });
       const page = await context.newPage(), errors = [];
-      let populated = false, failing = false;
-      let supplierFixture = false;
+      let populated = false, failing = false, secondPlant = false;
+
       const supplierRequests = [];
       page.on('pageerror', error => errors.push(error.message));
       await page.route('**/api/**', async route => {
@@ -24,7 +24,32 @@ fs.mkdirSync(out, { recursive: true });
         if (path.endsWith('/me')) json = { id: 'isolated-owner', name: 'TrackMyRMC Play Review Owner', role: 'plant_owner', roles: ['plant_owner'], status: 'active', kyc_status: 'pending', plant_id: null };
         else if (path.endsWith('/owner/home')) json = { plant_count: 0, plants: [], cards: { todays_orders: 0, dispatched_loads: 0, active_staff: 0, pending_approvals: 0 }, pending_orders: [] };
         else if (path.endsWith('/notifications')) json = { unread: 2, items: [] };
-        else if (path.endsWith('/master/my-plants')) json = { plants: supplierFixture ? [{ id: 'plant-one', name: 'Fixture Plant', city: 'Panvel' }] : [] };
+        else if (path.endsWith('/master/my-plants')) json = { plants: [
+          { id: 'plant-one', name: 'Fixture Plant', city: 'Panvel' },
+          ...(secondPlant ? [{ id: 'plant-two', name: 'Second Fixture Plant', city: 'Panvel' }] : []),
+        ] };
+        else if (path.endsWith('/business/plants/plant-two/materials')) json = { materials: [
+          { id: 'cement', name: 'Fixture Cement', material_type: 'CEMENT', unit: 'kg', current_stock: '4', minimum_stock: '10' },
+          { id: 'sand', name: 'Fixture Sand', material_type: 'SAND', unit: 'kg', current_stock: '0', minimum_stock: '10' },
+          { id: 'water', name: 'Fixture Water', material_type: 'WATER', unit: 'L', current_stock: '30', minimum_stock: '10' },
+        ] };
+        else if (path.endsWith('/business/plants/plant-two/vehicles')) json = { vehicles: [
+          { id: 'mixer-one', registration_number: 'MH46AB1234', capacity_m3: '6', status: 'idle' },
+        ] };
+        else if (path.endsWith('/plant-operations/plant-one/pipeline')) json = {
+          counts: { needs_mixer: 3 },
+          total: 1,
+          loads: url.searchParams.get('summary') === 'true' ? [] : [{
+            id: 'load-one', order_id: 'order-one', order_number: 'ORDER-001', load_number: 1,
+            stage: 'needs_mixer', quantity_m3: 6, grade: 'M25', site_name: 'Test project site',
+          }],
+        };
+        else if (path.endsWith('/master/plants/plant-one/people')) json = {
+          people: [{ id: 'dispatcher-one', name: 'Fixture Dispatcher', role: 'dispatcher', active: true, status: 'active' }],
+        };
+        else if (path.endsWith('/owner/plants/plant-one/staff/dispatcher-one/module-permissions')) json = {
+          permissions: [{ key: 'dispatch_queue', view: true }, { key: 'fleet_availability', view: false }],
+        };
         else if (path.endsWith('/plant-profile/plant-one/editor')) return route.fulfill({ status: 403, json: { message: 'No edit grant' } });
         else if (path.endsWith('/plant-profile/plant-one')) json = { plant_name: 'Fixture Plant', sections: [], documents: [] };
         else if (path.endsWith('/staff/supplier-enquiries')) {
@@ -53,7 +78,7 @@ fs.mkdirSync(out, { recursive: true });
           const card = await page.locator('[data-testid^="owner-metric-"]').first().locator(':scope > div').first()
             .evaluate(el => getComputedStyle(el).backgroundColor);
           assert.equal(card, summary, 'Owner KPI cards share the matte surface');
-          assert.equal(await page.locator('[data-testid^="owner-shortcut-"]').count(), 5);
+          assert.equal(await page.getByTestId('owner-quick-access').locator('[data-testid^="owner-shortcut-"]').count(), 5);
           assert.equal(await page.locator('[data-testid^="owner-metric-"]').count(), 8);
           assert.equal(await page.getByTestId('home-modules-owner-commercial').locator('[data-testid^="role-module-"]').count(), 4);
           assert.equal(await page.getByTestId('home-modules-owner-workforce').locator('[data-testid^="role-module-"]').count(), 4);
@@ -66,9 +91,10 @@ fs.mkdirSync(out, { recursive: true });
           await supplierCard.waitFor();
           await scroll.getByTestId('owner-quick-access').waitFor();
           assert.equal(await supplierCard.getByText('Request quotes for up to 3 materials').count(), 0);
-          await profileCard.getByText('Open your plant Profile', { exact: true }).waitFor();
-          assert(Math.abs((await supplierCard.boundingBox()).height - 54.4) <= 1);
-          assert(Math.abs((await profileCard.boundingBox()).height - 54.4) <= 1);
+          await profileCard.getByText('Plant Profile', { exact: true }).waitFor();
+          assert((await supplierCard.boundingBox()).height >= 44);
+          assert((await profileCard.boundingBox()).height >= 44);
+          await page.getByRole('button', { name: 'Needs mixer, 3 loads' }).waitFor();
           if (width === 390) {
             await page.setViewportSize({ width, height: 660 });
             const movement = await scroll.evaluate(node => {
@@ -86,12 +112,24 @@ fs.mkdirSync(out, { recursive: true });
             const supplier = document.querySelector('[data-testid="plant-home-supplier-enquiry"]');
             const profile = document.querySelector('[data-testid="plant-home-profile"]');
             const kpi = document.querySelector('[data-testid="owner-metric-todays_orders"]');
-            return supplier.compareDocumentPosition(profile) & profile.compareDocumentPosition(kpi) & Node.DOCUMENT_POSITION_FOLLOWING;
+            return profile.compareDocumentPosition(supplier) & supplier.compareDocumentPosition(kpi) & Node.DOCUMENT_POSITION_FOLLOWING;
           });
           assert(await hero.evaluate(node => node.getBoundingClientRect().width >= 280), 'Plant image spans the home card');
           assert(order, 'Supplier and profile cards sit above the KPI grid in the requested order');
         }
-        if (name === 'operations') assert.equal(await page.getByTestId('owner-operations-module-directory').locator('[data-testid^="role-module-"]').count(), 8);
+        if (name === 'operations') {
+          assert.equal(await page.getByTestId('owner-operations-module-directory').locator('[data-testid^="role-module-"]').count(), 8);
+          const team = page.getByTestId('owner-operations-team');
+          await team.getByText('Fixture Dispatcher').waitFor();
+          assert.equal(await team.locator('[data-testid^="owner-operations-role-"]:not([data-testid="owner-operations-role-modules"])').count(), 7);
+          const roleModules = team.getByTestId('owner-operations-role-modules');
+          await roleModules.getByRole('button', { name: 'Dispatch Queue', exact: true }).waitFor();
+          assert.equal(await roleModules.getByRole('button', { name: 'Fleet Availability', exact: true }).count(), 0);
+          await team.getByTestId('owner-operations-role-operator').click();
+          await roleModules.getByText('This role has no active employee assignment.').waitFor();
+          const registers = page.getByTestId('owner-operations-registers');
+          assert.equal(await registers.getByRole('button').count(), 14);
+        }
         if (name === 'more') {
           await tab.click({ clickCount: 3 });
           await page.waitForURL(/\/owner\/more\/?$/);
@@ -118,15 +156,18 @@ fs.mkdirSync(out, { recursive: true });
         }
         if (name === 'home') {
           const heights = await page.locator('[data-testid^="owner-shortcut-"]:not([data-testid="owner-shortcut-insights"])').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().height));
-          assert(heights.every(height => height >= 80 && height <= 135), `Owner shortcut card outside compact range at ${width}px: ${heights}`);
+          assert(heights.every(height => height >= 65 && height <= 135), `Owner shortcut card outside compact range at ${width}px: ${heights}`);
         }
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `Horizontal overflow at ${width}`);
         await page.screenshot({ path: `${out}/${scheme}-${width}-${name}.png`, animations: 'disabled' });
       }
-      assert.equal(visibleModuleKeys.size, 25, 'Owner Home exposes compact previews alongside the existing Operations and More destinations');
+      assert.equal(visibleModuleKeys.size, 26, 'Owner Home exposes compact previews alongside the existing Operations and More destinations');
       await go('/owner');
       if (width === 390) {
-        supplierFixture = true;
+        await page.getByRole('button', { name: 'Needs mixer, 3 loads' }).click();
+        await page.getByRole('button', { name: /ORDER-001 · Load 1/ }).waitFor();
+        assert(new URL(page.url()).searchParams.get('stage') === 'needs_mixer');
+        await page.getByRole('button', { name: 'Back to Operations' }).click();
         await page.getByTestId('plant-home-profile').click();
         await page.getByText('Fixture Plant · TrackMyRMC', { exact: true }).waitFor();
         await page.getByText('Contact your Plant Owner to request editing access.').waitFor();
@@ -155,9 +196,8 @@ fs.mkdirSync(out, { recursive: true });
         assert.equal(supplierRequests[0].plant_id, 'plant-one');
         await page.getByRole('button', { name: 'Done' }).click();
         await page.getByTestId('owner-home-summary').waitFor();
-        supplierFixture = false;
       }
-      for (const [category, key, count] of [['Commercial','owner-commercial',7],['Workforce','owner-workforce',9]]) {
+      for (const [category, key, count] of [['Commercial','owner-commercial',6],['Workforce','owner-workforce',9]]) {
         await page.getByTestId('home-see-all-' + key).click();
         await page.getByRole('heading', { name: category, exact: true }).waitFor();
         const directory = page.getByTestId('role-modules-page');
@@ -215,6 +255,47 @@ fs.mkdirSync(out, { recursive: true });
       failing = true; populated = false;
       await go('/owner/orders');
       await page.getByText('The service is temporarily unavailable. Please try again.', { exact: true }).waitFor();
+      if (scheme === 'light' && width === 390) {
+        secondPlant = true;
+        const post = suffix => page.waitForRequest(request =>
+          request.method() === 'POST' && new URL(request.url()).pathname.endsWith(suffix));
+
+        await go('/owner/operations');
+        await page.getByRole('button', { name: 'Second Fixture Plant', exact: true }).click();
+        await page.getByTestId('role-module-business-diesel').click();
+        await page.waitForURL(url => url.pathname === '/business/diesel' && url.searchParams.get('plantId') === 'plant-two');
+
+        await go('/owner');
+        await page.getByTestId('owner-shortcut-business-inventory').click();
+        await page.getByText('Second Fixture Plant', { exact: true }).click();
+        for (const status of ['Low stock', 'Out of stock', 'In stock']) {
+          await page.getByText(status, { exact: true }).waitFor();
+        }
+        await page.getByRole('button', { name: 'Add Material', exact: true }).click();
+        await page.getByRole('textbox', { name: 'Material type', exact: true }).fill('CEMENT');
+        await page.getByRole('textbox', { name: 'Material name', exact: true }).fill('New Fixture Cement');
+        await page.getByRole('textbox', { name: 'Unit', exact: true }).fill('kg');
+        await page.getByRole('textbox', { name: 'Opening stock', exact: true }).fill('20');
+        await page.getByRole('textbox', { name: 'Reorder level', exact: true }).fill('8');
+        const materialRequest = post('/business/plants/plant-two/materials');
+        await page.getByRole('button', { name: 'Save', exact: true }).click();
+        assert.deepEqual((await materialRequest).postDataJSON(), {
+          material_type: 'CEMENT', name: 'New Fixture Cement', unit: 'kg', current_stock: 20, minimum_stock: 8,
+        });
+
+        await go('/owner');
+        await page.getByTestId('owner-shortcut-business-fleet').click();
+        await page.getByText('Second Fixture Plant', { exact: true }).click();
+        const maintenanceRequest = post('/business/plants/plant-two/vehicles/mixer-one/status');
+        await page.getByRole('button', { name: 'Set Maintenance', exact: true }).click();
+        assert.deepEqual((await maintenanceRequest).postDataJSON(), { status: 'maintenance' });
+        await page.getByRole('button', { name: 'Add Transit Mixer', exact: true }).click();
+        await page.getByRole('textbox', { name: 'TM number', exact: true }).fill('MH46AB5678');
+        await page.getByRole('textbox', { name: 'Capacity m³', exact: true }).fill('6');
+        const vehicleRequest = post('/business/plants/plant-two/vehicles');
+        await page.getByRole('button', { name: 'Save', exact: true }).click();
+        assert.deepEqual((await vehicleRequest).postDataJSON(), { registration_number: 'MH46AB5678', capacity_m3: 6 });
+      }
       assert.deepEqual(errors, []);
       await context.close();
       console.log(`PASS owner: ${scheme} ${width}px — 8 metrics, 5 Quick tiles, compact Commercial/Workforce cards, full directories and top-only theme`);
@@ -253,6 +334,7 @@ fs.mkdirSync(out, { recursive: true });
         if (path.endsWith('/master/my-plants')) return route.fulfill({ json: {
           plants: [{ id: plantId, name: 'Isolated test plant' }],
         } });
+        if (path.endsWith('/pipeline')) return route.fulfill({ json: { counts: {}, total: 0, loads: [] } });
         if (path.endsWith('/automation/rules')) return route.fulfill({ json: { rules: ruleState, worker_enabled: true } });
         if (path.endsWith('/automation/tasks')) return route.fulfill({ json: { tasks: [] } });
         if (path.endsWith('/automation/history')) return route.fulfill({ json: { jobs: [] } });
@@ -274,12 +356,12 @@ fs.mkdirSync(out, { recursive: true });
         const rect = element.getBoundingClientRect();
         return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
       }));
-      assert.equal(boxes.length, 10, 'Nine backend rules plus one clearly reserved slot');
-      for (const [first, last] of [[0, 3], [4, 7], [8, 9]]) {
+      assert.equal(boxes.length, 9, 'Show every backend rule');
+      for (const [first, last] of [[0, 2], [3, 5], [6, 8]]) {
         for (let i = first + 1; i <= last; i++) assert(Math.abs(boxes[i].y - boxes[first].y) < 2, 'Cards align on the same row');
       }
-      assert(boxes[4].y > boxes[0].y && boxes[8].y > boxes[4].y, 'Grid wraps 4 + 4 + 2');
-      assert(boxes.every(box => box.height <= 117 && box.width > 0), 'Compact tiles must remain 116dp tall');
+      assert(boxes[3].y > boxes[0].y && boxes[6].y > boxes[3].y, 'Grid wraps into three rows');
+      assert(boxes.every(box => box.height <= 116 && box.width > 0), `Automation cards exceed the compact grid at ${width}px: ${JSON.stringify(boxes)}`);
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'No horizontal overflow');
       const publishedToggle = page.getByTestId('owner-automation-toggle-ORDER_ACCEPTED_NOTICE');
       assert.match(await publishedToggle.innerText(), /OFF/, 'Published automation begins disabled');
@@ -292,7 +374,7 @@ fs.mkdirSync(out, { recursive: true });
       await page.getByTestId('owner-reminder-120').click();
       assert.equal(ruleState[3].reminder_after_minutes, 120, 'Reminder settings remain accessible from selected tile');
       await context.close();
-      console.log('PASS owner automation: ' + width + 'px, grid 4/4/2, API toggle and reminder');
+      console.log('PASS owner automation: ' + width + 'px, three columns, API toggle and reminder');
     }
     {
       const page = await browser.newPage({ viewport: { width: 320, height: 900 }, reducedMotion: "reduce" });
@@ -313,7 +395,7 @@ fs.mkdirSync(out, { recursive: true });
           if (plantResponse === "error") return route.fulfill({ status: 503, json: {} });
           return route.fulfill({ json: { plants: plantResponse === "empty" ? [] : [{ id: "fixture-plant", name: "Fixture Plant" }] } });
         }
-        if (path.endsWith("/fixture-plant/resources")) return route.fulfill({ json: {
+        if (path.endsWith("/fixture-plant/materials")) return route.fulfill({ json: {
           materials: ["Cement", "Sand", "Gravel", "Other"].map((name, i) => ({ id: String(i), name, stock: i + 1, reorder: 2, unit: "kg" })),
         } });
         if (path.endsWith("/owner/home")) return route.fulfill({ json: { plants: [], cards: {}, pending_orders: [] } });

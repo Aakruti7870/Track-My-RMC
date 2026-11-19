@@ -1,9 +1,12 @@
 import { modulesForRole, type RoleModule } from "@/src/navigation/moduleCatalog";
 
 const catalog = modulesForRole("plant_owner");
-// Owner Quick Access keeps four routed shortcuts and the local Insights toggle.
-export const HOME_KEYS = ["owner-orders", "owner-production-dispatch", "business-inventory", "business-staff"];
-export const OPERATIONS_KEYS = ["owner-orders", "owner-production-dispatch", "owner-incidents", "business-mixes", "business-inventory", "business-suppliers", "business-purchases", "business-fleet", "business-diesel", "business-reports", "owner-billing"];
+export const HOME_SHORTCUTS = [
+  ["owner-orders", "Plant Orders"], ["business-inventory", "Inventory"], ["business-reports", "Plant Report"],
+  ["business-fleet", "Active Mixers"], ["business-quotations", "Quotations"],
+] as const;
+export const HOME_KEYS: readonly string[] = HOME_SHORTCUTS.map(([key]) => key);
+export const OPERATIONS_KEYS = ["owner-orders", "owner-production-dispatch", "owner-incidents", "business-mixes", "business-inventory", "business-suppliers", "business-purchases", "business-fleet", "business-diesel", "business-reports", "owner-billing", "business-staff"];
 export const WORKFORCE_KEYS = ["business-payroll", "business-attendance", "workforce", "shift-roster", "my-payslip", "workforce-reports", "employee-master", "payroll-closure"];
 export const ACCOUNT_KEYS = ["account-kyc", "owner-premium", "public-plant-profile", "business-profile"];
 export const COMMERCIAL_KEYS = ["owner-billing-history", "owner-quotation-requests", "business-rates", "business-quotations", "business-expenses", "business-customers"];

@@ -38,8 +38,8 @@ export default function Sos() {
     try {
       const location = await getCurrentDeviceLocation("sos");
       const payload = {
-        type,
-        remark: remark.trim() || null,
+        alert_type: type.toUpperCase(),
+        message: remark.trim() || null,
         lat: location.ok ? location.location.lat : null,
         lng: location.ok ? location.location.lng : null,
       };

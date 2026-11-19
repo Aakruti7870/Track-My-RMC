@@ -483,9 +483,11 @@ pub async fn unload_trip(
 
 #[derive(Debug, Deserialize)]
 pub struct DriverSosPayload {
-    pub lat: f64,
-    pub lng: f64,
+    pub lat: Option<f64>,
+    pub lng: Option<f64>,
+    #[serde(alias = "type")]
     pub alert_type: Option<String>,
+    #[serde(alias = "remark")]
     pub message: Option<String>,
     pub trip_id: Option<Uuid>,
 }
@@ -501,15 +503,35 @@ pub async fn trigger_driver_sos(
         .alert_type
         .unwrap_or_else(|| "EMERGENCY".to_string());
 
+    let plant: Option<Uuid> = if let Some(load) = payload.trip_id {
+        let plant = sqlx::query_scalar(
+            "SELECT o.plant_id FROM order_loads l JOIN orders o ON o.id=l.order_id
+             WHERE l.id=$1 AND l.driver_id=$2",
+        )
+        .bind(load)
+        .bind(auth_user.user_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Driver trip not found".into()))?;
+        Some(plant)
+    } else {
+        let plants = super::owner_routes::assigned_plants(&state, &auth_user).await?;
+        match plants.as_slice() {
+            [(plant, _, _)] => Some(*plant),
+            _ => None,
+        }
+    };
+
     let id: Uuid = sqlx::query_scalar(
         r#"
-        INSERT INTO driver_sos_alerts (driver_id, load_id, latitude, longitude, alert_type, message, status)
-        VALUES ($1, $2, $3, $4, $5, $6, 'OPEN')
+        INSERT INTO driver_sos_alerts (driver_id, load_id, plant_id, latitude, longitude, alert_type, message, status)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 'OPEN')
         RETURNING id
         "#,
     )
     .bind(auth_user.user_id)
     .bind(payload.trip_id)
+    .bind(plant)
     .bind(payload.lat)
     .bind(payload.lng)
     .bind(&alert_type)
@@ -521,7 +543,7 @@ pub async fn trigger_driver_sos(
         "success": true,
         "sos_id": id,
         "status": "OPEN",
-        "message": "Emergency SOS broadcasted to plant operations"
+        "message": "Emergency SOS recorded"
     })))
 }
 

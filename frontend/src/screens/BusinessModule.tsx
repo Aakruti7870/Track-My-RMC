@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Modal, Platform, Share, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -21,7 +21,7 @@ import { Badge } from "@/src/components/ui/Badge";
 
 type Plant = { id: string; name: string; city?: string; grades?: string[] };
 type FieldDef = { key: string; label: string; placeholder?: string; numeric?: boolean; required?: boolean };
-type Row = { id: string; title: string; subtitle?: string; meta?: string; raw?: any };
+type Row = { id: string; title: string; subtitle?: string; meta?: string; raw?: any; stockStatus?: { label: string; status: string } };
 
 type ModuleDef = {
   title: string;
@@ -183,7 +183,7 @@ const MODULES: Record<string, ModuleDef> = {
     subtitle: "Transit mixers and current availability",
     addLabel: "Add Transit Mixer",
     fields: [
-      { key: "tm_number", label: "TM number", required: true },
+      { key: "registration_number", label: "TM number", required: true },
       { key: "capacity_m3", label: "Capacity m³", numeric: true, required: true },
     ],
   },
@@ -192,11 +192,11 @@ const MODULES: Record<string, ModuleDef> = {
     subtitle: "Material stock and reorder status",
     addLabel: "Add Material",
     fields: [
-      { key: "code", label: "Material code", placeholder: "CEMENT" },
+      { key: "material_type", label: "Material type", placeholder: "CEMENT", required: true },
       { key: "name", label: "Material name", required: true },
       { key: "unit", label: "Unit", placeholder: "kg / MT / L", required: true },
-      { key: "stock", label: "Opening stock", numeric: true },
-      { key: "reorder", label: "Reorder level", numeric: true },
+      { key: "current_stock", label: "Opening stock", numeric: true },
+      { key: "minimum_stock", label: "Reorder level", numeric: true },
     ],
   },
   attendance: { title: "Attendance", subtitle: "Daily staff attendance register" },
@@ -230,7 +230,7 @@ const numericFields = new Set([
   "cement_kg", "fly_ash_kg", "c_sand_kg", "sand_kg", "aggregate_10mm_kg", "aggregate_20mm_kg",
   "admixture_kg", "water_litre", "target_slump_mm", "quantity_m3", "transport_amount", "pumping_amount",
   "amount", "litres", "rate_per_litre", "odometer_km", "quantity", "rate", "gst_amount", "freight_amount",
-  "basic_amount", "allowances", "overtime_amount", "deductions", "paid_days", "capacity_m3", "stock", "reorder",
+  "basic_amount", "allowances", "overtime_amount", "deductions", "paid_days", "capacity_m3", "current_stock", "minimum_stock",
 ]);
 
 const attendanceTime = (value: string) =>
@@ -253,7 +253,8 @@ function dataPath(kind: string, plantId: string) {
   if (kind === "staff") return `/master/plants/${plantId}/people`;
   if (kind === "customers") return `/business/plants/${plantId}/customers`;
   if (kind === "reports") return `/master/plants/${plantId}/summary`;
-  if (kind === "fleet" || kind === "inventory") return `/master/plants/${plantId}/resources`;
+  if (kind === "fleet") return `/business/plants/${plantId}/vehicles`;
+  if (kind === "inventory") return `/business/plants/${plantId}/materials`;
   return `/master/plants/${plantId}/summary`;
 }
 
@@ -281,20 +282,36 @@ function unpackRows(kind: string, data: any): Row[] {
     else if (kind === "quotations") row = { id: d.id, title: `${d.quotation_number} · ${d.customer_name}`, subtitle: `${d.grade} · ${d.quantity_m3} m³ · ₹${Math.round(d.total || 0)}`, meta: `${d.site_name} · valid ${d.valid_until}` };
     else if (kind === "expenses") row = { id: d.id, title: `${d.category} · ₹${d.amount}`, subtitle: d.vendor || d.payment_method, meta: `${d.expense_date}${d.reference ? ` · ${d.reference}` : ""}` };
     else if (kind === "diesel") row = { id: d.id, title: `${d.transaction_type} · ${d.litres} L`, subtitle: d.vehicle_id ? `Vehicle ${d.vehicle_id}` : (d.reference || "Diesel stock"), meta: d.created_at };
-    else if (kind === "purchases") row = { id: d.id, title: `${d.receipt_number} · ${d.supplier_name || "Supplier"}`, subtitle: `₹${Math.round(d.total || 0)} · ${d.status}`, meta: d.receipt_date };
+    else if (kind === "purchases") row = { id: d.id, title: `${d.receipt_number} · ${d.supplier_name || "Supplier"}`, subtitle: `₹${Math.round(d.total_amount ?? d.total ?? 0)}${d.status ? ` · ${d.status}` : ""}`, meta: d.receipt_date };
     else if (kind === "payroll") row = { id: d.id, title: d.user_name || d.user_id, subtitle: `${d.month} · ₹${Math.round(d.net_amount || 0)}`, meta: d.status };
     else if (kind === "attendance") row = { id: d.id || `${idx}`, title: d.user_name || "Staff", subtitle: d.check_in_time ? `In ${attendanceTime(d.check_in_time)}` : "Not checked in", meta: d.check_out_time ? `Out ${attendanceTime(d.check_out_time)}` : "Open" };
     else if (kind === "staff") row = { id: d.id, title: d.name, subtitle: d.role_label || d.role, meta: `${d.phone || d.email || ""}${d.status ? ` · ${d.status}` : ""}` };
     else if (kind === "customers") row = { id: d.id, title: d.name, subtitle: d.phone || d.email || "Customer", meta: `${d.orders || 0} orders · ${d.delivered_m3 || 0} m³ delivered` };
-    else if (kind === "fleet") row = { id: d.id, title: d.tm_number, subtitle: `${d.capacity_m3} m³ capacity`, meta: d.status };
-    else if (kind === "inventory") row = { id: d.id, title: d.name, subtitle: `${d.stock} ${d.unit}`, meta: `Reorder ≤ ${d.reorder} ${d.unit}${d.code ? ` · ${d.code}` : ""}` };
+    else if (kind === "fleet") row = { id: d.id, title: d.registration_number || d.tm_number, subtitle: `${d.capacity_m3} m³ capacity`, meta: d.status };
+    else if (kind === "inventory") {
+      const stock = d.current_stock ?? d.stock;
+      const minimum = d.minimum_stock ?? d.reorder;
+      const stockStatus = Number(stock) <= 0 ? { label: "Out of stock", status: "OUT_OF_STOCK" }
+        : Number(stock) <= Number(minimum) ? { label: "Low stock", status: "LOW_STOCK" }
+          : { label: "In stock", status: "IN_STOCK" };
+      row = { id: d.id, title: d.name, subtitle: `${stock} ${d.unit}`, meta: `Reorder ≤ ${minimum} ${d.unit}`, stockStatus };
+    }
     else row = { id: d.id || `${idx}`, title: d.name || "Record", subtitle: d.status };
     row.raw = d;
     return row;
   });
 }
 
-export function BusinessModule({ kind }: { kind: string }) {
+const MATERIAL_VIEWS: Readonly<Record<string, { title: string; matches: RegExp }>> = {
+  aggregate: { title: "Aggregates & Sand", matches: /aggregate|sand|stone|gravel|crusher dust/ },
+  cement: { title: "Cement", matches: /\b(cement|opc|ppc|psc)\b/ },
+  "fly-ash": { title: "Fly Ash / GGBS", matches: /fly\s*ash|ggb(?:f)?s|blast furnace slag/ },
+  admixture: { title: "Admixtures / Silica Fume", matches: /admixture|silica fume|micro *silica|plasticizer|retarder/ },
+  water: { title: "Water / Ice", matches: /\b(water|ice)\b/ },
+};
+
+export function BusinessModule({ kind, preferredPlant, material }: { kind: string; preferredPlant?: string; material?: string }) {
+  const materialView = kind === "inventory" && material && Object.hasOwn(MATERIAL_VIEWS, material) ? MATERIAL_VIEWS[material] : undefined;
   const def = MODULES[kind] || MODULES.reports;
   const { token, user } = useAuth();
   const { colors, reduceMotion } = useTheme();
@@ -304,6 +321,7 @@ export function BusinessModule({ kind }: { kind: string }) {
 
   const [plants, setPlants] = useState<Plant[]>([]);
   const [plantId, setPlantId] = useState<string | null>(null);
+  const loadVersion = useRef(0);
   const [data, setData] = useState<any>(null);
   const [resources, setResources] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -317,8 +335,7 @@ export function BusinessModule({ kind }: { kind: string }) {
   const [adjustAmount, setAdjustAmount] = useState("");
   const [adjustNote, setAdjustNote] = useState("");
   const [adjustSign, setAdjustSign] = useState<1 | -1>(1);
-  const [permissionEdits, setPermissionEdits] = useState<Record<string, boolean>>({});
-  const [permissionExports,setPermissionExports]=useState<Record<string,boolean>>({});
+  const [permissions, setPermissions] = useState<Record<string, { edit: boolean; create: boolean; export: boolean }>>({});
   const [staffHistory, setStaffHistory] = useState<{events:any[];slots:any[]}>({events:[],slots:[]});
   const [lifecycleReason, setLifecycleReason] = useState("");
   const [managerPolicy,setManagerPolicy]=useState({can_manage_staff:true,can_manage_permissions:false,can_manage_fleet:false,can_manage_drivers:false});
@@ -334,20 +351,25 @@ export function BusinessModule({ kind }: { kind: string }) {
     let live = true;
     apiGet<{enabled:boolean;can_manage_staff?:boolean;can_manage_fleet?:boolean}>("/staff/manager-access", token)
       .then(result => { if (live) {setManagerEnabled(result.enabled === true && result.can_manage_staff===true);setManagerFleet(result.enabled && result.can_manage_fleet===true);} })
-      .catch(() => { if (live) setManagerEnabled(false); });
+      .catch(() => {
+        if (live) {
+          setManagerEnabled(false);
+          setManagerFleet(false);
+        }
+      });
     return () => { live = false; };
   }, [kind, isPlantOwner, token]);
   const canManageStaff = isPlantOwner || managerEnabled;
   const isDelegatedStaff = !!user?.role && ["admin","dispatcher","operator","supervisor","accountant",
     "quality_engineer","fleet_manager","store_manager"].includes(user.role);
   React.useEffect(() => {
+    setPermissions({});
     if (!isDelegatedStaff || !token) return;
     let active = true;
-    setPermissionEdits({});
-    apiGet<{ permissions: Array<{ key: string; edit: boolean;export:boolean }> }>("/staff/module-permissions", token)
+    apiGet<{ permissions: Array<{ key: string; edit: boolean; create: boolean; export: boolean }> }>("/staff/module-permissions", token)
       .then(result => {
-        if (active) {setPermissionEdits(Object.fromEntries(result.permissions.map(item => [item.key, item.edit])));setPermissionExports(Object.fromEntries(result.permissions.map(item=>[item.key,item.export])));}
-      }).catch(() => { if (active) setPermissionEdits({}); });
+        if (active) setPermissions(Object.fromEntries(result.permissions.map(item => [item.key, item])));
+      }).catch(() => { if (active) setPermissions({}); });
     return () => { active = false; };
   }, [token, isDelegatedStaff]);
   const kindGrant: Record<string, string> = {
@@ -355,8 +377,12 @@ export function BusinessModule({ kind }: { kind: string }) {
     rates: "rate_cards", quotations: "quotations", expenses: "expenses",
     purchases: "purchases", diesel: "diesel_ledger", suppliers: "suppliers", payroll: "payroll",
   };
+  const modulePermission = permissions[kindGrant[kind]];
   const canEditModule = kind === "staff" ? canManageStaff : kind === "fleet" && managerFleet ? true :
-    (!isDelegatedStaff || !kindGrant[kind] || permissionEdits[kindGrant[kind]] === true);
+    (!isDelegatedStaff || !kindGrant[kind] || modulePermission?.edit === true);
+  const canCreateModule = kind === "inventory" ? isPlantOwner || modulePermission?.create === true
+    : kind === "fleet" ? isPlantOwner || (user?.role === "fleet_manager" ? modulePermission?.create === true : managerFleet)
+      : canEditModule;
 
   const loadPlants = useCallback(async () => {
     if (!token) return;
@@ -365,16 +391,21 @@ export function BusinessModule({ kind }: { kind: string }) {
     try {
       const result = await apiGet<{ plants: Plant[] }>("/master/my-plants", token);
       setPlants(result.plants);
-      setPlantId((old) => old && result.plants.some((p) => p.id === old) ? old : result.plants[0]?.id || null);
-      if (result.plants.length === 0) setLoading(false);
+      const initial = preferredPlant ? result.plants.find(p => p.id === preferredPlant) : result.plants[0];
+      setPlantId(old => result.plants.find(p => p.id === old)?.id ?? initial?.id ?? null);
+      if (!initial) {
+        setLoading(false);
+        if (preferredPlant) setError("The selected plant is unavailable to this account.");
+      }
     } catch (e: any) {
       setError(e.detail || "Could not load plants");
       setLoading(false);
     }
-  }, [token]);
+  }, [preferredPlant, token]);
 
   const load = useCallback(async () => {
     if (!token || !plantId) return;
+    const version = ++loadVersion.current;
     setLoading(true);
     setError(null);
     try {
@@ -382,17 +413,21 @@ export function BusinessModule({ kind }: { kind: string }) {
         apiGet<any>(dataPath(kind, plantId), token),
         apiGet<any>(`/master/plants/${plantId}/resources`, token),
       ];
-      if (kind === "purchases" || kind === "diesel") tasks.push(apiGet<any>(`/master/plants/${plantId}/suppliers`, token));
+      if ((kind === "purchases" || kind === "diesel") && canEditModule) {
+        tasks.push(apiGet<any>(`/master/plants/${plantId}/suppliers`, token).catch(() => null));
+      }
       const results = await Promise.all(tasks);
-      if (kind === "staff") setStaffHistory(await apiGet(`/business/plants/${plantId}/staff/history`,token));
+      const history = kind === "staff" ? await apiGet<{ events: any[]; slots: any[] }>(`/business/plants/${plantId}/staff/history`, token) : null;
+      if (version !== loadVersion.current) return;
+      if (history) setStaffHistory(history);
       setData(results[0]);
-      setResources({ ...(results[1] || {}), suppliers: results[2]?.suppliers || [] });
+      setResources({ ...(results[1]?.resources ?? results[1] ?? {}), suppliers: results[2]?.suppliers || [] });
     } catch (e: any) {
-      setError(e.detail || "Could not load module");
+      if (version === loadVersion.current) setError(e.detail || "Could not load module");
     } finally {
-      setLoading(false);
+      if (version === loadVersion.current) setLoading(false);
     }
-  }, [kind, plantId, token]);
+  }, [canEditModule, kind, plantId, token]);
 
   const reloadWorkspace = async () => {
     setRefreshing(true);
@@ -420,8 +455,12 @@ export function BusinessModule({ kind }: { kind: string }) {
   const moduleRows = useMemo(() => unpackRows(kind, data), [kind, data]);
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return moduleRows.filter((row) => !q || [row.title, row.subtitle, row.meta].some((v) => (v || "").toLowerCase().includes(q)));
-  }, [moduleRows, query]);
+    return moduleRows.filter(row => {
+      const materialText = [row.raw?.material_type ?? row.raw?.type, row.title].join(" ").toLowerCase().replace(/[_/-]/g, " ");
+      return (!materialView || materialView.matches.test(materialText))
+        && (!q || [row.title, row.subtitle, row.meta].some(value => (value || "").toLowerCase().includes(q)));
+    });
+  }, [materialView, moduleRows, query]);
 
   const openForm = () => {
     const initial: Record<string, string> = {};
@@ -494,7 +533,6 @@ export function BusinessModule({ kind }: { kind: string }) {
       } else if (kind === "fleet") {
         await apiPost(`/business/plants/${plantId}/vehicles`, token, payload);
       } else if (kind === "inventory") {
-        payload.stock ??= 0; payload.reorder ??= 0;
         await apiPost(`/business/plants/${plantId}/materials`, token, payload);
       } else if (kind === "staff") {
         payload.role = String(payload.role || "").trim().toLowerCase().replace(/[ /-]+/g, "_");
@@ -623,7 +661,7 @@ export function BusinessModule({ kind }: { kind: string }) {
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
           {moduleSymbol ? <VectorSymbol name={moduleSymbol} size={40} /> : null}
           <View style={{ flex: 1, gap: 3 }}>
-            <AppText variant="title">{def.title}</AppText>
+            <AppText variant="title">{materialView?.title ?? def.title}</AppText>
             <AppText variant="caption">{def.subtitle}</AppText>
           </View>
         </View>
@@ -649,7 +687,14 @@ export function BusinessModule({ kind }: { kind: string }) {
             {plants.map((p) => {
               const selected = plantId === p.id;
               return (
-                <Pressable key={p.id} onPress={() => setPlantId(p.id)} style={[styles.chip, { backgroundColor: selected ? colors.brand : colors.surfaceSecondary, borderColor: selected ? colors.brand : colors.border }]}>
+                <Pressable key={p.id} onPress={() => {
+                  if (selected) return;
+                  loadVersion.current += 1;
+                  setData(null);
+                  setResources(null);
+                  setQuery("");
+                  setPlantId(p.id);
+                }} style={[styles.chip, { backgroundColor: selected ? colors.brand : colors.surfaceSecondary, borderColor: selected ? colors.brand : colors.border }]}>
                   <AppText style={{ color: selected ? colors.onBrand : colors.onSurface, fontFamily: fonts.semibold, fontSize: 12 }}>{p.name}</AppText>
                 </Pressable>
               );
@@ -659,7 +704,7 @@ export function BusinessModule({ kind }: { kind: string }) {
 
         {!plantId && !loading && !error ? <Card><AppText variant="bodyMuted">No plant is assigned to this account.</AppText></Card> : null}
         {error ? <Card><AppText style={{ color: colors.error }}>{error}</AppText><Button label="Retry" onPress={() => void reloadWorkspace()} /></Card> : null}
-        {kind==="reports" && (isPlantOwner || permissionExports.plant_reports) ? <Button label="Export plant summary" variant="outline" onPress={async()=>{
+        {kind==="reports" && (isPlantOwner || permissions.plant_reports?.export) ? <Button label="Export plant summary" variant="outline" onPress={async()=>{
           if(!token || !plantId)return;
           try{
             const csv=await apiGet<string>(`/master/plants/${plantId}/summary/export`,token);
@@ -718,15 +763,11 @@ export function BusinessModule({ kind }: { kind: string }) {
                   <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: colors.onSurface }}>{r.title}</AppText>
                   {r.subtitle ? <AppText variant="caption">{r.subtitle}</AppText> : null}
                   {r.meta ? <AppText style={{ fontFamily: fonts.regular, fontSize: 11, color: colors.onSurfaceTertiary }}>{r.meta}</AppText> : null}
-                  {kind === "inventory" && r.raw ? (
-                    <Badge size="sm"
-                      label={Number(r.raw.stock) <= 0 ? "Out of stock"
-                        : Number(r.raw.stock) <= Number(r.raw.reorder) ? "Low stock" : "In stock"}
-                      status={Number(r.raw.stock) <= 0 ? "OUT_OF_STOCK"
-                        : Number(r.raw.stock) <= Number(r.raw.reorder) ? "LOW_STOCK" : "IN_STOCK"} />
+                  {r.stockStatus ? (
+                    <Badge size="sm" {...r.stockStatus} />
                   ) : kind === "fleet" && r.raw?.status ? <Badge label={r.raw.status} status={r.raw.status} size="sm" /> : null}
                 </View>
-                {kind === "fleet" && canEditModule && ["available", "maintenance"].includes(r.raw?.status) ? (
+                {kind === "fleet" && canEditModule && ["idle", "available", "maintenance"].includes(r.raw?.status) ? (
                   <Button label={r.raw?.status === "maintenance" ? "Set Available" : "Set Maintenance"} variant="outline" onPress={() => toggleFleet(r)} />
                 ) : null}
                 {kind === "inventory" && canEditModule ? (
@@ -779,7 +820,7 @@ export function BusinessModule({ kind }: { kind: string }) {
             <View style={{ flex: 1 }}><Button label="Check In" onPress={() => attendanceAction("checkin")} loading={saving} /></View>
             <View style={{ flex: 1 }}><Button label="Check Out" variant="outline" onPress={() => attendanceAction("checkout")} /></View>
           </View>
-        ) : def.addLabel && plantId && canEditModule ? <Button label={def.addLabel} onPress={openForm} /> : null}
+        ) : def.addLabel && plantId && canCreateModule ? <Button label={def.addLabel} onPress={openForm} /> : null}
 
         {(kind === "purchases" || kind === "payroll" || kind === "diesel") && resources ? (
           <Card style={{ gap: spacing.sm }}>
@@ -787,7 +828,7 @@ export function BusinessModule({ kind }: { kind: string }) {
             {kind === "purchases" ? <AppText variant="caption">Suppliers: {(resources.suppliers || []).map((x: any) => `${x.name} (${x.id})`).join(" · ") || "Create a supplier first"}</AppText> : null}
             {kind === "purchases" ? <AppText variant="caption">Materials: {(resources.materials || []).map((x: any) => `${x.name} (${x.id})`).join(" · ") || "No materials"}</AppText> : null}
             {kind === "payroll" ? <AppText variant="caption">Staff: {(resources.people || []).map((x: any) => `${x.name} (${x.id})`).join(" · ") || "No plant staff"}</AppText> : null}
-            {kind === "diesel" ? <AppText variant="caption">Mixers: {(resources.vehicles || []).map((x: any) => `${x.tm_number} (${x.id})`).join(" · ") || "No mixers"}</AppText> : null}
+            {kind === "diesel" ? <AppText variant="caption">Mixers: {(resources.transit_mixers ?? resources.vehicles ?? []).map((x: any) => `${x.registration_number ?? x.tm_number} (${x.id})`).join(" · ") || "No mixers"}</AppText> : null}
           </Card>
         ) : null}
       </ScrollView>

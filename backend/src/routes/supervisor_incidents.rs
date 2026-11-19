@@ -33,34 +33,11 @@ pub async fn acknowledge(
         ));
     }
 
-    // Identify the incident's plant, not a client-supplied plant ID. A load
-    // is authoritative; standalone SOS uses active, unreleased employment.
-    let plants: Vec<Uuid> = sqlx::query_scalar(
-        "SELECT DISTINCT plant_id FROM (
-           SELECT o.plant_id FROM driver_sos_alerts a
-           JOIN order_loads l ON l.id=a.load_id
-           JOIN orders o ON o.id=l.order_id
-           WHERE a.id=$1
-           UNION ALL
-           SELECT ep.plant_id FROM driver_sos_alerts a
-           JOIN driver_employment_profiles ep ON ep.driver_id=a.driver_id
-             AND ep.is_active=TRUE AND ep.released_at IS NULL
-           WHERE a.id=$1 AND a.load_id IS NULL
-           UNION ALL
-           SELECT ps.plant_id FROM driver_sos_alerts a
-           JOIN plant_staff ps ON ps.user_id=a.driver_id AND ps.is_active=TRUE
-           WHERE a.id=$1 AND a.load_id IS NULL
-         ) scoped",
-    )
-    .bind(id)
-    .fetch_all(&state.db)
-    .await?;
-    if plants.len() != 1 {
-        return Err(AppError::NotFound(
-            "Incident not found in one active plant".into(),
-        ));
-    }
-    let plant = plants[0];
+    let plant: Uuid = sqlx::query_scalar("SELECT plant_id FROM driver_sos_plant_scope WHERE id=$1")
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Incident not found in one plant".into()))?;
     super::staff_module_permissions::require(
         &state,
         &auth,

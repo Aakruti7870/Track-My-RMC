@@ -28,12 +28,12 @@ export function OwnerGlass({ children, style, testID, highlighted = true }: { ch
   </View>;
 }
 export function OwnerHeader() { return <OperationalHomeTopBar />; }
-export function OwnerFrame({ children, title, subtitle }: { children: React.ReactNode; title?: string; subtitle?: string }) {
+export function OwnerFrame({ children, title, subtitle, matte = false }: { children: React.ReactNode; title?: string; subtitle?: string; matte?: boolean }) {
   const p = useOwnerPalette();
   const insets = useSafeAreaInsets();
   return <View style={{ flex: 1, backgroundColor: p.canvas, overflow: screenOverflow }}>
     {/* Metro registers bundled image assets through static require calls. */}
-    <Image source={p.dark ? require("../../assets/images/Background Dark Theme.webp") : require("../../assets/images/Background Light Theme.webp")} resizeMode="cover" style={[StyleSheet.absoluteFill, { width: "100%", height: "100%", opacity: 0.15 }]} />
+    {!matte ? <Image source={p.dark ? require("../../assets/images/Background Dark Theme.webp") : require("../../assets/images/Background Light Theme.webp")} resizeMode="cover" style={[StyleSheet.absoluteFill, { width: "100%", height: "100%", opacity: 0.15 }]} /> : null}
     <View style={[ui.container, { paddingTop: insets.top }]}>
       <OwnerHeader />
       {title ? <View style={ui.title}><AppText style={{ fontFamily: fonts.bold, fontSize: 27, color: p.text }}>{title}</AppText><AppText style={{ fontSize: 12, lineHeight: 18, color: p.muted }}>{subtitle}</AppText></View> : null}
