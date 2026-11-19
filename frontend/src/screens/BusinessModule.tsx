@@ -298,7 +298,7 @@ function unpackRows(kind: string, data: any): Row[] {
 const MATERIAL_VIEWS: Readonly<Record<string, { title: string; matches: RegExp }>> = {
   aggregate: { title: "Aggregates & Sand", matches: /aggregate|sand|stone|gravel|crusher dust/ },
   cement: { title: "Cement", matches: /\b(cement|opc|ppc|psc)\b/ },
-  "fly-ash": { title: "Fly Ash / GGBS", matches: /fly *ash|ggb[fs]s|blast furnace slag/ },
+  "fly-ash": { title: "Fly Ash / GGBS", matches: /fly\s*ash|ggb(?:f)?s|blast furnace slag/ },
   admixture: { title: "Admixtures / Silica Fume", matches: /admixture|silica fume|micro *silica|plasticizer|retarder/ },
   water: { title: "Water / Ice", matches: /\b(water|ice)\b/ },
 };
