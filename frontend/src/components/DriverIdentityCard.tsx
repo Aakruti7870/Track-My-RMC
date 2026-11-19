@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useState } from "react";
+import { Image } from "expo-image";
 import { Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -30,6 +31,21 @@ type DriverIdentity = {
 
 type Detail = { label: string; value: string; icon: keyof typeof Ionicons.glyphMap };
 
+const driverArtwork = require("../../assets/images/driver-identity-background.webp");
+
+const appearance = {
+  light: {
+    ink: "#241B17", muted: "#544238", accent: "#8B4119", error: "#A02521",
+    edge: "#AD75586B", field: "#FFFAF3EE", priorityField: "#FFF1E5EC",
+    identity: "#FFF6EAE8", band: ["#FFE0C1F5", "#FFFAF0ED"],
+  },
+  dark: {
+    ink: "#FFF4E8", muted: "#E4CEC0", accent: "#FFC38D", error: "#FFB6B2",
+    edge: "#D6976F62", field: "#231D1AEF", priorityField: "#352820ED",
+    identity: "#221B17E8", band: ["#57321EFA", "#231C19ED"],
+  },
+} as const;
+
 const show = (value: string | null | undefined) => value?.trim() || "Not provided";
 const contactText = (value: Contact) =>
   [value?.name, value?.phone].filter(Boolean).join(" · ") || "Not provided";
@@ -45,10 +61,13 @@ const formattedDate = (value: string | null | undefined) => {
  */
 export function DriverIdentityCard() {
   const { colors } = useTheme();
-  const { width } = useWindowDimensions();
+  const { width, fontScale } = useWindowDimensions();
+  const [contentWidth, setContentWidth] = useState(0);
   const { data, loading, error, reload } = useGet<DriverIdentity>("/driver/identity");
-  const wide = width >= 720;
-  const narrow = width < 360;
+  const palette = colors.isDark ? appearance.dark : appearance.light;
+  const compact = width < 768;
+  const readableWidth = (contentWidth || width - 48) / fontScale;
+  const fieldWidth = readableWidth >= 650 ? "32%" : readableWidth >= 300 ? "49%" : "100%";
 
   const fields: Detail[] = data ? [
     { label: "PLANT NAME", value: show(data.plant_name), icon: "business-outline" },
@@ -71,79 +90,101 @@ export function DriverIdentityCard() {
         borderColor: colors.isDark ? colors.borderStrong : colors.border,
       }]}
     >
-      <LinearGradient colors={colors.isDark ? ["#66320C", "#231C19"] : ["#FFB363", "#FFF0E6"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.brandBand}>
+      <View
+        pointerEvents="none"
+        importantForAccessibility="no-hide-descendants"
+        accessibilityElementsHidden
+        style={[styles.backdrop, { height: compact ? 280 : 330 }]}
+      >
+        <Image
+          testID="driver-identity-background"
+          source={driverArtwork}
+          contentFit="cover"
+          contentPosition={{ left: compact ? "46%" : "45%", top: "36%" }}
+          accessible={false}
+          style={StyleSheet.absoluteFill}
+        />
+        <LinearGradient
+          colors={colors.isDark ? ["#21150EA0", "#1613172E"] : ["#78452870", "#FFE7CF15"]}
+          style={StyleSheet.absoluteFill}
+        />
+        <LinearGradient
+          colors={[colors.surfaceSecondary + "00", colors.surfaceSecondary + "55", colors.surfaceSecondary]}
+          locations={[0, 0.56, 1]}
+          style={StyleSheet.absoluteFill}
+        />
+      </View>
+      <LinearGradient
+        colors={palette.band}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={[styles.brandBand, { borderBottomColor: palette.edge }]}
+      >
         <View style={styles.brandIdentity}>
-          <Ionicons name="shield-checkmark-outline" size={18} color={colors.brand} />
-          <AppText style={[styles.brandText, { color: colors.onSurface }]}>TRACKMYRMC</AppText>
+          <Ionicons name="shield-checkmark-outline" size={18} color={palette.accent} accessible={false} />
+          <AppText color={palette.ink} style={styles.brandText}>TRACKMYRMC</AppText>
         </View>
-        <AppText style={[styles.bandTitle, { color: colors.onSurfaceSecondary }]}>DIGITAL DRIVER CARD</AppText>
+        <AppText accessibilityRole="header" color={palette.ink} style={styles.bandTitle}>DIGITAL DRIVER CARD</AppText>
       </LinearGradient>
 
-      <View style={styles.body}>
-        <View style={styles.recordLine}>
-          <Ionicons name="lock-closed-outline" size={12} color={colors.onSurfaceTertiary} />
-          <AppText style={[styles.recordText, { color: colors.onSurfaceTertiary }]}>Plant-managed records · Read only</AppText>
-        </View>
-
-        {data ? (
-          <>
-            <View style={styles.personRow}>
-              <View style={styles.personName}>
-                <AppText style={[styles.nameLabel, { color: colors.onSurfaceTertiary }]}>DRIVER NAME</AppText>
-                <AppText style={[styles.driverName, { color: colors.onSurface }]} numberOfLines={2}>
-                  {show(data.driver_name)}
-                </AppText>
-              </View>
-              <View style={[styles.tmBadge, { backgroundColor: colors.brandSoft, borderColor: colors.brand }]}>
-                <AppText style={[styles.tmLabel, { color: colors.onBrandSoft }]}>ASSIGNED TM</AppText>
-                <AppText style={[styles.tmNumber, { color: colors.onSurface }]} numberOfLines={2}>
-                  {show(data.tm_number)}
-                </AppText>
-              </View>
+      <View style={[styles.body, !compact && styles.wideBody]}>
+        <View style={[styles.intro, !compact && styles.wideIntro]}>
+          <View
+            style={[
+              styles.identityPane,
+              readableWidth >= 250 && (compact ? styles.compactIdentityWithArtwork : styles.identityWithArtwork),
+              { backgroundColor: palette.identity, borderColor: palette.edge },
+            ]}
+          >
+            <View style={styles.recordLine}>
+              <Ionicons name="lock-closed-outline" size={12} color={palette.muted} accessible={false} />
+              <AppText color={palette.muted} style={styles.recordText}>Plant-managed records · Read only</AppText>
             </View>
-
-            <View testID="driver-identity-full-details" style={styles.detailSection}>
-                <View style={[styles.detailsDivider, { backgroundColor: colors.divider }]} />
-                <View style={styles.grid}>
-                  {fields.map((field, index) => (
-                    <View
-                      key={field.label}
-                      style={[styles.field, narrow ? styles.narrowField : null, {
-                        width: wide ? "32.3%" : "48.6%",
-                        borderColor: index < 6 ? colors.borderStrong : colors.border,
-                        backgroundColor: index < 6
-                          ? (colors.isDark ? "rgba(255,138,0,0.10)" : "#FFF4EB")
-                          : colors.surfaceElevated,
-                      }]}
-                    >
-                      <View style={styles.fieldHeading}>
-                        <Ionicons name={field.icon} size={16} color={colors.brand} />
-                        <AppText style={[styles.fieldLabel, { color: colors.onSurfaceTertiary }]}>
-                          {field.label}
-                        </AppText>
-                      </View>
-                      <AppText style={[styles.fieldValue, {
-                        color: field.value === "Not provided" ? colors.onSurfaceTertiary : colors.onSurface,
-                      }]}>
-                        {field.value}
-                      </AppText>
-                    </View>
-                  ))}
+            {data ? (
+              <View style={[styles.personRow, readableWidth >= 630 && styles.personRowWide]}>
+                <View style={styles.personName}>
+                  <AppText color={palette.muted} style={styles.nameLabel}>DRIVER NAME</AppText>
+                  <AppText color={palette.ink} style={styles.driverName}>{show(data.driver_name)}</AppText>
                 </View>
-                <AppText style={[styles.licenceDisclaimer, { color: colors.onSurfaceTertiary }]}>
-                  Licence information is supplied by the plant; it is not independently government-verified.
-                </AppText>
+                <View style={[styles.tmBadge, { backgroundColor: colors.brandSoft, borderColor: palette.edge }]}>
+                  <AppText color={colors.onBrandSoft} style={styles.tmLabel}>ASSIGNED TM</AppText>
+                  <AppText color={palette.ink} style={styles.tmNumber}>{show(data.tm_number)}</AppText>
+                </View>
               </View>
-          </>
-        ) : null}
-
-        {loading && !data ? <AppText variant="bodyMuted">Loading driver information…</AppText> : null}
-        {error ? (
-          <View style={styles.error}>
-            <AppText style={{ color: colors.error }}>{error}</AppText>
-            <Pressable accessibilityRole="button" onPress={reload} style={styles.retry} testID="driver-identity-retry">
-              <AppText color={colors.brand}>Retry</AppText>
-            </Pressable>
+            ) : null}
+            {loading && !data ? <AppText color={palette.muted}>Loading driver information…</AppText> : null}
+            {error ? (
+              <View style={styles.error}>
+                <AppText color={palette.error}>{error}</AppText>
+                <Pressable accessibilityRole="button" onPress={reload} style={styles.retry} testID="driver-identity-retry">
+                  <AppText color={palette.accent}>Retry</AppText>
+                </Pressable>
+              </View>
+            ) : null}
+          </View>
+        </View>
+        {data ? (
+          <View testID="driver-identity-full-details" style={styles.detailSection} onLayout={event => setContentWidth(event.nativeEvent.layout.width)}>
+            <View style={styles.grid}>
+              {fields.map((field, index) => (
+                <View key={field.label} style={[styles.field, {
+                  width: fieldWidth,
+                  borderColor: palette.edge,
+                  backgroundColor: index < 6 ? palette.priorityField : palette.field,
+                }]}>
+                  <View style={styles.fieldHeading}>
+                    <Ionicons name={field.icon} size={16} color={palette.accent} accessible={false} />
+                    <AppText color={palette.muted} style={styles.fieldLabel}>{field.label}</AppText>
+                  </View>
+                  <AppText color={field.value === "Not provided" ? palette.muted : palette.ink} style={styles.fieldValue}>
+                    {field.value}
+                  </AppText>
+                </View>
+              ))}
+            </View>
+            <AppText color={palette.muted} style={styles.licenceDisclaimer}>
+              Licence information is supplied by the plant; it is not independently government-verified.
+            </AppText>
           </View>
         ) : null}
       </View>
@@ -153,32 +194,42 @@ export function DriverIdentityCard() {
 
 const styles = StyleSheet.create({
   card: { borderRadius: radius.lg, borderWidth: 1, overflow: "hidden" },
+  backdrop: { position: "absolute", top: 0, left: 0, right: 0 },
   brandBand: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    minHeight: 34, paddingHorizontal: 10, paddingVertical: 6, gap: spacing.sm,
+    minHeight: 42, paddingHorizontal: 12, paddingVertical: 8, gap: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   brandIdentity: { flexDirection: "row", alignItems: "center", gap: 5, flexShrink: 1 },
-  brandText: { fontFamily: fonts.bold, fontSize: 11, letterSpacing: 0.3 },
-  bandTitle: { fontFamily: fonts.semibold, fontSize: 10, letterSpacing: 0.25, flexShrink: 1, textAlign: "right" },
-  body: { padding: 10, gap: 8 },
+  brandText: { fontFamily: fonts.bold, fontSize: 11, lineHeight: 15, letterSpacing: 0.3, flexShrink: 1 },
+  bandTitle: { fontFamily: fonts.semibold, fontSize: 11, lineHeight: 15, letterSpacing: 0.25, flexShrink: 1, textAlign: "right" },
+  body: { padding: 12, gap: 10 },
+  wideBody: { padding: 18, gap: 12 },
+  intro: { minHeight: 155, justifyContent: "center" },
+  wideIntro: { minHeight: 168 },
+  identityPane: {
+    borderRadius: radius.md, borderWidth: 1, padding: 10, gap: 8,
+    alignSelf: "flex-start", width: "100%",
+  },
+  identityWithArtwork: { width: "64%", maxWidth: 520 },
+  compactIdentityWithArtwork: { width: "68%", maxWidth: 370 },
   recordLine: { flexDirection: "row", alignItems: "center", gap: 5 },
-  recordText: { fontFamily: fonts.medium, fontSize: 10, lineHeight: 14 },
-  personRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  personName: { flex: 1, minWidth: 0, gap: 2 },
-  nameLabel: { fontFamily: fonts.semibold, fontSize: 10, letterSpacing: 0.35 },
-  driverName: { fontFamily: fonts.bold, fontSize: 16, lineHeight: 21, flexShrink: 1 },
-  tmBadge: { maxWidth: "45%", minWidth: 88, paddingHorizontal: 9, paddingVertical: 6, borderRadius: radius.sm, borderWidth: 1, gap: 2 },
-  tmLabel: { fontFamily: fonts.bold, fontSize: 9, letterSpacing: 0.4 },
-  tmNumber: { fontFamily: fonts.bold, fontSize: 12, lineHeight: 16, textAlign: "right" },
-  detailSection: { gap: 7 },
-  detailsDivider: { height: StyleSheet.hairlineWidth },
-  grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: 6 },
-  field: { borderRadius: radius.sm, borderWidth: 1, padding: 8, minHeight: 58, gap: 3 },
-  narrowField: { padding: 6 },
-  fieldHeading: { flexDirection: "row", alignItems: "center", gap: 5 },
-  fieldLabel: { flex: 1, fontFamily: fonts.bold, fontSize: 10, lineHeight: 13, letterSpacing: 0.1 },
-  fieldValue: { fontFamily: fonts.semibold, fontSize: 12, lineHeight: 17, flexShrink: 1 },
-  licenceDisclaimer: { fontFamily: fonts.regular, fontSize: 10, lineHeight: 15 },
-  error: { gap: 8 },
+  recordText: { fontFamily: fonts.medium, fontSize: 11, lineHeight: 15, flexShrink: 1 },
+  personRow: { gap: 8 },
+  personRowWide: { flexDirection: "row", alignItems: "center" },
+  personName: { flexShrink: 1, minWidth: 0, gap: 2 },
+  nameLabel: { fontFamily: fonts.semibold, fontSize: 10, lineHeight: 14, letterSpacing: 0.35 },
+  driverName: { fontFamily: fonts.bold, fontSize: 18, lineHeight: 24 },
+  tmBadge: { alignSelf: "flex-start", flexShrink: 1, maxWidth: "100%", paddingHorizontal: 9, paddingVertical: 6, borderRadius: radius.sm, borderWidth: 1, gap: 2 },
+  tmLabel: { fontFamily: fonts.bold, fontSize: 10, lineHeight: 14, letterSpacing: 0.3 },
+  tmNumber: { fontFamily: fonts.bold, fontSize: 12, lineHeight: 16 },
+  detailSection: { gap: 8 },
+  grid: { flexDirection: "row", flexWrap: "wrap", columnGap: "2%", rowGap: 7 },
+  field: { minWidth: 0, borderRadius: radius.sm, borderWidth: 1, padding: 9, minHeight: 59, gap: 4 },
+  fieldHeading: { flexDirection: "row", alignItems: "flex-start", gap: 5 },
+  fieldLabel: { flex: 1, fontFamily: fonts.bold, fontSize: 10, lineHeight: 15, letterSpacing: 0.1 },
+  fieldValue: { fontFamily: fonts.semibold, fontSize: 13, lineHeight: 18, flexShrink: 1 },
+  licenceDisclaimer: { fontFamily: fonts.regular, fontSize: 11, lineHeight: 16 },
+  error: { gap: 4 },
   retry: { minHeight: 44, alignSelf: "flex-start", justifyContent: "center" },
 });
