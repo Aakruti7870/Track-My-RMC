@@ -13,7 +13,7 @@ import { OPERATIONS_KEYS, ownerModules } from "@/src/owner/modules";
 
 import {
   OperationsTeam, OwnerRegisters, PlantSelector, WorkspaceAlert, WorkspaceTile,
-  pipelinePath, recordPath, usePipeline, usePlantWorkspace,
+  businessPath, pipelinePath, recordPath, usePipeline, usePlantWorkspace,
 } from "@/src/owner/PlantOperations";
 
 export default function OwnerOperations() {
@@ -44,7 +44,12 @@ export default function OwnerOperations() {
       </> : null}
       {!automationFirst ? automation : null}
       <View testID="owner-operations-module-directory" style={{ gap: 8 }}>
-        {ownerModules(OPERATIONS_KEYS).map(module => <OwnerModuleRow key={module.key} module={module} />)}
+        {ownerModules(OPERATIONS_KEYS).map(module => {
+          const route = plant && typeof module.route === "string" && module.route.startsWith("/business/")
+            ? businessPath(module.route.slice("/business/".length), plant.id)
+            : module.route;
+          return <OwnerModuleRow key={module.key} module={{ ...module, route }} />;
+        })}
       </View>
     </OwnerList>
   </OwnerFrame>;

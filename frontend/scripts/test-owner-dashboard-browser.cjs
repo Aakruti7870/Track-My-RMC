@@ -14,7 +14,7 @@ fs.mkdirSync(out, { recursive: true });
         localStorage.setItem('tmrmc_theme_mode', JSON.stringify(scheme));
       }, { scheme });
       const page = await context.newPage(), errors = [];
-      let populated = false, failing = false;
+      let populated = false, failing = false, secondPlant = false;
 
       const supplierRequests = [];
       page.on('pageerror', error => errors.push(error.message));
@@ -24,7 +24,18 @@ fs.mkdirSync(out, { recursive: true });
         if (path.endsWith('/me')) json = { id: 'isolated-owner', name: 'TrackMyRMC Play Review Owner', role: 'plant_owner', roles: ['plant_owner'], status: 'active', kyc_status: 'pending', plant_id: null };
         else if (path.endsWith('/owner/home')) json = { plant_count: 0, plants: [], cards: { todays_orders: 0, dispatched_loads: 0, active_staff: 0, pending_approvals: 0 }, pending_orders: [] };
         else if (path.endsWith('/notifications')) json = { unread: 2, items: [] };
-        else if (path.endsWith('/master/my-plants')) json = { plants: [{ id: 'plant-one', name: 'Fixture Plant', city: 'Panvel' }] };
+        else if (path.endsWith('/master/my-plants')) json = { plants: [
+          { id: 'plant-one', name: 'Fixture Plant', city: 'Panvel' },
+          ...(secondPlant ? [{ id: 'plant-two', name: 'Second Fixture Plant', city: 'Panvel' }] : []),
+        ] };
+        else if (path.endsWith('/business/plants/plant-two/materials')) json = { materials: [
+          { id: 'cement', name: 'Fixture Cement', material_type: 'CEMENT', unit: 'kg', current_stock: '4', minimum_stock: '10' },
+          { id: 'sand', name: 'Fixture Sand', material_type: 'SAND', unit: 'kg', current_stock: '0', minimum_stock: '10' },
+          { id: 'water', name: 'Fixture Water', material_type: 'WATER', unit: 'L', current_stock: '30', minimum_stock: '10' },
+        ] };
+        else if (path.endsWith('/business/plants/plant-two/vehicles')) json = { vehicles: [
+          { id: 'mixer-one', registration_number: 'MH46AB1234', capacity_m3: '6', status: 'idle' },
+        ] };
         else if (path.endsWith('/plant-operations/plant-one/pipeline')) json = {
           counts: { needs_mixer: 3 },
           total: 1,
@@ -244,6 +255,43 @@ fs.mkdirSync(out, { recursive: true });
       failing = true; populated = false;
       await go('/owner/orders');
       await page.getByText('The service is temporarily unavailable. Please try again.', { exact: true }).waitFor();
+      if (scheme === 'light' && width === 390) {
+        secondPlant = true;
+        const post = suffix => page.waitForRequest(request =>
+          request.method() === 'POST' && new URL(request.url()).pathname.endsWith(suffix));
+
+        await go('/owner/operations');
+        await page.getByRole('button', { name: 'Second Fixture Plant', exact: true }).click();
+        await page.getByTestId('role-module-business-diesel').click();
+        await page.waitForURL(url => url.pathname === '/business/diesel' && url.searchParams.get('plantId') === 'plant-two');
+
+        await page.goto('http://127.0.0.1:8765/business/inventory?plantId=plant-two');
+        for (const status of ['Low stock', 'Out of stock', 'In stock']) {
+          await page.getByText(status, { exact: true }).waitFor();
+        }
+        await page.getByRole('button', { name: 'Add Material', exact: true }).click();
+        await page.getByRole('textbox', { name: 'Material type', exact: true }).fill('CEMENT');
+        await page.getByRole('textbox', { name: 'Material name', exact: true }).fill('New Fixture Cement');
+        await page.getByRole('textbox', { name: 'Unit', exact: true }).fill('kg');
+        await page.getByRole('textbox', { name: 'Opening stock', exact: true }).fill('20');
+        await page.getByRole('textbox', { name: 'Reorder level', exact: true }).fill('8');
+        const materialRequest = post('/business/plants/plant-two/materials');
+        await page.getByRole('button', { name: 'Save', exact: true }).click();
+        assert.deepEqual((await materialRequest).postDataJSON(), {
+          material_type: 'CEMENT', name: 'New Fixture Cement', unit: 'kg', current_stock: 20, minimum_stock: 8,
+        });
+
+        await page.goto('http://127.0.0.1:8765/business/fleet?plantId=plant-two');
+        const maintenanceRequest = post('/business/plants/plant-two/vehicles/mixer-one/status');
+        await page.getByRole('button', { name: 'Set Maintenance', exact: true }).click();
+        assert.deepEqual((await maintenanceRequest).postDataJSON(), { status: 'maintenance' });
+        await page.getByRole('button', { name: 'Add Transit Mixer', exact: true }).click();
+        await page.getByRole('textbox', { name: 'TM number', exact: true }).fill('MH46AB5678');
+        await page.getByRole('textbox', { name: 'Capacity m³', exact: true }).fill('6');
+        const vehicleRequest = post('/business/plants/plant-two/vehicles');
+        await page.getByRole('button', { name: 'Save', exact: true }).click();
+        assert.deepEqual((await vehicleRequest).postDataJSON(), { registration_number: 'MH46AB5678', capacity_m3: 6 });
+      }
       assert.deepEqual(errors, []);
       await context.close();
       console.log(`PASS owner: ${scheme} ${width}px — 8 metrics, 5 Quick tiles, compact Commercial/Workforce cards, full directories and top-only theme`);
