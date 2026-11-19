@@ -265,7 +265,9 @@ fs.mkdirSync(out, { recursive: true });
         await page.getByTestId('role-module-business-diesel').click();
         await page.waitForURL(url => url.pathname === '/business/diesel' && url.searchParams.get('plantId') === 'plant-two');
 
-        await page.goto('http://127.0.0.1:8765/business/inventory?plantId=plant-two');
+        await go('/owner');
+        await page.getByTestId('owner-shortcut-business-inventory').click();
+        await page.getByText('Second Fixture Plant', { exact: true }).click();
         for (const status of ['Low stock', 'Out of stock', 'In stock']) {
           await page.getByText(status, { exact: true }).waitFor();
         }
@@ -281,7 +283,9 @@ fs.mkdirSync(out, { recursive: true });
           material_type: 'CEMENT', name: 'New Fixture Cement', unit: 'kg', current_stock: 20, minimum_stock: 8,
         });
 
-        await page.goto('http://127.0.0.1:8765/business/fleet?plantId=plant-two');
+        await go('/owner');
+        await page.getByTestId('owner-shortcut-business-fleet').click();
+        await page.getByText('Second Fixture Plant', { exact: true }).click();
         const maintenanceRequest = post('/business/plants/plant-two/vehicles/mixer-one/status');
         await page.getByRole('button', { name: 'Set Maintenance', exact: true }).click();
         assert.deepEqual((await maintenanceRequest).postDataJSON(), { status: 'maintenance' });

@@ -33,12 +33,11 @@ pub async fn acknowledge(
         ));
     }
 
-    let plant: Uuid =
-        sqlx::query_scalar("SELECT plant_id FROM driver_sos_plant_scope WHERE id=$1")
-            .bind(id)
-            .fetch_optional(&state.db)
-            .await?
-            .ok_or_else(|| AppError::NotFound("Incident not found in one plant".into()))?;
+    let plant: Uuid = sqlx::query_scalar("SELECT plant_id FROM driver_sos_plant_scope WHERE id=$1")
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Incident not found in one plant".into()))?;
     super::staff_module_permissions::require(
         &state,
         &auth,
