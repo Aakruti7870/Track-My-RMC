@@ -26,7 +26,7 @@ async function assertFits(locator, viewportWidth) {
       const page = await context.newPage(), errors = [];
       let populated = false, failing = false, secondPlant = false;
 
-      const supplierRequests = [];
+      const supplierRequests = [], dealerRequests = [];
       page.on('pageerror', error => errors.push(error.message));
       await page.route('**/api/**', async route => {
         const url = new URL(route.request().url()), path = url.pathname;
@@ -62,6 +62,11 @@ async function assertFits(locator, viewportWidth) {
         };
         else if (path.endsWith('/plant-profile/plant-one/editor')) return route.fulfill({ status: 403, json: { message: 'No edit grant' } });
         else if (path.endsWith('/plant-profile/plant-one')) json = { plant_name: 'Fixture Plant', sections: [], documents: [] };
+        else if (path.endsWith('/owner/dealer-enquiries')) {
+          if (route.request().method() === 'GET') return route.fulfill({ json: { enquiries: [] } });
+          dealerRequests.push(route.request().postDataJSON());
+          return route.fulfill({ status: 201, json: { success: true, id: 'isolated-dealer', status: 'NEW' } });
+        }
         else if (path.endsWith('/staff/supplier-enquiries')) {
           if (route.request().method() === 'GET') return route.fulfill({ json: { enquiries: [] } });
           supplierRequests.push(route.request().postDataJSON());
@@ -146,7 +151,20 @@ async function assertFits(locator, viewportWidth) {
           });
           assert(await hero.evaluate(node => node.getBoundingClientRect().width >= Math.min(innerWidth, 820) - 33), 'Plant image spans the home card');
           assert(order, 'Supplier and profile cards sit above Load Pipeline in the requested order');
-          await assertFits(scroll.getByRole('button'), width);
+          await assertFits(scroll.getByRole('button').and(scroll.locator(':not([data-testid="owner-dealer-section"] *)')), width);
+          const dealerSection = scroll.getByTestId('owner-dealer-section');
+          const carousel = dealerSection.getByTestId('owner-dealer-carousel');
+          assert.equal(await carousel.getByRole('button').count(), 5);
+          assert(await dealerSection.evaluate(node => Boolean(
+            document.querySelector('[data-testid="plant-load-pipeline"]').compareDocumentPosition(node)
+              & Node.DOCUMENT_POSITION_FOLLOWING
+          )), 'Dealer cards follow the Load Pipeline');
+          assert(await carousel.evaluate(node => node.getBoundingClientRect().width <= innerWidth));
+          if (width === 390) {
+            await dealerSection.getByRole('button', { name: 'Next dealer cards', exact: true }).click();
+            await page.waitForFunction(() => document.querySelector('[data-testid="owner-dealer-carousel"]').scrollLeft > 0);
+            await dealerSection.getByRole('button', { name: 'Previous dealer cards', exact: true }).click();
+          }
         }
         if (name === 'operations') {
           assert.equal(await page.getByTestId('owner-operations-module-directory').count(), 0);
@@ -215,7 +233,7 @@ async function assertFits(locator, viewportWidth) {
         await form.getByRole('button', { name: 'Submit Enquiry' }).click();
         await page.getByText('Select at least one material.').waitFor();
         await form.getByTestId('supplier-material-dropdown').click();
-        assert.equal(await form.getByRole('checkbox').count(), 7);
+        assert.equal(await form.getByRole('checkbox').count(), 8);
         for (const material of ['OPC Cement', 'Aggregate', 'Fly Ash']) {
           await form.getByRole('checkbox', { name: material, exact: true }).click();
         }
@@ -234,6 +252,35 @@ async function assertFits(locator, viewportWidth) {
         assert.equal(supplierRequests[0].plant_id, 'plant-one');
         await page.getByRole('button', { name: 'Done' }).click();
         await page.getByTestId('owner-home-summary').waitFor();
+      }
+      if (scheme === 'light' && width === 390) {
+        const cases = [
+          ['website_design', 'Website requirements', 'Show concrete grades and quote requests'],
+          ['buy_domain', 'Preferred domain name', 'fixtureplant.in'],
+          ['digital_marketing', 'Marketing goals', 'Reach contractors in Panvel'],
+          ['plant_accessories', 'Accessory requirements', 'Include spare filter bags'],
+        ];
+        for (const [service, field, value] of cases) {
+          await go('/owner');
+          await page.getByTestId(`owner-dealer-${service}`).click();
+          const form = page.getByTestId('dealer-enquiry-form');
+          await form.getByRole('textbox', { name: field, exact: true }).fill(value);
+          if (service === 'plant_accessories') {
+            assert.deepEqual(await form.getByRole('checkbox').evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label'))),
+              ['Silo', 'Conveyor Belt', 'Cement Filters', 'DG Set', 'CCTV Setup', 'Office Cabin', 'Other']);
+            await form.getByRole('checkbox', { name: 'Cement Filters', exact: true }).click();
+            await form.getByRole('checkbox', { name: 'Other', exact: true }).click();
+            await form.getByRole('textbox', { name: 'Delivery or installation location' }).fill('Panvel plant gate');
+          }
+          await form.getByRole('textbox', { name: 'Contact phone' }).fill('+919876543210');
+          await form.getByRole('button', { name: /Needed by/ }).click();
+          await page.getByRole('button', { name: /^20\d\d-\d\d-\d\d$/ }).last().click();
+          await form.getByRole('button', { name: service === 'buy_domain' ? 'Request Domain' : 'Submit Enquiry', exact: true }).click();
+          await page.getByTestId('dealer-enquiry-success').waitFor();
+          assert.equal(dealerRequests.at(-1).request.type, service);
+          assert.equal(dealerRequests.at(-1).plant_id, 'plant-one');
+        }
+        assert.deepEqual(dealerRequests[3].request.accessories, ['Cement Filters', 'Other']);
       }
       await go('/owner');
       const homeUrl = page.url();

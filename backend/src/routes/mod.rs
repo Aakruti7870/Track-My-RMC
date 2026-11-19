@@ -545,6 +545,10 @@ pub fn build_app_router(state: AppState) -> Router {
             get(customer_services::list_supplier).post(customer_services::create_supplier),
         )
         .route(
+            "/api/owner/dealer-enquiries",
+            get(customer_services::list_dealer).post(customer_services::create_dealer),
+        )
+        .route(
             "/api/control-center/service-enquiries/assignees",
             get(customer_services::list_assignees),
         )

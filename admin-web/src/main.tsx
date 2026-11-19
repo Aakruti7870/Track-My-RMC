@@ -118,6 +118,23 @@ function errorMessage(error: unknown): string {
   return 'The request could not be completed. Please try again.';
 }
 
+const PLANT_ENQUIRY_LABELS: Record<string,string> = {
+  PLANT_SUPPLIER: 'Material Suppliers',
+  PLANT_WEBSITE_DESIGN: 'Website Design',
+  PLANT_BUY_DOMAIN: 'Buy Domain',
+  PLANT_DIGITAL_MARKETING: 'Digital Marketing Setup',
+  PLANT_ACCESSORIES: 'Plant Accessories Supplier',
+};
+
+function plantEnquiryDetails(value: unknown): string {
+  if (!value || typeof value !== 'object') return '';
+  const details = value as Record<string,unknown>;
+  return [details.plant_name, details.domain, details.requirements, details.other_material,
+    ...(Array.isArray(details.accessories) ? details.accessories : []),
+    ...(Array.isArray(details.materials) ? details.materials : []),
+  ].filter((part): part is string => typeof part === 'string' && part.trim().length > 0).join(' · ');
+}
+
 const SCREENS = ['dashboard','overview','plants','visibility','approvals','marketing','automation','governance','chats','reviewer','admin-access','unowned','assign-owner','diagnostics','capabilities','sessions','settings','account'] as const;
 type AdminScreen = typeof SCREENS[number];
 function currentScreen(): AdminScreen {
@@ -2338,8 +2355,12 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                     <label>Required audit reason<input maxLength={500} minLength={10} value={serviceReason} onChange={e=>setServiceReason(e.target.value)} style={inputStyle} disabled={busy}/></label>
                     <label>Fresh authenticator code<input type="password" maxLength={6} value={serviceStepUp} onChange={e=>setServiceStepUp(e.target.value)} style={inputStyle} disabled={busy}/></label>
                     {records.map(row=><div key={String(row.id)} style={{padding:10,border:'1px solid var(--tm-border)',borderRadius:8}}>
-                      <strong>{String(row.service_type||'Service')} · {String(row.status||'NEW')}</strong>
+                      <strong>{PLANT_ENQUIRY_LABELS[String(row.service_type)] || String(row.service_type||'Service')} · {String(row.status||'NEW')}</strong>
                       <p>{String(row.contact_name||'Contact')} · {String(row.location||'')} · {String(row.id)}</p>
+                      {PLANT_ENQUIRY_LABELS[String(row.service_type)] ? <>
+                        <p>{String(row.contact_phone||'')} · Needed by {String(row.required_date||'')}</p>
+                        <p style={{overflowWrap:'anywhere'}}>{plantEnquiryDetails(row.details)}</p>
+                      </> : null}
                       <label>Assigned to
                         <select style={inputStyle} disabled={busy}
                           value={serviceAssignment[String(row.id)] ?? String(row.assigned_to ?? '')}
