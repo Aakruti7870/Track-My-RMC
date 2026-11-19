@@ -2994,3 +2994,103 @@ async fn challan_is_load_specific_and_staff_is_plant_scoped(db: PgPool) {
         StatusCode::FORBIDDEN
     );
 }
+
+#[sqlx::test]
+async fn owner_business_summary_scopes_records_by_plant_period_and_role(db: PgPool) {
+    let (state, app, _, plant, customer_token) = fixture(&db).await;
+    let owner: Uuid = sqlx::query_scalar("SELECT owner_id FROM rmc_plants WHERE id=$1")
+        .bind(plant)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    let owner_token = generate_token(owner, "owner", "", None, &state.config.jwt_secret, 1).unwrap();
+    let other_id = identity(&db, "owner").await;
+    let other = generate_token(other_id, "owner", "", None, &state.config.jwt_secret, 1).unwrap();
+
+    let (today, last_month): (chrono::NaiveDate, chrono::NaiveDate) = sqlx::query_as(
+        "SELECT today, (date_trunc('month', today::timestamp) - interval '1 month')::date
+         FROM (SELECT (now() AT TIME ZONE 'Asia/Kolkata')::date AS today) clock",
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    let invoice: Uuid = sqlx::query_scalar(
+        "INSERT INTO plant_invoices (plant_id, invoice_number, invoice_date, subtotal_amount, tax_amount, total_amount)
+         VALUES ($1,'TEST-BUSINESS-CURRENT',$2,1000,180,1180) RETURNING id",
+    )
+    .bind(plant)
+    .bind(today)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO plant_invoices (plant_id, invoice_number, invoice_date, subtotal_amount, tax_amount, total_amount, status)
+         VALUES ($1,'TEST-BUSINESS-CANCELLED',$2,900,162,1062,'CANCELLED'),
+                ($1,'TEST-BUSINESS-LAST',$3,2000,360,2360,'ISSUED')",
+    )
+    .bind(plant)
+    .bind(today)
+    .bind(last_month)
+    .execute(&db)
+    .await
+    .unwrap();
+    sqlx::query("INSERT INTO plant_payments (invoice_id, plant_id, amount, payment_date) VALUES ($1,$2,400,$3)")
+        .bind(invoice)
+        .bind(plant)
+        .bind(today)
+        .execute(&db)
+        .await
+        .unwrap();
+    let supplier: Uuid = sqlx::query_scalar(
+        "INSERT INTO plant_suppliers (plant_id, name) VALUES ($1,'Supplier') RETURNING id",
+    )
+    .bind(plant)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO purchase_receipts (plant_id, supplier_id, receipt_number, receipt_date, total_amount)
+         VALUES ($1,$2,'BUSINESS-RECEIPT',$3,590)",
+    )
+    .bind(plant)
+    .bind(supplier)
+    .bind(today)
+    .execute(&db)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO plant_expenses (plant_id, recorded_by, category, amount, expense_date)
+         VALUES ($1,$2,'electricity',200,$3)",
+    )
+    .bind(plant)
+    .bind(owner)
+    .bind(today)
+    .execute(&db)
+    .await
+    .unwrap();
+
+    let path = format!("/api/owner/plants/{plant}/business-summary");
+    let (status, current) = call(&app, &path, None, &owner_token).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(current["invoices_issued"], 1);
+    assert_eq!(current["invoiced_sales"], "1000.00");
+    assert_eq!(current["invoice_balance"], "780.00");
+    assert_eq!(current["purchase_receipts"], 1);
+    assert_eq!(current["purchases_total"], "590.00");
+    assert_eq!(current["customer_payments"], "400.00");
+    assert_eq!(current["recorded_expenses"], "200.00");
+
+    let (status, previous) =
+        call(&app, &format!("{path}?period=last_month"), None, &owner_token).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(previous["invoices_issued"], 1);
+    assert_eq!(previous["invoiced_sales"], "2000.00");
+    assert_eq!(previous["purchase_receipts"], 0);
+    assert_eq!(previous["customer_payments"], "0");
+
+    assert_eq!(call(&app, &path, None, &other).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(
+        call(&app, &path, None, &customer_token).await.0,
+        StatusCode::FORBIDDEN
+    );
+}

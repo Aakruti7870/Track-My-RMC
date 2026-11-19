@@ -2,12 +2,13 @@ import { screenOverflow } from "@/src/theme/sceneBackground";
 import React from "react";
 import { Image, Pressable, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { OperationalHomeTopBar } from "@/src/components/OperationalHomeTopBar";
 import { AppText } from "@/src/components/ui/AppText";
 import { CardHighlight } from "@/src/components/ui/CardHighlight";
+import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
 import { IconTile } from "@/src/components/IconTile";
 import { fonts } from "@/src/theme/tokens";
 import type { RoleModule } from "@/src/navigation/moduleCatalog";
@@ -41,9 +42,13 @@ export function OwnerFrame({ children, title, subtitle, matte = false }: { child
     </View>
   </View>;
 }
-export function OwnerList({ children }: { children: React.ReactNode }) {
+export function OwnerList({ children, reserveNavigation = false }: { children: React.ReactNode; reserveNavigation?: boolean }) {
   const bottom = useOwnerBottomSpace();
-  return <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[ui.content, { paddingBottom: bottom }]}>{children}</ScrollView>;
+  return <ScrollView showsVerticalScrollIndicator={false}
+    style={reserveNavigation ? { minHeight: 0, marginBottom: bottom } : undefined}
+    contentContainerStyle={[ui.content, { paddingBottom: reserveNavigation ? 12 : bottom }]}>
+    {children}
+  </ScrollView>;
 }
 export function OwnerModuleRow({ module, compact = false }: { module: RoleModule; compact?: boolean }) {
   const p = useOwnerPalette();
@@ -56,6 +61,20 @@ export function OwnerModuleRow({ module, compact = false }: { module: RoleModule
     </OwnerGlass>
   </Pressable>;
 }
+export function OwnerLinkRow({ title, route, symbol, testID, divider = false }: {
+  title: string; route: Href; symbol?: VectorSymbolName; testID?: string; divider?: boolean;
+}) {
+  const p = useOwnerPalette();
+  const router = useRouter();
+  return <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={title}
+    onPress={() => router.push(route)}
+    style={({ pressed }) => [ui.linkRow, divider && { borderTopWidth: StyleSheet.hairlineWidth, borderColor: p.border },
+      { opacity: pressed ? 0.72 : 1 }]}>
+    {symbol ? <VectorSymbol name={symbol} size={23} color={p.text} /> : null}
+    <AppText style={ui.linkLabel}>{title}</AppText>
+    <VectorSymbol name="chevron-right" size={17} color={p.muted} />
+  </Pressable>;
+}
 export const ui = StyleSheet.create({
   container: { flex: 1, width: "100%", maxWidth: 820, alignSelf: "center" },
   header: { flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 17 },
@@ -64,6 +83,11 @@ export const ui = StyleSheet.create({
   title: { paddingHorizontal: 18, paddingBottom: 16, gap: 3 },
   content: { paddingHorizontal: 16, gap: 8 },
   panel: { borderWidth: 1, borderRadius: 12 },
+  group: { overflow: "hidden" },
+  groupHeading: { paddingHorizontal: 13, paddingVertical: 8, fontFamily: fonts.bold, fontSize: 16, lineHeight: 21 },
+  groupRows: { paddingHorizontal: 10 },
+  linkRow: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 4, paddingVertical: 6 },
+  linkLabel: { flex: 1, minWidth: 0, fontFamily: fonts.medium, fontSize: 14, lineHeight: 19 },
   moduleRow: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 60, paddingHorizontal: 10, paddingVertical: 6 },
   section: { fontFamily: fonts.semibold, fontSize: 14, marginTop: 10, marginBottom: 2 },
 });

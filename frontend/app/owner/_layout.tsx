@@ -10,7 +10,7 @@ import { getThemedSceneStyle } from "@/src/theme/sceneBackground";
 const TABS: TabDef[] = [
   { name: "index", label: "Home", icon: "home-outline", active: "home" },
   { name: "operations", label: "Operations", icon: "construct-outline", active: "construct" },
-  { name: "orders", label: "Orders", icon: "cube-outline", active: "cube" },
+  { name: "business", label: "Business", icon: "bar-chart-outline", active: "bar-chart" },
   { name: "more", label: "More", icon: "grid-outline", active: "grid" },
 ];
 
@@ -28,6 +28,9 @@ export default function OwnerLayout() {
       {TABS.map((t) => (
         <Tabs.Screen key={t.name} name={t.name} />
       ))}
+      <Tabs.Screen name="orders" options={{ href: null }} />
+      <Tabs.Screen name="billing" options={{ href: null }} />
+      <Tabs.Screen name="quotation-requests" options={{ href: null }} />
       <Tabs.Screen name="dispatches" options={{ href: null }} />
       <Tabs.Screen name="provisional-requests" options={{ href: null }} />
     </Tabs>

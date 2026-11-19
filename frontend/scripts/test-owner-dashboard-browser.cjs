@@ -69,14 +69,27 @@ async function assertFits(locator, viewportWidth) {
           return route.fulfill({ status: 201, json: { success: true, id: 'isolated-enquiry', status: 'NEW' } });
         }
         else if (/\/owner\/orders\/[0-9a-f-]+$/.test(path)) return route.fulfill({ status: 404, json: { message: 'Isolated detail navigation fixture' } });
+        else if (/\/owner\/plants\/plant-one\/business-summary$/.test(path)) {
+          const lastMonth = url.searchParams.get('period') === 'last_month';
+          json = { invoices_issued: lastMonth ? 8 : 12, invoiced_sales: '480000.00',
+            purchase_receipts: 6, purchases_total: '185000.00', customer_payments: '300000.00',
+            invoice_balance: '80000.00', recorded_expenses: '65000.00' };
+        }
         else if (path.endsWith('/owner/orders')) {
           if (failing) return route.fulfill({ status: 503, json: { message: 'Isolated network failure' } });
           json = { orders: populated ? [{ id: '00000000-0000-0000-0000-000000000001', order_number: 'TEST-OWNER-001', customer_name: 'Isolated browser fixture', plant_name: 'Test plant', site_name: 'Test project site', site_address: 'Test address', grade: 'M25', quantity: 6, delivery_date: '2026-10-19', status: 'PENDING', payment_status: 'UNPAID' }] : [], has_more: false };
         }
         await route.fulfill({ json });
       });
-      const go = async path => { await page.goto('http://127.0.0.1:8765/owner/'); await page.getByTestId('operational-theme').waitFor(); { const tab = path.includes('directory=1') ? 'more' : path.split('/')[2]; if (tab) await page.getByTestId(`tab-${tab}`).click(); } await page.waitForTimeout(250); };
-      for (const name of ['home', 'orders', 'operations', 'more']) {
+      const go = async path => {
+        await page.goto('http://127.0.0.1:8765/owner/');
+        await page.getByTestId('operational-theme').waitFor();
+        const tab = path.includes('directory=1') ? 'more' : path.split('/')[2];
+        if (tab === 'orders') await page.getByTestId('owner-shortcut-owner-orders').click();
+        else if (tab) await page.getByTestId(`tab-${tab}`).click();
+        await page.waitForTimeout(250);
+      };
+      for (const name of ['home', 'operations', 'business', 'more']) {
         await go('/owner' + (name === 'home' ? '' : '/' + name));
         const tab = page.getByTestId(`tab-${name}`);
         assert.equal(await tab.getAttribute('aria-selected'), 'true');
@@ -145,6 +158,26 @@ async function assertFits(locator, viewportWidth) {
           await assertFits(team.getByRole('button'), width);
           await assertFits(registers.getByRole('button'), width);
         }
+        if (name === 'business') {
+          const workspace = page.getByTestId('owner-business-workspace');
+          assert.equal(await page.getByTestId('tab-orders').count(), 0);
+          assert.equal(await workspace.locator('[data-testid^="owner-business-card-"]').count(), 4);
+          await assertFits(workspace.locator('[data-testid^="owner-business-card-"]'), width);
+          await workspace.getByText('₹4,80,000', { exact: true }).waitFor();
+          for (const label of ['Plant Orders', 'Quotation Requests', 'Provisional Requests', 'Plant Customers', 'Rate Cards']) {
+            assert.equal(await workspace.getByRole('button', { name: label, exact: true }).count(), 1);
+          }
+          await workspace.getByTestId('owner-business-period-last_month').click();
+          await workspace.getByText('8', { exact: true }).waitFor();
+          for (const [section, label] of [
+            ['purchase', 'Purchase Receipts'], ['payments', 'Billing & Ledger'], ['profit-loss', 'Stock & Consumption'],
+          ]) {
+            await workspace.getByTestId(`owner-business-card-${section}`).click();
+            await workspace.getByRole('button', { name: label, exact: true }).waitFor();
+          }
+          await workspace.getByText('Net profit needs valued material consumption and closing adjustments.').waitFor();
+          await page.getByTestId('owner-business-card-sales').click();
+        }
         if (name === 'more') {
           await tab.click({ clickCount: 3 });
           await page.waitForURL(/\/owner\/more\/?$/);
@@ -153,6 +186,8 @@ async function assertFits(locator, viewportWidth) {
           assert.equal(await page.getByText('Appearance', { exact: true }).count(), 0);
           assert.equal(await page.getByTestId('owner-staff-module-access').count(), 1);
           assert.equal(await page.getByTestId('owner-permission-settings').count(), 1);
+          assert.equal(await page.getByTestId('owner-workforce-directory').count(), 1);
+          assert.equal(await page.getByTestId('owner-support').count(), 1);
         }
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `Horizontal overflow at ${width}`);
         await page.screenshot({ path: `${out}/${scheme}-${width}-${name}.png`, animations: 'disabled' });

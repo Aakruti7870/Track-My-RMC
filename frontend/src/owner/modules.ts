@@ -7,7 +7,7 @@ export const HOME_SHORTCUTS = [
 ] as const;
 export const HOME_KEYS: readonly string[] = HOME_SHORTCUTS.map(([key]) => key);
 export const WORKFORCE_KEYS = ["business-payroll", "business-attendance", "workforce", "shift-roster", "my-payslip", "workforce-reports", "employee-master", "payroll-closure"];
-export const ACCOUNT_KEYS = ["account-kyc", "owner-premium", "public-plant-profile", "business-profile"];
+export const ACCOUNT_KEYS = ["public-plant-profile", "business-profile", "account-kyc", "owner-premium"];
 export const COMMERCIAL_KEYS = ["owner-billing-history", "owner-quotation-requests", "business-rates", "business-quotations", "business-expenses", "business-customers"];
 export const OWNER_DIRECTORY_KEYS = { Commercial: ["owner-billing", ...COMMERCIAL_KEYS], Workforce: WORKFORCE_KEYS } as const;
 
