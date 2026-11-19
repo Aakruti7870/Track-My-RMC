@@ -11,11 +11,11 @@ import { fonts } from "@/src/theme/tokens";
 
 const plantImage = require("../../assets/images/Plant _Owner_All_staff_top_card.webp");
 
-export function PlantHomeHero({ label, testID, profile }: { label: string; testID: string; profile?: Href }) {
+export function PlantHomeHero({ label, testID, profile, minHeight }: { label: string; testID: string; profile?: Href; minHeight?: number }) {
   const router = useRouter();
   const { colors } = useTheme();
   return (
-    <View style={styles.hero}>
+    <View style={[styles.hero, minHeight === undefined ? null : { minHeight }]}>
       <Image testID={testID} source={plantImage} resizeMode="cover" accessible={false} style={styles.image} />
       <LinearGradient colors={["transparent", "#0E1116", "#0E1116"]}
         locations={[0, 0.76, 1]} style={styles.heroCopy}>

@@ -402,47 +402,28 @@ try {
       await expect(page.getByTestId(summary)).toBeVisible();
     }
     if (user.role === 'plant_owner') {
-      phase = 'owner Home shortcuts and metrics';
+      phase = 'owner Home shortcuts and Load Pipeline';
       await expect(page.getByTestId('owner-quick-access').locator('[data-testid^="owner-shortcut-"]')).toHaveCount(5);
       const homeKeys = await page.getByTestId('owner-quick-access').locator('[data-testid^="owner-shortcut-"]').filter({ visible: true })
         .evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid').slice('owner-shortcut-'.length)));
       assert.deepEqual(new Set(homeKeys), new Set([
         'owner-orders', 'business-inventory', 'business-reports', 'business-fleet', 'business-quotations',
       ]), 'Owner Home must expose the five current role shortcuts');
-      await expect(page.getByTestId('owner-shortcut-insights')).toBeVisible();
-      await expect(page.locator('[data-testid^="owner-metric-"]')).toHaveCount(8);
-      await expect(page.getByTestId('owner-metric-plant_attendance_today')).toBeVisible();
-      await expect(page.getByTestId('role-module-owner-drivers')).toBeVisible();
-
-      const directoryKeys = {};
-      for (const [category, id, count, required] of [
-        ['Commercial', 'owner-commercial', 6, ['owner-billing', 'business-customers']],
-        ['Workforce', 'owner-workforce', 9, ['business-attendance', 'payroll-closure', 'owner-drivers']],
-      ]) {
-        phase = `owner ${category} preview`;
-        const preview = page.getByTestId(`home-modules-${id}`);
-        const previewKeys = await visibleModuleCards(preview);
-        assert.equal(previewKeys.length, 4, `${category} Home must show four shortcuts`);
-        assert.equal(new Set(previewKeys).size, previewKeys.length, `${category} Home has duplicate shortcuts`);
-        phase = `owner ${category} See All`;
-        await openSection(preview.getByTestId(`home-see-all-${id}`), category);
-        await expect.poll(async () => (await visibleModuleCards(roleModulesPage)).length).toBe(count);
-        const keys = await visibleModuleCards(roleModulesPage);
-        assert.equal(new Set(keys).size, count, `${category} directory has duplicate shortcuts`);
-        for (const key of [...previewKeys, ...required]) await expect(roleModulesPage.getByTestId(`role-module-${key}`)).toBeVisible();
-        directoryKeys[category] = keys;
-        await returnFromSection();
+      await expect(page.getByTestId('plant-load-pipeline')).toBeVisible();
+      await expect(page.locator('[data-testid^="owner-metric-"]')).toHaveCount(0);
+      for (const id of ['owner-shortcut-insights', 'home-modules-owner-commercial', 'home-modules-owner-workforce', 'role-module-owner-drivers']) {
+        await expect(page.getByTestId(id)).toHaveCount(0);
       }
 
       phase = 'owner Operations tab';
       await page.getByTestId('tab-operations').click();
-      phase = 'owner automation center';
       await expect(page.getByTestId('owner-native-automation-center')).toBeVisible();
-      phase = 'owner Operations module inventory';
-      const ownerOperationsDirectory = page.getByTestId('owner-operations-module-directory');
-      await expect(ownerOperationsDirectory).toBeVisible();
-      await expect(ownerOperationsDirectory.locator('[data-testid^="role-module-"]')).toHaveCount(8);
-      const operationsKeys = await visibleModuleCards(ownerOperationsDirectory);
+      await expect(page.getByTestId('owner-operations-team')).toBeVisible();
+      await expect(page.getByTestId('owner-operations-registers').getByRole('button')).toHaveCount(14);
+      await expect(page.getByRole('button', { name: 'WhatsApp Dispatch settings', exact: true })).toBeVisible();
+      await expect(page.getByTestId('owner-operations-module-directory')).toHaveCount(0);
+      await expect(page.getByText('Review tasks', { exact: true })).toHaveCount(0);
+      await expect(page.getByText(/^Recent automation:/)).toHaveCount(0);
       phase = 'owner More navigation';
       await page.getByTestId('tab-more').click();
       phase = 'owner More account-only inventory';
@@ -453,14 +434,7 @@ try {
       await expect(page.getByTestId('owner-permission-settings')).toBeVisible();
       await expect(page.getByTestId('owner-logout')).toBeVisible();
       const moreKeys = await visibleModuleCards(ownerMoreDirectory);
-      phase = 'owner module catalog reconciliation';
-      const rendered = [...homeKeys, ...directoryKeys.Commercial,
-        ...directoryKeys.Workforce, ...operationsKeys, ...moreKeys];
-      const duplicates = rendered.filter((key, index) => rendered.indexOf(key) !== index);
-      // Billing & Ledger is available in both Commercial and Operations.
-      assert.deepEqual(duplicates, ['owner-billing'], 'Owner directories have unexpected duplicate destinations');
-      assert.deepEqual(new Set(rendered), new Set([...visibleKeys, 'owner-drivers']),
-        'All approved Owner modules must be discoverable');
+      assert.deepEqual(new Set(moreKeys), new Set(['account-kyc', 'owner-premium', 'public-plant-profile', 'business-profile']));
     } else if (user.role === 'customer') {
       await expect(page.getByTestId('role-module-directory')).toBeVisible();
       for (const key of visibleKeys) await expect(page.getByTestId('role-module-' + key)).toBeVisible();

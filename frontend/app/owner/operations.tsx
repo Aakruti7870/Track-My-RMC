@@ -1,22 +1,25 @@
 import React, { useCallback, useState } from "react";
 import { Pressable, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useAuth } from "@/src/auth/AuthContext";
-import { apiErrorDetail, apiPost, apiPut } from "@/src/api/client";
+import { apiErrorDetail, apiPut } from "@/src/api/client";
 import { useGet } from "@/src/hooks/useApi";
 import { ErrorView } from "@/src/components/StateViews";
 import { AppText } from "@/src/components/ui/AppText";
-import { OwnerFrame, OwnerGlass, OwnerList, OwnerModuleRow, useOwnerPalette } from "@/src/owner/OwnerUI";
+import { OwnerFrame, OwnerGlass, OwnerList, useOwnerPalette } from "@/src/owner/OwnerUI";
 import { operationalStatus } from "@/src/theme/tokens";
-import { OPERATIONS_KEYS, ownerModules } from "@/src/owner/modules";
 
 import {
   OperationsTeam, OwnerRegisters, PlantSelector, WorkspaceAlert, WorkspaceTile,
-  businessPath, pipelinePath, recordPath, usePipeline, usePlantWorkspace,
+  pipelinePath, recordPath, usePipeline, usePlantWorkspace,
 } from "@/src/owner/PlantOperations";
 
 export default function OwnerOperations() {
+  const { width, fontScale } = useWindowDimensions();
+  const contentWidth = Math.max(0, Math.min(width, 820) - 32);
+  const readableWidth = contentWidth / fontScale;
+  const shortcutWidth = readableWidth >= 270 ? "32%" : readableWidth >= 185 ? "49%" : "100%";
   const params = useLocalSearchParams<{ plantId?: string; section?: string }>();
   const { plants, plant, setSelection, loading, error, reload } = usePlantWorkspace(params.plantId);
   const { data: pipeline, refetch: refreshPipeline } = usePipeline(plant?.id, { summary: true });
@@ -24,13 +27,19 @@ export default function OwnerOperations() {
   const shortcuts = plant ? <>
     <PlantSelector plants={plants} plant={plant} select={setSelection} />
     <WorkspaceAlert plantId={plant.id} count={pipeline?.counts?.needs_mixer} />
-    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-      <WorkspaceTile stacked title="Track Fleet" symbol="gps-live-location" destination={recordPath("fleet", plant.id)} />
-      <WorkspaceTile stacked title="Needs Attention" symbol="notifications" destination={pipelinePath(plant.id, "needs_mixer")} />
-      <WorkspaceTile stacked title="SOS Alerts" symbol="incident-register" tone="critical" destination={recordPath("incidents", plant.id)} />
+    <View style={{ flexDirection: "row", flexWrap: "wrap", columnGap: "2%", rowGap: 6 }}>
+      <View style={{ width: shortcutWidth }}>
+        <WorkspaceTile stacked title="Track Fleet" symbol="gps-live-location" destination={recordPath("fleet", plant.id)} />
+      </View>
+      <View style={{ width: shortcutWidth }}>
+        <WorkspaceTile stacked title="Needs Attention" symbol="notifications" destination={pipelinePath(plant.id, "needs_mixer")} />
+      </View>
+      <View style={{ width: shortcutWidth }}>
+        <WorkspaceTile stacked title="SOS Alerts" symbol="incident-register" tone="critical" destination={recordPath("incidents", plant.id)} />
+      </View>
     </View>
   </> : null;
-  const automation = plant ? <OwnerAutomation key={`${plant.id}:${params.section}`} plantId={plant.id} showWhatsapp={params.section === "whatsapp"} /> : null;
+  const automation = plant ? <OwnerAutomation key={`${plant.id}:${params.section}`} plantId={plant.id} contentWidth={contentWidth} showWhatsapp={params.section === "whatsapp"} /> : null;
   const automationFirst = params.section === "automation" || params.section === "whatsapp";
   return <OwnerFrame matte title="Operations" subtitle="Today’s work and plant records">
     <OwnerList>
@@ -44,14 +53,6 @@ export default function OwnerOperations() {
         <OwnerRegisters plantId={plant.id} />
       </> : null}
       {!automationFirst ? automation : null}
-      <View testID="owner-operations-module-directory" style={{ gap: 8 }}>
-        {ownerModules(OPERATIONS_KEYS).map(module => {
-          const route = plant && typeof module.route === "string" && module.route.startsWith("/business/")
-            ? businessPath(module.route.slice("/business/".length), plant.id)
-            : module.route;
-          return <OwnerModuleRow key={module.key} module={{ ...module, route }} />;
-        })}
-      </View>
     </OwnerList>
   </OwnerFrame>;
 }
@@ -65,8 +66,6 @@ type AutomationRule = {
   reminder_after_minutes: number;
   sla_minutes: number;
 };
-type OwnerTask = { id: string; order_number: string; task_kind: string; status: string; source_label?: string; escalation_count?: number; resolution_reason?: string | null };
-type AutomationHistory = { id: string; template_key: string; status: string; attempts: number };
 const REMINDER_MINUTES = [30, 60, 120, 240] as const;
 const SLA_MINUTES = [30, 60, 120, 240] as const;
 const AUTOMATION_GRID_GAP = 6;
@@ -94,43 +93,22 @@ const AUTOMATION_ICONS: Record<string, React.ComponentProps<typeof Ionicons>["na
   WORKFORCE_LEAVE_PENDING: "calendar-outline",
 };
 
-type AutomationWorkspace = "/owner/orders" | "/owner/quotation-requests" | "/business/inventory" | "/workforce";
-
-function workspaceForTask(kind: string): AutomationWorkspace | null {
-  switch (kind) {
-    case "REVIEW_ORDER":
-    case "DISPATCH_UNASSIGNED_LOAD": return "/owner/orders";
-    case "RFQ_PENDING_PLANT": return "/owner/quotation-requests";
-    case "INVENTORY_BELOW_MIN": return "/business/inventory";
-    case "WORKFORCE_LEAVE_PENDING": return "/workforce";
-    // A failed quality assessment cannot be closed from Owner Operations;
-    // it requires an authorized Quality Engineer workflow.
-    default: return null;
-  }
-}
-
-function OwnerAutomation({ plantId, showWhatsapp = false }: { plantId: string; showWhatsapp?: boolean }) {
+function OwnerAutomation({ plantId, contentWidth, showWhatsapp = false }: { plantId: string; contentWidth: number; showWhatsapp?: boolean }) {
   const p = useOwnerPalette();
-  const { width: viewportWidth, fontScale } = useWindowDimensions();
-  // OwnerFrame caps content at 820dp and OwnerList has 16dp padding per side.
-  const gridWidth = Math.min(viewportWidth, 820) - 32;
-  const columns = gridWidth / fontScale >= 280 ? 3 : 2;
-  const tileWidth = (gridWidth - AUTOMATION_GRID_GAP * (columns - 1)) / columns;
+  const { fontScale } = useWindowDimensions();
+  const readableWidth = contentWidth / fontScale;
+  const columns = readableWidth >= 280 ? 3 : readableWidth >= 185 ? 2 : 1;
+  const tileWidth = (contentWidth - AUTOMATION_GRID_GAP * (columns - 1)) / columns;
+  const stackSettings = readableWidth < 240;
   const [selectedRuleKey, setSelectedRuleKey] = useState<string | null>(null);
-  const router = useRouter();
   const { token } = useAuth();
   const [busyRule, setBusyRule] = useState<string | null>(null);
-  const [busyTask, setBusyTask] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [requestError, setRequestError] = useState("");
   const [whatsappOpen, setWhatsappOpen] = useState(showWhatsapp);
   const base = plantId ? `/owner/plants/${encodeURIComponent(plantId)}/automation` : null;
   const { data: rules, error: ruleError, loading: rulesLoading, refetch: refreshRules } =
     useGet<{ rules: AutomationRule[]; worker_enabled: boolean }>(base ? `${base}/rules` : null);
-  const { data: tasks, error: tasksError, refetch: refreshTasks } =
-    useGet<{ tasks: OwnerTask[] }>(base ? `${base}/tasks` : null);
-  const { data: history, refetch: refreshHistory } =
-    useGet<{ jobs: AutomationHistory[] }>(base ? `${base}/history` : null);
   const selectedRule = (rules?.rules ?? []).find(rule => rule.key === selectedRuleKey);
   const dispatchUrl = plantId ? `/owner/plants/${encodeURIComponent(plantId)}/dispatch-whatsapp` : null;
   const { data: whatsappSettings, refetch: refreshWhatsappSettings, error: whatsappError, reload: retryWhatsapp } =
@@ -168,27 +146,11 @@ function OwnerAutomation({ plantId, showWhatsapp = false }: { plantId: string; s
         ...(slaMinutes !== undefined ? { sla_minutes: slaMinutes } : {}),
       });
       setNotice("Plant automation preference saved.");
-      await Promise.all([refreshRules(), refreshTasks(), refreshHistory()]);
+      await refreshRules();
     } catch (error) {
       setRequestError(apiErrorDetail(error, "Automation setting could not be updated."));
     } finally {
       setBusyRule(null);
-    }
-  }
-
-  async function acknowledgeTask(task: OwnerTask) {
-    if (!base || !token || busyTask || task.task_kind === "REVIEW_ORDER") return;
-    setBusyTask(task.id);
-    setRequestError("");
-    setNotice("");
-    try {
-      await apiPost(`${base}/domain-tasks/${encodeURIComponent(task.id)}/acknowledge`, token, {});
-      setNotice("Review alert acknowledged. The underlying plant issue is not approved or closed.");
-      await Promise.all([refreshTasks(), refreshHistory()]);
-    } catch (error) {
-      setRequestError(apiErrorDetail(error, "Could not acknowledge the alert."));
-    } finally {
-      setBusyTask(null);
     }
   }
 
@@ -247,8 +209,8 @@ function OwnerAutomation({ plantId, showWhatsapp = false }: { plantId: string; s
         </Pressable>
         {whatsappOpen ? <OwnerGlass style={{ padding: 12, gap: 8, borderColor: p.border }}>
           {whatsappError ? <ErrorView message={whatsappError} onRetry={retryWhatsapp} /> : null}
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-            <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: stackSettings ? "column" : "row", alignItems: stackSettings ? "stretch" : "center", justifyContent: "space-between", gap: 10 }}>
+            <View style={{ flexShrink: 1, minWidth: 0 }}>
               <AppText style={{ color: p.text, fontWeight: "700", fontSize: 14 }}>Automatic WhatsApp Dispatch</AppText>
               <AppText style={{ color: p.muted, fontSize: 12 }}>
                 One transactional alert per mixer load, after dispatch and customer consent.
@@ -265,7 +227,7 @@ function OwnerAutomation({ plantId, showWhatsapp = false }: { plantId: string; s
                 void updateWhatsapp(willEnable, allowFirstTouch || Boolean(whatsappSettings?.marketing_enabled));
               }}
               style={{ backgroundColor: whatsappSettings?.enabled ? p.accent : p.panel,
-                borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9 }}>
+                borderRadius: 12, alignSelf: "flex-start", minHeight: 44, justifyContent: "center", paddingHorizontal: 12, paddingVertical: 9 }}>
               <AppText style={{ color: whatsappSettings?.enabled ? p.onAccent : p.text, fontWeight: "700" }}>
                 {whatsappSettings?.enabled ? "ON" : "OFF"}
               </AppText>
@@ -281,8 +243,8 @@ function OwnerAutomation({ plantId, showWhatsapp = false }: { plantId: string; s
               Delivered {whatsappSettings.summary.delivered} · Review {whatsappSettings.summary.needs_review}
             </AppText>
           ) : null}
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-            <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: stackSettings ? "column" : "row", alignItems: stackSettings ? "stretch" : "center", justifyContent: "space-between", gap: 10 }}>
+            <View style={{ flexShrink: 1, minWidth: 0 }}>
               <AppText style={{ color: p.text, fontWeight: "700", fontSize: 14 }}>Optional App Promotion</AppText>
               <AppText style={{ color: p.muted, fontSize: 12 }}>
                 TrackMyRMC first-dispatch introduction is enabled when a plant first activates dispatch alerts. Sends once per number only after separate customer opt-in; STOP cancels marketing. Turn OFF here anytime.
@@ -294,7 +256,7 @@ function OwnerAutomation({ plantId, showWhatsapp = false }: { plantId: string; s
               disabled={updatingWhatsapp || !plantId || !whatsappSettings}
               onPress={() => void updateWhatsapp(Boolean(whatsappSettings?.enabled), !whatsappSettings?.marketing_enabled)}
               style={{ backgroundColor: whatsappSettings?.marketing_enabled ? p.accent : p.panel,
-                borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9 }}>
+                borderRadius: 12, alignSelf: "flex-start", minHeight: 44, justifyContent: "center", paddingHorizontal: 12, paddingVertical: 9 }}>
               <AppText style={{ color: whatsappSettings?.marketing_enabled ? p.onAccent : p.text, fontWeight: "700" }}>
                 {whatsappSettings?.marketing_enabled ? "ON" : "OFF"}
               </AppText>
@@ -315,8 +277,8 @@ function OwnerAutomation({ plantId, showWhatsapp = false }: { plantId: string; s
           ) : null}
         </OwnerGlass> : null}
         {selectedRule ? <OwnerGlass style={{ padding: 12, gap: 8 }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-            <AppText style={{ flex: 1, color: p.text, fontWeight: "700", fontSize: 13 }}>{selectedRule.label}</AppText>
+          <View style={{ flexDirection: stackSettings ? "column" : "row", justifyContent: "space-between", alignItems: stackSettings ? "flex-start" : "center", gap: 8 }}>
+            <AppText style={{ flexShrink: 1, minWidth: 0, color: p.text, fontWeight: "700", fontSize: 13 }}>{selectedRule.label}</AppText>
             <Pressable testID="owner-automation-close-details" accessibilityRole="button"
               accessibilityLabel="Close automation details" onPress={() => setSelectedRuleKey(null)}
               style={{ paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8, backgroundColor: p.canvas }}>
@@ -355,67 +317,5 @@ function OwnerAutomation({ plantId, showWhatsapp = false }: { plantId: string; s
               </View>
             </View> : null}
         </OwnerGlass> : null}
-        {plantId ? <OwnerGlass style={{ padding: 12, gap: 6 }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-            <AppText style={{ color: p.text, fontWeight: "700" }}>Review tasks</AppText>
-            <Pressable testID="owner-automation-refresh-cases" accessibilityRole="button"
-              onPress={() => void Promise.all([refreshTasks(), refreshHistory()])}
-              style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: p.canvas }}>
-              <AppText style={{ color: p.text, fontSize: 11 }}>Refresh cases</AppText>
-            </Pressable>
-          </View>
-          {tasksError ? <AppText accessibilityRole="alert" style={{ color: operationalStatus("critical", p.dark), fontSize: 12 }}>{tasksError}</AppText> : null}
-          <AppText style={{ color: p.muted, fontSize: 12 }}>
-            {(tasks?.tasks ?? []).filter(task => ["OPEN", "ACKNOWLEDGED"].includes(task.status)).length} unresolved review tasks
-          </AppText>
-          {(tasks?.tasks ?? []).filter(task => ["OPEN", "ACKNOWLEDGED"].includes(task.status)).slice(0, 10).map(task =>
-            <View key={task.id} style={{ gap: 6 }}>
-              <AppText style={{ color: p.text, fontSize: 12 }}>
-                {task.order_number ? `Order ${task.order_number} — owner review` :
-                  task.task_kind === "DISPATCH_UNASSIGNED_LOAD" ? "Dispatch — assign a planned load" :
-                  task.task_kind === "RFQ_PENDING_PLANT" ? "RFQ — respond to quotation request" :
-                  task.task_kind === "QUALITY_INSPECTION_FAILED" ? "Quality — review failed engineer inspection" :
-                  task.task_kind === "INVENTORY_BELOW_MIN" ? "Inventory — review material stock" :
-                  task.task_kind === "WORKFORCE_LEAVE_PENDING" ? "Workforce — review leave application" :
-                  "Plant operation — review required"}
-              </AppText>
-              {!task.order_number && task.source_label ? <AppText style={{ color: p.muted, fontSize: 11 }}>
-                {task.source_label}
-              </AppText> : null}
-              {task.status === "ACKNOWLEDGED" ? <AppText style={{ color: p.muted, fontSize: 11 }}>
-                Acknowledged · awaiting verified operational resolution
-              </AppText> : null}
-              {(task.escalation_count ?? 0) > 0 ? <AppText style={{ color: operationalStatus("warning", p.dark), fontSize: 11 }}>
-                SLA escalated {task.escalation_count} time(s)
-              </AppText> : null}
-              {workspaceForTask(task.task_kind) ? <Pressable testID={`owner-automation-workspace-${task.id}`}
-                accessibilityRole="button" onPress={() => {
-                  const destination = workspaceForTask(task.task_kind);
-                  if (destination) router.push(destination);
-                }}
-                style={{ alignSelf: "flex-start", borderRadius: 8, paddingVertical: 8,
-                  paddingHorizontal: 12, backgroundColor: p.canvas }}>
-                <AppText style={{ color: p.text, fontSize: 11 }}>Open operational module</AppText>
-              </Pressable> : null}
-              {task.task_kind === "QUALITY_INSPECTION_FAILED" ? <AppText style={{ color: p.muted, fontSize: 11 }}>
-                Requires Quality Engineer verification. Acknowledgement does not close the failed inspection.
-              </AppText> : null}
-              {!task.order_number && task.status === "OPEN" ? <Pressable testID={`owner-automation-ack-${task.id}`}
-                accessibilityRole="button" disabled={Boolean(busyTask)}
-                onPress={() => void acknowledgeTask(task)}
-                style={{ alignSelf: "flex-start", borderRadius: 8, paddingVertical: 8,
-                  paddingHorizontal: 12, backgroundColor: p.canvas }}>
-                <AppText style={{ color: p.text, fontSize: 11 }}>
-                  {busyTask === task.id ? "Saving acknowledgement" : "Acknowledge alert (not approval)"}
-                </AppText>
-              </Pressable> : null}
-            </View>)}
-          <AppText style={{ color: p.muted, fontSize: 11 }}>
-            Use existing authorized operational modules to resolve cases. Acknowledging an alert does not resolve it.
-          </AppText>
-        </OwnerGlass> : null}
-        {plantId ? <AppText style={{ color: p.muted, fontSize: 11 }}>
-          Recent automation: {(history?.jobs ?? []).slice(0, 5).map(job => `${job.template_key}: ${job.status}`).join(" · ") || "No executions yet"}
-        </AppText> : null}
       </View>;
 }

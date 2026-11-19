@@ -71,7 +71,7 @@ export function WorkspaceTile({ title, symbol, destination, detail, tone, testID
     onPress={() => router.push(destination)} style={({ pressed }) => [styles.grow, { opacity: pressed ? 0.72 : 1 }]}>
     <OwnerGlass highlighted={false} style={[styles.strip, stacked && styles.stacked, tone && { backgroundColor: ink + "18", borderColor: ink + "50" }]}>
       <VectorSymbol name={symbol} size={20} color={ink} />
-      <View style={stacked ? undefined : styles.grow}>
+      <View style={stacked ? styles.stackedCopy : styles.grow}>
         <AppText center={stacked} style={styles.label}>{title}</AppText>
         {detail ? <AppText center={stacked} variant="caption">{detail}</AppText> : null}
       </View>
@@ -100,8 +100,8 @@ export function PlantSelector({ plants, plant, select }: {
   </View>;
 }
 
-export function LoadPipeline({ plantId, plantName, request, showAlert = false }: {
-  plantId: string; plantName?: string; request?: ReturnType<typeof usePipeline>; showAlert?: boolean;
+export function LoadPipeline({ plantId, plantName, request, showAlert = false, contentWidth }: {
+  plantId: string; plantName?: string; request?: ReturnType<typeof usePipeline>; showAlert?: boolean; contentWidth?: number;
 }) {
   const router = useRouter();
   const { colors } = useTheme();
@@ -110,7 +110,9 @@ export function LoadPipeline({ plantId, plantName, request, showAlert = false }:
   const { refetch } = summary;
   const { data, error, loading, reload } = request ?? summary;
   useFocusEffect(useCallback(() => { void refetch(); }, [refetch]));
-  const columns = (width - 32) / fontScale >= 300 ? 4 : 2;
+  const readableWidth = (contentWidth ?? width - 32) / fontScale;
+  const columns = readableWidth >= (contentWidth === undefined ? 300 : 400) ? styles.columns4
+    : readableWidth >= 190 || contentWidth === undefined ? styles.columns2 : styles.full;
   const stages = [
     { stage: "to_batch", ink: colors.onSurface, background: colors.surfaceSecondary },
     { stage: "needs_mixer", ink: operationalStatus("warning", colors.isDark), background: colors.brandSoft },
@@ -123,7 +125,7 @@ export function LoadPipeline({ plantId, plantName, request, showAlert = false }:
     {plantName ? <AppText variant="caption">{plantName}</AppText> : null}
     {error ? <ErrorView message={error} onRetry={reload} /> : null}
     <View style={styles.grid}>
-      {stages.map(({ stage, ink, background }) => <View key={stage} style={styles[`columns${columns}`]}>
+      {stages.map(({ stage, ink, background }) => <View key={stage} style={columns}>
         <Pressable testID={`load-pipeline-${stage}`} accessibilityRole="button"
           accessibilityLabel={PIPELINE_STAGES[stage] + (data ? `, ${data.counts?.[stage] ?? 0} loads` : ", count unavailable")}
           onPress={() => router.push(pipelinePath(plantId, stage))}>
@@ -166,7 +168,8 @@ const roleDestinations = (plantId: string): Record<string, Href> => ({
 export function OperationsTeam({ plantId }: { plantId: string }) {
   const { colors } = useTheme();
   const { width, fontScale } = useWindowDimensions();
-  const columns = (width - 32) / fontScale >= 300 ? 4 : 2;
+  const readableWidth = (Math.min(width, 820) - 32) / fontScale;
+  const columns = readableWidth >= 490 ? styles.columns4 : readableWidth >= 200 ? styles.columns2 : styles.full;
   const [selected, setSelected] = useState<PlantJobRole>("dispatcher");
   const people = useGet<{ people: Person[] }>(`/master/plants/${encodeURIComponent(plantId)}/people`);
   const { refetch: refreshPeople } = people;
@@ -195,7 +198,7 @@ export function OperationsTeam({ plantId }: { plantId: string }) {
         const status = people.data ? roleSlotStatus(assignments, role) : null;
         const description = status === "available" ? "Unassigned" : status === "pending" ? "Invitation pending" :
           status === "suspended" ? "Suspended" : status === "active" ? "Assigned" : people.error ? "Unavailable" : "Loading…";
-        return <View key={role} style={styles[`columns${columns}`]}>
+        return <View key={role} style={columns}>
           <Pressable testID={`owner-operations-role-${role}`} accessibilityRole="button"
             accessibilityState={{ selected: selected === role }} accessibilityLabel={[title, occupant?.name, description].filter(Boolean).join(", ")}
             style={styles.grow} onPress={() => setSelected(role)}>
@@ -228,7 +231,7 @@ export const REGISTER_LABELS: Readonly<Record<string, string>> = {
 };
 export function OwnerRegisters({ plantId }: { plantId: string }) {
   const { width, fontScale } = useWindowDimensions();
-  const twoColumns = (width - 32) / fontScale >= 310;
+  const twoColumns = (Math.min(width, 820) - 32) / fontScale >= 310;
   const items: { title: string; symbol: VectorSymbolName; href: Href }[] = [
     { title: "Raw Material Purchases", symbol: "material-receipts", href: businessPath("purchases", plantId) },
     { title: "Aggregates & Sand", symbol: "material-inventory", href: businessPath("inventory", plantId, "aggregate") },
@@ -260,7 +263,7 @@ const styles = StyleSheet.create({
   heading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, minHeight: 40 },
   title: { fontFamily: fonts.bold, fontSize: 17, flexShrink: 1 },
   label: { fontFamily: fonts.semibold, fontSize: 12, lineHeight: 16 },
-  link: { minHeight: 44, justifyContent: "center", paddingHorizontal: 4 },
+  link: { flexShrink: 1, minHeight: 44, justifyContent: "center", paddingHorizontal: 4 },
   grid: { flexDirection: "row", flexWrap: "wrap", columnGap: "2%", rowGap: 7 },
   columns4: { width: "23.5%", minWidth: 0 },
   columns2: { width: "49%", minWidth: 0 },
@@ -268,6 +271,7 @@ const styles = StyleSheet.create({
   grow: { flex: 1, minWidth: 0 },
   strip: { minHeight: 47, flex: 1, flexDirection: "row", alignItems: "center", padding: 8, gap: 6, borderRadius: 9 },
   stacked: { minHeight: 64, flexDirection: "column", justifyContent: "center", paddingHorizontal: 4 },
+  stackedCopy: { minWidth: 0, alignSelf: "stretch" },
   stage: { minHeight: 67, paddingVertical: 8, paddingHorizontal: 3, justifyContent: "center", alignItems: "center" },
   count: { fontFamily: fonts.bold, fontSize: 22 },
   person: { flex: 1, minHeight: 100, padding: 7, gap: 4 },

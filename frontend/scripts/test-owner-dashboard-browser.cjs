@@ -4,11 +4,21 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const out = process.env.OWNER_PREVIEW_DIR || 'owner-previews';
 fs.mkdirSync(out, { recursive: true });
+async function assertFits(locator, viewportWidth) {
+  const cards = await locator.evaluateAll(nodes => nodes.map(node => {
+    const { left, right, width } = node.getBoundingClientRect();
+    return { left, right, width, contentWidth: node.scrollWidth };
+  }));
+  assert(cards.length > 0, 'Expected at least one visible card');
+  assert(cards.every(card => card.width > 0 && card.left >= -1 && card.right <= viewportWidth + 1
+    && card.contentWidth <= card.width + 1), `Cards overflow at ${viewportWidth}px: ${JSON.stringify(cards)}`);
+}
+
 (async () => {
   const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'], ...(process.env.OWNER_CHROMIUM_PATH ? { executablePath: process.env.OWNER_CHROMIUM_PATH } : {}) });
   try {
-    for (const [scheme, width] of [['light', 390], ['dark', 390], ['light', 320], ['light', 768], ['light', 1440]]) {
-      const context = await browser.newContext({ viewport: { width, height: 920 } });
+    for (const [scheme, width, height = 920] of [['light', 390], ['dark', 390], ['light', 280], ['light', 320], ['light', 360], ['light', 667, 375], ['light', 768], ['light', 1440]]) {
+      const context = await browser.newContext({ viewport: { width, height } });
       await context.addInitScript(({ scheme }) => {
         localStorage.setItem('tmrmc_token', JSON.stringify('isolated-owner-browser-test'));
         localStorage.setItem('tmrmc_theme_mode', JSON.stringify(scheme));
@@ -66,7 +76,6 @@ fs.mkdirSync(out, { recursive: true });
         await route.fulfill({ json });
       });
       const go = async path => { await page.goto('http://127.0.0.1:8765/owner/'); await page.getByTestId('operational-theme').waitFor(); { const tab = path.includes('directory=1') ? 'more' : path.split('/')[2]; if (tab) await page.getByTestId(`tab-${tab}`).click(); } await page.waitForTimeout(250); };
-      const visibleModuleKeys = new Set();
       for (const name of ['home', 'orders', 'operations', 'more']) {
         await go('/owner' + (name === 'home' ? '' : '/' + name));
         const tab = page.getByTestId(`tab-${name}`);
@@ -75,15 +84,15 @@ fs.mkdirSync(out, { recursive: true });
         if (name === 'home') {
           const summary = await page.getByTestId('owner-home-summary').evaluate(el => getComputedStyle(el).backgroundColor);
           assert.equal(summary, scheme === 'dark' ? 'rgb(18, 18, 18)' : 'rgb(250, 249, 245)');
-          const card = await page.locator('[data-testid^="owner-metric-"]').first().locator(':scope > div').first()
-            .evaluate(el => getComputedStyle(el).backgroundColor);
-          assert.equal(card, summary, 'Owner KPI cards share the matte surface');
-          assert.equal(await page.getByTestId('owner-quick-access').locator('[data-testid^="owner-shortcut-"]').count(), 5);
-          assert.equal(await page.locator('[data-testid^="owner-metric-"]').count(), 8);
-          assert.equal(await page.getByTestId('home-modules-owner-commercial').locator('[data-testid^="role-module-"]').count(), 4);
-          assert.equal(await page.getByTestId('home-modules-owner-workforce').locator('[data-testid^="role-module-"]').count(), 4);
-          assert.equal(await page.getByTestId('role-module-payroll-closure').count(), 0);
-          assert.equal(await page.getByTestId('role-module-owner-drivers').count(), 1);
+          const quickCards = page.getByTestId('owner-quick-access').getByRole('button');
+          assert.equal(await quickCards.count(), 5);
+          await assertFits(quickCards, width);
+          const heights = await quickCards.evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().height));
+          assert(heights.every(height => height >= 65 && height <= 135), `Owner shortcut card outside compact range at ${width}px: ${heights}`);
+          assert.equal(await page.locator('[data-testid^="owner-metric-"]').count(), 0);
+          for (const id of ['owner-shortcut-insights', 'home-modules-owner-commercial', 'home-modules-owner-workforce', 'role-module-owner-drivers']) {
+            assert.equal(await page.getByTestId(id).count(), 0);
+          }
           const hero = page.getByTestId('owner-home-hero-banner');
           const scroll = page.getByTestId('owner-home-scroll');
           const supplierCard = scroll.getByTestId('plant-home-supplier-enquiry');
@@ -111,14 +120,18 @@ fs.mkdirSync(out, { recursive: true });
           const order = await page.evaluate(() => {
             const supplier = document.querySelector('[data-testid="plant-home-supplier-enquiry"]');
             const profile = document.querySelector('[data-testid="plant-home-profile"]');
-            const kpi = document.querySelector('[data-testid="owner-metric-todays_orders"]');
-            return profile.compareDocumentPosition(supplier) & supplier.compareDocumentPosition(kpi) & Node.DOCUMENT_POSITION_FOLLOWING;
+            const pipeline = document.querySelector('[data-testid="plant-load-pipeline"]');
+            return profile.compareDocumentPosition(supplier) & supplier.compareDocumentPosition(pipeline) & Node.DOCUMENT_POSITION_FOLLOWING;
           });
-          assert(await hero.evaluate(node => node.getBoundingClientRect().width >= 280), 'Plant image spans the home card');
-          assert(order, 'Supplier and profile cards sit above the KPI grid in the requested order');
+          assert(await hero.evaluate(node => node.getBoundingClientRect().width >= Math.min(innerWidth - 32, 620) - 1), 'Plant image spans the home card');
+          assert(order, 'Supplier and profile cards sit above Load Pipeline in the requested order');
+          await assertFits(scroll.getByRole('button'), width);
         }
         if (name === 'operations') {
-          assert.equal(await page.getByTestId('owner-operations-module-directory').locator('[data-testid^="role-module-"]').count(), 8);
+          assert.equal(await page.getByTestId('owner-operations-module-directory').count(), 0);
+          assert.equal(await page.getByText('Review tasks', { exact: true }).count(), 0);
+          assert.equal(await page.getByText(/^Recent automation:/).count(), 0);
+          await page.getByRole('button', { name: 'WhatsApp Dispatch settings', exact: true }).waitFor();
           const team = page.getByTestId('owner-operations-team');
           await team.getByText('Fixture Dispatcher').waitFor();
           assert.equal(await team.locator('[data-testid^="owner-operations-role-"]:not([data-testid="owner-operations-role-modules"])').count(), 7);
@@ -129,6 +142,8 @@ fs.mkdirSync(out, { recursive: true });
           await roleModules.getByText('This role has no active employee assignment.').waitFor();
           const registers = page.getByTestId('owner-operations-registers');
           assert.equal(await registers.getByRole('button').count(), 14);
+          await assertFits(team.getByRole('button'), width);
+          await assertFits(registers.getByRole('button'), width);
         }
         if (name === 'more') {
           await tab.click({ clickCount: 3 });
@@ -139,29 +154,9 @@ fs.mkdirSync(out, { recursive: true });
           assert.equal(await page.getByTestId('owner-staff-module-access').count(), 1);
           assert.equal(await page.getByTestId('owner-permission-settings').count(), 1);
         }
-        if (name !== 'orders') {
-          const shortcutIds = name === 'home'
-            ? await page.locator('[data-testid^="owner-shortcut-"]:not([data-testid="owner-shortcut-insights"])')
-              .evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid').replace('owner-shortcut-', '')))
-            : [];
-          const moduleSurface = name === 'operations' ? page.getByTestId('owner-operations-module-directory')
-            : name === 'more' ? page.getByTestId('role-module-directory')
-            : page;
-          const moduleIds = await moduleSurface.locator('[data-testid^="role-module-"]:not([data-testid="role-module-directory"])')
-            .evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid').replace('role-module-', '')));
-          for (const key of [...shortcutIds, ...moduleIds]) {
-            assert(!visibleModuleKeys.has(key), `Duplicate owner module ${key} across tabs at ${width}px`);
-            visibleModuleKeys.add(key);
-          }
-        }
-        if (name === 'home') {
-          const heights = await page.locator('[data-testid^="owner-shortcut-"]:not([data-testid="owner-shortcut-insights"])').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().height));
-          assert(heights.every(height => height >= 65 && height <= 135), `Owner shortcut card outside compact range at ${width}px: ${heights}`);
-        }
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `Horizontal overflow at ${width}`);
         await page.screenshot({ path: `${out}/${scheme}-${width}-${name}.png`, animations: 'disabled' });
       }
-      assert.equal(visibleModuleKeys.size, 26, 'Owner Home exposes compact previews alongside the existing Operations and More destinations');
       await go('/owner');
       if (width === 390) {
         await page.getByRole('button', { name: 'Needs mixer, 3 loads' }).click();
@@ -197,18 +192,6 @@ fs.mkdirSync(out, { recursive: true });
         await page.getByRole('button', { name: 'Done' }).click();
         await page.getByTestId('owner-home-summary').waitFor();
       }
-      for (const [category, key, count] of [['Commercial','owner-commercial',6],['Workforce','owner-workforce',9]]) {
-        await page.getByTestId('home-see-all-' + key).click();
-        await page.getByRole('heading', { name: category, exact: true }).waitFor();
-        const directory = page.getByTestId('role-modules-page');
-        assert.equal(await directory.locator('[data-testid^="role-module-"]').count(), count);
-        if (category === 'Workforce') {
-          await directory.getByTestId('role-module-payroll-closure').waitFor();
-          await directory.getByTestId('role-module-business-attendance').waitFor();
-        }
-        await page.getByTestId('role-modules-back').click();
-        await page.getByTestId('owner-home-summary').waitFor();
-      }
       await go('/owner');
       const homeUrl = page.url();
       await page.getByTestId('tab-quick-actions').click();
@@ -238,7 +221,7 @@ fs.mkdirSync(out, { recursive: true });
       assert.equal(await page.getByTestId('role-module-directory').locator('[data-testid^="role-module-"]').count(), 4);
       await go('/owner/operations');
       await page.evaluate(() => { for (const el of document.querySelectorAll('*')) if (el.scrollHeight > el.clientHeight && /auto|scroll/.test(getComputedStyle(el).overflowY)) el.scrollTop = el.scrollHeight; });
-      const row = await page.getByTestId('role-module-business-diesel').boundingBox();
+      const row = await page.getByRole('button', { name: 'WhatsApp Dispatch settings', exact: true }).boundingBox();
       const bar = await page.getByTestId('tab-home').boundingBox();
       assert(row && bar && row.y + row.height <= bar.y + 2, 'Last operation hidden by tab bar');
       await page.screenshot({ path: `${out}/${scheme}-${width}-operations-bottom.png` });
@@ -262,7 +245,7 @@ fs.mkdirSync(out, { recursive: true });
 
         await go('/owner/operations');
         await page.getByRole('button', { name: 'Second Fixture Plant', exact: true }).click();
-        await page.getByTestId('role-module-business-diesel').click();
+        await page.getByTestId('owner-operations-registers').getByRole('button', { name: 'Diesel Ledger', exact: true }).click();
         await page.waitForURL(url => url.pathname === '/business/diesel' && url.searchParams.get('plantId') === 'plant-two');
 
         await go('/owner');
@@ -298,17 +281,17 @@ fs.mkdirSync(out, { recursive: true });
       }
       assert.deepEqual(errors, []);
       await context.close();
-      console.log(`PASS owner: ${scheme} ${width}px — 8 metrics, 5 Quick tiles, compact Commercial/Workforce cards, full directories and top-only theme`);
+      console.log(`PASS owner: ${scheme} ${width}px — marked cards removed, remaining Home and Operations cards fit`);
     }
 
-    // Compact Native Automation regression: four tiles per row at mobile and tablet widths.
+    // Automation cards reflow without clipping and preserve rule and WhatsApp settings.
     const automationKeys = [
       'DISPATCH_UNASSIGNED_LOAD', 'INVENTORY_BELOW_MIN', 'ORDER_ACCEPTED_NOTICE',
       'ORDER_PENDING_REMINDER', 'ORDER_REJECTED_NOTICE', 'ORDER_SUBMITTED_TASK',
       'QUALITY_INSPECTION_FAILED', 'RFQ_PENDING_PLANT', 'WORKFORCE_LEAVE_PENDING',
     ];
     const plantId = '00000000-0000-0000-0000-000000000007';
-    for (const width of [320, 390, 768]) {
+    for (const width of [280, 320, 390, 768, 1440]) {
       const context = await browser.newContext({ viewport: { width, height: 920 } });
       await context.addInitScript(() => {
         localStorage.setItem('tmrmc_token', JSON.stringify('isolated-owner-browser-test'));
@@ -336,8 +319,10 @@ fs.mkdirSync(out, { recursive: true });
         } });
         if (path.endsWith('/pipeline')) return route.fulfill({ json: { counts: {}, total: 0, loads: [] } });
         if (path.endsWith('/automation/rules')) return route.fulfill({ json: { rules: ruleState, worker_enabled: true } });
-        if (path.endsWith('/automation/tasks')) return route.fulfill({ json: { tasks: [] } });
-        if (path.endsWith('/automation/history')) return route.fulfill({ json: { jobs: [] } });
+        if (path.endsWith('/dispatch-whatsapp')) return route.fulfill({ json: {
+          enabled: true, marketing_enabled: false, preference_exists: true,
+          worker_enabled: true, marketing_worker_enabled: true, template_configured: true, marketing_template_configured: true,
+        } });
         if (path.includes('/automation/rules/') && route.request().method() === 'PUT') {
           const key = decodeURIComponent(path.split('/').at(-1));
           const rule = ruleState.find(rule => rule.key === key);
@@ -357,10 +342,11 @@ fs.mkdirSync(out, { recursive: true });
         return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
       }));
       assert.equal(boxes.length, 9, 'Show every backend rule');
-      for (const [first, last] of [[0, 2], [3, 5], [6, 8]]) {
-        for (let i = first + 1; i <= last; i++) assert(Math.abs(boxes[i].y - boxes[first].y) < 2, 'Cards align on the same row');
+      const columns = width < 320 ? 2 : 3;
+      for (let i = 1; i < boxes.length; i++) {
+        if (i % columns === 0) assert(boxes[i].y > boxes[i - 1].y, 'Cards wrap at the viewport column count');
+        else assert(Math.abs(boxes[i].y - boxes[i - 1].y) < 2, 'Cards align on the same row');
       }
-      assert(boxes[3].y > boxes[0].y && boxes[6].y > boxes[3].y, 'Grid wraps into three rows');
       assert(boxes.every(box => box.height <= 116 && box.width > 0), `Automation cards exceed the compact grid at ${width}px: ${JSON.stringify(boxes)}`);
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'No horizontal overflow');
       const publishedToggle = page.getByTestId('owner-automation-toggle-ORDER_ACCEPTED_NOTICE');
@@ -373,8 +359,11 @@ fs.mkdirSync(out, { recursive: true });
       await page.getByText('Remind after (minutes)').waitFor();
       await page.getByTestId('owner-reminder-120').click();
       assert.equal(ruleState[3].reminder_after_minutes, 120, 'Reminder settings remain accessible from selected tile');
+      await page.getByRole('button', { name: 'WhatsApp Dispatch settings', exact: true }).click();
+      await page.getByText('Optional App Promotion', { exact: true }).waitFor();
+      await assertFits(page.getByTestId('owner-native-automation-center').getByRole('switch'), width);
       await context.close();
-      console.log('PASS owner automation: ' + width + 'px, three columns, API toggle and reminder');
+      console.log('PASS owner automation: ' + width + 'px, ' + columns + ' columns, API toggle, reminder and WhatsApp settings');
     }
     {
       const page = await browser.newPage({ viewport: { width: 320, height: 900 }, reducedMotion: "reduce" });

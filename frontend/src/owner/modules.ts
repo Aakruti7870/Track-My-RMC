@@ -6,13 +6,10 @@ export const HOME_SHORTCUTS = [
   ["business-fleet", "Active Mixers"], ["business-quotations", "Quotations"],
 ] as const;
 export const HOME_KEYS: readonly string[] = HOME_SHORTCUTS.map(([key]) => key);
-export const OPERATIONS_KEYS = ["owner-orders", "owner-production-dispatch", "owner-incidents", "business-mixes", "business-inventory", "business-suppliers", "business-purchases", "business-fleet", "business-diesel", "business-reports", "owner-billing", "business-staff"];
 export const WORKFORCE_KEYS = ["business-payroll", "business-attendance", "workforce", "shift-roster", "my-payslip", "workforce-reports", "employee-master", "payroll-closure"];
 export const ACCOUNT_KEYS = ["account-kyc", "owner-premium", "public-plant-profile", "business-profile"];
 export const COMMERCIAL_KEYS = ["owner-billing-history", "owner-quotation-requests", "business-rates", "business-quotations", "business-expenses", "business-customers"];
 export const OWNER_DIRECTORY_KEYS = { Commercial: ["owner-billing", ...COMMERCIAL_KEYS], Workforce: WORKFORCE_KEYS } as const;
-export const OWNER_HOME_COMMERCIAL = ["owner-billing-history", "owner-quotation-requests", "business-rates", "business-expenses"];
-export const OWNER_HOME_WORKFORCE = ["business-payroll", "workforce", "shift-roster", "workforce-reports"];
 
 export function ownerModules(keys: readonly string[]): RoleModule[] {
   const seen = new Set<string>();
