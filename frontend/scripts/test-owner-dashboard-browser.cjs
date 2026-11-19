@@ -100,8 +100,16 @@ async function assertFits(locator, viewportWidth) {
           const quickCards = page.getByTestId('owner-quick-access').getByRole('button');
           assert.equal(await quickCards.count(), 5);
           await assertFits(quickCards, width);
-          const heights = await quickCards.evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().height));
-          assert(heights.every(height => height >= 65 && height <= 135), `Owner shortcut card outside compact range at ${width}px: ${heights}`);
+          const dimensions = await quickCards.evaluateAll(nodes => nodes.map(node => {
+            const { height, width, y } = node.getBoundingClientRect();
+            return { height, width, y };
+          }));
+          const quickWidth = Math.min(width, 820) - 44;
+          const columns = quickWidth >= 405 ? 5 : quickWidth >= 262 ? 3 : 2;
+          assert.equal(dimensions.filter(card => Math.abs(card.y - dimensions[0].y) < 1).length, columns);
+          assert(dimensions.every(card => card.height >= 65 && card.height <= 135 && card.width === dimensions[0].width));
+          assert(quickWidth - (columns * dimensions[0].width + (columns - 1) * 7) < columns,
+            `Home Quick Access must use the available width at ${width}px`);
           assert.equal(await page.locator('[data-testid^="owner-metric-"]').count(), 0);
           for (const id of ['owner-shortcut-insights', 'home-modules-owner-commercial', 'home-modules-owner-workforce', 'role-module-owner-drivers']) {
             assert.equal(await page.getByTestId(id).count(), 0);
@@ -136,7 +144,7 @@ async function assertFits(locator, viewportWidth) {
             const pipeline = document.querySelector('[data-testid="plant-load-pipeline"]');
             return profile.compareDocumentPosition(supplier) & supplier.compareDocumentPosition(pipeline) & Node.DOCUMENT_POSITION_FOLLOWING;
           });
-          assert(await hero.evaluate(node => node.getBoundingClientRect().width >= Math.min(innerWidth - 32, 620) - 1), 'Plant image spans the home card');
+          assert(await hero.evaluate(node => node.getBoundingClientRect().width >= Math.min(innerWidth, 820) - 33), 'Plant image spans the home card');
           assert(order, 'Supplier and profile cards sit above Load Pipeline in the requested order');
           await assertFits(scroll.getByRole('button'), width);
         }
