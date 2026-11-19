@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import { apiPost } from "@/src/api/client";
 import { useAuth } from "@/src/auth/AuthContext";
 import { useGet } from "@/src/hooks/useApi";
@@ -17,7 +17,10 @@ export default function ProvisionalRequests() {
   const { token } = useAuth();
   const p = useOwnerPalette();
   const bottom = useOwnerBottomSpace();
-  const { data, loading, error, refetch } = useGet<{ requests: Request[] }>("/owner/provisional-requests");
+  const { plantId } = useLocalSearchParams<{ plantId?: string }>();
+  const { data, loading, error, refetch } = useGet<{ requests: Request[] }>(
+    plantId ? `/owner/provisional-requests?plant_id=${encodeURIComponent(plantId)}` : "/owner/provisional-requests",
+  );
   const [selected, setSelected] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);

@@ -10,6 +10,8 @@ import { IconTile } from "@/src/components/IconTile";
 import type { TabDef } from "@/src/components/GlassTabBar";
 import { OwnerGlass, useOwnerPalette } from "./OwnerUI";
 import { pressRoleTab, type RoleTabState, type RoleTabNavigation } from "@/src/navigation/pressRoleTab";
+const BUSINESS_ROUTES = new Set(["orders", "billing", "quotation-requests", "provisional-requests"]);
+
 type Props = { state: RoleTabState; navigation: RoleTabNavigation; tabs: TabDef[] };
 const ACTIONS: { label: string; symbol: VectorSymbolName; icon: keyof typeof Ionicons.glyphMap; route: Href }[] = [
   { label: "Review Pending Orders", symbol: "plant-orders", icon: "time-outline", route: { pathname: "/owner/orders", params: { status: "pending", today: "" } } },
@@ -23,7 +25,8 @@ export function OwnerTabBar({ state, navigation, tabs }: Props) {
   const p = useOwnerPalette(); const insets = useSafeAreaInsets(); const router = useRouter(); const [open, setOpen] = useState(false);
   function tabItem(tab: TabDef) {
     const route = state.routes.find(route => route.name === tab.name); if (!route) return null;
-    const selected = state.routes[state.index]?.key === route.key;
+    const active = state.routes[state.index];
+    const selected = active?.key === route.key || (tab.name === "business" && BUSINESS_ROUTES.has(active?.name));
     const symbol = tabVectorSymbol(tab.label, "plant_owner");
     return <Pressable key={tab.name} testID={`tab-${tab.label.toLowerCase()}`} accessibilityRole="tab" accessibilityLabel={`${tab.label} tab`} accessibilityState={{ selected }} aria-selected={selected} onPress={() => pressRoleTab(state, navigation, route)} style={{ flex: 1, minWidth: 0, minHeight: 65, alignItems: "center", justifyContent: "center", gap: 4 }}>{symbol ? <VectorSymbol name={symbol} size={30} color={selected ? p.accent : p.muted} active={selected} /> : <Ionicons name={selected ? tab.active : tab.icon} size={30} color={selected ? p.accent : p.muted} />}<AppText numberOfLines={1} style={{ fontSize: 10, color: selected ? p.accent : p.muted }}>{tab.label}</AppText></Pressable>;
   }

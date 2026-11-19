@@ -5,7 +5,7 @@ use crate::{
     state::AppState,
 };
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     Json,
 };
 use chrono::{NaiveDate, Utc};
@@ -114,13 +114,19 @@ pub async fn submit(
     Ok(Json(json!({"id":id,"status":"PENDING_KYC"})))
 }
 
+#[derive(Deserialize)]
+pub struct OwnerPlantQuery {
+    plant_id: Option<Uuid>,
+}
+
 pub async fn owner_list(
     State(state): State<AppState>,
     user: AuthUser,
+    Query(query): Query<OwnerPlantQuery>,
 ) -> Result<Json<Value>, AppError> {
     check_role(&user, &["owner", "plant_owner"])?;
-    let requests: Vec<Value> = sqlx::query_scalar("SELECT jsonb_build_object('id',r.id,'plant_name',p.name,'site_name',r.snapshot->>'site_name','address',r.snapshot->>'address','contact',r.snapshot->>'contact','mobile',r.snapshot->>'mobile','grade',r.snapshot->>'grade','quantity',r.snapshot->>'quantity','date',r.snapshot->>'date','time',r.snapshot->>'time','pump_required',r.snapshot->'pump_required','notes',r.snapshot->>'notes','plant_response',r.plant_response,'expires_at',r.expires_at) FROM customer_provisional_requests r JOIN rmc_plants p ON p.id=r.plant_id WHERE p.owner_id=$1 AND p.is_active AND r.status='PENDING_KYC' AND r.expires_at>NOW() AND NOT EXISTS(SELECT 1 FROM plant_admin_controls c WHERE c.plant_id=p.id AND c.order_intake_mode NOT IN ('DIRECT','RFQ_ONLY')) ORDER BY r.created_at DESC LIMIT 100")
-        .bind(user.user_id).fetch_all(&state.db).await?;
+    let requests: Vec<Value> = sqlx::query_scalar("SELECT jsonb_build_object('id',r.id,'plant_name',p.name,'site_name',r.snapshot->>'site_name','address',r.snapshot->>'address','contact',r.snapshot->>'contact','mobile',r.snapshot->>'mobile','grade',r.snapshot->>'grade','quantity',r.snapshot->>'quantity','date',r.snapshot->>'date','time',r.snapshot->>'time','pump_required',r.snapshot->'pump_required','notes',r.snapshot->>'notes','plant_response',r.plant_response,'expires_at',r.expires_at) FROM customer_provisional_requests r JOIN rmc_plants p ON p.id=r.plant_id WHERE p.owner_id=$1 AND p.is_active AND ($2::uuid IS NULL OR p.id=$2) AND r.status='PENDING_KYC' AND r.expires_at>NOW() AND NOT EXISTS(SELECT 1 FROM plant_admin_controls c WHERE c.plant_id=p.id AND c.order_intake_mode NOT IN ('DIRECT','RFQ_ONLY')) ORDER BY r.created_at DESC LIMIT 100")
+        .bind(user.user_id).bind(query.plant_id).fetch_all(&state.db).await?;
     Ok(Json(json!({"requests":requests})))
 }
 

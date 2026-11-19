@@ -2,6 +2,7 @@ import { VectorSymbol } from "@/src/components/VectorSymbol";
 import React, { useMemo, useState } from "react";
 import { Modal, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiPost } from "@/src/api/client";
@@ -41,11 +42,12 @@ export default function OwnerQuotationRequests() {
   const { token, user } = useAuth();
   const toast = useToast();
   const insets = useSafeAreaInsets();
-  const plantId = user?.plant_id;
+  const { plantId: selectedPlant } = useLocalSearchParams<{ plantId?: string }>();
+  const plantId = selectedPlant || user?.plant_id;
   const { data, loading, refetch } = useGet<{ requests: QuoteRequest[] }>(
-    plantId ? `/ops/plants/${plantId}/quotation-requests` : null,
+    plantId ? `/ops/plants/${encodeURIComponent(plantId)}/quotation-requests` : null,
   );
-  const quotes = useGet<{ quotations: OwnerQuote[] }>(plantId ? `/ops/plants/${plantId}/quotations` : null);
+  const quotes = useGet<{ quotations: OwnerQuote[] }>(plantId ? `/ops/plants/${encodeURIComponent(plantId)}/quotations` : null);
   const [filter, setFilter] = useState<"ALL" | RequestStatus>("REQUESTED");
   const [quoteFilter, setQuoteFilter] = useState("ALL");
   const [active, setActive] = useState<QuoteRequest | null>(null);
@@ -77,7 +79,7 @@ export default function OwnerQuotationRequests() {
     if (mode === "DECLINE" && !reason.trim()) return toast("Decline reason is required", "error");
     setBusy(true);
     try {
-      await apiPost(`/ops/plants/${plantId}/quotation-requests/${active.id}/respond`, token, mode === "QUOTE" ? {
+      await apiPost(`/ops/plants/${encodeURIComponent(plantId)}/quotation-requests/${active.id}/respond`, token, mode === "QUOTE" ? {
         action: "SEND", rate_per_m3: Number(rate), gst_rate: Number(gst || 0),
         transport_amount: Number(transport || 0), pumping_amount: Number(pumping || 0),
         valid_until: validUntil, notes: notes.trim() || null,

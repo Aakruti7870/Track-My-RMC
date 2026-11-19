@@ -1,7 +1,7 @@
 import React, { useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -29,7 +29,8 @@ export default function Billing() {
   const toast = useToast();
   const insets = useSafeAreaInsets();
   const { token } = useAuth();
-  const { data, error, reload } = useGet<Data>("/owner/invoices");
+  const { plantId } = useLocalSearchParams<{ plantId?: string }>();
+  const { data, error, reload } = useGet<Data>(plantId ? `/owner/plants/${encodeURIComponent(plantId)}/invoices` : "/owner/invoices");
   const [payFor, setPayFor] = useState<string | null>(null);
   const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState(false);
@@ -68,7 +69,7 @@ export default function Billing() {
           <Card style={{ gap: spacing.sm }}>
             <AppText variant="heading">Standard Tax Invoice</AppText>
             <AppText variant="caption">Prepare a challan first. Then select Review / Generate Tax Invoice from that order to prefill the buyer, concrete, prices and ledger.</AppText>
-            <Button label="Open Orders to Generate Invoice" variant="outline" onPress={() => router.push("/owner/orders")} />
+            <Button label="Open Orders to Generate Invoice" variant="outline" onPress={() => router.push({ pathname: "/owner/orders", params: plantId ? { plantId } : {} })} />
           </Card>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
             {[["Billed", data?.summary.billed, colors.onSurface], ["Received", data?.summary.received, colors.success], ["Outstanding", data?.summary.outstanding, colors.warning]].map(([l, v, c]: any) => (

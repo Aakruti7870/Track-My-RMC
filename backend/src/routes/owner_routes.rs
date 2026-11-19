@@ -112,6 +112,86 @@ pub(crate) async fn visible_plant_ids(
         .bind(user.user_id).bind(&user.role).fetch_all(&state.db).await.map_err(AppError::from)
 }
 
+#[derive(Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum BusinessPeriod {
+    #[default]
+    ThisMonth,
+    LastMonth,
+}
+
+#[derive(Deserialize)]
+pub struct BusinessSummaryQuery {
+    #[serde(default)]
+    period: BusinessPeriod,
+}
+
+pub async fn business_summary(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Path(plant_id): Path<Uuid>,
+    Query(query): Query<BusinessSummaryQuery>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    check_role(&auth_user, &["owner", "plant_owner"])?;
+    let last_month = matches!(query.period, BusinessPeriod::LastMonth);
+    let summary: serde_json::Value = sqlx::query_scalar(
+        r#"
+        WITH clock AS (
+            SELECT (now() AT TIME ZONE 'Asia/Kolkata')::date AS today
+        ), period AS (
+            SELECT CASE WHEN $3 THEN (date_trunc('month', today::timestamp) - interval '1 month')::date
+                        ELSE date_trunc('month', today::timestamp)::date END AS starts_on,
+                   CASE WHEN $3 THEN date_trunc('month', today::timestamp)::date ELSE today + 1 END AS ends_before
+            FROM clock
+        )
+        SELECT jsonb_build_object(
+            'starts_on', period.starts_on, 'ends_on', period.ends_before - 1,
+            'invoices_issued', invoice_totals.issued,
+            'invoiced_sales', invoice_totals.subtotal::text,
+            'invoice_balance', invoice_totals.balance::text,
+            'purchase_receipts', purchase_totals.receipts,
+            'purchases_total', purchase_totals.total::text,
+            'customer_payments', payment_totals.received::text,
+            'recorded_expenses', expense_totals.total::text
+        )
+        FROM rmc_plants plant CROSS JOIN period
+        CROSS JOIN LATERAL (
+            SELECT count(*) AS issued, coalesce(sum(i.subtotal_amount), 0) AS subtotal,
+                   coalesce(sum(greatest(i.total_amount - coalesce(paid.amount, 0), 0)), 0) AS balance
+            FROM plant_invoices i
+            LEFT JOIN LATERAL (
+                SELECT sum(pay.amount) AS amount FROM plant_payments pay
+                WHERE pay.invoice_id = i.id AND pay.plant_id = plant.id AND pay.payment_date < period.ends_before
+            ) paid ON TRUE
+            WHERE i.plant_id = plant.id AND i.invoice_date >= period.starts_on AND i.invoice_date < period.ends_before
+              AND i.status IN ('ISSUED', 'PARTIALLY_PAID', 'PAID')
+        ) invoice_totals
+        CROSS JOIN LATERAL (
+            SELECT count(*) AS receipts, coalesce(sum(r.total_amount), 0) AS total
+            FROM purchase_receipts r
+            WHERE r.plant_id = plant.id AND r.receipt_date >= period.starts_on AND r.receipt_date < period.ends_before
+        ) purchase_totals
+        CROSS JOIN LATERAL (
+            SELECT coalesce(sum(pay.amount), 0) AS received FROM plant_payments pay
+            WHERE pay.plant_id = plant.id AND pay.payment_date >= period.starts_on AND pay.payment_date < period.ends_before
+        ) payment_totals
+        CROSS JOIN LATERAL (
+            SELECT coalesce(sum(e.amount), 0) AS total FROM plant_expenses e
+            WHERE e.plant_id = plant.id AND e.expense_date >= period.starts_on AND e.expense_date < period.ends_before
+        ) expense_totals
+        WHERE plant.id = $1 AND plant.owner_id = $2 AND plant.is_active
+        "#,
+    )
+    .bind(plant_id)
+    .bind(auth_user.user_id)
+    .bind(last_month)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Active plant not found in your plants".into()))?;
+
+    Ok(Json(summary))
+}
+
 pub async fn get_owner_home(
     State(state): State<AppState>,
     auth_user: AuthUser,
@@ -607,10 +687,26 @@ pub async fn list_owner_invoices(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
+    owner_invoices(state, auth_user, None).await
+}
+
+pub async fn list_owner_plant_invoices(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Path(plant_id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    owner_invoices(state, auth_user, Some(plant_id)).await
+}
+
+async fn owner_invoices(
+    state: AppState,
+    auth_user: AuthUser,
+    plant_id: Option<Uuid>,
+) -> Result<Json<serde_json::Value>, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
 
-    let invoices:Vec<serde_json::Value>=sqlx::query_scalar("SELECT jsonb_build_object('id',i.id,'invoice_number',i.invoice_number,'invoice_date',i.invoice_date,'order_number',o.order_number,'customer_name',u.full_name,'grade',o.concrete_grade,'quantity',o.total_quantity_m3::DOUBLE PRECISION,'subtotal_amount',i.subtotal_amount::DOUBLE PRECISION,'tax_amount',i.tax_amount::DOUBLE PRECISION,'total_amount',i.total_amount::DOUBLE PRECISION,'total',i.total_amount::DOUBLE PRECISION,'paid',COALESCE(pay.paid,0)::DOUBLE PRECISION,'balance',(i.total_amount-COALESCE(pay.paid,0))::DOUBLE PRECISION,'status',i.status,'has_print_document',d.invoice_id IS NOT NULL,'plant_name',p.name) FROM plant_invoices i JOIN rmc_plants p ON p.id=i.plant_id LEFT JOIN invoice_documents d ON d.invoice_id=i.id LEFT JOIN orders o ON o.id=i.order_id LEFT JOIN users u ON u.id=i.customer_id LEFT JOIN LATERAL(SELECT SUM(amount) paid FROM plant_payments WHERE invoice_id=i.id) pay ON TRUE WHERE p.owner_id=$1 OR ($2='admin' AND EXISTS(SELECT 1 FROM plant_staff s WHERE s.plant_id=p.id AND s.user_id=$1 AND s.is_active=TRUE)) ORDER BY i.created_at DESC")
- .bind(auth_user.user_id).bind(&auth_user.role).fetch_all(&state.db).await?;
+    let invoices:Vec<serde_json::Value>=sqlx::query_scalar("SELECT jsonb_build_object('id',i.id,'invoice_number',i.invoice_number,'invoice_date',i.invoice_date,'order_number',o.order_number,'customer_name',u.full_name,'grade',o.concrete_grade,'quantity',o.total_quantity_m3::DOUBLE PRECISION,'subtotal_amount',i.subtotal_amount::DOUBLE PRECISION,'tax_amount',i.tax_amount::DOUBLE PRECISION,'total_amount',i.total_amount::DOUBLE PRECISION,'total',i.total_amount::DOUBLE PRECISION,'paid',COALESCE(pay.paid,0)::DOUBLE PRECISION,'balance',(i.total_amount-COALESCE(pay.paid,0))::DOUBLE PRECISION,'status',i.status,'has_print_document',d.invoice_id IS NOT NULL,'plant_name',p.name) FROM plant_invoices i JOIN rmc_plants p ON p.id=i.plant_id LEFT JOIN invoice_documents d ON d.invoice_id=i.id LEFT JOIN orders o ON o.id=i.order_id LEFT JOIN users u ON u.id=i.customer_id LEFT JOIN LATERAL(SELECT SUM(amount) paid FROM plant_payments WHERE invoice_id=i.id) pay ON TRUE WHERE (p.owner_id=$1 OR ($2='admin' AND EXISTS(SELECT 1 FROM plant_staff s WHERE s.plant_id=p.id AND s.user_id=$1 AND s.is_active=TRUE))) AND ($3::uuid IS NULL OR i.plant_id=$3) ORDER BY i.created_at DESC")
+ .bind(auth_user.user_id).bind(&auth_user.role).bind(plant_id).fetch_all(&state.db).await?;
     let billed: f64 = invoices
         .iter()
         .map(|v| v["total"].as_f64().unwrap_or(0.0))

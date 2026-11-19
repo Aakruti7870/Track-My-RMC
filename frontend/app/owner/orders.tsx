@@ -21,18 +21,18 @@ export default function OwnerOrders() {
   // Let the filters scroll with the orders when the fixed navigation leaves little vertical space.
   const compactHeight = (height - bottom) / fontScale < 380;
   const router = useRouter();
-  const params = useLocalSearchParams<{ status?: string; today?: string }>();
+  const params = useLocalSearchParams<{ status?: string; today?: string; plantId?: string }>();
   const active = SEGMENTS.some(segment => segment.key === params.status) ? params.status! : "all";
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
-  const [filters, setFilters] = useState<Filters>(CLEAR);
+  const [filters, setFilters] = useState<Filters>(() => ({ ...CLEAR, plant: params.plantId ?? "" }));
   const [draft, setDraft] = useState<Filters>(CLEAR);
   const [open, setOpen] = useState(false);
   const [validation, setValidation] = useState("");
   useEffect(() => { const timer = setTimeout(() => { setQuery(search.trim()); setPage(0); }, 300); return () => clearTimeout(timer); }, [search]);
   // Route-based filters work when the tab was already mounted.
-  useEffect(() => { setPage(0); setFilters(CLEAR); setSearch(""); }, [params.status, params.today]);
+  useEffect(() => { setPage(0); setFilters({ ...CLEAR, plant: params.plantId ?? "" }); setSearch(""); }, [params.status, params.today, params.plantId]);
   const qs = new URLSearchParams({ limit: "30", offset: String(page * 30), status: filters.status || active, q: query });
   if (params.today === "1") qs.set("today", "true");
   if (filters.from) qs.set("date_from", filters.from);
@@ -61,7 +61,7 @@ export default function OwnerOrders() {
         <OwnerGlass style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 12 }}><VectorSymbol name="search" size={19} color={p.text} /><TextInput testID="owner-order-search" accessibilityLabel="Search by order ID, customer or site" placeholder="Search by order ID, customer or site..." placeholderTextColor={p.muted} value={search} onChangeText={setSearch} style={{ flex: 1, height: 46, fontSize: 11, color: p.text }} /></OwnerGlass>
         <Pressable accessibilityRole="button" accessibilityLabel={`Order filters${filterCount ? `, ${filterCount} active` : ""}`} onPress={() => { setDraft(filters); setOpen(true); }}><OwnerGlass style={{ width: 46, height: 46, alignItems: "center", justifyContent: "center" }}><Ionicons name="filter-outline" size={23} color={filterCount ? p.accent : p.text} /></OwnerGlass></Pressable>
       </View>
-      {filterCount ? <Pressable accessibilityRole="button" onPress={() => { setFilters(CLEAR); setPage(0); router.setParams({ today: "" }); }}><AppText style={{ color: p.dark ? "#FFAD70" : "#AC4700", fontSize: 12 }}>Clear {filterCount} active filter{filterCount === 1 ? "" : "s"}</AppText></Pressable> : null}
+      {filterCount ? <Pressable accessibilityRole="button" onPress={() => { setFilters(CLEAR); setPage(0); router.setParams({ today: "", plantId: "" }); }}><AppText style={{ color: p.dark ? "#FFAD70" : "#AC4700", fontSize: 12 }}>Clear {filterCount} active filter{filterCount === 1 ? "" : "s"}</AppText></Pressable> : null}
     </View>
   );
   return <OwnerFrame title="Orders" subtitle="Manage all plant orders, quotations and deliveries">

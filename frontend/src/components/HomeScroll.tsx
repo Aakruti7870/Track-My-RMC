@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
 import { Platform, ScrollView, StyleSheet, type ScrollViewProps } from "react-native";
 
-type Props = Pick<ScrollViewProps, "contentContainerStyle" | "refreshControl" | "testID"> & {
+type Props = Pick<ScrollViewProps, "contentContainerStyle" | "refreshControl" | "testID" | "style"> & {
   children: ReactNode;
   gap: number;
   paddingHorizontal: number;
@@ -9,9 +9,9 @@ type Props = Pick<ScrollViewProps, "contentContainerStyle" | "refreshControl" | 
 };
 
 export function HomeScroll({ children, gap, paddingHorizontal, paddingTop = 0,
-  contentContainerStyle, refreshControl, testID }: Props) {
+  contentContainerStyle, refreshControl, testID, style }: Props) {
   return (
-    <ScrollView testID={testID} style={styles.scroll}
+    <ScrollView testID={testID} style={[styles.scroll, style]}
       contentContainerStyle={[{ gap, paddingHorizontal, paddingTop }, contentContainerStyle]}
       showsVerticalScrollIndicator={false} refreshControl={Platform.OS === "web" ? undefined : refreshControl}>
       {children}
