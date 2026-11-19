@@ -30,7 +30,7 @@ export default function Billing() {
   const insets = useSafeAreaInsets();
   const { token } = useAuth();
   const { plantId } = useLocalSearchParams<{ plantId?: string }>();
-  const { data, error, reload } = useGet<Data>(plantId ? `/owner/invoices?plant_id=${encodeURIComponent(plantId)}` : "/owner/invoices");
+  const { data, error, reload } = useGet<Data>(plantId ? `/owner/plants/${encodeURIComponent(plantId)}/invoices` : "/owner/invoices");
   const [payFor, setPayFor] = useState<string | null>(null);
   const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState(false);

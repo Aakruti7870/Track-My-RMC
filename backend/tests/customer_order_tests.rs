@@ -3003,7 +3003,8 @@ async fn owner_business_summary_scopes_records_by_plant_period_and_role(db: PgPo
         .fetch_one(&db)
         .await
         .unwrap();
-    let owner_token = generate_token(owner, "owner", "", None, &state.config.jwt_secret, 1).unwrap();
+    let owner_token =
+        generate_token(owner, "owner", "", None, &state.config.jwt_secret, 1).unwrap();
     let other_id = identity(&db, "owner").await;
     let other = generate_token(other_id, "owner", "", None, &state.config.jwt_secret, 1).unwrap();
 
@@ -3080,15 +3081,23 @@ async fn owner_business_summary_scopes_records_by_plant_period_and_role(db: PgPo
     assert_eq!(current["customer_payments"], "400.00");
     assert_eq!(current["recorded_expenses"], "200.00");
 
-    let (status, previous) =
-        call(&app, &format!("{path}?period=last_month"), None, &owner_token).await;
+    let (status, previous) = call(
+        &app,
+        &format!("{path}?period=last_month"),
+        None,
+        &owner_token,
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(previous["invoices_issued"], 1);
     assert_eq!(previous["invoiced_sales"], "2000.00");
     assert_eq!(previous["purchase_receipts"], 0);
     assert_eq!(previous["customer_payments"], "0");
 
-    assert_eq!(call(&app, &path, None, &other).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(
+        call(&app, &path, None, &other).await.0,
+        StatusCode::NOT_FOUND
+    );
     assert_eq!(
         call(&app, &path, None, &customer_token).await.0,
         StatusCode::FORBIDDEN

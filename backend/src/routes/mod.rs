@@ -1066,6 +1066,10 @@ pub fn build_app_router(state: AppState) -> Router {
             "/api/owner/invoices",
             get(owner_routes::list_owner_invoices),
         )
+        .route(
+            "/api/owner/plants/:plant_id/invoices",
+            get(owner_routes::list_owner_plant_invoices),
+        )
         // One global invoice template, plant-scoped buyer master and draft review.
         .route(
             "/api/invoice-workspace/orders/:order_id",

@@ -1,5 +1,4 @@
 //! Nonbinding requests are isolated from operational orders and never reserve capacity.
-use super::owner_routes::OwnerPlantQuery;
 use crate::{
     auth::{middleware::check_role, AuthUser},
     error::AppError,
@@ -113,6 +112,11 @@ pub async fn submit(
         .bind(user.user_id).bind(id.to_string()).bind(json!({"plant_id":plant_id})).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(Json(json!({"id":id,"status":"PENDING_KYC"})))
+}
+
+#[derive(Deserialize)]
+pub struct OwnerPlantQuery {
+    plant_id: Option<Uuid>,
 }
 
 pub async fn owner_list(
