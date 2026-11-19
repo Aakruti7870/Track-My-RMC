@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Redirect, useRouter } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -18,28 +18,30 @@ import { useGet } from "@/src/hooks/useApi";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { radius, spacing } from "@/src/theme/tokens";
 
-const MATERIALS = ["OPC Cement", "PPC Cement", "Aggregate", "Crushed Sand", "Water Tank", "Chemical", "Fly Ash"] as const;
+const MATERIALS = ["OPC Cement", "PPC Cement", "Aggregate", "Crushed Sand", "Water Tank", "Chemical", "Fly Ash", "Other"] as const;
 type Material = typeof MATERIALS[number];
 type EnquiryReceipt = { id: string; status: string; plant_name?: string; materials?: string[]; required_date?: string };
 type Plant = { id: string; name: string; city: string };
 
 export default function SupplierEnquiry() {
   const { hydrating, token, user } = useAuth();
+  const { plantId } = useLocalSearchParams<{ plantId?: string }>();
   if (hydrating) return null;
   if (!user || !token) return <Redirect href="/login" />;
   if (user.role === "customer" || !Object.prototype.hasOwnProperty.call(ROLE_ROUTES, user.role)) return <Redirect href="/" />;
-  return <SupplierEnquiryForm key={user.id} user={user} token={token} />;
+  return <SupplierEnquiryForm key={`${user.id}:${plantId ?? ""}`} user={user} token={token} preferredPlant={plantId} />;
 }
 
-function SupplierEnquiryForm({ user, token }: { user: Me; token: string }) {
+function SupplierEnquiryForm({ user, token, preferredPlant }: { user: Me; token: string; preferredPlant?: string }) {
   const { colors } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const plants = useGet<{ plants: Plant[] }>("/master/my-plants");
   const history = useGet<{ enquiries: EnquiryReceipt[] }>("/staff/supplier-enquiries");
-  const [selectedPlant, setSelectedPlant] = useState("");
+  const [selectedPlant, setSelectedPlant] = useState(preferredPlant ?? "");
   const [materials, setMaterials] = useState<Material[]>([]);
   const [materialsOpen, setMaterialsOpen] = useState(false);
+  const [otherMaterial, setOtherMaterial] = useState("");
   const [contactName, setContactName] = useState(user.name ?? "");
   const [contactPhone, setContactPhone] = useState(user.phone ?? user.mobile ?? "");
   const [location, setLocation] = useState("");
@@ -56,6 +58,7 @@ function SupplierEnquiryForm({ user, token }: { user: Me; token: string }) {
     if (sending.current || submitted) return;
     if (!options.some(plant => plant.id === plantId)) return setError("Choose your plant.");
     if (!materials.length) return setError("Select at least one material.");
+    if (materials.includes("Other") && otherMaterial.trim().length < 2) return setError("Describe the other material you need.");
     if (contactName.trim().length < 2) return setError("Enter the contact name.");
     if (!/^\+?[0-9]{10,15}$/.test(contactPhone.trim())) return setError("Enter a valid 10–15 digit contact number.");
     if (location.trim().length < 3) return setError("Enter the delivery location.");
@@ -64,6 +67,7 @@ function SupplierEnquiryForm({ user, token }: { user: Me; token: string }) {
     const payload = {
       plant_id: plantId, materials, contact_name: contactName.trim(),
       contact_phone: contactPhone.trim(), location: location.trim(), required_date: date,
+      ...(materials.includes("Other") ? { other_material: otherMaterial.trim() } : {}),
     };
     const signature = JSON.stringify(payload);
     if (request.current?.payload !== signature) {
@@ -157,6 +161,8 @@ function SupplierEnquiryForm({ user, token }: { user: Me; token: string }) {
                   );
                 }) : null}
               </View>
+              {materials.includes("Other") ? <Input label="Other material" value={otherMaterial}
+                onChangeText={setOtherMaterial} required editable={!busy} maxLength={150} /> : null}
               <Input label="Contact name" value={contactName} onChangeText={setContactName} required editable={!busy} maxLength={150} autoCapitalize="words" />
               <Input label="Contact phone" value={contactPhone} onChangeText={setContactPhone} required editable={!busy} keyboardType="phone-pad" maxLength={16} />
               <Input label="Delivery location" value={location} onChangeText={setLocation} required editable={!busy} maxLength={500} />

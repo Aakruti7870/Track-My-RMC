@@ -233,6 +233,56 @@ async fn plant_supplier_enquiry_uses_assigned_plant_and_deduplicates_retries(db:
         "SELECT COUNT(*) FROM notifications WHERE user_id=$1 AND title='New plant supplier enquiry'",
     ).bind(central).fetch_one(&db).await.unwrap();
     assert_eq!(notifications, 3);
+
+    let dealer_path = "/api/owner/dealer-enquiries";
+    let mut dealer = json!({
+        "plant_id": plant, "request_key": "dealer-accessories-1",
+        "contact_name": "Owner Test", "contact_phone": "+919876543210",
+        "required_date": chrono::Utc::now().date_naive(),
+        "request": {
+            "type": "plant_accessories", "location": "Plant gate",
+            "accessories": ["Cement Filters", "Other"], "requirements": "Spare filter bags"
+        }
+    });
+    assert_eq!(
+        call(&app, dealer_path, Some(staff_token), Some(dealer.clone()))
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    let (status, created) = call(&app, dealer_path, Some(owner_token), Some(dealer.clone())).await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    let (status, retry) = call(&app, dealer_path, Some(owner_token), Some(dealer.clone())).await;
+    assert_eq!(status, StatusCode::OK, "{retry}");
+    assert_eq!(retry["id"], created["id"]);
+    let (status, history) = call(&app, dealer_path, Some(owner_token), None).await;
+    assert_eq!(status, StatusCode::OK, "{history}");
+    assert_eq!(history["enquiries"][0]["service_type"], "PLANT_ACCESSORIES");
+    assert_eq!(history["enquiries"][0]["id"], created["id"]);
+
+    dealer["plant_id"] = json!(Uuid::new_v4());
+    assert_eq!(
+        call(&app, dealer_path, Some(owner_token), Some(dealer.clone()))
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    dealer["plant_id"] = json!(plant);
+    dealer["request"] = json!({"type": "buy_domain", "domain": "https://example.in"});
+    assert_eq!(
+        call(&app, dealer_path, Some(owner_token), Some(dealer))
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+    let dealer_notifications: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM notifications WHERE user_id=$1 AND title='New plant dealer enquiry'",
+    )
+    .bind(central)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(dealer_notifications, 1);
 }
 
 #[sqlx::test]

@@ -77,6 +77,7 @@ enum SupplierMaterial {
     Chemical,
     #[serde(rename = "Fly Ash")]
     FlyAsh,
+    Other,
 }
 
 impl SupplierMaterial {
@@ -89,6 +90,7 @@ impl SupplierMaterial {
             Self::WaterTank => "Water Tank",
             Self::Chemical => "Chemical",
             Self::FlyAsh => "Fly Ash",
+            Self::Other => "Other",
         }
     }
 }
@@ -103,6 +105,7 @@ pub struct SupplierEnquiry {
     location: String,
     required_date: NaiveDate,
     materials: Vec<SupplierMaterial>,
+    other_material: Option<String>,
 }
 
 struct EnquiryRecord {
@@ -351,6 +354,20 @@ pub async fn create_supplier(
         .ok_or_else(|| AppError::Forbidden("Choose a plant assigned to your account".into()))?;
     let materials = supplier_materials(&req.materials)?;
     let request_key = field(&req.request_key, "Request key", 1, 80)?;
+    let mut details = json!({
+        "plant_id": req.plant_id,
+        "plant_name": plant_name,
+        "submitted_by_role": auth.role,
+        "materials": materials,
+    });
+    if req.materials.contains(&SupplierMaterial::Other) {
+        details["other_material"] = json!(field(
+            req.other_material.as_deref().unwrap_or_default(),
+            "Other material",
+            2,
+            150,
+        )?);
+    }
     save_enquiry(
         &state,
         auth.user_id,
@@ -361,15 +378,202 @@ pub async fn create_supplier(
             mobile: phone(&req.contact_phone)?,
             location: field(&req.location, "Delivery location", 3, 500)?,
             date: valid_date(req.required_date)?,
-            details: json!({
-                "plant_id": req.plant_id,
-                "plant_name": plant_name,
-                "submitted_by_role": auth.role,
-                "materials": materials,
-            }),
+            details,
         },
     )
     .await
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+enum PlantAccessory {
+    Silo,
+    #[serde(rename = "Conveyor Belt")]
+    ConveyorBelt,
+    #[serde(rename = "Cement Filters")]
+    CementFilters,
+    #[serde(rename = "DG Set")]
+    DgSet,
+    #[serde(rename = "CCTV Setup")]
+    CctvSetup,
+    #[serde(rename = "Office Cabin")]
+    OfficeCabin,
+    Other,
+}
+
+impl PlantAccessory {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Silo => "Silo",
+            Self::ConveyorBelt => "Conveyor Belt",
+            Self::CementFilters => "Cement Filters",
+            Self::DgSet => "DG Set",
+            Self::CctvSetup => "CCTV Setup",
+            Self::OfficeCabin => "Office Cabin",
+            Self::Other => "Other",
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+enum DealerRequest {
+    WebsiteDesign {
+        requirements: String,
+    },
+    BuyDomain {
+        domain: String,
+    },
+    DigitalMarketing {
+        requirements: String,
+    },
+    PlantAccessories {
+        accessories: Vec<PlantAccessory>,
+        location: String,
+        requirements: Option<String>,
+    },
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DealerEnquiry {
+    plant_id: Uuid,
+    request_key: String,
+    contact_name: String,
+    contact_phone: String,
+    required_date: NaiveDate,
+    request: DealerRequest,
+}
+
+const DEALER_TYPES: [&str; 4] = [
+    "PLANT_WEBSITE_DESIGN",
+    "PLANT_BUY_DOMAIN",
+    "PLANT_DIGITAL_MARKETING",
+    "PLANT_ACCESSORIES",
+];
+
+fn domain_name(value: &str) -> Result<String, AppError> {
+    let name = value.trim().to_ascii_lowercase();
+    let valid_label = |label: &str| {
+        (1..=63).contains(&label.len())
+            && !label.starts_with('-')
+            && !label.ends_with('-')
+            && label
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+    };
+    let valid = name.len() <= 253
+        && name.rsplit_once('.').is_some_and(|(_, suffix)| {
+            suffix.len() >= 2
+                && (suffix.bytes().all(|byte| byte.is_ascii_alphabetic())
+                    || suffix.starts_with("xn--"))
+        })
+        && name.split('.').all(valid_label);
+    if !valid {
+        return Err(AppError::BadRequest(
+            "Enter a domain name such as yourplant.in".into(),
+        ));
+    }
+    Ok(name)
+}
+
+pub async fn create_dealer(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Json(req): Json<DealerEnquiry>,
+) -> Result<(StatusCode, Json<Value>), AppError> {
+    check_role(&auth, &["owner", "plant_owner"])?;
+    let plants = super::owner_routes::assigned_plants(&state, &auth).await?;
+    let (_, plant_name, city) = plants
+        .iter()
+        .find(|(id, _, _)| *id == req.plant_id)
+        .ok_or_else(|| AppError::Forbidden("Choose a plant assigned to your account".into()))?;
+    let mut location = format!("{plant_name} · {city}");
+    let mut details = json!({
+        "plant_id": req.plant_id,
+        "plant_name": plant_name,
+        "submitted_by_role": auth.role,
+    });
+    let kind = match req.request {
+        DealerRequest::WebsiteDesign { requirements } => {
+            details["requirements"] = json!(field(&requirements, "Website requirements", 5, 1000)?);
+            "PLANT_WEBSITE_DESIGN"
+        }
+        DealerRequest::BuyDomain { domain } => {
+            details["domain"] = json!(domain_name(&domain)?);
+            "PLANT_BUY_DOMAIN"
+        }
+        DealerRequest::DigitalMarketing { requirements } => {
+            details["requirements"] =
+                json!(field(&requirements, "Marketing requirements", 5, 1000)?);
+            "PLANT_DIGITAL_MARKETING"
+        }
+        DealerRequest::PlantAccessories {
+            accessories,
+            location: delivery,
+            requirements,
+        } => {
+            if accessories.is_empty()
+                || accessories.len() > 7
+                || accessories
+                    .iter()
+                    .enumerate()
+                    .any(|(index, item)| accessories[..index].contains(item))
+            {
+                return Err(AppError::BadRequest(
+                    "Choose at least one accessory without duplicates".into(),
+                ));
+            }
+            if accessories.contains(&PlantAccessory::Other) && requirements.is_none() {
+                return Err(AppError::BadRequest(
+                    "Describe the other accessories you need".into(),
+                ));
+            }
+            if let Some(requirements) = requirements {
+                details["requirements"] =
+                    json!(field(&requirements, "Accessory requirements", 3, 1000)?);
+            }
+            location = field(&delivery, "Delivery or installation location", 3, 500)?;
+            details["accessories"] = json!(accessories
+                .iter()
+                .map(|item| item.label())
+                .collect::<Vec<_>>());
+            "PLANT_ACCESSORIES"
+        }
+    };
+    save_enquiry(
+        &state,
+        auth.user_id,
+        EnquiryRecord {
+            kind,
+            request_key: Some(field(&req.request_key, "Request key", 1, 80)?),
+            name: field(&req.contact_name, "Contact name", 2, 150)?,
+            mobile: phone(&req.contact_phone)?,
+            location,
+            date: valid_date(req.required_date)?,
+            details,
+        },
+    )
+    .await
+}
+
+pub async fn list_dealer(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> Result<Json<Value>, AppError> {
+    check_role(&auth, &["owner", "plant_owner"])?;
+    let enquiries: Vec<Value> = sqlx::query_scalar(
+        "SELECT jsonb_build_object('id',e.id,'service_type',e.service_type,'plant_name',p.name,
+          'required_date',e.required_date,'status',e.status)
+         FROM customer_service_enquiries e
+         JOIN rmc_plants p ON p.id::text=e.details->>'plant_id' AND p.owner_id=$1 AND p.is_active
+         WHERE e.customer_id=$1 AND e.service_type=ANY($2)
+         ORDER BY e.created_at DESC,e.id DESC LIMIT 100",
+    )
+    .bind(auth.user_id)
+    .bind(&DEALER_TYPES[..])
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(json!({"enquiries":enquiries})))
 }
 
 async fn save_enquiry(
@@ -413,16 +617,19 @@ async fn save_enquiry(
             Json(json!({"success": true, "id": id, "status": status})),
         ));
     };
-    let (title, body) = if record.kind == "PLANT_SUPPLIER" {
-        (
+    let (title, body) = match record.kind {
+        "PLANT_SUPPLIER" => (
             "New plant supplier enquiry",
             "A plant material supplier enquiry is awaiting follow-up.",
-        )
-    } else {
-        (
+        ),
+        kind if DEALER_TYPES.contains(&kind) => (
+            "New plant dealer enquiry",
+            "A plant dealer or digital service enquiry is awaiting follow-up.",
+        ),
+        _ => (
             "New service enquiry",
             "A customer service enquiry is awaiting review and follow-up.",
-        )
+        ),
     };
     sqlx::query(
         "INSERT INTO notifications(user_id,title,body,notification_type,reference_id)
@@ -547,7 +754,7 @@ pub async fn list_customer(
 ) -> Result<Json<Value>, AppError> {
     check_role(&auth, &["customer"])?;
     let enquiries: Vec<Value> = sqlx::query_scalar(
-        "SELECT jsonb_build_object('id', id, 'service_type', service_type, 'contact_name', contact_name, 'contact_phone', contact_phone, 'location', location, 'required_date', required_date, 'details', details, 'status', status, 'created_at', created_at) FROM customer_service_enquiries WHERE customer_id=$1 AND service_type<>'PLANT_SUPPLIER' ORDER BY created_at DESC LIMIT 100",
+        "SELECT jsonb_build_object('id', id, 'service_type', service_type, 'contact_name', contact_name, 'contact_phone', contact_phone, 'location', location, 'required_date', required_date, 'details', details, 'status', status, 'created_at', created_at) FROM customer_service_enquiries WHERE customer_id=$1 AND service_type IN ('CEMENT','LABOUR_CONTRACTOR','BUILDING_MATERIAL','BULK_CONCRETE','PUMP_RENTAL') ORDER BY created_at DESC LIMIT 100",
     ).bind(auth.user_id).fetch_all(&state.db).await?;
     Ok(Json(json!({"enquiries": enquiries})))
 }

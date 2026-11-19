@@ -12,6 +12,7 @@ import { IconTile } from "@/src/components/IconTile";
 import { fonts } from "@/src/theme/tokens";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { modulesForRole } from "@/src/navigation/moduleCatalog";
+import { DealerCards } from "@/src/owner/DealerCards";
 import { HOME_SHORTCUTS } from "@/src/owner/modules";
 import { OwnerFrame, OwnerGlass, ui, useOwnerBottomSpace, useOwnerPalette } from "@/src/owner/OwnerUI";
 
@@ -113,6 +114,7 @@ export default function OwnerHome() {
         {plant ? <LoadPipeline plantId={plant.id} plantName={plant.name} contentWidth={contentWidth} /> : !plantsError ? <AppText variant="caption">
           {plantsLoading ? "Loading plants…" : "Load Pipeline will appear once a plant is assigned."}
         </AppText> : null}
+        <DealerCards plantId={plant?.id} contentWidth={contentWidth} />
       </View>
     </HomeScroll>
   </OwnerFrame>;
