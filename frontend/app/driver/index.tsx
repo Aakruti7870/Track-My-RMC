@@ -1,6 +1,7 @@
 import { screenOverflow } from "@/src/theme/sceneBackground";
 import React from "react";
-import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
+import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { HomeModuleSection, HomeSectionHeader } from "@/src/components/HomeModuleSection";
@@ -16,7 +17,7 @@ import { Badge } from "@/src/components/ui/Badge";
 import { Skeleton } from "@/src/components/ui/Skeleton";
 import { ErrorView } from "@/src/components/StateViews";
 import { DriverIdentityCard } from "@/src/components/DriverIdentityCard";
-import { PlantHomeActions, PlantHomeHero } from "@/src/components/PlantHomeCards";
+import { PlantHomeActions } from "@/src/components/PlantHomeCards";
 import { fonts, fontSize, radius, spacing, operationalStatus } from "@/src/theme/tokens";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { IconTile } from "@/src/components/IconTile";
@@ -25,11 +26,17 @@ type Trip = { id: string; order_number: string; status: string; grade: string; q
 type Home = { name: string; vehicle: string | null; active_trip: Trip | null; completed_today: number; checked_in: boolean };
 type Attendance = { date: string; check_in: string | null; check_out: string | null };
 
+const CONTENT_MAX_WIDTH = 1120;
 const PLAY_REVIEW_DRIVER_NAME = "Google Play Review Driver";
 const PLAY_REVIEW_ORDER_NUMBER = "PLAY-REVIEW-001";
 
 export default function DriverHome() {
   const { colors } = useTheme();
+  const { width, fontScale } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const gutter = width >= 768 ? 24 : 12;
+  const bottomSpace = fontScale >= 1.3 ? spacing.lg : 96 + (Platform.OS === "web" ? 0 : insets.bottom);
+  const statStyle = [styles.stat, { flexBasis: 88 * fontScale, backgroundColor: colors.surfaceSecondary, borderColor: colors.border }];
   const { user } = useAuth();
   const router = useRouter();
   const { data, loading, error, refetch, reload } = useGet<Home>("/driver/home");
@@ -48,35 +55,29 @@ export default function DriverHome() {
           ? "Start your shift"
           : "Attendance";
   const attendanceLabel = data?.checked_in ? "On Duty" : shiftComplete ? "Shift Done" : attendanceKnown ? "Check In" : "Attendance";
+  const homeUnavailable = error && !data;
+  const homeLoading = (loading && !data) || (attendanceLoading && !attendance);
   const driverModules = modulesForRole(user?.role);
   const shortcutKeys = ["driver-trips", "driver-attendance", "shift-roster", "my-payslip"];
   const quickModules = shortcutKeys.flatMap(key => driverModules.filter(module => module.key === key));
   const driverTools = driverModules.filter(module => module.key === "workforce");
-  const plantCards = <View style={styles.plantCards}>
-    <PlantHomeHero label="Driver" testID="driver-home-plant-banner" />
-    <HomeModuleSection id="driver-quick-access" title="Quick Access" modules={quickModules} homeShortcut testIDPrefix="driver-shortcut-" />
-    <PlantHomeActions />
-  </View>;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface, overflow: screenOverflow }}>
-      <OperationalHomeTopBar />
-      {error && !data ? (
-        <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}>
+      <View style={[styles.frame, { maxWidth: CONTENT_MAX_WIDTH + gutter * 2, paddingHorizontal: gutter - 12 }]}>
+        <OperationalHomeTopBar />
+      </View>
+      <ScrollView
+        testID="driver-home-scroll"
+        contentContainerStyle={{ paddingHorizontal: gutter, paddingTop: gutter, paddingBottom: bottomSpace }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={false} onRefresh={() => { void refetch(); void refetchAttendance(); }} tintColor={colors.brand} />}
+      >
+        <View style={[styles.frame, styles.content]}>
           <DriverIdentityCard />
-          {plantCards}
-          <ErrorView message={error} onRetry={reload} />
-        </ScrollView>
-      ) : (
-        <ScrollView
-          testID="driver-home-scroll"
-          contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120, gap: spacing.lg }}
-          showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={false} onRefresh={() => { void refetch(); void refetchAttendance(); }} tintColor={colors.brand} />}
-        >
-          <DriverIdentityCard />
-          {plantCards}
-          {(loading && !data) || (attendanceLoading && !attendance) ? (
+          <HomeModuleSection id="driver-quick-access" title="Quick Access" modules={quickModules} homeShortcut testIDPrefix="driver-shortcut-" />
+          <PlantHomeActions style={styles.plantActions} />
+          {homeUnavailable ? <ErrorView message={error} onRetry={reload} /> : homeLoading ? (
             <>
               <Skeleton height={70} style={{ borderRadius: radius.md }} />
               <Skeleton height={180} style={{ borderRadius: radius.lg }} />
@@ -107,18 +108,18 @@ export default function DriverHome() {
                   <IconTile symbol={data.active_trip ? "assigned-trips" : shiftComplete ? "success" : "check-in"} width={48} size={20} />
                 </Pressable>
               </Card>
-              <View style={{ flexDirection: "row", gap: spacing.sm }}>
-                <Pressable accessibilityRole="button" onPress={() => router.push("/driver/shift-attendance")} style={[styles.stat, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+              <View style={styles.stats}>
+                <Pressable accessibilityRole="button" onPress={() => router.push("/driver/shift-attendance")} style={statStyle}>
                   <IconTile symbol="driver-attendance" width={38} />
-                  <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.sm, color: colors.onSurface }}>{attendanceLabel}</AppText>
+                  <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.sm, color: colors.onSurface }} center>{attendanceLabel}</AppText>
                 </Pressable>
-                <View style={[styles.stat, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+                <View style={statStyle}>
                   <AppText style={{ fontFamily: fonts.displayBold, fontSize: fontSize.xl, color: data.completed_today > 0 ? operationalStatus("success", colors.isDark) : colors.onSurface }}>{data.completed_today}</AppText>
-                  <AppText variant="caption">Delivered today</AppText>
+                  <AppText variant="caption" center>Delivered today</AppText>
                 </View>
-                <View style={[styles.stat, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+                <View style={statStyle}>
                   <IconTile symbol="transit-mixer-fleet" width={38} />
-                  <AppText style={{ fontFamily: fonts.semibold, fontSize: 13, lineHeight: 18, color: colors.onSurface }}>{data.vehicle || "—"}</AppText>
+                  <AppText style={{ fontFamily: fonts.semibold, fontSize: 13, lineHeight: 18, color: colors.onSurface }} center>{data.vehicle || "—"}</AppText>
                 </View>
               </View>
 
@@ -164,20 +165,21 @@ export default function DriverHome() {
                 seeAll={{ pathname: "/role-modules", params: { category: "Workforce" } }} />
             </>
           ) : null}
-        </ScrollView>
-      )}
+        </View>
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  plantCards: { width: "100%", maxWidth: 620, alignSelf: "center", gap: 10 },
-  header: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.md, paddingTop: spacing.sm },
-  iconBtn: { width: 44, height: 44, borderRadius: radius.md, alignItems: "center", justifyContent: "center", borderWidth: 1 },
+  frame: { width: "100%", alignSelf: "center" },
+  content: { maxWidth: CONTENT_MAX_WIDTH, gap: spacing.md },
+  plantActions: { maxWidth: "100%" },
+  stats: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   summary: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 108 },
   summaryTitle: { fontFamily: fonts.displayBold, fontSize: fontSize.xl },
   summaryAction: { width: 48, height: 48, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
-  stat: { flex: 1, alignItems: "center", justifyContent: "center", gap: 4, paddingVertical: spacing.md, borderRadius: radius.md, borderWidth: 1 },
+  stat: { flexGrow: 1, minWidth: 0, alignItems: "center", justifyContent: "center", gap: 4, padding: spacing.sm, borderRadius: radius.md, borderWidth: 1 },
   rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   siteRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   openBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, height: 44, borderRadius: radius.md },

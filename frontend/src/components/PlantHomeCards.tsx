@@ -1,6 +1,6 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter, type Href } from "expo-router";
-import { Image, Pressable, StyleSheet, View } from "react-native";
+import { Image, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 
 import { CardHighlight } from "@/src/components/ui/CardHighlight";
 import { IconTile } from "@/src/components/IconTile";
@@ -33,7 +33,7 @@ export function PlantHomeHero({ label, testID, profile, minHeight, maxHeight }: 
   );
 }
 
-export function PlantHomeActions({ action }: { action?: "supplier-enquiry" | "profile" } = {}) {
+export function PlantHomeActions({ action, style }: { action?: "supplier-enquiry" | "profile"; style?: StyleProp<ViewStyle> } = {}) {
   const router = useRouter();
   const { colors } = useTheme();
   const actions = [
@@ -45,7 +45,7 @@ export function PlantHomeActions({ action }: { action?: "supplier-enquiry" | "pr
   ] satisfies { key: string; title: string; detail?: string; symbol: VectorSymbolName; highlight: boolean; onPress: () => void }[];
 
   return (
-    <View style={styles.actions}>
+    <View style={[styles.actions, style]}>
       {actions.filter(item => !action || item.key === action).map(({ key, title, detail, symbol, highlight, onPress }) => (
         <Pressable key={key} testID={`plant-home-${key}`} accessibilityRole="button" accessibilityLabel={title}
           accessibilityHint={detail} onPress={onPress} style={({ pressed }) => [styles.action, {
