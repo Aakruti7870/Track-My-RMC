@@ -1,6 +1,6 @@
 import { VectorSymbol } from "@/src/components/VectorSymbol";
 import React, { useEffect, useState } from "react";
-import { FlatList, Modal, Pressable, ScrollView, TextInput, View } from "react-native";
+import { FlatList, Modal, Pressable, ScrollView, TextInput, useWindowDimensions, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useGet } from "@/src/hooks/useApi";
@@ -17,6 +17,9 @@ const CLEAR: Filters = { from: "", to: "", grade: "", plant: "", status: "" };
 export default function OwnerOrders() {
   const p = useOwnerPalette();
   const bottom = useOwnerBottomSpace();
+  const { height, fontScale } = useWindowDimensions();
+  // Let the filters scroll with the orders when the fixed navigation leaves little vertical space.
+  const compactHeight = (height - bottom) / fontScale < 380;
   const router = useRouter();
   const params = useLocalSearchParams<{ status?: string; today?: string }>();
   const active = SEGMENTS.some(segment => segment.key === params.status) ? params.status! : "all";
@@ -45,8 +48,8 @@ export default function OwnerOrders() {
     setFilters(draft); setPage(0); setOpen(false); setValidation("");
   }
   const inputStyle = { color: p.text, borderWidth: 1, borderColor: p.border, backgroundColor: p.panel, padding: 12, borderRadius: 12, fontSize: 13 };
-  return <OwnerFrame title="Orders" subtitle="Manage all plant orders, quotations and deliveries">
-    <View style={{ paddingHorizontal: 16, gap: 12, paddingBottom: 12 }}>
+  const orderControls = (
+    <View style={{ paddingHorizontal: compactHeight ? 0 : 16, gap: 12, paddingBottom: 12 }}>
       <Pressable accessibilityRole="button" onPress={() => router.push("/owner/provisional-requests")}
         style={{ padding: 12, borderWidth: 1, borderColor: p.border, borderRadius: 12, backgroundColor: p.panel }}>
         <AppText style={{ color: p.accent }}>View nonbinding provisional requests</AppText>
@@ -60,7 +63,14 @@ export default function OwnerOrders() {
       </View>
       {filterCount ? <Pressable accessibilityRole="button" onPress={() => { setFilters(CLEAR); setPage(0); router.setParams({ today: "" }); }}><AppText style={{ color: p.dark ? "#FFAD70" : "#AC4700", fontSize: 12 }}>Clear {filterCount} active filter{filterCount === 1 ? "" : "s"}</AppText></Pressable> : null}
     </View>
-    <FlatList testID="owner-orders-list" data={data?.orders ?? []} keyExtractor={order => order.id} renderItem={({ item }) => <OwnerOrderCard order={item} />} initialNumToRender={8} windowSize={5} showsVerticalScrollIndicator={false} contentContainerStyle={[ui.content, { paddingBottom: bottom, flexGrow: 1 }]} refreshing={loading && !!data} onRefresh={refetch}
+  );
+  return <OwnerFrame title="Orders" subtitle="Manage all plant orders, quotations and deliveries">
+    {compactHeight ? null : orderControls}
+    <FlatList testID="owner-orders-list" data={data?.orders ?? []} keyExtractor={order => order.id} renderItem={({ item }) => <OwnerOrderCard order={item} />} initialNumToRender={8} windowSize={5} showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps={compactHeight ? "handled" : undefined}
+      ListHeaderComponent={compactHeight ? orderControls : null}
+      style={compactHeight ? { minHeight: 0, marginBottom: bottom } : undefined}
+      contentContainerStyle={[ui.content, { paddingBottom: compactHeight ? 12 : bottom, flexGrow: 1 }]} refreshing={loading && !!data} onRefresh={refetch}
       ListEmptyComponent={error ? <ErrorView message={error} onRetry={reload} /> : loading ? <View style={{ gap: 12 }}>{[0, 1, 2].map(i => <Skeleton key={i} height={130} />)}</View> : <EmptyView icon="cube-outline" title={search || filterCount ? "No matching orders" : active === "pending" ? "No orders awaiting approval" : "No orders"} subtitle="Orders matching this view will appear here." />}
       ListFooterComponent={<View style={{ gap: 10 }}>{error && data ? <ErrorView message={error} onRetry={reload} /> : null}{page > 0 || data?.has_more ? <View style={{ flexDirection: "row", justifyContent: "space-between", padding: 12 }}><Pressable accessibilityRole="button" disabled={page === 0 || loading} onPress={() => setPage(previous => previous - 1)}><AppText color={page === 0 ? p.muted : p.accent}>Previous</AppText></Pressable><AppText color={p.muted}>Page {page + 1}</AppText><Pressable accessibilityRole="button" disabled={!data?.has_more || loading} onPress={() => setPage(previous => previous + 1)}><AppText color={data?.has_more ? p.accent : p.muted}>Next</AppText></Pressable></View> : null}</View>} />
     <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}><View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: 20 }}><OwnerGlass style={{ width: "100%", maxWidth: 500, alignSelf: "center", maxHeight: "90%", backgroundColor: p.canvas }}><ScrollView contentContainerStyle={{ padding: 18, gap: 12 }} keyboardShouldPersistTaps="handled">
