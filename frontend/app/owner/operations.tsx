@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import { Pressable, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useAuth } from "@/src/auth/AuthContext";
 import { apiErrorDetail, apiPost, apiPut } from "@/src/api/client";
 import { useGet } from "@/src/hooks/useApi";
@@ -19,7 +19,8 @@ import {
 export default function OwnerOperations() {
   const params = useLocalSearchParams<{ plantId?: string; section?: string }>();
   const { plants, plant, setSelection, loading, error, reload } = usePlantWorkspace(params.plantId);
-  const { data: pipeline } = usePipeline(plant?.id, { summary: true });
+  const { data: pipeline, refetch: refreshPipeline } = usePipeline(plant?.id, { summary: true });
+  useFocusEffect(useCallback(() => { void refreshPipeline(); }, [refreshPipeline]));
   const shortcuts = plant ? <>
     <PlantSelector plants={plants} plant={plant} select={setSelection} />
     <WorkspaceAlert plantId={plant.id} count={pipeline?.counts?.needs_mixer} />
