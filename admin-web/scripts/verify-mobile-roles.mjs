@@ -259,9 +259,11 @@ try {
     phase = 'dashboard';
     const summary = user.role === 'customer' ? 'customer-home-scroll' : `${['plant_owner', 'driver'].includes(user.role) ? rolePath : 'staff'}-home-summary`;
     await expect(page.getByTestId(summary)).toBeVisible();
-    const homePath = `/api/${['customer', 'driver', 'plant_owner'].includes(user.role) ? rolePath : 'staff'}/home`;
-    await expect.poll(() => successfulPaths.has(homePath)).toBe(true);
     await expect.poll(() => currentIdentity?.role).toBe(user.role);
+    const homePath = user.role === 'plant_owner'
+      ? `/api/plant-operations/${currentIdentity.plant_id}/pipeline`
+      : `/api/${['customer', 'driver'].includes(user.role) ? rolePath : 'staff'}/home`;
+    await expect.poll(() => successfulPaths.has(homePath)).toBe(true);
     assert.ok(currentIdentity.name && token);
     if (user.role === 'customer') {
       phase = 'automatic nearby discovery with optional location off';
