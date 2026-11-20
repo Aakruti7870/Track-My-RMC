@@ -12,6 +12,7 @@ import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { useGet } from "@/src/hooks/useApi";
 import { AppText } from "@/src/components/ui/AppText";
+import { HomeCardRow } from "@/src/components/HomeCardRow";
 import { Card } from "@/src/components/ui/Card";
 import { Badge } from "@/src/components/ui/Badge";
 import { Skeleton } from "@/src/components/ui/Skeleton";
@@ -37,7 +38,7 @@ export default function DriverHome() {
   const insets = useSafeAreaInsets();
   const gutter = Math.max(width >= 768 ? 24 : 12, insets.left, insets.right);
   const bottomSpace = fontScale >= 1.3 ? spacing.lg : 96 + (Platform.OS === "web" ? 0 : insets.bottom);
-  const statStyle = [styles.stat, { flexBasis: 88 * fontScale, backgroundColor: colors.surfaceSecondary, borderColor: colors.border }];
+  const statStyle = [styles.stat, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }];
   const { user } = useAuth();
   const router = useRouter();
   const { data, loading, error, refetch, reload } = useGet<Home>("/driver/home");
@@ -108,7 +109,7 @@ export default function DriverHome() {
                   <IconTile symbol={data.active_trip ? "assigned-trips" : shiftComplete ? "success" : "check-in"} width={48} size={20} />
                 </Pressable>
               </Card>
-              <View style={styles.stats}>
+              <HomeCardRow testID="driver-home-stats-row" label="Driver shift metrics" minCardWidth={94} gap={spacing.sm}>
                 <Pressable accessibilityRole="button" onPress={() => router.push("/driver/shift-attendance")} style={statStyle}>
                   <IconTile symbol="driver-attendance" width={38} />
                   <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.sm, color: colors.onSurface }} center>{attendanceLabel}</AppText>
@@ -121,7 +122,7 @@ export default function DriverHome() {
                   <IconTile symbol="transit-mixer-fleet" width={38} />
                   <AppText style={{ fontFamily: fonts.semibold, fontSize: 13, lineHeight: 18, color: colors.onSurface }} center>{data.vehicle || "—"}</AppText>
                 </View>
-              </View>
+              </HomeCardRow>
 
               {isPlayReviewDriver ? (
                 <Card testID="play-review-location-hint" style={{ gap: spacing.sm, backgroundColor: colors.brandSoft, borderColor: colors.brand + "44" }}>
@@ -175,11 +176,10 @@ const styles = StyleSheet.create({
   frame: { width: "100%", alignSelf: "center" },
   content: { maxWidth: CONTENT_MAX_WIDTH, gap: spacing.md },
   plantActions: { maxWidth: "100%" },
-  stats: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   summary: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 108 },
   summaryTitle: { fontFamily: fonts.displayBold, fontSize: fontSize.xl },
   summaryAction: { width: 48, height: 48, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
-  stat: { flexGrow: 1, minWidth: 0, alignItems: "center", justifyContent: "center", gap: 4, padding: spacing.sm, borderRadius: radius.md, borderWidth: 1 },
+  stat: { flex: 1, minWidth: 0, alignItems: "center", justifyContent: "center", gap: 4, padding: spacing.sm, borderRadius: radius.md, borderWidth: 1 },
   rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   siteRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   openBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, height: 44, borderRadius: radius.md },

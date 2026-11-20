@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const { assertHomeCardRow } = require("./assert-home-card-row.cjs");
 const { chromium } = require("../../admin-web/node_modules/playwright");
 
 const origin = "http://127.0.0.1:8765";
@@ -90,7 +91,11 @@ async function visitRole(browser, [role, routeName, label], scheme) {
       if (pathname === "/staff/home") return reply({
         name: "Fixture " + label, role, role_label: label, plant_name: plant.name,
         primary: { title: "Workspace", kind: "dispatch" },
-        kpis: [{ label: "Staff Present Today", value: 3, icon: "people-outline" }],
+        kpis: [
+          { label: "Staff Present Today", value: 3, icon: "people-outline" },
+          { label: "Pending Orders", value: 2, icon: "cube-outline" },
+          { label: "Fleet Available", value: 1, icon: "bus-outline" },
+        ],
       });
       if (pathname === "/master/my-plants") return reply({ plants: [plant] });
       if (pathname === "/staff/module-permissions") return reply({
@@ -154,11 +159,12 @@ async function visitRole(browser, [role, routeName, label], scheme) {
         assert((await button.boundingBox()).height >= 44);
         assert(await button.evaluate(element => element.scrollWidth <= element.clientWidth + 2), role + " attendance label overflows at " + width);
       }
-      assert(await quick.getByRole("button").evaluateAll(elements => elements.length > 0 && elements.every(element => {
-        const rect = element.getBoundingClientRect();
-        return rect.left >= -1 && rect.right <= innerWidth + 1 && element.scrollWidth <= element.clientWidth + 2 &&
-          Boolean(element.innerText.trim());
-      })), role + " quick-access label overflows or is empty at " + width);
+      const row = quick.getByTestId(driver ? "home-modules-row-driver-quick-access" : "home-modules-row-quick-access");
+      await assertHomeCardRow(row, { shouldOverflow: width >= 768 ? false : undefined });
+      const otherRows = page.locator('[data-testid^="home-modules-row-"], [data-testid="staff-home-kpi-row"], [data-testid="staff-home-plant-records-row"], [data-testid="plant-home-actions-row"], [data-testid="driver-home-stats-row"], [data-testid="home-load-pipeline-row"]').and(page.locator(':not([data-testid$="-quick-access"])'));
+      for (const otherRow of await otherRows.all()) {
+        await assertHomeCardRow(otherRow, { shouldOverflow: width >= 768 ? false : undefined });
+      }
     }
 
     await page.setViewportSize({ width: 390, height: 920 });

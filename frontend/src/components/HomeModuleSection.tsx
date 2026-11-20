@@ -1,9 +1,10 @@
 import React from "react";
-import { Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, type Href } from "expo-router";
 
 import { AppText } from "@/src/components/ui/AppText";
+import { HomeCardRow } from "@/src/components/HomeCardRow";
 import { CardHighlight } from "@/src/components/ui/CardHighlight";
 import { IconTile } from "@/src/components/IconTile";
 import type { RoleModule } from "@/src/navigation/moduleCatalog";
@@ -32,24 +33,22 @@ export function HomeModuleSection({ id, title, modules, seeAll, homeShortcut = f
 }) {
   const { colors } = useTheme();
   const router = useRouter();
-  const { width, fontScale } = useWindowDimensions();
-  const compact = (width - 32) / fontScale < (homeShortcut ? 250 : 350);
   if (!modules.length) return null;
   return (
     <View testID={`home-modules-${id}`} style={[styles.section, { backgroundColor: colors.surfaceSecondary, borderColor: colors.divider }]}>
       <CardHighlight radius={radius.lg} />
       <HomeSectionHeader title={title} seeAll={seeAll} testID={`home-see-all-${id}`} />
-      <View style={styles.grid}>
+      <HomeCardRow testID={`home-modules-row-${id}`} label={title} minCardWidth={homeShortcut ? 88 : 104} maxCardWidth={240}>
         {modules.map(module => (
           <Pressable key={module.key} testID={testIDPrefix + module.key} accessibilityRole="button"
             accessibilityLabel={module.label} accessibilityHint={module.description}
             onPress={() => router.push(module.route)}
-            style={({ pressed }) => [styles.tile, { width: compact ? "48%" : "23.5%", opacity: pressed ? 0.74 : 1 }]}>
+            style={({ pressed }) => [styles.tile, { opacity: pressed ? 0.74 : 1 }]}>
             {module.symbol ? <IconTile symbol={module.symbol} homeShortcut={homeShortcut} /> : <IconTile icon={module.icon} homeShortcut={homeShortcut} />}
             <AppText center style={[styles.label, homeShortcut && styles.quickLabel]}>{module.label}</AppText>
           </Pressable>
         ))}
-      </View>
+      </HomeCardRow>
     </View>
   );
 }
@@ -60,8 +59,7 @@ const styles = StyleSheet.create({
   title: { flexShrink: 1, fontFamily: fonts.semibold, fontSize: 15, lineHeight: 20 },
   link: { flexDirection: "row", alignItems: "center", gap: 3, minHeight: 44, paddingHorizontal: 4 },
   linkLabel: { fontFamily: fonts.semibold, fontSize: 12, lineHeight: 16 },
-  grid: { flexDirection: "row", flexWrap: "wrap", columnGap: "2%", rowGap: 8 },
-  tile: { minHeight: 76, minWidth: 0, paddingHorizontal: 2, paddingVertical: 4, gap: 6, alignItems: "center" },
+  tile: { flex: 1, minHeight: 76, minWidth: 0, paddingHorizontal: 2, paddingVertical: 4, gap: 6, alignItems: "center" },
   quickLabel: { fontSize: 11, lineHeight: 15 },
   label: { fontFamily: fonts.medium, fontSize: 12, lineHeight: 16, maxWidth: "100%" },
 });

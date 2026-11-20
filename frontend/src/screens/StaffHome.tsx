@@ -18,6 +18,7 @@ import { useHomeAttendance } from "@/src/hooks/useHomeAttendance";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { useGet } from "@/src/hooks/useApi";
 import { AppText } from "@/src/components/ui/AppText";
+import { HomeCardRow } from "@/src/components/HomeCardRow";
 import { Skeleton } from "@/src/components/ui/Skeleton";
 import { ErrorView } from "@/src/components/StateViews";
 import { StaffCollection } from "@/src/screens/StaffCollection";
@@ -76,12 +77,8 @@ export function StaffHome() {
   const { user } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width: viewportWidth, fontScale } = useWindowDimensions();
+  const { fontScale } = useWindowDimensions();
   const gutter = Math.max(spacing.lg, insets.left, insets.right);
-  const contentWidth = Math.max(0, Math.min(viewportWidth, CONTENT_MAX_WIDTH) - 2 * gutter);
-  const readableWidth = contentWidth / fontScale;
-  const kpiColumns = readableWidth >= 680 ? 4 : readableWidth >= 460 ? 3 : readableWidth >= 240 ? 2 : 1;
-  const kpiWidth = (contentWidth - (kpiColumns - 1) * 10) / kpiColumns;
   const bottomSpace = fontScale >= 1.3 ? spacing.lg : 96 + (Platform.OS === "web" ? 0 : insets.bottom);
   const { data, loading, error, refetch, reload } = useGet<HomeData>("/staff/home");
   const attendance = useHomeAttendance("staff", refetch);
@@ -121,11 +118,13 @@ export function StaffHome() {
     <View style={styles.topCards}>
       <HomeModuleSection id="quick-access" title="Quick Access" modules={quickModules} homeShortcut />
       {admin ? <WorkspaceTile title="Open Operations" symbol="production-and-dispatch" tone="warning" destination="/plant-admin/operations" /> : null}
-      {adminPlant && primaryAllowed ? <LoadPipeline plantId={adminPlant} showAlert /> : null}
-      {adminPlant && grants?.permissions.some(grant => grant.key === "purchases" && grant.view) ?
-        <WorkspaceTile title="Material Purchases" symbol="material-receipts" destination={businessPath("purchases", adminPlant)} /> : null}
-      {adminPlant && grants?.permissions.some(grant => grant.key === "diesel_ledger" && grant.view) ?
-        <WorkspaceTile title="Diesel Ledger" symbol="diesel-ledger" destination={businessPath("diesel", adminPlant)} /> : null}
+      {adminPlant && primaryAllowed ? <LoadPipeline plantId={adminPlant} showAlert swipe /> : null}
+      {adminPlant ? <HomeCardRow testID="staff-home-plant-records-row" label="Plant records" minCardWidth={166}>
+        {grants?.permissions.some(grant => grant.key === "purchases" && grant.view) ?
+          <WorkspaceTile title="Material Purchases" symbol="material-receipts" destination={businessPath("purchases", adminPlant)} /> : null}
+        {grants?.permissions.some(grant => grant.key === "diesel_ledger" && grant.view) ?
+          <WorkspaceTile title="Diesel Ledger" symbol="diesel-ledger" destination={businessPath("diesel", adminPlant)} /> : null}
+      </HomeCardRow> : null}
       {data && !admin ? (
         <Pressable
           testID="staff-home-summary" accessibilityRole="button" accessibilityLabel={"Open " + data.primary.title}
@@ -147,7 +146,7 @@ export function StaffHome() {
             accessible={false} aria-hidden />
         </Pressable>
       ) : null}
-      <PlantHomeActions action="supplier-enquiry" style={styles.stretchActions} />
+      <PlantHomeActions action={adminPlant ? "supplier-enquiry" : undefined} style={styles.stretchActions} />
     </View>
   );
 
@@ -168,7 +167,6 @@ export function StaffHome() {
         </View>
         <HomeAttendanceCard attendance={attendance} />
         {shortcuts}
-        {!admin || !adminPlant ? <PlantHomeActions action="profile" style={styles.stretchActions} /> : null}
         {error && !data ? (
           <>
             <ErrorView message={error} onRetry={reload} />
@@ -181,9 +179,9 @@ export function StaffHome() {
           </>
         ) : data ? (
           <>
-            <View style={styles.grid}>
+            <HomeCardRow testID="staff-home-kpi-row" label="Shift metrics" minCardWidth={128} gap={10}>
               {data.kpis.map((c) => (
-                <View key={c.label} style={[styles.kpi, { width: kpiWidth,
+                <View key={c.label} style={[styles.kpi, {
                   backgroundColor: colors.surfaceSecondary,
                   borderColor: kpiTone(c) === "neutral"
                     ? colors.divider
@@ -203,7 +201,7 @@ export function StaffHome() {
                   <AppText variant="caption">{c.label}</AppText>
                 </View>
               ))}
-            </View>
+            </HomeCardRow>
 
             {roleTools}
             <View style={{ gap: spacing.sm }}>
@@ -233,8 +231,7 @@ const styles = StyleSheet.create({
   summary: { minHeight: 66, flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderRadius: 10, padding: 9 },
   summaryCopy: { flex: 1, minWidth: 0, gap: 2 },
   summaryTitle: { fontFamily: fonts.semibold, fontSize: 15, lineHeight: 20 },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  kpi: { minHeight: 108, padding: 9, borderRadius: 16, borderWidth: 1, gap: 4 },
+  kpi: { flex: 1, minHeight: 108, padding: 9, borderRadius: 16, borderWidth: 1, gap: 4 },
   kpiIcon: { minHeight: 30, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   restricted: { minHeight: 86, flexDirection: "row", alignItems: "center", gap: 12,
     borderRadius: radius.lg, borderWidth: 1, padding: 15 },

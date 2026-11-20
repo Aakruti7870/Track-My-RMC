@@ -3,6 +3,7 @@ import { useRouter, type Href } from "expo-router";
 import { Image, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 
 import { CardHighlight } from "@/src/components/ui/CardHighlight";
+import { HomeCardRow } from "@/src/components/HomeCardRow";
 import { IconTile } from "@/src/components/IconTile";
 import { AppText } from "@/src/components/ui/AppText";
 import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
@@ -46,22 +47,24 @@ export function PlantHomeActions({ action, style }: { action?: "supplier-enquiry
 
   return (
     <View style={[styles.actions, style]}>
-      {actions.filter(item => !action || item.key === action).map(({ key, title, detail, symbol, highlight, onPress }) => (
-        <Pressable key={key} testID={`plant-home-${key}`} accessibilityRole="button" accessibilityLabel={title}
-          accessibilityHint={detail} onPress={onPress} style={({ pressed }) => [styles.action, {
-            backgroundColor: highlight ? colors.brandSoft : colors.surfaceSecondary,
-            borderColor: highlight ? colors.brand : colors.divider,
-            opacity: pressed ? 0.76 : 1,
-          }]}>
-          <CardHighlight radius={10} />
-          <IconTile symbol={symbol} width={44} height={38} size={24} homeShortcut />
-          <View style={styles.actionCopy}>
-            <AppText style={styles.actionTitle}>{title}</AppText>
-            {detail ? <AppText variant="caption">{detail}</AppText> : null}
-          </View>
-          <VectorSymbol name="chevron-right" size={20} color={highlight ? colors.accentText : colors.onSurfaceTertiary} />
-        </Pressable>
-      ))}
+      <HomeCardRow testID="plant-home-actions-row" label="Suppliers and plant profile" minCardWidth={214} gap={10}>
+        {actions.filter(item => !action || item.key === action).map(({ key, title, detail, symbol, highlight, onPress }) => (
+          <Pressable key={key} testID={`plant-home-${key}`} accessibilityRole="button" accessibilityLabel={title}
+            accessibilityHint={detail} onPress={onPress} style={({ pressed }) => [styles.action, {
+              backgroundColor: highlight ? colors.brandSoft : colors.surfaceSecondary,
+              borderColor: highlight ? colors.brand : colors.divider,
+              opacity: pressed ? 0.76 : 1,
+            }]}>
+            <CardHighlight radius={10} />
+            <IconTile symbol={symbol} width={44} height={38} size={24} homeShortcut />
+            <View style={styles.actionCopy}>
+              <AppText style={styles.actionTitle}>{title}</AppText>
+              {detail ? <AppText variant="caption">{detail}</AppText> : null}
+            </View>
+            <VectorSymbol name="chevron-right" size={20} color={highlight ? colors.accentText : colors.onSurfaceTertiary} />
+          </Pressable>
+        ))}
+      </HomeCardRow>
     </View>
   );
 }
@@ -75,8 +78,8 @@ const styles = StyleSheet.create({
   heroRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 6 },
   profile: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 8, minHeight: 44, borderRadius: 8, borderWidth: 1 },
   profileLabel: { fontFamily: fonts.semibold, fontSize: 12 },
-  actions: { gap: 10, width: "100%", maxWidth: 620, alignSelf: "center" },
-  action: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6, minHeight: 54.4, flexDirection: "row", alignItems: "center", gap: 10 },
+  actions: { width: "100%", maxWidth: 620, alignSelf: "center" },
+  action: { flex: 1, borderWidth: 1, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6, minHeight: 54.4, flexDirection: "row", alignItems: "center", gap: 10 },
   actionCopy: { flex: 1, minWidth: 0, gap: 2 },
   actionTitle: { fontFamily: fonts.semibold, fontSize: 15, lineHeight: 20 },
 });
@@ -103,7 +106,7 @@ export function PlantHomeBanner({ type, destination }: {
 }
 
 const bannerStyles = StyleSheet.create({
-  card: { minHeight: 64, padding: 10, justifyContent: "center", borderRadius: 9, overflow: "hidden", backgroundColor: "#141C25" },
+  card: { flex: 1, minHeight: 64, padding: 10, justifyContent: "center", borderRadius: 9, overflow: "hidden", backgroundColor: "#141C25" },
   photo: { position: "absolute", right: 0, top: 0, width: "46%", height: "100%" },
   copy: { width: "83%", gap: 3 },
   title: { fontFamily: fonts.bold, fontSize: 14 },
