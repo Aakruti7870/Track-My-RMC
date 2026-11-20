@@ -1,4 +1,5 @@
 // Isolated browser fixtures only. No production credentials or app-side mock path.
+const { assertHomeCardRow } = require("./assert-home-card-row.cjs");
 const { chromium } = require(process.env.OWNER_PLAYWRIGHT_MODULE || '../../admin-web/node_modules/playwright');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -111,19 +112,8 @@ async function assertFits(locator, viewportWidth) {
         if (name === 'home') {
           const summary = await page.getByTestId('owner-home-summary').evaluate(el => getComputedStyle(el).backgroundColor);
           assert.equal(summary, scheme === 'dark' ? 'rgb(18, 18, 18)' : 'rgb(250, 249, 245)');
-          const quickCards = page.getByTestId('owner-quick-access').getByRole('button');
-          assert.equal(await quickCards.count(), 5);
-          await assertFits(quickCards, width);
-          const dimensions = await quickCards.evaluateAll(nodes => nodes.map(node => {
-            const { height, width, y } = node.getBoundingClientRect();
-            return { height, width, y };
-          }));
-          const quickWidth = Math.min(width, 820) - 44;
-          const columns = quickWidth >= 405 ? 5 : quickWidth >= 262 ? 3 : 2;
-          assert.equal(dimensions.filter(card => Math.abs(card.y - dimensions[0].y) < 1).length, columns);
-          assert(dimensions.every(card => card.height >= 65 && card.height <= 135 && card.width === dimensions[0].width));
-          assert(quickWidth - (columns * dimensions[0].width + (columns - 1) * 7) < columns,
-            `Home Quick Access must use the available width at ${width}px`);
+          const quickRow = page.getByTestId('owner-quick-access-row');
+          await assertHomeCardRow(quickRow, { count: 5, shouldOverflow: width <= 390 });
           assert.equal(await page.locator('[data-testid^="owner-metric-"]').count(), 0);
           for (const id of ['owner-shortcut-insights', 'home-modules-owner-commercial', 'home-modules-owner-workforce', 'role-module-owner-drivers']) {
             assert.equal(await page.getByTestId(id).count(), 0);
@@ -160,19 +150,50 @@ async function assertFits(locator, viewportWidth) {
           });
           assert(await hero.evaluate(node => node.getBoundingClientRect().width >= Math.min(innerWidth, 820) - 33), 'Plant image spans the home card');
           assert(order, 'Supplier and profile cards sit above Load Pipeline in the requested order');
-          await assertFits(scroll.getByRole('button').and(scroll.locator(':not([data-testid="owner-dealer-section"] *)')), width);
+          for (const id of ['owner-home-services-row', 'owner-home-operations-row', 'owner-home-banners-row', 'owner-home-plant-row', 'home-load-pipeline-row']) {
+            await assertHomeCardRow(scroll.getByTestId(id), { shouldOverflow: width >= 667 ? false : undefined });
+          }
           const dealerSection = scroll.getByTestId('owner-dealer-section');
           const carousel = dealerSection.getByTestId('owner-dealer-carousel');
-          assert.equal(await carousel.getByRole('button').count(), 5);
           assert(await dealerSection.evaluate(node => Boolean(
             document.querySelector('[data-testid="plant-load-pipeline"]').compareDocumentPosition(node)
               & Node.DOCUMENT_POSITION_FOLLOWING
           )), 'Dealer cards follow the Load Pipeline');
-          assert(await carousel.evaluate(node => node.getBoundingClientRect().width <= innerWidth));
+          assert.equal(await dealerSection.getByRole('button').count(), 5);
+          await assertHomeCardRow(carousel, { count: 5, shouldOverflow: width <= 768 });
           if (width === 390) {
-            await dealerSection.getByRole('button', { name: 'Next dealer cards', exact: true }).click();
-            await page.waitForFunction(() => document.querySelector('[data-testid="owner-dealer-carousel"]').scrollLeft > 0);
-            await dealerSection.getByRole('button', { name: 'Previous dealer cards', exact: true }).click();
+            const currentUrl = page.url();
+            await quickRow.and(page.getByRole('region', { name: 'Quick access', exact: true })).waitFor();
+            await quickRow.scrollIntoViewIfNeeded();
+            const quickBox = await quickRow.boundingBox();
+            await page.mouse.move(quickBox.x + quickBox.width - 18, quickBox.y + quickBox.height / 2);
+            await page.mouse.down();
+            await page.mouse.move(quickBox.x + 20, quickBox.y + quickBox.height / 2, { steps: 10 });
+            await page.mouse.up();
+            assert(await quickRow.evaluate(node => node.scrollLeft > 0), 'Mouse drag reveals Owner shortcuts');
+            assert.equal(page.url(), currentUrl, 'Dragging cannot open a shortcut');
+            await quickRow.focus();
+            await page.keyboard.press('ArrowLeft');
+            await page.keyboard.press('ArrowLeft');
+            assert.equal(await quickRow.evaluate(node => node.scrollLeft), 0);
+            await page.keyboard.press('ArrowRight');
+            assert(await quickRow.evaluate(node => node.scrollLeft > 0), 'Keyboard can reveal shortcuts');
+            const touch = await context.newCDPSession(page);
+            await touch.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+            await carousel.evaluate(node => node.scrollIntoView({ block: 'center' }));
+            const box = await carousel.boundingBox();
+            const y = Math.round(box.y + box.height / 2);
+            const x = Math.round(box.x + box.width - 22);
+            await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+            for (let distance = 25; distance <= 250; distance += 25) {
+              await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x - distance, y }] });
+              await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
+            }
+            await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+            await page.waitForFunction(() => document.querySelector('[data-testid="owner-dealer-carousel"]').scrollLeft > 0, null, { timeout: 5000 });
+            assert.equal(page.url(), currentUrl, 'Swiping cannot open a dealer card');
+            await touch.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+            await touch.detach();
           }
         }
         if (name === 'operations') {

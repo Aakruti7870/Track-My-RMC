@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 import { useFocusEffect, useRouter, type Href } from "expo-router";
+import { HomeCardRow } from "@/src/components/HomeCardRow";
 import { AppText } from "@/src/components/ui/AppText";
 import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
 import { ErrorView } from "@/src/components/StateViews";
@@ -100,8 +101,8 @@ export function PlantSelector({ plants, plant, select }: {
   </View>;
 }
 
-export function LoadPipeline({ plantId, plantName, request, showAlert = false, contentWidth }: {
-  plantId: string; plantName?: string; request?: ReturnType<typeof usePipeline>; showAlert?: boolean; contentWidth?: number;
+export function LoadPipeline({ plantId, plantName, request, showAlert = false, swipe = false }: {
+  plantId: string; plantName?: string; request?: ReturnType<typeof usePipeline>; showAlert?: boolean; swipe?: boolean;
 }) {
   const router = useRouter();
   const { colors } = useTheme();
@@ -110,32 +111,33 @@ export function LoadPipeline({ plantId, plantName, request, showAlert = false, c
   const { refetch } = summary;
   const { data, error, loading, reload } = request ?? summary;
   useFocusEffect(useCallback(() => { void refetch(); }, [refetch]));
-  const readableWidth = (contentWidth ?? width - 32) / fontScale;
-  const columns = readableWidth >= (contentWidth === undefined ? 300 : 400) ? styles.columns4
-    : readableWidth >= 190 || contentWidth === undefined ? styles.columns2 : styles.full;
+  const columns = (width - 32) / fontScale >= 300 ? styles.columns4 : styles.columns2;
   const stages = [
     { stage: "to_batch", ink: colors.onSurface, background: colors.surfaceSecondary },
     { stage: "needs_mixer", ink: operationalStatus("warning", colors.isDark), background: colors.brandSoft },
     { stage: "on_road", ink: colors.accentText, background: colors.accentText + "19" },
     { stage: "pod_due", ink: colors.error, background: colors.error + "19" },
   ] as const;
+  const cards = stages.map(({ stage, ink, background }) => (
+    <Pressable key={stage} testID={`load-pipeline-${stage}`} accessibilityRole="button" style={styles.grow}
+      accessibilityLabel={PIPELINE_STAGES[stage] + (data ? `, ${data.counts?.[stage] ?? 0} loads` : ", count unavailable")}
+      onPress={() => router.push(pipelinePath(plantId, stage))}>
+      <OwnerGlass highlighted={false} style={[styles.stage, styles.grow, { backgroundColor: background }]}>
+        <AppText color={ink} style={styles.count}>{data ? data.counts?.[stage] ?? 0 : "—"}</AppText>
+        <AppText center color={ink} style={styles.label}>{PIPELINE_STAGES[stage]}</AppText>
+      </OwnerGlass>
+    </Pressable>
+  ));
   return <View testID="plant-load-pipeline" style={styles.section}>
     {showAlert ? <WorkspaceAlert plantId={plantId} count={data?.counts?.needs_mixer} /> : null}
     <WorkspaceHeading title="Load Pipeline" action="View pipeline" destination={pipelinePath(plantId)} />
     {plantName ? <AppText variant="caption">{plantName}</AppText> : null}
     {error ? <ErrorView message={error} onRetry={reload} /> : null}
-    <View style={styles.grid}>
-      {stages.map(({ stage, ink, background }) => <View key={stage} style={columns}>
-        <Pressable testID={`load-pipeline-${stage}`} accessibilityRole="button"
-          accessibilityLabel={PIPELINE_STAGES[stage] + (data ? `, ${data.counts?.[stage] ?? 0} loads` : ", count unavailable")}
-          onPress={() => router.push(pipelinePath(plantId, stage))}>
-          <OwnerGlass highlighted={false} style={[styles.stage, { backgroundColor: background }]}>
-            <AppText color={ink} style={styles.count}>{data ? data.counts?.[stage] ?? 0 : "—"}</AppText>
-            <AppText center color={ink} style={styles.label}>{PIPELINE_STAGES[stage]}</AppText>
-          </OwnerGlass>
-        </Pressable>
-      </View>)}
-    </View>
+    {swipe ? <HomeCardRow testID="home-load-pipeline-row" label="Load stages" minCardWidth={104}>
+      {cards}
+    </HomeCardRow> : <View style={styles.grid}>
+      {cards.map(card => <View key={card.key} style={columns}>{card}</View>)}
+    </View>}
     {loading && !data ? <AppText variant="caption">Loading plant loads…</AppText> : null}
   </View>;
 }

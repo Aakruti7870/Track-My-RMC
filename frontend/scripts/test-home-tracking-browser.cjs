@@ -1,4 +1,5 @@
 const {chromium}=require('../../admin-web/node_modules/playwright');
+const { assertHomeCardRow } = require("./assert-home-card-row.cjs");
 const fs=require('node:fs');
 const assert=require('node:assert/strict');
 fs.mkdirSync('tracking-previews',{recursive:true});
@@ -73,6 +74,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  await page.goto('http://127.0.0.1:8765/customer/');
  await page.getByTestId('action-new').waitFor({timeout:30000});
  const scroll = page.getByTestId('customer-home-scroll');
+ await assertHomeCardRow(scroll.getByTestId('customer-quick-actions-row'), { count: 5, shouldOverflow: width <= 390 });
  const tabBar = page.getByTestId('app-tab-bar');
  const bulk = page.getByTestId('home-bulk-quote');
  const plant = scroll.getByTestId('nearby-plant-fixture-plant');
