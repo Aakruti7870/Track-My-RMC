@@ -1,4 +1,5 @@
-use crate::{error::AppError, state::AppState};
+use super::control_center;
+use crate::{error::AppError, services::auth_service, state::AppState};
 use chrono::{DateTime, Duration, Utc};
 use hmac::{Hmac, Mac};
 use rand::{distributions::Alphanumeric, Rng};
@@ -109,13 +110,13 @@ impl OtpEngine {
         tokio::spawn(async move {
             let _slot = slot;
             let delivery = async {
-                if !crate::services::auth_service::public_otp_eligible(
-                    &state,
-                    &destination,
-                    channel,
-                )
-                .await?
-                {
+                let eligible = match purpose.as_str() {
+                    control_center::ADMIN_OTP_PURPOSE => {
+                        control_center::otp_delivery_eligible(&state, &destination).await?
+                    }
+                    _ => auth_service::public_otp_eligible(&state, &destination, channel).await?,
+                };
+                if !eligible {
                     return Ok(false);
                 }
                 Self::send_pending(

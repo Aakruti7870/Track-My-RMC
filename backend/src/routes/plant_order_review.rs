@@ -1,13 +1,19 @@
 use crate::{
     auth::{control_center::WebAdmin, middleware::check_role, AuthUser},
     error::AppError,
-    routes::rmc_rfq_leads::{validate_requirements, verify_google_place, NewRmcRfq},
+    routes::{
+        discovery::allow_google_search,
+        rmc_rfq_leads::{
+            fetch_google_place, validate_requirements, verify_google_place, NewRmcRfq,
+        },
+    },
     services::customer_order::canonical_grade,
     state::AppState,
 };
 use axum::{
     extract::{Path, Query, State},
-    http::HeaderMap,
+    http::{header::CACHE_CONTROL, HeaderMap},
+    response::IntoResponse,
     Json,
 };
 use serde::Deserialize;
@@ -178,7 +184,7 @@ pub async fn list_customer(
 ) -> Result<Json<Value>, AppError> {
     check_role(&auth, &["customer"])?;
     let requests: Vec<Value> = sqlx::query_scalar(
-        "SELECT jsonb_build_object('id',r.id,'plant_name',p.name,'google_place_id',r.google_place_id,'grade',r.grade,
+        "SELECT jsonb_build_object('id',r.id,'plant_name',COALESCE(p.name,linked.name),'google_place_id',r.google_place_id,'grade',r.grade,
           'quantity_m3',r.quantity_m3::double precision,'delivery_date',r.delivery_date,
           'site_address',r.site_address,'status',r.status,'decision_note',r.decision_note,
           'pump_required',r.pump_required,'delivery_lat',r.site_lat,'delivery_lng',r.site_lng,
@@ -189,6 +195,8 @@ pub async fn list_customer(
             AND NOT EXISTS(SELECT 1 FROM google_plant_visibility_exclusions x WHERE x.place_id IN (p.google_place_id, r.google_place_id) AND NOT x.is_visible)
             THEN p.id ELSE NULL END)
          FROM plant_order_review_requests r LEFT JOIN rmc_plants p ON p.id=r.plant_id
+         LEFT JOIN rmc_plants linked ON r.plant_id IS NULL AND linked.google_place_id=r.google_place_id AND linked.is_active
+           AND NOT EXISTS(SELECT 1 FROM google_plant_visibility_exclusions x WHERE x.place_id=r.google_place_id AND NOT x.is_visible)
          WHERE r.customer_id=$1 AND ($2::uuid IS NULL OR r.id=$2) ORDER BY r.created_at DESC,r.id DESC LIMIT 100",
     )
     .bind(auth.user_id)
@@ -196,6 +204,57 @@ pub async fn list_customer(
     .fetch_all(&state.db)
     .await?;
     Ok(Json(json!({"requests":requests})))
+}
+
+pub async fn customer_place_name(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    check_role(&auth, &["customer"])?;
+    lookup_place_name(&state, id, auth.user_id, Some(auth.user_id)).await
+}
+
+pub async fn admin_place_name(
+    State(state): State<AppState>,
+    admin: WebAdmin,
+    Path(id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    admin.require("order.view")?;
+    lookup_place_name(&state, id, admin.user_id, None).await
+}
+
+async fn lookup_place_name(
+    state: &AppState,
+    request_id: Uuid,
+    actor_id: Uuid,
+    customer_id: Option<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    let place_id: String = sqlx::query_scalar(
+        "SELECT r.google_place_id FROM plant_order_review_requests r
+         WHERE r.id=$1 AND ($2::uuid IS NULL OR r.customer_id=$2) AND r.google_place_id IS NOT NULL
+           AND NOT EXISTS(SELECT 1 FROM google_plant_visibility_exclusions x
+                          WHERE x.place_id=r.google_place_id AND NOT x.is_visible)",
+    )
+    .bind(request_id)
+    .bind(customer_id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Google listing unavailable for this request".into()))?;
+    if !allow_google_search(actor_id) {
+        return Err(AppError::RateLimited(
+            "Google Places lookup limit reached. Try again shortly.".into(),
+        ));
+    }
+    let place = fetch_google_place(state, &place_id, "id,displayName").await?;
+    let name = place["displayName"]["text"]
+        .as_str()
+        .filter(|name| !name.trim().is_empty())
+        .ok_or_else(|| AppError::NotFound("Google listing name unavailable".into()))?;
+    Ok((
+        [(CACHE_CONTROL, "no-store")],
+        Json(json!({"plant_name":name,"attribution":"Google Maps"})),
+    ))
 }
 
 #[derive(Clone, Copy, Deserialize)]

@@ -201,7 +201,12 @@ pub async fn setup_totp_for_user(
         r#"
         INSERT INTO user_totp_credentials (user_id, secret_key, is_enabled, backup_codes, updated_at)
         VALUES ($1, $2, FALSE, $3, NOW())
-        ON CONFLICT (user_id) DO NOTHING
+        ON CONFLICT (user_id) DO UPDATE SET
+            secret_key = EXCLUDED.secret_key,
+            backup_codes = EXCLUDED.backup_codes,
+            last_login_totp_step = NULL,
+            updated_at = NOW()
+        WHERE NOT user_totp_credentials.is_enabled
         "#,
     )
     .bind(user_id)
@@ -212,8 +217,7 @@ pub async fn setup_totp_for_user(
 
     if inserted.rows_affected() != 1 {
         return Err(AppError::Conflict(
-            "Authenticator setup already exists. Do not reset it through this endpoint."
-                .to_string(),
+            "Authenticator is already enabled".to_string(),
         ));
     }
 

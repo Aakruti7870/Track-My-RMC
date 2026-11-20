@@ -5,6 +5,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { useAuth } from "@/src/auth/AuthContext";
+import { apiGet } from "@/src/api/client";
 import { ThemedScreen } from "@/src/components/ThemedScreen";
 import { useGet } from "@/src/hooks/useApi";
 import { AppText } from "@/src/components/ui/AppText";
@@ -52,11 +53,40 @@ type PlantOrderRequest = {
   site_address: string;
 };
 
+function GooglePlantName({ requestId, token }: { requestId: string; token: string }) {
+  const [name, setName] = useState<string>();
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  async function loadName() {
+    setLoading(true);
+    setFailed(false);
+    try {
+      const result = await apiGet<{ plant_name: string }>(`/customer/plant-order-requests/${requestId}/place-name`, token);
+      setName(result.plant_name);
+    } catch {
+      setFailed(true);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return name ? <>
+    <AppText variant="label">{name}</AppText>
+    <AppText variant="caption" numberOfLines={1} style={{ fontSize: 12 }}>Google Maps</AppText>
+  </> : <>
+    <AppText variant="label">Google-listed plant</AppText>
+    <Button label={loading ? "Loading plant name…" : "Show plant name"} disabled={loading}
+      size="sm" variant="outline" fullWidth={false} onPress={() => void loadName()} />
+    {failed ? <AppText variant="caption" accessibilityLiveRegion="polite">Plant name unavailable. Try again or view on Google Maps.</AppText> : null}
+  </>;
+}
+
 export default function CustomerOrders() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [active, setActive] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
   const { data, loading, error, refetch, reload } = useGet<{ orders: OrderData[] }>("/customer/orders");
@@ -171,7 +201,9 @@ export default function CustomerOrders() {
             {reviewLoading ? <ActivityIndicator color={colors.brand} accessibilityLabel="Loading order requests" /> : null}
             {reviewError ? <Button label="Retry loading order requests" size="sm" variant="outline" fullWidth={false} onPress={() => void review.reload()} /> : null}
             {reviewRequests.map(request => <Card key={request.id} style={{ gap: spacing.xs }}>
-              <AppText variant="label">{request.plant_name || (request.google_place_id ? "Google-listed plant" : "Plant order request")}</AppText>
+              {!request.plant_name && request.google_place_id && token
+                ? <GooglePlantName requestId={request.id} token={token} />
+                : <AppText variant="label">{request.plant_name || (request.google_place_id ? "Google-listed plant" : "Plant order request")}</AppText>}
               {request.google_place_id ? <Button label="View on Google Maps" size="sm" variant="outline" fullWidth={false}
                 onPress={() => {
                   const placeId = encodeURIComponent(request.google_place_id ?? "");

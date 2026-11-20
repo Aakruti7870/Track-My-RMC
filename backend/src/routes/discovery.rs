@@ -335,7 +335,7 @@ async fn resolve_google_listing_plants(
 
 // A separate limit protects our paid Google API quota from repeated map pan/zoom events.
 // In production the API gateway must apply shared limits across application instances too.
-fn allow_google_search(user: Uuid) -> bool {
+pub(super) fn allow_google_search(user: Uuid) -> bool {
     static BUCKETS: OnceLock<Mutex<HashMap<Uuid, (Instant, u32)>>> = OnceLock::new();
     let Ok(mut buckets) = BUCKETS.get_or_init(Default::default).lock() else {
         return false;

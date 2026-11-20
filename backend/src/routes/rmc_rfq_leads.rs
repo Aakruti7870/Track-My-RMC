@@ -130,6 +130,14 @@ pub(super) fn validate_requirements(input: &NewRmcRfq) -> Result<(), AppError> {
 }
 
 pub(super) async fn verify_google_place(state: &AppState, place_id: &str) -> Result<(), AppError> {
+    fetch_google_place(state, place_id, "id").await.map(|_| ())
+}
+
+pub(super) async fn fetch_google_place(
+    state: &AppState,
+    place_id: &str,
+    fields: &'static str,
+) -> Result<Value, AppError> {
     let key = state
         .config
         .google_places_api_key
@@ -147,7 +155,7 @@ pub(super) async fn verify_google_place(state: &AppState, place_id: &str) -> Res
         .map_err(|_| AppError::InternalError("Google Places client unavailable".into()))?
         .get(url)
         .header("X-Goog-Api-Key", key)
-        .header("X-Goog-FieldMask", "id")
+        .header("X-Goog-FieldMask", fields)
         .send()
         .await
         .map_err(|_| AppError::InternalError("Google Places verification unavailable".into()))?;
@@ -163,7 +171,7 @@ pub(super) async fn verify_google_place(state: &AppState, place_id: &str) -> Res
     if result["id"].as_str() != Some(place_id) {
         return Err(AppError::BadRequest("Google Place ID did not match".into()));
     }
-    Ok(())
+    Ok(result)
 }
 
 pub async fn create(

@@ -2627,6 +2627,28 @@ async fn financial_creation_requires_create_even_when_edit_is_granted(db: PgPool
 }
 
 #[sqlx::test]
+async fn interrupted_authenticator_enrollment_can_restart_until_enabled(db: PgPool) {
+    use trackmyrmc_backend::auth::totp::{setup_totp_for_user, verify_and_enable_totp};
+
+    let email = "owner-totp-retry@example.invalid";
+    let user_id = identity(&db, "owner", Some(email), None).await;
+    let state = state(db);
+    let (original, _, _) = setup_totp_for_user(&state, user_id, email).await.unwrap();
+    let (replacement, _, _) = setup_totp_for_user(&state, user_id, email).await.unwrap();
+    assert_ne!(original, replacement);
+
+    let code =
+        TotpEngine::compute_code(&replacement, chrono::Utc::now().timestamp() as u64).unwrap();
+    verify_and_enable_totp(&state, user_id, &code)
+        .await
+        .unwrap();
+    assert!(matches!(
+        setup_totp_for_user(&state, user_id, email).await,
+        Err(AppError::Conflict(_))
+    ));
+}
+
+#[sqlx::test]
 async fn primary_central_admin_email_enrollment_login_and_recovery_are_role_bound(db: PgPool) {
     use trackmyrmc_backend::central_admin_bootstrap::{prepare_primary, PRIMARY_EMAIL};
 
@@ -2645,6 +2667,19 @@ async fn primary_central_admin_email_enrollment_login_and_recovery_are_role_boun
     let mfa = "/api/admin/auth/verify-totp";
     let recover = "/api/admin/auth/recover";
     let me = "/api/admin/auth/me";
+    let accepted = (StatusCode::OK, json!({"status":"EMAIL_OTP_SENT"}));
+    let unknown = "unknown-admin@example.invalid";
+    assert_eq!(
+        call(&app, send, Some(json!({"email":unknown})), None).await,
+        accepted
+    );
+    assert_eq!(
+        call(&app, send, Some(json!({"email":unknown})), None)
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+    wait_for_otp_delivery(&db, unknown).await;
 
     for role in [
         "owner",
@@ -2658,9 +2693,14 @@ async fn primary_central_admin_email_enrollment_login_and_recovery_are_role_boun
         sqlx::query("UPDATE users SET is_active=FALSE,hashed_password='!primary-central-admin-pending!' WHERE id=$1")
             .bind(id).execute(&db).await.unwrap();
         assert_eq!(
-            call(&app, send, Some(json!({"email":email})), None).await.0,
-            StatusCode::UNAUTHORIZED
+            call(&app, send, Some(json!({"email":email})), None).await,
+            accepted
         );
+        assert_eq!(
+            call(&app, send, Some(json!({"email":email})), None).await.0,
+            StatusCode::BAD_REQUEST
+        );
+        wait_for_otp_delivery(&db, &email).await;
         // Remove the synthetic duplicate: real primary reservation fails closed on collisions.
         sqlx::query("DELETE FROM users WHERE id=$1")
             .bind(id)
@@ -2668,13 +2708,12 @@ async fn primary_central_admin_email_enrollment_login_and_recovery_are_role_boun
             .await
             .unwrap();
     }
+    assert!(delivery.messages.lock().unwrap().is_empty());
 
     let send_otp = || async {
         assert_eq!(
-            call(&app, send, Some(json!({"email":PRIMARY_EMAIL})), None)
-                .await
-                .0,
-            StatusCode::OK
+            call(&app, send, Some(json!({"email":PRIMARY_EMAIL})), None).await,
+            accepted
         );
         delivery.take_code(&db, PRIMARY_EMAIL).await
     };

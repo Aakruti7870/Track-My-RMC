@@ -227,7 +227,14 @@ pub async fn get_workforce_me(
         r#"
         SELECT id, check_in_time, check_out_time, status
         FROM workforce_attendance
-        WHERE plant_id = $1 AND user_id = $2 AND attendance_date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date
+        WHERE plant_id=$1 AND user_id=$2 AND (
+            attendance_date=(NOW() AT TIME ZONE 'Asia/Kolkata')::date
+            OR (attendance_date=(NOW() AT TIME ZONE 'Asia/Kolkata')::date-1
+                AND check_in_time BETWEEN NOW()-INTERVAL '24 hours' AND NOW()
+                AND check_out_time IS NULL)
+        )
+        ORDER BY (check_in_time IS NOT NULL AND check_out_time IS NULL) DESC,attendance_date DESC
+        LIMIT 1
         "#,
     )
     .bind(plant_id)

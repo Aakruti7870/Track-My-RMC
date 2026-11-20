@@ -148,8 +148,9 @@ pub async fn get_driver_home(
                 SELECT 1
                 FROM workforce_attendance wa
                 WHERE wa.user_id = u.id
-                  AND wa.attendance_date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date
-                  AND wa.check_in_time IS NOT NULL
+                  AND wa.attendance_date BETWEEN (NOW() AT TIME ZONE 'Asia/Kolkata')::date-1
+                                             AND (NOW() AT TIME ZONE 'Asia/Kolkata')::date
+                  AND wa.check_in_time BETWEEN NOW()-INTERVAL '24 hours' AND NOW()
                   AND wa.check_out_time IS NULL
             ) AS checked_in
         FROM users u
@@ -190,11 +191,24 @@ pub async fn get_driver_attendance(
     let plant_id = resolve_driver_plant(&state, auth_user.user_id).await?;
     let today = workforce_repo::attendance_today(&state.db).await?;
 
-    let attendance = sqlx::query_as::<_, (Option<DateTime<Utc>>, Option<DateTime<Utc>>)>(
+    let attendance = sqlx::query_as::<
+        _,
+        (
+            chrono::NaiveDate,
+            Option<DateTime<Utc>>,
+            Option<DateTime<Utc>>,
+        ),
+    >(
         r#"
-        SELECT check_in_time, check_out_time
+        SELECT attendance_date, check_in_time, check_out_time
         FROM workforce_attendance
-        WHERE user_id = $1 AND attendance_date = $2 AND plant_id = $3
+        WHERE user_id=$1 AND plant_id=$3 AND (
+            attendance_date=$2::date OR (attendance_date=$2::date-1
+                AND check_in_time BETWEEN NOW()-INTERVAL '24 hours' AND NOW()
+                AND check_out_time IS NULL)
+        )
+        ORDER BY (check_in_time IS NOT NULL AND check_out_time IS NULL) DESC,attendance_date DESC
+        LIMIT 1
         "#,
     )
     .bind(auth_user.user_id)
@@ -202,13 +216,13 @@ pub async fn get_driver_attendance(
     .bind(plant_id)
     .fetch_optional(&state.db)
     .await?
-    .unwrap_or((None, None));
+    .unwrap_or((today, None, None));
 
     Ok(Json(json!({
         "success": true,
-        "date": today,
-        "check_in": attendance.0,
-        "check_out": attendance.1
+        "date": attendance.0,
+        "check_in": attendance.1,
+        "check_out": attendance.2
     })))
 }
 
@@ -233,7 +247,13 @@ pub async fn check_in_driver(
         r#"
         INSERT INTO workforce_attendance
             (plant_id, user_id, attendance_date, check_in_time, check_in_lat, check_in_lng, check_in_geofence, status)
-        VALUES ($1, $2, $3, NOW(), $4, $5, $6, 'present')
+        SELECT $1, $2, $3, NOW(), $4, $5, $6, 'present'
+        WHERE NOT EXISTS (
+            SELECT 1 FROM workforce_attendance
+            WHERE plant_id=$1 AND user_id=$2 AND attendance_date=$3::date-1
+              AND check_in_time BETWEEN NOW()-INTERVAL '24 hours' AND NOW()
+              AND check_out_time IS NULL
+        )
         ON CONFLICT (plant_id, user_id, attendance_date) DO NOTHING
         "#,
     )
@@ -248,8 +268,7 @@ pub async fn check_in_driver(
 
     if inserted.rows_affected() == 0 {
         return Err(AppError::Conflict(
-            "Attendance already exists for today; contact the plant supervisor if it needs correction"
-                .to_string(),
+            "Attendance already exists for today or a previous shift is still open".to_string(),
         ));
     }
 
@@ -275,23 +294,9 @@ pub async fn check_out_driver(
     )
     .await?;
 
-    let updated = sqlx::query(
-        r#"
-        UPDATE workforce_attendance
-        SET check_out_time = NOW(), check_out_geofence = $4
-        WHERE plant_id = $1
-          AND user_id = $2
-          AND attendance_date = $3
-          AND check_in_time IS NOT NULL
-          AND check_out_time IS NULL
-        "#,
-    )
-    .bind(plant_id)
-    .bind(auth_user.user_id)
-    .bind(today)
-    .bind(evidence)
-    .execute(&state.db)
-    .await?;
+    let updated =
+        workforce_repo::check_out_open_shift(&state.db, plant_id, auth_user.user_id, evidence)
+            .await?;
 
     if updated.rows_affected() == 0 {
         let existing: Option<AttendanceTimes> = sqlx::query_as(
