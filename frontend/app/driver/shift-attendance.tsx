@@ -1,20 +1,14 @@
-import React, { useState } from "react";
+import React, { useCallback } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useFocusEffect } from "expo-router";
 
-import { apiPost } from "@/src/api/client";
-import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeProvider";
-import { useToast } from "@/src/components/ui/Toast";
 import { useGet } from "@/src/hooks/useApi";
 import { AppText } from "@/src/components/ui/AppText";
-import { Button } from "@/src/components/ui/Button";
+import { ErrorView } from "@/src/components/StateViews";
 import { Card } from "@/src/components/ui/Card";
-import {
-  currentLocationFailureMessage,
-  getCurrentDeviceLocation,
-} from "@/src/location/currentLocation";
 import { fonts, fontSize, spacing } from "@/src/theme/tokens";
 
 type Att = { date: string; check_in: string | null; check_out: string | null };
@@ -26,33 +20,9 @@ function fmt(t: string | null) {
 
 export default function Attendance() {
   const { colors } = useTheme();
-  const { token } = useAuth();
-  const toast = useToast();
   const insets = useSafeAreaInsets();
-  const { data, reload } = useGet<Att>("/driver/attendance");
-  const [busy, setBusy] = useState(false);
-
-  const act = async (path: string, msg: string) => {
-    setBusy(true);
-    try {
-      const location = await getCurrentDeviceLocation("attendance");
-      if (!location.ok) {
-        toast(currentLocationFailureMessage(location), "error");
-        return;
-      }
-
-      await apiPost(path, token!, {
-        lat: location.location.lat,
-        lng: location.location.lng,
-      });
-      toast(msg, "success");
-      reload();
-    } catch (e: any) {
-      toast(e.detail || "Failed", "error");
-    } finally {
-      setBusy(false);
-    }
-  };
+  const { data, loading, error, refetch, reload } = useGet<Att>("/driver/attendance");
+  useFocusEffect(useCallback(() => { void refetch(); }, [refetch]));
 
   const checkedIn = !!data?.check_in && !data?.check_out;
   const done = !!data?.check_out;
@@ -61,24 +31,25 @@ export default function Attendance() {
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
       <View style={{ height: insets.top }} />
       <View style={styles.titleRow}><AppText variant="title">Attendance</AppText></View>
-      <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg }}>
-        <Card style={{ alignItems: "center", gap: spacing.md, paddingVertical: spacing.xl }}>
-          <View style={[styles.circle, { backgroundColor: done ? colors.surfaceTertiary : checkedIn ? colors.success : colors.warning }]}>
-            <Ionicons name={done ? "checkmark-done" : checkedIn ? "walk" : "time-outline"} size={34} color={colors.isDark ? "#121212" : "#fff"} />
-          </View>
-          <AppText variant="heading">{done ? "Shift complete" : checkedIn ? "On Duty" : "Not checked in"}</AppText>
-          <AppText variant="caption">{data?.date}</AppText>
-          <View style={styles.times}>
-            <View style={styles.timeBox}><AppText variant="caption">Check-in</AppText><AppText style={{ fontFamily: fonts.bold, fontSize: fontSize.lg, color: colors.onSurface }}>{fmt(data?.check_in || null)}</AppText></View>
-            <View style={styles.timeBox}><AppText variant="caption">Check-out</AppText><AppText style={{ fontFamily: fonts.bold, fontSize: fontSize.lg, color: colors.onSurface }}>{fmt(data?.check_out || null)}</AppText></View>
-          </View>
-        </Card>
-        {!checkedIn && !done ? (
-          <Button testID="checkin-btn" label="Check In" loading={busy} onPress={() => act("/driver/attendance/checkin", "Checked in")} icon={<Ionicons name="log-in-outline" size={18} color={colors.onBrand} />} />
-        ) : null}
-        {checkedIn ? (
-          <Button testID="checkout-btn" label="Check Out" variant="outline" loading={busy} onPress={() => act("/driver/attendance/checkout", "Checked out")} />
-        ) : null}
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 96 + insets.bottom }]}>
+        {error && !data ? (
+          <ErrorView message={error} onRetry={reload} />
+        ) : loading && !data ? (
+          <AppText variant="caption">Loading attendance…</AppText>
+        ) : (
+          <Card style={{ alignItems: "center", gap: spacing.md, paddingVertical: spacing.xl }}>
+            <View style={[styles.circle, { backgroundColor: done ? colors.surfaceTertiary : checkedIn ? colors.success : colors.warning }]}>
+              <Ionicons name={done ? "checkmark-done" : checkedIn ? "walk" : "time-outline"} size={34} color={done ? colors.onSurface : "#121212"} />
+            </View>
+            <AppText variant="heading">{done ? "Shift complete" : checkedIn ? "On Duty" : "Not checked in"}</AppText>
+            <AppText variant="caption">{data?.date}</AppText>
+            <View style={styles.times}>
+              <View style={styles.timeBox}><AppText variant="caption">Check-in</AppText><AppText style={{ fontFamily: fonts.bold, fontSize: fontSize.lg, color: colors.onSurface }}>{fmt(data?.check_in || null)}</AppText></View>
+              <View style={styles.timeBox}><AppText variant="caption">Check-out</AppText><AppText style={{ fontFamily: fonts.bold, fontSize: fontSize.lg, color: colors.onSurface }}>{fmt(data?.check_out || null)}</AppText></View>
+            </View>
+            <AppText variant="caption" center>Check in and out from Home.</AppText>
+          </Card>
+        )}
       </ScrollView>
     </View>
   );
@@ -87,6 +58,7 @@ export default function Attendance() {
 const styles = StyleSheet.create({
   titleRow: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.md },
   circle: { width: 72, height: 72, borderRadius: 36, alignItems: "center", justifyContent: "center" },
-  times: { flexDirection: "row", gap: spacing.xl, marginTop: spacing.sm },
-  timeBox: { alignItems: "center", gap: 2 },
+  content: { width: "100%", maxWidth: 620, alignSelf: "center", padding: spacing.lg, gap: spacing.lg },
+  times: { width: "100%", flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: spacing.lg },
+  timeBox: { minWidth: 0, flexBasis: 88, alignItems: "center", gap: 2 },
 });

@@ -1,6 +1,7 @@
 mod support;
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
+    response::IntoResponse,
     Json,
 };
 use sqlx::PgPool;
@@ -369,4 +370,112 @@ async fn all_thirteen_roles_fail_closed_without_plant_scope(db: PgPool) {
             "role {role} must not inherit a plant grant without ownership or assignment"
         );
     }
+}
+
+#[sqlx::test]
+async fn self_service_attendance_history_is_scoped_to_the_signed_in_employee(db: PgPool) {
+    use trackmyrmc_backend::routes::workforce_routes::{
+        get_workforce_me, punch_in, punch_out, PunchPayload, WorkforceMeQuery,
+    };
+
+    let owner = user(&db, "owner").await;
+    let employee = user(&db, "dispatcher").await;
+    let colleague = user(&db, "dispatcher").await;
+    let assigned_plant = plant(&db, owner).await;
+    sqlx::query(
+        "INSERT INTO plant_staff(plant_id,user_id,role,is_active) VALUES($1,$2,'dispatcher',TRUE)",
+    )
+    .bind(assigned_plant)
+    .bind(employee)
+    .execute(&db)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO workforce_attendance(plant_id,user_id,attendance_date,check_in_time)
+         VALUES($1,$2,(NOW() AT TIME ZONE 'Asia/Kolkata')::date,NOW())",
+    )
+    .bind(assigned_plant)
+    .bind(colleague)
+    .execute(&db)
+    .await
+    .unwrap();
+
+    let app = state(db);
+    let actor = identity(employee, "dispatcher");
+    let evidence = || {
+        Json(PunchPayload {
+            lat: Some(19.02),
+            lng: Some(73.11),
+        })
+    };
+    punch_in(State(app.clone()), actor.clone(), evidence())
+        .await
+        .unwrap();
+    punch_out(State(app.clone()), actor.clone(), evidence())
+        .await
+        .unwrap();
+
+    let response = get_workforce_me(
+        State(app),
+        actor,
+        Query(WorkforceMeQuery {
+            include_activity: true,
+        }),
+    )
+    .await
+    .unwrap()
+    .into_response();
+    let body = axum::body::to_bytes(response.into_body(), 10_000)
+        .await
+        .unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let history = body["activity"]["attendance_history"].as_array().unwrap();
+    assert_eq!(history.len(), 1);
+    assert_eq!(history[0]["id"], body["attendance"]["id"]);
+    assert!(body["attendance"]["check_in"].is_string());
+    assert!(body["attendance"]["check_out"].is_string());
+}
+
+#[sqlx::test]
+async fn driver_can_record_attendance_from_employment_assignment_before_mixer_assignment(
+    db: PgPool,
+) {
+    use trackmyrmc_backend::routes::driver_routes::{
+        check_in_driver, check_out_driver, get_driver_attendance, DriverAttendanceLocation,
+    };
+
+    let owner = user(&db, "owner").await;
+    let driver = user(&db, "driver").await;
+    let assigned_plant = plant(&db, owner).await;
+    sqlx::query("INSERT INTO driver_employment_profiles(plant_id,driver_id) VALUES($1,$2)")
+        .bind(assigned_plant)
+        .bind(driver)
+        .execute(&db)
+        .await
+        .unwrap();
+    let app = state(db);
+    let actor = identity(driver, "driver");
+    let evidence = || {
+        Json(DriverAttendanceLocation {
+            lat: 19.02,
+            lng: 73.11,
+        })
+    };
+    check_in_driver(State(app.clone()), actor.clone(), evidence())
+        .await
+        .unwrap();
+    check_out_driver(State(app.clone()), actor.clone(), evidence())
+        .await
+        .unwrap();
+
+    let response = get_driver_attendance(State(app), actor)
+        .await
+        .unwrap()
+        .into_response();
+    let body = axum::body::to_bytes(response.into_body(), 10_000)
+        .await
+        .unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(body["check_in"].is_string());
+    assert!(body["check_out"].is_string());
 }

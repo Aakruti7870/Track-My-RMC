@@ -17,7 +17,7 @@ export type CurrentDeviceLocation = {
 };
 
 export type CurrentLocationResult =
-  | { ok: true; location: CurrentDeviceLocation; source: "native" | "expo" }
+  | { ok: true; location: CurrentDeviceLocation; source: "native" | "expo" | "browser" }
   | { ok: false; reason: "permission-denied" | "services-disabled" | "unavailable" };
 
 async function boundedDiscoveryFix<T>(promise: Promise<T>, deadline?: number): Promise<T> {
@@ -33,7 +33,22 @@ async function boundedDiscoveryFix<T>(promise: Promise<T>, deadline?: number): P
 }
 
 export async function getCurrentDeviceLocation(purpose: "attendance" | "sos" | "foreground" | "discovery" = "foreground"): Promise<CurrentLocationResult> {
-  if (Platform.OS === "web") return { ok: false, reason: "unavailable" };
+  if (Platform.OS === "web") {
+    if (purpose !== "attendance" || typeof navigator === "undefined" || !navigator.geolocation) {
+      return { ok: false, reason: "unavailable" };
+    }
+    if (!(await requestAttendanceLocationConsent())) return { ok: false, reason: "permission-denied" };
+    return new Promise<CurrentLocationResult>(resolve => {
+      navigator.geolocation.getCurrentPosition(
+        ({ coords, timestamp }) => resolve({
+          ok: true, source: "browser",
+          location: { lat: coords.latitude, lng: coords.longitude, accuracy: coords.accuracy, timestamp },
+        }),
+        error => resolve({ ok: false, reason: error.code === error.PERMISSION_DENIED ? "permission-denied" : "unavailable" }),
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
+      );
+    });
+  }
 
   try {
     const servicesEnabled = await Location.hasServicesEnabledAsync();

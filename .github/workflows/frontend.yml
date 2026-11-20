@@ -110,6 +110,7 @@ jobs:
           node scripts/test-owner-dashboard-browser.cjs
           node scripts/test-staff-dashboard-browser.cjs
           node scripts/test-driver-trips-browser.cjs
+          node scripts/test-home-attendance-browser.cjs
       - name: Upload login browser previews
         if: always()
         uses: actions/upload-artifact@v4
