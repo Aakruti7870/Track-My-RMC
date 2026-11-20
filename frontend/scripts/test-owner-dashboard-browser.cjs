@@ -163,6 +163,7 @@ async function assertFits(locator, viewportWidth) {
           await assertHomeCardRow(carousel, { count: 5, shouldOverflow: width <= 768 });
           if (width === 390) {
             const currentUrl = page.url();
+            await quickRow.and(page.getByRole('region', { name: 'Quick access', exact: true })).waitFor();
             await quickRow.scrollIntoViewIfNeeded();
             const quickBox = await quickRow.boundingBox();
             await page.mouse.move(quickBox.x + quickBox.width - 18, quickBox.y + quickBox.height / 2);

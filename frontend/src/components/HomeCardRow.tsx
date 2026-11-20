@@ -1,7 +1,7 @@
-import { Children, isValidElement, useEffect, useRef, useState, type ReactElement } from "react";
+import { Children, isValidElement, useCallback, useEffect, useState, type ReactElement } from "react";
 import { Platform, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 
-export function HomeCardRow({ children, testID, label, minCardWidth, maxCardWidth = Infinity, gap = 8 }: {
+export function HomeCardRow({ children, testID, label, minCardWidth, maxCardWidth, gap = 8 }: {
   children: ReactElement | (ReactElement | null)[];
   testID?: string;
   label: string;
@@ -12,30 +12,32 @@ export function HomeCardRow({ children, testID, label, minCardWidth, maxCardWidt
   const cards = Children.toArray(children).filter(isValidElement);
   const { fontScale } = useWindowDimensions();
   const [width, setWidth] = useState(0);
-  const scroll = useRef<ScrollView>(null);
+  const [webNode, setWebNode] = useState<HTMLElement | null>(null);
+  const attachWebScroll = useCallback((instance: ScrollView | null) => {
+    setWebNode(instance as unknown as HTMLElement | null);
+  }, []);
   const hasMultipleCards = cards.length > 1;
   const minWidth = Math.ceil(minCardWidth * fontScale);
+  const maxWidth = maxCardWidth === undefined ? undefined : Math.max(minWidth, maxCardWidth);
   const gapWidth = (cards.length - 1) * gap;
   const fits = width > 0 && cards.length * minWidth + gapWidth <= width;
   const cardWidth = fits
-    ? Math.min(Math.floor((width - gapWidth) / cards.length), Math.max(minWidth, maxCardWidth))
+    ? Math.min(Math.floor((width - gapWidth) / cards.length), maxWidth ?? width)
     : Math.min(minWidth, width || minWidth);
   const canScroll = width > 0 && !fits && hasMultipleCards;
 
   useEffect(() => {
-    if (Platform.OS !== "web" || !hasMultipleCards) return;
-    const node = scroll.current?.getScrollableNode() as unknown as HTMLElement | undefined;
+    const node = webNode;
     if (!node) return;
 
     setWidth(node.clientWidth);
     const observer = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
     observer.observe(node);
     return () => observer.disconnect();
-  }, [hasMultipleCards]);
+  }, [webNode]);
 
   useEffect(() => {
-    if (Platform.OS !== "web" || !canScroll) return;
-    const node = scroll.current?.getScrollableNode() as unknown as HTMLElement | undefined;
+    const node = webNode;
     if (!node) return;
 
     let pointer: { id: number; x: number; offset: number } | undefined;
@@ -45,7 +47,7 @@ export function HomeCardRow({ children, testID, label, minCardWidth, maxCardWidt
     // gesture for a mouse, and leave ordinary card clicks intact.
     const start = (event: PointerEvent) => {
       dragged = false;
-      if (event.pointerType === "mouse" && event.button === 0) {
+      if (event.pointerType === "mouse" && event.button === 0 && node.scrollWidth > node.clientWidth) {
         pointer = { id: event.pointerId, x: event.clientX, offset: node.scrollLeft };
       }
     };
@@ -69,7 +71,8 @@ export function HomeCardRow({ children, testID, label, minCardWidth, maxCardWidt
     const keyDown = (event: KeyboardEvent) => {
       if (event.target !== node || !["ArrowLeft", "ArrowRight"].includes(event.key)) return;
       event.preventDefault();
-      node.scrollLeft += event.key === "ArrowLeft" ? -(cardWidth + gap) : cardWidth + gap;
+      const step = (node.firstElementChild?.firstElementChild?.getBoundingClientRect().width ?? node.clientWidth) + gap;
+      node.scrollLeft += event.key === "ArrowLeft" ? -step : step;
     };
 
     node.addEventListener("pointerdown", start);
@@ -86,14 +89,14 @@ export function HomeCardRow({ children, testID, label, minCardWidth, maxCardWidt
       window.removeEventListener("pointerup", end);
       window.removeEventListener("pointercancel", end);
     };
-  }, [canScroll, cardWidth, gap]);
+  }, [webNode, gap]);
 
   if (!cards.length) return null;
-  if (!hasMultipleCards) return <View testID={testID} style={styles.viewport}>{cards[0]}</View>;
+  if (!hasMultipleCards) return <View testID={testID} style={[styles.viewport, { maxWidth }]}>{cards[0]}</View>;
 
   return (
     <ScrollView
-      ref={scroll}
+      ref={Platform.OS === "web" ? attachWebScroll : undefined}
       testID={testID}
       horizontal
       nestedScrollEnabled
