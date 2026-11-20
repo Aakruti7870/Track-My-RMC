@@ -38,7 +38,7 @@ export function HomeModuleSection({ id, title, modules, seeAll, homeShortcut = f
     <View testID={`home-modules-${id}`} style={[styles.section, { backgroundColor: colors.surfaceSecondary, borderColor: colors.divider }]}>
       <CardHighlight radius={radius.lg} />
       <HomeSectionHeader title={title} seeAll={seeAll} testID={`home-see-all-${id}`} />
-      <HomeCardRow testID={`home-modules-row-${id}`} label={title} minCardWidth={homeShortcut ? 88 : 104} maxCardWidth={240}>
+      <HomeCardRow testID={`home-module-row-${id}`} label={title} minCardWidth={homeShortcut ? 88 : 104} maxCardWidth={240}>
         {modules.map(module => (
           <Pressable key={module.key} testID={testIDPrefix + module.key} accessibilityRole="button"
             accessibilityLabel={module.label} accessibilityHint={module.description}

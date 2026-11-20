@@ -17,6 +17,7 @@ const grants = [
   "suppliers", "purchases", "diesel_ledger", "quotations", "expenses", "payroll",
   "plant_reports", "workforce", "employee_master",
 ];
+const dispatcherGrants = ["dispatch_queue", "fleet_availability", "challan_gate_pass", "material_inventory"];
 const plant = { id: "fixture-plant", name: "Fixture Plant" };
 const coordinates = { latitude: 19.02, longitude: 73.11 };
 const start = "2026-11-20T04:00:00Z";
@@ -99,7 +100,7 @@ async function visitRole(browser, [role, routeName, label], scheme) {
       });
       if (pathname === "/master/my-plants") return reply({ plants: [plant] });
       if (pathname === "/staff/module-permissions") return reply({
-        plant_id: plant.id, permissions: grants.map(key => ({ key, view: true })),
+        plant_id: plant.id, permissions: (role === "dispatcher" ? dispatcherGrants : grants).map(key => ({ key, view: true })),
       });
       if (pathname === "/plant-operations/fixture-plant/pipeline") return reply({ counts: {}, total: 0, loads: [] });
       return reply({});
@@ -128,6 +129,11 @@ async function visitRole(browser, [role, routeName, label], scheme) {
     const quick = page.getByTestId(driver ? "home-modules-driver-quick-access" : "home-modules-quick-access");
     await card.getByText("Ready to check in", { exact: true }).waitFor();
     await quick.waitFor();
+    if (role === "dispatcher") {
+      const cards = await quick.locator('[data-testid^="role-module-"]').evaluateAll(nodes => nodes.map(node => node.dataset.testid));
+      assert.deepEqual(cards, ["role-module-business-inventory", "role-module-shift-roster", "role-module-workforce"]);
+      assert.equal(await page.getByTestId("staff-home-scroll").locator('[data-testid^="home-modules-"]').count(), 1);
+    }
     assert.equal(await card.count(), 1);
     assert(await checkIn.isEnabled());
     assert(await checkOut.isDisabled());
@@ -159,9 +165,9 @@ async function visitRole(browser, [role, routeName, label], scheme) {
         assert((await button.boundingBox()).height >= 44);
         assert(await button.evaluate(element => element.scrollWidth <= element.clientWidth + 2), role + " attendance label overflows at " + width);
       }
-      const row = quick.getByTestId(driver ? "home-modules-row-driver-quick-access" : "home-modules-row-quick-access");
+      const row = quick.getByTestId(driver ? "home-module-row-driver-quick-access" : "home-module-row-quick-access");
       await assertHomeCardRow(row, { shouldOverflow: width >= 768 ? false : undefined });
-      const otherRows = page.locator('[data-testid^="home-modules-row-"], [data-testid="staff-home-kpi-row"], [data-testid="staff-home-plant-records-row"], [data-testid="plant-home-actions-row"], [data-testid="driver-home-stats-row"], [data-testid="home-load-pipeline-row"]').and(page.locator(':not([data-testid$="-quick-access"])'));
+      const otherRows = page.locator('[data-testid^="home-module-row-"], [data-testid="staff-home-kpi-row"], [data-testid="staff-home-plant-records-row"], [data-testid="plant-home-actions-row"], [data-testid="driver-home-stats-row"], [data-testid="home-load-pipeline-row"]').and(page.locator(':not([data-testid$="-quick-access"])'));
       for (const otherRow of await otherRows.all()) {
         await assertHomeCardRow(otherRow, { shouldOverflow: width >= 768 ? false : undefined });
       }
