@@ -3196,11 +3196,11 @@ async fn provider_capacity_and_budget_apply_across_instances(db: PgPool) {
     let one = build_app_router(first);
     let two = build_app_router(second);
     let path = "/api/auth/otp/whatsapp/send";
-    sqlx::query("UPDATE otp_delivery_budget SET daily_limit=1")
+    sqlx::query("UPDATE otp_delivery_budget SET daily_limit=1 WHERE pool='public'")
         .execute(&db)
         .await
         .unwrap();
-    sqlx::query("UPDATE otp_delivery_slots SET reservation=gen_random_uuid(),expires_at=now()+interval '1 hour'").execute(&db).await.unwrap();
+    sqlx::query("UPDATE otp_delivery_slots SET reservation=gen_random_uuid(),expires_at=now()+interval '1 hour' WHERE pool='public'").execute(&db).await.unwrap();
     assert_eq!(
         call(&one, path, Some(json!({"phone":"+12025550180"})), None)
             .await
@@ -3209,10 +3209,12 @@ async fn provider_capacity_and_budget_apply_across_instances(db: PgPool) {
     );
     wait_for_otp_delivery(&db, "12025550180").await;
     assert!(delivery.messages.lock().unwrap().is_empty());
-    sqlx::query("UPDATE otp_delivery_slots SET expires_at=now()-interval '1 second'")
-        .execute(&db)
-        .await
-        .unwrap();
+    sqlx::query(
+        "UPDATE otp_delivery_slots SET expires_at=now()-interval '1 second' WHERE pool='public'",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
     call(&one, path, Some(json!({"phone":"+12025550181"})), None).await;
     delivery.take_code(&db, "12025550181").await;
     assert_eq!(
@@ -3224,18 +3226,112 @@ async fn provider_capacity_and_budget_apply_across_instances(db: PgPool) {
     wait_for_otp_delivery(&db, "12025550182").await;
     assert!(delivery.messages.lock().unwrap().is_empty());
     assert_eq!(
-        sqlx::query_scalar::<_, i32>("SELECT used FROM otp_delivery_budget")
+        sqlx::query_scalar::<_, i32>("SELECT used FROM otp_delivery_budget WHERE pool='public'")
             .fetch_one(&db)
             .await
             .unwrap(),
         1
     );
-    sqlx::query("UPDATE otp_delivery_budget SET utc_day=utc_day-1")
+    sqlx::query("UPDATE otp_delivery_budget SET utc_day=utc_day-1 WHERE pool='public'")
         .execute(&db)
         .await
         .unwrap();
     call(&two, path, Some(json!({"phone":"+12025550183"})), None).await;
     delivery.take_code(&db, "12025550183").await;
+}
+
+#[sqlx::test]
+async fn central_admin_otp_is_available_when_public_admission_is_exhausted(db: PgPool) {
+    use trackmyrmc_backend::central_admin_bootstrap::{prepare_primary, PRIMARY_EMAIL};
+
+    let database: String = sqlx::query_scalar("SELECT current_database()")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    prepare_primary(&db, &database).await.unwrap();
+    let public_app = build_app_router(state(db.clone()));
+    let mut admin_state = state(db.clone());
+    Arc::make_mut(&mut admin_state.config).otp_cooldown_seconds = 60;
+    let delivery = Arc::new(MemoryDelivery::default());
+    admin_state.otp_delivery = delivery.clone();
+    let admin_app = build_app_router(admin_state);
+
+    let public_request = || async {
+        call(
+            &public_app,
+            "/api/auth/staff/mfa/method",
+            Some(json!({"identifier":"fixture@example.invalid"})),
+            None,
+        )
+        .await
+        .0
+    };
+    assert_eq!(public_request().await, StatusCode::OK);
+    sqlx::query("UPDATE auth_source_windows SET attempts=60")
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(public_request().await, StatusCode::TOO_MANY_REQUESTS);
+    sqlx::query("UPDATE otp_delivery_budget SET used=daily_limit WHERE pool='public'")
+        .execute(&db)
+        .await
+        .unwrap();
+    let public_slots = sqlx::query(
+        "UPDATE otp_delivery_slots SET reservation=gen_random_uuid(),
+         expires_at=now()+interval '1 hour' WHERE pool='public'",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+    assert_eq!(public_slots.rows_affected(), 60);
+    OtpEngine::create_session(
+        &db,
+        OtpSessionInput {
+            destination: PRIMARY_EMAIL,
+            channel: "email",
+            purpose: "account_deletion",
+            salt: "fixture-salt",
+            hashed_otp: "fixture-digest",
+            expiration_minutes: 5,
+            max_attempts: 3,
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        call(
+            &admin_app,
+            "/api/admin/auth/otp/send",
+            Some(json!({"email":PRIMARY_EMAIL})),
+            None,
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let code = delivery.take_code(&db, PRIMARY_EMAIL).await;
+    let (status, result) = call(
+        &admin_app,
+        "/api/admin/auth/login",
+        Some(json!({"email":PRIMARY_EMAIL,"otp":code})),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(result["challenge_token"].is_string());
+    let budgets: Vec<(String, i32, i32)> =
+        sqlx::query_as("SELECT pool, used, daily_limit FROM otp_delivery_budget ORDER BY pool")
+            .fetch_all(&db)
+            .await
+            .unwrap();
+    assert_eq!(
+        budgets,
+        vec![
+            ("central_admin".into(), 1, 50),
+            ("public".into(), 1950, 1950)
+        ]
+    );
 }
 
 #[sqlx::test]
@@ -3267,7 +3363,7 @@ async fn failed_private_deletion_delivery_preserves_destination_cooldown(db: PgP
         StatusCode::BAD_REQUEST
     );
     assert_eq!(
-        sqlx::query_scalar::<_, i32>("SELECT used FROM otp_delivery_budget")
+        sqlx::query_scalar::<_, i32>("SELECT used FROM otp_delivery_budget WHERE pool='public'")
             .fetch_one(&db)
             .await
             .unwrap(),

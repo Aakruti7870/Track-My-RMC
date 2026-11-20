@@ -95,16 +95,20 @@ impl OtpEngine {
         purpose: String,
         portal: &'static str,
     ) -> Result<(), AppError> {
-        let slot = state
-            .public_otp_delivery_slots
-            .clone()
-            .try_acquire_owned()
-            .map_err(|_| {
-                tracing::warn!(auth_event = "queue_full", "Public OTP queue full");
-                AppError::RateLimited(
-                    "Verification delivery is busy. Please try again shortly.".into(),
-                )
-            })?;
+        let central_admin = purpose == control_center::ADMIN_OTP_PURPOSE;
+        let slots = if central_admin {
+            &state.central_admin_otp_delivery_slots
+        } else {
+            &state.public_otp_delivery_slots
+        };
+        let slot = slots.clone().try_acquire_owned().map_err(|_| {
+            tracing::warn!(
+                auth_event = "queue_full",
+                central_admin,
+                "OTP admission queue full"
+            );
+            AppError::RateLimited("Verification delivery is busy. Please try again shortly.".into())
+        })?;
         let (session_id, code) =
             Self::reserve_delivery(state, &destination, channel, &purpose).await?;
         let state = state.clone();
@@ -167,7 +171,13 @@ impl OtpEngine {
             .bind(destination)
             .execute(&mut *tx)
             .await?;
-        Self::check_rate_limit(&mut tx, destination, state.config.otp_cooldown_seconds).await?;
+        Self::check_rate_limit(
+            &mut tx,
+            destination,
+            purpose,
+            state.config.otp_cooldown_seconds,
+        )
+        .await?;
         let session_id = Self::create_pending_session(
             &mut *tx,
             OtpSessionInput {
@@ -194,19 +204,27 @@ impl OtpEngine {
         portal: &str,
         code: &str,
     ) -> Result<(), AppError> {
+        let pool = if purpose == control_center::ADMIN_OTP_PURPOSE {
+            "central_admin"
+        } else {
+            "public"
+        };
         let mut tx = state.db.begin().await?;
         let budget: Option<(i32, i32)> = sqlx::query_as(
             "UPDATE otp_delivery_budget SET utc_day=(now() AT TIME ZONE 'UTC')::date,
                 used=CASE WHEN utc_day=(now() AT TIME ZONE 'UTC')::date THEN used+1 ELSE 1 END
-             WHERE singleton AND daily_limit>0 AND
-                (utc_day<>(now() AT TIME ZONE 'UTC')::date OR used<daily_limit)
+             WHERE pool=$1 AND daily_limit>0 AND
+                (utc_day<(now() AT TIME ZONE 'UTC')::date OR
+                 (utc_day=(now() AT TIME ZONE 'UTC')::date AND used<daily_limit))
              RETURNING used,daily_limit",
         )
+        .bind(pool)
         .fetch_optional(&mut *tx)
         .await?;
         let Some((used, limit)) = budget else {
             tracing::warn!(
                 auth_event = "budget_exhausted",
+                pool,
                 "OTP attempt budget exhausted"
             );
             return Err(AppError::RateLimited(
@@ -216,14 +234,19 @@ impl OtpEngine {
         let slot: Option<i16> = sqlx::query_scalar(
             "UPDATE otp_delivery_slots SET reservation=$1, expires_at=clock_timestamp()+interval '30 seconds'
              WHERE slot=(SELECT slot FROM otp_delivery_slots
-                WHERE reservation IS NULL OR expires_at<=clock_timestamp()
+                WHERE pool=$2 AND (reservation IS NULL OR expires_at<=clock_timestamp())
                 ORDER BY slot LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING slot",
         )
         .bind(session_id)
+        .bind(pool)
         .fetch_optional(&mut *tx)
         .await?;
         let Some(slot) = slot else {
-            tracing::warn!(auth_event = "queue_full", "OTP delivery capacity reached");
+            tracing::warn!(
+                auth_event = "queue_full",
+                pool,
+                "OTP delivery capacity reached"
+            );
             return Err(AppError::RateLimited(
                 "Verification delivery is busy.".into(),
             ));
@@ -232,11 +255,13 @@ impl OtpEngine {
         tracing::info!(
             auth_event = "provider_attempt",
             channel,
+            pool,
             "OTP provider attempt reserved"
         );
         if used == limit - limit / 5 {
             tracing::warn!(
                 auth_event = "budget_warning",
+                pool,
                 "OTP daily budget reached 80 percent"
             );
         }
@@ -256,12 +281,21 @@ impl OtpEngine {
     async fn check_rate_limit(
         connection: &mut sqlx::PgConnection,
         destination: &str,
+        purpose: &str,
         cooldown_seconds: i64,
     ) -> Result<(), AppError> {
         let cooldown_threshold = Utc::now() - Duration::seconds(cooldown_seconds);
         let recent_request: Option<(DateTime<Utc>,)> = sqlx::query_as(
-            "SELECT created_at FROM otp_verifications WHERE destination=$1 AND created_at>$2 ORDER BY created_at DESC LIMIT 1"
-        ).bind(destination).bind(cooldown_threshold).fetch_optional(&mut *connection).await?;
+            "SELECT created_at FROM otp_verifications
+             WHERE destination=$1 AND created_at>$2 AND (purpose=$3)=($4=$3)
+             ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(destination)
+        .bind(cooldown_threshold)
+        .bind(control_center::ADMIN_OTP_PURPOSE)
+        .bind(purpose)
+        .fetch_optional(&mut *connection)
+        .await?;
 
         if let Some((created_at,)) = recent_request {
             let elapsed = (Utc::now() - created_at).num_seconds();
@@ -273,10 +307,13 @@ impl OtpEngine {
 
         let hour_threshold = Utc::now() - Duration::hours(1);
         let count: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM otp_verifications WHERE destination=$1 AND created_at>$2",
+            "SELECT COUNT(*) FROM otp_verifications
+             WHERE destination=$1 AND created_at>$2 AND (purpose=$3)=($4=$3)",
         )
         .bind(destination)
         .bind(hour_threshold)
+        .bind(control_center::ADMIN_OTP_PURPOSE)
+        .bind(purpose)
         .fetch_one(connection)
         .await?;
 

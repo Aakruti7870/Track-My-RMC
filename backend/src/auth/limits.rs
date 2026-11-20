@@ -57,7 +57,12 @@ pub(crate) async fn guard(
     let address = source(&req);
     let mut mac = Hmac::<Sha256>::new_from_slice(state.config.otp_pepper.as_bytes())
         .expect("HMAC accepts any key length");
-    mac.update(b"auth-source:");
+    // User traffic from the same office network must not exhaust the admin window.
+    mac.update(if path.starts_with("/api/admin/auth/") {
+        b"central-admin-auth-source:"
+    } else {
+        b"auth-source:"
+    });
     mac.update(address.as_bytes());
     let key = mac.finalize().into_bytes().to_vec();
     sqlx::query(
