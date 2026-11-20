@@ -104,6 +104,9 @@
     "decode-uri-component": "0.5.1",
     "@istanbuljs/load-nyc-config": {
       "js-yaml": "4.3.2"
-    }
+    },
+    "glob@13": "14.0.2",
+    "minimatch@9": "11.0.9",
+    "minimatch@10": "11.0.9"
   }
 }
