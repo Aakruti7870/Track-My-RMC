@@ -3237,3 +3237,79 @@ async fn provider_capacity_and_budget_apply_across_instances(db: PgPool) {
     call(&two, path, Some(json!({"phone":"+12025550183"})), None).await;
     delivery.take_code(&db, "12025550183").await;
 }
+
+#[sqlx::test]
+async fn failed_private_deletion_delivery_preserves_destination_cooldown(db: PgPool) {
+    let mut fixture = state(db.clone());
+    Arc::make_mut(&mut fixture.config).otp_cooldown_seconds = 60;
+    let delivery = Arc::new(MemoryDelivery::default());
+    delivery.reject.store(true, Ordering::SeqCst);
+    fixture.otp_delivery = delivery;
+    let phone = "12025550189";
+    let id = identity(&db, "customer", None, Some(phone)).await;
+    let bearer = trackmyrmc_backend::auth::jwt::generate_token(
+        id,
+        "customer",
+        phone,
+        None,
+        &fixture.config.jwt_secret,
+        1,
+    )
+    .unwrap();
+    let app = build_app_router(fixture);
+    let path = "/api/account-deletion/otp/send-authenticated";
+    assert_eq!(
+        call(&app, path, Some(json!({})), Some(&bearer)).await.0,
+        StatusCode::INTERNAL_SERVER_ERROR
+    );
+    assert_eq!(
+        call(&app, path, Some(json!({})), Some(&bearer)).await.0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i32>("SELECT used FROM otp_delivery_budget")
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+        1
+    );
+    assert!(!sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM otp_verifications WHERE destination=$1 AND NOT is_verified)"
+    )
+    .bind(phone)
+    .fetch_one(&db)
+    .await
+    .unwrap());
+}
+
+#[sqlx::test]
+async fn public_email_first_steps_match_with_disabled_and_rejected_delivery(db: PgPool) {
+    let mut fixture = state(db.clone());
+    let delivery = Arc::new(MemoryDelivery::default());
+    delivery.reject.store(true, Ordering::SeqCst);
+    fixture.otp_delivery = delivery;
+    let enabled = "enabled-parity@example.invalid";
+    let disabled = "disabled-parity@example.invalid";
+    identity(&db, "owner", Some(enabled), None).await;
+    let id = identity(&db, "owner", Some(disabled), None).await;
+    sqlx::query("UPDATE users SET is_active=FALSE WHERE id=$1")
+        .bind(id)
+        .execute(&db)
+        .await
+        .unwrap();
+    let app = build_app_router(fixture);
+    for (path, key) in [
+        ("/api/auth/otp/email/send", "email"),
+        ("/api/staff/auth/send-otp", "email"),
+        ("/api/account-deletion/otp/send", "identifier"),
+    ] {
+        let mut responses = Vec::new();
+        for email in [enabled, disabled, "unknown-parity@example.invalid"] {
+            responses.push(call(&app, path, Some(json!({(key):email})), None).await);
+            wait_for_otp_delivery(&db, email).await;
+        }
+        assert_eq!(responses[0].0, StatusCode::OK);
+        assert_eq!(responses[0], responses[1]);
+        assert_eq!(responses[0], responses[2]);
+    }
+}

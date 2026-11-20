@@ -80,7 +80,7 @@ impl OtpEngine {
         )
         .await
         {
-            let _ = Self::discard_pending_session(&state.db, session_id).await;
+            Self::close_pending_session(&state.db, session_id).await?;
             return Err(error);
         }
         Ok(())
@@ -143,9 +143,7 @@ impl OtpEngine {
                     tracing::warn!(channel, "Public OTP delivery did not complete");
                 }
                 // Preserve the cooldown and the last successfully delivered code.
-                if sqlx::query("UPDATE otp_verifications SET is_pending=FALSE,is_verified=TRUE WHERE id=$1 AND is_pending")
-                    .bind(session_id)
-                    .execute(&state.db)
+                if Self::close_pending_session(&state.db, session_id)
                     .await
                     .is_err()
                 {
@@ -401,8 +399,8 @@ impl OtpEngine {
         Ok(())
     }
 
-    pub async fn discard_pending_session(pool: &PgPool, session_id: Uuid) -> Result<(), AppError> {
-        sqlx::query("DELETE FROM otp_verifications WHERE id=$1 AND is_pending=TRUE")
+    async fn close_pending_session(pool: &PgPool, session_id: Uuid) -> Result<(), AppError> {
+        sqlx::query("UPDATE otp_verifications SET is_pending=FALSE,is_verified=TRUE WHERE id=$1 AND is_pending")
             .bind(session_id)
             .execute(pool)
             .await?;
