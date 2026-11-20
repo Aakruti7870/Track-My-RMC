@@ -354,12 +354,17 @@ async fn approved_staff_fixtures_complete_email_enrollment_mfa_recovery_and_logo
     .unwrap();
     let fixtures: Value =
         serde_json::from_str(include_str!("fixtures/staging_identities.json")).unwrap();
-    for fixture in fixtures["users"]
+    for (index, fixture) in fixtures["users"]
         .as_array()
         .unwrap()
         .iter()
         .filter(|f| f["email"].is_string())
+        .enumerate()
     {
+        let peer = std::net::SocketAddr::from(([192, 0, 2, index as u8 + 1], 443));
+        let app = app
+            .clone()
+            .layer(axum::Extension(axum::extract::ConnectInfo(peer)));
         let role = fixture["role"].as_str().unwrap();
         let email = fixture["email"].as_str().unwrap();
         let staff_id = identity(&db, role, Some(email), None).await;
@@ -3095,4 +3100,140 @@ async fn parallel_first_whatsapp_requests_preserve_customer_registration(db: PgP
         call(&app, "/api/me", None, auth["token"].as_str()).await.0,
         StatusCode::OK
     );
+}
+
+#[sqlx::test]
+async fn staff_method_only_discloses_the_public_first_step(db: PgPool) {
+    let id = identity(&db, "owner", Some("method@example.invalid"), None).await;
+    let app = build_app_router(state(db.clone()));
+    let payload = json!({"identifier":"method@example.invalid"});
+    let path = "/api/auth/staff/mfa/method";
+    let eligible = call(&app, path, Some(payload.clone()), None).await;
+    assert_eq!(eligible.0, StatusCode::OK);
+    assert_eq!(eligible.1["method"], "email_otp");
+    sqlx::query("INSERT INTO user_totp_credentials(user_id,secret_key,is_enabled) VALUES ($1,'isolated-fixture',TRUE)")
+        .bind(id).execute(&db).await.unwrap();
+    assert_eq!(
+        eligible,
+        call(&app, path, Some(payload.clone()), None).await
+    );
+    sqlx::query("UPDATE users SET is_active=FALSE WHERE id=$1")
+        .bind(id)
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        eligible,
+        call(&app, path, Some(payload.clone()), None).await
+    );
+    let mut unknown = call(
+        &app,
+        path,
+        Some(json!({"identifier":"absent@example.invalid"})),
+        None,
+    )
+    .await;
+    // The only variable field is the caller's own input.
+    unknown.1["email"] = eligible.1["email"].clone();
+    assert_eq!(eligible, unknown);
+}
+
+#[sqlx::test]
+async fn source_window_is_shared_by_aliases_and_new_app_instances(db: PgPool) {
+    let first = build_app_router(state(db.clone()));
+    let second = build_app_router(state(db.clone()));
+    let path = "/api/auth/staff/mfa/method";
+    assert_eq!(
+        call(
+            &first,
+            path,
+            Some(json!({"identifier":"a@example.invalid"})),
+            None
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    sqlx::query("UPDATE auth_source_windows SET attempts=60")
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        call(
+            &second,
+            "/api/staff/auth/send-otp",
+            Some(json!({"email":"a@example.invalid"})),
+            None
+        )
+        .await
+        .0,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    sqlx::query("UPDATE auth_source_windows SET started_at=now()-interval '61 seconds'")
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        call(
+            &second,
+            path,
+            Some(json!({"identifier":"a@example.invalid"})),
+            None
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+}
+
+#[sqlx::test]
+async fn provider_capacity_and_budget_apply_across_instances(db: PgPool) {
+    let mut first = state(db.clone());
+    let mut second = state(db.clone());
+    let delivery = Arc::new(MemoryDelivery::default());
+    first.otp_delivery = delivery.clone();
+    second.otp_delivery = delivery.clone();
+    let one = build_app_router(first);
+    let two = build_app_router(second);
+    let path = "/api/auth/otp/whatsapp/send";
+    sqlx::query("UPDATE otp_delivery_budget SET daily_limit=1")
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE otp_delivery_slots SET reservation=gen_random_uuid(),expires_at=now()+interval '1 hour'").execute(&db).await.unwrap();
+    assert_eq!(
+        call(&one, path, Some(json!({"phone":"+12025550180"})), None)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    wait_for_otp_delivery(&db, "12025550180").await;
+    assert!(delivery.messages.lock().unwrap().is_empty());
+    sqlx::query("UPDATE otp_delivery_slots SET expires_at=now()-interval '1 second'")
+        .execute(&db)
+        .await
+        .unwrap();
+    call(&one, path, Some(json!({"phone":"+12025550181"})), None).await;
+    delivery.take_code(&db, "12025550181").await;
+    assert_eq!(
+        call(&two, path, Some(json!({"phone":"+12025550182"})), None)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    wait_for_otp_delivery(&db, "12025550182").await;
+    assert!(delivery.messages.lock().unwrap().is_empty());
+    assert_eq!(
+        sqlx::query_scalar::<_, i32>("SELECT used FROM otp_delivery_budget")
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+        1
+    );
+    sqlx::query("UPDATE otp_delivery_budget SET utc_day=utc_day-1")
+        .execute(&db)
+        .await
+        .unwrap();
+    call(&two, path, Some(json!({"phone":"+12025550183"})), None).await;
+    delivery.take_code(&db, "12025550183").await;
 }

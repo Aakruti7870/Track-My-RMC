@@ -256,7 +256,7 @@ pub async fn get_file(
 
     let response = Response::builder()
         .header(header::CONTENT_TYPE, content_type)
-        .header(header::CACHE_CONTROL, "private, max-age=300")
+        .header(header::CACHE_CONTROL, "private, no-store")
         .header("X-Content-Type-Options", "nosniff")
         .header(
             header::CONTENT_DISPOSITION,

@@ -100,6 +100,7 @@ impl OtpEngine {
             .clone()
             .try_acquire_owned()
             .map_err(|_| {
+                tracing::warn!(auth_event = "queue_full", "Public OTP queue full");
                 AppError::RateLimited(
                     "Verification delivery is busy. Please try again shortly.".into(),
                 )
@@ -195,10 +196,62 @@ impl OtpEngine {
         portal: &str,
         code: &str,
     ) -> Result<(), AppError> {
-        state
-            .otp_delivery
-            .send(channel, destination, code, portal)
-            .await?;
+        let mut tx = state.db.begin().await?;
+        let budget: Option<(i32, i32)> = sqlx::query_as(
+            "UPDATE otp_delivery_budget SET utc_day=(now() AT TIME ZONE 'UTC')::date,
+                used=CASE WHEN utc_day=(now() AT TIME ZONE 'UTC')::date THEN used+1 ELSE 1 END
+             WHERE singleton AND daily_limit>0 AND
+                (utc_day<>(now() AT TIME ZONE 'UTC')::date OR used<daily_limit)
+             RETURNING used,daily_limit",
+        )
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some((used, limit)) = budget else {
+            tracing::warn!(
+                auth_event = "budget_exhausted",
+                "OTP attempt budget exhausted"
+            );
+            return Err(AppError::RateLimited(
+                "Verification delivery is temporarily unavailable.".into(),
+            ));
+        };
+        let slot: Option<i16> = sqlx::query_scalar(
+            "UPDATE otp_delivery_slots SET reservation=$1, expires_at=clock_timestamp()+interval '30 seconds'
+             WHERE slot=(SELECT slot FROM otp_delivery_slots
+                WHERE reservation IS NULL OR expires_at<=clock_timestamp()
+                ORDER BY slot LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING slot",
+        )
+        .bind(session_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(slot) = slot else {
+            tracing::warn!(auth_event = "queue_full", "OTP delivery capacity reached");
+            return Err(AppError::RateLimited(
+                "Verification delivery is busy.".into(),
+            ));
+        };
+        tx.commit().await?;
+        tracing::info!(
+            auth_event = "provider_attempt",
+            channel,
+            "OTP provider attempt reserved"
+        );
+        if used == limit - limit / 5 {
+            tracing::warn!(
+                auth_event = "budget_warning",
+                "OTP daily budget reached 80 percent"
+            );
+        }
+        let delivery = tokio::time::timeout(
+            std::time::Duration::from_secs(15),
+            state.otp_delivery.send(channel, destination, code, portal),
+        )
+        .await;
+        // Cancellation or process exit leaves a short lease. An old worker can never free a new lease.
+        sqlx::query("UPDATE otp_delivery_slots SET reservation=NULL,expires_at=NULL WHERE slot=$1 AND reservation=$2")
+            .bind(slot).bind(session_id).execute(&state.db).await?;
+        delivery
+            .map_err(|_| AppError::InternalError("Verification provider timed out".into()))??;
         Self::activate_pending_session(&state.db, session_id, destination, channel, purpose).await
     }
 
