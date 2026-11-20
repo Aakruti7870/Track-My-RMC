@@ -3,8 +3,6 @@ import { Pressable, RefreshControl, StyleSheet, useWindowDimensions, View } from
 import { useFocusEffect, useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/src/auth/AuthContext";
-import { HomeAttendanceCard } from "@/src/components/HomeAttendanceCard";
-import { useHomeAttendance } from "@/src/hooks/useHomeAttendance";
 import { HomeScroll } from "@/src/components/HomeScroll";
 import { PlantHomeBanner, PlantHomeHero } from "@/src/components/PlantHomeCards";
 import { AppText } from "@/src/components/ui/AppText";
@@ -26,7 +24,6 @@ const QUICK_PADDING = 5;
 export default function OwnerHome() {
   const p = useOwnerPalette();
   const { colors } = useTheme();
-  const attendance = useHomeAttendance("staff");
   const bottom = useOwnerBottomSpace();
   const { width: viewportWidth, height, fontScale } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -64,13 +61,12 @@ export default function OwnerHome() {
     <HomeScroll testID="owner-home-scroll" paddingHorizontal={horizontalPadding} gap={10}
       style={compactHeight ? { marginBottom: bottom } : undefined}
       contentContainerStyle={{ paddingBottom: compactHeight ? 12 : bottom }}
-      refreshControl={<RefreshControl refreshing={plantsLoading && !!plant} onRefresh={() => { void retryPlants(); void attendance.refetch(); }} tintColor={p.accent} />}
+      refreshControl={<RefreshControl refreshing={plantsLoading && !!plant} onRefresh={() => { void retryPlants(); }} tintColor={p.accent} />}
     >
       <View testID="owner-home-summary" style={[styles.homeCards, styles.hero, { backgroundColor: p.panel }]}>
         <PlantHomeHero label="Plant Owner" testID="owner-home-hero-banner" profile={profile}
           minHeight={heroMinHeight} maxHeight={compactHeight ? heroMinHeight : Math.max(heroMinHeight, 215)} />
       </View>
-      <HomeAttendanceCard attendance={attendance} />
       <View style={styles.homeCards}>
         <OwnerGlass testID="owner-quick-access" style={styles.quickAccess} highlighted={false}>
           <View style={styles.quickGrid}>

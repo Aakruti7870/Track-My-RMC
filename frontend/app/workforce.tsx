@@ -151,7 +151,7 @@ export default function WorkforceScreen() {
   const load = useCallback(async () => {
     if (!token || !user) return;
     try {
-      if (user.role === "plant_owner") {
+      if (user.role === "plant_owner" || user.role === "owner") {
         const data = await apiGet<OwnerData>("/workforce/owner/control", token);
         setOwner(data);
         setEmployee(null);

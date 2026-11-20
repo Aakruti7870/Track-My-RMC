@@ -89,7 +89,9 @@ assert(!read("app/owner/index.tsx").includes('testID="owner-shortcut-insights"')
 assert(!read("app/owner/index.tsx").includes('id="owner-commercial"'));
 assert(!read("app/owner/index.tsx").includes('id="owner-workforce"'));
 assert(read("app/driver/index.tsx").includes('id="driver-workforce"'));
-for (const file of ["src/screens/StaffHome.tsx", "app/owner/index.tsx", "app/driver/index.tsx"]) {
+assert(!/HomeAttendanceCard|useHomeAttendance/.test(read("app/owner/index.tsx")),
+  "Plant Owner Home must show management tools without requesting personal attendance");
+for (const file of ["src/screens/StaffHome.tsx", "app/driver/index.tsx"]) {
   const source = read(file);
   assert.equal(source.match(/<HomeAttendanceCard /g)?.length, 1, file + " must have exactly one Home attendance card");
 }
