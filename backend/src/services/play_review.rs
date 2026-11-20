@@ -58,22 +58,27 @@ pub async fn login(
     let role = normalized_role(&request.role)?;
     let client_hash = digest(client_identifier);
 
+    // The three fixtures share one code. Serialize the check and update across origins.
+    let mut tx = state.db.begin().await?;
+    sqlx::query("SELECT pg_advisory_xact_lock(92742, 1)")
+        .execute(&mut *tx)
+        .await?;
     sqlx::query(
         "DELETE FROM play_review_login_attempts WHERE attempted_at < NOW() - INTERVAL '24 hours'",
     )
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await?;
 
-    let recent_failures: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM play_review_login_attempts
-         WHERE client_hash = $1 AND succeeded = FALSE
+    let (source_failures, total_failures): (i64, i64) = sqlx::query_as(
+        "SELECT COUNT(*) FILTER (WHERE client_hash=$1), COUNT(*) FROM play_review_login_attempts
+         WHERE succeeded = FALSE
            AND attempted_at > NOW() - INTERVAL '15 minutes'",
     )
     .bind(&client_hash)
-    .fetch_one(&state.db)
+    .fetch_one(&mut *tx)
     .await?;
 
-    if recent_failures >= 5 {
+    if source_failures >= 5 || total_failures >= 100 {
         return Err(AppError::Forbidden(
             "Too many reviewer login attempts. Try again in 15 minutes.".to_string(),
         ));
@@ -86,8 +91,10 @@ pub async fn login(
     sqlx::query("INSERT INTO play_review_login_attempts (client_hash, succeeded) VALUES ($1, $2)")
         .bind(&client_hash)
         .bind(valid_code)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await?;
+
+    tx.commit().await?;
 
     if !valid_code {
         return Err(AppError::Unauthorized(

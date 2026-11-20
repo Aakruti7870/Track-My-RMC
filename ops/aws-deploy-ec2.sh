@@ -55,6 +55,7 @@ if [ ! -s /etc/letsencrypt/live/trackmyrmc.com/fullchain.pem ] || [ ! -s /etc/le
 install -d -m 0755 /var/www/certbot/.well-known/acme-challenge
 cat > /etc/nginx/sites-available/trackmyrmc <<'NGINX_BOOTSTRAP'
 server {
+    access_log off;
     listen 80 default_server;
     listen [::]:80 default_server;
     server_name trackmyrmc.com _;
@@ -70,45 +71,9 @@ server {
         return 200 "ok";
     }
 
-    location = /kyc/return {
-        proxy_pass http://127.0.0.1:8000/kyc/return;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    location /api/ {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_read_timeout 120s;
-    }
-
-    location = /health {
-        proxy_pass http://127.0.0.1:8000/health;
-        proxy_set_header Host $host;
-    }
-
-    location = /sitemap.xml {
-        root /opt/trackmyrmc/frontend;
-        try_files $uri =404;
-    }
-
-    location = /robots.txt {
-        root /opt/trackmyrmc/frontend;
-        try_files $uri =404;
-    }
-
-    location /_expo/static/ {
-        root /opt/trackmyrmc/frontend;
-        try_files $uri =404;
-    }
-
+    # Only ACME and the static health marker are available before TLS.
     location / {
-        root /opt/trackmyrmc/frontend;
-        index index.html;
-        try_files $uri $uri.html /index.html;
+        return 503;
     }
 }
 NGINX_BOOTSTRAP
@@ -137,12 +102,40 @@ HOOK
 chmod 0755 /etc/letsencrypt/renewal-hooks/deploy/reload-nginx
 
 cat > /etc/nginx/sites-available/trackmyrmc <<'NGINX'
-# Shared per-source limits cover privileged login, enrollment and step-up.
-# Nginx uses the socket peer address, never a client-supplied forwarding header.
+# Reviewed against https://www.cloudflare.com/ips-v4 and /ips-v6.
+# Only a socket peer in these networks can establish a visitor address.
+set_real_ip_from 173.245.48.0/20;
+set_real_ip_from 103.21.244.0/22;
+set_real_ip_from 103.22.200.0/22;
+set_real_ip_from 103.31.4.0/22;
+set_real_ip_from 141.101.64.0/18;
+set_real_ip_from 108.162.192.0/18;
+set_real_ip_from 190.93.240.0/20;
+set_real_ip_from 188.114.96.0/20;
+set_real_ip_from 197.234.240.0/22;
+set_real_ip_from 198.41.128.0/17;
+set_real_ip_from 162.158.0.0/15;
+set_real_ip_from 104.16.0.0/13;
+set_real_ip_from 104.24.0.0/14;
+set_real_ip_from 172.64.0.0/13;
+set_real_ip_from 131.0.72.0/22;
+set_real_ip_from 2400:cb00::/32;
+set_real_ip_from 2606:4700::/32;
+set_real_ip_from 2803:f800::/32;
+set_real_ip_from 2405:b500::/32;
+set_real_ip_from 2405:8100::/32;
+set_real_ip_from 2a06:98c0::/29;
+set_real_ip_from 2c0f:f248::/32;
+# Request paths and referrers can contain trip signatures or provider return data.
+log_format trackmyrmc_safe '$request_method $status $body_bytes_sent $request_time';
+real_ip_header CF-Connecting-IP;
+real_ip_recursive off;
 limit_req_zone $binary_remote_addr zone=privileged_auth:10m rate=10r/m;
+limit_req_zone $binary_remote_addr zone=public_auth:10m rate=60r/m;
 
 # HTTP remains available for ACME renewal; all application traffic uses HTTPS.
 server {
+    access_log /var/log/nginx/access.log trackmyrmc_safe;
     listen 80 default_server;
     listen [::]:80 default_server;
     server_name trackmyrmc.com _;
@@ -159,6 +152,7 @@ server {
 }
 
 server {
+    access_log /var/log/nginx/access.log trackmyrmc_safe;
     listen 443 ssl;
     listen [::]:443 ssl;
     server_name trackmyrmc.com;
@@ -234,7 +228,23 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header CF-Connecting-IP "";
+    }
+
+    location ~ ^/api/(auth|staff/auth|account-deletion)(/|$) {
+        limit_req zone=public_auth burst=20 nodelay;
+        limit_req_status 429;
+        add_header Cache-Control "no-store" always;
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header CF-Connecting-IP "";
     }
 
     location /api/ {
@@ -242,7 +252,9 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header CF-Connecting-IP "";
         proxy_read_timeout 120s;
     }
 
@@ -250,7 +262,9 @@ server {
         proxy_pass http://127.0.0.1:8000/health;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header CF-Connecting-IP "";
     }
 
     location = /.well-known/assetlinks.json {

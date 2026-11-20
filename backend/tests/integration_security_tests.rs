@@ -1477,3 +1477,34 @@ async fn native_domain_alert_acknowledgement_is_scoped_and_not_an_approval(db: P
     .unwrap();
     assert_eq!(audit_count, 1);
 }
+
+#[sqlx::test]
+async fn reviewer_shared_code_ceiling_expires_across_fixture_roles(db: PgPool) {
+    let mut app_state = state(db.clone());
+    std::sync::Arc::make_mut(&mut app_state.config).play_review_access_code = Some("654321".into());
+    let router = trackmyrmc_backend::routes::build_app_router(app_state);
+    sqlx::query("INSERT INTO play_review_login_attempts(client_hash,succeeded) SELECT md5(n::text),false FROM generate_series(1,100) n")
+        .execute(&db).await.unwrap();
+    let payload = json!({"role":"customer","access_code":"654321"});
+    assert_eq!(
+        request(
+            &router,
+            "/api/auth/play-review",
+            None,
+            Some(payload.clone())
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    sqlx::query("UPDATE play_review_login_attempts SET attempted_at=now()-interval '16 minutes'")
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        request(&router, "/api/auth/play-review", None, Some(payload))
+            .await
+            .0,
+        StatusCode::OK
+    );
+}

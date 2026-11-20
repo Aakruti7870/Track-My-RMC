@@ -10,6 +10,7 @@ pub struct AppState {
     pub config: Arc<AppConfig>,
     pub otp_delivery: Arc<dyn OtpDelivery>,
     pub(crate) public_otp_delivery_slots: Arc<Semaphore>,
+    pub(crate) central_admin_otp_delivery_slots: Arc<Semaphore>,
     pub automation_worker_token: Option<String>,
     pub automation_callback_token: Option<String>,
 }
@@ -21,7 +22,8 @@ impl AppState {
             db,
             config: Arc::new(config),
             otp_delivery,
-            public_otp_delivery_slots: Arc::new(Semaphore::new(64)),
+            public_otp_delivery_slots: Arc::new(Semaphore::new(60)),
+            central_admin_otp_delivery_slots: Arc::new(Semaphore::new(4)),
             automation_worker_token: std::env::var("AUTOMATION_WORKER_TOKEN").ok(),
             automation_callback_token: std::env::var("AUTOMATION_CALLBACK_TOKEN").ok(),
         }

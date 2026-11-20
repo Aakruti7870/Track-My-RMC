@@ -258,7 +258,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let app = routes::build_app_router(state)
         .layer(cors)
-        .layer(TraceLayer::new_for_http());
+        .layer(TraceLayer::new_for_http().make_span_with(|request: &axum::extract::Request| {
+            tracing::debug_span!("http_request", method = %request.method())
+        }));
 
     let bind_ip = config
         .host
@@ -268,9 +270,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Server listening on http://{}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await?;
 
     info!("TrackMyRMC backend service gracefully stopped");
     Ok(())

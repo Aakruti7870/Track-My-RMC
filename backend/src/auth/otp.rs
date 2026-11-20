@@ -1,5 +1,5 @@
 use super::control_center;
-use crate::{error::AppError, services::auth_service, state::AppState};
+use crate::{error::AppError, routes::account_deletion, services::auth_service, state::AppState};
 use chrono::{DateTime, Duration, Utc};
 use hmac::{Hmac, Mac};
 use rand::{distributions::Alphanumeric, Rng};
@@ -80,7 +80,7 @@ impl OtpEngine {
         )
         .await
         {
-            let _ = Self::discard_pending_session(&state.db, session_id).await;
+            Self::close_pending_session(&state.db, session_id).await?;
             return Err(error);
         }
         Ok(())
@@ -88,22 +88,27 @@ impl OtpEngine {
 
     /// Every public request reserves an unusable pending code and leaves identity
     /// lookup and provider I/O to a bounded background task.
-    pub(crate) async fn deliver_login(
+    pub(crate) async fn deliver_public(
         state: &AppState,
         destination: String,
         channel: &'static str,
         purpose: String,
         portal: &'static str,
     ) -> Result<(), AppError> {
-        let slot = state
-            .public_otp_delivery_slots
-            .clone()
-            .try_acquire_owned()
-            .map_err(|_| {
-                AppError::RateLimited(
-                    "Verification delivery is busy. Please try again shortly.".into(),
-                )
-            })?;
+        let central_admin = purpose == control_center::ADMIN_OTP_PURPOSE;
+        let slots = if central_admin {
+            &state.central_admin_otp_delivery_slots
+        } else {
+            &state.public_otp_delivery_slots
+        };
+        let slot = slots.clone().try_acquire_owned().map_err(|_| {
+            tracing::warn!(
+                auth_event = "queue_full",
+                central_admin,
+                "OTP admission queue full"
+            );
+            AppError::RateLimited("Verification delivery is busy. Please try again shortly.".into())
+        })?;
         let (session_id, code) =
             Self::reserve_delivery(state, &destination, channel, &purpose).await?;
         let state = state.clone();
@@ -113,6 +118,11 @@ impl OtpEngine {
                 let eligible = match purpose.as_str() {
                     control_center::ADMIN_OTP_PURPOSE => {
                         control_center::otp_delivery_eligible(&state, &destination).await?
+                    }
+                    account_deletion::DELETION_OTP_PURPOSE => {
+                        account_deletion::eligible_public_account(&state, &destination, channel)
+                            .await?
+                            .is_some()
                     }
                     _ => auth_service::public_otp_eligible(&state, &destination, channel).await?,
                 };
@@ -137,9 +147,7 @@ impl OtpEngine {
                     tracing::warn!(channel, "Public OTP delivery did not complete");
                 }
                 // Preserve the cooldown and the last successfully delivered code.
-                if sqlx::query("UPDATE otp_verifications SET is_pending=FALSE,is_verified=TRUE WHERE id=$1 AND is_pending")
-                    .bind(session_id)
-                    .execute(&state.db)
+                if Self::close_pending_session(&state.db, session_id)
                     .await
                     .is_err()
                 {
@@ -163,7 +171,13 @@ impl OtpEngine {
             .bind(destination)
             .execute(&mut *tx)
             .await?;
-        Self::check_rate_limit(&mut tx, destination, state.config.otp_cooldown_seconds).await?;
+        Self::check_rate_limit(
+            &mut tx,
+            destination,
+            purpose,
+            state.config.otp_cooldown_seconds,
+        )
+        .await?;
         let session_id = Self::create_pending_session(
             &mut *tx,
             OtpSessionInput {
@@ -190,22 +204,98 @@ impl OtpEngine {
         portal: &str,
         code: &str,
     ) -> Result<(), AppError> {
-        state
-            .otp_delivery
-            .send(channel, destination, code, portal)
-            .await?;
+        let pool = if purpose == control_center::ADMIN_OTP_PURPOSE {
+            "central_admin"
+        } else {
+            "public"
+        };
+        let mut tx = state.db.begin().await?;
+        let budget: Option<(i32, i32)> = sqlx::query_as(
+            "UPDATE otp_delivery_budget SET utc_day=(now() AT TIME ZONE 'UTC')::date,
+                used=CASE WHEN utc_day=(now() AT TIME ZONE 'UTC')::date THEN used+1 ELSE 1 END
+             WHERE pool=$1 AND daily_limit>0 AND
+                (utc_day<(now() AT TIME ZONE 'UTC')::date OR
+                 (utc_day=(now() AT TIME ZONE 'UTC')::date AND used<daily_limit))
+             RETURNING used,daily_limit",
+        )
+        .bind(pool)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some((used, limit)) = budget else {
+            tracing::warn!(
+                auth_event = "budget_exhausted",
+                pool,
+                "OTP attempt budget exhausted"
+            );
+            return Err(AppError::RateLimited(
+                "Verification delivery is temporarily unavailable.".into(),
+            ));
+        };
+        let slot: Option<i16> = sqlx::query_scalar(
+            "UPDATE otp_delivery_slots SET reservation=$1, expires_at=clock_timestamp()+interval '30 seconds'
+             WHERE slot=(SELECT slot FROM otp_delivery_slots
+                WHERE pool=$2 AND (reservation IS NULL OR expires_at<=clock_timestamp())
+                ORDER BY slot LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING slot",
+        )
+        .bind(session_id)
+        .bind(pool)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(slot) = slot else {
+            tracing::warn!(
+                auth_event = "queue_full",
+                pool,
+                "OTP delivery capacity reached"
+            );
+            return Err(AppError::RateLimited(
+                "Verification delivery is busy.".into(),
+            ));
+        };
+        tx.commit().await?;
+        tracing::info!(
+            auth_event = "provider_attempt",
+            channel,
+            pool,
+            "OTP provider attempt reserved"
+        );
+        if used == limit - limit / 5 {
+            tracing::warn!(
+                auth_event = "budget_warning",
+                pool,
+                "OTP daily budget reached 80 percent"
+            );
+        }
+        let delivery = tokio::time::timeout(
+            std::time::Duration::from_secs(15),
+            state.otp_delivery.send(channel, destination, code, portal),
+        )
+        .await;
+        // Cancellation or process exit leaves a short lease. An old worker can never free a new lease.
+        sqlx::query("UPDATE otp_delivery_slots SET reservation=NULL,expires_at=NULL WHERE slot=$1 AND reservation=$2")
+            .bind(slot).bind(session_id).execute(&state.db).await?;
+        delivery
+            .map_err(|_| AppError::InternalError("Verification provider timed out".into()))??;
         Self::activate_pending_session(&state.db, session_id, destination, channel, purpose).await
     }
 
     async fn check_rate_limit(
         connection: &mut sqlx::PgConnection,
         destination: &str,
+        purpose: &str,
         cooldown_seconds: i64,
     ) -> Result<(), AppError> {
         let cooldown_threshold = Utc::now() - Duration::seconds(cooldown_seconds);
         let recent_request: Option<(DateTime<Utc>,)> = sqlx::query_as(
-            "SELECT created_at FROM otp_verifications WHERE destination=$1 AND created_at>$2 ORDER BY created_at DESC LIMIT 1"
-        ).bind(destination).bind(cooldown_threshold).fetch_optional(&mut *connection).await?;
+            "SELECT created_at FROM otp_verifications
+             WHERE destination=$1 AND created_at>$2 AND (purpose=$3)=($4=$3)
+             ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(destination)
+        .bind(cooldown_threshold)
+        .bind(control_center::ADMIN_OTP_PURPOSE)
+        .bind(purpose)
+        .fetch_optional(&mut *connection)
+        .await?;
 
         if let Some((created_at,)) = recent_request {
             let elapsed = (Utc::now() - created_at).num_seconds();
@@ -217,10 +307,13 @@ impl OtpEngine {
 
         let hour_threshold = Utc::now() - Duration::hours(1);
         let count: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM otp_verifications WHERE destination=$1 AND created_at>$2",
+            "SELECT COUNT(*) FROM otp_verifications
+             WHERE destination=$1 AND created_at>$2 AND (purpose=$3)=($4=$3)",
         )
         .bind(destination)
         .bind(hour_threshold)
+        .bind(control_center::ADMIN_OTP_PURPOSE)
+        .bind(purpose)
         .fetch_one(connection)
         .await?;
 
@@ -343,8 +436,8 @@ impl OtpEngine {
         Ok(())
     }
 
-    pub async fn discard_pending_session(pool: &PgPool, session_id: Uuid) -> Result<(), AppError> {
-        sqlx::query("DELETE FROM otp_verifications WHERE id=$1 AND is_pending=TRUE")
+    async fn close_pending_session(pool: &PgPool, session_id: Uuid) -> Result<(), AppError> {
+        sqlx::query("UPDATE otp_verifications SET is_pending=FALSE,is_verified=TRUE WHERE id=$1 AND is_pending")
             .bind(session_id)
             .execute(pool)
             .await?;

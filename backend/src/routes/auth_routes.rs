@@ -6,7 +6,7 @@ use crate::{
             PubKeyCredParam, RelyingParty,
         },
         totp::setup_totp_for_user,
-        AuthUser,
+        AuthUser, NO_STORE,
     },
     error::AppError,
     models::user::{LoginRequest, RegisterRequest},
@@ -148,7 +148,7 @@ pub async fn verify_email_otp(
     Json(payload): Json<VerifyEmailOtpRequest>,
 ) -> Result<impl IntoResponse, AppError> {
     let auth_res = auth_service::verify_email_otp(&state, payload).await?;
-    Ok(Json(auth_res))
+    Ok((NO_STORE, Json(auth_res)))
 }
 
 #[derive(Deserialize)]
@@ -164,18 +164,18 @@ pub async fn start_staff_mfa_enrollment(
     State(state): State<AppState>,
     Json(payload): Json<StaffMfaEnrollmentRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    Ok(Json(
-        auth_service::start_staff_mfa_enrollment(&state, &payload.challenge_token).await?,
-    ))
+    let enrollment =
+        auth_service::start_staff_mfa_enrollment(&state, &payload.challenge_token).await?;
+    Ok((NO_STORE, Json(enrollment)))
 }
 pub async fn confirm_staff_mfa_enrollment(
     State(state): State<AppState>,
     Json(payload): Json<StaffMfaEnrollmentConfirmRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    Ok(Json(
+    let confirmation =
         auth_service::confirm_staff_mfa_enrollment(&state, &payload.challenge_token, &payload.code)
-            .await?,
-    ))
+            .await?;
+    Ok((NO_STORE, Json(confirmation)))
 }
 
 // --- Challenge-bound staff MFA: second factor required before JWT issuance ---
@@ -198,13 +198,16 @@ pub async fn setup_totp(
     let (secret, qr_uri, backup_codes) =
         setup_totp_for_user(&state, auth_user.user_id, &user_label).await?;
 
-    Ok(Json(json!({
-        "success": true,
-        "secret": secret,
-        "otpauth_uri": qr_uri,
-        "backup_codes": backup_codes,
-        "instructions": "Scan the QR code with Google Authenticator, Microsoft Authenticator, or Authy, then verify with a 6-digit code."
-    })))
+    Ok((
+        NO_STORE,
+        Json(json!({
+            "success": true,
+            "secret": secret,
+            "otpauth_uri": qr_uri,
+            "backup_codes": backup_codes,
+            "instructions": "Scan the QR code with Google Authenticator, Microsoft Authenticator, or Authy, then verify with a 6-digit code."
+        })),
+    ))
 }
 
 #[derive(Deserialize)]
@@ -315,27 +318,16 @@ pub struct StaffAuthMethodRequest {
     pub identifier: String,
 }
 
-pub async fn staff_mfa_method(
-    State(state): State<AppState>,
-    Json(payload): Json<StaffAuthMethodRequest>,
-) -> Result<impl IntoResponse, AppError> {
-    let email = payload.identifier.trim().to_lowercase();
-    let user = crate::repositories::user_repo::find_by_phone_or_email(&state.db, &email)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Account not found".to_string()))?;
-
-    let enabled: Option<bool> =
-        sqlx::query_scalar("SELECT is_enabled FROM user_totp_credentials WHERE user_id=$1")
-            .bind(user.id)
-            .fetch_optional(&state.db)
-            .await?;
-
-    let has_totp = enabled == Some(true);
-    Ok(Json(json!({
-        "status": if has_totp { "AUTHENTICATOR_REQUIRED" } else { "EMAIL_OTP_REQUIRED" },
-        "email": email,
-        "method": if has_totp { "totp" } else { "email_otp" },
-        "recovery_available": has_totp,
-        "message": if has_totp { "Authenticator code required" } else { "Email OTP verification required" }
-    })))
+pub async fn staff_mfa_method(Json(payload): Json<StaffAuthMethodRequest>) -> impl IntoResponse {
+    // Enrollment and recovery details are disclosed only after email proof.
+    (
+        crate::auth::NO_STORE,
+        Json(json!({
+            "status": "EMAIL_OTP_REQUIRED",
+            "email": payload.identifier.trim().to_lowercase(),
+            "method": "email_otp",
+            "recovery_available": false,
+            "message": "Email OTP verification required"
+        })),
+    )
 }

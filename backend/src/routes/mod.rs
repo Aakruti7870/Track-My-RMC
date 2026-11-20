@@ -1620,5 +1620,27 @@ pub fn build_app_router(state: AppState) -> Router {
             "/api/loads/:load_id/dispatch-whatsapp-status",
             get(dispatch_whatsapp::load_status),
         )
+        .route_layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::auth::limits::guard,
+        ))
+        .layer(axum::middleware::from_fn(private_response_cache))
         .with_state(state)
+}
+
+// API data may contain identities, location, payment details or bearer links.
+// Static assets and website caching are configured independently at the origin.
+async fn private_response_cache(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let api = req.uri().path().starts_with("/api/");
+    let mut response = next.run(req).await;
+    if api {
+        response.headers_mut().insert(
+            axum::http::header::CACHE_CONTROL,
+            axum::http::HeaderValue::from_static("no-store"),
+        );
+    }
+    response
 }

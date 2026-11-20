@@ -1,0 +1,119 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Authentication alarms for an existing JSON backend log group and confirmed SNS topic.
+Parameters:
+  BackendLogGroup:
+    Type: String
+  AlertTopicArn:
+    Type: String
+    AllowedPattern: '^arn:aws:sns:[a-z0-9-]+:[0-9]{12}:[A-Za-z0-9_-]+$'
+Resources:
+  OtpVolumeFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref BackendLogGroup
+      FilterPattern: '{ $.fields.auth_event = "provider_attempt" }'
+      MetricTransformations:
+        - MetricNamespace: TrackMyRMC/Auth
+          MetricName: OtpVolume
+          MetricValue: '1'
+  OtpVolumeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      Namespace: TrackMyRMC/Auth
+      MetricName: OtpVolume
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 100
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlertTopicArn
+  RejectedProofsFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref BackendLogGroup
+      FilterPattern: '{ $.fields.auth_event = "proof_rejected" }'
+      MetricTransformations:
+        - MetricNamespace: TrackMyRMC/Auth
+          MetricName: RejectedProofs
+          MetricValue: '1'
+  RejectedProofsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      Namespace: TrackMyRMC/Auth
+      MetricName: RejectedProofs
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 25
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlertTopicArn
+  QueueSaturationFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref BackendLogGroup
+      FilterPattern: '{ $.fields.auth_event = "queue_full" }'
+      MetricTransformations:
+        - MetricNamespace: TrackMyRMC/Auth
+          MetricName: QueueSaturation
+          MetricValue: '1'
+  QueueSaturationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      Namespace: TrackMyRMC/Auth
+      MetricName: QueueSaturation
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlertTopicArn
+  BudgetWarningFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref BackendLogGroup
+      FilterPattern: '{ $.fields.auth_event = "budget_warning" }'
+      MetricTransformations:
+        - MetricNamespace: TrackMyRMC/Auth
+          MetricName: BudgetWarning
+          MetricValue: '1'
+  BudgetWarningAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      Namespace: TrackMyRMC/Auth
+      MetricName: BudgetWarning
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlertTopicArn
+  BudgetExhaustedFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref BackendLogGroup
+      FilterPattern: '{ $.fields.auth_event = "budget_exhausted" }'
+      MetricTransformations:
+        - MetricNamespace: TrackMyRMC/Auth
+          MetricName: BudgetExhausted
+          MetricValue: '1'
+  BudgetExhaustedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      Namespace: TrackMyRMC/Auth
+      MetricName: BudgetExhausted
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlertTopicArn

@@ -1,3 +1,4 @@
+use super::NO_STORE;
 use crate::{
     auth::{
         account_sessions,
@@ -111,8 +112,6 @@ pub(super) const ADMIN_OTP_PURPOSE: &str = "central_admin_login";
 const ADMIN_LOGIN: &str = "admin_login";
 const ADMIN_ENROLLMENT: &str = "admin_enrollment";
 const ADMIN_RECOVERY: &str = "admin_recovery";
-const NO_STORE: [(axum::http::HeaderName, &str); 1] =
-    [(axum::http::header::CACHE_CONTROL, "no-store")];
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -211,7 +210,7 @@ pub async fn send_email_otp(
     if email.len() > 254 || !email.contains('@') {
         return Err(AppError::BadRequest("Enter a valid email address".into()));
     }
-    OtpEngine::deliver_login(
+    OtpEngine::deliver_public(
         &state,
         email,
         "email",
