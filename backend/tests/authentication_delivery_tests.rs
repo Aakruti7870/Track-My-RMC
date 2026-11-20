@@ -279,6 +279,19 @@ async fn call(
         .await
         .unwrap();
     let status = response.status();
+    if status.is_success()
+        && matches!(
+            path,
+            "/api/auth/otp/whatsapp/verify"
+                | "/api/auth/otp/email/verify"
+                | "/api/auth/staff/mfa/enroll/start"
+                | "/api/auth/staff/mfa/enroll/confirm"
+                | "/api/auth/staff/mfa/verify-totp"
+                | "/api/auth/refresh"
+        )
+    {
+        assert_eq!(response.headers()["cache-control"], "no-store");
+    }
     let bytes = to_bytes(response.into_body(), 100000).await.unwrap();
     (status, serde_json::from_slice(&bytes).unwrap())
 }
@@ -655,6 +668,123 @@ async fn public_otp_responses_do_not_wait_for_the_delivery_provider(db: PgPool) 
         .0,
         StatusCode::OK
     );
+}
+
+#[sqlx::test]
+async fn public_deletion_otp_response_is_independent_of_account_and_delivery(db: PgPool) {
+    let mut state = state(db.clone());
+    Arc::make_mut(&mut state.config).otp_cooldown_seconds = 60;
+    let pause = Arc::new(Notify::new());
+    let delivery = Arc::new(MemoryDelivery {
+        pause: Some(pause.clone()),
+        ..MemoryDelivery::default()
+    });
+    state.otp_delivery = delivery.clone();
+    let email = "deletion-otp@example.invalid";
+    let unknown_email = "absent-deletion-otp@example.invalid";
+    identity(&db, "owner", Some(email), None).await;
+    let app = build_app_router(state);
+    let path = "/api/account-deletion/otp/send";
+    let request = |identifier: &str| Some(json!({ "identifier": identifier }));
+
+    let eligible = timeout(
+        Duration::from_secs(5),
+        call(&app, path, request(email), None),
+    )
+    .await
+    .expect("Public deletion OTP request waited for a blocked provider");
+    assert_eq!(eligible.0, StatusCode::OK);
+    assert_eq!(
+        eligible,
+        call(&app, path, request(unknown_email), None).await
+    );
+    assert_eq!(eligible, call(&app, path, request(email), None).await);
+    timeout(Duration::from_secs(5), delivery.started.notified())
+        .await
+        .unwrap();
+    wait_for_otp_delivery(&db, unknown_email).await;
+    assert!(delivery.messages.lock().unwrap().is_empty());
+
+    pause.notify_one();
+    let code = delivery.take_code(&db, email).await;
+    assert_eq!(
+        call(
+            &app,
+            "/api/account-deletion/public-request",
+            Some(json!({"identifier":email,"confirm":"DELETE","code":code})),
+            None,
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+}
+
+#[sqlx::test]
+async fn refresh_rejected_as_unauthorized_when_session_is_revoked_while_waiting(db: PgPool) {
+    let state = state(db.clone());
+    let phone = "12025550173";
+    let user = identity(&db, "customer", None, Some(phone)).await;
+    let session = trackmyrmc_backend::auth::refresh::issue_after_auth(
+        &state, user, "customer", phone, None, 1,
+    )
+    .await
+    .unwrap();
+
+    let mut revocation = db.begin().await.unwrap();
+    sqlx::query(
+        "UPDATE users SET active_session_jti=NULL, auth_revoked_at=clock_timestamp() WHERE id=$1",
+    )
+    .bind(user)
+    .execute(&mut *revocation)
+    .await
+    .unwrap();
+    let blocker: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+        .fetch_one(&mut *revocation)
+        .await
+        .unwrap();
+    let app = build_app_router(state);
+    let refresh = tokio::spawn(async move {
+        call(
+            &app,
+            "/api/auth/refresh",
+            Some(json!({"refresh_token":session.refresh_token})),
+            None,
+        )
+        .await
+    });
+
+    timeout(Duration::from_secs(5), async {
+        loop {
+            let waiting: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM pg_stat_activity
+                 WHERE datname=current_database() AND $1 = ANY(pg_blocking_pids(pid)))",
+            )
+            .bind(blocker)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+            if waiting {
+                break;
+            }
+            sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("Refresh did not reach the user row lock");
+    sqlx::query("DELETE FROM account_refresh_tokens WHERE user_id=$1")
+        .bind(user)
+        .execute(&mut *revocation)
+        .await
+        .unwrap();
+    revocation.commit().await.unwrap();
+
+    let (status, body) = timeout(Duration::from_secs(5), refresh)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(body["error_code"], "UNAUTHORIZED");
 }
 
 #[sqlx::test]

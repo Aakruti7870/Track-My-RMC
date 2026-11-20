@@ -1,7 +1,8 @@
 //! Opaque, single-use, rotating refresh tokens bound to the one active account session.
 //! Only OTP/MFA completion may mint the first credential; access tokens never renew
 //! themselves. The secret is never written to the database or logged.
-use crate::{auth::account_sessions, error::AppError, state::AppState};
+use super::{account_sessions, NO_STORE};
+use crate::{error::AppError, state::AppState};
 use axum::{
     http::{
         header::{COOKIE, ORIGIN, SET_COOKIE},
@@ -19,6 +20,10 @@ use uuid::Uuid;
 
 const REFRESH_LIFETIME_DAYS: i64 = 90;
 const COOKIE_NAME: &str = "__Host-tmrmc-refresh";
+
+fn expired_refresh() -> AppError {
+    AppError::Unauthorized("Refresh credential expired or replaced".into())
+}
 
 pub struct RefreshBundle {
     pub token: String,
@@ -127,21 +132,24 @@ pub async fn rotate(state: &AppState, raw: &str) -> Result<RefreshBundle, AppErr
             .bind(id)
             .fetch_optional(&mut *tx)
             .await?
-            .ok_or_else(|| {
-                AppError::Unauthorized("Refresh credential expired or replaced".into())
-            })?;
+            .ok_or_else(expired_refresh)?;
 
     // Consistent lock order with OTP/MFA login: users row, then refresh row.
     let identity: (String, String, Option<String>, bool, Option<Uuid>) = sqlx::query_as(
         "SELECT role,phone,email,is_active,active_session_jti FROM users WHERE id=$1 FOR UPDATE",
     )
     .bind(user)
-    .fetch_one(&mut *tx)
-    .await?;
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(expired_refresh)?;
 
     let (stored_id, hash, expires): (Uuid, String, DateTime<Utc>) = sqlx::query_as(
         "SELECT token_id,token_hash,expires_at FROM account_refresh_tokens WHERE user_id=$1 FOR UPDATE",
-    ).bind(user).fetch_one(&mut *tx).await?;
+    )
+    .bind(user)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(expired_refresh)?;
 
     // Disabling Play reviewer access must also deny renewal of any fixture
     // token, even if a stale credential survived a previous deployment.
@@ -166,9 +174,7 @@ pub async fn rotate(state: &AppState, raw: &str) -> Result<RefreshBundle, AppErr
         || identity.4.is_none()
         || matches!(identity.0.as_str(), "admin" | "central_admin" | "authority")
     {
-        return Err(AppError::Unauthorized(
-            "Refresh credential expired or replaced".into(),
-        ));
+        return Err(expired_refresh());
     }
     let access = account_sessions::issue_in_tx(
         &mut tx,
@@ -231,7 +237,7 @@ pub fn login_response(
     if request_headers.contains_key(ORIGIN) {
         body.refresh_token = None;
     }
-    let mut response = Json(body).into_response();
+    let mut response = (NO_STORE, Json(body)).into_response();
     if let Some(secret) = raw {
         if let Ok(header) = HeaderValue::from_str(&cookie_value(&secret)) {
             response.headers_mut().append(SET_COOKIE, header);
@@ -275,7 +281,7 @@ pub async fn refresh(
     if !headers.contains_key(ORIGIN) {
         json_body["refresh_token"] = json!(new.refresh_token);
     }
-    let mut response = Json(json_body).into_response();
+    let mut response = (NO_STORE, Json(json_body)).into_response();
     let cookie = HeaderValue::from_str(&cookie_value(&new.refresh_token))
         .map_err(|_| AppError::InternalError("Refresh cookie error".into()))?;
     response.headers_mut().append(SET_COOKIE, cookie);

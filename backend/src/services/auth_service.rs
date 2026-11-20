@@ -107,7 +107,7 @@ pub async fn send_whatsapp_otp(
         ));
     }
 
-    OtpEngine::deliver_login(state, destination, "whatsapp", purpose, "Login").await
+    OtpEngine::deliver_public(state, destination, "whatsapp", purpose, "Login").await
 }
 
 /// Verifies WhatsApp OTP and authenticates User or Driver
@@ -234,7 +234,7 @@ pub async fn send_email_otp(state: &AppState, req: SendEmailOtpRequest) -> Resul
             "Enter a valid work email address".into(),
         ));
     }
-    OtpEngine::deliver_login(
+    OtpEngine::deliver_public(
         state,
         destination,
         "email",

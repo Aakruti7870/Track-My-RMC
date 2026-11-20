@@ -6,7 +6,7 @@ use crate::{
             PubKeyCredParam, RelyingParty,
         },
         totp::setup_totp_for_user,
-        AuthUser,
+        AuthUser, NO_STORE,
     },
     error::AppError,
     models::user::{LoginRequest, RegisterRequest},
@@ -148,7 +148,7 @@ pub async fn verify_email_otp(
     Json(payload): Json<VerifyEmailOtpRequest>,
 ) -> Result<impl IntoResponse, AppError> {
     let auth_res = auth_service::verify_email_otp(&state, payload).await?;
-    Ok(Json(auth_res))
+    Ok((NO_STORE, Json(auth_res)))
 }
 
 #[derive(Deserialize)]
@@ -164,18 +164,18 @@ pub async fn start_staff_mfa_enrollment(
     State(state): State<AppState>,
     Json(payload): Json<StaffMfaEnrollmentRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    Ok(Json(
-        auth_service::start_staff_mfa_enrollment(&state, &payload.challenge_token).await?,
-    ))
+    let enrollment =
+        auth_service::start_staff_mfa_enrollment(&state, &payload.challenge_token).await?;
+    Ok((NO_STORE, Json(enrollment)))
 }
 pub async fn confirm_staff_mfa_enrollment(
     State(state): State<AppState>,
     Json(payload): Json<StaffMfaEnrollmentConfirmRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    Ok(Json(
+    let confirmation =
         auth_service::confirm_staff_mfa_enrollment(&state, &payload.challenge_token, &payload.code)
-            .await?,
-    ))
+            .await?;
+    Ok((NO_STORE, Json(confirmation)))
 }
 
 // --- Challenge-bound staff MFA: second factor required before JWT issuance ---
@@ -198,13 +198,16 @@ pub async fn setup_totp(
     let (secret, qr_uri, backup_codes) =
         setup_totp_for_user(&state, auth_user.user_id, &user_label).await?;
 
-    Ok(Json(json!({
-        "success": true,
-        "secret": secret,
-        "otpauth_uri": qr_uri,
-        "backup_codes": backup_codes,
-        "instructions": "Scan the QR code with Google Authenticator, Microsoft Authenticator, or Authy, then verify with a 6-digit code."
-    })))
+    Ok((
+        NO_STORE,
+        Json(json!({
+            "success": true,
+            "secret": secret,
+            "otpauth_uri": qr_uri,
+            "backup_codes": backup_codes,
+            "instructions": "Scan the QR code with Google Authenticator, Microsoft Authenticator, or Authy, then verify with a 6-digit code."
+        })),
+    ))
 }
 
 #[derive(Deserialize)]

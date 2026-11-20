@@ -1,6 +1,6 @@
 use crate::{
-    auth::otp::OtpEngine, auth::AuthUser, error::AppError, repositories::user_repo,
-    services::whatsapp_service::WhatsAppService, state::AppState,
+    auth::otp::OtpEngine, auth::AuthUser, error::AppError, models::user::User,
+    repositories::user_repo, services::whatsapp_service::WhatsAppService, state::AppState,
 };
 use axum::{extract::State, response::IntoResponse, Json};
 use chrono::{DateTime, Utc};
@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-const DELETION_OTP_PURPOSE: &str = "account_deletion";
+pub(crate) const DELETION_OTP_PURPOSE: &str = "account_deletion";
 const DELETE_CONFIRMATION: &str = "DELETE";
 
 #[derive(Debug, Deserialize)]
@@ -186,46 +186,43 @@ pub async fn send_public_otp(
     Json(payload): Json<PublicDeletionOtpRequest>,
 ) -> Result<impl IntoResponse, AppError> {
     let (destination, channel) = normalize_identifier(&payload.identifier)?;
-    let user = user_repo::find_by_phone_or_email(&state.db, &destination).await?;
-    let Some(user) = user.filter(|user| user.is_active) else {
-        return Ok(public_otp_response(channel));
-    };
-
-    let identifier_matches = if channel == "email" {
-        user.email
-            .as_deref()
-            .is_some_and(|email| email.eq_ignore_ascii_case(&destination))
-    } else {
-        user.phone == destination || WhatsAppService::normalize_phone(&user.phone) == destination
-    };
-    if !identifier_matches {
-        return Ok(public_otp_response(channel));
-    }
-
-    // Customer/driver phone verification uses WhatsApp. Staff and owners must
-    // use their registered email, preserving the existing authentication split.
-    if channel == "whatsapp" && !matches!(user.role.as_str(), "customer" | "driver") {
-        return Ok(public_otp_response(channel));
-    }
-
-    match OtpEngine::deliver(
+    match OtpEngine::deliver_public(
         &state,
-        &destination,
+        destination,
         channel,
-        DELETION_OTP_PURPOSE,
+        DELETION_OTP_PURPOSE.to_owned(),
         "Account Deletion",
     )
     .await
     {
-        Ok(()) => {}
-        Err(AppError::BadRequest(_) | AppError::Forbidden(_)) => {
-            // Keep the public response non-enumerating and avoid exposing rate-limit internals.
-            return Ok(public_otp_response(channel));
+        Ok(())
+        | Err(AppError::BadRequest(_) | AppError::Forbidden(_) | AppError::RateLimited(_)) => {
+            Ok(public_otp_response(channel))
         }
-        Err(error) => return Err(error),
+        Err(error) => Err(error),
     }
+}
 
-    Ok(public_otp_response(channel))
+pub(crate) async fn eligible_public_account(
+    state: &AppState,
+    destination: &str,
+    channel: &str,
+) -> Result<Option<User>, AppError> {
+    let user = user_repo::find_by_phone_or_email(&state.db, destination).await?;
+    let Some(user) = user.filter(|user| user.is_active) else {
+        return Ok(None);
+    };
+
+    let eligible = if channel == "email" {
+        user.email
+            .as_deref()
+            .is_some_and(|email| email.eq_ignore_ascii_case(destination))
+    } else {
+        matches!(user.role.as_str(), "customer" | "driver")
+            && (user.phone == destination
+                || WhatsAppService::normalize_phone(&user.phone) == destination)
+    };
+    Ok(eligible.then_some(user))
 }
 
 pub async fn submit_public_request(
@@ -249,27 +246,11 @@ pub async fn submit_public_request(
         &payload.code,
     )
     .await?;
-    let user = user_repo::find_by_phone_or_email(&state.db, &destination)
+    let user = eligible_public_account(&state, &destination, channel)
         .await?
-        .filter(|user| user.is_active)
         .ok_or_else(|| {
             AppError::Unauthorized("Invalid or expired verification code".to_string())
         })?;
-
-    let identifier_matches = if channel == "email" {
-        user.email
-            .as_deref()
-            .is_some_and(|email| email.eq_ignore_ascii_case(&destination))
-    } else {
-        user.phone == destination || WhatsAppService::normalize_phone(&user.phone) == destination
-    };
-    if !identifier_matches
-        || (channel == "whatsapp" && !matches!(user.role.as_str(), "customer" | "driver"))
-    {
-        return Err(AppError::Unauthorized(
-            "Invalid or expired verification code".to_string(),
-        ));
-    }
 
     let row = record_request(&state.db, user.id, &destination, reason, "public_verified").await?;
     Ok(Json(

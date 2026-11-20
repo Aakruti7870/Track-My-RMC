@@ -1,5 +1,5 @@
 use super::control_center;
-use crate::{error::AppError, services::auth_service, state::AppState};
+use crate::{error::AppError, routes::account_deletion, services::auth_service, state::AppState};
 use chrono::{DateTime, Duration, Utc};
 use hmac::{Hmac, Mac};
 use rand::{distributions::Alphanumeric, Rng};
@@ -88,7 +88,7 @@ impl OtpEngine {
 
     /// Every public request reserves an unusable pending code and leaves identity
     /// lookup and provider I/O to a bounded background task.
-    pub(crate) async fn deliver_login(
+    pub(crate) async fn deliver_public(
         state: &AppState,
         destination: String,
         channel: &'static str,
@@ -113,6 +113,11 @@ impl OtpEngine {
                 let eligible = match purpose.as_str() {
                     control_center::ADMIN_OTP_PURPOSE => {
                         control_center::otp_delivery_eligible(&state, &destination).await?
+                    }
+                    account_deletion::DELETION_OTP_PURPOSE => {
+                        account_deletion::eligible_public_account(&state, &destination, channel)
+                            .await?
+                            .is_some()
                     }
                     _ => auth_service::public_otp_eligible(&state, &destination, channel).await?,
                 };
