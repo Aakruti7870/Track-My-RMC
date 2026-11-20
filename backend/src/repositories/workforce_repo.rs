@@ -28,18 +28,15 @@ pub(crate) async fn geofence_evidence(
     lat: Option<f64>,
     lng: Option<f64>,
 ) -> Result<Option<serde_json::Value>, AppError> {
-    let (lat, lng) = match (lat, lng) {
-        (None, None) => return Ok(None),
-        (Some(lat), Some(lng))
-            if (-90.0..=90.0).contains(&lat) && (-180.0..=180.0).contains(&lng) =>
-        {
-            (lat, lng)
-        }
-        _ => {
-            return Err(AppError::BadRequest(
-                "A valid latitude and longitude are required".into(),
-            ))
-        }
+    if lat.is_some_and(|value| !(-90.0..=90.0).contains(&value))
+        || lng.is_some_and(|value| !(-180.0..=180.0).contains(&value))
+    {
+        return Err(AppError::BadRequest(
+            "Attendance coordinates are out of range".into(),
+        ));
+    }
+    let (Some(lat), Some(lng)) = (lat, lng) else {
+        return Ok(None);
     };
     let (plant_lat, plant_lng, radius): (f64, f64, f64) = sqlx::query_as(
         "SELECT latitude, longitude, attendance_radius_m FROM rmc_plants WHERE id = $1 AND is_active",
