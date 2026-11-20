@@ -103,6 +103,14 @@ pub async fn draft(
         return Err(AppError::BadRequest("Invalid net payroll amount".into()));
     }
     let mut tx = state.db.begin().await?;
+    crate::routes::staff_module_permissions::require_staff_permission(
+        &mut tx,
+        user,
+        p.plant,
+        "payroll",
+        crate::routes::staff_module_permissions::Action::Edit,
+    )
+    .await?;
     let (closure, closed) = lock(&mut tx, &p).await?;
     if closed {
         return Err(AppError::Conflict("Payroll period is closed".into()));
@@ -203,6 +211,14 @@ pub async fn pay(
         ));
     }
     let mut tx = state.db.begin().await?;
+    crate::routes::staff_module_permissions::require_staff_permission(
+        &mut tx,
+        user,
+        p.plant,
+        "payroll",
+        crate::routes::staff_module_permissions::Action::Edit,
+    )
+    .await?;
     let (closure, closed) = lock(&mut tx, &p).await?;
     let row = record_row(&mut tx, closure, employee_id)
         .await?

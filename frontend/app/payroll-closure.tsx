@@ -1,11 +1,13 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Share, StyleSheet, View } from "react-native";
+import React, { useState } from "react";
+import { ActivityIndicator, Platform, Pressable, ScrollView, Share, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiGet, apiPost } from "@/src/api/client";
 import { useAuth } from "@/src/auth/AuthContext";
+import { useGet } from "@/src/hooks/useApi";
+import { ErrorView } from "@/src/components/StateViews";
 import { AppText } from "@/src/components/ui/AppText";
 import { Badge } from "@/src/components/ui/Badge";
 import { Button } from "@/src/components/ui/Button";
@@ -82,50 +84,26 @@ function payslipMessage(p: Payslip) {
 
 export default function PayrollClosureScreen() {
   const { colors } = useTheme();
-  const { token, user } = useAuth();
+  const { token, user, hydrating } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const toast = useToast();
-  const [month, setMonth] = useState(monthKey());
-  const [periods, setPeriods] = useState<Period[]>([]);
+  const [month, setMonth] = useState(monthKey);
   const [selectedPlant, setSelectedPlant] = useState<string | null>(null);
-  const [payslips, setPayslips] = useState<Payslip[]>([]);
   const [reopenReason, setReopenReason] = useState("");
-  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
-  const allowed = user?.role === "plant_owner" || user?.role === "accountant";
-  const isOwner = user?.role === "plant_owner";
-  const period = periods.find((p) => p.plant_id === selectedPlant) || periods[0] || null;
-
-  const load = useCallback(async () => {
-    if (!token || !allowed) { setLoading(false); return; }
-    setLoading(true);
-    try {
-      const status = await apiGet<{ periods: Period[] }>(`/payroll-periods/${month}`, token);
-      setPeriods(status.periods || []);
-      const plantId = selectedPlant && status.periods.some((p) => p.plant_id === selectedPlant)
-        ? selectedPlant : status.periods?.[0]?.plant_id || null;
-      setSelectedPlant(plantId);
-      if (plantId) {
-        const slips = await apiGet<{ payslips: Payslip[] }>(`/payroll-periods/plants/${plantId}/${month}/payslips`, token);
-        setPayslips(slips.payslips || []);
-      } else setPayslips([]);
-    } catch (e: any) {
-      toast(typeof e?.detail === "string" ? e.detail : "Unable to load payroll closure", "error");
-    } finally { setLoading(false); }
-  }, [token, allowed, month, selectedPlant, toast]);
-
-  useEffect(() => { load(); }, [token, allowed]);
-
-  const choosePlant = async (plantId: string) => {
-    setSelectedPlant(plantId);
-    if (!token) return;
-    try {
-      const slips = await apiGet<{ payslips: Payslip[] }>(`/payroll-periods/plants/${plantId}/${month}/payslips`, token);
-      setPayslips(slips.payslips || []);
-    } catch { setPayslips([]); }
-  };
+  const isOwner = user?.role === "plant_owner" || user?.role === "owner";
+  const allowed = isOwner || user?.role === "accountant";
+  const monthValid = /^\d{4}-(0[1-9]|1[0-2])$/.test(month);
+  const periodsRequest = useGet<{ periods: Period[] }>(allowed && monthValid ? `/payroll-periods/${month}` : null);
+  const periods = periodsRequest.data?.periods ?? [];
+  const period = periods.find(p => p.plant_id === selectedPlant) ?? periods[0];
+  const slipsRequest = useGet<{ payslips: Payslip[] }>(
+    period ? `/payroll-periods/plants/${period.plant_id}/${period.month}/payslips` : null,
+  );
+  const payslips = slipsRequest.data?.payslips ?? [];
+  const load = () => Promise.all([periodsRequest.reload(), slipsRequest.reload()]);
 
   const run = async (fn: () => Promise<unknown>, message: string) => {
     setBusy(true);
@@ -135,15 +113,25 @@ export default function PayrollClosureScreen() {
   };
 
   const exportCsv = async () => {
-    if (!token || !period) return;
+    if (!token || !period || period.month !== month) return;
     setBusy(true);
     try {
-      const out = await apiGet<{ filename: string; csv: string }>(`/payroll-periods/plants/${period.plant_id}/${month}/export`, token);
-      await Share.share({ title: out.filename, message: out.csv });
+      const out = await apiGet<{ filename: string; csv: string }>(`/payroll-periods/plants/${period.plant_id}/${period.month}/export`, token);
+      if (Platform.OS === "web") {
+        const url = URL.createObjectURL(new Blob([out.csv], { type: "text/csv;charset=utf-8" }));
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = out.filename;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } else {
+        await Share.share({ title: out.filename, message: out.csv });
+      }
     } catch (e: any) { toast(e?.detail || "Unable to export payroll", "error"); }
     finally { setBusy(false); }
   };
 
+  if (hydrating) return <ActivityIndicator accessibilityLabel="Loading account" color={colors.brand} />;
   if (!allowed) return <View style={[styles.center, { backgroundColor: colors.surface }]}><AppText>Payroll closure is available to Plant Owner and Accountant only.</AppText></View>;
 
   return (
@@ -151,44 +139,44 @@ export default function PayrollClosureScreen() {
       <View style={{ height: insets.top }} />
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120, gap: spacing.lg }} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={[styles.iconButton, { borderColor: colors.border }]}><Ionicons name="arrow-back" size={20} color={colors.onSurface} /></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} style={[styles.iconButton, { borderColor: colors.border }]}><Ionicons name="arrow-back" size={20} color={colors.onSurface} /></Pressable>
           <View style={{ flex: 1 }}><AppText variant="title">Payroll Closure</AppText><AppText variant="caption">Close paid months, issue immutable payslips and export payroll</AppText></View>
         </View>
 
         <Card style={{ gap: spacing.md }}>
-          <Input label="Payroll month (YYYY-MM)" value={month} onChangeText={setMonth} placeholder="2026-08" />
-          <Button label="Load Month" disabled={loading || busy || month.length !== 7} onPress={load} />
-          {periods.length > 1 ? <View style={styles.wrap}>{periods.map((p) => <Pressable key={p.plant_id} onPress={() => choosePlant(p.plant_id)} style={[styles.chip, { borderColor: p.plant_id === period?.plant_id ? colors.brand : colors.border }]}><AppText style={{ fontFamily: fonts.semibold }}>{p.plant_name}</AppText></Pressable>)}</View> : null}
+          <Input label="Payroll month (YYYY-MM)" value={month} editable={!busy} onChangeText={value => { setMonth(value); setReopenReason(""); }} placeholder="2026-08" />
+          <Button label="Load Month" disabled={busy || !monthValid} loading={periodsRequest.loading} onPress={load} />
+          {periods.length > 1 ? <View style={styles.wrap}>{periods.map((p) => <Pressable key={p.plant_id} disabled={busy} accessibilityRole="button" accessibilityState={{ selected: p.plant_id === period?.plant_id }} onPress={() => { setSelectedPlant(p.plant_id); setReopenReason(""); }} style={[styles.chip, { borderColor: p.plant_id === period?.plant_id ? colors.brand : colors.border }]}><AppText style={{ fontFamily: fonts.semibold }}>{p.plant_name}</AppText></Pressable>)}</View> : null}
         </Card>
 
-        {loading && !period ? <ActivityIndicator color={colors.brand} /> : null}
+        {periodsRequest.error ? <ErrorView message={periodsRequest.error} onRetry={periodsRequest.reload} /> : null}
 
         {period ? <>
           <Card style={{ gap: spacing.md }}>
-            <View style={styles.rowBetween}><View style={{ flex: 1 }}><AppText variant="heading">{period.plant_name}</AppText><AppText variant="caption">{month} · closure version {period.version || 0}</AppText></View><Badge label={period.status} color={period.status === "CLOSED" ? colors.brand : colors.warning} /></View>
+            <View style={styles.rowBetween}><View style={{ flex: 1 }}><AppText variant="heading">{period.plant_name}</AppText><AppText variant="caption">{period.month} · closure version {period.version || 0}</AppText></View><Badge label={period.status} color={period.status === "CLOSED" ? colors.brand : colors.warning} /></View>
             <View style={styles.metrics}>
               <View><AppText variant="caption">Employees</AppText><AppText variant="heading">{period.readiness.employee_count}</AppText></View>
               <View><AppText variant="caption">Paid</AppText><AppText variant="heading">{period.readiness.paid_count}</AppText></View>
               <View><AppText variant="caption">Payslips</AppText><AppText variant="heading">{period.payslip_count}</AppText></View>
             </View>
             <AppText variant="caption">{period.readiness.ready ? "Ready to close: every active employee payroll is paid and no payment lock is active." : `Not ready: ${period.readiness.missing_user_ids.length} missing, ${period.readiness.unpaid.length} unpaid, ${period.readiness.payment_locked_user_ids.length} payment lock(s).`}</AppText>
-            {isOwner && period.status !== "CLOSED" ? <Button label="Close Payroll Month" disabled={busy || !period.readiness.ready} onPress={() => run(() => apiPost(`/payroll-periods/plants/${period.plant_id}/${month}/close`, token!, {}), "Payroll month closed and payslips issued")} /> : null}
+            {isOwner && period.status !== "CLOSED" ? <Button label="Close Payroll Month" disabled={busy || !period.readiness.ready} onPress={() => run(() => apiPost(`/payroll-periods/plants/${period.plant_id}/${period.month}/close`, token!, {}), "Payroll month closed and payslips issued")} /> : null}
             {isOwner && period.status === "CLOSED" ? <>
               <Input label="Reopen reason" value={reopenReason} onChangeText={setReopenReason} placeholder="Mandatory audited reason" />
-              <Button label="Reopen Period" variant="secondary" disabled={busy || reopenReason.trim().length < 5} onPress={() => run(() => apiPost(`/payroll-periods/plants/${period.plant_id}/${month}/reopen`, token!, { reason: reopenReason.trim() }), "Payroll month reopened")} />
+              <Button label="Reopen Period" variant="secondary" disabled={busy || reopenReason.trim().length < 5} onPress={() => run(() => apiPost(`/payroll-periods/plants/${period.plant_id}/${period.month}/reopen`, token!, { reason: reopenReason.trim() }), "Payroll month reopened")} />
             </> : null}
             {payslips.length ? <Button label="Share / Save Payroll CSV" variant="secondary" disabled={busy} onPress={exportCsv} /> : null}
           </Card>
 
           <Card style={{ gap: spacing.md }}>
             <AppText variant="heading">Payslips</AppText>
-            {!payslips.length ? <AppText variant="caption">Payslips are created only when the Plant Owner closes a fully-paid payroll month.</AppText> : payslips.map((p) => <View key={p.id} style={[styles.slip, { borderColor: colors.border }]}>
+            {slipsRequest.error ? <ErrorView message={slipsRequest.error} onRetry={slipsRequest.reload} /> : slipsRequest.loading ? <ActivityIndicator color={colors.brand} /> : !payslips.length ? <AppText variant="caption">Payslips are created only when the Plant Owner closes a fully-paid payroll month.</AppText> : payslips.map((p) => <View key={p.id} style={[styles.slip, { borderColor: colors.border }]}>
               <View style={styles.rowBetween}><View style={{ flex: 1 }}><AppText style={{ fontFamily: fonts.semibold }}>{p.employee_name}</AppText><AppText variant="caption">{p.employee_code || p.role} · {p.payslip_number}</AppText></View><AppText variant="heading">{money(p.payroll_snapshot.net_amount)}</AppText></View>
               <AppText variant="caption">Paid days {p.payroll_snapshot.paid_days} · {p.payroll_snapshot.payment_method || "-"} · {p.payroll_snapshot.payment_reference || "-"}</AppText>
               <Pressable onPress={() => Share.share({ title: p.payslip_number, message: payslipMessage(p) })} style={[styles.share, { borderColor: colors.border }]}><Ionicons name="share-outline" size={17} color={colors.brand} /><AppText style={{ fontFamily: fonts.semibold }}>Share / Save Payslip</AppText></Pressable>
             </View>)}
           </Card>
-        </> : <Card><AppText variant="caption">No plant payroll period is available for this account.</AppText></Card>}
+        </> : monthValid && !periodsRequest.loading && !periodsRequest.error ? <Card><AppText variant="caption">No plant payroll period is available for this account.</AppText></Card> : null}
       </ScrollView>
     </View>
   );

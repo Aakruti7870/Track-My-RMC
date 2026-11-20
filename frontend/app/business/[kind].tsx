@@ -1,10 +1,17 @@
 import { View } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { Redirect, useLocalSearchParams } from "expo-router";
 
 import { BusinessModule } from "@/src/screens/BusinessModule";
 
 export default function BusinessModuleRoute() {
   const { kind, plantId, material } = useLocalSearchParams<{ kind?: string; plantId?: string; material?: string }>();
+  if (kind === "payroll") {
+    return <Redirect href={{
+      pathname: "/workforce-reports",
+      params: { view: "payroll", ...(typeof plantId === "string" ? { plantId } : {}) },
+    }} />;
+  }
+
   return (
     <View style={{ flex: 1 }}>
       <BusinessModule key={JSON.stringify([kind, plantId, material])} kind={typeof kind === "string" ? kind : "reports"}

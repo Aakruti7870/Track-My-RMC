@@ -14,6 +14,46 @@ pub(crate) async fn attendance_today(pool: &PgPool) -> Result<NaiveDate, AppErro
     )
 }
 
+pub(crate) async fn attendance_radius(pool: &PgPool, plant_id: Uuid) -> Result<f64, AppError> {
+    sqlx::query_scalar("SELECT attendance_radius_m FROM rmc_plants WHERE id = $1 AND is_active")
+        .bind(plant_id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Active plant not found".into()))
+}
+
+pub(crate) async fn geofence_evidence(
+    pool: &PgPool,
+    plant_id: Uuid,
+    lat: Option<f64>,
+    lng: Option<f64>,
+) -> Result<Option<serde_json::Value>, AppError> {
+    let (lat, lng) = match (lat, lng) {
+        (None, None) => return Ok(None),
+        (Some(lat), Some(lng))
+            if (-90.0..=90.0).contains(&lat) && (-180.0..=180.0).contains(&lng) =>
+        {
+            (lat, lng)
+        }
+        _ => {
+            return Err(AppError::BadRequest(
+                "A valid latitude and longitude are required".into(),
+            ))
+        }
+    };
+    let (plant_lat, plant_lng, radius): (f64, f64, f64) = sqlx::query_as(
+        "SELECT latitude, longitude, attendance_radius_m FROM rmc_plants WHERE id = $1 AND is_active",
+    )
+    .bind(plant_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Active plant not found".into()))?;
+    Ok(crate::security::geo_distance::distance_km(plant_lat, plant_lng, lat, lng).map(|km| {
+        let distance = km * 1000.0;
+        serde_json::json!({ "distance_m": distance, "radius_m": radius, "within_geofence": distance <= radius })
+    }))
+}
+
 pub async fn record_attendance(
     pool: &PgPool,
     plant_id: Uuid,
@@ -22,14 +62,15 @@ pub async fn record_attendance(
     lat: Option<f64>,
     lng: Option<f64>,
 ) -> Result<(), AppError> {
+    let evidence = geofence_evidence(pool, plant_id, lat, lng).await?;
     let updated = if check_type == "in" {
         sqlx::query(
             "INSERT INTO workforce_attendance
-             (plant_id,user_id,attendance_date,check_in_time,check_in_lat,check_in_lng,status)
-             VALUES ($1,$2,(NOW() AT TIME ZONE 'Asia/Kolkata')::date,NOW(),$3,$4,'present')
+             (plant_id,user_id,attendance_date,check_in_time,check_in_lat,check_in_lng,check_in_geofence,status)
+             VALUES ($1,$2,(NOW() AT TIME ZONE 'Asia/Kolkata')::date,NOW(),$3,$4,$5,'present')
              ON CONFLICT (plant_id,user_id,attendance_date) DO UPDATE SET
                check_in_time=EXCLUDED.check_in_time,check_in_lat=EXCLUDED.check_in_lat,
-               check_in_lng=EXCLUDED.check_in_lng,status='present'
+               check_in_lng=EXCLUDED.check_in_lng,check_in_geofence=EXCLUDED.check_in_geofence,status='present'
              WHERE workforce_attendance.check_in_time IS NULL
                AND workforce_attendance.check_out_time IS NULL",
         )
@@ -37,17 +78,19 @@ pub async fn record_attendance(
         .bind(user_id)
         .bind(lat)
         .bind(lng)
+        .bind(evidence)
         .execute(pool)
         .await?
     } else {
         sqlx::query(
-            "UPDATE workforce_attendance SET check_out_time=NOW()
+            "UPDATE workforce_attendance SET check_out_time=NOW(), check_out_geofence=$3
              WHERE plant_id=$1 AND user_id=$2
                AND attendance_date=(NOW() AT TIME ZONE 'Asia/Kolkata')::date
                AND check_in_time IS NOT NULL AND check_out_time IS NULL",
         )
         .bind(plant_id)
         .bind(user_id)
+        .bind(evidence)
         .execute(pool)
         .await?
     };

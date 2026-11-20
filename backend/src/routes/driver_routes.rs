@@ -221,12 +221,19 @@ pub async fn check_in_driver(
     validate_attendance_location(&payload)?;
     let plant_id = resolve_driver_plant(&state, auth_user.user_id).await?;
     let today = workforce_repo::attendance_today(&state.db).await?;
+    let evidence = workforce_repo::geofence_evidence(
+        &state.db,
+        plant_id,
+        Some(payload.lat),
+        Some(payload.lng),
+    )
+    .await?;
 
     let inserted = sqlx::query(
         r#"
         INSERT INTO workforce_attendance
-            (plant_id, user_id, attendance_date, check_in_time, check_in_lat, check_in_lng, status)
-        VALUES ($1, $2, $3, NOW(), $4, $5, 'present')
+            (plant_id, user_id, attendance_date, check_in_time, check_in_lat, check_in_lng, check_in_geofence, status)
+        VALUES ($1, $2, $3, NOW(), $4, $5, $6, 'present')
         ON CONFLICT (plant_id, user_id, attendance_date) DO NOTHING
         "#,
     )
@@ -235,6 +242,7 @@ pub async fn check_in_driver(
     .bind(today)
     .bind(payload.lat)
     .bind(payload.lng)
+    .bind(evidence)
     .execute(&state.db)
     .await?;
 
@@ -259,11 +267,18 @@ pub async fn check_out_driver(
     validate_attendance_location(&payload)?;
     let plant_id = resolve_driver_plant(&state, auth_user.user_id).await?;
     let today = workforce_repo::attendance_today(&state.db).await?;
+    let evidence = workforce_repo::geofence_evidence(
+        &state.db,
+        plant_id,
+        Some(payload.lat),
+        Some(payload.lng),
+    )
+    .await?;
 
     let updated = sqlx::query(
         r#"
         UPDATE workforce_attendance
-        SET check_out_time = NOW()
+        SET check_out_time = NOW(), check_out_geofence = $4
         WHERE plant_id = $1
           AND user_id = $2
           AND attendance_date = $3
@@ -274,6 +289,7 @@ pub async fn check_out_driver(
     .bind(plant_id)
     .bind(auth_user.user_id)
     .bind(today)
+    .bind(evidence)
     .execute(&state.db)
     .await?;
 

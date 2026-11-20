@@ -162,22 +162,6 @@ const MODULES: Record<string, ModuleDef> = {
       { key: "notes", label: "Notes" },
     ],
   },
-  payroll: {
-    title: "Payroll",
-    subtitle: "Monthly salary, allowances and deductions",
-    addLabel: "Add / Update Payroll",
-    fields: [
-      { key: "user_id", label: "Staff user ID", required: true },
-      { key: "month", label: "Month", placeholder: "2026-08", required: true },
-      { key: "basic_amount", label: "Basic amount", numeric: true, required: true },
-      { key: "allowances", label: "Allowances", numeric: true },
-      { key: "overtime_amount", label: "Overtime", numeric: true },
-      { key: "deductions", label: "Deductions", numeric: true },
-      { key: "paid_days", label: "Paid days", numeric: true },
-      { key: "status", label: "Status", placeholder: "DRAFT / APPROVED / PAID" },
-      { key: "notes", label: "Notes" },
-    ],
-  },
   fleet: {
     title: "Fleet",
     subtitle: "Transit mixers and current availability",
@@ -237,7 +221,6 @@ const attendanceTime = (value: string) =>
   new Date(value).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" });
 
 function today() { return new Date().toISOString().slice(0, 10); }
-function monthNow() { return new Date().toISOString().slice(0, 7); }
 
 function dataPath(kind: string, plantId: string) {
   if (kind === "profile") return `/master/plants/${plantId}/profile`;
@@ -248,7 +231,6 @@ function dataPath(kind: string, plantId: string) {
   if (kind === "expenses") return `/ops/plants/${plantId}/expenses`;
   if (kind === "diesel") return `/ops/plants/${plantId}/diesel`;
   if (kind === "purchases") return `/ops/plants/${plantId}/purchases`;
-  if (kind === "payroll") return `/ops/plants/${plantId}/payroll/${monthNow()}`;
   if (kind === "attendance") return `/workforce/roster?plant_id=${plantId}`;
   if (kind === "staff") return `/master/plants/${plantId}/people`;
   if (kind === "customers") return `/business/plants/${plantId}/customers`;
@@ -266,7 +248,6 @@ function unpackRows(kind: string, data: any): Row[] {
     : kind === "expenses" ? data?.expenses
     : kind === "diesel" ? data?.transactions
     : kind === "purchases" ? data?.purchases
-    : kind === "payroll" ? data?.payroll
     : kind === "attendance" ? data?.roster
     : kind === "staff" ? data?.people
     : kind === "customers" ? data?.customers
@@ -283,7 +264,6 @@ function unpackRows(kind: string, data: any): Row[] {
     else if (kind === "expenses") row = { id: d.id, title: `${d.category} · ₹${d.amount}`, subtitle: d.vendor || d.payment_method, meta: `${d.expense_date}${d.reference ? ` · ${d.reference}` : ""}` };
     else if (kind === "diesel") row = { id: d.id, title: `${d.transaction_type} · ${d.litres} L`, subtitle: d.vehicle_id ? `Vehicle ${d.vehicle_id}` : (d.reference || "Diesel stock"), meta: d.created_at };
     else if (kind === "purchases") row = { id: d.id, title: `${d.receipt_number} · ${d.supplier_name || "Supplier"}`, subtitle: `₹${Math.round(d.total_amount ?? d.total ?? 0)}${d.status ? ` · ${d.status}` : ""}`, meta: d.receipt_date };
-    else if (kind === "payroll") row = { id: d.id, title: d.user_name || d.user_id, subtitle: `${d.month} · ₹${Math.round(d.net_amount || 0)}`, meta: d.status };
     else if (kind === "attendance") row = { id: d.id || `${idx}`, title: d.user_name || "Staff", subtitle: d.check_in_time ? `In ${attendanceTime(d.check_in_time)}` : "Not checked in", meta: d.check_out_time ? `Out ${attendanceTime(d.check_out_time)}` : "Open" };
     else if (kind === "staff") row = { id: d.id, title: d.name, subtitle: d.role_label || d.role, meta: `${d.phone || d.email || ""}${d.status ? ` · ${d.status}` : ""}` };
     else if (kind === "customers") row = { id: d.id, title: d.name, subtitle: d.phone || d.email || "Customer", meta: `${d.orders || 0} orders · ${d.delivered_m3 || 0} m³ delivered` };
@@ -375,7 +355,7 @@ export function BusinessModule({ kind, preferredPlant, material }: { kind: strin
   const kindGrant: Record<string, string> = {
     mixes: "mix_designs", inventory: "material_inventory", fleet: "fleet_availability",
     rates: "rate_cards", quotations: "quotations", expenses: "expenses",
-    purchases: "purchases", diesel: "diesel_ledger", suppliers: "suppliers", payroll: "payroll",
+    purchases: "purchases", diesel: "diesel_ledger", suppliers: "suppliers",
   };
   const modulePermission = permissions[kindGrant[kind]];
   const canEditModule = kind === "staff" ? canManageStaff : kind === "fleet" && managerFleet ? true :
@@ -477,10 +457,6 @@ export function BusinessModule({ kind, preferredPlant, material }: { kind: strin
       initial.supplier_id = resources?.suppliers?.[0]?.id || "";
       initial.material_id = resources?.materials?.[0]?.id || "";
     }
-    if (kind === "payroll") {
-      initial.month = monthNow(); initial.status = "DRAFT";
-      initial.user_id = resources?.people?.[0]?.id || "";
-    }
     setForm(initial);
     setModal(true);
   };
@@ -527,9 +503,6 @@ export function BusinessModule({ kind, preferredPlant, material }: { kind: strin
           freight_amount: payload.freight_amount || 0,
           notes: payload.notes || null,
         });
-      } else if (kind === "payroll") {
-        payload.allowances ??= 0; payload.overtime_amount ??= 0; payload.deductions ??= 0; payload.paid_days ??= 0; payload.status ||= "DRAFT";
-        await apiPut(`/ops/plants/${plantId}/payroll`, token, payload);
       } else if (kind === "fleet") {
         await apiPost(`/business/plants/${plantId}/vehicles`, token, payload);
       } else if (kind === "inventory") {
@@ -822,12 +795,11 @@ export function BusinessModule({ kind, preferredPlant, material }: { kind: strin
           </View>
         ) : def.addLabel && plantId && canCreateModule ? <Button label={def.addLabel} onPress={openForm} /> : null}
 
-        {(kind === "purchases" || kind === "payroll" || kind === "diesel") && resources ? (
+        {(kind === "purchases" || kind === "diesel") && resources ? (
           <Card style={{ gap: spacing.sm }}>
             <AppText variant="label">Reference data</AppText>
             {kind === "purchases" ? <AppText variant="caption">Suppliers: {(resources.suppliers || []).map((x: any) => `${x.name} (${x.id})`).join(" · ") || "Create a supplier first"}</AppText> : null}
             {kind === "purchases" ? <AppText variant="caption">Materials: {(resources.materials || []).map((x: any) => `${x.name} (${x.id})`).join(" · ") || "No materials"}</AppText> : null}
-            {kind === "payroll" ? <AppText variant="caption">Staff: {(resources.people || []).map((x: any) => `${x.name} (${x.id})`).join(" · ") || "No plant staff"}</AppText> : null}
             {kind === "diesel" ? <AppText variant="caption">Mixers: {(resources.transit_mixers ?? resources.vehicles ?? []).map((x: any) => `${x.registration_number ?? x.tm_number} (${x.id})`).join(" · ") || "No mixers"}</AppText> : null}
           </Card>
         ) : null}

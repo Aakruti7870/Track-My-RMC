@@ -17,7 +17,7 @@ const privacyScreen = read("frontend/app/privacy.tsx");
 const permissionGate = read("frontend/scripts/check-android-permissions.mjs");
 
 requireInvariant(app.version === "2.0.35", "Expected Expo version 2.0.35");
-requireInvariant(app.android?.versionCode === 95, "Expected Android versionCode 94");
+requireInvariant(app.android?.versionCode === 95, "Expected Android versionCode 95");
 requireInvariant(app.android?.package === "com.trackmyrmc.concreteking", "Unexpected Android application id");
 requireInvariant(indexRoute.includes('<Redirect href="/login"'), "Root route must start at /login");
 requireInvariant(releaseWorkflow.includes("EXPO_PUBLIC_BACKEND_URL: https://trackmyrmc.com"), "Signed AAB must be pinned to https://trackmyrmc.com");

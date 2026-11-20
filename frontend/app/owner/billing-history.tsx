@@ -1,12 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { apiGet } from "@/src/api/client";
-import { useAuth } from "@/src/auth/AuthContext";
+import { useGet } from "@/src/hooks/useApi";
 import { AppText } from "@/src/components/ui/AppText";
 import { Badge } from "@/src/components/ui/Badge";
 import { Card } from "@/src/components/ui/Card";
@@ -50,31 +49,11 @@ const badgeStatus = (status: PaymentStatus) =>
 
 export default function OwnerBillingHistory() {
   const { colors } = useTheme();
-  const { token } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [filter, setFilter] = useState<Filter>("ALL");
-  const [data, setData] = useState<HistoryResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState("");
-
-  const load = useCallback(async (refresh = false) => {
-    if (!token) return;
-    refresh ? setRefreshing(true) : setLoading(true);
-    setError("");
-    try {
-      const query = filter === "ALL" ? "" : `?status=${encodeURIComponent(filter)}`;
-      setData(await apiGet<HistoryResponse>(`/plant-plans/payment-history${query}`, token));
-    } catch (e: any) {
-      setError(e.detail || "Could not load payment history");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [filter, token]);
-
-  useEffect(() => { load(); }, [load]);
+  const query = filter === "ALL" ? "" : `?status=${encodeURIComponent(filter)}`;
+  const { data, loading, error, reload } = useGet<HistoryResponse>(`/plant-plans/payment-history${query}`);
 
   const totals = useMemo(() => {
     const payments = data?.payments || [];
@@ -83,8 +62,6 @@ export default function OwnerBillingHistory() {
       pending: payments.filter((p) => p.status === "PAYMENT_PENDING").length,
     };
   }, [data]);
-
-  if (error && !data) return <ErrorView message={error} onRetry={() => load()} />;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
@@ -102,7 +79,7 @@ export default function OwnerBillingHistory() {
 
       <ScrollView
         contentContainerStyle={{ padding: spacing.lg, paddingBottom: 80, gap: spacing.lg }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={colors.brand} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={reload} tintColor={colors.brand} />}
       >
         <View style={styles.summaryRow}>
           <Card style={{ flex: 1, gap: 5 }}>
@@ -122,6 +99,8 @@ export default function OwnerBillingHistory() {
               <Pressable
                 key={item.key}
                 testID={`billing-filter-${item.key.toLowerCase()}`}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
                 onPress={() => setFilter(item.key)}
                 style={[styles.filter, {
                   backgroundColor: selected ? colors.brand : colors.surfaceSecondary,
@@ -136,7 +115,7 @@ export default function OwnerBillingHistory() {
           })}
         </ScrollView>
 
-        {loading && !data ? (
+        {error ? <ErrorView message={error} onRetry={reload} /> : loading && !data ? (
           <><Skeleton height={150} /><Skeleton height={150} /></>
         ) : data?.payments.length ? (
           <View style={{ gap: spacing.md }}>
@@ -179,9 +158,9 @@ export default function OwnerBillingHistory() {
                   />
                   <AppText variant="caption" style={{ flex: 1 }}>
                     {payment.status === "PAID"
-                      ? "Verified by Cashfree webhook. Plan access is active."
+                      ? "Payment verified by Cashfree webhook."
                       : payment.status === "PAYMENT_PENDING"
-                        ? "Awaiting signed Cashfree confirmation. Access remains locked."
+                        ? "Awaiting signed Cashfree confirmation."
                         : "No plan access was activated for this transaction."}
                   </AppText>
                 </View>
@@ -192,7 +171,7 @@ export default function OwnerBillingHistory() {
           <Card style={{ alignItems: "center", gap: spacing.sm, paddingVertical: spacing["2xl"] }}>
             <VectorSymbol name="billing-history" size={34} color={colors.onSurfaceTertiary} />
             <AppText variant="heading">No payments found</AppText>
-            <AppText variant="caption" center>New Premium and Promotion payments will appear here.</AppText>
+            <AppText variant="caption" center>Historical plant plan transactions appear here.</AppText>
           </Card>
         )}
       </ScrollView>
