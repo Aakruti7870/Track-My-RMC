@@ -38,6 +38,15 @@ async function assertFits(locator, viewportWidth) {
           { id: 'plant-one', name: 'Fixture Plant', city: 'Panvel' },
           ...(secondPlant ? [{ id: 'plant-two', name: 'Second Fixture Plant', city: 'Panvel' }] : []),
         ] };
+        else if (/\/ops\/plants\/(plant-one|plant-two)\/quotation-requests$/.test(path)) {
+          const plantId = path.split('/').at(-2);
+          json = { requests: [{
+            id: 'request-' + plantId, plant_id: plantId, customer_name: 'RFQ customer ' + plantId,
+            site_name: 'Fixture construction', site_address: 'Fixture locality', grade: 'M30',
+            quantity: 8, status: 'REQUESTED', created_at: '2026-11-18T00:00:00Z',
+          }] };
+        }
+        else if (/\/ops\/plants\/(plant-one|plant-two)\/quotations$/.test(path)) json = { quotations: [] };
         else if (path.endsWith('/business/plants/plant-two/materials')) json = { materials: [
           { id: 'cement', name: 'Fixture Cement', material_type: 'CEMENT', unit: 'kg', current_stock: '4', minimum_stock: '10' },
           { id: 'sand', name: 'Fixture Sand', material_type: 'SAND', unit: 'kg', current_stock: '0', minimum_stock: '10' },
@@ -332,6 +341,14 @@ async function assertFits(locator, viewportWidth) {
         secondPlant = true;
         const post = suffix => page.waitForRequest(request =>
           request.method() === 'POST' && new URL(request.url()).pathname.endsWith(suffix));
+
+        await page.route('http://127.0.0.1:8765/owner/quotation-requests', route =>
+          route.continue({ url: 'http://127.0.0.1:8765/owner/quotation-requests.html' }));
+        await page.goto('http://127.0.0.1:8765/owner/quotation-requests');
+        await page.getByText('RFQ customer plant-one', { exact: true }).waitFor();
+        await page.getByRole('button', { name: 'Second Fixture Plant', exact: true }).click();
+        await page.getByText('RFQ customer plant-two', { exact: true }).waitFor();
+        assert.equal(await page.getByText('RFQ customer plant-one', { exact: true }).count(), 0);
 
         await go('/owner/operations');
         await page.getByRole('button', { name: 'Second Fixture Plant', exact: true }).click();

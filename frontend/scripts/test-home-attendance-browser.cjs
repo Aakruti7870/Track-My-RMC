@@ -168,9 +168,10 @@ async function visitRole(browser, [role, routeName, label], scheme) {
     if (driver && scheme === "light") {
       await page.getByTestId("driver-shortcut-driver-attendance").click();
       await page.waitForURL(url => url.pathname === "/driver/shift-attendance");
-      await page.getByText("Shift complete", { exact: true }).filter({ visible: true }).waitFor();
-      await page.getByText("Check in and out from Home.", { exact: true }).waitFor();
-      assert.equal(await page.getByRole("button", { name: /^(check|punch) (in|out)/i }).count(), 0);
+      const record = page.getByTestId("driver-shift-attendance-record");
+      await record.getByText("Shift complete", { exact: true }).waitFor();
+      await record.getByText("Check in and out from Home.", { exact: true }).waitFor();
+      assert.equal(await record.getByRole("button", { name: /^(check|punch) (in|out)/i }).count(), 0);
     }
     assert.deepEqual(errors, []);
     console.log(`PASS ${role} ${scheme}: responsive Home, consent, persisted check-in and check-out`);

@@ -4,6 +4,16 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const roles = ['admin', 'dispatcher', 'operator', 'supervisor', 'accountant',
   'quality_engineer', 'fleet_manager', 'store_manager'];
+const roleTabs = {
+  admin: [['orders', 'orders'], ['fleet', 'fleet']],
+  dispatcher: [['dispatch', 'dispatch'], ['fleet', 'fleet']],
+  operator: [['production', 'production']],
+  supervisor: [['operations', 'dispatch'], ['incidents', 'incidents']],
+  accountant: [['billing', 'invoices'], ['ledger', 'ledger']],
+  quality_engineer: [['quality', 'quality']],
+  fleet_manager: [['fleet', 'fleet'], ['drivers', 'drivers']],
+  store_manager: [['stock', 'inventory']],
+};
 const grants = ['dispatch_queue', 'fleet_availability', 'production_queue', 'incidents',
   'billing_ledger', 'quality_register', 'driver_roster', 'material_inventory',
   'rate_cards', 'mix_designs', 'suppliers', 'purchases', 'diesel_ledger',
@@ -25,6 +35,9 @@ fs.mkdirSync(out, { recursive: true });
         });
         const page = await context.newPage();
         const errors = [];
+        let productionStatus = 'confirmed';
+        let produced = 0;
+        const writes = [];
         page.on('pageerror', error => errors.push(error.message));
         await page.route('**/api/**', async route => {
           const path = new URL(route.request().url()).pathname;
@@ -46,7 +59,7 @@ fs.mkdirSync(out, { recursive: true });
           else if (path.endsWith('/master/my-plants')) json = { plants: [{ id: 'qa-plant', name: 'Fixture RMC Plant' }] };
           else if (path.endsWith('/plant-operations/qa-plant/pipeline')) json = { counts: {}, total: 0, loads: [] };
           else if (path.endsWith('/staff/module-permissions')) json = {
-            plant_id: 'qa-plant', permissions: grants.map(key => ({ key, view: true })),
+            plant_id: 'qa-plant', permissions: grants.map(key => ({ key, view: true, edit: role === 'operator' && key === 'production_queue' })),
           };
           else if (path.endsWith('/staff/manager-access')) json = { enabled: false };
           else if (path.endsWith('/notifications')) json = { unread: 0, items: [] };
@@ -58,9 +71,44 @@ fs.mkdirSync(out, { recursive: true });
           else if (path.endsWith('/staff/quality/isolated-quality')) json = {
             order_number: 'ISOLATED-QA', grade: 'M25', quantity: 3, site_name: 'Fixture site', quality_tests: [],
           };
-          else if (path.includes('/staff/collection/')) json = {
-            title: 'Isolated queue', empty: 'No items', items: [],
+          else if (path.endsWith('/staff/collection/production')) json = {
+            title: 'Production Queue', empty: 'No items', items: [{
+              id: 'isolated-production', primary: 'Synthetic production order', badge: productionStatus, badge_status: productionStatus,
+            }],
           };
+          else if (path.endsWith('/staff/orders/isolated-production/production')) json = {
+            order_id: 'isolated-production', order_number: 'ISOLATED-PRODUCTION', grade: 'M25',
+            status: productionStatus, ordered_quantity: 6, produced_quantity: produced, remaining_quantity: 6 - produced, batches: [],
+          };
+          else if (path.includes('/staff/orders/isolated-production/production/')) {
+            assert.equal(route.request().method(), 'POST');
+            const action = path.split('/').at(-1);
+            writes.push(action);
+            if (action === 'start') productionStatus = 'in_production';
+            if (action === 'batch') {
+              const body = route.request().postDataJSON();
+              assert.equal(body.quantity, 6);
+              assert.equal(body.consume_materials, true);
+              assert(body.request_id);
+              produced = body.quantity;
+            }
+            if (action === 'complete') {
+              assert.equal(produced, 6);
+              productionStatus = 'produced';
+            }
+            json = { success: true };
+          }
+          else if (path.endsWith('/business/plants/qa-plant/materials')) json = { materials: [{
+            id: 'fixture-stock', name: 'Synthetic Cement Inventory Record',
+            unit: 'kg', material_type: 'CEMENT', current_stock: '120', minimum_stock: '20',
+          }] };
+          else if (path.includes('/staff/collection/')) {
+            const kind = path.split('/').at(-1);
+            json = { title: 'Isolated ' + kind, empty: 'No items', items: [{
+              id: 'fixture-' + kind, icon: 'cube-outline',
+              primary: 'Synthetic ' + kind + ' record with a long label', badge: 'confirmed',
+            }] };
+          }
           await route.fulfill({ json });
         });
         await page.goto('http://127.0.0.1:8765/' + routeName + '/');
@@ -129,6 +177,28 @@ fs.mkdirSync(out, { recursive: true });
           assert.equal(await operation.getByText('Automation Centre', { exact: true }).count(), 0);
           await operation.getByRole('button', { name: 'Back to Plant Admin Home' }).click();
           await summary.waitFor();
+        }
+        if (width === 390) {
+          for (const [tab, kind] of roleTabs[role]) {
+            await page.getByTestId('tab-' + tab).click();
+            await page.waitForFunction(name => document.querySelector('[data-testid="tab-' + name + '"]')?.getAttribute('aria-selected') === 'true', tab);
+            if (kind === 'production') {
+              await page.getByTestId('operator-production-heading').waitFor();
+              await page.getByRole('button', { name: 'Start Production', exact: true }).click();
+              await page.getByRole('button', { name: 'Post Production Batch', exact: true }).click();
+              await page.getByRole('button', { name: 'Post Batch + Consume Materials', exact: true }).click();
+              await page.getByText('Remaining 0 m³', { exact: true }).waitFor();
+              await page.getByTestId('operator-complete-modal').click();
+              await page.getByText('produced', { exact: true }).waitFor();
+              assert.deepEqual(writes, ['start', 'batch', 'complete']);
+            } else if (kind === 'inventory') {
+              await page.getByText('Synthetic Cement Inventory Record', { exact: true }).waitFor();
+            } else {
+              const record = kind === 'quality' ? 'Synthetic quality record' : 'Synthetic ' + kind + ' record with a long label';
+              await page.getByTestId('staff-collection-' + kind).getByText(record, { exact: true }).waitFor();
+            }
+            assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), role + ' ' + tab + ' overflows');
+          }
         }
         await page.getByTestId('tab-more').click();
         await page.waitForFunction(() => document.querySelector('[data-testid="tab-more"]')?.getAttribute('aria-selected') === 'true');

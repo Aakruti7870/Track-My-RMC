@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useLocalSearchParams } from "expo-router";
 import { Pressable, ScrollView, View } from "react-native";
 import { useAuth } from "@/src/auth/AuthContext";
 import { useTheme } from "@/src/theme/ThemeProvider";
@@ -37,7 +38,9 @@ export default function OwnerDriverManagement() {
   const { colors } = useTheme();
   const toast = useToast();
   const [plants, setPlants] = useState<Plant[]>([]);
+  const { plantId: preferredPlant } = useLocalSearchParams<{ plantId?: string }>();
   const [plantId, setPlantId] = useState<string | null>(null);
+  const driverRequest = useRef(0);
   const [drivers, setDrivers] = useState<DriverRecord[]>([]);
   const [mixers, setMixers] = useState<Mixer[]>([]);
   const [form, setForm] = useState<Form>({ ...empty });
@@ -75,31 +78,38 @@ export default function OwnerDriverManagement() {
     try {
       const response = await apiGet<{ plants: Plant[] }>("/master/my-plants", token);
       setPlants(response.plants ?? []);
-      setPlantId(previous => previous && response.plants.some(p => p.id === previous)
-        ? previous : response.plants[0]?.id || null);
+      setPlantId(previous => response.plants.find(entry => entry.id === preferredPlant)?.id ??
+        response.plants.find(entry => entry.id === previous)?.id ?? response.plants[0]?.id ?? null);
+      if (!response.plants.length) setLoading(false);
     } catch (err: unknown) {
       setError(apiErrorDetail(err, "Unable to load plants"));
       setLoading(false);
     }
-  }, [token, canView]);
+  }, [token, canView, preferredPlant]);
   const loadDrivers = useCallback(async () => {
     if (!token || !plantId || !canView) return;
+    const request = ++driverRequest.current;
     setError(null); setLoading(true);
     try {
       const [d, m] = await Promise.all([
         apiGet<{ drivers: DriverRecord[] }>(`/business/plants/${plantId}/drivers`, token),
         apiGet<{ resources: { transit_mixers: Mixer[] } }>(`/master/plants/${plantId}/resources`, token),
       ]);
+      if (request !== driverRequest.current) return;
       setDrivers(d.drivers || []);
       setMixers(m.resources?.transit_mixers || []);
     } catch (err: unknown) {
-      setError(apiErrorDetail(err, "Unable to load driver records"));
+      if (request === driverRequest.current) setError(apiErrorDetail(err, "Unable to load driver records"));
     } finally {
-      setLoading(false);
+      if (request === driverRequest.current) setLoading(false);
     }
   }, [token, plantId, canView]);
   useEffect(() => { void loadPlants(); }, [loadPlants]);
-  useEffect(() => { void loadDrivers(); }, [loadDrivers]);
+  useEffect(() => {
+    setDrivers([]); setMixers([]); setForm({ ...empty }); setTermination(null);
+    void loadDrivers();
+    return () => { driverRequest.current += 1; };
+  }, [loadDrivers]);
 
   const chooseDriver = (driver: DriverRecord) => {
     const months = driver.total_driving_experience_months;
@@ -176,19 +186,24 @@ export default function OwnerDriverManagement() {
       <AppText variant="caption">Use an existing WhatsApp-registered driver mobile. Drivers never receive plant-staff login privileges.</AppText>
       {plants.length > 1 ? (
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-          {plants.map(p => <Pressable key={p.id} accessibilityRole="button" onPress={() => setPlantId(p.id)}
+          {plants.map(p => <Pressable key={p.id} accessibilityRole="button" accessibilityState={{ selected: plantId === p.id }} disabled={saving}
+            onPress={() => {
+              if (p.id === plantId) return;
+              driverRequest.current += 1;
+              setLoading(true); setPlantId(p.id);
+            }}
             style={{ padding: 10, borderRadius: 10, backgroundColor: p.id === plantId ? colors.brandSoft : colors.surfaceSecondary, borderWidth: 1, borderColor: p.id === plantId ? colors.brand : colors.border }}>
             <AppText>{p.name}</AppText>
           </Pressable>)}
         </View>
       ) : null}
-      {error ? <Card><AppText style={{ color: colors.error }}>{error}</AppText><Button label="Retry" variant="outline" onPress={() => { void loadDrivers(); }} /></Card> : null}
+      {error ? <Card><AppText style={{ color: colors.error }}>{error}</AppText><Button label="Retry" variant="outline" onPress={() => { if (plantId) void loadDrivers(); else void loadPlants(); }} /></Card> : null}
       <Card style={{gap:spacing.sm}}>
         <AppText variant="label">Invite a Driver</AppText>
         <Input label="Driver name" value={invitationName} onChangeText={setInvitationName}/>
         <Input label="Phone with country code" value={invitationPhone} onChangeText={setInvitationPhone}/>
         <Input label="Reason for Driver invitation or access change" value={changeReason} onChangeText={setChangeReason}/>
-        <Button label="Register Driver invitation" disabled={!plantId || saving || !canInvite} onPress={async()=>{
+        <Button label="Register Driver invitation" disabled={!plantId || loading || saving || !canInvite} onPress={async()=>{
           if(!token || !plantId)return;setSaving(true);
           try{await apiPost(`/business/plants/${plantId}/drivers/invitations`,token,{name:invitationName,phone:invitationPhone,reason:changeReason});
             setInvitationName("");setInvitationPhone("");await loadDrivers();toast("Driver must complete WhatsApp OTP before vehicle assignment","success");
@@ -229,7 +244,7 @@ export default function OwnerDriverManagement() {
             <AppText>{m.registration_number}</AppText>
           </Pressable>)}
         </View>
-        <Button label="Save Driver Profile" loading={saving} disabled={!plantId || saving || !canSave} onPress={() => void save()} />
+        <Button label="Save Driver Profile" loading={saving} disabled={!plantId || loading || saving || !canSave} onPress={() => void save()} />
       </Card>
       {termination ? <Card style={{gap:8}}>
         <AppText variant="heading">Terminate {termination.driver_name}?</AppText>

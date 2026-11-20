@@ -28,7 +28,7 @@ export default function Attendance() {
   const done = !!data?.check_out;
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.surface }}>
+    <View testID="driver-shift-attendance-record" style={{ flex: 1, backgroundColor: colors.surface }}>
       <View style={{ height: insets.top }} />
       <View style={styles.titleRow}><AppText variant="title">Attendance</AppText></View>
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 96 + insets.bottom }]}>

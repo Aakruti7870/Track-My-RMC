@@ -157,11 +157,11 @@ const roleDestinations = (plantId: string): Record<string, Href> => ({
   "operator-production": recordPath("batch", plantId),
   "supervisor-operations": pipelinePath(plantId),
   "supervisor-incidents": recordPath("incidents", plantId),
-  "accountant-billing": "/owner/billing",
+  "accountant-billing": { pathname: "/owner/billing", params: { plantId } },
   "accountant-ledger": recordPath("ledger", plantId),
   "engineer-quality": recordPath("quality", plantId),
   "fleet-manager-fleet": businessPath("fleet", plantId),
-  "fleet-manager-drivers": "/owner/drivers",
+  "fleet-manager-drivers": { pathname: "/owner/drivers", params: { plantId } },
   "store-manager-stock": businessPath("inventory", plantId),
 });
 

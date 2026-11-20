@@ -21,12 +21,13 @@ export default function OwnerOperations() {
   const readableWidth = contentWidth / fontScale;
   const shortcutWidth = readableWidth >= 270 ? "32%" : readableWidth >= 185 ? "49%" : "100%";
   const params = useLocalSearchParams<{ plantId?: string; section?: string }>();
-  const { plants, plant, setSelection, loading, error, reload } = usePlantWorkspace(params.plantId);
-  const { data: pipeline, refetch: refreshPipeline } = usePipeline(plant?.id, { summary: true });
-  useFocusEffect(useCallback(() => { void refreshPipeline(); }, [refreshPipeline]));
+  const { plants, plant, setSelection, loading, error, reload, refetch: refreshPlants } = usePlantWorkspace(params.plantId);
+  const { data: pipeline, error: pipelineError, reload: reloadPipeline, refetch: refreshPipeline } = usePipeline(plant?.id, { summary: true });
+  useFocusEffect(useCallback(() => { void refreshPlants(); void refreshPipeline(); }, [refreshPlants, refreshPipeline]));
   const shortcuts = plant ? <>
     <PlantSelector plants={plants} plant={plant} select={setSelection} />
-    <WorkspaceAlert plantId={plant.id} count={pipeline?.counts?.needs_mixer} />
+    {pipelineError ? <ErrorView message={pipelineError} onRetry={reloadPipeline} /> :
+      <WorkspaceAlert plantId={plant.id} count={pipeline?.counts?.needs_mixer} />}
     <View style={{ flexDirection: "row", flexWrap: "wrap", columnGap: "2%", rowGap: 6 }}>
       <View style={{ width: shortcutWidth }}>
         <WorkspaceTile stacked title="Track Fleet" symbol="gps-live-location" destination={recordPath("fleet", plant.id)} />

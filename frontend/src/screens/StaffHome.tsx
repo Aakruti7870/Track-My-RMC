@@ -92,9 +92,10 @@ export function StaffHome() {
   const { data: manager, refetch: refreshManager } = useGet<{ enabled: boolean; can_manage_staff?: boolean }>(admin ? "/staff/manager-access" : null);
   const canManageStaff = manager?.enabled === true && manager.can_manage_staff === true;
   useFocusEffect(React.useCallback(() => {
+    void refetch();
     void refreshGrants();
     void refreshManager();
-  }, [refreshGrants, refreshManager]));
+  }, [refetch, refreshGrants, refreshManager]));
   const workspace = ROLE_WORKSPACE[user?.role || ""] || ROLE_WORKSPACE.admin;
   const primaryAllowed = grants?.permissions.some(g => g.key === workspace.key && g.view) === true;
   const refresh = () => { refetch(); refreshGrants(); void attendance.refetch(); refreshManager(); };
