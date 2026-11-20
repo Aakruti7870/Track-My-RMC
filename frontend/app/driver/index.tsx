@@ -17,6 +17,8 @@ import { Badge } from "@/src/components/ui/Badge";
 import { Skeleton } from "@/src/components/ui/Skeleton";
 import { ErrorView } from "@/src/components/StateViews";
 import { DriverIdentityCard } from "@/src/components/DriverIdentityCard";
+import { HomeAttendanceCard } from "@/src/components/HomeAttendanceCard";
+import { useHomeAttendance } from "@/src/hooks/useHomeAttendance";
 import { PlantHomeActions } from "@/src/components/PlantHomeCards";
 import { fonts, fontSize, radius, spacing, operationalStatus } from "@/src/theme/tokens";
 import { VectorSymbol } from "@/src/components/VectorSymbol";
@@ -24,7 +26,6 @@ import { IconTile } from "@/src/components/IconTile";
 
 type Trip = { id: string; order_number: string; status: string; grade: string; quantity: number; tm_number: string; site_name: string };
 type Home = { name: string; vehicle: string | null; active_trip: Trip | null; completed_today: number; checked_in: boolean };
-type Attendance = { date: string; check_in: string | null; check_out: string | null };
 
 const CONTENT_MAX_WIDTH = 1120;
 const PLAY_REVIEW_DRIVER_NAME = "Google Play Review Driver";
@@ -34,29 +35,27 @@ export default function DriverHome() {
   const { colors } = useTheme();
   const { width, fontScale } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const gutter = width >= 768 ? 24 : 12;
+  const gutter = Math.max(width >= 768 ? 24 : 12, insets.left, insets.right);
   const bottomSpace = fontScale >= 1.3 ? spacing.lg : 96 + (Platform.OS === "web" ? 0 : insets.bottom);
   const statStyle = [styles.stat, { flexBasis: 88 * fontScale, backgroundColor: colors.surfaceSecondary, borderColor: colors.border }];
   const { user } = useAuth();
   const router = useRouter();
   const { data, loading, error, refetch, reload } = useGet<Home>("/driver/home");
-  const { data: attendance, loading: attendanceLoading, refetch: refetchAttendance } = useGet<Attendance>("/driver/attendance");
+  const attendance = useHomeAttendance("driver", refetch);
   const isPlayReviewDriver = user?.name === PLAY_REVIEW_DRIVER_NAME;
 
-  const shiftComplete = !!attendance?.check_out;
-  const attendanceKnown = !!attendance;
+  const shiftComplete = attendance.complete;
+  const checkedIn = attendance.error ? data?.checked_in : attendance.checkedIn;
   const summaryTitle = data?.active_trip
     ? "Delivery underway"
     : shiftComplete
       ? "Shift complete"
-      : data?.checked_in
+      : checkedIn
         ? "Ready for assignment"
-        : attendanceKnown
-          ? "Start your shift"
-          : "Attendance";
-  const attendanceLabel = data?.checked_in ? "On Duty" : shiftComplete ? "Shift Done" : attendanceKnown ? "Check In" : "Attendance";
+        : "Start your shift";
+  const attendanceLabel = checkedIn ? "On Duty" : shiftComplete ? "Shift Done" : "Attendance record";
   const homeUnavailable = error && !data;
-  const homeLoading = (loading && !data) || (attendanceLoading && !attendance);
+  const homeLoading = loading && !data;
   const driverModules = modulesForRole(user?.role);
   const shortcutKeys = ["driver-trips", "driver-attendance", "shift-roster", "my-payslip"];
   const quickModules = shortcutKeys.flatMap(key => driverModules.filter(module => module.key === key));
@@ -71,10 +70,11 @@ export default function DriverHome() {
         testID="driver-home-scroll"
         contentContainerStyle={{ paddingHorizontal: gutter, paddingTop: gutter, paddingBottom: bottomSpace }}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={false} onRefresh={() => { void refetch(); void refetchAttendance(); }} tintColor={colors.brand} />}
+        refreshControl={<RefreshControl refreshing={false} onRefresh={() => { void refetch(); void attendance.refetch(); }} tintColor={colors.brand} />}
       >
         <View style={[styles.frame, styles.content]}>
           <DriverIdentityCard />
+          <HomeAttendanceCard attendance={attendance} />
           <HomeModuleSection id="driver-quick-access" title="Quick Access" modules={quickModules} homeShortcut testIDPrefix="driver-shortcut-" />
           <PlantHomeActions style={styles.plantActions} />
           {homeUnavailable ? <ErrorView message={error} onRetry={reload} /> : homeLoading ? (

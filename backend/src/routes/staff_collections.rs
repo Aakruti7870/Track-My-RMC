@@ -14,12 +14,15 @@ WITH scope AS (
     SELECT p.id FROM rmc_plants p
     WHERE p.is_active = TRUE
       AND (
-        p.owner_id = $1
+        (p.owner_id = $1 AND $2 IN ('owner','plant_owner'))
         OR EXISTS (
           SELECT 1 FROM plant_staff ps
           WHERE ps.plant_id = p.id
             AND ps.user_id = $1
+            AND ps.role = $2
             AND ps.is_active = TRUE
+            AND ps.removed_at IS NULL
+            AND ps.employment_status = 'ACTIVE'
         )
       )
 )
@@ -208,10 +211,17 @@ SELECT DISTINCT ON (u.id) u.id::text id, 'person-outline' icon,
        CASE WHEN u.is_active THEN 'Active' ELSE 'Inactive' END badge,
        CASE WHEN u.is_active THEN 'DELIVERED' ELSE 'REJECTED' END badge_status
 FROM users u
-JOIN plant_staff ps ON ps.user_id = u.id AND ps.is_active = TRUE
-JOIN scope sc ON sc.id = ps.plant_id
-LEFT JOIN transit_mixers m ON m.driver_id = u.id AND m.plant_id = ps.plant_id
-WHERE u.role = 'driver' OR ps.role = 'driver'
+JOIN (
+    SELECT plant_id, user_id driver_id FROM plant_staff
+    WHERE is_active AND removed_at IS NULL AND role='driver'
+    UNION
+    SELECT plant_id, driver_id FROM driver_employment_profiles WHERE is_active
+    UNION
+    SELECT plant_id, driver_id FROM transit_mixers WHERE driver_id IS NOT NULL
+) assignment ON assignment.driver_id = u.id
+JOIN scope sc ON sc.id = assignment.plant_id
+LEFT JOIN transit_mixers m ON m.driver_id = u.id AND m.plant_id = assignment.plant_id
+WHERE u.role = 'driver'
 ORDER BY u.id, m.registration_number LIMIT 500
 "#
         }
@@ -320,6 +330,7 @@ pub async fn get_staff_collection(
                 "SELECT ps.plant_id FROM plant_staff ps JOIN rmc_plants p ON p.id=ps.plant_id
                  JOIN users u ON u.id=ps.user_id
                  WHERE ps.user_id=$1 AND ps.is_active=TRUE AND ps.role=$2
+                 AND ps.removed_at IS NULL AND ps.employment_status='ACTIVE'
                  AND u.role=ps.role AND u.is_active=TRUE AND p.is_active=TRUE
                  ORDER BY ps.plant_id LIMIT 2",
             )
@@ -350,6 +361,7 @@ pub async fn get_staff_collection(
     );
     let rows = sqlx::query(&sql)
         .bind(auth_user.user_id)
+        .bind(&auth_user.role)
         .fetch_all(&state.db)
         .await?;
     let can_nav_dispatch =

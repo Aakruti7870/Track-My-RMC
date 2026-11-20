@@ -683,6 +683,14 @@ pub async fn dispatch_order(
     Ok(Json(json!({"success":true,"message":"Load dispatched"})))
 }
 
+fn production_module(role: &str) -> &'static str {
+    if role == "dispatcher" {
+        "dispatch_queue"
+    } else {
+        "production_queue"
+    }
+}
+
 pub async fn get_production_status(
     State(state): State<AppState>,
     auth_user: AuthUser,
@@ -702,6 +710,14 @@ pub async fn get_production_status(
     )?;
 
     super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
+    super::staff_module_permissions::require_order(
+        &state,
+        &auth_user,
+        order_id,
+        production_module(&auth_user.role),
+        super::staff_module_permissions::Action::View,
+    )
+    .await?;
     let data:serde_json::Value=sqlx::query_scalar("SELECT jsonb_build_object('success',TRUE,'order_id',o.id,'order_number',o.order_number,'grade',o.concrete_grade,'status',UPPER(o.status),'ordered_quantity',o.total_quantity_m3::DOUBLE PRECISION,'required',o.total_quantity_m3::DOUBLE PRECISION,'batches',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',b.id,'quantity',b.quantity::DOUBLE PRECISION,'batch_reference',b.batch_reference,'remarks',b.remarks,'created_at',b.created_at,'mix_design_version',b.mix_design_version,'material_consumption',b.material_consumption) ORDER BY b.created_at) FROM production_batches b WHERE b.order_id=o.id),'[]'::jsonb)) FROM orders o WHERE id=$1")
       .bind(order_id).fetch_one(&state.db).await?;
     let produced: f64 = sqlx::query_scalar(crate::services::production_service::PRODUCED_SQL)
@@ -734,6 +750,14 @@ pub async fn start_production(
     )?;
 
     super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
+    super::staff_module_permissions::require_order(
+        &state,
+        &auth_user,
+        order_id,
+        production_module(&auth_user.role),
+        super::staff_module_permissions::Action::Edit,
+    )
+    .await?;
     let mut tx = state.db.begin().await?;
     crate::services::customer_order::require_order_kyc(&mut tx, order_id).await?;
     let current: String = sqlx::query_scalar("SELECT status FROM orders WHERE id=$1 FOR UPDATE")
@@ -774,6 +798,14 @@ pub async fn record_batch(
         &["operator", "supervisor", "owner", "plant_owner", "admin"],
     )?;
     super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
+    super::staff_module_permissions::require_order(
+        &state,
+        &auth_user,
+        order_id,
+        production_module(&auth_user.role),
+        super::staff_module_permissions::Action::Edit,
+    )
+    .await?;
     Ok(Json(
         crate::services::production_service::record(
             &state.db,
@@ -803,6 +835,14 @@ pub async fn complete_production(
     )?;
 
     super::loads_routes::ensure_order_access(&state, &auth_user, order_id, false).await?;
+    super::staff_module_permissions::require_order(
+        &state,
+        &auth_user,
+        order_id,
+        production_module(&auth_user.role),
+        super::staff_module_permissions::Action::Edit,
+    )
+    .await?;
     let mut tx = state.db.begin().await?;
     crate::services::customer_order::require_order_kyc(&mut tx, order_id).await?;
     let current: String = sqlx::query_scalar("SELECT status FROM orders WHERE id=$1 FOR UPDATE")

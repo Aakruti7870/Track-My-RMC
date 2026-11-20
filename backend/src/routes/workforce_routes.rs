@@ -206,9 +206,16 @@ pub async fn mark_attendance(
     ))
 }
 
+#[derive(Deserialize)]
+pub struct WorkforceMeQuery {
+    #[serde(default)]
+    pub include_activity: bool,
+}
+
 pub async fn get_workforce_me(
     State(state): State<AppState>,
     auth_user: AuthUser,
+    Query(query): Query<WorkforceMeQuery>,
 ) -> Result<impl IntoResponse, AppError> {
     let plant_id = get_staff_plant_id(&state, &auth_user).await?;
 
@@ -237,7 +244,7 @@ pub async fn get_workforce_me(
     .fetch_optional(&state.db)
     .await?;
 
-    Ok(Json(json!({
+    let mut response = json!({
         "success": true,
         "plant_id": plant_id,
         "attendance": today_att.map(|a| {
@@ -262,7 +269,48 @@ pub async fn get_workforce_me(
                 "end_time": end
             })
         })
-    })))
+    });
+
+    if query.include_activity {
+        let activity: Value = sqlx::query_scalar(
+            r#"
+            SELECT jsonb_build_object(
+                'attendance_history', ARRAY(
+                    SELECT jsonb_build_object('id', id, 'date', attendance_date,
+                        'check_in', check_in_time, 'check_out', check_out_time)
+                    FROM workforce_attendance WHERE plant_id=$1 AND user_id=$2
+                    ORDER BY attendance_date DESC, id LIMIT 7
+                ),
+                'leave_requests', ARRAY(
+                    SELECT jsonb_build_object('id', id, 'leave_type', leave_type, 'start_date', start_date,
+                        'end_date', end_date, 'reason', reason, 'status', status)
+                    FROM workforce_leave_requests WHERE plant_id=$1 AND user_id=$2
+                    ORDER BY created_at DESC, id LIMIT 5
+                ),
+                'client_visits', ARRAY(
+                    SELECT jsonb_build_object('id', id, 'client_name', client_name, 'purpose', purpose,
+                        'scheduled_for', scheduled_for, 'site_address', site_address, 'status', status)
+                    FROM workforce_client_visits WHERE plant_id=$1 AND user_id=$2
+                    ORDER BY scheduled_for DESC, id LIMIT 6
+                ),
+                'expense_claims', ARRAY(
+                    SELECT jsonb_build_object('id', id, 'category', category, 'amount', amount::DOUBLE PRECISION,
+                        'expense_date', expense_date, 'description', description,
+                        'receipt_reference', receipt_reference, 'status', status)
+                    FROM workforce_expense_claims WHERE plant_id=$1 AND user_id=$2
+                    ORDER BY created_at DESC, id LIMIT 6
+                )
+            )
+            "#,
+        )
+        .bind(plant_id)
+        .bind(auth_user.user_id)
+        .fetch_one(&state.db)
+        .await?;
+        response["activity"] = activity;
+    }
+
+    Ok(Json(response))
 }
 
 #[derive(Debug, Deserialize, Serialize)]

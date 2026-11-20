@@ -89,9 +89,14 @@ assert(!read("app/owner/index.tsx").includes('testID="owner-shortcut-insights"')
 assert(!read("app/owner/index.tsx").includes('id="owner-commercial"'));
 assert(!read("app/owner/index.tsx").includes('id="owner-workforce"'));
 assert(read("app/driver/index.tsx").includes('id="driver-workforce"'));
-assert(read("src/screens/StaffHome.tsx").includes('testID="staff-home-check-in"'));
-assert(read("src/screens/StaffHome.tsx").includes('"/workforce/me"'));
-assert(read("src/location/workforceEvidence.ts").includes("requestAttendanceLocationConsent"));
+for (const file of ["src/screens/StaffHome.tsx", "app/owner/index.tsx", "app/driver/index.tsx"]) {
+  const source = read(file);
+  assert.equal(source.match(/<HomeAttendanceCard /g)?.length, 1, file + " must have exactly one Home attendance card");
+}
+assert(read("src/components/HomeAttendanceCard.tsx").includes('testID="home-attendance-check-in"'));
+assert(read("src/components/HomeAttendanceCard.tsx").includes('testID="home-attendance-check-out"'));
+assert(read("src/hooks/useHomeAttendance.ts").includes('"/workforce/me"'));
+assert(read("src/location/currentLocation.ts").includes("requestAttendanceLocationConsent"));
 const workforceBackend = fs.readFileSync(path.join(root, "../backend/src/routes/workforce_routes.rs"), "utf8");
 const ownerBackend = fs.readFileSync(path.join(root, "../backend/src/routes/owner_routes.rs"), "utf8");
 assert(ownerBackend.includes("'plant_attendance_today'") && ownerBackend.includes("'plant_expenses_today'"),

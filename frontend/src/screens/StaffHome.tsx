@@ -1,10 +1,11 @@
 import { screenOverflow } from "@/src/theme/sceneBackground";
-import React, { useState } from "react";
-import { Pressable, RefreshControl, StyleSheet, useWindowDimensions, View } from "react-native";
+import React from "react";
+import { Platform, Pressable, RefreshControl, StyleSheet, useWindowDimensions, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { type VectorSymbolName } from "@/src/components/VectorSymbol";
 import { IconTile } from "@/src/components/IconTile";
 import { useFocusEffect, useRouter, type Href } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { HomeModuleSection, HomeSectionHeader } from "@/src/components/HomeModuleSection";
 import { CardHighlight } from "@/src/components/ui/CardHighlight";
 import { HomeScroll } from "@/src/components/HomeScroll";
@@ -12,10 +13,8 @@ import { OperationalHomeTopBar } from "@/src/components/OperationalHomeTopBar";
 import { PlantHomeActions, PlantHomeHero } from "@/src/components/PlantHomeCards";
 
 import { useAuth } from "@/src/auth/AuthContext";
-import { apiPost } from "@/src/api/client";
-import { workforceLocationEvidence } from "@/src/location/workforceEvidence";
-import { useToast } from "@/src/components/ui/Toast";
-import { Button } from "@/src/components/ui/Button";
+import { HomeAttendanceCard } from "@/src/components/HomeAttendanceCard";
+import { useHomeAttendance } from "@/src/hooks/useHomeAttendance";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { useGet } from "@/src/hooks/useApi";
 import { AppText } from "@/src/components/ui/AppText";
@@ -36,6 +35,8 @@ type HomeData = {
   kpis: Kpi[];
   primary: { title: string; kind: string };
 };
+const CONTENT_MAX_WIDTH = 980;
+
 const ROLE_WORKSPACE: Record<string, { help: string; href: Href; key: string }> = {
   admin: { help: "Orders and fleet for your assigned plant", href: "/plant-admin/orders", key: "dispatch_queue" },
   dispatcher: { help: "Allocate loads, mixers and delivery schedules", href: "/dispatcher/dispatch", key: "dispatch_queue" },
@@ -72,35 +73,18 @@ function formatValue(k: Kpi): string {
 
 export function StaffHome() {
   const { colors } = useTheme();
-  const { user, token } = useAuth();
-  const toast = useToast();
+  const { user } = useAuth();
   const router = useRouter();
-  const { width: viewportWidth } = useWindowDimensions();
-  const contentWidth = Math.max(0, Math.min(viewportWidth, 980) - 2 * spacing.lg);
-  const kpiColumns = contentWidth >= 680 ? 4 : contentWidth >= 460 ? 3 : 2;
+  const insets = useSafeAreaInsets();
+  const { width: viewportWidth, fontScale } = useWindowDimensions();
+  const gutter = Math.max(spacing.lg, insets.left, insets.right);
+  const contentWidth = Math.max(0, Math.min(viewportWidth, CONTENT_MAX_WIDTH) - 2 * gutter);
+  const readableWidth = contentWidth / fontScale;
+  const kpiColumns = readableWidth >= 680 ? 4 : readableWidth >= 460 ? 3 : readableWidth >= 240 ? 2 : 1;
   const kpiWidth = (contentWidth - (kpiColumns - 1) * 10) / kpiColumns;
+  const bottomSpace = fontScale >= 1.3 ? spacing.lg : 96 + (Platform.OS === "web" ? 0 : insets.bottom);
   const { data, loading, error, refetch, reload } = useGet<HomeData>("/staff/home");
-  const { data: workday, error: workdayError, refetch: refreshWorkday } =
-    useGet<{ attendance: { check_in: string | null; check_out: string | null } | null }>("/workforce/me");
-  const [attendanceBusy, setAttendanceBusy] = useState(false);
-  const attendance = workday?.attendance;
-  const checkedIn = !!attendance?.check_in && !attendance?.check_out;
-  const shiftComplete = !!attendance?.check_out;
-  const attendanceAction = async (path: "punch-in" | "punch-out") => {
-    if (!token || attendanceBusy) return;
-    setAttendanceBusy(true);
-    try {
-      const evidence = await workforceLocationEvidence("attendance");
-      await apiPost(`/workforce/attendance/${path}`, token, evidence);
-      toast(path === "punch-in" ? "Checked in for today" : "Checked out for today", "success");
-      refreshWorkday();
-      refetch();
-    } catch (e: any) {
-      toast(e?.detail || "Attendance update failed. Retry from My Workday.", "error");
-    } finally {
-      setAttendanceBusy(false);
-    }
-  };
+  const attendance = useHomeAttendance("staff", refetch);
   const { data: grants, loading: grantsLoading, error: grantsError, refetch: refreshGrants } =
     useGet<{ plant_id?: string; permissions: StaffModuleGrant[] }>("/staff/module-permissions");
   const admin = user?.role === "admin";
@@ -108,13 +92,13 @@ export function StaffHome() {
   const { data: manager, refetch: refreshManager } = useGet<{ enabled: boolean; can_manage_staff?: boolean }>(admin ? "/staff/manager-access" : null);
   const canManageStaff = manager?.enabled === true && manager.can_manage_staff === true;
   useFocusEffect(React.useCallback(() => {
-    void refreshWorkday();
+    void refetch();
     void refreshGrants();
     void refreshManager();
-  }, [refreshWorkday, refreshGrants, refreshManager]));
+  }, [refetch, refreshGrants, refreshManager]));
   const workspace = ROLE_WORKSPACE[user?.role || ""] || ROLE_WORKSPACE.admin;
   const primaryAllowed = grants?.permissions.some(g => g.key === workspace.key && g.view) === true;
-  const refresh = () => { refetch(); refreshGrants(); refreshWorkday(); refreshManager(); };
+  const refresh = () => { refetch(); refreshGrants(); void attendance.refetch(); refreshManager(); };
   const modules = visibleStaffModules(staffModulesForScope(user?.role, "home"), grants?.permissions);
   const adminKeys = ["admin-orders", "admin-fleet", "business-inventory", "business-staff"];
   const adminShortcuts = admin && !grantsError
@@ -163,25 +147,28 @@ export function StaffHome() {
             accessible={false} aria-hidden />
         </Pressable>
       ) : null}
-      <PlantHomeActions action="supplier-enquiry" />
+      <PlantHomeActions action="supplier-enquiry" style={styles.stretchActions} />
     </View>
   );
 
   return (
     <View style={{ flex: 1, backgroundColor: admin ? colors.canvas : "transparent", overflow: screenOverflow }}>
-      <OperationalHomeTopBar />
+      <View style={[styles.headerFrame, { paddingHorizontal: gutter - 12 }]}>
+        <OperationalHomeTopBar />
+      </View>
 
       <HomeScroll testID="staff-home-scroll"
-        gap={spacing.md} paddingHorizontal={spacing.lg} paddingTop={spacing.lg}
-        contentContainerStyle={{ paddingBottom: 130, width: "100%", maxWidth: 980, alignSelf: "center" }}
+        gap={spacing.md} paddingHorizontal={gutter} paddingTop={spacing.lg}
+        contentContainerStyle={{ paddingBottom: bottomSpace, width: "100%", maxWidth: CONTENT_MAX_WIDTH, alignSelf: "center" }}
         refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={refresh} tintColor={colors.brand} />}
       >
         <View style={styles.topCards}>
           <PlantHomeHero label={admin ? "Plant Admin" : data?.role_label || user?.role_label || "Plant Staff"} testID="staff-home-hero-banner"
             profile={admin && adminPlant ? { pathname: "/plant-profile", params: { assigned: "1", plantId: adminPlant } } : undefined} />
         </View>
+        <HomeAttendanceCard attendance={attendance} />
         {shortcuts}
-        {!admin || !adminPlant ? <PlantHomeActions action="profile" /> : null}
+        {!admin || !adminPlant ? <PlantHomeActions action="profile" style={styles.stretchActions} /> : null}
         {error && !data ? (
           <>
             <ErrorView message={error} onRetry={reload} />
@@ -218,22 +205,6 @@ export function StaffHome() {
               ))}
             </View>
 
-            <View testID="staff-workday-card" style={[styles.workday, {
-              backgroundColor: colors.surfaceSecondary, borderColor: colors.border,
-            }]}>
-              <CardHighlight radius={16} />
-              <View style={{ flex: 1, gap: 4 }}>
-                <AppText variant="heading">My Workday</AppText>
-                <AppText variant="caption">{shiftComplete ? "Shift complete" : checkedIn ? "On duty · checked in" : "Check in daily after signing in. Permission approval alone does not record attendance."}</AppText>
-                {workdayError ? <AppText variant="caption" color={colors.error}>Attendance status unavailable. Retry from Workforce.</AppText> : null}
-              </View>
-              {!workdayError && workday && !checkedIn && !shiftComplete ?
-                <Button testID="staff-home-check-in" label="Check In" size="sm"
-                  loading={attendanceBusy} onPress={() => { void attendanceAction("punch-in"); }} /> : null}
-              {!workdayError && workday && checkedIn ?
-                <Button testID="staff-home-check-out" label="Check Out" size="sm" variant="outline"
-                  loading={attendanceBusy} onPress={() => { void attendanceAction("punch-out"); }} /> : null}
-            </View>
             {roleTools}
             <View style={{ gap: spacing.sm }}>
               <HomeSectionHeader title={data.primary.title} seeAll={primaryAllowed ? workspace.href : undefined}
@@ -256,17 +227,15 @@ export function StaffHome() {
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.md, paddingTop: spacing.sm },
-  iconBtn: { width: 46, height: 46, borderRadius: 15, alignItems: "center", justifyContent: "center", borderWidth: 1 },
-  badge: { position: "absolute", top: 8, right: 8, width: 9, height: 9, borderRadius: 5 },
-  topCards: { width: "100%", maxWidth: 620, alignSelf: "center", gap: 10 },
+  headerFrame: { width: "100%", maxWidth: CONTENT_MAX_WIDTH, alignSelf: "center" },
+  topCards: { width: "100%", gap: 10 },
+  stretchActions: { maxWidth: "100%" },
   summary: { minHeight: 66, flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderRadius: 10, padding: 9 },
   summaryCopy: { flex: 1, minWidth: 0, gap: 2 },
   summaryTitle: { fontFamily: fonts.semibold, fontSize: 15, lineHeight: 20 },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   kpi: { minHeight: 108, padding: 9, borderRadius: 16, borderWidth: 1, gap: 4 },
   kpiIcon: { minHeight: 30, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  workday: { minHeight: 75, borderRadius: 16, borderWidth: 1, padding: 12, flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 10 },
   restricted: { minHeight: 86, flexDirection: "row", alignItems: "center", gap: 12,
     borderRadius: radius.lg, borderWidth: 1, padding: 15 },
 });

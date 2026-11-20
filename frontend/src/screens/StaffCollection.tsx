@@ -1,9 +1,9 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { Modal, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
 import { IconTile } from "@/src/components/IconTile";
-import { useRouter, type Href } from "expo-router";
+import { useFocusEffect, useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiErrorDetail, apiPost } from "@/src/api/client";
@@ -19,6 +19,8 @@ import { Badge } from "@/src/components/ui/Badge";
 import { Skeleton } from "@/src/components/ui/Skeleton";
 import { ErrorView } from "@/src/components/StateViews";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
+
+const EMPTY_ITEMS: StaffItem[] = [];
 
 const COLLECTION_SYMBOLS: Readonly<Record<string, VectorSymbolName>> = {
   inventory: "stock-register", quality: "concrete-cube-testing",
@@ -61,12 +63,12 @@ function ItemRow({ item, onAction, onPress, symbol, orderStatus }: { orderStatus
     <>
       {symbol ? <IconTile symbol={symbol} size={26} width={38} />
         : <IconTile icon={item.icon || "ellipse-outline"} size={18} width={38} />}
-      <View style={{ flex: 1, gap: 2 }}>
-        <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: colors.onSurface }} numberOfLines={1}>{item.primary}</AppText>
-        {item.secondary ? <AppText variant="caption" numberOfLines={1}>{item.secondary}</AppText> : null}
-        {item.meta ? <AppText style={{ fontFamily: fonts.regular, fontSize: 11, color: colors.onSurfaceTertiary }} numberOfLines={1}>{item.meta}</AppText> : null}
+      <View style={styles.rowCopy}>
+        <AppText style={{ fontFamily: fonts.semibold, fontSize: fontSize.base, color: colors.onSurface }}>{item.primary}</AppText>
+        {item.secondary ? <AppText variant="caption">{item.secondary}</AppText> : null}
+        {item.meta ? <AppText style={{ fontFamily: fonts.regular, fontSize: 11, color: colors.onSurfaceTertiary }}>{item.meta}</AppText> : null}
       </View>
-      {item.badge ? <Badge label={item.badge} status={item.badge_status || item.badge} orderStatus={orderStatus} /> : null}
+      {item.badge ? <View style={styles.badge}><Badge label={item.badge} status={item.badge_status || item.badge} orderStatus={orderStatus} /></View> : null}
       {onPress ? <VectorSymbol name="chevron-right" size={18} color={colors.onSurfaceTertiary} /> : null}
     </>
   );
@@ -74,7 +76,7 @@ function ItemRow({ item, onAction, onPress, symbol, orderStatus }: { orderStatus
   return (
     <View style={styles.rowWrap}>
       {onPress ? (
-        <Pressable style={styles.row} onPress={onPress} testID={`open-${item.id}`}>
+        <Pressable accessibilityRole="button" style={styles.row} onPress={onPress} testID={`open-${item.id}`}>
           {rowContent}
         </Pressable>
       ) : (
@@ -85,6 +87,7 @@ function ItemRow({ item, onAction, onPress, symbol, orderStatus }: { orderStatus
           {item.actions.map((a) => (
             <Pressable
               key={a.key}
+              accessibilityRole="button"
               testID={`action-${a.key}-${item.id}`}
               onPress={() => onAction(item, a)}
               style={[
@@ -114,6 +117,7 @@ export function StaffCollection({ kind, embedded = false, limit, onItemPress }: 
   const toast = useToast();
   const insets = useSafeAreaInsets();
   const { data, loading, error, refetch, reload } = useGet<CollectionData>(`/staff/collection/${kind}`);
+  useFocusEffect(useCallback(() => { void refetch(); }, [refetch]));
 
   const [modal, setModal] = useState<{ item?: StaffItem; action?: StaffAction; create?: CreateDef } | null>(null);
   const [num, setNum] = useState("");
@@ -125,7 +129,7 @@ export function StaffCollection({ kind, embedded = false, limit, onItemPress }: 
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
 
-  const allItems = data?.items || [];
+  const allItems = data?.items ?? EMPTY_ITEMS;
   const badges = useMemo(() => {
     const seen = new Set<string>();
     allItems.forEach((i) => i.badge && seen.add(i.badge));
@@ -218,7 +222,7 @@ export function StaffCollection({ kind, embedded = false, limit, onItemPress }: 
 
   const body = (
     <>
-      {loading && !data ? (
+      {embedded && error && !data ? <ErrorView message={error} onRetry={reload} /> : loading && !data ? (
         <View style={{ gap: spacing.md }}>
           <Skeleton height={70} style={{ borderRadius: radius.lg }} />
           <Skeleton height={70} style={{ borderRadius: radius.lg }} />
@@ -304,13 +308,13 @@ export function StaffCollection({ kind, embedded = false, limit, onItemPress }: 
         <ErrorView message={error} onRetry={reload} />
       ) : (
         <ScrollView
-          contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120, gap: spacing.lg }}
+          contentContainerStyle={[styles.content, { paddingBottom: 100 + insets.bottom }]}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={colors.brand} />}
         >
           <View style={styles.head}>
             {collectionSymbol ? <VectorSymbol name={collectionSymbol} size={36} /> : null}
-            <AppText variant="title">{data?.title || "List"}</AppText>
+            <AppText variant="title" style={styles.title}>{data?.title || "List"}</AppText>
             {data?.create ? (
               <Pressable testID="staff-create" onPress={openCreate} style={[styles.addBtn, { backgroundColor: colors.brand }]}>
                 <VectorSymbol name="add" size={18} color={colors.onBrand} />
@@ -362,14 +366,18 @@ export function StaffCollection({ kind, embedded = false, limit, onItemPress }: 
 }
 
 const styles = StyleSheet.create({
-  head: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
+  content: { width: "100%", maxWidth: 980, alignSelf: "center", padding: spacing.lg, gap: spacing.lg },
+  head: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: spacing.sm },
+  title: { flexGrow: 1, minWidth: 0 },
   addBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: spacing.md, height: 38, borderRadius: radius.pill },
   search: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, height: 44, borderRadius: radius.md, borderWidth: 1 },
   chip: { height: 32, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   rowWrap: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  row: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.sm, marginLeft: 50 },
-  actionBtn: { paddingHorizontal: spacing.md, height: 36, borderRadius: radius.md, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  row: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: spacing.sm },
+  rowCopy: { flexGrow: 1, flexBasis: 136, minWidth: 0, gap: 2 },
+  badge: { maxWidth: "100%" },
+  actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.sm },
+  actionBtn: { paddingHorizontal: spacing.md, minHeight: 44, maxWidth: "100%", borderRadius: radius.md, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: spacing.lg },
   sheet: { borderRadius: radius.lg, borderWidth: 1, padding: spacing.lg, gap: spacing.md },
 });

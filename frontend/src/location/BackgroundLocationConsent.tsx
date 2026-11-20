@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Linking, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -111,7 +111,7 @@ const ATTENDANCE_POINTS: Point[] = [
   },
   {
     icon: "shield-checkmark-outline",
-    text: "Your coordinates are attached to that attendance record and are not used for continuous background tracking or advertising.",
+    text: "Check-in coordinates are saved with the attendance record. Attendance location is used only for the action you choose on Home.",
   },
 ];
 
@@ -218,7 +218,9 @@ export function BackgroundLocationConsentProvider() {
             : state.scope === "field-visit"
               ? "Use location for this client visit?"
               : "Allow TrackMyRMC to use location for delivery tracking?";
-  const intro = "Before Android asks for permission, here is exactly what TrackMyRMC does with your location.";
+  const intro = state.scope === "attendance" && Platform.OS === "web"
+    ? "Allow browser location access to record attendance with your plant."
+    : "Before Android asks for permission, here is exactly what TrackMyRMC does with your location.";
   const allowLabel = isBackground
     ? "Allow background tracking"
     : isNearbyPlants

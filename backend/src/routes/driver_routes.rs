@@ -63,7 +63,7 @@ fn validate_attendance_location(payload: &DriverAttendanceLocation) -> Result<()
 async fn resolve_driver_plant(state: &AppState, driver_id: Uuid) -> Result<Uuid, AppError> {
     let plant_ids: Vec<Uuid> = sqlx::query_scalar(
         r#"
-        SELECT plant_id
+        SELECT assigned_plants.plant_id
         FROM (
             SELECT o.plant_id
             FROM order_loads ol
@@ -74,8 +74,14 @@ async fn resolve_driver_plant(state: &AppState, driver_id: Uuid) -> Result<Uuid,
             SELECT plant_id
             FROM transit_mixers
             WHERE driver_id = $1
+            UNION
+            SELECT plant_id
+            FROM driver_employment_profiles
+            WHERE driver_id = $1 AND is_active
         ) AS assigned_plants
-        ORDER BY plant_id
+        JOIN rmc_plants p ON p.id = assigned_plants.plant_id
+        WHERE p.is_active
+        ORDER BY assigned_plants.plant_id
         "#,
     )
     .bind(driver_id)
@@ -181,19 +187,19 @@ pub async fn get_driver_attendance(
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["driver"])?;
+    let plant_id = resolve_driver_plant(&state, auth_user.user_id).await?;
     let today = workforce_repo::attendance_today(&state.db).await?;
 
     let attendance = sqlx::query_as::<_, (Option<DateTime<Utc>>, Option<DateTime<Utc>>)>(
         r#"
         SELECT check_in_time, check_out_time
         FROM workforce_attendance
-        WHERE user_id = $1 AND attendance_date = $2
-        ORDER BY created_at DESC
-        LIMIT 1
+        WHERE user_id = $1 AND attendance_date = $2 AND plant_id = $3
         "#,
     )
     .bind(auth_user.user_id)
     .bind(today)
+    .bind(plant_id)
     .fetch_optional(&state.db)
     .await?
     .unwrap_or((None, None));

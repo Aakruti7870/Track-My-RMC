@@ -14,8 +14,26 @@ const { chromium } = require("../../admin-web/node_modules/playwright");
         localStorage.setItem("tmrmc_theme_mode", JSON.stringify(scheme));
       }, colorScheme);
       const site = "Synthetic delivery location for the outer ring commercial site loading gate";
+      let litres = 0;
+      const periodRequests = new Set();
       await page.route("https://trackmyrmc.com/api/**", route => {
-        const pathname = new URL(route.request().url()).pathname;
+        const url = new URL(route.request().url());
+        const pathname = url.pathname;
+        if (pathname.endsWith("/driver/drop-offs")) {
+          const period = url.searchParams.get("period");
+          periodRequests.add(period);
+          return route.fulfill({ json: {
+            completed_trips: period === "weekly" ? 8 : 2, diesel_litres: litres,
+            odometer_km: 28040, maintenance_count: 0, maintenance: [],
+          } });
+        }
+        if (pathname.endsWith("/driver/vehicle-logs")) {
+          assert.equal(route.request().method(), "POST");
+          const body = route.request().postDataJSON();
+          assert.equal(body.kind, "diesel");
+          litres += body.diesel_litres;
+          return route.fulfill({ json: { success: true } });
+        }
         if (pathname.endsWith("/me")) return route.fulfill({ json: {
           id: "test-driver", role: "driver", roles: ["driver"], name: "Fixture driver", status: "active",
         } });
@@ -105,6 +123,15 @@ const { chromium } = require("../../admin-web/node_modules/playwright");
       assert.equal(await delivered.getAttribute("aria-pressed"), "true");
       await page.getByTestId("trip-card-FIXTURE-DELIVERED-002").waitFor();
       assert.equal(await card.count(), 0);
+      await page.getByTestId("tab-drop-offs").click();
+      await page.getByTestId("dropoffs-card-trips").getByText("2", { exact: true }).waitFor();
+      await page.getByTestId("dropoffs-period-weekly").click();
+      await page.getByTestId("dropoffs-card-trips").getByText("8", { exact: true }).waitFor();
+      await page.getByTestId("dropoffs-number").fill("18");
+      await page.getByTestId("dropoffs-save").click();
+      await page.getByTestId("dropoffs-card-diesel").getByText("18.0 L", { exact: true }).waitFor();
+      assert.deepEqual([...periodRequests].sort(), ["daily", "weekly"]);
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
       await page.close();
       console.log(`PASS driver trips ${width}px ${colorScheme}: long site, 48px filters, keyboard selection and status filtering`);
     }

@@ -14,7 +14,7 @@ import { Input } from "@/src/components/ui/Input";
 import { useToast } from "@/src/components/ui/Toast";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
-import { workforceLocationEvidence as locationEvidence } from "@/src/location/workforceEvidence";
+import { fieldVisitLocationEvidence } from "@/src/location/workforceEvidence";
 
 type Attendance = {
   id: string;
@@ -56,16 +56,16 @@ type ExpenseClaim = {
   status: string;
 };
 
-type EmployeeData = {
-  mode: "employee";
-  plant_id: string;
-  role: string;
-  attendance: Attendance | null;
+type EmployeeActivity = {
   attendance_history: Attendance[];
   leave_requests: Leave[];
   client_visits: Visit[];
   expense_claims: ExpenseClaim[];
-  can_verify_expenses: boolean;
+};
+
+type EmployeeData = {
+  attendance: Attendance | null;
+  activity?: EmployeeActivity;
 };
 
 type OwnerData = {
@@ -156,7 +156,7 @@ export default function WorkforceScreen() {
         setOwner(data);
         setEmployee(null);
       } else {
-        const data = await apiGet<EmployeeData>("/workforce/me", token);
+        const data = await apiGet<EmployeeData>("/workforce/me?include_activity=true", token);
         setEmployee(data);
         setOwner(null);
         if (user.role === "accountant") {
@@ -188,15 +188,9 @@ export default function WorkforceScreen() {
     }
   };
 
-  const attendanceAction = async (path: "punch-in" | "punch-out") => {
-    if (!token) return;
-    const evidence = await locationEvidence("attendance");
-    await run(() => apiPost(`/workforce/attendance/${path}`, token, evidence), path === "punch-in" ? "Punched in" : "Punched out");
-  };
-
   const visitAction = async (visitId: string, action: "start" | "complete") => {
     if (!token) return;
-    const evidence = await locationEvidence("field-visit");
+    const evidence = await fieldVisitLocationEvidence();
     await run(
       () => apiPost(`/workforce/visits/${visitId}/${action}`, token, { ...evidence, outcome: action === "complete" ? "Visit completed" : undefined }),
       action === "start" ? "Client visit started" : "Client visit completed",
@@ -314,7 +308,7 @@ export default function WorkforceScreen() {
           <OwnerControl data={owner} decisionNote={decisionNote} setDecisionNote={setDecisionNote} busy={busy} onDecision={ownerDecision} />
         ) : employee ? (
           <>
-            <AttendanceCard attendance={employee.attendance} busy={busy} onPunch={attendanceAction} />
+            <AttendanceRecord attendance={employee.attendance} />
 
             <View style={styles.quickRow}>
               <QuickAction icon="leave" label="Apply Leave" active={form === "leave"} onPress={() => setForm(form === "leave" ? null : "leave")} />
@@ -356,7 +350,11 @@ export default function WorkforceScreen() {
               </Card>
             ) : null}
 
-            <MyActivity data={employee} busy={busy} onVisitAction={visitAction} />
+            {employee.activity ? (
+              <MyActivity data={employee.activity} busy={busy} onVisitAction={visitAction} />
+            ) : (
+              <AppText variant="caption">Recent workforce activity is unavailable.</AppText>
+            )}
 
             {user?.role === "accountant" ? (
               <Card style={{ gap: spacing.md }}>
@@ -388,22 +386,20 @@ export default function WorkforceScreen() {
   );
 }
 
-function AttendanceCard({ attendance, busy, onPunch }: { attendance: Attendance | null; busy: boolean; onPunch: (path: "punch-in" | "punch-out") => Promise<void> }) {
+function AttendanceRecord({ attendance }: { attendance: Attendance | null }) {
   const { colors } = useTheme();
   const checkedIn = !!attendance?.check_in && !attendance?.check_out;
   const done = !!attendance?.check_out;
   return (
     <Card style={{ gap: spacing.md }}>
-      <SectionTitle icon="attendance" title="My Workday" subtitle="Location-evidenced attendance" />
+      <SectionTitle icon="attendance" title="Attendance record" subtitle="Check in and out from Home." />
       <View style={[styles.attendanceState, { backgroundColor: colors.surfaceSecondary }]}>
         <View style={[styles.statusDot, { backgroundColor: done || checkedIn ? colors.success : colors.warning }]} />
         <View style={{ flex: 1 }}>
-          <AppText style={{ fontFamily: fonts.semibold, color: colors.onSurface }}>{done ? "Shift complete" : checkedIn ? "On duty" : "Not punched in"}</AppText>
+          <AppText style={{ fontFamily: fonts.semibold, color: colors.onSurface }}>{done ? "Shift complete" : checkedIn ? "On duty" : "Not checked in"}</AppText>
           <AppText variant="caption">In: {fmtDateTime(attendance?.check_in)} · Out: {fmtDateTime(attendance?.check_out)}</AppText>
         </View>
       </View>
-      {!checkedIn && !done ? <Button label="Punch In with Location" loading={busy} onPress={() => onPunch("punch-in")} icon={<VectorSymbol name="check-in" size={18} color={colors.onBrand} />} /> : null}
-      {checkedIn ? <Button label="Punch Out with Location" variant="outline" loading={busy} onPress={() => onPunch("punch-out")} /> : null}
     </Card>
   );
 }
@@ -418,7 +414,7 @@ function QuickAction({ icon, label, active, onPress }: { icon: VectorSymbolName;
   );
 }
 
-function MyActivity({ data, busy, onVisitAction }: { data: EmployeeData; busy: boolean; onVisitAction: (id: string, action: "start" | "complete") => Promise<void> }) {
+function MyActivity({ data, busy, onVisitAction }: { data: EmployeeActivity; busy: boolean; onVisitAction: (id: string, action: "start" | "complete") => Promise<void> }) {
   const { colors } = useTheme();
   return (
     <View style={{ gap: spacing.lg }}>
@@ -465,6 +461,7 @@ function MyActivity({ data, busy, onVisitAction }: { data: EmployeeData; busy: b
 
       <Card style={{ gap: spacing.sm }}>
         <SectionTitle icon="attendance" title="Attendance history" />
+        {data.attendance_history.length === 0 ? <AppText variant="caption">No recorded attendance yet.</AppText> : null}
         {data.attendance_history.slice(0, 7).map((item) => (
           <View key={item.id} style={styles.historyRow}>
             <AppText style={{ flex: 1, fontFamily: fonts.medium, color: colors.onSurface }}>{item.date}</AppText>

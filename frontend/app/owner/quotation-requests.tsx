@@ -1,8 +1,8 @@
 import { VectorSymbol } from "@/src/components/VectorSymbol";
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { Modal, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams } from "expo-router";
+import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiPost } from "@/src/api/client";
@@ -12,6 +12,8 @@ import { Badge } from "@/src/components/ui/Badge";
 import { Button } from "@/src/components/ui/Button";
 import { Card } from "@/src/components/ui/Card";
 import { Input } from "@/src/components/ui/Input";
+import { ErrorView } from "@/src/components/StateViews";
+import { PlantSelector, usePlantWorkspace } from "@/src/owner/PlantOperations";
 import { Skeleton } from "@/src/components/ui/Skeleton";
 import { useToast } from "@/src/components/ui/Toast";
 import { useGet } from "@/src/hooks/useApi";
@@ -43,11 +45,17 @@ export default function OwnerQuotationRequests() {
   const toast = useToast();
   const insets = useSafeAreaInsets();
   const { plantId: selectedPlant } = useLocalSearchParams<{ plantId?: string }>();
-  const plantId = selectedPlant || user?.plant_id;
-  const { data, loading, refetch } = useGet<{ requests: QuoteRequest[] }>(
+  const workspace = usePlantWorkspace(selectedPlant || user?.plant_id || undefined);
+  const plantId = workspace.plant?.id;
+  const { refetch: refreshPlants } = workspace;
+  const { data, loading, error, reload, refetch } = useGet<{ requests: QuoteRequest[] }>(
     plantId ? `/ops/plants/${encodeURIComponent(plantId)}/quotation-requests` : null,
   );
   const quotes = useGet<{ quotations: OwnerQuote[] }>(plantId ? `/ops/plants/${encodeURIComponent(plantId)}/quotations` : null);
+  const { refetch: refreshQuotes } = quotes;
+  useFocusEffect(useCallback(() => {
+    void refreshPlants(); void refetch(); void refreshQuotes();
+  }, [refreshPlants, refetch, refreshQuotes]));
   const [filter, setFilter] = useState<"ALL" | RequestStatus>("REQUESTED");
   const [quoteFilter, setQuoteFilter] = useState("ALL");
   const [active, setActive] = useState<QuoteRequest | null>(null);
@@ -72,7 +80,7 @@ export default function OwnerQuotationRequests() {
   };
 
   const submit = async () => {
-    if (!token || !plantId || !active) return;
+    if (!token || !plantId || !active || active.plant_id !== plantId || busy) return;
     if (mode === "QUOTE" && (!(Number(rate) > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(validUntil))) {
       return toast("Enter a valid rate and validity date", "error");
     }
@@ -91,13 +99,20 @@ export default function OwnerQuotationRequests() {
     } finally { setBusy(false); }
   };
 
-  if (!plantId) return <View style={[styles.center, { backgroundColor: colors.surface }]}><AppText variant="heading">No plant assigned</AppText><AppText variant="caption">This account needs a plant before quotation requests can be managed.</AppText></View>;
+  if (!workspace.plant) return <View style={[styles.center, { backgroundColor: colors.surface }]}>
+    {workspace.loading ? <AppText variant="caption">Loading plants…</AppText> :
+      workspace.error ? <ErrorView message={workspace.error} onRetry={workspace.reload} /> :
+        <AppText variant="heading">No active plant is assigned.</AppText>}
+  </View>;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
       <View style={{ height: insets.top }} />
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120, gap: spacing.lg }} refreshControl={<RefreshControl refreshing={false} onRefresh={() => { refetch(); quotes.refetch(); }} tintColor={colors.brand} />}>
         <View><AppText variant="title">Quotation Requests</AppText><AppText variant="caption">Review customer requirements and issue official plant quotations</AppText></View>
+        <PlantSelector plants={workspace.plants} plant={workspace.plant}
+          select={(id) => { setActive(null); workspace.setSelection(id); }} />
+        {error ? <ErrorView message={error} onRetry={reload} /> : null}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>
           {FILTERS.map((item) => <Chip key={item.key} label={item.label} selected={filter === item.key} onPress={() => setFilter(item.key)} />)}
         </ScrollView>
@@ -122,6 +137,7 @@ export default function OwnerQuotationRequests() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>
           {["ALL", "OPEN", "ACCEPTED", "DECLINED", "EXPIRED", "ORDER_CREATED"].map((item) => <Chip key={item} label={item === "ORDER_CREATED" ? "Ordered" : item.charAt(0) + item.slice(1).toLowerCase()} selected={quoteFilter === item} onPress={() => setQuoteFilter(item)} />)}
         </ScrollView>
+        {quotes.error ? <ErrorView message={quotes.error} onRetry={quotes.reload} /> : null}
         {quotes.loading && !quotes.data ? <Skeleton height={120} /> : null}
         {quoteRows.map((quote) => <Card key={quote.id} style={{ gap: spacing.sm }}>
           <View style={styles.between}><View style={{ flex: 1 }}><AppText style={{ fontFamily: fonts.semibold }}>{quote.quotation_number}</AppText><AppText variant="caption">{quote.customer_name} · {quote.grade} · {quote.quantity_m3} m³</AppText></View><Badge label={quote.status} status={quote.status} /></View>

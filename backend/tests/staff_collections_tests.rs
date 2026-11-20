@@ -750,3 +750,104 @@ async fn service_enquiry_alerts_are_role_scoped_and_transactional(db: PgPool) {
     assert!(!notifications.contains(&customer));
     assert!(!notifications.contains(&outsider));
 }
+
+#[sqlx::test]
+async fn fleet_manager_and_owner_see_the_same_plant_driver_profile(db: PgPool) {
+    let owner = create_user(&db, "owner").await;
+    let other_owner = create_user(&db, "owner").await;
+    let fleet_manager = create_user(&db, "fleet_manager").await;
+    let assigned_driver = create_user(&db, "driver").await;
+    let unrelated_driver = create_user(&db, "driver").await;
+    let plant = create_plant(&db, owner).await;
+    let other_plant = create_plant(&db, other_owner).await;
+    sqlx::query(
+        "INSERT INTO plant_staff(plant_id,user_id,role,is_active) VALUES($1,$2,'fleet_manager',TRUE)",
+    )
+    .bind(plant)
+    .bind(fleet_manager)
+    .execute(&db)
+    .await
+    .unwrap();
+    sqlx::query("INSERT INTO driver_employment_profiles(plant_id,driver_id) VALUES($1,$2),($3,$4)")
+        .bind(plant)
+        .bind(assigned_driver)
+        .bind(other_plant)
+        .bind(unrelated_driver)
+        .execute(&db)
+        .await
+        .unwrap();
+    support::approve_fixture_assignments(&db).await;
+    let app = state(db);
+    for (actor, role) in [(fleet_manager, "fleet_manager"), (owner, "owner")] {
+        let data = staff_collections::get_staff_collection(
+            State(app.clone()),
+            user(actor, role),
+            Path("drivers".to_owned()),
+        )
+        .await
+        .unwrap()
+        .0;
+        let roster = data["items"].as_array().unwrap();
+        assert_eq!(roster.len(), 1);
+        assert_eq!(roster[0]["id"], assigned_driver.to_string());
+    }
+}
+
+#[sqlx::test]
+async fn owner_production_view_reflects_operator_write_and_revocation(db: PgPool) {
+    let owner = create_user(&db, "owner").await;
+    let operator = create_user(&db, "operator").await;
+    let customer = create_user(&db, "customer").await;
+    let plant = create_plant(&db, owner).await;
+    let order_id = create_order(&db, customer, plant).await;
+    sqlx::query(
+        "INSERT INTO plant_staff(plant_id,user_id,role,is_active) VALUES($1,$2,'operator',TRUE)",
+    )
+    .bind(plant)
+    .bind(operator)
+    .execute(&db)
+    .await
+    .unwrap();
+    support::approve_fixture_assignments(&db).await;
+    let app = state(db.clone());
+
+    let change_grant = |edit: bool| {
+        sqlx::query(
+            "UPDATE plant_staff_module_permissions SET can_edit=$1
+             WHERE plant_id=$2 AND user_id=$3 AND module_key='production_queue'",
+        )
+        .bind(edit)
+        .bind(plant)
+        .bind(operator)
+        .execute(&db)
+    };
+    change_grant(false).await.unwrap();
+    assert!(matches!(
+        staff_routes::start_production(
+            State(app.clone()),
+            user(operator, "operator"),
+            Path(order_id),
+        )
+        .await,
+        Err(AppError::Forbidden(_))
+    ));
+    change_grant(true).await.unwrap();
+    staff_routes::start_production(
+        State(app.clone()),
+        user(operator, "operator"),
+        Path(order_id),
+    )
+    .await
+    .unwrap();
+
+    let data = staff_collections::get_staff_collection(
+        State(app),
+        user(owner, "owner"),
+        Path("production".to_owned()),
+    )
+    .await
+    .unwrap()
+    .0;
+    assert_eq!(data["items"][0]["id"], order_id.to_string());
+    assert_eq!(data["items"][0]["badge_status"], "in_production");
+}
