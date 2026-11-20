@@ -99,7 +99,10 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    await page.getByTestId('carousel-page-new').click();
    const waitForSlide = index => page.waitForFunction(index => {
      const node = document.querySelector('[data-testid="home-promotional-slides"]');
-     return node && Math.abs(node.scrollLeft - index * node.clientWidth) <= 2;
+     const pages = node?.firstElementChild?.children;
+     if (!pages?.[index]) return false;
+     const offset = pages[index].getBoundingClientRect().left - pages[0].getBoundingClientRect().left;
+     return Math.abs(node.scrollLeft - offset) <= 2;
    }, index);
    await waitForSlide(0);
    const box = await slides.boundingBox();

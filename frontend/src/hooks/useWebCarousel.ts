@@ -55,7 +55,10 @@ export function useWebCarousel(scrollRef: RefObject<ScrollView | null>, width: n
       pointer = undefined;
       updatePause();
       node.style.removeProperty("scroll-snap-type");
-      if (dragged) showSlide(index);
+      if (dragged) {
+        if (node.contains(document.activeElement)) node.focus({ preventScroll: true });
+        showSlide(index);
+      }
     };
     const preventNativeDrag = (event: DragEvent) => { if (pointer) event.preventDefault(); };
     const click = (event: MouseEvent) => {
