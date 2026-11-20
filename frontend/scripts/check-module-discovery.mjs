@@ -28,6 +28,7 @@ assert.deepEqual(modulesForRole("owner").map(m => m.key), modulesForRole("plant_
 const keys = new Set();
 const validGroups = new Set(["Operations", "Commercial", "Workforce", "Tools", "Account"]);
 const business = read("src/screens/BusinessModule.tsx");
+const businessRoute = read("app/business/[kind].tsx");
 for (const m of MODULE_CATALOG) {
   assert.ok(!keys.has(m.key), `Duplicate module key: ${m.key}`);
   keys.add(m.key);
@@ -41,8 +42,13 @@ for (const m of MODULE_CATALOG) {
   if (m.route.startsWith("/business/")) {
     assert.ok(fs.existsSync(path.join(root, "app/business/[kind].tsx")), "Generic business route missing");
     const kind = m.route.slice("/business/".length);
-    assert.ok(business.includes(`  ${kind}: `) || business.includes(`  ${kind}: {`),
-      `Business module implementation absent: ${kind}`);
+    if (kind === "payroll") {
+      assert.ok(businessRoute.includes('kind === "payroll"') && businessRoute.includes('pathname: "/workforce-reports"'),
+        "The Payroll card must open the workforce payroll flow");
+    } else {
+      assert.ok(business.includes(`  ${kind}: `) || business.includes(`  ${kind}: {`),
+        `Business module implementation absent: ${kind}`);
+    }
   } else {
     // Expo Router supports JSX as well as TSX pages. Require a real page in either format.
     const candidates = [".tsx", ".jsx"].flatMap(ext => [

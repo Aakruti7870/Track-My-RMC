@@ -479,3 +479,383 @@ async fn driver_can_record_attendance_from_employment_assignment_before_mixer_as
     assert!(body["check_in"].is_string());
     assert!(body["check_out"].is_string());
 }
+
+#[sqlx::test]
+async fn monthly_reports_use_scoped_evidence_and_delegated_payroll_grants(db: PgPool) {
+    use trackmyrmc_backend::routes::{payroll_routes, workforce_reports};
+    let owner = user(&db, "owner").await;
+    let employee = user(&db, "operator").await;
+    let accountant = user(&db, "accountant").await;
+    let mine = plant(&db, owner).await;
+    let other = plant(&db, owner).await;
+    for (plant, staff, role) in [
+        (mine, employee, "operator"),
+        (other, employee, "operator"),
+        (mine, accountant, "accountant"),
+    ] {
+        sqlx::query("INSERT INTO plant_staff(plant_id,user_id,role) VALUES($1,$2,$3)")
+            .bind(plant)
+            .bind(staff)
+            .bind(role)
+            .execute(&db)
+            .await
+            .unwrap();
+    }
+    support::approve_fixture_assignments(&db).await;
+    sqlx::query(
+        "INSERT INTO workforce_attendance(plant_id,user_id,attendance_date,check_in_time,check_out_time)
+         VALUES ($1,$2,'2028-02-01','2028-02-01 09:00+05:30','2028-02-01 15:30+05:30'),
+                ($1,$2,'2028-02-02','2028-02-02 09:00+05:30',NULL),
+                ($3,$2,'2028-02-01','2028-02-01 08:00+05:30','2028-02-01 09:00+05:30')",
+    ).bind(mine).bind(employee).bind(other).execute(&db).await.unwrap();
+    sqlx::query(
+        "INSERT INTO workforce_leave_requests(plant_id,user_id,leave_type,start_date,end_date,reason,status)
+         VALUES ($1,$2,'SICK','2028-01-31','2028-02-02','Fixture','APPROVED'),
+                ($1,$2,'PAID','2028-02-02','2028-02-02','Fixture','APPROVED'),
+                ($1,$2,'SICK','2028-02-04','2028-02-05','Fixture','REJECTED')",
+    ).bind(mine).bind(employee).execute(&db).await.unwrap();
+    sqlx::query(
+        "INSERT INTO workforce_client_visits(plant_id,user_id,client_name,purpose,scheduled_for,site_address,status)
+         VALUES ($1,$2,'Client','Fixture','2028-01-31 19:00+00','Site','COMPLETED'),
+                ($1,$2,'Client','Fixture','2028-02-01 12:00+00','Site','APPROVED')",
+    ).bind(mine).bind(employee).execute(&db).await.unwrap();
+    sqlx::query(
+        "INSERT INTO workforce_expense_claims(plant_id,user_id,category,amount,expense_date,description,status)
+         VALUES ($1,$2,'Travel',52.50,'2028-02-02','Fixture','APPROVED'),
+                ($1,$2,'Travel',90,'2028-02-03','Fixture','REJECTED')",
+    ).bind(mine).bind(employee).execute(&db).await.unwrap();
+    let closure: Uuid = sqlx::query_scalar(
+        "INSERT INTO payroll_closures(plant_id,year,month) VALUES($1,2028,2) RETURNING id",
+    )
+    .bind(mine)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO payroll_records(closure_id,user_id,basic_pay,overtime_amount,paid_days,net_pay,notes,payment_status)
+         VALUES($1,$2,1000,125.5,1.5,1125.5,'Saved note','draft')",
+    ).bind(closure).bind(employee).execute(&db).await.unwrap();
+    let app = state(db.clone());
+    let report = |actor, payroll_only| {
+        workforce_reports::monthly_workforce_report(
+            State(app.clone()),
+            actor,
+            Path("2028-02".into()),
+            Query(workforce_reports::MonthlyReportFilters {
+                plant_id: Some(mine),
+                payroll_only,
+            }),
+        )
+    };
+    let owner_body = report(identity(owner, "owner"), true)
+        .await
+        .unwrap()
+        .into_response();
+    let owner_data: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(owner_body.into_body(), 100_000)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let row = &owner_data["reports"][0];
+    assert_eq!(owner_data["reports"].as_array().unwrap().len(), 1);
+    assert_eq!(row["calendar_days"], 29);
+    assert_eq!(row["present_records"], 2);
+    assert_eq!(row["completed_shift_records"], 1);
+    assert_eq!(row["open_shift_records"], 1);
+    assert_eq!(row["approved_leave_days"], 2);
+    assert_eq!(row["completed_client_visits"], 1);
+    assert_eq!(row["approved_expenses"], 52.5);
+    let entry = row["employees"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["user_id"] == employee.to_string())
+        .unwrap();
+    assert_eq!(entry["attendance_hours"], 6.5);
+    assert_eq!(
+        entry["leave_days_by_type"],
+        serde_json::json!({"SICK": 2, "PAID": 1})
+    );
+    assert_eq!(entry["payroll"]["overtime_amount"], 125.5);
+    assert_eq!(entry["payroll"]["paid_days"], 1.5);
+    assert_eq!(entry["payroll"]["notes"], "Saved note");
+
+    sqlx::query(
+        "UPDATE plant_staff_module_permissions SET can_view = FALSE, can_edit = FALSE, can_create = FALSE, can_export = FALSE
+         WHERE plant_id = $1 AND user_id = $2 AND module_key = 'payroll'",
+    )
+    .bind(mine)
+    .bind(accountant)
+    .execute(&db)
+    .await
+    .unwrap();
+    let actor = identity(accountant, "accountant");
+    for payroll_only in [true, false] {
+        let body = report(actor.clone(), payroll_only)
+            .await
+            .unwrap()
+            .into_response();
+        let data: serde_json::Value = serde_json::from_slice(
+            &axum::body::to_bytes(body.into_body(), 100_000)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        if payroll_only {
+            assert!(data["reports"].as_array().unwrap().is_empty());
+        } else {
+            let report = &data["reports"][0];
+            assert_eq!(report["payroll_visible"], false);
+            assert!(report["payroll_total"].is_null());
+            assert!(report["employees"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|row| row["payroll"].is_null()));
+        }
+    }
+    assert!(matches!(
+        payroll_routes::list_period_payslips(
+            State(app.clone()),
+            actor.clone(),
+            Path((mine, "2028-02".into())),
+        )
+        .await,
+        Err(AppError::Forbidden(_))
+    ));
+    assert!(matches!(
+        workforce_reports::save_payroll_draft(
+            State(app),
+            actor,
+            Path((mine, "2028-02".into(), employee)),
+            Json(workforce_reports::PayrollDraftPayload {
+                basic_amount: 2000.0,
+                allowances: None,
+                overtime_amount: None,
+                deductions: None,
+                paid_days: Some(2.0),
+                notes: None,
+            }),
+        )
+        .await,
+        Err(AppError::Forbidden(_))
+    ));
+}
+
+#[sqlx::test]
+async fn client_visit_keeps_schedule_and_follows_owner_approval(db: PgPool) {
+    use trackmyrmc_backend::routes::workforce_routes as workforce;
+    let owner = user(&db, "owner").await;
+    let employee = user(&db, "dispatcher").await;
+    let mine = plant(&db, owner).await;
+    sqlx::query("INSERT INTO plant_staff(plant_id,user_id,role) VALUES($1,$2,'dispatcher')")
+        .bind(mine)
+        .bind(employee)
+        .execute(&db)
+        .await
+        .unwrap();
+    let app = state(db.clone());
+    let employee_actor = identity(employee, "dispatcher");
+    let planned = "2028-02-28T12:45:00+05:30";
+    workforce::create_client_visit(
+        State(app.clone()),
+        employee_actor.clone(),
+        Json(workforce::CreateVisitPayload {
+            client_name: "Fixture Customer".into(),
+            purpose: "Scheduled site visit".into(),
+            scheduled_for: Some(planned.into()),
+            site_address: "Fixture site".into(),
+            contact_name: None,
+            contact_phone: None,
+        }),
+    )
+    .await
+    .unwrap();
+    let (visit, saved): (Uuid, chrono::DateTime<chrono::Utc>) =
+        sqlx::query_as("SELECT id, scheduled_for FROM workforce_client_visits WHERE user_id=$1")
+            .bind(employee)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert_eq!(
+        saved,
+        chrono::DateTime::parse_from_rfc3339(planned).unwrap()
+    );
+    let evidence = |outcome: Option<&str>| {
+        Json(workforce::VisitActionPayload {
+            lat: 19.0,
+            lng: 73.0,
+            outcome: outcome.map(str::to_owned),
+        })
+    };
+    assert!(matches!(
+        workforce::start_client_visit(
+            State(app.clone()),
+            employee_actor.clone(),
+            Path(visit),
+            evidence(None)
+        )
+        .await,
+        Err(AppError::Conflict(_))
+    ));
+    let decide = || {
+        workforce::owner_unified_decision(
+            State(app.clone()),
+            identity(owner, "owner"),
+            Path(("visits".into(), visit)),
+            Json(workforce::OwnerUnifiedDecisionPayload {
+                action: "APPROVE".into(),
+                note: None,
+            }),
+        )
+    };
+    decide().await.unwrap();
+    workforce::start_client_visit(
+        State(app.clone()),
+        employee_actor.clone(),
+        Path(visit),
+        evidence(None),
+    )
+    .await
+    .unwrap();
+    for outcome in ["Recorded on site", "Retry must preserve the first outcome"] {
+        workforce::complete_client_visit(
+            State(app.clone()),
+            employee_actor.clone(),
+            Path(visit),
+            evidence(Some(outcome)),
+        )
+        .await
+        .unwrap();
+    }
+    assert!(matches!(decide().await, Err(AppError::Conflict(_))));
+    let (status, outcome): (String, String) =
+        sqlx::query_as("SELECT status,outcome FROM workforce_client_visits WHERE id=$1")
+            .bind(visit)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert_eq!(status, "COMPLETED");
+    assert_eq!(outcome, "Recorded on site");
+}
+
+#[sqlx::test]
+async fn roster_keeps_the_measured_geofence_for_each_punch(db: PgPool) {
+    use trackmyrmc_backend::routes::workforce_routes as workforce;
+    let owner = user(&db, "owner").await;
+    let employee = user(&db, "operator").await;
+    let mine = plant(&db, owner).await;
+    sqlx::query("UPDATE rmc_plants SET latitude=19,longitude=73 WHERE id=$1")
+        .bind(mine)
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO plant_staff(plant_id,user_id,role) VALUES($1,$2,'operator')")
+        .bind(mine)
+        .bind(employee)
+        .execute(&db)
+        .await
+        .unwrap();
+    let app = state(db.clone());
+    let configure = |radius| {
+        workforce::update_attendance_config(
+            State(app.clone()),
+            identity(owner, "owner"),
+            Path(mine),
+            Json(workforce::AttendanceConfigPayload {
+                radius_m: Some(radius),
+                timezone_name: None,
+            }),
+        )
+    };
+    configure(100.0).await.unwrap();
+    workforce::punch_in(
+        State(app.clone()),
+        identity(employee, "operator"),
+        Json(workforce::PunchPayload {
+            lat: Some(19.005),
+            lng: Some(73.0),
+        }),
+    )
+    .await
+    .unwrap();
+    configure(200.0).await.unwrap();
+    workforce::punch_out(
+        State(app.clone()),
+        identity(employee, "operator"),
+        Json(workforce::PunchPayload {
+            lat: Some(19.0),
+            lng: Some(73.0),
+        }),
+    )
+    .await
+    .unwrap();
+    let date: String = sqlx::query_scalar(
+        "SELECT attendance_date::text FROM workforce_attendance WHERE plant_id=$1",
+    )
+    .bind(mine)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    let shift_response = workforce::create_shift(
+        State(app.clone()),
+        identity(owner, "owner"),
+        Path(mine),
+        Json(workforce::CreateShiftPayload {
+            name: "Fixture shift".into(),
+            start_time: "09:00".into(),
+            end_time: "17:00".into(),
+            grace_minutes: Some(15),
+            half_day_threshold_minutes: Some(220),
+            is_night_shift: None,
+            active: Some(true),
+        }),
+    )
+    .await
+    .unwrap()
+    .into_response();
+    let shift_data: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(shift_response.into_body(), 20_000)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let shift_id = Uuid::parse_str(shift_data["shift_id"].as_str().unwrap()).unwrap();
+    workforce::assign_roster_schedule(
+        State(app.clone()),
+        identity(owner, "owner"),
+        Path((mine, date.clone(), employee)),
+        Json(workforce::AssignRosterSchedulePayload {
+            shift_id: Some(shift_id),
+            week_off: false,
+            note: None,
+        }),
+    )
+    .await
+    .unwrap();
+    let result = workforce::get_roster_overview(State(app), identity(owner, "owner"), Path(date))
+        .await
+        .unwrap()
+        .into_response();
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(result.into_body(), 100_000)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let plant = &body["plants"][0];
+    assert_eq!(plant["attendance_config"]["radius_m"], 200.0);
+    assert_eq!(plant["shifts"][0]["grace_minutes"], 15);
+    assert_eq!(plant["shifts"][0]["half_day_threshold_minutes"], 220);
+    assert_eq!(
+        plant["employees"][0]["roster"]["shift_id"],
+        shift_id.to_string()
+    );
+    let attendance = &plant["employees"][0]["attendance"];
+    assert!(attendance["check_in"].is_string() && attendance["check_out"].is_string());
+    assert_eq!(attendance["check_in_geofence"]["radius_m"], 100.0);
+    assert_eq!(attendance["check_in_geofence"]["within_geofence"], false);
+    assert_eq!(attendance["check_out_geofence"]["radius_m"], 200.0);
+    assert_eq!(attendance["check_out_geofence"]["within_geofence"], true);
+}

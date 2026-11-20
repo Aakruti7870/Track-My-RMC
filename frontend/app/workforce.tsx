@@ -181,8 +181,10 @@ export default function WorkforceScreen() {
       await action();
       toast(success, "success");
       await load();
+      return true;
     } catch (e: any) {
       toast(e?.detail || "Action failed", "error");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -190,16 +192,18 @@ export default function WorkforceScreen() {
 
   const visitAction = async (visitId: string, action: "start" | "complete") => {
     if (!token) return;
-    const evidence = await fieldVisitLocationEvidence();
     await run(
-      () => apiPost(`/workforce/visits/${visitId}/${action}`, token, { ...evidence, outcome: action === "complete" ? "Visit completed" : undefined }),
+      async () => {
+        const evidence = await fieldVisitLocationEvidence();
+        return apiPost(`/workforce/visits/${visitId}/${action}`, token, { ...evidence, outcome: action === "complete" ? "Visit completed" : undefined });
+      },
       action === "start" ? "Client visit started" : "Client visit completed",
     );
   };
 
   const submitLeave = async () => {
     if (!token) return;
-    await run(
+    const saved = await run(
       () => apiPost("/workforce/leave", token, {
         leave_type: leaveType.trim().toUpperCase(),
         start_date: leaveStart,
@@ -208,6 +212,7 @@ export default function WorkforceScreen() {
       }),
       "Leave request submitted",
     );
+    if (!saved) return;
     setLeaveReason("");
     setForm(null);
   };
@@ -219,7 +224,7 @@ export default function WorkforceScreen() {
       toast("Enter visit time as YYYY-MM-DDTHH:mm", "error");
       return;
     }
-    await run(
+    const saved = await run(
       () => apiPost("/workforce/visits", token, {
         client_name: clientName,
         purpose: visitPurpose,
@@ -228,6 +233,7 @@ export default function WorkforceScreen() {
       }),
       "Client visit sent for approval",
     );
+    if (!saved) return;
     setClientName("");
     setVisitPurpose("");
     setVisitAddress("");
@@ -241,7 +247,7 @@ export default function WorkforceScreen() {
       toast("Enter a valid expense amount", "error");
       return;
     }
-    await run(
+    const saved = await run(
       () => apiPost("/workforce/expenses", token, {
         category: expenseCategory,
         amount,
@@ -251,6 +257,7 @@ export default function WorkforceScreen() {
       }),
       "Expense claim submitted",
     );
+    if (!saved) return;
     setExpenseAmount("");
     setExpenseDescription("");
     setExpenseReceipt("");

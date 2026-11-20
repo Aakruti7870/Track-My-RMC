@@ -1,11 +1,13 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useRef, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Share, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { apiGet, apiPost, apiPut } from "@/src/api/client";
+import { apiErrorDetail, apiPost, apiPut } from "@/src/api/client";
 import { useAuth } from "@/src/auth/AuthContext";
+import { useGet } from "@/src/hooks/useApi";
+import { ErrorView } from "@/src/components/StateViews";
 import { AppText } from "@/src/components/ui/AppText";
 import { Badge } from "@/src/components/ui/Badge";
 import { Button } from "@/src/components/ui/Button";
@@ -20,9 +22,9 @@ type Payroll = {
   status: string;
   basic_amount?: number;
   allowances?: number;
-  overtime_amount?: number;
+  overtime_amount?: number | null;
   deductions?: number;
-  paid_days?: number;
+  paid_days?: number | null;
   net_amount?: number;
   notes?: string | null;
   payment_reference?: string | null;
@@ -55,7 +57,9 @@ type PlantReport = {
   approved_leave_days: number;
   completed_client_visits: number;
   approved_expenses: number;
-  payroll_total: number;
+  payroll_visible: boolean;
+  payroll_editable: boolean;
+  payroll_total: number | null;
   payroll_status_counts: Record<string, number>;
   employees: EmployeeReport[];
   payroll_note: string;
@@ -70,7 +74,7 @@ function currentMonth() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function money(value: number | undefined) {
+function money(value: number | null | undefined) {
   return `₹${Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 }
 
@@ -86,13 +90,16 @@ function payrollBadgeColor(status: string, colors: ReturnType<typeof useTheme>["
 
 export default function WorkforceReportsScreen() {
   const { colors } = useTheme();
-  const { token, user } = useAuth();
+  const { token, user, hydrating } = useAuth();
+  const { view, plantId } = useLocalSearchParams<{ view?: string; plantId?: string }>();
+  const payrollOnly = view === "payroll";
+  const isOwner = user?.role === "plant_owner" || user?.role === "owner";
+  const isAccountant = user?.role === "accountant";
   const router = useRouter();
   const toast = useToast();
   const insets = useSafeAreaInsets();
-  const [month, setMonth] = useState(currentMonth());
-  const [data, setData] = useState<ReportsResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [month, setMonth] = useState(currentMonth);
+  const activeAction = useRef(false);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<EditingPayroll>(null);
   const [decisionNote, setDecisionNote] = useState("");
@@ -106,43 +113,37 @@ export default function WorkforceReportsScreen() {
   const [paidDays, setPaidDays] = useState("0");
   const [payrollNotes, setPayrollNotes] = useState("");
 
-  const allowed = user?.role === "plant_owner" || user?.role === "accountant";
+  const allowed = isOwner || isAccountant || (payrollOnly && user?.role === "admin");
+  const monthValid = /^\d{4}-(0[1-9]|1[0-2])$/.test(month);
+  const query = new URLSearchParams();
+  if (payrollOnly) query.set("payroll_only", "true");
+  if (typeof plantId === "string") query.set("plant_id", plantId);
+  const filter = query.toString();
+  const { data, loading, error, reload, refetch } = useGet<ReportsResponse>(
+    allowed && monthValid ? `/workforce-reports/monthly/${month}${filter ? "?" + filter : ""}` : null,
+  );
 
-  const load = useCallback(async () => {
-    if (!token || !allowed) {
-      setLoading(false);
-      return;
-    }
-    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
-      toast("Month must use YYYY-MM", "error");
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    try {
-      const response = await apiGet<ReportsResponse>(`/workforce-reports/monthly/${month}`, token);
-      setData(response);
-    } catch (e: any) {
-      toast(e?.detail || "Unable to load workforce report", "error");
-    } finally {
-      setLoading(false);
-    }
-  }, [token, allowed, month, toast]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const changeMonth = (value: string) => {
+    setMonth(value);
+    setEditing(null);
+    setDecisionNote("");
+    setPaymentReference("");
+  };
 
   const run = async (action: () => Promise<unknown>, success: string) => {
+    if (activeAction.current) return false;
+    activeAction.current = true;
     setBusy(true);
     try {
       await action();
       toast(success, "success");
-      setDecisionNote("");
-      await load();
-    } catch (e: any) {
-      toast(e?.detail || "Action failed", "error");
+      await refetch();
+      return true;
+    } catch (error: unknown) {
+      toast(apiErrorDetail(error, "Action failed"), "error");
+      return false;
     } finally {
+      activeAction.current = false;
       setBusy(false);
     }
   };
@@ -154,75 +155,77 @@ export default function WorkforceReportsScreen() {
     setAllowances(String(payroll?.allowances ?? 0));
     setOvertime(String(payroll?.overtime_amount ?? 0));
     setDeductions(String(payroll?.deductions ?? 0));
-    setPaidDays(String(payroll?.paid_days ?? employee.attendance_days));
+    setPaidDays(String(payroll ? payroll.paid_days ?? "" : employee.attendance_days));
     setPayrollNotes(payroll?.notes || "");
   };
 
   const saveDraft = async () => {
-    if (!token || !editing) return;
+    if (!token || !editing || editing.plant.month !== month) return;
     const values = [basic, allowances, overtime, deductions, paidDays].map(Number);
-    if (values.some((value) => !Number.isFinite(value) || value < 0)) {
+    if (!basic.trim() || values.some((value) => !Number.isFinite(value) || value < 0)) {
       toast("Enter valid non-negative payroll amounts and paid days", "error");
       return;
     }
     const [basicAmount, allowanceAmount, overtimeAmount, deductionAmount, paidDayCount] = values;
-    await run(
+    const saved = await run(
       () => apiPut(
-        `/workforce-reports/plants/${editing.plant.plant_id}/payroll/${month}/${editing.employee.user_id}/draft`,
+        `/workforce-reports/plants/${editing.plant.plant_id}/payroll/${editing.plant.month}/${editing.employee.user_id}/draft`,
         token,
         {
           basic_amount: basicAmount,
           allowances: allowanceAmount,
           overtime_amount: overtimeAmount,
           deductions: deductionAmount,
-          paid_days: paidDayCount,
+          paid_days: paidDays.trim() ? paidDayCount : undefined,
           notes: payrollNotes || undefined,
         },
       ),
       "Payroll draft saved",
     );
-    setEditing(null);
+    if (saved) setEditing(current => current === editing ? null : current);
   };
 
   const ownerDecision = async (plant: PlantReport, employee: EmployeeReport, action: "APPROVE" | "RETURN") => {
-    if (!token) return;
+    if (!token || plant.month !== month) return;
     if (action === "RETURN" && !decisionNote.trim()) {
       toast("Enter a reason before returning payroll", "error");
       return;
     }
-    await run(
+    const decided = await run(
       () => apiPost(
-        `/workforce-reports/plants/${plant.plant_id}/payroll/${month}/${employee.user_id}/owner-decision`,
+        `/workforce-reports/plants/${plant.plant_id}/payroll/${plant.month}/${employee.user_id}/owner-decision`,
         token,
         { action, note: decisionNote || undefined },
       ),
       action === "APPROVE" ? "Payroll approved" : "Payroll returned",
     );
+    if (decided) setDecisionNote("");
   };
 
   const markPaid = async (plant: PlantReport, employee: EmployeeReport) => {
-    if (!token) return;
-    if (paymentReference.trim().length < 2) {
-      toast("Enter the payment reference first", "error");
+    if (!token || plant.month !== month) return;
+    const reference = paymentReference.trim();
+    if (!reference || reference.length > 100) {
+      toast("Enter a payment reference of up to 100 characters", "error");
       return;
     }
-    const methods = ["cash", "upi", "bank_transfer", "cheque", "card"];
+    const methods = ["cash", "upi", "bank_transfer", "cheque"];
     if (!methods.includes(paymentMethod.trim().toLowerCase())) {
-      toast("Payment method: cash / upi / bank_transfer / cheque / card", "error");
+      toast("Payment method: cash / upi / bank_transfer / cheque", "error");
       return;
     }
-    await run(
+    const paid = await run(
       () => apiPost(
-        `/workforce-reports/plants/${plant.plant_id}/payroll/${month}/${employee.user_id}/mark-paid`,
+        `/workforce-reports/plants/${plant.plant_id}/payroll/${plant.month}/${employee.user_id}/mark-paid`,
         token,
         {
           payment_method: paymentMethod.trim().toLowerCase(),
-          payment_reference: paymentReference.trim(),
+          payment_reference: reference,
         },
       ),
       "Payroll marked paid and posted to finance",
     );
-    setPaymentReference("");
+    if (paid) setPaymentReference("");
   };
 
   const shareReport = async (report: PlantReport) => {
@@ -233,43 +236,39 @@ export default function WorkforceReportsScreen() {
       `Approved leave days: ${report.approved_leave_days}`,
       `Completed client visits: ${report.completed_client_visits}`,
       `Approved staff expenses: ${money(report.approved_expenses)}`,
-      `Payroll total on record: ${money(report.payroll_total)}`,
+      ...(report.payroll_visible ? [`Payroll total on record: ${money(report.payroll_total)}`] : []),
       "",
-      ...report.employees.map((e) => `${e.user_name}: ${e.attendance_days} attendance days · ${e.approved_leave_days} leave days · payroll ${e.payroll?.status || "NOT PREPARED"}`),
+      ...report.employees.map((e) => `${e.user_name}: ${e.attendance_days} attendance days · ${e.approved_leave_days} leave days${report.payroll_visible ? ` · payroll ${e.payroll?.status || "NOT PREPARED"}` : ""}`),
       "",
       report.payroll_note,
     ];
     await Share.share({ message: lines.join("\n") });
   };
 
+  if (hydrating) return <ActivityIndicator accessibilityLabel="Loading account" color={colors.brand} />;
+
   if (!allowed) {
     return (
       <View style={[styles.center, { backgroundColor: colors.surface }]}>
         <AppText variant="heading">Payroll reporting is restricted.</AppText>
-        <AppText variant="caption" center>Only Plant Owner and Accountant accounts can access this page.</AppText>
+        <AppText variant="caption" center>Open Workforce Reports with a Plant Owner or Accountant account. Plant Admin accounts can open Payroll with an approved view grant.</AppText>
         <Button label="Go Back" onPress={() => router.back()} />
       </View>
     );
   }
 
-  if (loading && !data) {
-    return (
-      <View style={[styles.center, { backgroundColor: colors.surface }]}>
-        <ActivityIndicator color={colors.brand} />
-        <AppText variant="caption">Loading workforce report…</AppText>
-      </View>
-    );
-  }
-
+  const reports = data?.reports ?? [];
+  const canManagePayroll = reports.some(report => report.payroll_editable);
+  const canReviewPayroll = isOwner && reports.some(report => report.payroll_visible);
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
       <View style={{ height: insets.top }} />
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={[styles.back, { backgroundColor: colors.surfaceSecondary }]}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} style={[styles.back, { backgroundColor: colors.surfaceSecondary }]}>
           <Ionicons name="chevron-back" size={22} color={colors.onSurface} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <AppText variant="title">Workforce Reports</AppText>
+          <AppText variant="title">{payrollOnly ? "Payroll" : "Workforce Reports"}</AppText>
           <AppText variant="caption">Monthly evidence · Payroll control</AppText>
         </View>
       </View>
@@ -285,22 +284,23 @@ export default function WorkforceReportsScreen() {
               <AppText variant="caption">Use YYYY-MM. Salary is never inferred automatically.</AppText>
             </View>
           </View>
-          <Input label="Month" value={month} onChangeText={setMonth} placeholder="2026-08" />
-          <Button label="Refresh Report" variant="outline" loading={loading} onPress={load} />
+          <Input label="Month" value={month} onChangeText={changeMonth} editable={!busy} placeholder="2026-08" />
+          {!monthValid ? <AppText variant="caption" color={colors.error}>Enter the month in YYYY-MM format.</AppText> : null}
+          <Button label="Refresh Report" variant="outline" loading={loading} disabled={!monthValid || busy} onPress={reload} />
         </Card>
 
-        {user?.role === "plant_owner" ? (
+        {canReviewPayroll ? (
           <Card style={{ gap: spacing.sm }}>
             <AppText variant="label">Owner decision note</AppText>
-            <Input value={decisionNote} onChangeText={setDecisionNote} placeholder="Required when returning payroll" autoCapitalize="sentences" />
+            <Input label="Decision note" value={decisionNote} onChangeText={setDecisionNote} placeholder="Required when returning payroll" autoCapitalize="sentences" />
           </Card>
         ) : null}
 
-        {user?.role === "accountant" ? (
+        {canManagePayroll ? (
           <Card style={{ gap: spacing.sm }}>
             <AppText variant="label">Payment posting</AppText>
             <AppText variant="caption">Used only when marking an Owner-approved payroll as paid.</AppText>
-            <Input label="Payment method" value={paymentMethod} onChangeText={setPaymentMethod} placeholder="bank_transfer / upi / cash / cheque / card" autoCapitalize="none" />
+            <Input label="Payment method" value={paymentMethod} onChangeText={setPaymentMethod} placeholder="bank_transfer / upi / cash / cheque" autoCapitalize="none" />
             <Input label="Payment reference" value={paymentReference} onChangeText={setPaymentReference} placeholder="UTR / transaction / cheque reference" />
           </Card>
         ) : null}
@@ -324,7 +324,11 @@ export default function WorkforceReportsScreen() {
           </Card>
         ) : null}
 
-        {(data?.reports || []).map((report) => (
+        {error ? <ErrorView message={error} onRetry={reload} /> : null}
+        {monthValid && !loading && !error && !reports.length ? (
+          <Card><AppText variant="bodyMuted">No plants are available for this report.</AppText></Card>
+        ) : null}
+        {reports.map((report) => (
           <View key={report.plant_id} style={{ gap: spacing.lg }}>
             <Card style={{ gap: spacing.md }}>
               <View style={styles.titleRow}>
@@ -340,7 +344,7 @@ export default function WorkforceReportsScreen() {
                 <Metric label="Leave days" value={String(report.approved_leave_days)} />
                 <Metric label="Visits" value={String(report.completed_client_visits)} />
                 <Metric label="Staff expenses" value={money(report.approved_expenses)} compact />
-                <Metric label="Payroll" value={money(report.payroll_total)} compact />
+                {report.payroll_visible ? <Metric label="Payroll" value={money(report.payroll_total)} compact /> : null}
               </View>
               {report.open_shift_records > 0 ? (
                 <View style={[styles.warningBox, { backgroundColor: colors.surfaceSecondary }]}>
@@ -362,7 +366,7 @@ export default function WorkforceReportsScreen() {
                         <AppText style={{ fontFamily: fonts.semibold, color: colors.onSurface }}>{employee.user_name}</AppText>
                         <AppText variant="caption">{roleLabel(employee.role)}</AppText>
                       </View>
-                      <Badge label={payroll?.status || "NOT PREPARED"} color={payroll ? payrollBadgeColor(payroll.status, colors) : colors.onSurfaceTertiary} />
+                      {report.payroll_visible ? <Badge label={payroll?.status || "NOT PREPARED"} color={payroll ? payrollBadgeColor(payroll.status, colors) : colors.onSurfaceTertiary} /> : null}
                     </View>
 
                     <View style={styles.evidenceGrid}>
@@ -379,25 +383,25 @@ export default function WorkforceReportsScreen() {
                         <View style={{ flex: 1 }}>
                           <AppText variant="label">Payroll on record</AppText>
                           <AppText style={{ fontFamily: fonts.displayBold, fontSize: fontSize.xl, color: colors.onSurface }}>{money(payroll.net_amount)}</AppText>
-                          <AppText variant="caption">Paid days: {payroll.paid_days ?? 0}</AppText>
+                          <AppText variant="caption">Paid days: {payroll.paid_days ?? "—"}</AppText>
                           {payroll.payment_reference ? <AppText variant="caption">Ref: {payroll.payment_reference}</AppText> : null}
                         </View>
                       </View>
                     ) : null}
 
-                    {user?.role === "accountant" && (!payroll || ["DRAFT", "RETURNED"].includes(payroll.status)) ? (
+                    {report.payroll_editable && (!payroll || ["DRAFT", "RETURNED"].includes(payroll.status)) ? (
                       <Button label={payroll ? "Edit Payroll Draft" : "Prepare Payroll"} size="sm" onPress={() => openDraft(report, employee)} />
                     ) : null}
-                    {user?.role === "accountant" && payroll?.status === "APPROVED" ? (
+                    {report.payroll_editable && payroll?.status === "APPROVED" ? (
                       <Button label="Mark Paid + Post to Finance" size="sm" loading={busy} onPress={() => markPaid(report, employee)} />
                     ) : null}
-                    {user?.role === "plant_owner" && payroll?.status === "DRAFT" ? (
+                    {isOwner && report.payroll_visible && payroll?.status === "DRAFT" ? (
                       <View style={styles.actions}>
                         <Button label="Approve" size="sm" loading={busy} onPress={() => ownerDecision(report, employee, "APPROVE")} />
                         <Button label="Return" size="sm" variant="outline" loading={busy} onPress={() => ownerDecision(report, employee, "RETURN")} />
                       </View>
                     ) : null}
-                    {user?.role === "plant_owner" && payroll?.status === "APPROVED" ? (
+                    {isOwner && report.payroll_visible && payroll?.status === "APPROVED" ? (
                       <Button label="Return for Correction" size="sm" variant="outline" loading={busy} onPress={() => ownerDecision(report, employee, "RETURN")} />
                     ) : null}
                   </View>

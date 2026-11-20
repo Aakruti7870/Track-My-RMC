@@ -13,6 +13,8 @@ use serde_json::json;
 use sqlx::Row;
 use uuid::Uuid;
 
+use super::staff_module_permissions::{self, Action};
+
 async fn get_accessible_plants(
     state: &AppState,
     auth_user: &AuthUser,
@@ -21,12 +23,19 @@ async fn get_accessible_plants(
         r#"
         SELECT p.id, p.name
         FROM rmc_plants p
-        WHERE (p.owner_id = $1 OR p.id IN (SELECT plant_id FROM plant_staff WHERE user_id = $1 AND is_active = TRUE))
-          AND p.is_active = TRUE
-        ORDER BY p.name
+        WHERE p.is_active
+          AND CASE WHEN $2 IN ('owner', 'plant_owner') THEN p.owner_id = $1
+              ELSE EXISTS (
+                SELECT 1 FROM plant_staff ps
+                WHERE ps.plant_id = p.id AND ps.user_id = $1 AND ps.role = $2
+                  AND ps.is_active AND ps.removed_at IS NULL AND ps.employment_status = 'ACTIVE'
+              )
+          END
+        ORDER BY p.name, p.id
         "#,
     )
     .bind(auth_user.user_id)
+    .bind(&auth_user.role)
     .fetch_all(&state.db)
     .await?;
 
@@ -68,6 +77,12 @@ pub async fn get_payroll_period_summary(
 
     let mut periods = Vec::new();
     for (plant_id, plant_name) in plants {
+        if !staff_module_permissions::viewable_modules(&state, &auth_user, plant_id)
+            .await?
+            .contains("payroll")
+        {
+            continue;
+        }
         let closure = sqlx::query(
             r#"
             SELECT id, total_gross, total_net, employee_count, is_closed, closed_at, reopen_reason, reopened_at, closure_version
@@ -170,6 +185,8 @@ pub async fn list_period_payslips(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["accountant", "owner", "plant_owner", "admin"])?;
     super::business_routes::ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
+    staff_module_permissions::require(&state, &auth_user, plant_id, "payroll", Action::View)
+        .await?;
     let (year, month) = parse_year_month(&month_str)?;
 
     let payslips:Vec<serde_json::Value>=sqlx::query_scalar("SELECT s.snapshot FROM payroll_payslip_snapshots s JOIN payroll_closures c ON c.id=s.closure_id WHERE c.plant_id=$1 AND c.year=$2 AND c.month=$3 AND s.closure_version=c.closure_version ORDER BY s.user_id").bind(plant_id).bind(year).bind(month).fetch_all(&state.db).await?;
@@ -183,6 +200,8 @@ pub async fn export_payroll_csv(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["accountant", "owner", "plant_owner", "admin"])?;
     super::business_routes::ensure_plant_staff_or_owner(&state, &auth_user, plant_id).await?;
+    staff_module_permissions::require(&state, &auth_user, plant_id, "payroll", Action::View)
+        .await?;
     let (year, month) = parse_year_month(&month_str)?;
 
     let rows:Vec<serde_json::Value>=sqlx::query_scalar("SELECT s.snapshot FROM payroll_payslip_snapshots s JOIN payroll_closures c ON c.id=s.closure_id WHERE c.plant_id=$1 AND c.year=$2 AND c.month=$3 AND s.closure_version=c.closure_version ORDER BY s.user_id").bind(plant_id).bind(year).bind(month).fetch_all(&state.db).await?;
@@ -233,8 +252,29 @@ pub async fn get_my_payslip(
 ) -> Result<impl IntoResponse, AppError> {
     let (year, month) = parse_year_month(&month_str)?;
 
-    let snapshot:Option<serde_json::Value>=sqlx::query_scalar("SELECT s.snapshot FROM payroll_payslip_snapshots s JOIN payroll_closures c ON c.id=s.closure_id WHERE s.user_id=$1 AND c.year=$2 AND c.month=$3 ORDER BY s.created_at DESC,s.closure_version DESC LIMIT 1").bind(auth_user.user_id).bind(year).bind(month).fetch_optional(&state.db).await?;
-    Ok(Json(
-        json!({"success":true,"historical":true,"payslip":snapshot}),
-    ))
+    let snapshot: Option<(serde_json::Value, bool)> = sqlx::query_as(
+        r#"
+        SELECT s.snapshot, c.is_closed AND s.closure_version = c.closure_version
+        FROM payroll_payslip_snapshots s
+        JOIN payroll_closures c ON c.id = s.closure_id
+        WHERE s.user_id = $1 AND c.year = $2 AND c.month = $3
+        ORDER BY s.created_at DESC, s.closure_version DESC, s.closure_id
+        LIMIT 1
+        "#,
+    )
+    .bind(auth_user.user_id)
+    .bind(year)
+    .bind(month)
+    .fetch_optional(&state.db)
+    .await?;
+    let (payslip, current) = match snapshot {
+        Some((payslip, current)) => (Some(payslip), current),
+        None => (None, false),
+    };
+    Ok(Json(json!({
+        "success": true,
+        "historical": payslip.is_some() && !current,
+        "period_status": if current { "CLOSED" } else { "OPEN" },
+        "payslip": payslip
+    })))
 }

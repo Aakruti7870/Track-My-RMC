@@ -14,6 +14,8 @@ use serde_json::json;
 use sqlx::Row;
 use uuid::Uuid;
 
+use super::staff_module_permissions::{self, Action};
+
 #[derive(Debug, Deserialize)]
 pub struct MonthlyReportQuery {
     pub plant_id: Uuid,
@@ -48,6 +50,13 @@ pub async fn monthly_summary(
     .ok_or_else(|| AppError::BadRequest("invalid month".to_string()))?;
 
     super::business_routes::ensure_plant_staff_or_owner(&state, &auth_user, query.plant_id).await?;
+    let modules =
+        staff_module_permissions::viewable_modules(&state, &auth_user, query.plant_id).await?;
+    if !modules.contains("workforce") {
+        return Err(AppError::Forbidden(
+            "Workforce view permission required".into(),
+        ));
+    }
 
     let attendance = sqlx::query(
         r#"
@@ -67,18 +76,22 @@ pub async fn monthly_summary(
     .fetch_one(&state.db)
     .await?;
 
-    let payroll = sqlx::query(
-        r#"
+    let payroll = if modules.contains("payroll") {
+        sqlx::query(
+            r#"
         SELECT id, total_gross, total_net, employee_count, is_closed, closed_at
         FROM payroll_closures
         WHERE plant_id = $1 AND month = $2 AND year = $3
         "#,
-    )
-    .bind(query.plant_id)
-    .bind(month)
-    .bind(year)
-    .fetch_optional(&state.db)
-    .await?;
+        )
+        .bind(query.plant_id)
+        .bind(month)
+        .bind(year)
+        .fetch_optional(&state.db)
+        .await?
+    } else {
+        None
+    };
 
     let attendance_json = json!({
         "recorded_days": attendance.get::<i64, _>("recorded_days"),
@@ -111,174 +124,240 @@ pub async fn monthly_summary(
     })))
 }
 
-/// Multi-plant monthly workforce report as requested by mobile workforce-reports screen.
+#[derive(Default, Deserialize)]
+pub struct MonthlyReportFilters {
+    pub plant_id: Option<Uuid>,
+    #[serde(default)]
+    pub payroll_only: bool,
+}
+
+const MONTHLY_EMPLOYEE_EVIDENCE: &str = r#"
+    WITH attendance AS (
+        SELECT user_id,
+            COUNT(*) FILTER (WHERE status = 'present') AS days,
+            COUNT(*) FILTER (WHERE check_out_time >= check_in_time) AS completed,
+            COUNT(*) FILTER (WHERE check_in_time IS NOT NULL AND check_out_time IS NULL) AS open_shifts,
+            COALESCE(SUM(EXTRACT(EPOCH FROM check_out_time - check_in_time))
+                FILTER (WHERE check_out_time >= check_in_time), 0)::DOUBLE PRECISION / 3600 AS hours
+        FROM workforce_attendance
+        WHERE plant_id = $1 AND attendance_date >= $2::date AND attendance_date < $3::date
+        GROUP BY user_id
+    ), leave_dates AS (
+        SELECT DISTINCT l.user_id, l.leave_type, day::date AS day
+        FROM workforce_leave_requests l
+        CROSS JOIN LATERAL generate_series(
+            GREATEST(l.start_date, $2::date)::timestamp,
+            LEAST(l.end_date, $3::date - 1)::timestamp,
+            INTERVAL '1 day'
+        ) AS dates(day)
+        WHERE l.plant_id = $1 AND l.status = 'APPROVED'
+          AND l.end_date >= $2 AND l.start_date < $3
+    ), leave_totals AS (
+        SELECT user_id, COUNT(DISTINCT day) AS days FROM leave_dates GROUP BY user_id
+    ), leave_types AS (
+        SELECT user_id, jsonb_object_agg(leave_type, days) AS counts
+        FROM (SELECT user_id, leave_type, COUNT(*) AS days FROM leave_dates GROUP BY user_id, leave_type) types
+        GROUP BY user_id
+    ), visits AS (
+        SELECT user_id, COUNT(*) AS completed FROM workforce_client_visits
+        WHERE plant_id = $1 AND status = 'COMPLETED'
+          AND scheduled_for >= ($2::date::timestamp AT TIME ZONE 'Asia/Kolkata')
+          AND scheduled_for < ($3::date::timestamp AT TIME ZONE 'Asia/Kolkata')
+        GROUP BY user_id
+    ), expenses AS (
+        SELECT user_id, SUM(amount)::DOUBLE PRECISION AS total FROM workforce_expense_claims
+        WHERE plant_id = $1 AND status = 'APPROVED' AND expense_date >= $2 AND expense_date < $3
+        GROUP BY user_id
+    )
+    SELECT u.id, u.full_name, ps.role,
+        COALESCE(a.days, 0) AS attendance_days, COALESCE(a.completed, 0) AS completed_shifts,
+        COALESCE(a.open_shifts, 0) AS open_shifts, COALESCE(a.hours, 0) AS attendance_hours,
+        COALESCE(l.days, 0) AS approved_leave_days, COALESCE(t.counts, '{}'::jsonb) AS leave_days_by_type,
+        COALESCE(v.completed, 0) AS completed_client_visits, COALESCE(e.total, 0) AS approved_expenses
+    FROM plant_staff ps
+    JOIN users u ON u.id = ps.user_id AND u.is_active
+    LEFT JOIN attendance a ON a.user_id = u.id
+    LEFT JOIN leave_totals l ON l.user_id = u.id
+    LEFT JOIN leave_types t ON t.user_id = u.id
+    LEFT JOIN visits v ON v.user_id = u.id
+    LEFT JOIN expenses e ON e.user_id = u.id
+    WHERE ps.plant_id = $1 AND ps.is_active AND ps.removed_at IS NULL
+      AND ps.employment_status = 'ACTIVE'
+    ORDER BY u.full_name, u.id
+"#;
+
+/// Month-specific workforce evidence and payroll records, scoped to the caller's plant grants.
 pub async fn monthly_workforce_report(
     State(state): State<AppState>,
     auth_user: AuthUser,
     Path(month_str): Path<String>,
+    Query(filters): Query<MonthlyReportFilters>,
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["owner", "plant_owner", "admin", "accountant"])?;
 
-    let month_start = NaiveDate::parse_from_str(&format!("{}-01", month_str), "%Y-%m-%d")
-        .map_err(|_| AppError::BadRequest("month must use YYYY-MM format".to_string()))?;
-    let (year, month) = (month_start.year(), month_start.month() as i32);
-    let next_month = if month == 12 {
-        NaiveDate::from_ymd_opt(year + 1, 1, 1)
-    } else {
-        NaiveDate::from_ymd_opt(year, month as u32 + 1, 1)
+    let month_start = NaiveDate::parse_from_str(&format!("{month_str}-01"), "%Y-%m-%d")
+        .map_err(|_| AppError::BadRequest("month must use YYYY-MM format".into()))?;
+    if month_start.format("%Y-%m").to_string() != month_str {
+        return Err(AppError::BadRequest("month must use YYYY-MM format".into()));
     }
-    .ok_or_else(|| AppError::BadRequest("invalid month".to_string()))?;
+    let next_month = month_start
+        .checked_add_months(chrono::Months::new(1))
+        .ok_or_else(|| AppError::BadRequest("invalid month".into()))?;
 
-    let plants: Vec<(Uuid, String)> = if matches!(auth_user.role.as_str(), "owner" | "plant_owner")
-    {
-        sqlx::query("SELECT id, name FROM rmc_plants WHERE owner_id = $1 AND is_active = TRUE ORDER BY name")
-            .bind(auth_user.user_id)
-            .fetch_all(&state.db)
-            .await?
-            .into_iter()
-            .map(|r| (r.get("id"), r.get("name")))
-            .collect()
-    } else {
-        sqlx::query(
-            r#"
-            SELECT p.id, p.name 
-            FROM rmc_plants p 
-            JOIN plant_staff ps ON ps.plant_id = p.id 
-            WHERE ps.user_id = $1 AND ps.is_active = TRUE
-            ORDER BY p.name
-            "#,
-        )
-        .bind(auth_user.user_id)
-        .fetch_all(&state.db)
-        .await?
-        .into_iter()
-        .map(|r| (r.get("id"), r.get("name")))
-        .collect()
-    };
+    let plants: Vec<(Uuid, String)> = sqlx::query_as(
+        r#"
+        SELECT p.id, p.name FROM rmc_plants p
+        WHERE p.is_active AND ($3::uuid IS NULL OR p.id = $3)
+          AND CASE WHEN $2 IN ('owner', 'plant_owner') THEN p.owner_id = $1
+              ELSE EXISTS (
+                SELECT 1 FROM plant_staff ps
+                WHERE ps.plant_id = p.id AND ps.user_id = $1 AND ps.role = $2
+                  AND ps.is_active AND ps.removed_at IS NULL AND ps.employment_status = 'ACTIVE'
+              )
+          END
+        ORDER BY p.name, p.id
+        "#,
+    )
+    .bind(auth_user.user_id)
+    .bind(&auth_user.role)
+    .bind(filters.plant_id)
+    .fetch_all(&state.db)
+    .await?;
 
     let mut reports = Vec::new();
-
     for (plant_id, plant_name) in plants {
-        let staff_rows = sqlx::query(
-            r#"
-            SELECT u.id, u.full_name, u.role
-            FROM plant_staff ps
-            JOIN users u ON u.id = ps.user_id
-            WHERE ps.plant_id = $1 AND ps.is_active = TRUE
-            ORDER BY u.full_name
-            "#,
-        )
-        .bind(plant_id)
-        .fetch_all(&state.db)
-        .await?;
-
-        let closure_id: Option<Uuid> = sqlx::query_scalar(
-            "SELECT id FROM payroll_closures WHERE plant_id = $1 AND month = $2 AND year = $3",
-        )
-        .bind(plant_id)
-        .bind(month)
-        .bind(year)
-        .fetch_optional(&state.db)
-        .await?;
-
-        let mut employees = Vec::new();
-        let mut total_payroll = 0.0;
-        let mut status_counts = std::collections::HashMap::new();
-
-        for staff in staff_rows {
-            let uid: Uuid = staff.get("id");
-            let uname: String = staff.get("full_name");
-            let urole: String = staff.get("role");
-
-            let att_days: i64 = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM workforce_attendance WHERE user_id = $1 AND attendance_date >= $2 AND attendance_date < $3 AND status = 'present'",
+        let modules =
+            staff_module_permissions::viewable_modules(&state, &auth_user, plant_id).await?;
+        let payroll_visible = modules.contains("payroll");
+        if (filters.payroll_only && !payroll_visible)
+            || (!filters.payroll_only && !modules.contains("workforce"))
+        {
+            continue;
+        }
+        let payroll_editable = if auth_user.role == "accountant" && payroll_visible {
+            match staff_module_permissions::require(
+                &state,
+                &auth_user,
+                plant_id,
+                "payroll",
+                Action::Edit,
             )
-            .bind(uid)
+            .await
+            {
+                Ok(()) => true,
+                Err(AppError::Forbidden(_)) => false,
+                Err(error) => return Err(error),
+            }
+        } else {
+            false
+        };
+        let staff_rows = sqlx::query(MONTHLY_EMPLOYEE_EVIDENCE)
+            .bind(plant_id)
             .bind(month_start)
             .bind(next_month)
-            .fetch_one(&state.db)
+            .fetch_all(&state.db)
             .await?;
 
-            let payroll_record = if let Some(cid) = closure_id {
-                sqlx::query(
-                    r#"
-                    SELECT id, basic_pay, allowances, deductions, net_pay, payment_status, transaction_ref
-                    FROM payroll_records
-                    WHERE closure_id = $1 AND user_id = $2
-                    "#,
-                )
-                .bind(cid)
-                .bind(uid)
-                .fetch_optional(&state.db)
-                .await?
-            } else {
-                None
-            };
-
-            let payroll_json = payroll_record.map(|pr| {
-                let pid: Uuid = pr.get("id");
-                let bp: bigdecimal::BigDecimal = pr.get("basic_pay");
-                let al: bigdecimal::BigDecimal = pr.get("allowances");
-                let dd: bigdecimal::BigDecimal = pr.get("deductions");
-                let np: bigdecimal::BigDecimal = pr.get("net_pay");
-                let np_f64 = np.to_string().parse::<f64>().unwrap_or(0.0);
-                total_payroll += np_f64;
-                let pstatus: String = pr.get("payment_status");
-                *status_counts.entry(pstatus.to_uppercase()).or_insert(0) += 1;
-                let tx_ref: Option<String> = pr.get("transaction_ref");
-                json!({
-                    "id": pid,
-                    "status": pstatus.to_uppercase(),
-                    "basic_amount": bp.to_string().parse::<f64>().unwrap_or(0.0),
-                    "allowances": al.to_string().parse::<f64>().unwrap_or(0.0),
-                    "overtime_amount": 0,
-                    "deductions": dd.to_string().parse::<f64>().unwrap_or(0.0),
-                    "paid_days": att_days,
-                    "net_amount": np_f64,
-                    "payment_reference": tx_ref
-                })
-            });
-
-            employees.push(json!({
-                "user_id": uid,
-                "user_name": uname,
-                "role": urole,
-                "attendance_days": att_days,
-                "completed_shifts": att_days,
-                "open_shifts": 0,
-                "attendance_hours": (att_days as f64) * 8.0,
-                "approved_leave_days": 0,
-                "leave_days_by_type": {},
-                "completed_client_visits": 0,
-                "approved_expenses": 0,
-                "payroll": payroll_json
-            }));
+        let mut payroll_by_employee = std::collections::HashMap::new();
+        let mut total_payroll = 0.0;
+        let mut status_counts = std::collections::HashMap::new();
+        if payroll_visible {
+            let payroll_rows = sqlx::query(
+                r#"
+                SELECT r.id, r.user_id, r.basic_pay::DOUBLE PRECISION AS basic,
+                    r.allowances::DOUBLE PRECISION AS allowances, r.overtime_amount::DOUBLE PRECISION AS overtime,
+                    r.deductions::DOUBLE PRECISION AS deductions, r.net_pay::DOUBLE PRECISION AS net,
+                    r.paid_days::DOUBLE PRECISION AS paid_days, r.payment_status, r.transaction_ref, r.notes
+                FROM payroll_records r
+                JOIN payroll_closures c ON c.id = r.closure_id
+                WHERE c.plant_id = $1 AND c.year = $2 AND c.month = $3
+                "#,
+            )
+            .bind(plant_id)
+            .bind(month_start.year())
+            .bind(month_start.month() as i32)
+            .fetch_all(&state.db)
+            .await?;
+            for row in payroll_rows {
+                let status = row.get::<String, _>("payment_status").to_uppercase();
+                let net: f64 = row.get("net");
+                total_payroll += net;
+                *status_counts.entry(status.clone()).or_insert(0) += 1;
+                let previous = payroll_by_employee.insert(
+                    row.get::<Uuid, _>("user_id"),
+                    json!({
+                        "id": row.get::<Uuid, _>("id"),
+                        "status": status,
+                        "basic_amount": row.get::<f64, _>("basic"),
+                        "allowances": row.get::<f64, _>("allowances"),
+                        "overtime_amount": row.get::<Option<f64>, _>("overtime"),
+                        "deductions": row.get::<f64, _>("deductions"),
+                        "paid_days": row.get::<Option<f64>, _>("paid_days"),
+                        "net_amount": net,
+                        "payment_reference": row.get::<Option<String>, _>("transaction_ref"),
+                        "notes": row.get::<Option<String>, _>("notes"),
+                    }),
+                );
+                if previous.is_some() {
+                    return Err(AppError::Conflict(
+                        "Historical duplicate payroll records require reconciliation".into(),
+                    ));
+                }
+            }
         }
 
-        let emp_count = employees.len();
+        let sum_counts = |column| {
+            staff_rows
+                .iter()
+                .map(|row| row.get::<i64, _>(column))
+                .sum::<i64>()
+        };
+        let approved_expenses = staff_rows
+            .iter()
+            .map(|row| row.get::<f64, _>("approved_expenses"))
+            .sum::<f64>();
+        let employees: Vec<_> = staff_rows
+            .iter()
+            .map(|row| {
+                let id: Uuid = row.get("id");
+                json!({
+                    "user_id": id,
+                    "user_name": row.get::<String, _>("full_name"),
+                    "role": row.get::<String, _>("role"),
+                    "attendance_days": row.get::<i64, _>("attendance_days"),
+                    "completed_shifts": row.get::<i64, _>("completed_shifts"),
+                    "open_shifts": row.get::<i64, _>("open_shifts"),
+                    "attendance_hours": row.get::<f64, _>("attendance_hours"),
+                    "approved_leave_days": row.get::<i64, _>("approved_leave_days"),
+                    "leave_days_by_type": row.get::<serde_json::Value, _>("leave_days_by_type"),
+                    "completed_client_visits": row.get::<i64, _>("completed_client_visits"),
+                    "approved_expenses": row.get::<f64, _>("approved_expenses"),
+                    "payroll": payroll_by_employee.get(&id),
+                })
+            })
+            .collect();
         reports.push(json!({
             "plant_id": plant_id,
             "plant_name": plant_name,
             "month": month_str,
-            "calendar_days": 30,
-            "employee_count": emp_count,
-            "present_records": employees.iter().map(|e| e["attendance_days"].as_i64().unwrap_or(0)).sum::<i64>(),
-            "completed_shift_records": employees.iter().map(|e| e["completed_shifts"].as_i64().unwrap_or(0)).sum::<i64>(),
-            "open_shift_records": 0,
-            "approved_leave_days": 0,
-            "completed_client_visits": 0,
-            "approved_expenses": 0,
-            "payroll_total": total_payroll,
+            "calendar_days": (next_month - month_start).num_days(),
+            "employee_count": employees.len(),
+            "present_records": sum_counts("attendance_days"),
+            "completed_shift_records": sum_counts("completed_shifts"),
+            "open_shift_records": sum_counts("open_shifts"),
+            "approved_leave_days": sum_counts("approved_leave_days"),
+            "completed_client_visits": sum_counts("completed_client_visits"),
+            "approved_expenses": approved_expenses,
+            "payroll_visible": payroll_visible,
+            "payroll_editable": payroll_editable,
+            "payroll_total": payroll_visible.then_some(total_payroll),
             "payroll_status_counts": status_counts,
             "employees": employees,
             "payroll_note": "Attendance is evidence. Salary requires approved payroll."
         }));
     }
 
-    Ok(Json(json!({
-        "month": month_str,
-        "reports": reports
-    })))
+    Ok(Json(json!({ "month": month_str, "reports": reports })))
 }
 
 #[derive(Debug, Deserialize, Serialize)]

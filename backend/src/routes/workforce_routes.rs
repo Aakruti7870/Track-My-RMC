@@ -30,9 +30,13 @@ async fn get_staff_plant_id(state: &AppState, auth_user: &AuthUser) -> Result<Uu
         }
     }
     let plant_id: Option<Uuid> = sqlx::query_scalar(
-        "SELECT plant_id FROM plant_staff WHERE user_id = $1 AND is_active = TRUE LIMIT 1",
+        "SELECT ps.plant_id FROM plant_staff ps JOIN rmc_plants p ON p.id = ps.plant_id
+         WHERE ps.user_id = $1 AND ps.role = $2 AND ps.is_active AND p.is_active
+           AND ps.removed_at IS NULL AND ps.employment_status = 'ACTIVE'
+         ORDER BY ps.plant_id LIMIT 1",
     )
     .bind(auth_user.user_id)
+    .bind(&auth_user.role)
     .fetch_optional(&state.db)
     .await?;
 
@@ -326,30 +330,15 @@ pub async fn punch_in(
 ) -> Result<impl IntoResponse, AppError> {
     let plant_id = get_staff_plant_id(&state, &auth_user).await?;
 
-    let inserted = sqlx::query(
-        r#"
-        INSERT INTO workforce_attendance (plant_id, user_id, attendance_date, check_in_time, check_in_lat, check_in_lng, status)
-        VALUES ($1, $2, (NOW() AT TIME ZONE 'Asia/Kolkata')::date, NOW(), $3, $4, 'present')
-        ON CONFLICT (plant_id, user_id, attendance_date) DO UPDATE SET
-            check_in_time = EXCLUDED.check_in_time,
-            check_in_lat = EXCLUDED.check_in_lat,
-            check_in_lng = EXCLUDED.check_in_lng,
-            status = 'present'
-        WHERE workforce_attendance.check_in_time IS NULL
-          AND workforce_attendance.check_out_time IS NULL
-        "#,
+    workforce_repo::record_attendance(
+        &state.db,
+        plant_id,
+        auth_user.user_id,
+        "in",
+        payload.lat,
+        payload.lng,
     )
-    .bind(plant_id)
-    .bind(auth_user.user_id)
-    .bind(payload.lat)
-    .bind(payload.lng)
-    .execute(&state.db)
     .await?;
-    if inserted.rows_affected() != 1 {
-        return Err(AppError::Conflict(
-            "Attendance is already recorded for this workday".to_string(),
-        ));
-    }
 
     Ok(Json(
         json!({ "success": true, "message": "Punched in successfully" }),
@@ -359,27 +348,19 @@ pub async fn punch_in(
 pub async fn punch_out(
     State(state): State<AppState>,
     auth_user: AuthUser,
-    Json(_payload): Json<PunchPayload>,
+    Json(payload): Json<PunchPayload>,
 ) -> Result<impl IntoResponse, AppError> {
     let plant_id = get_staff_plant_id(&state, &auth_user).await?;
 
-    let updated = sqlx::query(
-        r#"
-        UPDATE workforce_attendance
-        SET check_out_time = NOW()
-        WHERE plant_id = $1 AND user_id = $2 AND attendance_date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date
-          AND check_in_time IS NOT NULL AND check_out_time IS NULL
-        "#,
+    workforce_repo::record_attendance(
+        &state.db,
+        plant_id,
+        auth_user.user_id,
+        "out",
+        payload.lat,
+        payload.lng,
     )
-    .bind(plant_id)
-    .bind(auth_user.user_id)
-    .execute(&state.db)
     .await?;
-    if updated.rows_affected() != 1 {
-        return Err(AppError::Conflict(
-            "Check in before checking out, or this workday is already completed".to_string(),
-        ));
-    }
 
     Ok(Json(
         json!({ "success": true, "message": "Punched out successfully" }),
@@ -444,7 +425,16 @@ pub async fn create_client_visit(
 ) -> Result<impl IntoResponse, AppError> {
     let plant_id = get_staff_plant_id(&state, &auth_user).await?;
 
-    let sched = chrono::Utc::now();
+    let sched = match payload.scheduled_for.as_deref() {
+        Some(value) => chrono::DateTime::parse_from_rfc3339(value)
+            .map_err(|_| {
+                AppError::BadRequest(
+                    "Visit time must include a valid date, time, and timezone".into(),
+                )
+            })?
+            .with_timezone(&chrono::Utc),
+        None => chrono::Utc::now(),
+    };
 
     let id: Uuid = sqlx::query_scalar(
         r#"
@@ -485,21 +475,7 @@ pub async fn start_client_visit(
     Path(visit_id): Path<Uuid>,
     Json(payload): Json<VisitActionPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    sqlx::query(
-        r#"
-        UPDATE workforce_client_visits
-        SET status = 'IN_PROGRESS', start_lat = $1, start_lng = $2
-        WHERE id = $3 AND user_id = $4
-        "#,
-    )
-    .bind(payload.lat)
-    .bind(payload.lng)
-    .bind(visit_id)
-    .bind(auth_user.user_id)
-    .execute(&state.db)
-    .await?;
-
-    Ok(Json(json!({ "success": true, "message": "Visit started" })))
+    transition_client_visit(&state, &auth_user, visit_id, payload, false).await
 }
 
 pub async fn complete_client_visit(
@@ -508,24 +484,82 @@ pub async fn complete_client_visit(
     Path(visit_id): Path<Uuid>,
     Json(payload): Json<VisitActionPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    sqlx::query(
+    transition_client_visit(&state, &auth_user, visit_id, payload, true).await
+}
+
+async fn transition_client_visit(
+    state: &AppState,
+    user: &AuthUser,
+    visit_id: Uuid,
+    payload: VisitActionPayload,
+    complete: bool,
+) -> Result<Json<Value>, AppError> {
+    if !(-90.0..=90.0).contains(&payload.lat) || !(-180.0..=180.0).contains(&payload.lng) {
+        return Err(AppError::BadRequest(
+            "Visit coordinates are out of range".into(),
+        ));
+    }
+    let (expected, target, message) = if complete {
+        ("IN_PROGRESS", "COMPLETED", "Visit completed")
+    } else {
+        ("APPROVED", "IN_PROGRESS", "Visit started")
+    };
+    let mut tx = state.db.begin().await?;
+    let current: String = sqlx::query_scalar(
         r#"
-        UPDATE workforce_client_visits
-        SET status = 'COMPLETED', completed_lat = $1, completed_lng = $2, outcome = $3
-        WHERE id = $4 AND user_id = $5
+        SELECT v.status FROM workforce_client_visits v
+        JOIN rmc_plants p ON p.id = v.plant_id AND p.is_active
+        WHERE v.id = $1 AND v.user_id = $2
+          AND CASE WHEN $3 IN ('owner', 'plant_owner') THEN p.owner_id = $2
+              ELSE EXISTS (
+                SELECT 1 FROM plant_staff ps
+                WHERE ps.plant_id = p.id AND ps.user_id = $2 AND ps.role = $3
+                  AND ps.is_active AND ps.removed_at IS NULL AND ps.employment_status = 'ACTIVE'
+              )
+          END
+        FOR UPDATE OF v
         "#,
     )
-    .bind(payload.lat)
-    .bind(payload.lng)
-    .bind(payload.outcome)
     .bind(visit_id)
-    .bind(auth_user.user_id)
-    .execute(&state.db)
-    .await?;
+    .bind(user.user_id)
+    .bind(&user.role)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Client visit not found".into()))?;
 
-    Ok(Json(
-        json!({ "success": true, "message": "Visit completed" }),
-    ))
+    if current != target {
+        if current != expected {
+            return Err(AppError::Conflict(format!(
+                "Client visit must be {expected}"
+            )));
+        }
+        if complete {
+            sqlx::query(
+                "UPDATE workforce_client_visits
+                 SET status = $2, completed_lat = $3, completed_lng = $4, outcome = $5 WHERE id = $1",
+            )
+            .bind(visit_id)
+            .bind(target)
+            .bind(payload.lat)
+            .bind(payload.lng)
+            .bind(payload.outcome)
+            .execute(&mut *tx)
+            .await?;
+        } else {
+            sqlx::query(
+                "UPDATE workforce_client_visits
+                 SET status = $2, start_lat = $3, start_lng = $4 WHERE id = $1",
+            )
+            .bind(visit_id)
+            .bind(target)
+            .bind(payload.lat)
+            .bind(payload.lng)
+            .execute(&mut *tx)
+            .await?;
+        }
+    }
+    tx.commit().await?;
+    Ok(Json(json!({ "success": true, "message": message })))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -898,14 +932,33 @@ pub async fn create_shift(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["supervisor", "owner", "plant_owner", "admin"])?;
     ensure_plant_access(&state, &auth_user, plant_id).await?;
+    super::staff_module_permissions::require(
+        &state,
+        &auth_user,
+        plant_id,
+        "workforce",
+        super::staff_module_permissions::Action::Edit,
+    )
+    .await?;
 
     let start = parse_clock_time(&payload.start_time)?;
     let end = parse_clock_time(&payload.end_time)?;
+    let grace = payload.grace_minutes.unwrap_or(10);
+    if !(0..=1440).contains(&grace)
+        || payload
+            .half_day_threshold_minutes
+            .is_some_and(|minutes| !(1..=1440).contains(&minutes))
+    {
+        return Err(AppError::BadRequest(
+            "Invalid shift grace or half-day threshold".into(),
+        ));
+    }
+    let active = payload.active.unwrap_or(true);
 
     let id: Uuid = sqlx::query_scalar(
         r#"
-        INSERT INTO workforce_shifts (plant_id, name, start_time, end_time, is_night_shift)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO workforce_shifts (plant_id, name, start_time, end_time, is_night_shift, grace_minutes, half_day_threshold_minutes, is_active)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING id
         "#,
     )
@@ -913,7 +966,10 @@ pub async fn create_shift(
     .bind(&payload.name)
     .bind(start)
     .bind(end)
-    .bind(payload.is_night_shift.unwrap_or(false))
+    .bind(payload.is_night_shift.unwrap_or(end < start))
+    .bind(grace)
+    .bind(payload.half_day_threshold_minutes)
+    .bind(active)
     .fetch_one(&state.db)
     .await?;
 
@@ -925,9 +981,9 @@ pub async fn create_shift(
             "name": payload.name,
             "start_time": payload.start_time,
             "end_time": payload.end_time,
-            "grace_minutes": payload.grace_minutes.unwrap_or(0),
+            "grace_minutes": grace,
             "half_day_threshold_minutes": payload.half_day_threshold_minutes,
-            "active": payload.active.unwrap_or(true)
+            "active": active
         },
         "message": "Shift created"
     })))
@@ -949,28 +1005,51 @@ pub async fn assign_roster_schedule(
 ) -> Result<impl IntoResponse, AppError> {
     check_role(&auth_user, &["supervisor", "owner", "plant_owner", "admin"])?;
     ensure_plant_access(&state, &auth_user, plant_id).await?;
+    super::staff_module_permissions::require(
+        &state,
+        &auth_user,
+        plant_id,
+        "workforce",
+        super::staff_module_permissions::Action::Edit,
+    )
+    .await?;
 
     let d = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d").map_err(|_| {
         AppError::BadRequest("Invalid date format, expected YYYY-MM-DD".to_string())
     })?;
 
-    sqlx::query(
+    let shift = if payload.week_off {
+        None
+    } else {
+        Some(payload.shift_id.ok_or_else(|| {
+            AppError::BadRequest("Select a shift or mark the employee off".into())
+        })?)
+    };
+    let updated = sqlx::query(
         r#"
         INSERT INTO workforce_roster_schedules (plant_id, user_id, shift_id, date_key)
-        VALUES ($1, $2, $3, $4)
+        SELECT $1, $2, $3, $4
+        WHERE EXISTS (
+            SELECT 1 FROM plant_staff ps JOIN users u ON u.id = ps.user_id AND u.is_active
+            WHERE ps.plant_id = $1 AND ps.user_id = $2 AND ps.role = u.role AND ps.is_active
+              AND ps.removed_at IS NULL AND ps.employment_status = 'ACTIVE'
+        ) AND ($3::uuid IS NULL OR EXISTS (
+            SELECT 1 FROM workforce_shifts WHERE id = $3 AND plant_id = $1 AND COALESCE(is_active, TRUE)
+        ))
         ON CONFLICT (plant_id, user_id, date_key) DO UPDATE SET shift_id = EXCLUDED.shift_id
         "#,
     )
     .bind(plant_id)
     .bind(user_id)
-    .bind(if payload.week_off {
-        None
-    } else {
-        payload.shift_id
-    })
+    .bind(shift)
     .bind(d)
     .execute(&state.db)
     .await?;
+    if updated.rows_affected() == 0 {
+        return Err(AppError::BadRequest(
+            "Select an active employee and shift from this plant".into(),
+        ));
+    }
 
     Ok(Json(json!({
         "success": true,
@@ -978,7 +1057,7 @@ pub async fn assign_roster_schedule(
             "plant_id": plant_id,
             "user_id": user_id,
             "date": date_str,
-            "shift_id": if payload.week_off { None } else { payload.shift_id },
+            "shift_id": shift,
             "week_off": payload.week_off
         },
         "message": "Roster schedule assigned"
@@ -1000,13 +1079,45 @@ pub async fn update_attendance_config(
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
     ensure_plant_access(&state, &auth_user, plant_id).await?;
 
+    super::staff_module_permissions::require(
+        &state,
+        &auth_user,
+        plant_id,
+        "workforce",
+        super::staff_module_permissions::Action::Edit,
+    )
+    .await?;
+    if payload
+        .radius_m
+        .is_some_and(|radius| !radius.is_finite() || radius <= 0.0)
+    {
+        return Err(AppError::BadRequest(
+            "Radius must be a positive number of metres".into(),
+        ));
+    }
+    if payload
+        .timezone_name
+        .as_deref()
+        .is_some_and(|timezone| timezone != "Asia/Kolkata")
+    {
+        return Err(AppError::BadRequest(
+            "Attendance dates use Asia/Kolkata".into(),
+        ));
+    }
+    let radius: f64 = sqlx::query_scalar(
+        "UPDATE rmc_plants SET attendance_radius_m = COALESCE($2, attendance_radius_m)
+         WHERE id = $1 AND is_active RETURNING attendance_radius_m",
+    )
+    .bind(plant_id)
+    .bind(payload.radius_m)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Active plant not found".into()))?;
+
     Ok(Json(json!({
         "success": true,
         "plant_id": plant_id,
-        "attendance_config": {
-            "radius_m": payload.radius_m.unwrap_or(250.0),
-            "timezone_name": payload.timezone_name.unwrap_or_else(|| "Asia/Kolkata".to_string())
-        },
+        "attendance_config": { "radius_m": radius, "timezone_name": "Asia/Kolkata" },
         "message": "Attendance config saved"
     })))
 }
@@ -1090,11 +1201,11 @@ pub async fn owner_unified_decision(
             .await?;
         }
         "visit" | "visits" => {
-            sqlx::query(
+            let updated = sqlx::query(
                 r#"
                 UPDATE workforce_client_visits
                 SET status = $1
-                WHERE id = $2
+                WHERE id = $2 AND status IN ('SCHEDULED', $1)
                   AND ($4 = 'admin' OR EXISTS (
                       SELECT 1 FROM rmc_plants p
                       WHERE p.id = workforce_client_visits.plant_id AND p.owner_id = $3
@@ -1107,6 +1218,11 @@ pub async fn owner_unified_decision(
             .bind(&auth_user.role)
             .execute(&state.db)
             .await?;
+            if updated.rows_affected() == 0 {
+                return Err(AppError::Conflict(
+                    "Only scheduled visits can receive an owner decision".into(),
+                ));
+            }
         }
         _ => {
             return Err(AppError::BadRequest(format!(
@@ -1176,7 +1292,7 @@ pub async fn get_roster_overview(
 
     let mut plant_overviews = Vec::new();
 
-    for (plant_id, _plant_name) in plants {
+    for (plant_id, plant_name) in plants {
         super::staff_module_permissions::require(
             &state,
             &auth_user,
@@ -1186,7 +1302,7 @@ pub async fn get_roster_overview(
         )
         .await?;
         let shift_rows = sqlx::query(
-            "SELECT id, name, start_time::text as st, end_time::text as et FROM workforce_shifts WHERE plant_id = $1 ORDER BY name",
+            "SELECT id, name, start_time::text AS st, end_time::text AS et, COALESCE(grace_minutes,10) AS grace_minutes, half_day_threshold_minutes, COALESCE(is_active,true) AS is_active FROM workforce_shifts WHERE plant_id = $1 ORDER BY name",
         )
         .bind(plant_id)
         .fetch_all(&state.db)
@@ -1204,22 +1320,27 @@ pub async fn get_roster_overview(
                     "name": name,
                     "start_time": st[..5.min(st.len())].to_string(),
                     "end_time": et[..5.min(et.len())].to_string(),
-                    "grace_minutes": 10,
-                    "half_day_threshold_minutes": null
+                    "grace_minutes": r.get::<i32, _>("grace_minutes"),
+                    "half_day_threshold_minutes": r.get::<Option<i32>, _>("half_day_threshold_minutes"),
+                    "active": r.get::<bool, _>("is_active")
                 })
             })
             .collect();
 
         let staff_rows = sqlx::query(
             r#"
-            SELECT u.id, u.full_name, u.role
+            SELECT u.id, u.full_name, u.role, a.check_in_time, a.check_out_time,
+                a.check_in_geofence, a.check_out_geofence
             FROM plant_staff ps
             JOIN users u ON u.id = ps.user_id
+            LEFT JOIN workforce_attendance a ON a.plant_id = ps.plant_id
+              AND a.user_id = ps.user_id AND a.attendance_date = $2
             WHERE ps.plant_id = $1 AND ps.is_active = TRUE
             ORDER BY u.full_name
             "#,
         )
         .bind(plant_id)
+        .bind(target_date)
         .fetch_all(&state.db)
         .await?;
 
@@ -1270,6 +1391,16 @@ pub async fn get_roster_overview(
                 ),
             };
 
+            let check_in: Option<chrono::DateTime<chrono::Utc>> = staff.get("check_in_time");
+            let check_out: Option<chrono::DateTime<chrono::Utc>> = staff.get("check_out_time");
+            let attendance = (check_in.is_some() || check_out.is_some()).then(|| {
+                json!({
+                    "check_in": check_in,
+                    "check_out": check_out,
+                    "check_in_geofence": staff.get::<Option<Value>, _>("check_in_geofence"),
+                    "check_out_geofence": staff.get::<Option<Value>, _>("check_out_geofence"),
+                })
+            });
             employees.push(json!({
                 "user_id": uid,
                 "name": name,
@@ -1277,17 +1408,19 @@ pub async fn get_roster_overview(
                 "classification": classification,
                 "roster": roster_json,
                 "shift": shift_json,
-                "attendance": null
+                "attendance": attendance
             }));
         }
 
+        let radius = workforce_repo::attendance_radius(&state.db, plant_id).await?;
         plant_overviews.push(json!({
             "plant_id": plant_id,
+            "plant_name": plant_name,
             "date": date_key,
             "shifts": shifts,
             "employees": employees,
             "attendance_config": {
-                "radius_m": 250.0,
+                "radius_m": radius,
                 "timezone_name": "Asia/Kolkata"
             }
         }));
@@ -1355,11 +1488,16 @@ pub async fn get_my_roster_me(
         })
         .collect();
 
+    let radius = if pid.is_nil() {
+        None
+    } else {
+        Some(workforce_repo::attendance_radius(&state.db, pid).await?)
+    };
     Ok(Json(json!({
         "plant_id": pid,
         "today": today.to_string(),
         "attendance_config": {
-            "radius_m": 250.0,
+            "radius_m": radius,
             "timezone_name": "Asia/Kolkata"
         },
         "roster": roster

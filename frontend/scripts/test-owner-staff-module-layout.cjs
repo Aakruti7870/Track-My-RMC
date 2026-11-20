@@ -110,8 +110,11 @@ for (const field of ['"plant_ids": plant_ids', '"attendance": attendance', '"lea
 assert(workforceBackend.includes("a.plant_id=ANY($1)") &&
        workforceBackend.includes("a.attendance_date=(NOW() AT TIME ZONE 'Asia/Kolkata')::date"),
   "Owner attendance must select only today's records from owned plants");
-assert(workforceBackend.includes("WHERE workforce_attendance.check_in_time IS NULL") &&
-       workforceBackend.includes("updated.rows_affected() != 1"),
+const workforceRepository = fs.readFileSync(path.join(root, "../backend/src/repositories/workforce_repo.rs"), "utf8");
+assert.equal(workforceBackend.match(/workforce_repo::record_attendance\(/g)?.length, 2,
+  "Both staff punch handlers must share the attendance persistence rules");
+assert(workforceRepository.includes("WHERE workforce_attendance.check_in_time IS NULL") &&
+       workforceRepository.includes("updated.rows_affected() != 1"),
   "Staff must not check in twice or check out without a valid active shift");
 
 console.log("PASS: Owner shortcuts and directories + eight staff role partitions, separate payroll destinations, top-bar theme and check-in");
