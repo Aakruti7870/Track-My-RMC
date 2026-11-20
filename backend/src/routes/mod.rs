@@ -59,6 +59,7 @@ pub mod workforce_routes;
 
 use crate::state::AppState;
 use axum::{
+    extract::DefaultBodyLimit,
     routing::{delete, get, patch, post, put},
     Router,
 };
@@ -112,6 +113,10 @@ pub fn build_app_router(state: AppState) -> Router {
         .route(
             "/api/control-center/plant-order-requests/:id/decision",
             post(plant_order_review::decide),
+        )
+        .route(
+            "/api/control-center/plant-order-requests/:id/place-name",
+            get(plant_order_review::admin_place_name),
         )
         // Phase 2: explicit MFA-gated plant decisions and consent-only CRM.
         .route(
@@ -582,6 +587,10 @@ pub fn build_app_router(state: AppState) -> Router {
         .route(
             "/api/customer/plant-order-requests",
             get(plant_order_review::list_customer).post(plant_order_review::create),
+        )
+        .route(
+            "/api/customer/plant-order-requests/:id/place-name",
+            get(plant_order_review::customer_place_name),
         )
         .route(
             "/api/customer/rmc-rfq-leads/:lead_id/confirm",
@@ -1246,7 +1255,10 @@ pub fn build_app_router(state: AppState) -> Router {
             patch(assistant_routes::update_case_status).post(assistant_routes::update_case_status),
         )
         // --- Files & Storage ---
-        .route("/api/upload", post(storage_routes::upload_file))
+        .route(
+            "/api/upload",
+            post(storage_routes::upload_file).layer(DefaultBodyLimit::max(3 * 1024 * 1024)),
+        )
         .route("/api/files/*path", get(storage_routes::get_file))
         // --- Workforce, Attendance, Shifts & Field Visits ---
         .route("/api/workforce/me", get(workforce_routes::get_workforce_me))

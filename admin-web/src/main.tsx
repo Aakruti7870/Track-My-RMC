@@ -11,6 +11,32 @@ import { WhatsAppChats } from './WhatsAppChats';
 import { AdminSecurity } from './AdminSecurity';
 import apiClient, { markCentralSignedOut, rememberCentralSession, restoreCentralSession, setAccessToken } from './api';
 
+function GooglePlantName({ requestId }: { requestId: string }) {
+  const [name, setName] = useState<string>();
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  async function loadName() {
+    setLoading(true);
+    setFailed(false);
+    try {
+      const { data } = await apiClient.get<{ plant_name: string }>(`/api/control-center/plant-order-requests/${encodeURIComponent(requestId)}/place-name`);
+      setName(data.plant_name);
+    } catch {
+      setFailed(true);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return name ? <>{name} <span translate="no" style={{fontSize:12,whiteSpace:'nowrap'}}>Google Maps</span></> : <>
+    <button type="button" disabled={loading} onClick={() => void loadName()}>
+      {loading ? 'Loading plant name…' : 'Show plant name'}
+    </button>
+    {failed && <p role="status">Plant name unavailable. Try again or view on Google Maps.</p>}
+  </>;
+}
+
 function orderStatusColor(status: string, dark: boolean) {
   const normalized = status.trim().toUpperCase().replace(/[\s-]+/g, '_');
   const stage = Object.values(orderStages).find(({ aliases }) => aliases.includes(normalized));
@@ -2316,7 +2342,7 @@ function CommandCenter({ initialNotice, onSignedOut }: { initialNotice: string; 
                     {workspace==='plant_order_requests' && key==='google_place_id' && typeof value==='string'
                       ? <a style={{color:'var(--tm-selected-ink)'}} href={'https://www.google.com/maps/search/?api=1&query=RMC%20plant&query_place_id='+encodeURIComponent(value)} target="_blank" rel="noreferrer">View on Google Maps</a>
                       : workspace==='plant_order_requests' && key==='plant_name' && value===null && typeof row.google_place_id==='string'
-                        ? 'Google-listed plant'
+                        ? <GooglePlantName requestId={String(row.id)} />
                       : workspace === 'orders' && key === 'status' && typeof value === 'string'
                         ? <strong style={{color:orderStatusColor(value, isDark)}}>{value}</strong>
                         : value===null?'—':typeof value==='object'?JSON.stringify(value):String(value)}

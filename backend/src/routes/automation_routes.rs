@@ -9,7 +9,7 @@ use serde_json::json;
 use sqlx::Row;
 use uuid::Uuid;
 
-use crate::{error::AppError, state::AppState};
+use crate::{error::AppError, security::shared_secret_matches, state::AppState};
 
 fn configured_secret(value: Option<&str>) -> Result<&str, AppError> {
     value
@@ -30,7 +30,7 @@ fn authorize_worker(headers: &HeaderMap, state: &AppState) -> Result<(), AppErro
         .unwrap_or(auth_header)
         .trim();
 
-    if token.is_empty() || token != secret {
+    if !shared_secret_matches(token, secret) {
         return Err(AppError::Unauthorized(
             "Invalid automation worker credentials".to_string(),
         ));
@@ -45,7 +45,7 @@ fn authorize_callback(headers: &HeaderMap, state: &AppState) -> Result<(), AppEr
         .and_then(|h| h.to_str().ok())
         .unwrap_or("");
 
-    if token.is_empty() || token != secret {
+    if !shared_secret_matches(token, secret) {
         return Err(AppError::Unauthorized(
             "Invalid provider callback credentials".to_string(),
         ));

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, View, ViewStyle } from "react-native";
 import { Image } from "expo-image";
+import { useWebCarousel } from "@/src/hooks/useWebCarousel";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { radius } from "@/src/theme/tokens";
 
@@ -35,14 +36,15 @@ export function HomeCarousel({ onAction, style }: { onAction: (action: CarouselA
   const showSlide = useCallback((next: number) => {
     scrollRef.current?.scrollTo({ x: next * size.w, animated: !reduceMotion });
   }, [size.w, reduceMotion]);
+  const { attachScroll, webPaused } = useWebCarousel(scrollRef, size.w, SLIDE_COUNT, showSlide);
   useEffect(() => {
     if (size.w <= 0 || reduceMotion) return;
     const timer = setInterval(() => {
-      if (interactingRef.current) return;
+      if (interactingRef.current || webPaused.current) return;
       showSlide((indexRef.current + 1) % SLIDE_COUNT);
     }, AUTO_MS);
     return () => clearInterval(timer);
-  }, [size.w, reduceMotion, showSlide]);
+  }, [size.w, reduceMotion, showSlide, webPaused]);
   const onScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     if (size.w <= 0) return;
     const next = Math.round(event.nativeEvent.contentOffset.x / size.w);
@@ -57,7 +59,8 @@ export function HomeCarousel({ onAction, style }: { onAction: (action: CarouselA
       style={[styles.wrap, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }, style]}>
       {size.w > 0 && size.h > 0 ? (
         <>
-          <ScrollView ref={scrollRef} horizontal pagingEnabled showsHorizontalScrollIndicator={false}
+          <ScrollView ref={attachScroll} testID="home-promotional-slides" horizontal pagingEnabled directionalLockEnabled showsHorizontalScrollIndicator={false}
+            accessibilityLabel="Promotional banners" role="region" tabIndex={0}
             scrollEventThrottle={16} onScroll={onScroll}
             onScrollBeginDrag={() => { interactingRef.current = true; }}
             onScrollEndDrag={() => { interactingRef.current = false; }}
@@ -68,7 +71,7 @@ export function HomeCarousel({ onAction, style }: { onAction: (action: CarouselA
                 accessibilityRole="button" accessibilityLabel={slide.label}
                 aria-hidden={i !== index} tabIndex={i === index ? 0 : -1}
                 importantForAccessibility={i === index ? "yes" : "no-hide-descendants"}
-                onPress={() => onAction(slide.id)} style={{ width: size.w, height: size.h }}>
+                onPress={() => { if (i === indexRef.current) onAction(slide.id); }} style={{ width: size.w, height: size.h }}>
                 <Image source={slide.source} style={StyleSheet.absoluteFill}
                   contentFit="contain" contentPosition="center" cachePolicy="memory-disk"
                   priority={i === 0 ? "high" : "low"} accessible={false} />

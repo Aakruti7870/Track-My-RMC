@@ -12,6 +12,10 @@ fs.mkdirSync('tracking-previews',{recursive:true});
  await page.addInitScript(()=>localStorage.setItem('tmrmc_token',JSON.stringify('isolated-browser-fixture')));
  await page.route('https://trackmyrmc.com/api/**',async route=>{
  const path=new URL(route.request().url()).pathname;
+ if (path.endsWith('/customer/plant-order-requests/admin-review-fixture/place-name')) {
+   await route.fulfill({json:{plant_name:'Fixture Google Concrete',attribution:'Google Maps'}});
+   return;
+ }
  if (path.endsWith('/customer/plant-order-requests')) {
    if (route.request().method() === 'POST') {
      reviewSubmission = route.request().postDataJSON();
@@ -20,6 +24,7 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      await route.fulfill({json:{requests:reviewSubmission ? [{
        id:'admin-review-fixture',status:'PENDING_ADMIN_REVIEW',grade:reviewSubmission.grade,quantity_m3:reviewSubmission.quantity_m3,
        site_address:reviewSubmission.site_address,delivery_date:reviewSubmission.delivery_date,
+       google_place_id:reviewSubmission.google_place_id,
      }] : []}});
    }
    return;
@@ -88,6 +93,32 @@ fs.mkdirSync('tracking-previews',{recursive:true});
    assert(next.x >= 0 && next.x + next.width <= width + 1, 'Home section exceeds viewport');
  }
  assert(Math.abs(sections[0].width / sections[0].height - 16 / 9) < 0.03, 'Carousel preserves artwork ratio');
+ if ([390, 768, 1440].includes(width)) {
+   await page.emulateMedia({ reducedMotion: 'reduce' });
+   const slides = page.getByTestId('home-promotional-slides');
+   await page.getByTestId('carousel-page-new').click();
+   const waitForSlide = index => page.waitForFunction(index => {
+     const node = document.querySelector('[data-testid="home-promotional-slides"]');
+     const pages = node?.firstElementChild?.children;
+     if (!pages?.[index]) return false;
+     const offset = pages[index].getBoundingClientRect().left - pages[0].getBoundingClientRect().left;
+     return Math.abs(node.scrollLeft - offset) <= 2;
+   }, index);
+   await waitForSlide(0);
+   const box = await slides.boundingBox();
+   const origin = page.url();
+   await page.mouse.move(box.x + box.width * 0.84, box.y + box.height * 0.45);
+   await page.mouse.down();
+   await page.mouse.move(box.x + box.width * 0.13, box.y + box.height * 0.45, { steps: 8 });
+   await page.mouse.up();
+   await waitForSlide(1);
+   assert.equal(page.url(), origin, 'Dragging a banner must not activate it');
+   await slides.press('ArrowRight');
+   await waitForSlide(2);
+   await slides.press('ArrowLeft');
+   await waitForSlide(1);
+   await page.getByTestId('carousel-page-new').click();
+ }
  assert.equal(await scroll.getByRole('heading', {name:'Nearby Plants',exact:true}).count(), 1);
  assert.equal(await scroll.getByTestId('kyc-banner').count(), 0);
  assert.equal(await scroll.getByTestId('demo-tracking-card').count(), 0);
@@ -346,6 +377,8 @@ fs.mkdirSync('tracking-previews',{recursive:true});
      assert.equal(reviewSubmission.share_with_supplier,undefined);
      await page.getByRole('button',{name:'View My Orders',exact:true}).click();
      await page.getByText('Plant Order Requests',{exact:true}).waitFor();
+     await page.getByRole('button',{name:'Show plant name',exact:true}).click();
+     await page.getByText('Fixture Google Concrete',{exact:true}).waitFor();
      await page.getByText('Awaiting Super Admin review',{exact:true}).waitFor();
      await page.getByText('Reference admin-review-fixture',{exact:true}).waitFor();
      console.log('PASS 320px '+theme+' enlarged labels, header Support and matte RFQ calendar');

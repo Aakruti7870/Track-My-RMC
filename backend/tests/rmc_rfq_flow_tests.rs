@@ -212,6 +212,52 @@ async fn plant_order_review_dispatches_only_to_central_admin_and_replays_once(db
         assert_eq!(response[property][0]["plant_name"], Value::Null);
     }
 
+    let lookup = format!("{route}/{review_id}/place-name");
+    assert_eq!(
+        call(
+            &app,
+            &lookup,
+            "GET",
+            None,
+            &token(&state, other, "customer")
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        call(
+            &app,
+            &format!("/api/control-center/plant-order-requests/{review_id}/place-name"),
+            "GET",
+            None,
+            &token(&state, owner, "owner")
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+
+    // A plant registered after the request was filed supplies a first-party name.
+    sqlx::query("UPDATE rmc_plants SET google_place_id='ChIJ_fixture_unregistered' WHERE id=$1")
+        .bind(plant_id)
+        .execute(&db)
+        .await
+        .unwrap();
+    for (path, token, property) in [
+        (route, customer_token.as_str(), "requests"),
+        (queue, admin_token.as_str(), "items"),
+    ] {
+        let (status, response) = call(&app, path, "GET", None, token).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(response[property][0]["plant_name"], "Test RMC");
+    }
+    sqlx::query("UPDATE rmc_plants SET google_place_id='ChIJ_test_rmc' WHERE id=$1")
+        .bind(plant_id)
+        .execute(&db)
+        .await
+        .unwrap();
+
     sqlx::query("INSERT INTO plant_admin_controls(plant_id,discovery_visible,changed_by,change_reason) VALUES($1,FALSE,$2,'Hold this fixture plant')")
         .bind(plant_id).bind(admin).execute(&db).await.unwrap();
     payload["request_key"] = json!(Uuid::new_v4());

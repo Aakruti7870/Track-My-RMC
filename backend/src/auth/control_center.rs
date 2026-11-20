@@ -7,7 +7,7 @@ use crate::{
     },
     central_admin_bootstrap::{pending_primary_id, PRIMARY_PERMISSIONS},
     error::AppError,
-    services::auth_service::{challenge_digest, create_staff_challenge, deliver_email_otp},
+    services::auth_service::{challenge_digest, create_staff_challenge},
     state::AppState,
 };
 use axum::{
@@ -107,7 +107,7 @@ pub struct AdminLogin {
     pub code: String,
 }
 
-const ADMIN_OTP_PURPOSE: &str = "central_admin_login";
+pub(super) const ADMIN_OTP_PURPOSE: &str = "central_admin_login";
 const ADMIN_LOGIN: &str = "admin_login";
 const ADMIN_ENROLLMENT: &str = "admin_enrollment";
 const ADMIN_RECOVERY: &str = "admin_recovery";
@@ -191,18 +191,31 @@ async fn eligible_admin(
     Ok(user)
 }
 
+pub(super) async fn otp_delivery_eligible(state: &AppState, email: &str) -> Result<bool, AppError> {
+    let mut tx = state.db.begin().await?;
+    match eligible_admin(&mut tx, Some(email), None).await {
+        Ok(_) => {
+            tx.commit().await?;
+            Ok(true)
+        }
+        Err(AppError::Unauthorized(_)) => Ok(false),
+        Err(error) => Err(error),
+    }
+}
+
 pub async fn send_email_otp(
     State(state): State<AppState>,
     Json(body): Json<AdminEmail>,
 ) -> Result<Json<Value>, AppError> {
     let email = body.email.trim().to_ascii_lowercase();
-    let mut tx = state.db.begin().await?;
-    let user = eligible_admin(&mut tx, Some(&email), None).await?;
-    tx.commit().await?;
-    deliver_email_otp(
+    if email.len() > 254 || !email.contains('@') {
+        return Err(AppError::BadRequest("Enter a valid email address".into()));
+    }
+    OtpEngine::deliver_login(
         &state,
-        &user.email.to_ascii_lowercase(),
-        ADMIN_OTP_PURPOSE,
+        email,
+        "email",
+        ADMIN_OTP_PURPOSE.to_owned(),
         "Central Admin Portal",
     )
     .await?;

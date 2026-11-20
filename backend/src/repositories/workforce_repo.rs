@@ -64,7 +64,13 @@ pub async fn record_attendance(
         sqlx::query(
             "INSERT INTO workforce_attendance
              (plant_id,user_id,attendance_date,check_in_time,check_in_lat,check_in_lng,check_in_geofence,status)
-             VALUES ($1,$2,(NOW() AT TIME ZONE 'Asia/Kolkata')::date,NOW(),$3,$4,$5,'present')
+             SELECT $1,$2,(NOW() AT TIME ZONE 'Asia/Kolkata')::date,NOW(),$3,$4,$5,'present'
+             WHERE NOT EXISTS (
+                SELECT 1 FROM workforce_attendance
+                WHERE plant_id=$1 AND user_id=$2
+                  AND attendance_date=(NOW() AT TIME ZONE 'Asia/Kolkata')::date-1
+                  AND check_in_time>=NOW()-INTERVAL '24 hours' AND check_out_time IS NULL
+             )
              ON CONFLICT (plant_id,user_id,attendance_date) DO UPDATE SET
                check_in_time=EXCLUDED.check_in_time,check_in_lat=EXCLUDED.check_in_lat,
                check_in_lng=EXCLUDED.check_in_lng,check_in_geofence=EXCLUDED.check_in_geofence,status='present'
@@ -79,17 +85,7 @@ pub async fn record_attendance(
         .execute(pool)
         .await?
     } else {
-        sqlx::query(
-            "UPDATE workforce_attendance SET check_out_time=NOW(), check_out_geofence=$3
-             WHERE plant_id=$1 AND user_id=$2
-               AND attendance_date=(NOW() AT TIME ZONE 'Asia/Kolkata')::date
-               AND check_in_time IS NOT NULL AND check_out_time IS NULL",
-        )
-        .bind(plant_id)
-        .bind(user_id)
-        .bind(evidence)
-        .execute(pool)
-        .await?
+        check_out_open_shift(pool, plant_id, user_id, evidence).await?
     };
     if updated.rows_affected() != 1 {
         return Err(AppError::Conflict(
@@ -97,6 +93,31 @@ pub async fn record_attendance(
         ));
     }
     Ok(())
+}
+
+pub(crate) async fn check_out_open_shift(
+    pool: &PgPool,
+    plant_id: Uuid,
+    user_id: Uuid,
+    evidence: Option<serde_json::Value>,
+) -> Result<sqlx::postgres::PgQueryResult, AppError> {
+    Ok(sqlx::query(
+        "UPDATE workforce_attendance SET check_out_time=NOW(),check_out_geofence=$3
+         WHERE check_out_time IS NULL AND id=(
+            SELECT id FROM workforce_attendance
+            WHERE plant_id=$1 AND user_id=$2
+              AND check_in_time BETWEEN NOW()-INTERVAL '24 hours' AND NOW()
+              AND attendance_date BETWEEN (NOW() AT TIME ZONE 'Asia/Kolkata')::date-1
+                                      AND (NOW() AT TIME ZONE 'Asia/Kolkata')::date
+              AND check_out_time IS NULL
+            ORDER BY check_in_time DESC,id DESC LIMIT 1
+         )",
+    )
+    .bind(plant_id)
+    .bind(user_id)
+    .bind(evidence)
+    .execute(pool)
+    .await?)
 }
 
 pub async fn get_daily_roster(

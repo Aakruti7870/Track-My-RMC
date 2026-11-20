@@ -2,6 +2,7 @@
 use crate::{
     auth::{middleware::check_role, AuthUser},
     error::AppError,
+    security::shared_secret_matches,
     services::dispatch_whatsapp,
     state::AppState,
 };
@@ -511,7 +512,9 @@ pub async fn verify_meta_webhook(
         .map_err(|_| AppError::Unauthorized("Webhook verification unavailable".into()))?;
     if expected.len() < 32
         || query.get("hub.mode").map(String::as_str) != Some("subscribe")
-        || query.get("hub.verify_token") != Some(&expected)
+        || !query
+            .get("hub.verify_token")
+            .is_some_and(|token| shared_secret_matches(token, &expected))
     {
         return Err(AppError::Unauthorized(
             "Invalid Meta webhook challenge".into(),

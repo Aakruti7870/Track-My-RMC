@@ -271,15 +271,6 @@ pub(crate) async fn public_otp_eligible(
     }
 }
 
-pub(crate) async fn deliver_email_otp(
-    state: &AppState,
-    destination: &str,
-    purpose: &str,
-    portal: &str,
-) -> Result<(), AppError> {
-    OtpEngine::deliver(state, destination, "email", purpose, portal).await
-}
-
 #[derive(Debug, Serialize)]
 pub struct StaffMfaChallengeResponse {
     pub status: &'static str,

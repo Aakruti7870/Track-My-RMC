@@ -501,30 +501,103 @@ async fn driver_and_owner_attendance_use_the_plant_date_when_postgres_uses_anoth
         true
     );
 
-    let control = workforce_routes::get_owner_control(
-        State(state.clone()),
-        AuthUser {
-            user_id: owner,
-            role: "owner".into(),
-            phone: "attendance-owner".into(),
-            email: None,
-        },
-    )
-    .await
-    .unwrap();
+    let owner_user = || AuthUser {
+        user_id: owner,
+        role: "owner".into(),
+        phone: "attendance-owner".into(),
+        email: None,
+    };
+    let control = workforce_routes::get_owner_control(State(state.clone()), owner_user())
+        .await
+        .unwrap();
     let control = read_json(control.into_response()).await;
     assert_eq!(control["attendance"][0]["date"], today.to_string());
 
     driver_routes::check_out_driver(State(state.clone()), driver_user(driver), location())
         .await
         .unwrap();
-    let attendance = driver_routes::get_driver_attendance(State(state), driver_user(driver))
-        .await
-        .unwrap();
+    let attendance =
+        driver_routes::get_driver_attendance(State(state.clone()), driver_user(driver))
+            .await
+            .unwrap();
     let attendance = read_json(attendance.into_response()).await;
     assert_eq!(attendance["date"], today.to_string());
     assert!(attendance["check_in"].is_string());
     assert!(attendance["check_out"].is_string());
+
+    // Model a shift recorded yesterday in the plant calendar and still open.
+    sqlx::query("UPDATE workforce_attendance SET attendance_date=$1::date-1,
+        check_in_time=NOW()-INTERVAL '4 hours',check_out_time=NULL WHERE plant_id=$2 AND user_id=$3")
+        .bind(today).bind(plant).bind(driver).execute(&pool).await.unwrap();
+    let attendance =
+        driver_routes::get_driver_attendance(State(state.clone()), driver_user(driver))
+            .await
+            .unwrap();
+    let attendance = read_json(attendance.into_response()).await;
+    assert_eq!(attendance["date"], today.pred_opt().unwrap().to_string());
+    assert!(attendance["check_out"].is_null());
+    assert!(matches!(
+        driver_routes::check_in_driver(State(state.clone()), driver_user(driver), location()).await,
+        Err(AppError::Conflict(_))
+    ));
+    driver_routes::check_out_driver(State(state.clone()), driver_user(driver), location())
+        .await
+        .unwrap();
+    let original_shift_closed: bool = sqlx::query_scalar(
+        "SELECT check_out_time IS NOT NULL
+        FROM workforce_attendance WHERE plant_id=$1 AND user_id=$2 AND attendance_date=$3::date-1",
+    )
+    .bind(plant)
+    .bind(driver)
+    .bind(today)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(original_shift_closed);
+
+    sqlx::query(
+        "INSERT INTO workforce_attendance (plant_id,user_id,attendance_date,check_in_time,status)
+        VALUES ($1,$2,$3::date-1,NOW()-INTERVAL '4 hours','present')",
+    )
+    .bind(plant)
+    .bind(owner)
+    .bind(today)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let staff_attendance = workforce_routes::get_workforce_me(
+        State(state.clone()),
+        owner_user(),
+        axum::extract::Query(workforce_routes::WorkforceMeQuery {
+            include_activity: false,
+        }),
+    )
+    .await
+    .unwrap();
+    let staff_attendance = read_json(staff_attendance.into_response()).await;
+    assert!(staff_attendance["attendance"]["check_in"].is_string());
+    assert!(staff_attendance["attendance"]["check_out"].is_null());
+    workforce_routes::punch_out(
+        State(state),
+        owner_user(),
+        Json(workforce_routes::PunchPayload {
+            lat: Some(19.0),
+            lng: Some(73.0),
+        }),
+    )
+    .await
+    .unwrap();
+    let original_shift_closed: bool = sqlx::query_scalar(
+        "SELECT check_out_time IS NOT NULL
+        FROM workforce_attendance WHERE plant_id=$1 AND user_id=$2 AND attendance_date=$3::date-1",
+    )
+    .bind(plant)
+    .bind(owner)
+    .bind(today)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(original_shift_closed);
 }
 
 #[sqlx::test]

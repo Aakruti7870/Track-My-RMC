@@ -13,6 +13,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 
 import { AppText } from "@/src/components/ui/AppText";
+import { useWebCarousel } from "@/src/hooks/useWebCarousel";
 import { useTheme } from "@/src/theme/ThemeProvider";
 import { fonts, fontSize, radius, spacing } from "@/src/theme/tokens";
 
@@ -63,7 +64,7 @@ const SLIDES: Slide[] = [
 ];
 
 export function CustomerHeroCarousel({ onAction }: { onAction?: (id: Slide["id"]) => void }) {
-  const { colors } = useTheme();
+  const { colors, reduceMotion } = useTheme();
   const { width: windowWidth } = useWindowDimensions();
   const width = Math.min(windowWidth - spacing.lg * 2, 720);
   const height = Math.round(width * 0.56);
@@ -72,47 +73,63 @@ export function CustomerHeroCarousel({ onAction }: { onAction?: (id: Slide["id"]
   const indexRef = useRef(0);
   const pausedRef = useRef(false);
 
-  const goTo = useCallback((next: number, animated = true) => {
-    scrollRef.current?.scrollTo({ x: next * width, animated });
+  const goTo = useCallback((next: number) => {
+    scrollRef.current?.scrollTo({ x: next * width, animated: !reduceMotion });
+  }, [width, reduceMotion]);
+  const { attachScroll, webPaused } = useWebCarousel(scrollRef, width, SLIDES.length, goTo);
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ x: indexRef.current * width, animated: false });
   }, [width]);
 
   useEffect(() => {
+    if (reduceMotion) return;
     const timer = setInterval(() => {
-      if (pausedRef.current) return;
+      if (pausedRef.current || webPaused.current) return;
       goTo((indexRef.current + 1) % SLIDES.length);
     }, AUTOPLAY_MS);
     return () => clearInterval(timer);
-  }, [goTo]);
+  }, [goTo, reduceMotion, webPaused]);
 
-  const onMomentumEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+  const onScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const next = Math.round(event.nativeEvent.contentOffset.x / width);
-    indexRef.current = next;
-    setIndex(next);
+    if (next !== indexRef.current && next >= 0 && next < SLIDES.length) {
+      indexRef.current = next;
+      setIndex(next);
+    }
   };
 
   return (
     <View style={styles.outer}>
       <View style={[styles.wrap, { width, height, backgroundColor: colors.surfaceTertiary, shadowColor: colors.shadow }]}>
         <ScrollView
-          ref={scrollRef}
+          ref={attachScroll}
+          testID="customer-hero-slides"
           horizontal
           pagingEnabled
+          directionalLockEnabled
+          role="region"
+          tabIndex={0}
+          accessibilityLabel="TrackMyRMC features"
           bounces={false}
           showsHorizontalScrollIndicator={false}
           onScrollBeginDrag={() => { pausedRef.current = true; }}
           onScrollEndDrag={() => { pausedRef.current = false; }}
           onTouchStart={() => { pausedRef.current = true; }}
           onTouchEnd={() => { pausedRef.current = false; }}
-          onMomentumScrollEnd={onMomentumEnd}
+          onTouchCancel={() => { pausedRef.current = false; }}
+          onScroll={onScroll}
           scrollEventThrottle={16}
         >
-          {SLIDES.map((slide) => (
+          {SLIDES.map((slide, i) => (
             <Pressable
               key={slide.id}
               testID={`home-hero-${slide.id}`}
               accessibilityRole="button"
               accessibilityLabel={`${slide.title}. ${slide.subtitle}`}
-              onPress={() => onAction?.(slide.id)}
+              aria-hidden={i !== index}
+              tabIndex={i === index ? 0 : -1}
+              importantForAccessibility={i === index ? "yes" : "no-hide-descendants"}
+              onPress={() => { if (i === indexRef.current) onAction?.(slide.id); }}
               style={{ width, height }}
             >
               {slide.id === "live" ? (
@@ -155,11 +172,10 @@ export function CustomerHeroCarousel({ onAction }: { onAction?: (id: Slide["id"]
               key={slide.id}
               testID={`home-hero-dot-${dotIndex}`}
               hitSlop={8}
-              onPress={() => {
-                goTo(dotIndex);
-                indexRef.current = dotIndex;
-                setIndex(dotIndex);
-              }}
+              accessibilityRole="button"
+              accessibilityLabel={`Show banner ${dotIndex + 1} of ${SLIDES.length}: ${slide.title}`}
+              accessibilityState={{ selected: dotIndex === index }}
+              onPress={() => goTo(dotIndex)}
             >
               <View style={[styles.dot, { width: dotIndex === index ? 22 : 7, opacity: dotIndex === index ? 1 : 0.5 }]} />
             </Pressable>

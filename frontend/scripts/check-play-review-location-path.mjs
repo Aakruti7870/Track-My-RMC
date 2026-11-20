@@ -3,9 +3,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 
-const frontendRoot = path.resolve(process.cwd());
-const repoRoot = path.resolve(frontendRoot, '..');
+const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
 const read = (relative) => fs.readFileSync(path.join(repoRoot, relative), 'utf8');
 
 function assert(condition, message) {
@@ -21,7 +21,7 @@ const trip = read('frontend/app/trip/[id].tsx');
 const tracking = read('frontend/src/location/tripTracking.ts');
 const review = read('frontend/app/review-access.tsx');
 const driverHome = read('frontend/app/driver/index.tsx');
-const fixture = read('backend/play_review.py');
+const fixture = read('backend/migrations/0016_play_review_fixtures.sql');
 
 const nearbyConsent = nearby.indexOf('requestNearbyPlantsLocationConsent()');
 const nearbyPrompt = nearby.indexOf('Location.requestForegroundPermissionsAsync()');

@@ -13,6 +13,15 @@ use serde_json::json;
 use sqlx::Row;
 use uuid::Uuid;
 
+fn require_subscription_tools(state: &AppState) -> Result<(), AppError> {
+    if state.config.environment == "production" {
+        return Err(AppError::NotFound(
+            "Plant subscription tools are unavailable".into(),
+        ));
+    }
+    Ok(())
+}
+
 async fn get_user_plant_id(state: &AppState, auth_user: &AuthUser) -> Result<Uuid, AppError> {
     if auth_user.role == "owner" || auth_user.role == "plant_owner" {
         let plant_id: Option<Uuid> = sqlx::query_scalar(
@@ -39,6 +48,7 @@ pub async fn get_plan_context(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
+    require_subscription_tools(&state)?;
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
 
     let plant_rows=sqlx::query("SELECT p.id,p.name,p.address_line AS address,p.city,NULL::text AS taluka,p.district,p.state FROM rmc_plants p WHERE p.is_active=TRUE AND ((p.owner_id=$1 AND $2 IN ('owner','plant_owner')) OR EXISTS(SELECT 1 FROM plant_staff ps WHERE ps.plant_id=p.id AND ps.user_id=$1 AND ps.is_active=TRUE)) ORDER BY p.name").bind(auth_user.user_id).bind(&auth_user.role).fetch_all(&state.db).await?;
@@ -118,10 +128,11 @@ pub struct PlanQuotePayload {
 }
 
 pub async fn quote_plan(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     auth_user: AuthUser,
     Json(payload): Json<PlanQuotePayload>,
 ) -> Result<impl IntoResponse, AppError> {
+    require_subscription_tools(&state)?;
     check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
 
     let product = payload
@@ -178,10 +189,12 @@ pub struct ValidatePromoPayload {
 }
 
 pub async fn validate_promo_code(
-    State(_state): State<AppState>,
-    _auth_user: AuthUser,
+    State(state): State<AppState>,
+    auth_user: AuthUser,
     Json(payload): Json<ValidatePromoPayload>,
 ) -> Result<impl IntoResponse, AppError> {
+    require_subscription_tools(&state)?;
+    check_role(&auth_user, &["owner", "plant_owner", "admin"])?;
     let code = payload.promo_code.trim().to_uppercase();
     if code == "LAUNCH50" {
         Ok(Json(
