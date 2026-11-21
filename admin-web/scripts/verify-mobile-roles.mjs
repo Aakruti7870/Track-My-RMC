@@ -421,7 +421,9 @@ try {
       await page.getByTestId('tab-operations').click();
       await expect(page.getByTestId('owner-native-automation-center')).toBeVisible();
       await expect(page.getByTestId('owner-operations-team')).toBeVisible();
-      await expect(page.getByTestId('owner-operations-registers').getByRole('button')).toHaveCount(14);
+      const ownerRegisters = page.getByTestId('owner-operations-registers');
+      await expect(ownerRegisters.getByRole('button')).toHaveCount(14);
+      await expect(ownerRegisters.getByRole('button', { name: 'Raw Material Purchases', exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: 'WhatsApp Dispatch settings', exact: true })).toBeVisible();
       await expect(page.getByTestId('owner-operations-module-directory')).toHaveCount(0);
       await expect(page.getByText('Review tasks', { exact: true })).toHaveCount(0);
@@ -431,7 +433,21 @@ try {
       await expect(page.getByTestId('owner-business-results').getByText('Invoices issued', { exact: true })).toBeVisible();
       await expect.poll(() => successfulPaths.has(`/api/owner/plants/${currentIdentity.plant_id}/business-summary`)).toBe(true);
       await page.getByTestId('owner-business-card-purchase').click();
-      await expect(page.getByRole('button', { name: 'Purchase Receipts', exact: true })).toBeVisible();
+      phase = 'owner RMC Costing sources';
+      const costingButton = page.getByTestId('owner-business-results').getByRole('button', { name: 'RMC Costing', exact: true });
+      await expect(costingButton).toHaveAttribute('aria-expanded', 'false');
+      await costingButton.click();
+      await expect(costingButton).toHaveAttribute('aria-expanded', 'true');
+      const plantId = currentIdentity.plant_id;
+      const costingSources = [
+        `/api/master/plants/${plantId}/mix-designs`,
+        `/api/business/plants/${plantId}/materials`,
+        `/api/ops/plants/${plantId}/purchases`,
+      ];
+      await expect.poll(() => costingSources.every(path => successfulPaths.has(path))).toBe(true);
+      await expect(page.getByText('No active mix designs for this plant.', { exact: true })).toBeVisible();
+      await costingButton.click();
+      await expect(costingButton).toHaveAttribute('aria-expanded', 'false');
       phase = 'owner More navigation';
       await page.getByTestId('tab-more').click();
       phase = 'owner More account and access';

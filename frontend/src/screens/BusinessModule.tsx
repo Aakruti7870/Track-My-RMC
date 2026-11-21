@@ -155,8 +155,9 @@ const MODULES: Record<string, ModuleDef> = {
       { key: "receipt_number", label: "Receipt / invoice no.", required: true },
       { key: "receipt_date", label: "Receipt date", placeholder: "2026-08-23", required: true },
       { key: "material_id", label: "Material ID", required: true },
-      { key: "quantity", label: "Quantity", numeric: true, required: true },
-      { key: "rate", label: "Rate", numeric: true, required: true },
+      { key: "unit", label: "Purchase unit (optional)", placeholder: "Inventory unit by default" },
+      { key: "quantity", label: "Quantity (purchase unit)", numeric: true, required: true },
+      { key: "rate", label: "Rate per purchase unit (₹)", numeric: true, required: true },
       { key: "gst_amount", label: "GST amount", numeric: true },
       { key: "freight_amount", label: "Freight amount", numeric: true },
       { key: "notes", label: "Notes" },
@@ -494,13 +495,26 @@ export function BusinessModule({ kind, preferredPlant, material }: { kind: strin
       } else if (kind === "diesel") {
         await apiPost(`/ops/plants/${plantId}/diesel`, token, payload);
       } else if (kind === "purchases") {
+        const { quantity, rate } = payload;
+        const gst = payload.gst_amount ?? 0;
+        const freight = payload.freight_amount ?? 0;
+        const total = quantity * rate + gst + freight;
+        if (![quantity, rate, gst, freight, total].every(Number.isFinite)
+          || quantity <= 0 || rate < 0 || gst < 0 || freight < 0) {
+          throw { detail: "Enter a positive quantity and valid non-negative receipt amounts." };
+        }
+        const material = resources?.materials?.find((item: { id: string }) => item.id === payload.material_id);
+        const unit = payload.unit || material?.unit;
+        if (!unit) throw { detail: "Enter the purchase unit for this material." };
         await apiPost(`/ops/plants/${plantId}/purchases`, token, {
           supplier_id: payload.supplier_id,
           receipt_number: payload.receipt_number,
           receipt_date: payload.receipt_date,
-          lines: [{ material_id: payload.material_id, quantity: payload.quantity, rate: payload.rate }],
-          gst_amount: payload.gst_amount || 0,
-          freight_amount: payload.freight_amount || 0,
+          lines: [{ material_id: payload.material_id, quantity, rate, unit }],
+          gst_amount: gst,
+          freight_amount: freight,
+          // PostgreSQL applies the receipt column's two-decimal rounding.
+          total_amount: total,
           notes: payload.notes || null,
         });
       } else if (kind === "fleet") {
@@ -799,7 +813,7 @@ export function BusinessModule({ kind, preferredPlant, material }: { kind: strin
           <Card style={{ gap: spacing.sm }}>
             <AppText variant="label">Reference data</AppText>
             {kind === "purchases" ? <AppText variant="caption">Suppliers: {(resources.suppliers || []).map((x: any) => `${x.name} (${x.id})`).join(" · ") || "Create a supplier first"}</AppText> : null}
-            {kind === "purchases" ? <AppText variant="caption">Materials: {(resources.materials || []).map((x: any) => `${x.name} (${x.id})`).join(" · ") || "No materials"}</AppText> : null}
+            {kind === "purchases" ? <AppText variant="caption">Materials: {(resources.materials || []).map((x: { name: string; id: string; unit: string }) => `${x.name} (${x.unit} · ${x.id})`).join(" · ") || "No materials"}</AppText> : null}
             {kind === "diesel" ? <AppText variant="caption">Mixers: {(resources.transit_mixers ?? resources.vehicles ?? []).map((x: any) => `${x.registration_number ?? x.tm_number} (${x.id})`).join(" · ") || "No mixers"}</AppText> : null}
           </Card>
         ) : null}

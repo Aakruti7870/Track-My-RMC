@@ -48,6 +48,20 @@ async function assertFits(locator, viewportWidth) {
           }] };
         }
         else if (/\/ops\/plants\/(plant-one|plant-two)\/quotations$/.test(path)) json = { quotations: [] };
+        else if (path.endsWith('/master/plants/plant-one/mix-designs')) json = { mix_designs: [
+          { id: 'fixture-m30', grade: 'M30', version: 2, active: true, cement_kg: '350' },
+          { id: 'retired-m30', grade: 'M30', version: 1, active: false, cement_kg: '300' },
+        ] };
+        else if (path.endsWith('/business/plants/plant-one/materials')) json = { materials: [
+          { id: 'cement', name: 'Fixture Cement', material_type: 'CEMENT', unit: 'kg', current_stock: '4000', minimum_stock: '10' },
+        ] };
+        else if (path.endsWith('/ops/plants/plant-one/purchases')) json = { purchases: [
+          { id: 'receipt-one', receipt_number: 'FIXTURE-001', receipt_date: '2026-01-02',
+            lines: [{ material_id: 'cement', quantity: '4', rate: '6200', unit: 'tonne' }] },
+        ] };
+        else if (path.endsWith('/ops/plants/plant-one/diesel')) json = { transactions: [
+          { transaction_type: 'IN', transaction_date: '2026-01-02', rate_per_litre: '92' },
+        ] };
         else if (path.endsWith('/business/plants/plant-two/materials')) json = { materials: [
           { id: 'cement', name: 'Fixture Cement', material_type: 'CEMENT', unit: 'kg', current_stock: '4', minimum_stock: '10' },
           { id: 'sand', name: 'Fixture Sand', material_type: 'SAND', unit: 'kg', current_stock: '0', minimum_stock: '10' },
@@ -225,8 +239,34 @@ async function assertFits(locator, viewportWidth) {
           }
           await workspace.getByTestId('owner-business-period-last_month').click();
           await workspace.getByText('8', { exact: true }).waitFor();
+          await workspace.getByTestId('owner-business-card-purchase').click();
+          const costingToggle = workspace.getByRole('button', { name: 'RMC Costing', exact: true });
+          await costingToggle.waitFor();
+          assert.equal(await workspace.getByRole('button', { name: 'Purchase Receipts', exact: true }).count(), 0);
+          const buttonBox = await costingToggle.boundingBox();
+          const sectionBox = await workspace.getByTestId('owner-business-results').boundingBox();
+          assert(Math.abs(buttonBox.x + buttonBox.width / 2 - sectionBox.x - sectionBox.width / 2) <= 1);
+          assert.equal(await costingToggle.getAttribute('aria-expanded'), 'false');
+          await costingToggle.click();
+          assert.equal(await costingToggle.getAttribute('aria-expanded'), 'true');
+          const costing = workspace.getByTestId('owner-rmc-costing-panel');
+          await costing.getByRole('button', { name: 'Select mix design', exact: true }).click();
+          assert.equal(await costing.getByRole('radio', { name: 'M30 · Mix V1' }).count(), 0);
+          await costing.getByRole('radio', { name: 'M30 · Mix V2' }).click();
+          await costing.getByTestId('owner-rmc-overhead').fill('250');
+          await costing.getByText('₹2,420.00 / m³', { exact: true }).waitFor();
+          await costing.getByRole('button', { name: 'View material rates', exact: true }).click();
+          await costing.getByText('FIXTURE-001 · 2026-01-02', { exact: true }).waitFor();
+          await costing.getByRole('button', { name: 'Add delivery estimate', exact: true }).click();
+          await costing.getByLabel('Round trip (km)', { exact: true }).fill('18');
+          await costing.getByLabel('Mixer load (m³)', { exact: true }).fill('6');
+          await costing.getByLabel('Mixer efficiency (km/L)', { exact: true }).fill('3');
+          await costing.getByText('₹2,512.00 / m³', { exact: true }).waitFor();
+          await costingToggle.click();
+          await costing.waitFor({ state: 'hidden' });
+          assert.equal(await costingToggle.getAttribute('aria-expanded'), 'false');
           for (const [section, label] of [
-            ['purchase', 'Purchase Receipts'], ['payments', 'Billing & Ledger'], ['profit-loss', 'Stock & Consumption'],
+            ['payments', 'Billing & Ledger'], ['profit-loss', 'Stock & Consumption'],
           ]) {
             await workspace.getByTestId(`owner-business-card-${section}`).click();
             await workspace.getByRole('button', { name: label, exact: true }).waitFor();
