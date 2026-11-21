@@ -7,6 +7,7 @@ import { VectorSymbol } from "@/src/components/VectorSymbol";
 import { AppText } from "@/src/components/ui/AppText";
 import { useGet } from "@/src/hooks/useApi";
 import { OwnerFrame, OwnerGlass, OwnerLinkRow, OwnerList, ui, useOwnerPalette } from "@/src/owner/OwnerUI";
+import { OwnerRmcCosting } from "@/src/owner/OwnerRmcCosting";
 import { PlantSelector, businessPath, recordPath, usePlantWorkspace } from "@/src/owner/PlantOperations";
 import { useTheme } from "@/src/theme/ThemeProvider";
 
@@ -48,7 +49,6 @@ function sectionLinks(plantId: string): Record<Section, Link[]> {
       { title: "Rate Cards", route: businessPath("rates", plantId) },
     ],
     purchase: [
-      { title: "Purchase Receipts", route: businessPath("purchases", plantId) },
       { title: "Suppliers", route: businessPath("suppliers", plantId) },
       { title: "Material Inventory", route: businessPath("inventory", plantId) },
     ],
@@ -159,6 +159,7 @@ export default function OwnerBusiness() {
               Net profit needs valued material consumption and closing adjustments.
             </AppText> : null}
           </View>
+          {section === "purchase" ? <OwnerRmcCosting key={plant.id} plantId={plant.id} /> : null}
           <View style={ui.groupRows}>
             {links.map((link, index) => <OwnerLinkRow key={link.title} title={link.title} route={link.route} divider={index > 0} />)}
           </View>
