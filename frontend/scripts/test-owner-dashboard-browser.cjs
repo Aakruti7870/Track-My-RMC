@@ -248,6 +248,7 @@ async function assertFits(locator, viewportWidth) {
           assert(Math.abs(buttonBox.x + buttonBox.width / 2 - sectionBox.x - sectionBox.width / 2) <= 1);
           assert.equal(await costingToggle.getAttribute('aria-expanded'), 'false');
           await costingToggle.click();
+          assert.equal(await costingToggle.getAttribute('aria-expanded'), 'true');
           const costing = workspace.getByTestId('owner-rmc-costing-panel');
           await costing.getByRole('button', { name: 'Select mix design', exact: true }).click();
           assert.equal(await costing.getByRole('radio', { name: 'M30 · Mix V1' }).count(), 0);
@@ -263,6 +264,7 @@ async function assertFits(locator, viewportWidth) {
           await costing.getByText('₹2,512.00 / m³', { exact: true }).waitFor();
           await costingToggle.click();
           await costing.waitFor({ state: 'hidden' });
+          assert.equal(await costingToggle.getAttribute('aria-expanded'), 'false');
           for (const [section, label] of [
             ['payments', 'Billing & Ledger'], ['profit-loss', 'Stock & Consumption'],
           ]) {

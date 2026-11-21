@@ -99,6 +99,7 @@ export function Button({
       accessibilityLabel={accessibilityLabel || label}
       accessibilityHint={accessibilityHint}
       accessibilityState={{ disabled: isDisabled, busy: Boolean(loading), expanded }}
+      aria-expanded={expanded}
       hitSlop={size === "sm" ? 4 : 2}
       onPress={() => {
         if (isDisabled) return;
