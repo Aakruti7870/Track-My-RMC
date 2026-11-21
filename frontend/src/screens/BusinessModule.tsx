@@ -513,7 +513,8 @@ export function BusinessModule({ kind, preferredPlant, material }: { kind: strin
           lines: [{ material_id: payload.material_id, quantity, rate, unit }],
           gst_amount: gst,
           freight_amount: freight,
-          total_amount: Number(total.toFixed(2)),
+          // PostgreSQL applies the receipt column's two-decimal rounding.
+          total_amount: total,
           notes: payload.notes || null,
         });
       } else if (kind === "fleet") {
