@@ -68,13 +68,10 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Verify production backend
-        if: github.event_name == 'workflow_dispatch'
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl --retry 5 --retry-all-errors --retry-delay 2 -fsS "$EXPO_PUBLIC_BACKEND_URL/health" >/tmp/health.json
-          grep -F '"status":"ok"' /tmp/health.json >/dev/null
+      # Production availability is verified above against the same immutable SHA by
+      # the AWS deployment workflow, including trusted-origin and Cloudflare-edge
+      # checks. Do not probe /health through the public Cloudflare hostname here:
+      # that route is Access/WAF protected and returns 403 to GitHub-hosted runners.
 
       - name: Verify required signing secrets
         shell: bash
