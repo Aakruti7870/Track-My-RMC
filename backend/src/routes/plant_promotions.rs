@@ -66,18 +66,16 @@ pub struct PromotionRotationMeta {
 
 pub fn validate_radius_km(radius_km: i32) -> Result<i32, AppError> {
     if !(MIN_PROMOTION_RADIUS_KM..=MAX_PROMOTION_RADIUS_KM).contains(&radius_km) {
-        return Err(AppError::Conflict(
-            "Promotion visibility radius must be between 1 and 250 km".into(),
-        ));
+        let msg = "Promotion visibility radius must be between 1 and 250 km";
+        return Err(AppError::Conflict(msg.into()));
     }
     Ok(radius_km)
 }
 
 pub fn validate_duration_days(duration_days: i32) -> Result<i32, AppError> {
     if !(1..=365).contains(&duration_days) {
-        return Err(AppError::Conflict(
-            "Promotion duration must be between 1 and 365 days".into(),
-        ));
+        let msg = "Promotion duration must be between 1 and 365 days";
+        return Err(AppError::Conflict(msg.into()));
     }
     Ok(duration_days)
 }
@@ -85,9 +83,8 @@ pub fn validate_duration_days(duration_days: i32) -> Result<i32, AppError> {
 pub fn validate_audit_reason(reason: &str) -> Result<String, AppError> {
     let trimmed = reason.trim();
     if trimmed.chars().count() < MIN_AUDIT_REASON_LEN {
-        return Err(AppError::Conflict(
-            "Super Admin audit reason must be at least 10 characters".into(),
-        ));
+        let msg = "Super Admin audit reason must be at least 10 characters";
+        return Err(AppError::Conflict(msg.into()));
     }
     Ok(trimmed.to_string())
 }
@@ -104,8 +101,8 @@ pub fn apply_two_minute_promotion_rotation<T>(items: &mut [T], now_unix_secs: i6
     if items.len() <= 1 {
         return;
     }
-    let bucket = usize::try_from(now_unix_secs.div_euclid(PROMOTION_ROTATION_WINDOW_SECS))
-        .unwrap_or(0);
+    let window = now_unix_secs.div_euclid(PROMOTION_ROTATION_WINDOW_SECS);
+    let bucket = usize::try_from(window).unwrap_or(0);
     let shift = bucket % items.len();
     items.rotate_right(shift);
 }
@@ -127,11 +124,9 @@ pub async fn customer_promoted_plants(
     _auth_user: AuthUser,
     Query(query): Query<CustomerPromotedQuery>,
 ) -> Result<Json<Value>, AppError> {
-    if !query.lat.is_finite()
-        || !query.lng.is_finite()
-        || !(-90.0..=90.0).contains(&query.lat)
-        || !(-180.0..=180.0).contains(&query.lng)
-    {
+    let valid_lat = query.lat.is_finite() && (-90.0..=90.0).contains(&query.lat);
+    let valid_lng = query.lng.is_finite() && (-180.0..=180.0).contains(&query.lng);
+    if !valid_lat || !valid_lng {
         return Err(AppError::Conflict("Invalid latitude or longitude".into()));
     }
 
@@ -231,6 +226,7 @@ pub async fn owner_overview(
     let plants: Vec<Value> = rows
         .into_iter()
         .map(|row| {
+            let created_at = row.get::<Option<DateTime<Utc>>, _>("latest_enquiry_created_at");
             json!({
                 "plant_id": row.get::<Uuid, _>("plant_id"),
                 "plant_name": row.get::<String, _>("plant_name"),
@@ -239,7 +235,7 @@ pub async fn owner_overview(
                 "radius_km": row.get::<Option<i32>, _>("radius_km"),
                 "ends_at": row.get::<Option<DateTime<Utc>>, _>("ends_at"),
                 "latest_enquiry_status": row.get::<Option<String>, _>("latest_enquiry_status"),
-                "latest_enquiry_created_at": row.get::<Option<DateTime<Utc>>, _>("latest_enquiry_created_at"),
+                "latest_enquiry_created_at": created_at,
             })
         })
         .collect();
@@ -256,10 +252,12 @@ pub async fn submit_enquiry(
     auth_user: AuthUser,
     Json(payload): Json<SubmitPromotionEnquiryRequest>,
 ) -> Result<Json<Value>, AppError> {
-    let requested_radius_km =
-        validate_radius_km(payload.requested_radius_km.unwrap_or(DEFAULT_PROMOTION_RADIUS_KM))?;
-    let preferred_duration_days =
-        validate_duration_days(payload.preferred_duration_days.unwrap_or(30))?;
+    let raw_radius = payload
+        .requested_radius_km
+        .unwrap_or(DEFAULT_PROMOTION_RADIUS_KM);
+    let requested_radius_km = validate_radius_km(raw_radius)?;
+    let raw_days = payload.preferred_duration_days.unwrap_or(30);
+    let preferred_duration_days = validate_duration_days(raw_days)?;
     let notes = payload
         .notes
         .map(|n| n.trim().chars().take(500).collect::<String>())
@@ -267,16 +265,16 @@ pub async fn submit_enquiry(
 
     let mut tx = state.db.begin().await?;
 
-    let plant_row = sqlx::query(
-        "SELECT id, name FROM rmc_plants WHERE id = $1 AND owner_id = $2",
-    )
-    .bind(payload.plant_id)
-    .bind(auth_user.user_id)
-    .fetch_optional(&mut *tx)
-    .await?
-    .ok_or_else(|| {
-        AppError::Forbidden("You can only submit promotion enquiries for your own plant".into())
-    })?;
+    let plant_sql = "SELECT id, name FROM rmc_plants WHERE id = $1 AND owner_id = $2";
+    let plant_row = sqlx::query(plant_sql)
+        .bind(payload.plant_id)
+        .bind(auth_user.user_id)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or_else(|| {
+            let msg = "You can only submit promotion enquiries for your own plant";
+            AppError::Forbidden(msg.into())
+        })?;
 
     let plant_name: String = plant_row.get("name");
 
@@ -294,10 +292,10 @@ pub async fn submit_enquiry(
     .fetch_one(&mut *tx)
     .await?;
 
-    // Notify Plant Owner with confirmation
     let owner_body = format!(
-        "Your top-listing promotion enquiry for {} ({} km radius, {} days) was received. TrackMyRMC Super Admin will review and activate it.",
-        plant_name, requested_radius_km, preferred_duration_days
+        "Your top-listing promotion enquiry for {plant_name} \
+         ({requested_radius_km} km radius, {preferred_duration_days} days) \
+         was received. TrackMyRMC Super Admin will review and activate it."
     );
     sqlx::query(
         "INSERT INTO notifications (user_id, title, body, notification_type, reference_id)
@@ -309,10 +307,10 @@ pub async fn submit_enquiry(
     .execute(&mut *tx)
     .await?;
 
-    // Notify all active Super Admins
     let admin_body = format!(
-        "Plant Owner requested top-listing promotion for {} ({} km radius, {} days). Review in Super Admin Promotions.",
-        plant_name, requested_radius_km, preferred_duration_days
+        "Plant Owner requested top-listing promotion for {plant_name} \
+         ({requested_radius_km} km radius, {preferred_duration_days} days). \
+         Review in Super Admin Promotions."
     );
     sqlx::query(
         "INSERT INTO notifications (user_id, title, body, notification_type, reference_id)
@@ -437,8 +435,10 @@ pub async fn admin_activate(
 ) -> Result<Json<Value>, AppError> {
     admin.require("plant_owners.manage")?;
 
-    let radius_km = validate_radius_km(payload.radius_km.unwrap_or(DEFAULT_PROMOTION_RADIUS_KM))?;
-    let duration_days = validate_duration_days(payload.duration_days.unwrap_or(30))?;
+    let raw_radius = payload.radius_km.unwrap_or(DEFAULT_PROMOTION_RADIUS_KM);
+    let radius_km = validate_radius_km(raw_radius)?;
+    let raw_days = payload.duration_days.unwrap_or(30);
+    let duration_days = validate_duration_days(raw_days)?;
     let audit_reason = validate_audit_reason(&payload.audit_reason)?;
 
     let now = Utc::now();
@@ -457,7 +457,8 @@ pub async fn admin_activate(
 
     let promo_id: Uuid = sqlx::query_scalar(
         "INSERT INTO plant_promotions
-            (plant_id, enquiry_id, radius_km, status, starts_at, ends_at, activated_at, activated_by, updated_by, audit_reason)
+            (plant_id, enquiry_id, radius_km, status, starts_at, ends_at,
+             activated_at, activated_by, updated_by, audit_reason)
          VALUES ($1, $2, $3, 'ACTIVE', $4, $5, $4, $6, $6, $7)
          ON CONFLICT (plant_id) DO UPDATE SET
             enquiry_id = COALESCE(EXCLUDED.enquiry_id, plant_promotions.enquiry_id),
@@ -510,11 +511,10 @@ pub async fn admin_activate(
     .await?;
 
     if let Some(owner_uid) = owner_id {
+        let end_date = ends_at.format("%Y-%m-%d");
         let body = format!(
-            "Top-listing promotion is now ACTIVE for {} within a {} km radius until {}.",
-            plant_name,
-            radius_km,
-            ends_at.format("%Y-%m-%d")
+            "Top-listing promotion is now ACTIVE for {plant_name} \
+             within a {radius_km} km radius until {end_date}."
         );
         sqlx::query(
             "INSERT INTO notifications (user_id, title, body, notification_type, reference_id)
@@ -600,9 +600,8 @@ pub async fn admin_set_status(
 
     let status = payload.status.trim().to_uppercase();
     if !matches!(status.as_str(), "ACTIVE" | "PAUSED" | "REVOKED") {
-        return Err(AppError::Conflict(
-            "Status must be ACTIVE, PAUSED, or REVOKED".into(),
-        ));
+        let msg = "Status must be ACTIVE, PAUSED, or REVOKED";
+        return Err(AppError::Conflict(msg.into()));
     }
     let audit_reason = validate_audit_reason(&payload.audit_reason)?;
 
