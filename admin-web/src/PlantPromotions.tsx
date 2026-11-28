@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import apiClient from "./api";
 
 export type PromotionEnquiry = {
   id: string;
@@ -71,6 +72,7 @@ export function PlantPromotions({
   const [radiusDrafts, setRadiusDrafts] = useState<Record<string, string>>({});
   const [durationDrafts, setDurationDrafts] = useState<Record<string, string>>({});
   const [reasonDraft, setReasonDraft] = useState("");
+  const [totpCode, setTotpCode] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -100,37 +102,49 @@ export function PlantPromotions({
     [enquiries],
   );
 
-  const requireReason = (): string | null => {
+  const requireReasonAndCode = (): { audit_reason: string; code: string } | null => {
     const trimmed = reasonDraft.trim();
-    if (trimmed.length < 10) {
-      setError("Enter an audit reason of at least 10 characters before modifying promotions.");
+    const code = totpCode.trim();
+    if (trimmed.length < 10 || trimmed.length > 500) {
+      setError("Enter an audit reason between 10 and 500 characters before modifying promotions.");
+      return null;
+    }
+    if (!/^\d{6}$/.test(code)) {
+      setError("Enter a fresh 6-digit Central Admin authenticator code before modifying promotions.");
       return null;
     }
     setError(null);
-    return trimmed;
+    return { audit_reason: trimmed, code };
   };
 
   const handleActivateEnquiry = async (enquiry: PromotionEnquiry) => {
-    const audit_reason = requireReason();
-    if (!audit_reason) return;
+    const auth = requireReasonAndCode();
+    if (!auth) return;
     const radius_km = Number(radiusDrafts[enquiry.id] ?? enquiry.requested_radius_km ?? 30);
     const duration_days = Number(durationDrafts[enquiry.id] ?? enquiry.preferred_duration_days ?? 30);
     if (!Number.isInteger(radius_km) || radius_km < 1 || radius_km > 250) {
       setError("Custom radius must be a whole number between 1 and 250 km.");
       return;
     }
+    if (!Number.isInteger(duration_days) || duration_days < 1 || duration_days > 365) {
+      setError("Promotion duration must be a whole number between 1 and 365 days.");
+      return;
+    }
     setBusyId(enquiry.id);
     try {
+      await apiClient.post("/api/control-center/step-up", { code: auth.code });
       await onActivate({
         plant_id: enquiry.plant_id,
         enquiry_id: enquiry.id,
         radius_km,
         duration_days,
-        audit_reason,
+        audit_reason: auth.audit_reason,
       });
       setReasonDraft("");
+      setTotpCode("");
       onRefresh();
     } catch (e: unknown) {
+      setTotpCode("");
       setError(e instanceof Error ? e.message : "Failed to activate promotion.");
     } finally {
       setBusyId(null);
@@ -138,8 +152,8 @@ export function PlantPromotions({
   };
 
   const handleRadiusUpdate = async (promo: ActivePlantPromotion) => {
-    const audit_reason = requireReason();
-    if (!audit_reason) return;
+    const auth = requireReasonAndCode();
+    if (!auth) return;
     const radius_km = Number(radiusDrafts[promo.plant_id] ?? promo.radius_km);
     if (!Number.isInteger(radius_km) || radius_km < 1 || radius_km > 250) {
       setError("Custom radius must be a whole number between 1 and 250 km.");
@@ -147,10 +161,13 @@ export function PlantPromotions({
     }
     setBusyId(promo.plant_id);
     try {
-      await onUpdateRadius(promo.plant_id, radius_km, audit_reason);
+      await apiClient.post("/api/control-center/step-up", { code: auth.code });
+      await onUpdateRadius(promo.plant_id, radius_km, auth.audit_reason);
       setReasonDraft("");
+      setTotpCode("");
       onRefresh();
     } catch (e: unknown) {
+      setTotpCode("");
       setError(e instanceof Error ? e.message : "Failed to update promotion radius.");
     } finally {
       setBusyId(null);
@@ -161,14 +178,17 @@ export function PlantPromotions({
     promo: ActivePlantPromotion,
     status: "ACTIVE" | "PAUSED" | "REVOKED",
   ) => {
-    const audit_reason = requireReason();
-    if (!audit_reason) return;
+    const auth = requireReasonAndCode();
+    if (!auth) return;
     setBusyId(promo.plant_id);
     try {
-      await onSetStatus(promo.plant_id, status, audit_reason);
+      await apiClient.post("/api/control-center/step-up", { code: auth.code });
+      await onSetStatus(promo.plant_id, status, auth.audit_reason);
       setReasonDraft("");
+      setTotpCode("");
       onRefresh();
     } catch (e: unknown) {
+      setTotpCode("");
       setError(e instanceof Error ? e.message : "Failed to update promotion status.");
     } finally {
       setBusyId(null);
@@ -207,15 +227,34 @@ export function PlantPromotions({
 
       <div className="admin-field-row" style={{ marginTop: 12, marginBottom: 12 }}>
         <label htmlFor="promo-audit-reason">
-          <strong>Super Admin Audit Reason (min 10 chars, required for all actions)</strong>
+          <strong>Super Admin Audit Reason (10–500 chars, required for all actions)</strong>
         </label>
         <input
           id="promo-audit-reason"
           type="text"
+          minLength={10}
+          maxLength={500}
           value={reasonDraft}
           onChange={e => setReasonDraft(e.target.value)}
           placeholder="e.g. Verified offline commercial confirmation for 30 km top listing"
           style={{ width: "100%", padding: 8 }}
+        />
+      </div>
+
+      <div className="admin-field-row" style={{ marginBottom: 12 }}>
+        <label htmlFor="promo-stepup-code">
+          <strong>Fresh Central Admin Authenticator Code (6-digit TOTP)</strong>
+        </label>
+        <input
+          id="promo-stepup-code"
+          type="password"
+          inputMode="numeric"
+          pattern="[0-9]{6}"
+          maxLength={6}
+          value={totpCode}
+          onChange={e => setTotpCode(e.target.value)}
+          placeholder="6-digit code"
+          style={{ width: 180, padding: 8 }}
         />
       </div>
 

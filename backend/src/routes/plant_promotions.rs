@@ -1,13 +1,18 @@
 //! Enquiry-based plant promotions, Super Admin custom-radius activation,
 //! and deterministic 2-minute cyclic top-listing rotation.
 
+use super::control_center_routes::require_recent_step_up;
 use crate::{
-    auth::{control_center::WebAdmin, middleware::AuthUser},
+    auth::{
+        control_center::WebAdmin,
+        middleware::{check_role, AuthUser},
+    },
     error::AppError,
     state::AppState,
 };
 use axum::{
     extract::{Path, Query, State},
+    http::HeaderMap,
     Json,
 };
 use chrono::{DateTime, Duration, Utc};
@@ -21,8 +26,10 @@ pub const MIN_PROMOTION_RADIUS_KM: i32 = 1;
 pub const MAX_PROMOTION_RADIUS_KM: i32 = 250;
 pub const PROMOTION_ROTATION_WINDOW_SECS: i64 = 120;
 pub const MIN_AUDIT_REASON_LEN: usize = 10;
+pub const MAX_AUDIT_REASON_LEN: usize = 500;
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SubmitPromotionEnquiryRequest {
     pub plant_id: Uuid,
     pub requested_radius_km: Option<i32>,
@@ -31,6 +38,7 @@ pub struct SubmitPromotionEnquiryRequest {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ActivatePromotionRequest {
     pub plant_id: Uuid,
     pub enquiry_id: Option<Uuid>,
@@ -40,18 +48,21 @@ pub struct ActivatePromotionRequest {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct UpdatePromotionRadiusRequest {
     pub radius_km: i32,
     pub audit_reason: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SetPromotionStatusRequest {
     pub status: String,
     pub audit_reason: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CustomerPromotedQuery {
     pub lat: f64,
     pub lng: f64,
@@ -82,8 +93,9 @@ pub fn validate_duration_days(duration_days: i32) -> Result<i32, AppError> {
 
 pub fn validate_audit_reason(reason: &str) -> Result<String, AppError> {
     let trimmed = reason.trim();
-    if trimmed.chars().count() < MIN_AUDIT_REASON_LEN {
-        let msg = "Super Admin audit reason must be at least 10 characters";
+    let len = trimmed.chars().count();
+    if !(MIN_AUDIT_REASON_LEN..=MAX_AUDIT_REASON_LEN).contains(&len) {
+        let msg = "Super Admin audit reason must be 10 to 500 characters";
         return Err(AppError::Conflict(msg.into()));
     }
     Ok(trimmed.to_string())
@@ -121,9 +133,11 @@ pub fn rotation_metadata(now_unix_secs: i64) -> PromotionRotationMeta {
 /// automatically rotated every 2 minutes when >1 promoted plant qualifies.
 pub async fn customer_promoted_plants(
     State(state): State<AppState>,
-    _auth_user: AuthUser,
+    auth_user: AuthUser,
     Query(query): Query<CustomerPromotedQuery>,
 ) -> Result<Json<Value>, AppError> {
+    check_role(&auth_user, &["customer"])?;
+
     let valid_lat = query.lat.is_finite() && (-90.0..=90.0).contains(&query.lat);
     let valid_lng = query.lng.is_finite() && (-180.0..=180.0).contains(&query.lng);
     if !valid_lat || !valid_lng {
@@ -152,9 +166,15 @@ pub async fn customer_promoted_plants(
            AND (pr.ends_at IS NULL OR pr.ends_at > NOW())
            AND p.is_active = TRUE
            AND COALESCE(c.discovery_visible, TRUE) = TRUE
+           AND NOT EXISTS (
+               SELECT 1 FROM google_plant_visibility_exclusions x
+               WHERE x.place_id = p.google_place_id
+                 AND NOT x.discovery_visible
+           )
            AND p.latitude IS NOT NULL
            AND p.longitude IS NOT NULL
-         ORDER BY pr.activated_at ASC, pr.plant_id ASC",
+         ORDER BY pr.activated_at ASC, pr.plant_id ASC
+         LIMIT 100",
     )
     .bind(query.lat)
     .bind(query.lng)
@@ -197,6 +217,8 @@ pub async fn owner_overview(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<Json<Value>, AppError> {
+    check_role(&auth_user, &["owner", "plant_owner"])?;
+
     let rows = sqlx::query(
         "SELECT
             p.id AS plant_id,
@@ -252,6 +274,8 @@ pub async fn submit_enquiry(
     auth_user: AuthUser,
     Json(payload): Json<SubmitPromotionEnquiryRequest>,
 ) -> Result<Json<Value>, AppError> {
+    check_role(&auth_user, &["owner", "plant_owner"])?;
+
     let req_km = payload.requested_radius_km;
     let raw_radius = req_km.unwrap_or(DEFAULT_PROMOTION_RADIUS_KM);
     let requested_radius_km = validate_radius_km(raw_radius)?;
@@ -264,18 +288,35 @@ pub async fn submit_enquiry(
 
     let mut tx = state.db.begin().await?;
 
-    let plant_sql = "SELECT id, name FROM rmc_plants WHERE id = $1 AND owner_id = $2";
+    let plant_sql = "SELECT id, name FROM rmc_plants \
+         WHERE id = $1 AND owner_id = $2 AND is_active = TRUE \
+         FOR SHARE";
     let plant_row = sqlx::query(plant_sql)
         .bind(payload.plant_id)
         .bind(auth_user.user_id)
         .fetch_optional(&mut *tx)
         .await?
         .ok_or_else(|| {
-            let msg = "You can only submit promotion enquiries for your own plant";
+            let msg = "You can only submit promotion enquiries for your own active plant";
             AppError::Forbidden(msg.into())
         })?;
 
     let plant_name: String = plant_row.get("name");
+
+    let open_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(
+            SELECT 1 FROM plant_promotion_enquiries
+            WHERE plant_id = $1 AND status IN ('PENDING', 'CONTACTED')
+        )",
+    )
+    .bind(payload.plant_id)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    if open_exists {
+        let msg = "An open promotion enquiry already exists for this plant";
+        return Err(AppError::Conflict(msg.into()));
+    }
 
     let enquiry_id: Uuid = sqlx::query_scalar(
         "INSERT INTO plant_promotion_enquiries
@@ -396,7 +437,8 @@ pub async fn admin_list(
             pr.audit_reason
          FROM plant_promotions pr
          JOIN rmc_plants p ON p.id = pr.plant_id
-         ORDER BY pr.activated_at ASC, pr.plant_id ASC",
+         ORDER BY pr.activated_at ASC, pr.plant_id ASC
+         LIMIT 200",
     )
     .fetch_all(&state.db)
     .await?;
@@ -430,9 +472,11 @@ pub async fn admin_list(
 pub async fn admin_activate(
     State(state): State<AppState>,
     admin: WebAdmin,
+    headers: HeaderMap,
     Json(payload): Json<ActivatePromotionRequest>,
 ) -> Result<Json<Value>, AppError> {
     admin.require("plant_owners.manage")?;
+    require_recent_step_up(&state, &admin, &headers).await?;
 
     let raw_radius = payload.radius_km.unwrap_or(DEFAULT_PROMOTION_RADIUS_KM);
     let radius_km = validate_radius_km(raw_radius)?;
@@ -453,6 +497,25 @@ pub async fn admin_activate(
 
     let plant_name: String = plant_row.get("name");
     let owner_id: Option<Uuid> = plant_row.get("owner_id");
+
+    if let Some(enquiry_id) = payload.enquiry_id {
+        let updated = sqlx::query(
+            "UPDATE plant_promotion_enquiries
+             SET status = 'ACTIVATED', reviewed_by = $2, review_note = $3, updated_at = NOW()
+             WHERE id = $1 AND plant_id = $4 AND status IN ('PENDING', 'CONTACTED')",
+        )
+        .bind(enquiry_id)
+        .bind(admin.user.user_id)
+        .bind(&audit_reason)
+        .bind(payload.plant_id)
+        .execute(&mut *tx)
+        .await?;
+
+        if updated.rows_affected() != 1 {
+            let msg = "Promotion enquiry not found for this plant or already processed";
+            return Err(AppError::Conflict(msg.into()));
+        }
+    }
 
     let promo_id: Uuid = sqlx::query_scalar(
         "INSERT INTO plant_promotions
@@ -480,19 +543,6 @@ pub async fn admin_activate(
     .bind(&audit_reason)
     .fetch_one(&mut *tx)
     .await?;
-
-    if let Some(enquiry_id) = payload.enquiry_id {
-        sqlx::query(
-            "UPDATE plant_promotion_enquiries
-             SET status = 'ACTIVATED', reviewed_by = $2, review_note = $3, updated_at = NOW()
-             WHERE id = $1",
-        )
-        .bind(enquiry_id)
-        .bind(admin.user.user_id)
-        .bind(&audit_reason)
-        .execute(&mut *tx)
-        .await?;
-    }
 
     sqlx::query(
         "INSERT INTO audit_logs (user_id, action, resource_type, resource_id, metadata)
@@ -540,10 +590,12 @@ pub async fn admin_activate(
 pub async fn admin_update_radius(
     State(state): State<AppState>,
     admin: WebAdmin,
+    headers: HeaderMap,
     Path(plant_id): Path<Uuid>,
     Json(payload): Json<UpdatePromotionRadiusRequest>,
 ) -> Result<Json<Value>, AppError> {
     admin.require("plant_owners.manage")?;
+    require_recent_step_up(&state, &admin, &headers).await?;
 
     let radius_km = validate_radius_km(payload.radius_km)?;
     let audit_reason = validate_audit_reason(&payload.audit_reason)?;
@@ -593,10 +645,12 @@ pub async fn admin_update_radius(
 pub async fn admin_set_status(
     State(state): State<AppState>,
     admin: WebAdmin,
+    headers: HeaderMap,
     Path(plant_id): Path<Uuid>,
     Json(payload): Json<SetPromotionStatusRequest>,
 ) -> Result<Json<Value>, AppError> {
     admin.require("plant_owners.manage")?;
+    require_recent_step_up(&state, &admin, &headers).await?;
 
     let status = payload.status.trim().to_uppercase();
     if !matches!(status.as_str(), "ACTIVE" | "PAUSED" | "REVOKED") {
@@ -606,12 +660,13 @@ pub async fn admin_set_status(
     let audit_reason = validate_audit_reason(&payload.audit_reason)?;
 
     let mut tx = state.db.begin().await?;
-    let not_found = "Promotion not found for this plant";
+    let not_found = "Promotion not found or expired for this plant";
 
     let updated = sqlx::query(
         "UPDATE plant_promotions
          SET status = $2, updated_by = $3, audit_reason = $4, updated_at = NOW()
          WHERE plant_id = $1
+           AND ($2 != 'ACTIVE' OR ends_at IS NULL OR ends_at > NOW())
          RETURNING id",
     )
     .bind(plant_id)
@@ -692,11 +747,22 @@ mod tests {
     }
 
     #[test]
-    fn radius_and_audit_validation() {
+    fn radius_duration_and_audit_validation() {
         assert_eq!(validate_radius_km(30).unwrap(), 30);
         assert!(validate_radius_km(0).is_err());
         assert!(validate_radius_km(251).is_err());
+        assert_eq!(validate_duration_days(30).unwrap(), 30);
+        assert!(validate_duration_days(0).is_err());
+        assert!(validate_duration_days(366).is_err());
         assert!(validate_audit_reason("short").is_err());
+        assert!(validate_audit_reason(&"x".repeat(501)).is_err());
         assert!(validate_audit_reason("Approved 30 km top listing").is_ok());
+    }
+
+    #[test]
+    fn promotion_requests_reject_unknown_fields() {
+        let raw = r#"{"radius_km":30,"audit_reason":"Valid reason text","extra":true}"#;
+        let parsed: Result<UpdatePromotionRadiusRequest, _> = serde_json::from_str(raw);
+        assert!(parsed.is_err());
     }
 }
