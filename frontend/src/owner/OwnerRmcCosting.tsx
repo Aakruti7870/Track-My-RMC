@@ -52,7 +52,7 @@ function RmcCostingPanel({ plantId, autoSelectFirst = false }: { plantId: string
   const [materialIds, setMaterialIds] = useState<Partial<Record<IngredientKey, string>>>({});
   const [ratesOpen, setRatesOpen] = useState(false);
   const [tripOpen, setTripOpen] = useState(false);
-  const [overheadInput, setOverheadInput] = useState("0");
+  const [overheadInput, setOverheadInput] = useState(autoSelectFirst ? "0" : "");
   const [startOdometer, setStartOdometer] = useState("");
   const [endOdometer, setEndOdometer] = useState("");
   const [dieselUsedLitres, setDieselUsedLitres] = useState("");
@@ -158,7 +158,7 @@ function RmcCostingPanel({ plantId, autoSelectFirst = false }: { plantId: string
         </View>)}
       </View> : null}
 
-      <Button label={tripOpen ? "Remove delivery estimate" : "Add delivery & odometer estimate"} variant="ghost"
+      <Button label={tripOpen ? "Remove delivery estimate" : "Add delivery estimate"} variant="ghost"
         fullWidth={false} expanded={tripOpen} onPress={() => setTripOpen(value => !value)} />
       {tripOpen ? <View style={styles.stack}>
         <AppText variant="caption">Enter odometer readings to auto-calculate trip distance, or type round-trip km directly.</AppText>

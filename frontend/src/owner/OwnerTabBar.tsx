@@ -1,11 +1,13 @@
 import React, { useState } from "react";
 import { Modal, Platform, Pressable, ScrollView, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppText } from "@/src/components/ui/AppText";
 import { Button } from "@/src/components/ui/Button";
-import { VectorSymbol } from "@/src/components/VectorSymbol";
+import { VectorSymbol, type VectorSymbolName } from "@/src/components/VectorSymbol";
 import { tabVectorSymbol } from "@/src/navigation/vectorSymbolAssignments";
+import { IconTile } from "@/src/components/IconTile";
 import type { TabDef } from "@/src/components/GlassTabBar";
 import { OwnerGlass, useOwnerPalette } from "./OwnerUI";
 import { OwnerRmcCosting } from "./OwnerRmcCosting";
@@ -15,9 +17,19 @@ const BUSINESS_ROUTES = new Set(["orders", "billing", "quotation-requests", "pro
 
 type Props = { state: RoleTabState; navigation: RoleTabNavigation; tabs: TabDef[] };
 
+const ACTIONS: { label: string; symbol: VectorSymbolName; icon: keyof typeof Ionicons.glyphMap; route: Href }[] = [
+  { label: "Review Pending Orders", symbol: "plant-orders", icon: "time-outline", route: { pathname: "/owner/orders", params: { status: "pending", today: "" } } },
+  { label: "Open Production & Dispatch", symbol: "material-consumption", icon: "bus-outline", route: { pathname: "/owner/orders", params: { status: "processing", today: "" } } },
+  { label: "Mixer & Driver Assignment", symbol: "driver-assignment", icon: "people-outline", route: { pathname: "/owner/orders", params: { status: "processing", today: "" } } },
+  { label: "Open Inventory", symbol: "material-inventory", icon: "cube-outline", route: "/business/inventory" },
+  { label: "Plant Quotations", symbol: "quotations", icon: "document-text-outline", route: "/business/quotations" },
+  { label: "Incident / SOS Register", symbol: "incident-register", icon: "warning-outline", route: "/owner/incidents" },
+];
+
 export function OwnerTabBar({ state, navigation, tabs }: Props) {
   const p = useOwnerPalette();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const { plants, plant, setSelection, loading: plantsLoading, error: plantsError, reload: reloadPlants } = usePlantWorkspace();
 
@@ -34,7 +46,7 @@ export function OwnerTabBar({ state, navigation, tabs }: Props) {
       {tabs.slice(0, 2).map(tabItem)}
       <View style={{ width: 72, alignItems: "center", gap: 3, marginTop: -20 }}>
         <View style={{ width: 66, height: 66, borderRadius: 33, backgroundColor: `${p.accent}2E`, borderWidth: 1.5, borderColor: `${p.accent}88`, alignItems: "center", justifyContent: "center", shadowColor: p.accent, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.72, shadowRadius: 14, elevation: 10 }}>
-          <Pressable testID="tab-rmc-costing" accessibilityRole="button" accessibilityLabel="Open RMC Price Calculator" onPress={() => setOpen(true)} style={({ pressed }) => ({ width: 56, height: 56, borderRadius: 28, backgroundColor: pressed ? p.pressed : p.accent, borderWidth: 2, borderColor: "#FFF3E0", alignItems: "center", justifyContent: "center" })}>
+          <Pressable testID="tab-quick-actions" accessibilityRole="button" accessibilityLabel="Open RMC Price Calculator" onPress={() => setOpen(true)} style={({ pressed }) => ({ width: 56, height: 56, borderRadius: 28, backgroundColor: pressed ? p.pressed : p.accent, borderWidth: 2, borderColor: "#FFF3E0", alignItems: "center", justifyContent: "center" })}>
             <VectorSymbol name="invoice-editor" size={26} color="#14181F" />
           </Pressable>
         </View>
@@ -75,6 +87,19 @@ export function OwnerTabBar({ state, navigation, tabs }: Props) {
               : plantsError ? <View style={{ padding: 12, gap: 8 }}><AppText variant="bodyMuted" center>{plantsError}</AppText><Button label="Retry" variant="outline" onPress={() => void reloadPlants()} /></View>
               : plant?.id ? <OwnerRmcCosting plantId={plant.id} defaultOpen />
               : <AppText variant="bodyMuted" center>No active plant found for this account.</AppText>}
+
+            <View style={{ paddingHorizontal: 12, paddingTop: 8, gap: 8 }}>
+              <AppText variant="label" style={{ color: p.muted }}>Quick Actions</AppText>
+              {ACTIONS.map(action => (
+                <Pressable key={action.label} accessibilityRole="button" accessibilityLabel={action.label} onPress={() => { setOpen(false); router.push(action.route); }}>
+                  <OwnerGlass style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 14 }}>
+                    <IconTile symbol={action.symbol} homeShortcut />
+                    <AppText style={{ flex: 1, fontSize: 12, color: p.text }}>{action.label}</AppText>
+                    <VectorSymbol name="chevron-right" size={17} color={p.muted} />
+                  </OwnerGlass>
+                </Pressable>
+              ))}
+            </View>
           </ScrollView>
         </OwnerGlass>
       </View>
