@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 
 import { ErrorView } from "@/src/components/StateViews";
@@ -42,7 +42,7 @@ function CostingChoice({ label, selected, options, onChange }: {
   </View>;
 }
 
-function RmcCostingPanel({ plantId }: { plantId: string }) {
+function RmcCostingPanel({ plantId, autoSelectFirst = false }: { plantId: string; autoSelectFirst?: boolean }) {
   const p = useOwnerPalette();
   const plant = encodeURIComponent(plantId);
   const mixes = useGet<{ mix_designs: MixDesign[] }>(`/master/plants/${plant}/mix-designs`);
@@ -52,7 +52,10 @@ function RmcCostingPanel({ plantId }: { plantId: string }) {
   const [materialIds, setMaterialIds] = useState<Partial<Record<IngredientKey, string>>>({});
   const [ratesOpen, setRatesOpen] = useState(false);
   const [tripOpen, setTripOpen] = useState(false);
-  const [overheadInput, setOverheadInput] = useState("");
+  const [overheadInput, setOverheadInput] = useState(autoSelectFirst ? "0" : "");
+  const [startOdometer, setStartOdometer] = useState("");
+  const [endOdometer, setEndOdometer] = useState("");
+  const [dieselUsedLitres, setDieselUsedLitres] = useState("");
   const [distance, setDistance] = useState("");
   const [load, setLoad] = useState("");
   const [efficiency, setEfficiency] = useState("");
@@ -63,15 +66,39 @@ function RmcCostingPanel({ plantId }: { plantId: string }) {
   const catalogue = materials.data?.materials;
   const receipts = purchases.data?.purchases;
   const rates = useMemo(() => latestPurchaseRates(receipts ?? [], catalogue ?? [], today), [receipts, catalogue, today]);
-  const mixOptions = (mixes.data?.mix_designs ?? []).filter(mix => mix.active);
+  const mixOptions = useMemo(() => (mixes.data?.mix_designs ?? []).filter(mix => mix.active), [mixes.data?.mix_designs]);
+
+  useEffect(() => {
+    setMixId(undefined);
+    setMaterialIds({});
+  }, [plantId]);
+
+  useEffect(() => {
+    if (autoSelectFirst && !mixId && mixOptions.length > 0) {
+      setMixId(mixOptions[0].id);
+    }
+  }, [autoSelectFirst, mixId, mixOptions]);
+
   const mix = mixOptions.find(option => option.id === mixId);
   const materialOptions = (catalogue ?? []).map(material => ({ id: material.id, label: `${material.name} (${material.unit})` }));
   const lines = mix ? priceMix(mix, catalogue ?? [], rates, materialIds) : [];
   const materialsCost = materialTotal(lines);
   const overhead = nonnegativeNumber(overheadInput);
   const dieselRate = latestDieselRate(diesel.data?.transactions ?? [], today);
+
+  const odoStart = nonnegativeNumber(startOdometer);
+  const odoEnd = nonnegativeNumber(endOdometer);
+  const odoDistance = odoStart !== null && odoEnd !== null && odoEnd > odoStart ? odoEnd - odoStart : null;
+  const effectiveDistance = odoDistance !== null ? odoDistance.toFixed(2) : distance;
+  const parsedDistance = nonnegativeNumber(effectiveDistance);
+  const parsedFuel = nonnegativeNumber(dieselUsedLitres);
+  const autoEfficiency = parsedDistance !== null && parsedDistance > 0 && parsedFuel !== null && parsedFuel > 0
+    ? parsedDistance / parsedFuel
+    : null;
+  const effectiveEfficiency = autoEfficiency !== null ? autoEfficiency.toFixed(2) : efficiency;
+
   const tripCost = tripOpen && !diesel.loading
-    ? deliveryCostPerM3(distance, load, efficiency, dieselRate?.rate_per_litre ?? manualDiesel, otherTripCosts)
+    ? deliveryCostPerM3(effectiveDistance, load, effectiveEfficiency, dieselRate?.rate_per_litre ?? manualDiesel, otherTripCosts)
     : null;
   const total = materialsCost === null || overhead === null || (tripOpen && tripCost === null)
     ? null : materialsCost + overhead + (tripCost ?? 0);
@@ -134,12 +161,22 @@ function RmcCostingPanel({ plantId }: { plantId: string }) {
       <Button label={tripOpen ? "Remove delivery estimate" : "Add delivery estimate"} variant="ghost"
         fullWidth={false} expanded={tripOpen} onPress={() => setTripOpen(value => !value)} />
       {tripOpen ? <View style={styles.stack}>
+        <AppText variant="caption">Enter odometer readings to auto-calculate trip distance, or type round-trip km directly.</AppText>
         <View style={styles.tripFields}>
-          <View style={styles.tripField}><Input label="Round trip (km)" value={distance} onChangeText={setDistance} keyboardType="decimal-pad" /></View>
+          <View style={styles.tripField}><Input label="Start odometer (km)" value={startOdometer} onChangeText={setStartOdometer} keyboardType="decimal-pad" placeholder="Optional" /></View>
+          <View style={styles.tripField}><Input label="End odometer (km)" value={endOdometer} onChangeText={setEndOdometer} keyboardType="decimal-pad" placeholder="Optional" /></View>
+          <View style={styles.tripField}><Input label="Diesel used (L)" value={dieselUsedLitres} onChangeText={setDieselUsedLitres} keyboardType="decimal-pad" placeholder="Optional" /></View>
+          <View style={styles.tripField}><Input label="Round trip (km)" value={effectiveDistance} onChangeText={value => { setStartOdometer(""); setEndOdometer(""); setDistance(value); }} keyboardType="decimal-pad" /></View>
           <View style={styles.tripField}><Input label="Mixer load (m³)" value={load} onChangeText={setLoad} keyboardType="decimal-pad" /></View>
-          <View style={styles.tripField}><Input label="Mixer efficiency (km/L)" value={efficiency} onChangeText={setEfficiency} keyboardType="decimal-pad" /></View>
+          <View style={styles.tripField}><Input label="Mixer efficiency (km/L)" value={effectiveEfficiency} onChangeText={value => { setDieselUsedLitres(""); setEfficiency(value); }} keyboardType="decimal-pad" /></View>
           <View style={styles.tripField}><Input label="Other trip costs (₹)" value={otherTripCosts} onChangeText={setOtherTripCosts} keyboardType="decimal-pad" placeholder="Optional" /></View>
         </View>
+        {odoDistance !== null || autoEfficiency !== null ? <AppText variant="caption">
+          {[
+            odoDistance !== null ? `Odometer trip: ${odoDistance.toFixed(2)} km` : null,
+            autoEfficiency !== null ? `Auto mileage: ${autoEfficiency.toFixed(2)} km/L` : null,
+          ].filter(Boolean).join(" · ")}
+        </AppText> : null}
         {diesel.loading ? <AppText variant="caption">Loading diesel rate…</AppText>
           : dieselRate ? <AppText variant="caption">
             Diesel {unitRate.format(Number(dieselRate.rate_per_litre))}/L · {dieselRate.transaction_date}
@@ -150,9 +187,14 @@ function RmcCostingPanel({ plantId }: { plantId: string }) {
   </OwnerGlass>;
 }
 
-export function OwnerRmcCosting({ plantId }: { plantId: string }) {
-  const [open, setOpen] = useState(false);
+export function OwnerRmcCosting({ plantId, defaultOpen = false }: { plantId: string; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
   const { colors } = useTheme();
+  if (defaultOpen) {
+    return <View style={styles.module}>
+      <RmcCostingPanel plantId={plantId} autoSelectFirst />
+    </View>;
+  }
   return <View style={styles.module}>
     <Button label="RMC Costing" fullWidth={false} expanded={open} testID="owner-rmc-costing-toggle"
       onPress={() => setOpen(value => !value)} style={styles.center}

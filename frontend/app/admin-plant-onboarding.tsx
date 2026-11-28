@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -54,6 +55,7 @@ export default function AdminPlantOnboardingReview() {
   const [refreshing, setRefreshing] = useState(false);
   const [workingId, setWorkingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [selected, setSelected] = useState<PlantRequest | null>(null);
   const [city, setCity] = useState("");
   const [region, setRegion] = useState("");
@@ -87,6 +89,7 @@ export default function AdminPlantOnboardingReview() {
     setPincode("");
     setPlantCode(item.request_number);
     setError(null);
+    setNotice(null);
   };
 
   const approve = async () => {
@@ -97,6 +100,7 @@ export default function AdminPlantOnboardingReview() {
     }
     setWorkingId(selected.id);
     setError(null);
+    setNotice(null);
     try {
       await apiPost("/plant-discovery/requests/" + selected.id + "/approve", token, {
         city: city.trim(),
@@ -106,7 +110,12 @@ export default function AdminPlantOnboardingReview() {
       });
       setSelected(null);
       await loadRequests(true);
-      Alert.alert("Plant approved", "The Plant Owner account and plant record were created or matched successfully.");
+      const message = "The Plant Owner account and plant record were created or matched successfully.";
+      if (Platform.OS === "web") {
+        setNotice(`Plant approved: ${message}`);
+      } else {
+        Alert.alert("Plant approved", message);
+      }
     } catch (e) {
       setError(apiErrorDetail(e, "Could not approve this plant request."));
     } finally {
@@ -114,26 +123,35 @@ export default function AdminPlantOnboardingReview() {
     }
   };
 
+  const executeReject = (item: PlantRequest) => {
+    if (!token) return;
+    setWorkingId(item.id);
+    setError(null);
+    setNotice(null);
+    void apiPost("/plant-discovery/requests/" + item.id + "/reject", token, {})
+      .then(async () => {
+        await loadRequests(true);
+        setNotice(`Rejected ${item.request_number} — ${item.name}.`);
+      })
+      .catch((e) => setError(apiErrorDetail(e, "Could not reject this plant request.")))
+      .finally(() => setWorkingId(null));
+  };
+
   const reject = (item: PlantRequest) => {
+    const prompt = "Reject " + item.request_number + " — " + item.name + "? The request will remain in the audit history.";
+    if (Platform.OS === "web") {
+      if (window.confirm(`Reject plant request?\n\n${prompt}`)) executeReject(item);
+      return;
+    }
     Alert.alert(
       "Reject plant request?",
-      "Reject " + item.request_number + " — " + item.name + "? The request will remain in the audit history.",
+      prompt,
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Reject",
           style: "destructive",
-          onPress: () => {
-            if (!token) return;
-            setWorkingId(item.id);
-            setError(null);
-            void apiPost("/plant-discovery/requests/" + item.id + "/reject", token, {})
-              .then(async () => {
-                await loadRequests(true);
-              })
-              .catch((e) => setError(apiErrorDetail(e, "Could not reject this plant request.")))
-              .finally(() => setWorkingId(null));
-          },
+          onPress: () => executeReject(item),
         },
       ],
     );
@@ -168,6 +186,13 @@ export default function AdminPlantOnboardingReview() {
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void loadRequests(true)} />}
       >
+        {notice ? (
+          <View style={[styles.errorBox, { backgroundColor: colors.success + "14", borderColor: colors.success + "66" }]}>
+            <Ionicons name="checkmark-circle-outline" size={20} color={colors.success} />
+            <AppText variant="caption" color={colors.success} style={{ flex: 1 }}>{notice}</AppText>
+          </View>
+        ) : null}
+
         {error ? (
           <View style={[styles.errorBox, { backgroundColor: colors.error + "12", borderColor: colors.error + "66" }]}>
             <Ionicons name="alert-circle-outline" size={20} color={colors.error} />

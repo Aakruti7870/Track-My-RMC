@@ -83,4 +83,44 @@ export function rememberCentralSession() {
   });
 }
 
+export async function fetchAdminPromotions() {
+  const { data } = await apiClient.get('/api/control-center/promotions');
+  return data;
+}
+
+export async function activateAdminPromotion(payload: {
+  plant_id: string;
+  enquiry_id?: string;
+  radius_km: number;
+  duration_days: number;
+  audit_reason: string;
+}) {
+  const { data } = await apiClient.post('/api/control-center/promotions/activate', payload);
+  return data;
+}
+
+export async function updateAdminPromotionRadius(
+  plantId: string,
+  radius_km: number,
+  audit_reason: string,
+) {
+  const { data } = await apiClient.patch(
+    `/api/control-center/promotions/${encodeURIComponent(plantId)}/radius`,
+    { radius_km, audit_reason },
+  );
+  return data;
+}
+
+export async function setAdminPromotionStatus(
+  plantId: string,
+  status: 'ACTIVE' | 'PAUSED' | 'REVOKED',
+  audit_reason: string,
+) {
+  const { data } = await apiClient.post(
+    `/api/control-center/promotions/${encodeURIComponent(plantId)}/status`,
+    { status, audit_reason },
+  );
+  return data;
+}
+
 export default apiClient;
