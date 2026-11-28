@@ -308,6 +308,78 @@ body { margin: 0; }
 .tm-notification:first-of-type { margin-top: 10px; }
 
 .tm-dashboard { display: grid; gap: 20px; }
+.tm-command-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--tm-border);
+  border-radius: 12px;
+  background: var(--tm-panel);
+}
+.tm-module-search {
+  flex: 1 1 220px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--tm-control-outline);
+  background: var(--tm-raised);
+  color: var(--tm-text);
+  font-size: 13px;
+}
+.tm-triage-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.tm-action-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--tm-control-outline);
+  background: var(--tm-raised);
+  color: var(--tm-text);
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.tm-action-pill-warn {
+  border-color: var(--tm-orange-action);
+  background: var(--tm-selected-surface);
+  color: var(--tm-selected-ink);
+}
+.tm-growth-banner {
+  margin-top: 14px;
+  padding: 13px;
+  border: 1px solid var(--tm-border);
+  border-radius: 10px;
+  background: var(--tm-raised);
+  display: grid;
+  gap: 10px;
+}
+.tm-growth-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.tm-progress-track {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--tm-canvas);
+  overflow: hidden;
+  margin: 6px 0 8px;
+}
+.tm-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--tm-orange-action);
+}
 .tm-kpi-row, .tm-module-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 228px), 1fr));
