@@ -7,7 +7,7 @@ use crate::{
     state::AppState,
 };
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     Json,
 };
 use chrono::{DateTime, Duration, Utc};
@@ -49,6 +49,12 @@ pub struct UpdatePromotionRadiusRequest {
 pub struct SetPromotionStatusRequest {
     pub status: String,
     pub audit_reason: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CustomerPromotedQuery {
+    pub lat: f64,
+    pub lng: f64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -98,7 +104,8 @@ pub fn apply_two_minute_promotion_rotation<T>(items: &mut [T], now_unix_secs: i6
     if items.len() <= 1 {
         return;
     }
-    let bucket = now_unix_secs.div_euclid(PROMOTION_ROTATION_WINDOW_SECS) as usize;
+    let bucket = usize::try_from(now_unix_secs.div_euclid(PROMOTION_ROTATION_WINDOW_SECS))
+        .unwrap_or(0);
     let shift = bucket % items.len();
     items.rotate_right(shift);
 }
@@ -111,6 +118,84 @@ pub fn rotation_metadata(now_unix_secs: i64) -> PromotionRotationMeta {
         current_bucket: bucket,
         seconds_until_next_shift: PROMOTION_ROTATION_WINDOW_SECS - elapsed,
     }
+}
+
+/// Customer-facing promoted plants within each plant's Super Admin custom radius,
+/// automatically rotated every 2 minutes when >1 promoted plant qualifies.
+pub async fn customer_promoted_plants(
+    State(state): State<AppState>,
+    _auth_user: AuthUser,
+    Query(query): Query<CustomerPromotedQuery>,
+) -> Result<Json<Value>, AppError> {
+    if !query.lat.is_finite()
+        || !query.lng.is_finite()
+        || !(-90.0..=90.0).contains(&query.lat)
+        || !(-180.0..=180.0).contains(&query.lng)
+    {
+        return Err(AppError::Conflict("Invalid latitude or longitude".into()));
+    }
+
+    let rows = sqlx::query(
+        "SELECT
+            p.id AS plant_id,
+            p.name AS plant_name,
+            p.city,
+            p.pincode,
+            p.latitude,
+            p.longitude,
+            pr.radius_km,
+            pr.activated_at,
+            6371.0 * 2.0 * asin(sqrt(least(1.0, greatest(0.0,
+                power(sin(radians(p.latitude - $1) / 2.0), 2)
+                + cos(radians($1)) * cos(radians(p.latitude))
+                  * power(sin(radians(p.longitude - $2) / 2.0), 2)
+            )))) AS distance_km
+         FROM plant_promotions pr
+         JOIN rmc_plants p ON p.id = pr.plant_id
+         LEFT JOIN plant_admin_controls c ON c.plant_id = p.id
+         WHERE pr.status = 'ACTIVE'
+           AND (pr.ends_at IS NULL OR pr.ends_at > NOW())
+           AND p.is_active = TRUE
+           AND COALESCE(c.discovery_visible, TRUE) = TRUE
+           AND p.latitude IS NOT NULL
+           AND p.longitude IS NOT NULL
+         ORDER BY pr.activated_at ASC, pr.plant_id ASC",
+    )
+    .bind(query.lat)
+    .bind(query.lng)
+    .fetch_all(&state.db)
+    .await?;
+
+    let mut promoted: Vec<Value> = rows
+        .into_iter()
+        .filter_map(|row| {
+            let radius_km: i32 = row.get("radius_km");
+            let distance_km: f64 = row.get("distance_km");
+            if distance_km <= f64::from(radius_km) {
+                Some(json!({
+                    "plant_id": row.get::<Uuid, _>("plant_id"),
+                    "plant_name": row.get::<String, _>("plant_name"),
+                    "city": row.get::<Option<String>, _>("city"),
+                    "pincode": row.get::<Option<String>, _>("pincode"),
+                    "latitude": row.get::<f64, _>("latitude"),
+                    "longitude": row.get::<f64, _>("longitude"),
+                    "promotion_radius_km": radius_km,
+                    "distance_km": (distance_km * 100.0).round() / 100.0,
+                    "is_promoted": true,
+                }))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    let now_secs = Utc::now().timestamp();
+    apply_two_minute_promotion_rotation(&mut promoted, now_secs);
+
+    Ok(Json(json!({
+        "rotation": rotation_metadata(now_secs),
+        "plants": promoted,
+    })))
 }
 
 pub async fn owner_overview(
