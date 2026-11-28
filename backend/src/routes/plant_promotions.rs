@@ -252,7 +252,8 @@ pub async fn submit_enquiry(
     auth_user: AuthUser,
     Json(payload): Json<SubmitPromotionEnquiryRequest>,
 ) -> Result<Json<Value>, AppError> {
-    let raw_radius = payload.requested_radius_km.unwrap_or(DEFAULT_PROMOTION_RADIUS_KM);
+    let req_km = payload.requested_radius_km;
+    let raw_radius = req_km.unwrap_or(DEFAULT_PROMOTION_RADIUS_KM);
     let requested_radius_km = validate_radius_km(raw_radius)?;
     let raw_days = payload.preferred_duration_days.unwrap_or(30);
     let preferred_duration_days = validate_duration_days(raw_days)?;
@@ -548,6 +549,7 @@ pub async fn admin_update_radius(
     let audit_reason = validate_audit_reason(&payload.audit_reason)?;
 
     let mut tx = state.db.begin().await?;
+    let not_found = "Active promotion not found for this plant";
 
     let updated = sqlx::query(
         "UPDATE plant_promotions
@@ -561,7 +563,7 @@ pub async fn admin_update_radius(
     .bind(&audit_reason)
     .fetch_optional(&mut *tx)
     .await?
-    .ok_or_else(|| AppError::NotFound("Active promotion not found for this plant".into()))?;
+    .ok_or_else(|| AppError::NotFound(not_found.into()))?;
 
     let promo_id: Uuid = updated.get("id");
 
@@ -604,6 +606,7 @@ pub async fn admin_set_status(
     let audit_reason = validate_audit_reason(&payload.audit_reason)?;
 
     let mut tx = state.db.begin().await?;
+    let not_found = "Promotion not found for this plant";
 
     let updated = sqlx::query(
         "UPDATE plant_promotions
@@ -617,7 +620,7 @@ pub async fn admin_set_status(
     .bind(&audit_reason)
     .fetch_optional(&mut *tx)
     .await?
-    .ok_or_else(|| AppError::NotFound("Promotion not found for this plant".into()))?;
+    .ok_or_else(|| AppError::NotFound(not_found.into()))?;
 
     let promo_id: Uuid = updated.get("id");
 
