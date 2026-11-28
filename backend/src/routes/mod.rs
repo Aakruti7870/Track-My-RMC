@@ -43,6 +43,7 @@ pub mod plant_order_review;
 pub mod plant_owner_registration;
 pub mod plant_plans_routes;
 pub mod plant_profile;
+pub mod plant_promotions;
 pub mod plant_staff_manager;
 pub mod play_review;
 pub mod provisional_requests;
@@ -570,6 +571,10 @@ pub fn build_app_router(state: AppState) -> Router {
             patch(customer_services::update_status),
         )
         .route("/api/customer/plants", get(customer_routes::list_plants))
+        .route(
+            "/api/customer/plants/promoted",
+            get(plant_promotions::customer_promoted_plants),
+        )
         .route("/api/customer/plants/search", post(discovery::search))
         .route(
             "/api/customer/plants/google-nearby",
@@ -1122,6 +1127,31 @@ pub fn build_app_router(state: AppState) -> Router {
         )
         .route("/api/owner/ledger", get(owner_routes::get_owner_ledger))
         .route("/api/owner/insights", get(owner_routes::get_owner_insights))
+        // --- Enquiry-Based Plant Promotions & 2-Min Cyclic Rotation ---
+        .route(
+            "/api/owner/promotions",
+            get(plant_promotions::owner_overview),
+        )
+        .route(
+            "/api/owner/promotions/enquiries",
+            post(plant_promotions::submit_enquiry),
+        )
+        .route(
+            "/api/control-center/promotions",
+            get(plant_promotions::admin_list),
+        )
+        .route(
+            "/api/control-center/promotions/activate",
+            post(plant_promotions::admin_activate),
+        )
+        .route(
+            "/api/control-center/promotions/:plant_id/radius",
+            patch(plant_promotions::admin_update_radius),
+        )
+        .route(
+            "/api/control-center/promotions/:plant_id/status",
+            post(plant_promotions::admin_set_status),
+        )
         // --- Plant Subscriptions & Commercial Plans ---
         .route(
             "/api/plant-plans/context",

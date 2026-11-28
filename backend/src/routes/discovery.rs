@@ -2,9 +2,11 @@
 use crate::{
     auth::{middleware::check_role, AuthUser},
     error::AppError,
+    routes::plant_promotions::apply_two_minute_promotion_rotation,
     state::AppState,
 };
 use axum::{extract::State, Json};
+use chrono::Utc;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{
@@ -119,12 +121,16 @@ pub async fn search(
         WITH candidates AS (
             SELECT p.*, EXISTS(SELECT 1 FROM plant_listing_requests r WHERE r.plant_id=p.id AND r.status='APPROVED') verified,
                 COALESCE(c.order_intake_mode,'DIRECT') AS intake_mode,
+                (pr.id IS NOT NULL) AS pr_active,
+                pr.radius_km AS pr_radius_km,
+                pr.activated_at AS pr_activated_at,
                 ARRAY(SELECT DISTINCT grade FROM plant_rate_cards r WHERE r.plant_id=p.id AND r.active
                     AND r.effective_from<=CURRENT_DATE AND (r.effective_to IS NULL OR r.effective_to>=CURRENT_DATE) ORDER BY grade) grades,
                 CASE WHEN $2::double precision IS NOT NULL THEN 6371.0 * 2 * asin(sqrt(least(1.0, greatest(0.0,
                     power(sin(radians(p.latitude-$2)/2),2) + cos(radians($2))*cos(radians(p.latitude))*power(sin(radians(p.longitude-$3)/2),2)
                 )))) END distance_km
             FROM rmc_plants p LEFT JOIN plant_admin_controls c ON c.plant_id=p.id
+            LEFT JOIN plant_promotions pr ON pr.plant_id=p.id AND pr.status='ACTIVE' AND (pr.ends_at IS NULL OR pr.ends_at>NOW())
             WHERE p.is_active AND COALESCE(c.discovery_visible,TRUE)
             AND NOT EXISTS (
                 SELECT 1 FROM google_plant_visibility_exclusions x
@@ -140,8 +146,10 @@ pub async fn search(
                 left(regexp_replace(contact_phone,'[^0-9]','','g'), greatest(0,length(regexp_replace(contact_phone,'[^0-9]','','g'))-5)) || '*****'
                 ELSE NULL END,
             'verified',verified,'order_enabled',verified AND intake_mode='DIRECT','order_intake_mode',intake_mode,
+            'is_promoted',(pr_active AND (distance_km IS NULL OR distance_km <= pr_radius_km::double precision)),
+            'promotion_radius_km',CASE WHEN pr_active AND (distance_km IS NULL OR distance_km <= pr_radius_km::double precision) THEN pr_radius_km ELSE NULL END,
             'status','active','grades',grades,'distance_km',distance_km)
-        FROM candidates WHERE (distance_km IS NULL OR distance_km <= $4)
+        FROM candidates WHERE (distance_km IS NULL OR distance_km <= $4 OR (pr_active AND distance_km <= pr_radius_km::double precision))
           AND ($5='' OR strpos(lower(name||' '||address_line||' '||city||' '||state||' '||pincode),lower($5))>0)
           AND ($6='' OR EXISTS(SELECT 1 FROM unnest(grades) g WHERE lower(replace(g,'-',''))=lower(replace($6,'-',''))))
           AND (NOT $7 OR verified)
@@ -149,7 +157,8 @@ pub async fn search(
           AND ($9='' OR lower(coalesce(district,''))=lower($9) OR strpos(lower(coalesce(address_line,'')||' '||coalesce(city,'')||' '||coalesce(state,'')),lower($9))>0)
           AND ($10='' OR strpos(lower(coalesce(address_line,'')||' '||coalesce(city,'')),lower($10))>0)
           AND ($11='' OR strpos(lower(coalesce(city,'')||' '||coalesce(address_line,'')),lower($11))>0)
-        ORDER BY distance_km NULLS LAST, name, id LIMIT $12 OFFSET $13
+        ORDER BY (pr_active AND (distance_km IS NULL OR distance_km <= pr_radius_km::double precision)) DESC,
+            pr_activated_at ASC NULLS LAST, distance_km NULLS LAST, name, id LIMIT $12 OFFSET $13
     "#).bind(user.user_id).bind(query.lat).bind(query.lng).bind(query.radius_km.unwrap_or(50.0))
         .bind(query.q.unwrap_or_default().trim()).bind(query.grade.unwrap_or_default().trim())
         .bind(query.verified.unwrap_or(false))
@@ -159,16 +168,20 @@ pub async fn search(
         .bind(query.city.unwrap_or_default().trim())
         .bind(size+1).bind((page-1)*size).fetch_all(&state.db).await?;
     let more = rows.len() > size as usize;
-    let plants = rows
-        .into_iter()
-        .take(size as usize)
-        .map(|mut value| {
-            let verified = value["verified"].as_bool().unwrap_or(false);
-            redact_plant_contact(&mut value, verified);
-            value
-        })
-        .collect::<Vec<_>>();
-    Ok(Json(json!({"plants":plants,"page":page,"has_more":more})))
+    let mut promoted = Vec::new();
+    let mut organic = Vec::new();
+    for mut value in rows.into_iter().take(size as usize) {
+        let verified = value["verified"].as_bool().unwrap_or(false);
+        redact_plant_contact(&mut value, verified);
+        if value["is_promoted"].as_bool().unwrap_or(false) {
+            promoted.push(value);
+        } else {
+            organic.push(value);
+        }
+    }
+    apply_two_minute_promotion_rotation(&mut promoted, Utc::now().timestamp());
+    promoted.extend(organic);
+    Ok(Json(json!({"plants":promoted,"page":page,"has_more":more})))
 }
 
 #[derive(Debug, Deserialize)]

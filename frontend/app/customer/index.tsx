@@ -17,26 +17,79 @@ import { useTheme } from "@/src/theme/ThemeProvider";
 import { control, fonts, radius } from "@/src/theme/tokens";
 import { CustomerPlantDiscovery } from "./plants";
 
+const BULK_BANNER_VISIBLE_MS = 10_000;
+const BULK_BANNER_REAPPEAR_MS = 120_000;
+
 export default function CustomerHome() {
   const { colors } = useTheme();
   const router = useRouter();
   const { data, refetch } = useGet<{ active_order: OrderData | null }>("/customer/home");
   const [showBulk, setShowBulk] = useState(false);
   const [discoveryLocation, setDiscoveryLocation] = useState<LatLng | null>(null);
-  const bulkShown = useRef(false);
+  const isFocusedRef = useRef(false);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reappearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearBulkTimers = useCallback(() => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+    if (reappearTimerRef.current) {
+      clearTimeout(reappearTimerRef.current);
+      reappearTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleReappear = useCallback(() => {
+    if (reappearTimerRef.current) {
+      clearTimeout(reappearTimerRef.current);
+      reappearTimerRef.current = null;
+    }
+    if (!isFocusedRef.current) return;
+    reappearTimerRef.current = setTimeout(() => {
+      if (!isFocusedRef.current) return;
+      setShowBulk(true);
+      if (hideTimerRef.current) {
+        clearTimeout(hideTimerRef.current);
+      }
+      hideTimerRef.current = setTimeout(() => {
+        setShowBulk(false);
+        scheduleReappear();
+      }, BULK_BANNER_VISIBLE_MS);
+    }, BULK_BANNER_REAPPEAR_MS);
+  }, []);
+
+  const showBulkBanner = useCallback(() => {
+    if (!isFocusedRef.current) return;
+    clearBulkTimers();
+    setShowBulk(true);
+    hideTimerRef.current = setTimeout(() => {
+      setShowBulk(false);
+      scheduleReappear();
+    }, BULK_BANNER_VISIBLE_MS);
+  }, [clearBulkTimers, scheduleReappear]);
+
+  const dismissBulkBanner = useCallback(() => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+    setShowBulk(false);
+    scheduleReappear();
+  }, [scheduleReappear]);
 
   useFocusEffect(useCallback(() => {
-    if (bulkShown.current) return;
-    bulkShown.current = true;
-    setShowBulk(true);
-    const timeout = setTimeout(() => setShowBulk(false), 10_000);
-    const keyboard = Keyboard.addListener("keyboardDidShow", () => setShowBulk(false));
+    isFocusedRef.current = true;
+    showBulkBanner();
+    const keyboard = Keyboard.addListener("keyboardDidShow", dismissBulkBanner);
     return () => {
-      clearTimeout(timeout);
+      isFocusedRef.current = false;
+      clearBulkTimers();
       keyboard.remove();
       setShowBulk(false);
     };
-  }, []));
+  }, [clearBulkTimers, dismissBulkBanner, showBulkBanner]));
 
   function openAction(action: CarouselAction) {
     switch (action) {
@@ -70,7 +123,7 @@ export default function CustomerHome() {
                 {homeShortcuts.map(link => (
                   <Pressable key={link.key} testID={`action-${link.key}`} accessibilityRole="button"
                     accessibilityLabel={link.label} accessibilityHint={link.hint}
-                    onPress={() => { setShowBulk(false); router.push(link.route); }}
+                    onPress={() => { dismissBulkBanner(); router.push(link.route); }}
                     style={({ pressed }) => [styles.shortcut, { opacity: pressed ? 0.72 : 1 }]}>
                     <IconTile homeShortcut diagonalFill symbol={link.symbol} size={28} width={40} height={40} />
                     <AppText center style={styles.shortcutLabel}>{link.label}</AppText>
@@ -84,7 +137,7 @@ export default function CustomerHome() {
           <View style={[styles.bulkDock, { backgroundColor: colors.canvas }]}>
             <View style={[styles.bulkCard, { backgroundColor: colors.brandSoft, borderColor: colors.border }]}>
               <Pressable testID="home-bulk-quote" accessibilityRole="button" accessibilityLabel="Bulk order? Request a quote"
-                onPress={() => { setShowBulk(false); openAction("bulk"); }} style={styles.bulkAction}>
+                onPress={() => { dismissBulkBanner(); openAction("bulk"); }} style={styles.bulkAction}>
                 <IconTile symbol="bulk-quote" width={32} size={20} bulk />
                 <View style={styles.bulkCopy}>
                   <AppText variant="label">Bulk Order?</AppText>
@@ -92,7 +145,7 @@ export default function CustomerHome() {
                 </View>
               </Pressable>
               <Pressable testID="dismiss-home-bulk-quote" accessibilityRole="button" accessibilityLabel="Dismiss bulk order prompt"
-                onPress={() => setShowBulk(false)} style={styles.bulkDismiss}>
+                onPress={dismissBulkBanner} style={styles.bulkDismiss}>
                 <VectorSymbol name="close" size={19} color={colors.onSurfaceSecondary} />
               </Pressable>
             </View>
