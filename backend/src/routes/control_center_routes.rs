@@ -676,6 +676,8 @@ pub struct PlantMasterFilter {
     q: Option<String>,
     city: Option<String>,
     state: Option<String>,
+    pincode: Option<String>,
+    area: Option<String>,
     status: Option<String>,
     limit: Option<i64>,
     offset: Option<i64>,
@@ -701,6 +703,8 @@ pub async fn list_plant_master(
     let q = bounded_plant_filter(filters.q, "search")?;
     let city = bounded_plant_filter(filters.city, "city")?;
     let state_filter = bounded_plant_filter(filters.state, "state")?;
+    let pincode = bounded_plant_filter(filters.pincode, "pincode")?;
+    let area = bounded_plant_filter(filters.area, "area")?;
     let status = filters.status.as_deref().unwrap_or("all");
     if !matches!(
         status,
@@ -721,9 +725,13 @@ pub async fn list_plant_master(
         JOIN users u ON u.id = p.owner_id
         WHERE ($1 = '' OR p.name ILIKE '%' || $1 || '%'
                OR p.code ILIKE '%' || $1 || '%'
+               OR COALESCE(p.pincode, '') ILIKE '%' || $1 || '%'
                OR COALESCE(p.google_place_id, '') ILIKE '%' || $1 || '%')
           AND ($2 = '' OR p.city ILIKE '%' || $2 || '%')
           AND ($3 = '' OR p.state ILIKE '%' || $3 || '%')
+          AND ($5 = '' OR COALESCE(p.pincode, '') ILIKE '%' || $5 || '%')
+          AND ($6 = '' OR COALESCE(p.address_line, '') ILIKE '%' || $6 || '%'
+               OR COALESCE(p.city, '') ILIKE '%' || $6 || '%')
           AND ($4 = 'all'
                OR ($4 = 'inactive' AND NOT p.is_active)
                OR ($4 = 'held' AND (
@@ -748,13 +756,15 @@ pub async fn list_plant_master(
         .bind(&city)
         .bind(&state_filter)
         .bind(status)
+        .bind(&pincode)
+        .bind(&area)
         .fetch_one(&state.db)
         .await?;
     let rows: Vec<serde_json::Value> = sqlx::query_scalar(&format!(
         r#"
         SELECT jsonb_build_object(
             'id',p.id,'name',p.name,'code',p.code,
-            'address',p.address_line,'city',p.city,'state',p.state,
+            'address',p.address_line,'city',p.city,'state',p.state,'pincode',p.pincode,
             'active',p.is_active,'google_place_id',p.google_place_id,
             'discovery_visible',COALESCE((SELECT c.discovery_visible FROM plant_admin_controls c WHERE c.plant_id=p.id),TRUE),
             'google_place_blocked',EXISTS(SELECT 1 FROM google_plant_visibility_exclusions x
@@ -767,13 +777,15 @@ pub async fn list_plant_master(
             'intake_mode',COALESCE((SELECT order_intake_mode FROM plant_admin_controls WHERE plant_id=p.id),'DIRECT'),
             'staff_count',(SELECT COUNT(*) FROM plant_staff ps
                 WHERE ps.plant_id=p.id AND ps.is_active AND ps.removed_at IS NULL))
-        {predicate} ORDER BY p.updated_at DESC,p.id LIMIT $5 OFFSET $6
+        {predicate} ORDER BY p.updated_at DESC,p.id LIMIT $7 OFFSET $8
     "#
     ))
     .bind(&q)
     .bind(&city)
     .bind(&state_filter)
     .bind(status)
+    .bind(&pincode)
+    .bind(&area)
     .bind(limit)
     .bind(offset)
     .fetch_all(&state.db)
@@ -843,6 +855,10 @@ mod security_tests {
         assert_eq!(
             bounded_plant_filter(Some("  Panvel  ".into()), "city").unwrap(),
             "Panvel"
+        );
+        assert_eq!(
+            bounded_plant_filter(Some(" 410206 ".into()), "pincode").unwrap(),
+            "410206"
         );
         assert!(bounded_plant_filter(Some("x".repeat(101)), "search").is_err());
         assert!(bounded_plant_filter(Some("bad\nregion".into()), "state").is_err());
