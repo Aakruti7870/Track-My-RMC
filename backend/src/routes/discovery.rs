@@ -181,9 +181,7 @@ pub async fn search(
     }
     apply_two_minute_promotion_rotation(&mut promoted, Utc::now().timestamp());
     promoted.extend(organic);
-    Ok(Json(
-        json!({"plants": promoted, "page": page, "has_more": more}),
-    ))
+    Ok(Json(json!({"plants": promoted, "page": page, "has_more": more})))
 }
 
 #[derive(Debug, Deserialize)]

@@ -252,9 +252,7 @@ pub async fn submit_enquiry(
     auth_user: AuthUser,
     Json(payload): Json<SubmitPromotionEnquiryRequest>,
 ) -> Result<Json<Value>, AppError> {
-    let raw_radius = payload
-        .requested_radius_km
-        .unwrap_or(DEFAULT_PROMOTION_RADIUS_KM);
+    let raw_radius = payload.requested_radius_km.unwrap_or(DEFAULT_PROMOTION_RADIUS_KM);
     let requested_radius_km = validate_radius_km(raw_radius)?;
     let raw_days = payload.preferred_duration_days.unwrap_or(30);
     let preferred_duration_days = validate_duration_days(raw_days)?;
