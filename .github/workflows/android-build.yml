@@ -54,6 +54,7 @@ jobs:
           done
           echo "::error::No successful EC2 verification for this release SHA."
           exit 1
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -376,10 +377,11 @@ jobs:
         run: |
           set -euo pipefail
           sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
-          test -d "$sdk/build-tools"
+          test -d "$sdk/build-tools" || { echo "::error::Android SDK build-tools directory not found"; exit 1; }
           build_tools="$(find "$sdk/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
-          test -x "$build_tools/zipalign"
-          test -x "$build_tools/apksigner"
+          echo "Using Android build-tools: $build_tools"
+          test -x "$build_tools/zipalign" || { echo "::error::zipalign missing in $build_tools"; exit 1; }
+          test -x "$build_tools/apksigner" || { echo "::error::apksigner missing in $build_tools"; exit 1; }
           if [ -x "$build_tools/aapt2" ]; then
             aapt_bin="$build_tools/aapt2"
           elif [ -x "$build_tools/aapt" ]; then
@@ -403,17 +405,27 @@ jobs:
             --ks-pass env:STORE_PASSWORD \
             --key-pass env:APK_KEY_PASSWORD \
             --out "$signed" "$aligned"
-          test -s "$signed"
+          test -s "$signed" || { echo "::error::Signed APK not created"; exit 1; }
           "$build_tools/apksigner" verify --verbose --print-certs "$signed" > "$RUNNER_TEMP/apk-verify.txt"
-          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' "$RUNNER_TEMP/apk-verify.txt"
+          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' "$RUNNER_TEMP/apk-verify.txt" || {
+            echo "::error::APK Signature Scheme v2 verification failed"
+            cat "$RUNNER_TEMP/apk-verify.txt"
+            exit 1
+          }
           cert="$(sed -n 's/^Signer #1 certificate SHA-1 digest: //p' "$RUNNER_TEMP/apk-verify.txt" | head -n 1 | tr -d ':' | tr '[:lower:]' '[:upper:]')"
           expected="$(printf '%s' "$EXPECTED_PLAY_UPLOAD_SHA1" | tr -d ':')"
-          test "$cert" = "$expected"
+          if [ "$cert" != "$expected" ]; then
+            echo "::error::Signed APK SHA-1 mismatch (got: ${cert:-empty}, expected: $expected)"
+            exit 1
+          fi
           cert256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/apk-verify.txt" | head -n 1 | tr -d ':' | tr '[:lower:]' '[:upper:]')"
-          expected256="$(printf '%s' "$EXPECTED_PLAY_UPLOAD_SHA256" | tr -d ':' | tr '[:lower:]' '[:upper:]')"
-          test "$cert256" = "$expected256"
-          echo "Signed APK upload-certificate SHA256 verified"
-          "$build_tools/zipalign" -c -P 16 4 "$signed"
+          expected256="$(printf '%s' "$EXPECTED_PLAY_UPLOAD_SHA256" | tr -d ':')"
+          if [ "$cert256" != "$expected256" ]; then
+            echo "::error::Signed APK SHA-256 mismatch (got: ${cert256:-empty}, expected: $expected256)"
+            exit 1
+          fi
+          echo "Signed APK upload-certificate SHA1 & SHA256 verified"
+          "$build_tools/zipalign" -c -P 16 4 "$signed" || { echo "::error::Signed APK failed 16 KiB zipalign check"; exit 1; }
           badging="$("$aapt_bin" dump badging "$signed")"
           if ! grep -Fq "package: name='$PACKAGE_NAME' versionCode='$VERSION_CODE' versionName='$VERSION_NAME'" <<< "$badging"; then
             echo "::error::Signed APK package or version does not match the release."
