@@ -380,7 +380,14 @@ jobs:
           build_tools="$(find "$sdk/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
           test -x "$build_tools/zipalign"
           test -x "$build_tools/apksigner"
-          test -x "$build_tools/aapt"
+          if [ -x "$build_tools/aapt2" ]; then
+            aapt_bin="$build_tools/aapt2"
+          elif [ -x "$build_tools/aapt" ]; then
+            aapt_bin="$build_tools/aapt"
+          else
+            echo "::error::Neither aapt2 nor aapt found in $build_tools"
+            exit 1
+          fi
           unsigned=app/build/outputs/apk/release/app-release-unsigned.apk
           aligned="$RUNNER_TEMP/trackmyrmc-release-aligned.apk"
           signed=app/build/outputs/apk/release/trackmyrmc-v2.0.36-vc96-signed.apk
@@ -407,7 +414,7 @@ jobs:
           test "$cert256" = "$expected256"
           echo "Signed APK upload-certificate SHA256 verified"
           "$build_tools/zipalign" -c -P 16 4 "$signed"
-          badging="$("$build_tools/aapt" dump badging "$signed")"
+          badging="$("$aapt_bin" dump badging "$signed")"
           if ! grep -Fq "package: name='$PACKAGE_NAME' versionCode='$VERSION_CODE' versionName='$VERSION_NAME'" <<< "$badging"; then
             echo "::error::Signed APK package or version does not match the release."
             exit 1
